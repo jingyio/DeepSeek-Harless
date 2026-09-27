@@ -1,0 +1,100 @@
+{
+  "mcp__scoped_research_read__list_scoped_notes": {
+    "required_params": [],
+    "read_only": true,
+    "output_fields": [],
+    "replay_stable": true
+  },
+  "mcp__scoped_research_read__list_scoped_local_sources": {
+    "required_params": [],
+    "read_only": true,
+    "output_fields": [],
+    "replay_stable": true
+  },
+  "mcp__scoped_research_read__pin_scoped_source": {
+    "required_params": [
+      "role"
+    ],
+    "read_only": true,
+    "output_fields": [
+      "source_id"
+    ],
+    "description": "Pin one approved source version to an unpredictable handle.",
+    "replay_stable": true
+  },
+  "mcp__scoped_research_read__read_pinned_note": {
+    "required_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": [
+      "source_id"
+    ],
+    "default_params": [
+      [
+        "start_line",
+        1
+      ],
+      [
+        "max_lines",
+        80
+      ]
+    ],
+    "witness_default_only": [
+      "start_line",
+      "max_lines"
+    ],
+    "replay_stable": true
+  },
+  "mcp__scoped_research_read__read_pinned_text": {
+    "required_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": [
+      "source_id"
+    ],
+    "default_params": [
+      [
+        "start_line",
+        1
+      ],
+      [
+        "max_lines",
+        80
+      ]
+    ],
+    "witness_default_only": [
+      "start_line",
+      "max_lines"
+    ],
+    "replay_stable": true
+  },
+  "mcp__scoped_research_read__read_pinned_pdf_pages": {
+    "required_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": [
+      "source_id"
+    ],
+    "default_params": [
+      [
+        "start_page",
+        1
+      ],
+      [
+        "max_pages",
+        2
+      ]
+    ],
+    "witness_default_only": [
+      "start_page",
+      "max_pages"
+    ],
+    "replay_stable": true
+  }
+}

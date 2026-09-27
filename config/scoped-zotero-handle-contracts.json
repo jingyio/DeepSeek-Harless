@@ -1,0 +1,40 @@
+{
+  "mcp__scoped_zotero_read__list_scoped_zotero_sources": {
+    "required_params": [],
+    "read_only": true,
+    "output_fields": [],
+    "replay_stable": true
+  },
+  "mcp__scoped_zotero_read__pin_scoped_zotero_source": {
+    "required_params": [
+      "role"
+    ],
+    "read_only": true,
+    "output_fields": [
+      "source_id"
+    ],
+    "replay_stable": true
+  },
+  "mcp__scoped_zotero_read__read_pinned_zotero_item": {
+    "required_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": [
+      "source_id"
+    ],
+    "replay_stable": true
+  },
+  "mcp__scoped_zotero_read__read_pinned_zotero_annotation": {
+    "required_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": [
+      "source_id"
+    ],
+    "replay_stable": true
+  }
+}

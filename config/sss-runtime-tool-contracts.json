@@ -1,0 +1,97 @@
+{
+  "mcp__sss_runtime__collect_sources": {
+    "required_params": [],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": [
+      "run_id"
+    ],
+    "description": "Collect a versioned research source snapshot through the certified Motif runtime."
+  },
+  "mcp__sss_runtime__read_page": {
+    "required_params": [
+      "run_id",
+      "source",
+      "page"
+    ],
+    "read_only": true,
+    "output_fields": [
+      "run_id"
+    ],
+    "provenance_params": [
+      "run_id"
+    ],
+    "description": "Read a bounded excerpt from the current versioned source snapshot.",
+    "replay_stable": true
+  },
+  "mcp__sss_runtime__refresh_sources": {
+    "required_params": [
+      "run_id"
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": [
+      "run_id"
+    ],
+    "provenance_params": [
+      "run_id"
+    ],
+    "description": "Refresh a versioned source collection and reuse unchanged Motif results."
+  },
+  "mcp__sss_runtime__open_point": {
+    "required_params": [
+      "run_id",
+      "point_id",
+      "question",
+      "source_allowlist"
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": [
+      "run_id",
+      "frontier_id",
+      "point_id",
+      "question",
+      "allowed_sources",
+      "handoff_signature"
+    ],
+    "collection_params": [
+      "source_allowlist"
+    ],
+    "provenance_params": [
+      "run_id"
+    ],
+    "description": "Run a certified retrieval Motif to a saved, signed semantic frontier."
+  },
+  "mcp__sss_runtime__resolve_point": {
+    "required_params": [
+      "run_id",
+      "frontier_id",
+      "point_id",
+      "question",
+      "source_allowlist",
+      "handoff_signature",
+      "terms"
+    ],
+    "read_only": true,
+    "output_fields": [
+      "run_id",
+      "frontier_id",
+      "point_id"
+    ],
+    "collection_params": [
+      "source_allowlist",
+      "terms"
+    ],
+    "provenance_params": [
+      "run_id",
+      "frontier_id",
+      "point_id",
+      "question",
+      "source_allowlist",
+      "handoff_signature"
+    ],
+    "description": "Replay a saved Motif frontier, verify its evidence, and apply bounded semantic terms.",
+    "replay_stable": true
+  }
+}

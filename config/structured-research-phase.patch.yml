@@ -1,0 +1,23 @@
+# Stage-specific DSH surface for auditable local data analysis. The ordinary
+# Harness baseline keeps its full tool menu; this condition is recorded apart.
+- id: tool-bash
+  disabled: true
+
+- id: tool-subagent
+  disabled: true
+
+- id: tool-subagent-fork
+  disabled: true
+
+- insert:
+    - id: sss-structured-research-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: structured_research
+        transport: stdio
+        command: !!js process.env.SSS_MCP_PYTHON
+        args: ['-m', 'src.mcp.structured_research_server']
+        cwd: !!js process.env.SSS_PROJECT_ROOT
+        env:
+          SSS_RESEARCH_INPUT_DIR: !!js process.env.SSS_RESEARCH_INPUT_DIR
+        failOnStartupError: true

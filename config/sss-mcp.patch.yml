@@ -1,0 +1,20 @@
+# The local DSH Web profile starts the workflow adapter.
+- insert:
+    - id: sss-local-research-tools-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: local_research_tools
+        transport: stdio
+        command: !!js process.env.SSS_MCP_PYTHON
+        args: ['-m', 'src.mcp.local_research_tools_server']
+        cwd: !!js process.env.SSS_PROJECT_ROOT
+        failOnStartupError: true
+    - id: sss-literature-discovery-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: literature_discovery
+        transport: stdio
+        command: !!js process.env.SSS_MCP_PYTHON
+        args: ['-m', 'src.mcp.literature_discovery_server']
+        cwd: !!js process.env.SSS_PROJECT_ROOT
+        failOnStartupError: true

@@ -1,0 +1,108 @@
+{
+  "mcp__local_research_tools__list_research_sources": {
+    "required_params": [],
+    "read_only": true,
+    "output_fields": [],
+    "description": "List bounded supported files in an approved research input directory.",
+    "replay_stable": true
+  },
+  "mcp__local_research_tools__pin_source": {
+    "required_params": [
+      "path"
+    ],
+    "read_only": true,
+    "output_fields": [
+      "source_id"
+    ],
+    "description": "Pin the exact bytes of an approved local research source; invalidates on change.",
+    "replay_stable": true
+  },
+  "mcp__local_research_tools__inspect_records": {
+    "required_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "output_fields": [
+      "dataset_id"
+    ],
+    "provenance_params": [
+      "source_id"
+    ],
+    "default_params": [
+      [
+        "records_path",
+        ""
+      ]
+    ],
+    "description": "Describe a JSON record array or CSV/TSV table from a pinned source.",
+    "replay_stable": true
+  },
+  "mcp__local_research_tools__aggregate_records": {
+    "required_params": [
+      "dataset_id",
+      "group_by",
+      "measures"
+    ],
+    "read_only": true,
+    "output_fields": [
+      "result_id"
+    ],
+    "provenance_params": [
+      "dataset_id"
+    ],
+    "parameter_shapes": [
+      [
+        "group_by",
+        "string_list_allow_empty"
+      ],
+      [
+        "measures",
+        "measure_list"
+      ]
+    ],
+    "description": "Compute bounded, explicit grouped statistics from an inspected dataset.",
+    "replay_stable": true
+  },
+  "mcp__local_research_tools__rank_grouped_result": {
+    "required_params": [
+      "result_id",
+      "category_field",
+      "measure_name"
+    ],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": [
+      "result_id"
+    ],
+    "description": "Rank saved group categories within explicit strata and count first/last places.",
+    "replay_stable": true
+  },
+  "mcp__local_research_tools__compare_sources": {
+    "required_params": [
+      "left_source_id",
+      "right_source_id"
+    ],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": [
+      "left_source_id",
+      "right_source_id"
+    ],
+    "description": "Compare two pinned research file versions by bytes.",
+    "replay_stable": true
+  },
+  "mcp__local_research_tools__compare_results": {
+    "required_params": [
+      "left_result_id",
+      "right_result_id"
+    ],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": [
+      "left_result_id",
+      "right_result_id"
+    ],
+    "description": "Compare two saved aggregate outputs after revalidating sources.",
+    "replay_stable": true
+  }
+}

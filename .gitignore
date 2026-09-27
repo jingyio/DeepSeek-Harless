@@ -1,0 +1,17 @@
+node_modules/
+.venv/
+.venv312/
+__pycache__/
+*.pyc
+.local/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+dist/
+coverage/
+experiments/results/
+office/papers/inbox/
+office/papers/archive/
+office/papers/notes/

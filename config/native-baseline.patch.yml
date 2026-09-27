@@ -1,0 +1,13 @@
+# Native Harness baseline: keep local tools, restrict the source to the copied PDF.
+- id: tool-web
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: session-title-llm
+  disabled: true

@@ -1,0 +1,18 @@
+# Template for scripts/prepare-sss-runtime.py. The generated patch lives in
+# .local and is used only by a dedicated SSS Harness process.
+- insert:
+    - id: sss-motif-gate
+      name: __SSS_GUARD_PLUGIN__
+    - id: sss-runtime-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: sss_runtime
+        transport: stdio
+        command: __SSS_MCP_PYTHON__
+        args: ['-m', 'src.mcp.sss_runtime_server']
+        cwd: __SSS_PROJECT_ROOT__
+        env:
+          SSS_SOURCE_ROOT: __SSS_SOURCE_ROOT__
+          SSS_SOURCE_MOTIF: __SSS_SOURCE_MOTIF__
+          SSS_RETRIEVAL_MOTIF: __SSS_RETRIEVAL_MOTIF__
+        failOnStartupError: true

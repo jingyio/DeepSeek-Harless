@@ -1,0 +1,1 @@
+"""SSS research prototype."""

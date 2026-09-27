@@ -1,0 +1,8 @@
+# Ordinary Harness context baseline for the same scoped AIDD task.
+# DeepSeek Flash advertises a 1,000,000-token window in this profile; the
+# default 0.8 trigger never fired in the initial 110k-token prompt trajectory.
+- id: compaction-basic
+  config:
+    thresholdRatio: 0.05
+    retainTokens: 12000
+    maxTokens: 8000

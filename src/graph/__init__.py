@@ -1,0 +1,1 @@
+"""Evidence-guarded structural execution."""
