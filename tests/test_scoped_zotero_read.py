@@ -77,6 +77,36 @@ class ScopedZoteroTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "version changed"):
             scoped.read_pinned_zotero_annotation(pinned["source_id"])
 
+    def test_annotation_attachment_is_resolved_to_approved_paper(self) -> None:
+        attachment = {"key": "PDFX1234", "version": 5, "data": {
+            "itemType": "attachment", "parentItem": self.item["key"],
+            "title": "Private attachment title must not be returned"}}
+        self.items[attachment["key"]] = attachment
+        self.annotation["data"]["parentItem"] = attachment["key"]
+        self.scope["zotero_sources"][1] = self._row(
+            "margin_note", "annotation", self.annotation)
+        self._write_scope()
+        pinned = scoped.pin_scoped_zotero_source("margin_note")
+        result = scoped.read_pinned_zotero_annotation(pinned["source_id"])
+        self.assertEqual(result["parent_relation"], {
+            "status": "verified_attachment_to_paper", "attachment_key": "PDFX1234",
+            "attachment_version": 5, "approved_paper_key": "ABCD1234"})
+        self.assertNotIn("Private attachment title", str(result))
+        self.item["version"] += 1
+        with self.assertRaisesRegex(ValueError, "version changed"):
+            scoped.read_pinned_zotero_annotation(pinned["source_id"])
+
+    def test_missing_attachment_does_not_invent_a_paper_relation(self) -> None:
+        self.annotation["data"]["parentItem"] = "MISSING01"
+        self.scope["zotero_sources"][1] = self._row(
+            "margin_note", "annotation", self.annotation)
+        self._write_scope()
+        pinned = scoped.pin_scoped_zotero_source("margin_note")
+        relation = scoped.read_pinned_zotero_annotation(
+            pinned["source_id"])["parent_relation"]
+        self.assertEqual(relation["status"], "unverified")
+        self.assertIsNone(relation["approved_paper_key"])
+
 
 class ScopedZoteroMCPTests(unittest.IsolatedAsyncioTestCase):
     async def test_only_four_read_tools_are_exposed(self) -> None:

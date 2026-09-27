@@ -157,9 +157,43 @@ def read_pinned_zotero_annotation(source_id: str) -> dict[str, Any]:
     data = item["data"]
     marked = str(data.get("annotationText") or "")
     comment = str(data.get("annotationComment") or "")
+    parent_key = data.get("parentItem")
+    relation: dict[str, Any] = {"status": "unverified",
+                                "attachment_key": parent_key,
+                                "approved_paper_key": None}
+    if isinstance(parent_key, str) and ZOTERO_KEY.fullmatch(parent_key):
+        approved_papers = [source for source in _scope()["zotero_sources"]
+                           if isinstance(source, dict) and source.get("kind") == "item"
+                           and source.get("external_model_excerpt_allowed") is True]
+        if any(source.get("key") == parent_key for source in approved_papers):
+            paper = next(source for source in approved_papers
+                         if source.get("key") == parent_key)
+            verified_paper = _verified(_row(paper["role"]))
+            if verified_paper["data"].get("itemType") != "attachment":
+                relation = {"status": "verified_direct_paper",
+                            "attachment_key": None, "approved_paper_key": parent_key}
+        else:
+            # Zotero annotations normally belong to a PDF attachment. Resolve
+            # only its parent pointer; expose no unapproved attachment content.
+            try:
+                attachment = _fetch_item(parent_key)
+            except (OSError, ValueError, KeyError):
+                attachment = None
+            paper_key = attachment["data"].get("parentItem") if attachment else None
+            if attachment and attachment["data"].get("itemType") == "attachment":
+                for paper in approved_papers:
+                    if paper.get("key") == paper_key:
+                        verified_paper = _verified(_row(paper["role"]))
+                        if verified_paper["data"].get("itemType") != "attachment":
+                            relation = {"status": "verified_attachment_to_paper",
+                                        "attachment_key": parent_key,
+                                        "attachment_version": attachment.get("version"),
+                                        "approved_paper_key": paper_key}
+                        break
     return {"source_id": source_id, "role": row["role"], "key": row["key"],
             "version": row["version"], "data_sha256": row["data_sha256"],
-            "parent_item": data.get("parentItem"), "page_label": data.get("annotationPageLabel"),
+            "parent_item": parent_key, "parent_relation": relation,
+            "page_label": data.get("annotationPageLabel"),
             "marked_text": marked[:6000], "marked_total_chars": len(marked),
             "marked_truncated": len(marked) > 6000,
             "researcher_comment": comment[:6000], "comment_total_chars": len(comment),

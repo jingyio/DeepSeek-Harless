@@ -1,8 +1,9 @@
 """Compile a witnessed two-node read dependency from interleaved DSH calls.
 
 This narrow compiler accepts a real parameter-flow edge, not a hand-authored
-tool sequence. It accepts only contract-declared defaults and rejects other
-optional arguments or intervening failed/unapproved calls.
+tool sequence. It accepts only contract-declared defaults. An unrelated failed
+read may interleave; calls using the source handle, unknown or effectful calls
+remain barriers.
 """
 
 from __future__ import annotations
@@ -33,6 +34,25 @@ def _argument_shape(arguments: Any, contract: Any) -> bool:
                     for key in contract.witness_default_only))
 
 
+def _safe_interleaving(records: list[Any], source_index: int, target_index: int,
+                       handle: Any, contracts: Mapping[str, Any]) -> bool:
+    """Allow unrelated failed reads, while retaining barriers on the same handle.
+
+    Successful read-only calls may interleave freely. A failed read is irrelevant
+    only when its declared contract is read-only and none of its arguments use
+    the exact source handle. Unknown, effectful or malformed calls stay barriers.
+    """
+    for row in records[source_index + 1:target_index]:
+        if row.eligible:
+            continue
+        contract = contracts.get(row.name)
+        if (row.reason != "missing_or_failed_result" or contract is None
+                or not contract.read_only or not isinstance(row.arguments, dict)
+                or any(value == handle for value in row.arguments.values())):
+            return False
+    return True
+
+
 def _witnesses(trace: Any, candidate: dict[str, Any], contracts: Mapping[str, Any]) -> list[Any]:
     source_name = candidate["from_tool"]
     target_name = candidate["to_tool"]
@@ -49,13 +69,14 @@ def _witnesses(trace: Any, candidate: dict[str, Any], contracts: Mapping[str, An
         possible = []
         for source_index, source in enumerate(records[:target_index]):
             if (not source.eligible or source.name != source_name
-                    or not _argument_shape(source.arguments, contracts[source_name])
-                    or not all(row.eligible for row in records[source_index:target_index + 1])):
+                    or not _argument_shape(source.arguments, contracts[source_name])):
                 continue
             value = _value(source.observation, source_field)
             if (value is not None and not isinstance(value, (list, dict))
                     and type(value) is type(target.arguments[target_param])
-                    and value == target.arguments[target_param]):
+                    and value == target.arguments[target_param]
+                    and _safe_interleaving(records, source_index, target_index,
+                                           value, contracts)):
                 possible.append(source)
         if len(possible) == 1:
             pairs.append((possible[0], target))
@@ -76,7 +97,7 @@ def _check_candidate(candidate: dict[str, Any], contracts: Mapping[str, Any]) ->
 
 def safe_edge_witnesses(candidate: dict[str, Any], trace: Any,
                         contracts: Mapping[str, Any]) -> list[tuple[Any, Any]]:
-    """Return exact, barrier-free call pairs without promoting a Motif."""
+    """Return exact read edges; unrelated failed reads may interleave."""
     _check_candidate(candidate, contracts)
     return _witnesses(trace, candidate, contracts)
 

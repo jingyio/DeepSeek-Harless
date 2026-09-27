@@ -25,13 +25,16 @@ CANDIDATE = {"status": "candidate_only", "from_tool": "pin",
              "to_param": "source_id", "source_trace_ids": ["A", "B"]}
 
 
-def trace(label: str, *, blocked: bool = False, optional: bool = False) -> DshTrace:
+def trace(label: str, *, blocked: bool = False, unrelated_failure: bool = False,
+          optional: bool = False) -> DshTrace:
     source_id = f"source-{label}"
     rows = (
         ToolRecord("pin", {"path": f"{label}.csv"}, "digest", True,
                    "eligible_read", 1, {"source_id": source_id}),
-        ToolRecord("other", {"query": label}, "digest", not blocked,
-                   "eligible_read" if not blocked else "missing_or_failed_result", 2, {}),
+        ToolRecord("other", {"query": source_id if blocked else label}, "digest",
+                   not (blocked or unrelated_failure),
+                   "eligible_read" if not (blocked or unrelated_failure)
+                   else "missing_or_failed_result", 2, {}),
         ToolRecord("inspect", {"source_id": source_id, **({"records_path": "rows"}
                                                       if optional else {})},
                    "digest", True, "eligible_read", 3,
@@ -61,6 +64,10 @@ class WitnessedEdgeMotifTests(unittest.TestCase):
         self.assertEqual(result.status, "completed")
         self.assertEqual(calls, [("pin", {"path": "D.csv"}),
                                  ("inspect", {"source_id": "source-D"})])
+
+    def test_unrelated_failed_read_does_not_erase_exact_handle_flow(self):
+        self.assertEqual(count_safe_edge_witnesses(
+            CANDIDATE, trace("A", unrelated_failure=True), CONTRACTS), 1)
 
     def test_barrier_or_optional_argument_blocks_transfer(self):
         self.assertEqual(count_safe_edge_witnesses(
