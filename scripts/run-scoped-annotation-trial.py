@@ -52,6 +52,10 @@ def main() -> int:
     parser.add_argument("--online-task", type=Path)
     parser.add_argument("--embedding-endpoint", default="http://127.0.0.1:8776/v1/embeddings")
     parser.add_argument("--embedding-model", default="Qwen3-Embedding-0.6B")
+    parser.add_argument("--resume", action="store_true",
+                        help="finish one truncated baseline in its original DSH session")
+    parser.add_argument("--prior-ledger", type=Path,
+                        help="original cost-gate ledger, required for a continuation")
     parser.add_argument("--call-model", action="store_true")
     args = parser.parse_args()
     spec_path = args.spec.resolve(strict=True)
@@ -61,6 +65,10 @@ def main() -> int:
     arm_budgets = preview["arm_budget_usd"]
     if args.arm not in arm_budgets:
         parser.error(f"{args.arm} arm is not budgeted in the frozen preview")
+    if args.resume and (args.arm != "baseline" or args.prior_ledger is None):
+        parser.error("only a truncated baseline with its original ledger can resume")
+    if not args.resume and args.prior_ledger is not None:
+        parser.error("--prior-ledger belongs to --resume")
     scope = out / "source-scope.json"
     preview_file = out / "RUN-PREVIEW.json"
     prompt = Path(spec["prompt_path"]).resolve(strict=True)
@@ -92,11 +100,31 @@ def main() -> int:
     require_budget_gate()
     if float(os.environ["SSS_BUDGET_CAP_USD"]) > float(arm_budgets[args.arm]):
         parser.error("active cost gate exceeds the approved task budget")
-    run_out = out / args.arm
+    prior = None
+    if args.resume:
+        original = out / "baseline"
+        prior = json.loads((original / "agent-metrics.json").read_text(encoding="utf-8"))
+        if (prior.get("status") != "incomplete" or prior.get("finish_reason") != "max-tokens"
+                or not isinstance(prior.get("session_id"), str)):
+            parser.error("only a recorded max-tokens run can be continued")
+        session_file = (ROOT / ".local/dsh/storages/session_projcache/sessions"
+                        / (prior["session_id"] + ".json"))
+        if not session_file.is_file():
+            parser.error("original DSH session is unavailable")
+        ledger = args.prior_ledger.resolve(strict=True)
+        if not ledger.is_relative_to((ROOT / ".local").resolve()):
+            parser.error("original cost ledger must stay under .local")
+        spent = sum(float(json.loads(line).get("observed_peak_usd", 0))
+                    for line in ledger.read_text(encoding="utf-8").splitlines())
+        if spent <= 0 or spent + float(os.environ["SSS_BUDGET_CAP_USD"]) > float(
+                arm_budgets["baseline"]):
+            parser.error("continuation gate exceeds the remaining approved budget")
+    run_out = out / args.arm / "continuation-01" if args.resume else out / args.arm
     run_out.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (run_out / "paid-attempt.marker").open("x", encoding="utf-8") as stream:
         stream.write("one approved paid trial reserved\n")
-    session_id = (json.loads(args.online_task.read_text(encoding="utf-8"))["session_id"]
+    session_id = (prior["session_id"] if prior else
+                  json.loads(args.online_task.read_text(encoding="utf-8"))["session_id"]
                   if online else "sss-scoped-annotation-" + uuid4().hex)
     os.environ.update({"SSS_MCP_PYTHON": str(ROOT / ".venv312/bin/python"),
                        "SSS_PROJECT_ROOT": str(ROOT),
@@ -127,18 +155,22 @@ def main() -> int:
         guard.on_notification(notification)
 
     started = time.monotonic()
+    actual_prompt = ("请继续刚才同一科研任务。已有取证足够时直接给出完整的一页中文待审决定；"
+                     "保留可核对的来源位置，明确历史批注是模拟释放，不猜测缺失事实。"
+                     "不要重新开始任务，不修改任何应用。"
+                     if args.resume else prompt.read_text(encoding="utf-8"))
     try:
         from deepseek_harness import DeepSeekHarness
 
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
-            reasoning_effort="high", max_tokens=6000,
-            cwd=str(run_out), runtime_cwd=str(run_out),
+            reasoning_effort="high", max_tokens=8000 if args.resume else 6000,
+            cwd=str(out / args.arm), runtime_cwd=str(out / args.arm),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"), profile="sdk",
             patches=tuple(patches), dsh_home=str(ROOT / ".local/dsh"),
             request_timeout_seconds=900,
         ) as harness:
-            result = harness.run(prompt.read_text(encoding="utf-8"),
+            result = harness.run(actual_prompt,
                                  session_id=session_id, on_notification=observe)
         answer = run_out / "agent-answer.md"
         answer.write_text(result.final_response, encoding="utf-8")
