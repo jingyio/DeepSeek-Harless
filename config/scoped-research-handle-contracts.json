@@ -100,7 +100,7 @@
   "mcp__scoped_research_read__locate_pinned_pdf_quote": {
     "required_params": ["source_id", "quote"],
     "read_only": true,
-    "output_fields": ["match_id"],
+    "output_fields": ["match_id", "sha256"],
     "provenance_params": ["source_id"],
     "description": "Locate an exact quote inside the approved PDF pages; only a unique page yields a versioned match handle.",
     "replay_stable": true
@@ -108,7 +108,7 @@
   "mcp__scoped_research_read__read_pinned_pdf_match": {
     "required_params": ["match_id"],
     "read_only": true,
-    "output_fields": [],
+    "output_fields": ["sha256"],
     "provenance_params": ["match_id"],
     "description": "Read the unique page from a versioned PDF quote match handle.",
     "replay_stable": true

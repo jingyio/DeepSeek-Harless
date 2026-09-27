@@ -165,7 +165,12 @@ function witnessedPrefix(artifact, prefix, task, manifest) {
         ? field(prefix.find((row) => row.name === edges[0].from_tool)?.output,
           edges[0].from_field)
         : task.bindings[tool]?.[param];
-      if (!scalar(expected) || actual[param] !== expected) return false;
+      if (expected === undefined && index === 0 && edges.length === 0) {
+        // The model already chose and ran the first tool. A successful,
+        // version-matched observation may anchor its opaque inputs; they need
+        // not have existed when the structured task was created.
+        if (!scalar(actual[param])) return false;
+      } else if (!scalar(expected) || actual[param] !== expected) return false;
     }
     for (const [param, expected] of Object.entries(
       manifest.contracts[tool].default_params)) {

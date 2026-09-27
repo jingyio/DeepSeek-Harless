@@ -82,6 +82,45 @@ test('one DSH model stream is replaced by a certified tool call with provenance'
   assert.equal(events.at(-1).kind, 'model_request_skipped_verified');
 });
 
+test('a verified model-chosen locator can anchor a later certified read', async () => {
+  const locate = 'mcp__research__locate_quote';
+  const read = 'mcp__research__read_match';
+  const manifest = {
+    schema_version: 1, source_library_digest: 'a'.repeat(64),
+    artifacts: [{ motif_id: 'certified-locate-read', certified_digest: 'b'.repeat(64),
+      tools: [locate, read], supporting_task_count: 2,
+      validation_task_fingerprint: 'independent-heldout',
+      transfer_evidence: [{ from_tool: locate, from_field: 'match_id',
+        to_tool: read, to_param: 'match_id' }] }],
+    contracts: {
+      [locate]: { read_only: true, required_params: ['source_id', 'quote'],
+        default_params: {}, output_fields: ['match_id', 'sha256'],
+        description: 'Locate a paper quotation' },
+      [read]: { read_only: true, required_params: ['match_id'],
+        default_params: {}, output_fields: ['sha256'],
+        description: 'Read the matched paper page' },
+    },
+    slot_rules: {}, version_fields: { [locate]: 'sha256', [read]: 'sha256' },
+  };
+  manifest.manifest_digest = digest(manifest);
+  const task = { schema_version: 1, task_id: 'quote-impact', session_id: 's1',
+    intent: 'Check a paper quotation against the current research claim',
+    input_version: 'snapshot-1', bindings: {},
+    source_versions: { [locate]: 'pdf-hash-1', [read]: 'pdf-hash-1' } };
+  const history = [{ name: locate, ok: true,
+    arguments: { source_id: 'source-opaque', quote: 'highlighted text' },
+    output: { match_id: 'match-opaque', sha256: 'pdf-hash-1' },
+    sourceVersion: 'pdf-hash-1', inputVersion: 'snapshot-1' }];
+  const base = { manifest, task, history,
+    availableTools: new Map([[read, offered(read, ['match_id'])]]),
+    similarity: async () => [0.97], minSimilarity: 0.8, minMargin: 0.1 };
+  assert.deepEqual((await proposeNext(base)).arguments, { match_id: 'match-opaque' });
+  assert.equal(await proposeNext({ ...base, history: [{ ...history[0],
+    sourceVersion: 'changed-pdf-hash' }] }), null);
+  assert.equal(await proposeNext({ ...base, task: { ...task,
+    bindings: { [locate]: { quote: 'a different highlight' } } } }), null);
+});
+
 test('version drift, missing parameter, no offered tool and shadow mode defer', async () => {
   const { pin, read, manifest, task } = fixture();
   const history = [{ name: pin, ok: true,
