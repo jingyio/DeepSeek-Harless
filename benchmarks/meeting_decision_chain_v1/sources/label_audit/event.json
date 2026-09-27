@@ -2,7 +2,7 @@
   "event_id": "event:label_audit:w39",
   "experiment_id": "wps:label_audit:run_2026w39",
   "previous_experiment_id": "wps:label_audit:run_2026w38",
-  "previous_version_sha256": "c04c8273c4a5f07778cdba7cb77fb1bd9474d0287b5ad7719081dbf801f50d76",
+  "previous_version_sha256": "62bda8bd332ba49cb834c222e3df291d2275e4ce7dd34760fe23359e8701732a",
   "title": "正确率提升是否依赖待审标签",
   "changed_fields": [
     "correct",

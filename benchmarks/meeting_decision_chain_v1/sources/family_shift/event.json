@@ -2,7 +2,7 @@
   "event_id": "event:family_shift:w39",
   "experiment_id": "wps:family_shift:run_2026w39",
   "previous_experiment_id": "wps:family_shift:run_2026w38",
-  "previous_version_sha256": "569d4d59e20739c7ab01bf177579f47e74c07e00b33381e3b7f2b716226d9dd3",
+  "previous_version_sha256": "abbcae5733726c7939cf11be7b5b6873c15066ee992fc1296b1a7b0c3740c27e",
   "title": "新目标家族上的改进是否成立",
   "changed_fields": [
     "correct"

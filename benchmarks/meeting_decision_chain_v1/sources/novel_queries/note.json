@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:novel_queries:transfer",
+  "text": "旧判断：候选检索方式提升整体准确率，可能更利于全新查询。但新查询与重复查询来自不同收集周期，必须分层核查后再决定是否扩大试点。",
+  "decision_options": [
+    "优先检查查询去重",
+    "补全新查询测试",
+    "扩大试点但收窄主张"
+  ],
+  "depends_on": "wps:novel_queries:run_2026w39"
+}

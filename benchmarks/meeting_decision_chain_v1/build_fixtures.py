@@ -100,6 +100,32 @@ CASES = {
         "event": {"changed_fields": ["latency_total_ms", "hardware"],
                   "message": "新一轮基准测试汇总已更新；请核查候选方法的延迟优势。"},
     },
+    "novel_queries": {
+        "title": "检索改动能否改善全新查询",
+        "metric": {"id": "correct_rate", "numerator": "correct", "denominator": "cases",
+                   "allowed_groups": ["variant", "query_status"]},
+        "rows": [
+            ("baseline", "novel", 1, 40, 24), ("baseline", "novel", 2, 40, 24),
+            ("baseline", "novel", 3, 40, 24), ("baseline", "repeated", 1, 40, 30),
+            ("baseline", "repeated", 2, 40, 30), ("baseline", "repeated", 3, 40, 30),
+            ("candidate", "novel", 1, 40, 23), ("candidate", "novel", 2, 40, 22),
+            ("candidate", "novel", 3, 40, 21), ("candidate", "repeated", 1, 40, 36),
+            ("candidate", "repeated", 2, 40, 36), ("candidate", "repeated", 3, 40, 36),
+        ],
+        "prior_adjustment": {("candidate", "novel"): 5},
+        "note": {
+            "claim_id": "claim:novel_queries:transfer",
+            "text": "旧判断：候选检索方式提升整体准确率，可能更利于全新查询。但新查询与重复查询来自不同收集周期，必须分层核查后再决定是否扩大试点。",
+            "decision_options": ["优先检查查询去重", "补全新查询测试", "扩大试点但收窄主张"],
+            "depends_on": "wps:novel_queries:run_2026w39",
+        },
+        "annotation": {
+            "title": "合成文献批注：重复查询",
+            "text": "虚构方法提醒：重复查询上的增益可能来自记忆和模板匹配；不能直接外推到首次出现的问题。",
+        },
+        "event": {"changed_fields": ["correct", "query_status"],
+                  "message": "新一批查询评测已录入；请核查全新查询上的改进主张。"},
+    },
 }
 
 

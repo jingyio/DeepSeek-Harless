@@ -19,7 +19,8 @@ from openpyxl import load_workbook
 
 
 ROOT = Path(__file__).resolve().parent
-CASE_IDS = frozenset(("family_shift", "label_audit", "hardware_latency"))
+CASE_IDS = frozenset(("family_shift", "label_audit", "hardware_latency",
+                      "novel_queries"))
 _handles: dict[str, tuple[str, str]] = {}
 _datasets: dict[str, str] = {}
 
