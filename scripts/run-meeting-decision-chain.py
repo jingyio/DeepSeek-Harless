@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""Budget-gated DSH arm for one frozen synthetic meeting decision."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from uuid import uuid4
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from benchmarks.meeting_decision_chain_v1.mock_apps_server import CASE_IDS  # noqa: E402
+from src.adapters.dsh_client import _usage, require_budget_gate  # noqa: E402
+from src.adapters.native_budget import NativeBudgetGuard  # noqa: E402
+
+
+BASE = ROOT / "benchmarks/meeting_decision_chain_v1"
+PATCH = ROOT / "config/meeting-decision-chain.patch.yml"
+CONTRACTS = ROOT / "config/meeting-decision-chain-contracts.json"
+OUT = ROOT / ".local/benchmarks/meeting-decision-chain-v1"
+CAP_USD = 1.0
+MAX_REQUESTS = 15
+
+
+def sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def private(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
+    path.chmod(0o600)
+
+
+def preview(case: str, arm: str, online_manifest: Path | None,
+            online_task: Path | None) -> dict:
+    case_dir = BASE / "sources" / case
+    task = BASE / "tasks" / f"{case}.md"
+    files = [task, PATCH, CONTRACTS, Path(__file__).resolve(),
+             *sorted(path for path in case_dir.iterdir() if path.is_file())]
+    if arm == "motif":
+        if not online_manifest or not online_task:
+            raise ValueError("Motif arm needs a certified online manifest and task")
+        files += [online_manifest.resolve(strict=True), online_task.resolve(strict=True),
+                  ROOT / "src/adapters/dsh_online_motif.mjs",
+                  ROOT / "src/motif_core/online_skill_runtime.mjs"]
+    elif online_manifest or online_task:
+        raise ValueError("baseline must not receive a Motif manifest")
+    return {"task_id": f"meeting-decision-{case}", "case": case, "arm": arm,
+            "classification": "synthetic_development_trial",
+            "model": "deepseek-flash", "reasoning_effort": "high",
+            "budget_cap_usd": CAP_USD, "max_model_requests": MAX_REQUESTS,
+            "max_output_tokens_per_request": 5000,
+            "read_only": True,
+            "input_sha256": {str(path.resolve().relative_to(ROOT)) if
+                             path.resolve().is_relative_to(ROOT) else str(path): sha(path)
+                             for path in files},
+            "output_dir": str(OUT / case / arm)}
+
+
+def _online_prepare(manifest: Path, task: Path) -> dict:
+    script = ROOT / "scripts/prepare-online-motif.py"
+    spec = importlib.util.spec_from_file_location("meeting_online_prepare", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("online Motif preparer is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.prepare(manifest, task)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--case", choices=sorted(CASE_IDS), required=True)
+    parser.add_argument("--arm", choices=("baseline", "motif"), required=True)
+    parser.add_argument("--online-manifest", type=Path)
+    parser.add_argument("--online-task", type=Path)
+    parser.add_argument("--embedding-endpoint", default="http://127.0.0.1:8776/v1/embeddings")
+    parser.add_argument("--embedding-model", default="Qwen/Qwen3-Embedding-0.6B")
+    parser.add_argument("--call-model", action="store_true")
+    args = parser.parse_args()
+    if args.arm == "motif" and args.case != "novel_queries":
+        parser.error("prospective Motif arm is reserved for the frozen fourth case")
+    out = OUT / args.case / args.arm
+    online = _online_prepare(args.online_manifest, args.online_task) if args.arm == "motif" else None
+    current = preview(args.case, args.arm, args.online_manifest, args.online_task)
+    saved = out / "PREVIEW.json"
+    approval = out / "APPROVAL.json"
+    print(json.dumps({**current, "paid_api_requested": args.call_model},
+                     ensure_ascii=False), flush=True)
+    if not args.call_model:
+        if approval.exists() and (not saved.exists() or
+                                  json.loads(saved.read_text(encoding="utf-8")) != current):
+            parser.error("approved preview changed")
+        private(saved, current)
+        return 0
+    if not saved.is_file() or json.loads(saved.read_text(encoding="utf-8")) != current:
+        parser.error("frozen preview is missing or changed")
+    if not approval.is_file():
+        parser.error("frozen run needs the user's task authorization record")
+    record = json.loads(approval.read_text(encoding="utf-8"))
+    if (record.get("approved") is not True or
+        record.get("preview_sha256") != sha(saved) or
+        record.get("budget_cap_usd") != CAP_USD or
+        record.get("authorization_basis") != "可以运行真实试验"):
+        parser.error("authorization does not match the frozen preview")
+    require_budget_gate()
+    if float(os.environ["SSS_BUDGET_CAP_USD"]) > CAP_USD:
+        parser.error("local cost gate exceeds the task cap")
+    marker = out / "paid-attempt.marker"
+    with marker.open("x", encoding="utf-8") as stream:
+        stream.write("one authorized paid trial reserved\n")
+    marker.chmod(0o600)
+    session_id = (json.loads(args.online_task.read_text(encoding="utf-8"))["session_id"]
+                  if online else f"sss-meeting-{args.case}-{uuid4().hex}")
+    os.environ.update({"SSS_MCP_PYTHON": str(ROOT / ".venv312/bin/python"),
+                       "SSS_PROJECT_ROOT": str(ROOT),
+                       "SSS_MEETING_CASE": args.case,
+                       "DSH_PERMISSION_MODE": "read-only"})
+    patches = [str(PATCH)]
+    if online:
+        os.environ.update({
+            "SSS_ONLINE_MOTIF_MANIFEST": online["manifest"],
+            "SSS_ONLINE_MOTIF_TASK": online["task"],
+            "SSS_ONLINE_MOTIF_MODE": "execute",
+            "SSS_MOTIF_EMBEDDING_ENDPOINT": args.embedding_endpoint,
+            "SSS_MOTIF_EMBEDDING_MODEL": args.embedding_model,
+            "SSS_ONLINE_MOTIF_PROMPT_SHA256": sha(BASE / "tasks" / f"{args.case}.md"),
+        })
+        patches.append(online["patch"])
+    guard = NativeBudgetGuard(max_model_requests=MAX_REQUESTS,
+                              max_observed_input_tokens=300_000)
+    events_file = out / "agent-events.jsonl"
+
+    def observe(notification) -> None:
+        if getattr(notification, "method", None) != "session.event":
+            return
+        event = getattr(notification, "payload", {}).get("event")
+        if isinstance(event, dict):
+            with events_file.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+            events_file.chmod(0o600)
+        guard.on_notification(notification)
+
+    started = time.monotonic()
+    try:
+        from deepseek_harness import DeepSeekHarness
+
+        with DeepSeekHarness(
+            provider="deepseek-official", model="deepseek-flash",
+            reasoning_effort="high", max_tokens=5000,
+            cwd=str(out), runtime_cwd=str(out),
+            dsh_bin=str(ROOT / "node_modules/.bin/dsh"), profile="sdk",
+            patches=tuple(patches), dsh_home=str(ROOT / ".local/dsh"),
+            request_timeout_seconds=600,
+        ) as harness:
+            result = harness.run((BASE / "tasks" / f"{args.case}.md").read_text(
+                encoding="utf-8"), session_id=session_id, on_notification=observe)
+        answer = result.final_response.strip()
+        if answer:
+            target = out / "agent-answer.md"
+            target.write_text(answer + "\n", encoding="utf-8")
+            target.chmod(0o600)
+            qmd = out / "agent-answer.qmd"
+            qmd.write_text('---\ntitle: "合成组会待审决定"\nformat: html\n---\n\n'
+                           + answer + "\n", encoding="utf-8")
+            qmd.chmod(0o600)
+            subprocess.run(["quarto", "render", str(qmd), "--to", "html",
+                            "--no-execute"], check=True, capture_output=True, text=True)
+        status = "done" if answer and result.finish_reason == "completed" else "incomplete"
+        report = {"status": status, "finish_reason": result.finish_reason,
+                  "answer_characters": len(answer)}
+    except Exception as exc:
+        report = {"status": "error", "error_type": type(exc).__name__,
+                  "error": str(exc)[:300]}
+    report.update({"case": args.case, "arm": args.arm, "session_id": session_id,
+                   "git_head": subprocess.check_output(
+                       ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+                   "elapsed_seconds": round(time.monotonic() - started, 3),
+                   "started_requests": guard.started_requests,
+                   "budget_ledger": os.environ.get("SSS_BUDGET_LEDGER"),
+                   **_usage(guard.events)})
+    private(out / "agent-metrics.json", report)
+    print(json.dumps(report, ensure_ascii=False), flush=True)
+    return 0 if report["status"] == "done" else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
