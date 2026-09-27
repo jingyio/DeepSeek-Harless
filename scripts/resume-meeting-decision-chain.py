@@ -20,8 +20,9 @@ from src.adapters.native_budget import NativeBudgetGuard  # noqa: E402
 
 BASE = ROOT / ".local/benchmarks/meeting-decision-chain-v1"
 PATCH = ROOT / "config/meeting-decision-chain.patch.yml"
-PROMPT = ("请在同一会话中补完刚才被截断的一页中文待审决定。"
-          "保留已核验的数字和来源，只补完未写完的结尾；不要重新调查或改写应用资料。")
+PROMPT = ("请继续同一会话中的合成组会研究决定。若上一轮尚未交付正文，"
+          "现在直接写出完整的一页中文待审决定；若已有正文但被截断，就补完结尾。"
+          "保留已核验数字与来源，避免重复调查，不改写应用资料。")
 
 
 def sha(path: Path) -> str:
@@ -114,7 +115,7 @@ def main() -> int:
 
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
-            reasoning_effort="high", max_tokens=5000,
+            reasoning_effort="high", max_tokens=8000,
             cwd=str(out), runtime_cwd=str(out),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"),
             profile="sss-native-resume-sdk", patches=(str(PATCH),),
