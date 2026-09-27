@@ -1,4 +1,4 @@
-"""Meaningful fixture checks: three distinct decisions, metrics and stale handles."""
+"""Meaningful fixture checks: four distinct decisions, metrics and stale handles."""
 
 from __future__ import annotations
 
@@ -34,13 +34,14 @@ class MeetingFixtureTest(unittest.TestCase):
         self.assertEqual(len(contracts), 6)
         self.assertEqual(contracts[
             "mcp__meeting_decision_fixture__read_pinned_object"].output_fields,
-            ("value.dataset_id",))
+            ("value.dataset_id", "version_sha256"))
 
     def test_three_independent_updates_and_script_handoff(self):
         expected = {
             "family_shift": ((0.55, 0.675), (0.65, 0.7125)),
             "label_audit": ((0.825, 0.9), (0.7375, 0.775)),
             "hardware_latency": ((105.0, 95.0), (130.0, 120.0)),
+            "novel_queries": ((0.55, 0.675), (0.725, 0.7875)),
         }
         for case, ((current_slice, previous_slice),
                    (current_total, previous_total)) in expected.items():
@@ -51,8 +52,8 @@ class MeetingFixtureTest(unittest.TestCase):
                 self.assertEqual(result["model_requests"], 0)
                 current = grouped(result["metric"])
                 previous = grouped(result["prior_metric"])
-                group = "unseen" if case == "family_shift" else (
-                    "verified" if case == "label_audit" else "fast")
+                group = {"family_shift": "unseen", "label_audit": "verified",
+                         "hardware_latency": "fast", "novel_queries": "novel"}[case]
                 self.assertAlmostEqual(current[("candidate", group)], current_slice)
                 self.assertAlmostEqual(previous[("candidate", group)], previous_slice)
                 source_id = apps.pin_object(result["metric"]["object_id"])["source_id"]

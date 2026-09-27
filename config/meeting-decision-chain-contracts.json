@@ -2,23 +2,23 @@
   "mcp__meeting_decision_fixture__read_change": {
     "required_params": ["event_id"],
     "read_only": true,
-    "output_fields": ["experiment_id", "previous_experiment_id"],
-    "description": "Read one synthetic experiment update and identify its current and prior objects.",
+    "output_fields": ["experiment_id", "previous_experiment_id", "event_version"],
+    "description": "读取实验更新事件，找出当前和上一轮数据对象；read one synthetic update event.",
     "replay_stable": true
   },
   "mcp__meeting_decision_fixture__pin_object": {
     "required_params": ["object_id"],
     "read_only": true,
-    "output_fields": ["source_id"],
-    "description": "Bind a case-scoped WPS, Obsidian, or Zotero object to its current byte version.",
+    "output_fields": ["source_id", "version_sha256"],
+    "description": "固定WPS实验表、Obsidian笔记或Zotero批注的来源版本；pin an approved object.",
     "replay_stable": true
   },
   "mcp__meeting_decision_fixture__read_pinned_object": {
     "required_params": ["source_id"],
     "read_only": true,
-    "output_fields": ["value.dataset_id"],
+    "output_fields": ["value.dataset_id", "version_sha256"],
     "provenance_params": ["source_id"],
-    "description": "Read a version-bound source; a WPS table returns a dataset handle.",
+    "description": "读取已固定版本的实验表、笔记或批注；表格返回数据编号；read a pinned object.",
     "replay_stable": true
   },
   "mcp__meeting_decision_fixture__read_dataset_rows": {
@@ -27,7 +27,7 @@
     "read_only": true,
     "output_fields": [],
     "provenance_params": ["dataset_id"],
-    "description": "Inspect bounded raw WPS rows from a version-bound dataset.",
+    "description": "按数据编号抽查有限范围的原始WPS实验记录；inspect raw dataset rows.",
     "replay_stable": true
   },
   "mcp__meeting_decision_fixture__aggregate_pinned_experiment": {
@@ -36,14 +36,14 @@
     "read_only": true,
     "output_fields": [],
     "provenance_params": ["dataset_id"],
-    "description": "Compute declared numerator and denominator grouped by Agent-chosen fields.",
+    "description": "按选定分组复算实验指标的分子和分母；aggregate a version-bound dataset.",
     "replay_stable": true
   },
   "mcp__meeting_decision_fixture__find_dependent_claims": {
     "required_params": ["object_id"],
     "read_only": true,
     "output_fields": [],
-    "description": "Find registered Obsidian claim and Zotero annotation IDs linked to a WPS experiment.",
+    "description": "找出依赖实验数据的Obsidian旧主张和Zotero批注编号；find dependent claims.",
     "replay_stable": true
   }
 }
