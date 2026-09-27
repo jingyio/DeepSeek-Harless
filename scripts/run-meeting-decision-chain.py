@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.adapters.dsh_client import _usage, require_budget_gate  # noqa: E402
 from src.adapters.native_budget import NativeBudgetGuard  # noqa: E402
+from src.adapters.versioned_evidence_guard import audit_versioned_seed_claims  # noqa: E402
 
 
 BASE = ROOT / "benchmarks/meeting_decision_chain_v1"
@@ -32,6 +33,7 @@ OUT = ROOT / ".local/benchmarks/meeting-decision-chain-v3"
 CAP_USD = 1.0
 MAX_REQUESTS = 15
 MAX_OUTPUT_TOKENS = 8000
+MAX_EVIDENCE_REPAIRS = 1
 DELIVERY_CONTRACT = ("\n\n交付格式：只输出可直接渲染的 Markdown 正文，不要 YAML 页头、"
                      "代码围栏、额外前言或尾声。约 600–900 字；必要的证据表格可以另计。"
                      "不得为遵守字数而省略关键数字、来源版本和限制。")
@@ -59,6 +61,7 @@ def preview(case: str, arm: str, online_manifest: Path | None,
     task = BASE / "tasks" / f"{case}.md"
     files = [task, PATCH, CONTRACTS,
              BASE / "mock_apps_server.py", Path(__file__).resolve(),
+             ROOT / "src/adapters/versioned_evidence_guard.py",
              *sorted(path for path in case_dir.iterdir() if path.is_file())]
     if arm == "motif":
         if not online_manifest or not online_task:
@@ -74,6 +77,7 @@ def preview(case: str, arm: str, online_manifest: Path | None,
             "classification": "synthetic_development_trial",
             "model": "deepseek-flash", "reasoning_effort": "off",
             "budget_cap_usd": CAP_USD, "max_model_requests": MAX_REQUESTS,
+            "max_evidence_repair_requests": MAX_EVIDENCE_REPAIRS,
             "max_output_tokens_per_request": MAX_OUTPUT_TOKENS,
             "read_only": True,
             "input_sha256": {str(path.resolve().relative_to(ROOT)) if
@@ -135,7 +139,8 @@ def main() -> int:
     if (record.get("approved") is not True or
         record.get("preview_sha256") != sha(saved) or
         record.get("budget_cap_usd") != CAP_USD or
-        record.get("authorization_basis") not in {"可以运行真实试验", "再测试一下"}):
+        record.get("authorization_basis") not in {"可以运行真实试验", "再测试一下",
+                                                  "可以，开始吧"}):
         parser.error("authorization does not match the frozen preview")
     require_budget_gate()
     if float(os.environ["SSS_BUDGET_CAP_USD"]) > CAP_USD:
@@ -179,6 +184,14 @@ def main() -> int:
 
     started = time.monotonic()
     try:
+        def evidence_check(draft: str) -> dict:
+            if not draft or not events_file.is_file():
+                return {"status": "insufficient_evidence", "reason": "no_answer_or_trace"}
+            events = [json.loads(line) for line in
+                      events_file.read_text(encoding="utf-8").splitlines()]
+            return audit_versioned_seed_claims(events, draft)
+
+        repair_requests = 0
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
             reasoning_effort="off", max_tokens=MAX_OUTPUT_TOKENS,
@@ -189,20 +202,48 @@ def main() -> int:
         ) as harness:
             result = harness.run(prompt_for(args.case),
                 session_id=session_id, on_notification=observe)
+            evidence_audit = evidence_check(result.final_response.strip())
+            if evidence_audit["status"] == "conflict":
+                private(out / "EVIDENCE_AUDIT_ATTEMPT_1.json", evidence_audit)
+                draft = out / "agent-answer.attempt-1.unverified.md"
+                draft.write_text(result.final_response.strip() + "\n", encoding="utf-8")
+                draft.chmod(0o600)
+                facts = [(
+                    f"{row['version']} {row['group']}: 正确的逐种子值是 {row['expected']}"
+                    if row.get("kind") == "seed_series" else row["message"])
+                    for row in evidence_audit["conflicts"]]
+                repair_prompt = (
+                    "上一份待审报告的版本标注与已读取的逐行数据冲突。"
+                    "请按以下经工具结果核验的值，重新输出完整的一页 Markdown；"
+                    "重新核对所有新旧版本和变化方向，保留来源与科学判断边界。\n"
+                    + "\n".join(facts))
+                result = harness.run(repair_prompt, session_id=session_id,
+                                     on_notification=observe)
+                repair_requests = 1
         answer = result.final_response.strip()
+        evidence_audit = evidence_check(answer)
+        private(out / "EVIDENCE_AUDIT.json", evidence_audit)
         if answer:
-            target = out / "agent-answer.md"
+            verified = evidence_audit["status"] == "checked"
+            target = out / ("agent-answer.md" if verified else "agent-answer.unverified.md")
             target.write_text(answer + "\n", encoding="utf-8")
             target.chmod(0o600)
-            qmd = out / "agent-answer.qmd"
-            qmd.write_text('---\ntitle: "合成组会待审决定"\nformat: html\n---\n\n'
-                           + answer + "\n", encoding="utf-8")
-            qmd.chmod(0o600)
-            subprocess.run(["quarto", "render", str(qmd), "--to", "html",
-                            "--no-execute"], check=True, capture_output=True, text=True)
-        status = "done" if answer and result.finish_reason == "completed" else "incomplete"
+            if verified:
+                qmd = out / "agent-answer.qmd"
+                qmd.write_text('---\ntitle: "合成组会待审决定"\nformat: html\n---\n\n'
+                               + answer + "\n", encoding="utf-8")
+                qmd.chmod(0o600)
+                subprocess.run(["quarto", "render", str(qmd), "--to", "html",
+                                "--no-execute"], check=True, capture_output=True, text=True)
+        status = ("done" if answer and result.finish_reason == "completed" and
+                  evidence_audit["status"] == "checked" else
+                  "evidence_conflict" if evidence_audit["status"] == "conflict" else
+                  "evidence_unverified" if evidence_audit["status"] == "insufficient_evidence"
+                  else "incomplete")
         report = {"status": status, "finish_reason": result.finish_reason,
-                  "answer_characters": len(answer)}
+                  "answer_characters": len(answer),
+                  "evidence_audit_status": evidence_audit["status"],
+                  "evidence_repair_requests": repair_requests}
     except Exception as exc:
         report = {"status": "error", "error_type": type(exc).__name__,
                   "error": str(exc)[:300]}
