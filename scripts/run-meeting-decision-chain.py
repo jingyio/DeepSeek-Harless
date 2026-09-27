@@ -53,7 +53,8 @@ def private(path: Path, value: dict) -> None:
 
 
 def preview(case: str, arm: str, online_manifest: Path | None,
-            online_task: Path | None, similarity_threshold: float | None) -> dict:
+            online_task: Path | None, similarity_threshold: float | None,
+            output_root: Path = OUT) -> dict:
     case_dir = BASE / "sources" / case
     task = BASE / "tasks" / f"{case}.md"
     files = [task, PATCH, CONTRACTS,
@@ -78,7 +79,7 @@ def preview(case: str, arm: str, online_manifest: Path | None,
             "input_sha256": {str(path.resolve().relative_to(ROOT)) if
                              path.resolve().is_relative_to(ROOT) else str(path): sha(path)
                              for path in files},
-            "output_dir": str(OUT / case / arm)}
+            "output_dir": str(output_root / case / arm)}
 
 
 def _online_prepare(manifest: Path, task: Path) -> dict:
@@ -99,18 +100,23 @@ def main() -> int:
     parser.add_argument("--online-task", type=Path)
     parser.add_argument("--embedding-endpoint", default="http://127.0.0.1:8776/v1/embeddings")
     parser.add_argument("--embedding-model", default="Qwen/Qwen3-Embedding-0.6B")
+    parser.add_argument("--output-root", type=Path, default=OUT,
+                        help="private run root under .local; use a fresh root for a retest")
     parser.add_argument("--call-model", action="store_true")
     args = parser.parse_args()
     if args.arm == "motif" and args.case not in PROSPECTIVE_CASE_IDS:
         parser.error("Motif arm is reserved for independent prospective cases")
-    out = OUT / args.case / args.arm
+    output_root = args.output_root.resolve()
+    if not output_root.is_relative_to((ROOT / ".local").resolve()):
+        parser.error("trial output must stay under .local")
+    out = output_root / args.case / args.arm
     online = _online_prepare(args.online_manifest, args.online_task) if args.arm == "motif" else None
     threshold = (float(os.environ.get("SSS_MOTIF_MIN_SIMILARITY", "0.8"))
                  if args.arm == "motif" else None)
     if threshold is not None and not 0 <= threshold <= 1:
         parser.error("Motif similarity threshold must be in [0, 1]")
     current = preview(args.case, args.arm, args.online_manifest, args.online_task,
-                      threshold)
+                      threshold, output_root)
     saved = out / "PREVIEW.json"
     approval = out / "APPROVAL.json"
     print(json.dumps({**current, "paid_api_requested": args.call_model},
@@ -129,11 +135,12 @@ def main() -> int:
     if (record.get("approved") is not True or
         record.get("preview_sha256") != sha(saved) or
         record.get("budget_cap_usd") != CAP_USD or
-        record.get("authorization_basis") != "可以运行真实试验"):
+        record.get("authorization_basis") not in {"可以运行真实试验", "再测试一下"}):
         parser.error("authorization does not match the frozen preview")
     require_budget_gate()
     if float(os.environ["SSS_BUDGET_CAP_USD"]) > CAP_USD:
         parser.error("local cost gate exceeds the task cap")
+    from deepseek_harness import DeepSeekHarness
     marker = out / "paid-attempt.marker"
     with marker.open("x", encoding="utf-8") as stream:
         stream.write("one authorized paid trial reserved\n")
@@ -172,8 +179,6 @@ def main() -> int:
 
     started = time.monotonic()
     try:
-        from deepseek_harness import DeepSeekHarness
-
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
             reasoning_effort="off", max_tokens=MAX_OUTPUT_TOKENS,

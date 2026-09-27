@@ -32,7 +32,7 @@ def summarize_run(path: Path, arm: str) -> dict:
         raise ValueError(f"{path}: model turns and paid API requests differ")
     if sum(turn["usage"]["outputTokens"] for turn in turns) != metrics["outputTokens"]:
         raise ValueError(f"{path}: output usage differs from event trace")
-    if sum(turn["usage"]["reasoningTokens"] for turn in turns) != metrics["reasoningTokens"]:
+    if sum(turn["usage"].get("reasoningTokens", 0) for turn in turns) != metrics["reasoningTokens"]:
         raise ValueError(f"{path}: reasoning usage differs from event trace")
     final = turns[-1]["message"]["content"]
     if any(block.get("type") == "tool-call" for block in final):
@@ -65,8 +65,8 @@ def summarize_run(path: Path, arm: str) -> dict:
         "output_tokens": metrics["outputTokens"],
         "reasoning_tokens": metrics["reasoningTokens"],
         "pre_final_reasoning_tokens": sum(
-            turn["usage"]["reasoningTokens"] for turn in turns[:-1]),
-        "final_reasoning_tokens": turns[-1]["usage"]["reasoningTokens"],
+            turn["usage"].get("reasoningTokens", 0) for turn in turns[:-1]),
+        "final_reasoning_tokens": turns[-1]["usage"].get("reasoningTokens", 0),
         "pre_final_output_tokens": sum(
             turn["usage"]["outputTokens"] for turn in turns[:-1]),
         "final_output_tokens": turns[-1]["usage"]["outputTokens"],
