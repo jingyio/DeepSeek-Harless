@@ -174,13 +174,21 @@ def read_pinned_zotero_annotation(source_id: str) -> dict[str, Any]:
                             "attachment_key": None, "approved_paper_key": parent_key}
         else:
             # Zotero annotations normally belong to a PDF attachment. Resolve
-            # only its parent pointer; expose no unapproved attachment content.
-            try:
-                attachment = _fetch_item(parent_key)
-            except (OSError, ValueError, KeyError):
-                attachment = None
+            # only a frozen attachment-to-paper relationship in the task scope;
+            # expose no attachment content.
+            frozen = [entry for entry in _scope().get("zotero_attachment_relationships", [])
+                      if isinstance(entry, dict) and entry.get("key") == parent_key]
+            attachment = None
+            if len(frozen) == 1:
+                try:
+                    attachment = _fetch_item(parent_key)
+                except (OSError, ValueError, KeyError):
+                    pass
             paper_key = attachment["data"].get("parentItem") if attachment else None
-            if attachment and attachment["data"].get("itemType") == "attachment":
+            if (attachment and attachment["data"].get("itemType") == "attachment"
+                    and attachment.get("version") == frozen[0].get("version")
+                    and _data_digest(attachment) == frozen[0].get("data_sha256")
+                    and paper_key == frozen[0].get("parent_paper_key")):
                 for paper in approved_papers:
                     if paper.get("key") == paper_key:
                         verified_paper = _verified(_row(paper["role"]))

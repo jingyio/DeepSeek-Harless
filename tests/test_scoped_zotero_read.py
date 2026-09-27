@@ -85,6 +85,10 @@ class ScopedZoteroTests(unittest.TestCase):
         self.annotation["data"]["parentItem"] = attachment["key"]
         self.scope["zotero_sources"][1] = self._row(
             "margin_note", "annotation", self.annotation)
+        self.scope["zotero_attachment_relationships"] = [{
+            "key": attachment["key"], "version": attachment["version"],
+            "data_sha256": scoped._data_digest(attachment),
+            "parent_paper_key": self.item["key"]}]
         self._write_scope()
         pinned = scoped.pin_scoped_zotero_source("margin_note")
         result = scoped.read_pinned_zotero_annotation(pinned["source_id"])
@@ -95,6 +99,24 @@ class ScopedZoteroTests(unittest.TestCase):
         self.item["version"] += 1
         with self.assertRaisesRegex(ValueError, "version changed"):
             scoped.read_pinned_zotero_annotation(pinned["source_id"])
+
+    def test_attachment_relation_drift_is_not_reported_as_verified(self) -> None:
+        attachment = {"key": "PDFX1234", "version": 5, "data": {
+            "itemType": "attachment", "parentItem": self.item["key"]}}
+        self.items[attachment["key"]] = attachment
+        self.annotation["data"]["parentItem"] = attachment["key"]
+        self.scope["zotero_sources"][1] = self._row(
+            "margin_note", "annotation", self.annotation)
+        self.scope["zotero_attachment_relationships"] = [{
+            "key": attachment["key"], "version": attachment["version"],
+            "data_sha256": scoped._data_digest(attachment),
+            "parent_paper_key": self.item["key"]}]
+        self._write_scope()
+        pinned = scoped.pin_scoped_zotero_source("margin_note")
+        attachment["version"] += 1
+        relation = scoped.read_pinned_zotero_annotation(
+            pinned["source_id"])["parent_relation"]
+        self.assertEqual(relation["status"], "unverified")
 
     def test_missing_attachment_does_not_invent_a_paper_relation(self) -> None:
         self.annotation["data"]["parentItem"] = "MISSING01"
