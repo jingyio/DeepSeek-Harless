@@ -14,6 +14,7 @@ from mcp import Client, StdioServerParameters
 
 from benchmarks.meeting_decision_chain_v1 import mock_apps_server as apps
 from benchmarks.meeting_decision_chain_v1.script_baseline import run
+from src.adapters.tool_contract_loader import parse_tool_contracts
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,15 @@ def grouped(result: dict) -> dict:
 
 
 class MeetingFixtureTest(unittest.TestCase):
+    def test_compiler_contracts_match_exposed_tools(self):
+        rows = json.loads((PROJECT / "config/meeting-decision-chain-contracts.json")
+                          .read_text(encoding="utf-8"))
+        contracts = parse_tool_contracts(rows)
+        self.assertEqual(len(contracts), 6)
+        self.assertEqual(contracts[
+            "mcp__meeting_decision_fixture__read_pinned_object"].output_fields,
+            ("value.dataset_id",))
+
     def test_three_independent_updates_and_script_handoff(self):
         expected = {
             "family_shift": ((0.55, 0.675), (0.65, 0.7125)),

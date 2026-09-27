@@ -33,4 +33,6 @@ SSS_MEETING_CASE=family_shift .venv312/bin/python -m benchmarks.meeting_decision
 
 MCP 服务器使用 stdio；第二条命令会持续等待客户端连接。测试时一个 Agent 进程只挂载一个 case，工作目录放在 `.local`，仅暴露本 MCP 与交付所需的工具；不得把 `sources/`、`review/` 或构造脚本复制进 Agent 工作目录。Agent 不应有直接遍历仓库的 shell 权限，否则该模拟应用隔离就不成立。若要用真实 WPS 数据，须另接真实来源并重新冻结权限、版本、评审和预算，不能把本夹具的成绩外推。
 
+DSH 工具补丁见 `config/meeting-decision-chain.patch.yml`，用于轨迹编译的工具契约见 `config/meeting-decision-chain-contracts.json`。契约只声明工具参数与可观察输出字段，不预写执行 DAG；是否形成候选 Motif 取决于实际调用轨迹和独立留出认证。
+
 当前阶段只做无模型夹具验证；没有付费 DeepSeek 调用、没有认证 Motif、没有质量或费用收益。正式付费前须先冻结逐题输入与工具 schema、做预算预览，并按项目规则取得对应实验授权。

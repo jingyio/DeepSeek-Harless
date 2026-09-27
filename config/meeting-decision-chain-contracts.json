@@ -1,0 +1,49 @@
+{
+  "mcp__meeting_decision_fixture__read_change": {
+    "required_params": ["event_id"],
+    "read_only": true,
+    "output_fields": ["experiment_id", "previous_experiment_id"],
+    "description": "Read one synthetic experiment update and identify its current and prior objects.",
+    "replay_stable": true
+  },
+  "mcp__meeting_decision_fixture__pin_object": {
+    "required_params": ["object_id"],
+    "read_only": true,
+    "output_fields": ["source_id"],
+    "description": "Bind a case-scoped WPS, Obsidian, or Zotero object to its current byte version.",
+    "replay_stable": true
+  },
+  "mcp__meeting_decision_fixture__read_pinned_object": {
+    "required_params": ["source_id"],
+    "read_only": true,
+    "output_fields": ["value.dataset_id"],
+    "provenance_params": ["source_id"],
+    "description": "Read a version-bound source; a WPS table returns a dataset handle.",
+    "replay_stable": true
+  },
+  "mcp__meeting_decision_fixture__read_dataset_rows": {
+    "required_params": ["dataset_id"],
+    "default_params": [["offset", 0], ["limit", 20]],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": ["dataset_id"],
+    "description": "Inspect bounded raw WPS rows from a version-bound dataset.",
+    "replay_stable": true
+  },
+  "mcp__meeting_decision_fixture__aggregate_pinned_experiment": {
+    "required_params": ["dataset_id", "group_by"],
+    "parameter_shapes": [["group_by", "string_list_allow_empty"]],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": ["dataset_id"],
+    "description": "Compute declared numerator and denominator grouped by Agent-chosen fields.",
+    "replay_stable": true
+  },
+  "mcp__meeting_decision_fixture__find_dependent_claims": {
+    "required_params": ["object_id"],
+    "read_only": true,
+    "output_fields": [],
+    "description": "Find registered Obsidian claim and Zotero annotation IDs linked to a WPS experiment.",
+    "replay_stable": true
+  }
+}
