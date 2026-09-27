@@ -1,0 +1,9 @@
+{
+  "id": "mean_latency_ms",
+  "numerator": "latency_total_ms",
+  "denominator": "requests",
+  "allowed_groups": [
+    "variant",
+    "hardware"
+  ]
+}

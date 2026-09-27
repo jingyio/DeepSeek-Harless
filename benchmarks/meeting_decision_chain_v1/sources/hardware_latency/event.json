@@ -1,0 +1,12 @@
+{
+  "event_id": "event:hardware_latency:w39",
+  "experiment_id": "wps:hardware_latency:run_2026w39",
+  "previous_experiment_id": "wps:hardware_latency:run_2026w38",
+  "previous_version_sha256": "187495420e97da661843192db61fb3875b84000ca9c6abb49e094d8e3b5762d5",
+  "title": "候选方法的延迟优势是否来自设备构成",
+  "changed_fields": [
+    "latency_total_ms",
+    "hardware"
+  ],
+  "message": "新一轮基准测试汇总已更新；请核查候选方法的延迟优势。"
+}

@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:family_shift:generalization",
+  "text": "旧判断：候选方法整体正确率较高，可能改善新目标家族泛化。组会前需确认新家族是否也受益；不能把总体均值当作分组结论。",
+  "decision_options": [
+    "补新家族重复实验",
+    "先审计家族划分",
+    "维持旧判断并注明边界"
+  ],
+  "depends_on": "wps:family_shift:run_2026w39"
+}

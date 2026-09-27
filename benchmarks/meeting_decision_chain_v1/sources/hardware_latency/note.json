@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:hardware_latency:speedup",
+  "text": "旧判断：候选方法汇总平均延迟更低。两组运行的设备构成不同，尚未通过同设备配对测量，不应直接归因于算法。",
+  "decision_options": [
+    "做同设备配对测试",
+    "先检查计时口径",
+    "暂时只报告描述统计"
+  ],
+  "depends_on": "wps:hardware_latency:run_2026w39"
+}

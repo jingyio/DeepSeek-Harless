@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:label_audit:robust_gain",
+  "text": "旧判断：候选方法总体正确率更高。待审标签比例较高，尚不能说提升在已核验标签上同样明显。下一步资源只够做一次小范围审计或一次重复实验。",
+  "decision_options": [
+    "先审计标签",
+    "先做重复实验",
+    "保留总体提升但收窄主张"
+  ],
+  "depends_on": "wps:label_audit:run_2026w39"
+}

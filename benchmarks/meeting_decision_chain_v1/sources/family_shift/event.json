@@ -1,0 +1,11 @@
+{
+  "event_id": "event:family_shift:w39",
+  "experiment_id": "wps:family_shift:run_2026w39",
+  "previous_experiment_id": "wps:family_shift:run_2026w38",
+  "previous_version_sha256": "569d4d59e20739c7ab01bf177579f47e74c07e00b33381e3b7f2b716226d9dd3",
+  "title": "新目标家族上的改进是否成立",
+  "changed_fields": [
+    "correct"
+  ],
+  "message": "新一轮结果进入实验表；请检查总体与新目标家族的旧判断。"
+}
