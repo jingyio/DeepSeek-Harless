@@ -92,7 +92,7 @@ class MeetingMcpTest(unittest.IsolatedAsyncioTestCase):
     async def test_stdio_parameter_flow(self):
         params = StdioServerParameters(
             command=str(PROJECT / ".venv312/bin/python"),
-            args=["-m", "benchmarks.meeting_decision_chain_v1.mock_apps_server"],
+            args=[str(PROJECT / "benchmarks/meeting_decision_chain_v1/mock_apps_server.py")],
             cwd=PROJECT,
             env={"SSS_MEETING_CASE": "hardware_latency", "PYTHONPATH": str(PROJECT)},
         )

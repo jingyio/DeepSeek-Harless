@@ -17,12 +17,13 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from benchmarks.meeting_decision_chain_v1.mock_apps_server import CASE_IDS  # noqa: E402
 from src.adapters.dsh_client import _usage, require_budget_gate  # noqa: E402
 from src.adapters.native_budget import NativeBudgetGuard  # noqa: E402
 
 
 BASE = ROOT / "benchmarks/meeting_decision_chain_v1"
+CASE_IDS = frozenset(("family_shift", "label_audit", "hardware_latency",
+                      "novel_queries"))
 PATCH = ROOT / "config/meeting-decision-chain.patch.yml"
 CONTRACTS = ROOT / "config/meeting-decision-chain-contracts.json"
 OUT = ROOT / ".local/benchmarks/meeting-decision-chain-v1"

@@ -27,7 +27,7 @@
 
 ```sh
 .venv312/bin/python benchmarks/meeting_decision_chain_v1/build_fixtures.py
-SSS_MEETING_CASE=family_shift .venv312/bin/python -m benchmarks.meeting_decision_chain_v1.mock_apps_server
+SSS_MEETING_CASE=family_shift .venv312/bin/python benchmarks/meeting_decision_chain_v1/mock_apps_server.py
 .venv312/bin/python -m benchmarks.meeting_decision_chain_v1.script_baseline family_shift
 .venv312/bin/python -m unittest tests/test_meeting_decision_chain.py
 ```

@@ -50,7 +50,7 @@
         serverName: meeting_decision_fixture
         transport: stdio
         command: !!js process.env.SSS_MCP_PYTHON
-        args: ['-m', 'benchmarks.meeting_decision_chain_v1.mock_apps_server']
+        args: ['benchmarks/meeting_decision_chain_v1/mock_apps_server.py']
         cwd: !!js process.env.SSS_PROJECT_ROOT
         env:
           PYTHONPATH: !!js process.env.SSS_PROJECT_ROOT
