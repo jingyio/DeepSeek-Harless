@@ -47,7 +47,8 @@ def _private(path: Path, value: dict) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--spec", type=Path, required=True)
-    parser.add_argument("--arm", choices=["baseline", "motif"], default="baseline")
+    parser.add_argument("--arm", choices=["baseline", "motif", "distil-context"],
+                        default="baseline")
     parser.add_argument("--online-manifest", type=Path)
     parser.add_argument("--online-task", type=Path)
     parser.add_argument("--embedding-endpoint", default="http://127.0.0.1:8776/v1/embeddings")
@@ -56,6 +57,8 @@ def main() -> int:
                         help="finish one truncated baseline in its original DSH session")
     parser.add_argument("--diagnostic", action="store_true",
                         help="label a repaired Motif rerun as diagnostic, not heldout evidence")
+    parser.add_argument("--distil-diagnostic", action="store_true",
+                        help="label a Distil recovery-bridge rerun after the original trial")
     parser.add_argument("--prior-ledger", type=Path,
                         help="original cost-gate ledger, required for a continuation")
     parser.add_argument("--diagnostic-ledger", type=Path, action="append", default=[],
@@ -66,18 +69,24 @@ def main() -> int:
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     preview = _load_script(PREPARE, "scoped_trial_prepare").prepare(spec_path)
     out = Path(spec["out"]).resolve(strict=True)
-    arm_budgets = preview["arm_budget_usd"]
+    arm_budgets = dict(preview["arm_budget_usd"])
+    if args.arm == "distil-context":
+        arm_budgets[args.arm] = 1.0
     if args.arm not in arm_budgets:
         parser.error(f"{args.arm} arm is not budgeted in the frozen preview")
     if args.resume and (args.arm != "baseline" or args.prior_ledger is None):
         parser.error("only a truncated baseline with its original ledger can resume")
     if args.diagnostic and (args.arm != "motif" or args.prior_ledger is None):
         parser.error("a Motif diagnostic needs its original cost ledger")
+    if args.distil_diagnostic and (args.arm != "distil-context" or args.prior_ledger is None):
+        parser.error("a Distil diagnostic needs its original cost ledger")
+    if args.diagnostic and args.distil_diagnostic:
+        parser.error("choose one diagnostic type")
     if args.resume and args.diagnostic:
         parser.error("a continuation is not a diagnostic rerun")
     if args.diagnostic_ledger and not args.diagnostic:
         parser.error("--diagnostic-ledger belongs to --diagnostic")
-    if not (args.resume or args.diagnostic) and args.prior_ledger is not None:
+    if not (args.resume or args.diagnostic or args.distil_diagnostic) and args.prior_ledger is not None:
         parser.error("--prior-ledger belongs to --resume or --diagnostic")
     scope = out / "source-scope.json"
     preview_file = out / "RUN-PREVIEW.json"
@@ -107,6 +116,22 @@ def main() -> int:
             or approval.get("prompt_sha256") != _digest(prompt)
             or preview["scope_sha256"] != _digest(scope)):
         parser.error("approved preview, source scope or prompt changed")
+    if args.arm == "distil-context":
+        distil_preview = out / "DISTIL-CONTEXT-PREVIEW.json"
+        distil_approval = out / "DISTIL-CONTEXT-APPROVAL.json"
+        if not distil_preview.is_file() or not distil_approval.is_file():
+            parser.error("Distil context-only trial needs its task-specific authorization")
+        additional = json.loads(distil_approval.read_text(encoding="utf-8"))
+        if (additional.get("approved") is not True
+                or additional.get("preview_sha256") != _digest(distil_preview)
+                or additional.get("scope_sha256") != _digest(scope)
+                or additional.get("prompt_sha256") != _digest(prompt)
+                or additional.get("budget_cap_usd") != 1.0
+                or json.loads(distil_preview.read_text(encoding="utf-8")).get(
+                    "base_tool_patch_sha256") != _digest(PATCH)
+                or os.environ.get("SSS_CONTEXT_MODE") != "distil"
+                or os.environ.get("SSS_DISTIL_PROFILE") != "context-only"):
+            parser.error("Distil route, budget, scope or prompt differs from authorization")
     require_budget_gate()
     if float(os.environ["SSS_BUDGET_CAP_USD"]) > float(arm_budgets[args.arm]):
         parser.error("active cost gate exceeds the approved task budget")
@@ -145,6 +170,19 @@ def main() -> int:
         if spent <= 0 or spent + float(os.environ["SSS_BUDGET_CAP_USD"]) > float(
                 arm_budgets["motif"]):
             parser.error("diagnostic gate exceeds the remaining approved budget")
+    if args.distil_diagnostic:
+        original = out / "distil-context" / "agent-metrics.json"
+        if not original.is_file():
+            parser.error("Distil diagnostic requires the original trial")
+        ledger = args.prior_ledger.resolve(strict=True)
+        if not ledger.is_relative_to((ROOT / ".local").resolve()):
+            parser.error("Distil cost ledger must stay under .local")
+        spent = sum(float(json.loads(line).get("observed_peak_usd") or 0)
+                    for line in ledger.read_text(encoding="utf-8").splitlines())
+        if spent <= 0 or spent + float(os.environ["SSS_BUDGET_CAP_USD"]) > 1.0:
+            parser.error("Distil diagnostic gate exceeds the approved cumulative budget")
+        if os.environ.get("SSS_DISTIL_HOME") is None:
+            parser.error("Distil restore store is unavailable")
     if args.diagnostic:
         n = 1
         while (out / f"motif-diagnostic-{n:02d}").exists():
@@ -152,6 +190,8 @@ def main() -> int:
         if n > 7:
             parser.error("at most seven labeled Motif diagnostics are allowed")
         run_out = out / f"motif-diagnostic-{n:02d}"
+    elif args.distil_diagnostic:
+        run_out = out / "distil-context-diagnostic-01"
     else:
         run_out = out / args.arm
     if args.resume:
@@ -173,6 +213,15 @@ def main() -> int:
                        "SSS_PROJECT_ROOT": str(ROOT),
                        "SSS_RESEARCH_SCOPE_FILE": str(scope)})
     patches = [str(PATCH)]
+    if args.distil_diagnostic:
+        template = ROOT / "config/distil-expand-dsh.patch.yml"
+        rendered = template.read_text(encoding="utf-8").replace(
+            "__SSS_DISTIL_EXPAND_PLUGIN__",
+            json.dumps((ROOT / "src/adapters/dsh_distil_expand_bridge.mjs").as_uri()))
+        bridge_patch = run_out / "distil-expand-dsh.patch.yml"
+        bridge_patch.write_text(rendered, encoding="utf-8")
+        bridge_patch.chmod(0o600)
+        patches.append(str(bridge_patch))
     if online:
         os.environ.update({
             "SSS_ONLINE_MOTIF_MANIFEST": online["manifest"],
@@ -183,7 +232,7 @@ def main() -> int:
             "SSS_ONLINE_MOTIF_PROMPT_SHA256": _digest(prompt),
         })
         patches.append(online["patch"])
-    guard = NativeBudgetGuard(max_model_requests=None,
+    guard = NativeBudgetGuard(max_model_requests=30 if args.arm == "distil-context" else None,
                               max_observed_input_tokens=None)
     events = run_out / "agent-events.jsonl"
 
@@ -228,8 +277,12 @@ def main() -> int:
     metrics.update({"session_id": session_id,
                     "elapsed_seconds": round(time.monotonic() - started, 3),
                     "started_requests": guard.started_requests,
-                    "run_kind": "diagnostic" if args.diagnostic else
+                    "run_kind": "diagnostic" if (args.diagnostic or args.distil_diagnostic) else
                                 "continuation" if args.resume else "frozen_arm",
+                    "context_mode": os.environ.get("SSS_CONTEXT_MODE", "unset"),
+                    "distil_profile": os.environ.get("SSS_DISTIL_PROFILE", "unset"),
+                    "budget_ledger": os.environ.get("SSS_BUDGET_LEDGER"),
+                    "max_model_requests": guard.max_model_requests,
                     **_usage(guard.events)})
     if online:
         metrics.update({"online_manifest_sha256": _digest(args.online_manifest),

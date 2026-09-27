@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import unittest
+from uuid import uuid4
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -19,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 class MockProvider(BaseHTTPRequestHandler):
     requests: list[dict] = []
     expand_first = False
+    mixed_expand_first = False
+    recovery_handle = ""
 
     def do_POST(self) -> None:  # noqa: N802
         body = self.rfile.read(int(self.headers["Content-Length"]))
@@ -33,6 +36,48 @@ class MockProvider(BaseHTTPRequestHandler):
             return
         parsed = json.loads(body)
         self.requests.append({"path": self.path, "body": parsed})
+        if self.mixed_expand_first and len(self.requests) == 1:
+            if self.recovery_handle:
+                if parsed.get("stream"):
+                    chunks = [
+                        {"id": "mock-restore", "object": "chat.completion.chunk", "created": 1,
+                         "model": "deepseek-flash", "choices": [{"index": 0, "delta": {
+                             "role": "assistant", "tool_calls": [{"index": 0, "id": "restore-1",
+                             "type": "function", "function": {
+                                 "name": "distil_expand",
+                                 "arguments": json.dumps({"handle": self.recovery_handle})}},
+                             {"index": 1, "id": "read-1", "type": "function", "function": {
+                                 "name": "read", "arguments": json.dumps({
+                                     "file_path": str(ROOT / "README.md"), "limit": 1})}}]},
+                             "finish_reason": None}]},
+                        {"id": "mock-restore", "object": "chat.completion.chunk", "created": 1,
+                         "model": "deepseek-flash", "choices": [{"index": 0, "delta": {},
+                         "finish_reason": "tool_calls"}]},
+                    ]
+                    response = ("".join("data: " + json.dumps(chunk) + "\n\n" for chunk in chunks)
+                                + "data: [DONE]\n\n").encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Content-Length", str(len(response)))
+                    self.end_headers()
+                    self.wfile.write(response)
+                    return
+                response = json.dumps({"id": "mock-restore", "object": "chat.completion",
+                    "choices": [{"index": 0, "message": {"role": "assistant", "content": None,
+                    "tool_calls": [{"id": "restore-1", "type": "function", "function": {
+                    "name": "distil_expand",
+                    "arguments": json.dumps({"handle": self.recovery_handle})}},
+                    {"id": "read-1", "type": "function", "function": {
+                    "name": "read", "arguments": json.dumps({
+                        "file_path": str(ROOT / "README.md"), "limit": 1})}}]},
+                    "finish_reason": "tool_calls"}], "usage": {"prompt_tokens": 1,
+                    "completion_tokens": 1, "total_tokens": 2}}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response)
+                return
         if self.expand_first and len(self.requests) == 1:
             match = re.search(r"handle=([0-9a-f]{8})", json.dumps(parsed.get("messages", [])))
             if match:
@@ -83,6 +128,73 @@ class MockProvider(BaseHTTPRequestHandler):
 
 
 class DistilDshWireTest(unittest.TestCase):
+    def test_mixed_turn_bridge_reads_distil_digest_in_real_dsh(self) -> None:
+        MockProvider.requests.clear()
+        MockProvider.mixed_expand_first = True
+        home = ROOT / ".local" / "distil-sss" / "homes" / ("restore-wire-" + uuid4().hex)
+        home.mkdir(parents=True)
+        MockProvider.recovery_handle = "abcd1234"
+        seeded = subprocess.run(
+            [sys.executable, "-c", "from distil.mcp_server import record_restore; "
+             "assert record_restore('abcd1234', 'log line restored evidence')"],
+            cwd=ROOT, capture_output=True, text=True,
+            env={**os.environ, "DISTIL_HOME": str(home),
+                 "PYTHONPATH": str(ROOT / ".local/distil-upstream") + os.pathsep + str(ROOT)},
+        )
+        self.assertEqual(seeded.returncode, 0, seeded.stderr)
+        patch_path = home / "dsh-expand.patch.yml"
+        patch_path.write_text(
+            (ROOT / "config/distil-expand-dsh.patch.yml").read_text().replace(
+                "__SSS_DISTIL_EXPAND_PLUGIN__",
+                json.dumps((ROOT / "src/adapters/dsh_distil_expand_bridge.mjs").as_uri())),
+            encoding="utf-8",
+        )
+        try:
+            with ThreadingHTTPServer(("127.0.0.1", 0), MockProvider) as server:
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                child = (
+                    "import os;from deepseek_harness import DeepSeekHarness;"
+                    "from pathlib import Path;from uuid import uuid4;"
+                    "root=Path.cwd();"
+                    "h=DeepSeekHarness(provider='deepseek-official',model='deepseek-flash',"
+                    "reasoning_effort='off',max_tokens=20,cwd=str(root),runtime_cwd=str(root),"
+                    "dsh_bin=str(root/'node_modules/.bin/dsh'),profile='sdk',"
+                    "patches=(os.environ['SSS_DISTIL_BRIDGE_PATCH'],),"
+                    "dsh_home=str(root/'.local/distil-dsh-smoke'),request_timeout_seconds=20);"
+                    "h.__enter__();"
+                    "r=h.run('Recover the needed context.',"
+                    "session_id='distil-restore-smoke-'+uuid4().hex);"
+                    "print(r.final_response, r.finish_reason, [(e.get('type'),"
+                    "str(e.get('data'))[:300]) for e in r.events if e.get('type') "
+                    "in ('tool/result','turn/end')]);h.__exit__(None,None,None)"
+                )
+                result = subprocess.run(
+                    [sys.executable, str(ROOT / "scripts" / "run-distil-dsh.py"),
+                     "--upstream", f"http://127.0.0.1:{server.server_port}",
+                     "--distil-profile", "context-only",
+                     "--distil-home", str(home),
+                     "--budget-usd", "1", "--", sys.executable, "-c", child],
+                    cwd=ROOT, text=True, capture_output=True, timeout=60,
+                    env={**os.environ, "DEEPSEEK_API_KEY": "local-mock-key",
+                         "SSS_MCP_PYTHON": sys.executable,
+                         "SSS_PROJECT_ROOT": str(ROOT),
+                         "SSS_DISTIL_BRIDGE_PATCH": str(patch_path)},
+                )
+                server.shutdown()
+        finally:
+            MockProvider.mixed_expand_first = False
+            MockProvider.recovery_handle = ""
+        self.assertEqual(result.returncode, 0, result.stderr[-1400:])
+        self.assertIn("READY", result.stdout, result.stderr[-1600:])
+        self.assertGreaterEqual(len(MockProvider.requests), 2)
+        forwarded = MockProvider.requests[0]["body"]
+        tool_names = [tool.get("function", {}).get("name") for tool in forwarded.get("tools", [])]
+        self.assertEqual(tool_names.count("distil_expand"), 1)
+        messages = MockProvider.requests[1]["body"].get("messages", [])
+        self.assertIn("log line restored evidence", json.dumps(messages))
+        self.assertIn("read-1", json.dumps(messages))
+
     def test_files_api_passes_through_budget_gate(self) -> None:
         MockProvider.requests.clear()
         with ThreadingHTTPServer(("127.0.0.1", 0), MockProvider) as server:
