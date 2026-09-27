@@ -36,12 +36,15 @@ class MeetingFixtureTest(unittest.TestCase):
             "mcp__meeting_decision_fixture__read_pinned_object"].output_fields,
             ("value.dataset_id", "version_sha256"))
 
-    def test_three_independent_updates_and_script_handoff(self):
+    def test_independent_updates_and_script_handoff(self):
         expected = {
             "family_shift": ((0.55, 0.675), (0.65, 0.7125)),
             "label_audit": ((0.825, 0.9), (0.7375, 0.775)),
             "hardware_latency": ((105.0, 95.0), (130.0, 120.0)),
             "novel_queries": ((0.55, 0.675), (0.725, 0.7875)),
+            "site_transfer": ((0.55, 0.65), (0.70, 0.75)),
+            "tail_terms": ((0.525, 0.625), (0.7125, 0.7625)),
+            "lot_stability": ((170.0, 140.0), (130.0, 115.0)),
         }
         for case, ((current_slice, previous_slice),
                    (current_total, previous_total)) in expected.items():
@@ -53,7 +56,9 @@ class MeetingFixtureTest(unittest.TestCase):
                 current = grouped(result["metric"])
                 previous = grouped(result["prior_metric"])
                 group = {"family_shift": "unseen", "label_audit": "verified",
-                         "hardware_latency": "fast", "novel_queries": "novel"}[case]
+                         "hardware_latency": "fast", "novel_queries": "novel",
+                         "site_transfer": "external", "tail_terms": "tail",
+                         "lot_stability": "lot_b"}[case]
                 self.assertAlmostEqual(current[("candidate", group)], current_slice)
                 self.assertAlmostEqual(previous[("candidate", group)], previous_slice)
                 source_id = apps.pin_object(result["metric"]["object_id"])["source_id"]
@@ -97,10 +102,19 @@ class MeetingMcpTest(unittest.IsolatedAsyncioTestCase):
             env={"SSS_MEETING_CASE": "hardware_latency", "PYTHONPATH": str(PROJECT)},
         )
         async with Client(params, read_timeout_seconds=20) as client:
-            names = {tool.name for tool in (await client.list_tools()).tools}
+            offered = {tool.name: tool for tool in (await client.list_tools()).tools}
+            names = set(offered)
             self.assertEqual(names, {"read_change", "pin_object", "read_pinned_object",
                                      "read_dataset_rows", "aggregate_pinned_experiment",
                                      "find_dependent_claims"})
+            pin_schema = offered["pin_object"].input_schema["properties"]["object_id"]
+            read_schema = offered["read_pinned_object"].input_schema["properties"]["source_id"]
+            self.assertIn("claim_id", pin_schema["description"])
+            self.assertIn("pin_object", read_schema["description"])
+            self.assertIn("source-", read_schema["pattern"])
+            invalid = await client.call_tool("read_pinned_object", {
+                "source_id": "wps:hardware_latency:run_2026w39"})
+            self.assertTrue(invalid.is_error)
             event = await client.call_tool("read_change",
                                            {"event_id": "event:hardware_latency:w39"})
             self.assertFalse(event.is_error)

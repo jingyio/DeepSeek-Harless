@@ -1,0 +1,11 @@
+{
+  "event_id": "event:site_transfer:w39",
+  "experiment_id": "wps:site_transfer:run_2026w39",
+  "previous_experiment_id": "wps:site_transfer:run_2026w38",
+  "previous_version_sha256": "afa1dc6b66a5a90d11adffccca3792799746dd1b1f9a59ac6e845505ffc6842f",
+  "title": "新站点上的性能是否可迁移",
+  "changed_fields": [
+    "correct"
+  ],
+  "message": "外站新一轮结果已录入；请复核跨站点迁移主张。"
+}

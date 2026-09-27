@@ -23,16 +23,26 @@ from src.adapters.native_budget import NativeBudgetGuard  # noqa: E402
 
 BASE = ROOT / "benchmarks/meeting_decision_chain_v1"
 CASE_IDS = frozenset(("family_shift", "label_audit", "hardware_latency",
-                      "novel_queries"))
+                      "novel_queries", "site_transfer", "tail_terms",
+                      "lot_stability"))
+PROSPECTIVE_CASE_IDS = frozenset(("site_transfer", "tail_terms", "lot_stability"))
 PATCH = ROOT / "config/meeting-decision-chain.patch.yml"
 CONTRACTS = ROOT / "config/meeting-decision-chain-contracts.json"
-OUT = ROOT / ".local/benchmarks/meeting-decision-chain-v1"
+OUT = ROOT / ".local/benchmarks/meeting-decision-chain-v2"
 CAP_USD = 1.0
 MAX_REQUESTS = 15
+MAX_OUTPUT_TOKENS = 8000
+DELIVERY_CONTRACT = ("\n\n交付格式：只输出可直接渲染的 Markdown 正文，不要 YAML 页头、"
+                     "代码围栏、额外前言或尾声。约 600–900 字；必要的证据表格可以另计。"
+                     "不得为遵守字数而省略关键数字、来源版本和限制。")
 
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def prompt_for(case: str) -> str:
+    return (BASE / "tasks" / f"{case}.md").read_text(encoding="utf-8") + DELIVERY_CONTRACT
 
 
 def private(path: Path, value: dict) -> None:
@@ -43,10 +53,11 @@ def private(path: Path, value: dict) -> None:
 
 
 def preview(case: str, arm: str, online_manifest: Path | None,
-            online_task: Path | None) -> dict:
+            online_task: Path | None, similarity_threshold: float | None) -> dict:
     case_dir = BASE / "sources" / case
     task = BASE / "tasks" / f"{case}.md"
-    files = [task, PATCH, CONTRACTS, Path(__file__).resolve(),
+    files = [task, PATCH, CONTRACTS,
+             BASE / "mock_apps_server.py", Path(__file__).resolve(),
              *sorted(path for path in case_dir.iterdir() if path.is_file())]
     if arm == "motif":
         if not online_manifest or not online_task:
@@ -57,10 +68,12 @@ def preview(case: str, arm: str, online_manifest: Path | None,
     elif online_manifest or online_task:
         raise ValueError("baseline must not receive a Motif manifest")
     return {"task_id": f"meeting-decision-{case}", "case": case, "arm": arm,
+            "benchmark_version": 2,
+            "frozen_min_similarity": similarity_threshold if arm == "motif" else None,
             "classification": "synthetic_development_trial",
             "model": "deepseek-flash", "reasoning_effort": "high",
             "budget_cap_usd": CAP_USD, "max_model_requests": MAX_REQUESTS,
-            "max_output_tokens_per_request": 5000,
+            "max_output_tokens_per_request": MAX_OUTPUT_TOKENS,
             "read_only": True,
             "input_sha256": {str(path.resolve().relative_to(ROOT)) if
                              path.resolve().is_relative_to(ROOT) else str(path): sha(path)
@@ -88,11 +101,16 @@ def main() -> int:
     parser.add_argument("--embedding-model", default="Qwen/Qwen3-Embedding-0.6B")
     parser.add_argument("--call-model", action="store_true")
     args = parser.parse_args()
-    if args.arm == "motif" and args.case != "novel_queries":
-        parser.error("prospective Motif arm is reserved for the frozen fourth case")
+    if args.arm == "motif" and args.case not in PROSPECTIVE_CASE_IDS:
+        parser.error("Motif arm is reserved for independent prospective cases")
     out = OUT / args.case / args.arm
     online = _online_prepare(args.online_manifest, args.online_task) if args.arm == "motif" else None
-    current = preview(args.case, args.arm, args.online_manifest, args.online_task)
+    threshold = (float(os.environ.get("SSS_MOTIF_MIN_SIMILARITY", "0.8"))
+                 if args.arm == "motif" else None)
+    if threshold is not None and not 0 <= threshold <= 1:
+        parser.error("Motif similarity threshold must be in [0, 1]")
+    current = preview(args.case, args.arm, args.online_manifest, args.online_task,
+                      threshold)
     saved = out / "PREVIEW.json"
     approval = out / "APPROVAL.json"
     print(json.dumps({**current, "paid_api_requested": args.call_model},
@@ -134,7 +152,8 @@ def main() -> int:
             "SSS_ONLINE_MOTIF_MODE": "execute",
             "SSS_MOTIF_EMBEDDING_ENDPOINT": args.embedding_endpoint,
             "SSS_MOTIF_EMBEDDING_MODEL": args.embedding_model,
-            "SSS_ONLINE_MOTIF_PROMPT_SHA256": sha(BASE / "tasks" / f"{args.case}.md"),
+            "SSS_ONLINE_MOTIF_PROMPT_SHA256": hashlib.sha256(
+                prompt_for(args.case).encode("utf-8")).hexdigest(),
         })
         patches.append(online["patch"])
     guard = NativeBudgetGuard(max_model_requests=MAX_REQUESTS,
@@ -157,14 +176,14 @@ def main() -> int:
 
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
-            reasoning_effort="high", max_tokens=5000,
+            reasoning_effort="high", max_tokens=MAX_OUTPUT_TOKENS,
             cwd=str(out), runtime_cwd=str(out),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"), profile="sdk",
             patches=tuple(patches), dsh_home=str(ROOT / ".local/dsh"),
             request_timeout_seconds=600,
         ) as harness:
-            result = harness.run((BASE / "tasks" / f"{args.case}.md").read_text(
-                encoding="utf-8"), session_id=session_id, on_notification=observe)
+            result = harness.run(prompt_for(args.case),
+                session_id=session_id, on_notification=observe)
         answer = result.final_response.strip()
         if answer:
             target = out / "agent-answer.md"

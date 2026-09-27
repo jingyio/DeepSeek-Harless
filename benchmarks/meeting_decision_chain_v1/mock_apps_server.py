@@ -1,7 +1,7 @@
 """Case-scoped, read-only MCP facade for synthetic WPS/Obsidian/Zotero sources.
 
 This is a development fixture. The Agent sees one case selected by
-SSS_MEETING_CASE; it cannot browse the other two cases through this server.
+SSS_MEETING_CASE; it cannot browse other cases through this server.
 Every returned handle binds an application object to the bytes read at pin time.
 """
 
@@ -12,17 +12,34 @@ import json
 import os
 from collections import defaultdict
 from pathlib import Path
+from typing import Annotated
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 from openpyxl import load_workbook
+from pydantic import Field
 
 
 ROOT = Path(__file__).resolve().parent
 CASE_IDS = frozenset(("family_shift", "label_audit", "hardware_latency",
-                      "novel_queries"))
+                      "novel_queries", "site_transfer", "tail_terms",
+                      "lot_stability"))
 _handles: dict[str, tuple[str, str]] = {}
 _datasets: dict[str, str] = {}
+
+EventId = Annotated[str, Field(
+    pattern=r"^event:[a-z_]+:w[0-9]{2}$",
+    description="事件 ID；从任务输入取得，例如 event:novel_queries:w39。")]
+ObjectId = Annotated[str, Field(
+    pattern=r"^(?:wps|obsidian|zotero):[a-z_]+:[A-Za-z0-9_]+$",
+    description="应用对象 ID；取自 read_change 的 experiment_id / previous_experiment_id，"
+                "或 find_dependent_claims 的 note_id / annotation_id。claim_id 不是可固定对象。")]
+SourceId = Annotated[str, Field(
+    pattern=r"^source-[0-9a-f]{32}$",
+    description="只能填 pin_object 刚返回的 source_id，不能填 WPS/Obsidian/Zotero 对象 ID。")]
+DatasetId = Annotated[str, Field(
+    pattern=r"^dataset-[0-9a-f]{32}$",
+    description="只能填 read_pinned_object 对实验表返回的 value.dataset_id。")]
 
 
 def _case() -> str:
@@ -62,7 +79,7 @@ def _object_kind(object_id: str) -> str:
         raise ValueError("object is outside this case") from exc
 
 
-def read_change(event_id: str) -> dict:
+def read_change(event_id: EventId) -> dict:
     """Read the selected update event; its result identifies the changed object."""
     event = _json("event")
     if event_id != event["event_id"]:
@@ -70,8 +87,8 @@ def read_change(event_id: str) -> dict:
     return {**event, "event_version": _sha(_path("event")), "synthetic": True}
 
 
-def pin_object(object_id: str) -> dict:
-    """Bind one case-scoped WPS, Obsidian or Zotero object to its byte version."""
+def pin_object(object_id: ObjectId) -> dict:
+    """Pin an approved application object; return an opaque source_id for reading."""
     kind = _object_kind(object_id)
     version = _sha(_path(kind))
     source_id = "source-" + hashlib.sha256(
@@ -108,8 +125,8 @@ def _rows(kind: str) -> tuple[list[str], list[dict]]:
         workbook.close()
 
 
-def read_pinned_object(source_id: str) -> dict:
-    """Read a pinned source, with source version and object identity attached."""
+def read_pinned_object(source_id: SourceId) -> dict:
+    """Read by the opaque source_id returned by pin_object, never by object_id."""
     object_id, kind, version = _pinned(source_id)
     if kind in ("experiment", "previous_experiment"):
         fields, rows = _rows(kind)
@@ -139,7 +156,7 @@ def _dataset(dataset_id: str) -> tuple[str, str, str]:
     return source_id, kind, version
 
 
-def read_dataset_rows(dataset_id: str, offset: int = 0, limit: int = 20) -> dict:
+def read_dataset_rows(dataset_id: DatasetId, offset: int = 0, limit: int = 20) -> dict:
     """Inspect a bounded page of raw records from a version-bound dataset."""
     source_id, kind, version = _dataset(dataset_id)
     if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
@@ -150,7 +167,7 @@ def read_dataset_rows(dataset_id: str, offset: int = 0, limit: int = 20) -> dict
             "rows": rows[offset:offset + limit], "synthetic": True}
 
 
-def aggregate_pinned_experiment(dataset_id: str, group_by: list[str]) -> dict:
+def aggregate_pinned_experiment(dataset_id: DatasetId, group_by: list[str]) -> dict:
     """Sum a declared numerator/denominator by chosen fields; infer no conclusion."""
     source_id, kind, version = _dataset(dataset_id)
     object_id = _handles[source_id][0]
@@ -181,8 +198,8 @@ def aggregate_pinned_experiment(dataset_id: str, group_by: list[str]) -> dict:
             "group_by": group_by, "groups": groups, "synthetic": True}
 
 
-def find_dependent_claims(object_id: str) -> dict:
-    """Return registered claim and reference IDs for an experiment source."""
+def find_dependent_claims(object_id: ObjectId) -> dict:
+    """Find claim metadata for an experiment object; claim_id is not pinnable."""
     if _object_kind(object_id) != "experiment":
         raise ValueError("dependency lookup needs an experiment object")
     note = _json("note")

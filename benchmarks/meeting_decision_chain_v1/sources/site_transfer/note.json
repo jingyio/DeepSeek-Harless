@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:site_transfer:generalization",
+  "text": "旧判断：候选分类器总体正确率较高，可能可以迁移到外部站点。外站样本来自另一采集流程，应先逐站点复算再决定部署范围。",
+  "decision_options": [
+    "先核查站点采集口径",
+    "补外站独立样本",
+    "扩大外站试点"
+  ],
+  "depends_on": "wps:site_transfer:run_2026w39"
+}

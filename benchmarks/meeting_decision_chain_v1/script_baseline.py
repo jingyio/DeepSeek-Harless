@@ -1,6 +1,6 @@
 """Strong no-model baseline: retrieve all scoped evidence and stop at judgment.
 
-This baseline is deliberately generic across the three cases. It has the
+This baseline is deliberately generic across all cases. It has the
 same read/aggregation access as the Agent and never invents a conclusion.
 """
 

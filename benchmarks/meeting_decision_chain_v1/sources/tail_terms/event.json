@@ -1,0 +1,11 @@
+{
+  "event_id": "event:tail_terms:w39",
+  "experiment_id": "wps:tail_terms:run_2026w39",
+  "previous_experiment_id": "wps:tail_terms:run_2026w38",
+  "previous_version_sha256": "cc783a7f249b1ebdc72a3e74d77a0c586282127bce65f7da38b918137561e790",
+  "title": "检索改动是否帮助低频术语",
+  "changed_fields": [
+    "correct"
+  ],
+  "message": "新增低频术语结果；请复核尾部覆盖主张。"
+}

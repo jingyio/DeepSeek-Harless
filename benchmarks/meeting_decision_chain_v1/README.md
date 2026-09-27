@@ -1,4 +1,4 @@
-# 实验更新后的组会决定：四题合成开发基准
+# 实验更新后的组会决定：合成开发基准
 
 这是**合成数据与模拟应用**，用于先检查 SSS 的跨工具参数流和完整模型请求机会。它不是 WPS 云端、Obsidian 或 Zotero 的真实连接成绩，也不代表科研结论。四题是四个不同的研究决定；同一题的后续更新仍只算同一题。
 
@@ -36,4 +36,12 @@ MCP 服务器使用 stdio；第二条命令会持续等待客户端连接。测�
 
 DSH 工具补丁见 `config/meeting-decision-chain.patch.yml`，用于轨迹编译的工具契约见 `config/meeting-decision-chain-contracts.json`。契约只声明工具参数与可观察输出字段，不预写执行 DAG；是否形成候选 Motif 取决于实际调用轨迹和独立留出认证。
 
-当前阶段只做无模型夹具验证；没有付费 DeepSeek 调用、没有认证 Motif、没有质量或费用收益。正式付费前须先冻结逐题输入与工具 schema、做预算预览，并按项目规则取得对应实验授权。
+v1 的四题试跑与成本归因见 `experiments/组会决定链Motif前瞻试验_2026-09-27.md`。它测到在线整轮跳过，但没有合格交付总成本收益。v1 原始轨迹和结果留在本机 `.local/benchmarks/meeting-decision-chain-v1/`，不得拿它们认证下面 v2 新工具契约。
+
+## v2：新版工具契约与重复对照
+
+MCP 的参数 schema 现在明确区分应用对象 ID、`pin_object` 返回的 `source_id`、实验表返回的 `dataset_id`；无效格式在工具入口拒绝。新版工具说明对普通组和 Motif 组完全相同。交付提示也对两组固定为可直接渲染的 Markdown 正文。新版运行记录存放在 `.local/benchmarks/meeting-decision-chain-v2/`，与 v1 隔离。
+
+先在 `family_shift`、`label_audit` 的**新版普通 Harness**轨迹上重新发现参数边；再用 `hardware_latency` 的新版轨迹独立认证。`site_transfer`、`tail_terms`、`lot_stability` 是三个新决定，只用于前瞻效果对照，不准进入编译、认证或阈值调节。其封存判定标准在 `review/v2_criteria.md`。每题普通组与 Motif 组均使用同一任务、工具、模型和输出格式，分别记录调用错误、跳过的模型请求、所有请求的输入/输出/推理 token、缓存命中、费用、时间和人工修订；特别对照最后写稿前与最后一次写稿的用量。先按质量合格判定，再比较合格交付总成本。
+
+任务全部仍是合成夹具。工具说明修复后的效果若成立，也仍需在真实跨应用科研决定上验证。多次独立任务可以减少“单个会话波动”的影响，但不能把三个相似的合成决定当成广泛科研使用证明。
