@@ -54,6 +54,19 @@ class DshTrace:
 
 
 HANDLE_PATTERN = re.compile(r"^(?:source|dataset|result|match)-[0-9a-f]{32}$")
+OBJECT_ID_PATTERN = re.compile(
+    r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*:[A-Za-z0-9_]+$")
+
+
+def _field_value(value: Any, path: str) -> Any:
+    for part in path.split("."):
+        if isinstance(value, dict):
+            value = value.get(part)
+        elif isinstance(value, list) and part.isdecimal() and int(part) < len(value):
+            value = value[int(part)]
+        else:
+            return None
+    return value
 
 
 def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
@@ -88,7 +101,10 @@ def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
                 continue
             for param in contract.provenance_params:
                 value = arguments.get(param)
-                if not isinstance(value, str) or not HANDLE_PATTERN.fullmatch(value):
+                if not isinstance(value, str) or not (
+                    HANDLE_PATTERN.fullmatch(value) or
+                    (param == "object_id" and OBJECT_ID_PATTERN.fullmatch(value))
+                ):
                     continue
                 producer = producers.get(value)
                 if producer is not None:
@@ -104,10 +120,10 @@ def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
             if not success or not isinstance(observation, dict) or contract is None:
                 continue
             for field in contract.output_fields:
-                value: Any = observation
-                for part in field.split("."):
-                    value = value.get(part) if isinstance(value, dict) else None
-                if not isinstance(value, str) or not HANDLE_PATTERN.fullmatch(value):
+                value = _field_value(observation, field)
+                if not isinstance(value, str) or not (
+                    HANDLE_PATTERN.fullmatch(value) or OBJECT_ID_PATTERN.fullmatch(value)
+                ):
                     continue
                 if value in producers:
                     producers[value] = None
@@ -228,8 +244,7 @@ def extract_dsh_trace(events: Iterable[Mapping[str, Any]],
                         or results.get(source_ref.get("from_call_id", ""), (seq,))[0] >= seq):
                     reason = "invalid_parameter_provenance"
                     break
-                for part in field.split("."):
-                    value = value.get(part) if isinstance(value, dict) else None
+                value = _field_value(value, field)
                 target = arguments[param]
                 matches = (type(value) is type(target) and value == target)
                 if isinstance(value, list) and not matches:

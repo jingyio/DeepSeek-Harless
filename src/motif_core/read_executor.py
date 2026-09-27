@@ -98,7 +98,12 @@ def _validate_artifact(artifact: dict[str, Any], contracts: Mapping[str, Any]) -
             parent = edge.get("from_tool")
             if (parent not in tools[:index]
                     or edge.get("from_field") not in contracts[parent.rstrip("+")].output_fields
-                    or edge.get("to_param") not in contracts[base].required_params):
+                    or edge.get("to_param") not in contracts[base].required_params
+                    or edge.get("version_relation", "same_source") not in
+                    {"same_source", "object_lookup"}
+                    or (edge.get("version_relation") == "object_lookup" and
+                        (edge.get("to_param") != "object_id" or
+                         not edge.get("from_field", "").split(".")[-1].endswith("_id")))):
                 raise ValueError("Motif parameter edge is unsupported")
             if parent not in expected_parents:
                 expected_parents.append(parent)
@@ -129,6 +134,8 @@ def _validate_artifact(artifact: dict[str, Any], contracts: Mapping[str, Any]) -
             raise ValueError("Motif dependencies differ from verified parameter edges")
     declared = [{"from_tool": edge["from_tool"], "from_field": edge["from_field"],
                  "to_tool": name, "to_param": edge["to_param"],
+                 **({"version_relation": edge["version_relation"]}
+                    if "version_relation" in edge else {}),
                  "supporting_trace_ids": artifact["source_trace_ids"]}
                 for name in tools
                 for edge in operators[name].get("bindings", [])]

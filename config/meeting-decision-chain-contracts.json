@@ -10,6 +10,7 @@
     "required_params": ["object_id"],
     "read_only": true,
     "output_fields": ["source_id", "version_sha256"],
+    "provenance_params": ["object_id"],
     "description": "用WPS/Obsidian/Zotero对象ID固定版本；返回给read_pinned_object使用的source_id。claim_id不可固定。",
     "replay_stable": true
   },
@@ -42,7 +43,8 @@
   "mcp__meeting_decision_fixture__find_dependent_claims": {
     "required_params": ["object_id"],
     "read_only": true,
-    "output_fields": [],
+    "output_fields": ["claims.0.note_id", "claims.0.annotation_id"],
+    "provenance_params": ["object_id"],
     "description": "只用read_change返回的当前experiment_id查依赖，不接受previous_experiment_id；返回可固定的note_id和annotation_id。",
     "replay_stable": true
   }

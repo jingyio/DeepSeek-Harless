@@ -45,6 +45,55 @@ def trace(label: str, *, blocked: bool = False, unrelated_failure: bool = False,
 
 
 class WitnessedEdgeMotifTests(unittest.TestCase):
+    def test_independent_object_reference_compiles_with_distinct_version_relation(self):
+        contracts = {
+            "change": ToolContract(("event_id",), True,
+                                   ("previous_experiment_id", "event_version")),
+            "pin": ToolContract(("object_id",), True,
+                                ("source_id", "version_sha256")),
+        }
+        candidate = {"status": "candidate_only", "from_tool": "change",
+                     "from_field": "previous_experiment_id", "to_tool": "pin",
+                     "to_param": "object_id", "version_relation": "object_lookup",
+                     "source_trace_ids": ["A", "B"]}
+
+        def make(label):
+            object_id = f"wps:case_{label.lower()}:previous"
+            return DshTrace(label, (
+                ToolRecord("change", {"event_id": f"event:case_{label.lower()}:w39"},
+                           "digest", True, "eligible_read", 1,
+                           {"previous_experiment_id": object_id,
+                            "event_version": f"event-version-{label}"}),
+                ToolRecord("pin", {"object_id": object_id}, "digest", True,
+                           "eligible_read", 2,
+                           {"source_id": f"source-{label}",
+                            "version_sha256": f"object-version-{label}"},
+                           {"object_id": {"from_tool": "change",
+                                          "from_field": "previous_experiment_id"}}),
+            ), (), f"decision-{label}")
+
+        artifact = certify_witnessed_edge_motif(
+            compile_witnessed_edge_motif(candidate, [make("A"), make("B")], contracts),
+            make("C"), contracts)
+        self.assertEqual(artifact["transfer_evidence"][0]["version_relation"],
+                         "object_lookup")
+        calls = []
+
+        def execute(name, arguments):
+            calls.append((name, dict(arguments)))
+            return ({"previous_experiment_id": "wps:case_d:previous",
+                     "event_version": "event-version-D"} if name == "change"
+                    else {"source_id": "source-D", "version_sha256": "object-version-D"})
+
+        result = run_read_motif(artifact, contracts=contracts,
+                                bindings={"change": {"event_id": "event:case_d:w39"}},
+                                input_version="task-D", execute_tool=execute,
+                                verify_current=lambda: None, is_read_only=lambda _: True,
+                                node_versions={"change": "event-version-D",
+                                               "pin": "object-version-D"})
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(calls[1], ("pin", {"object_id": "wps:case_d:previous"}))
+
     def test_interleaved_real_edge_compiles_certifies_and_executes(self):
         self.assertEqual(count_safe_edge_witnesses(CANDIDATE, trace("A"), CONTRACTS), 1)
         compiled = compile_witnessed_edge_motif(CANDIDATE, [trace("A"), trace("B")], CONTRACTS)

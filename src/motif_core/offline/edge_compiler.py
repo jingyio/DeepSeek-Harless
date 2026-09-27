@@ -18,7 +18,12 @@ from .trace_compiler import artifact_signature, contract_signature
 def _value(observation: dict[str, Any] | None, field: str) -> Any:
     value: Any = observation
     for part in field.split("."):
-        value = value.get(part) if isinstance(value, dict) else None
+        if isinstance(value, dict):
+            value = value.get(part)
+        elif isinstance(value, list) and part.isdecimal() and int(part) < len(value):
+            value = value[int(part)]
+        else:
+            return None
     return value
 
 
@@ -85,12 +90,17 @@ def _witnesses(trace: Any, candidate: dict[str, Any], contracts: Mapping[str, An
 
 def _check_candidate(candidate: dict[str, Any], contracts: Mapping[str, Any]) -> tuple[str, str]:
     source, target = candidate.get("from_tool"), candidate.get("to_tool")
+    relation = candidate.get("version_relation", "same_source")
     if (candidate.get("status") != "candidate_only" or not isinstance(source, str)
             or not isinstance(target, str) or source == target
             or source not in contracts or target not in contracts
             or not contracts[source].read_only or not contracts[target].read_only
             or candidate.get("from_field") not in contracts[source].output_fields
-            or candidate.get("to_param") not in contracts[target].required_params):
+            or candidate.get("to_param") not in contracts[target].required_params
+            or relation not in {"same_source", "object_lookup"}
+            or (relation == "object_lookup" and (
+                candidate.get("to_param") != "object_id" or
+                not str(candidate.get("from_field", "")).split(".")[-1].endswith("_id")))):
         raise ValueError("a witnessed read-only parameter edge is required")
     return source, target
 
@@ -134,6 +144,8 @@ def compile_witnessed_edge_motif(candidate: dict[str, Any], traces: list[Any],
     motif_id = "edge_motif_" + hashlib.sha256(motif_key.encode()).hexdigest()[:12]
     binding = {"from_tool": source, "from_field": candidate["from_field"],
                "to_param": candidate["to_param"]}
+    if candidate.get("version_relation") == "object_lookup":
+        binding["version_relation"] = "object_lookup"
     source_shapes = dict(contracts[source].parameter_shapes)
     target_shapes = dict(contracts[target].parameter_shapes)
     source_defaults = dict(contracts[source].default_params)
@@ -179,7 +191,9 @@ def certify_witnessed_edge_motif(compiled: dict[str, Any], heldout_trace: Any,
     binding = compiled["dependencies"]["operators"][tools[1]]["bindings"][0]
     candidate = {"status": "candidate_only", "from_tool": tools[0],
                  "from_field": binding["from_field"], "to_tool": tools[1],
-                 "to_param": binding["to_param"]}
+                 "to_param": binding["to_param"],
+                 **({"version_relation": binding["version_relation"]}
+                    if "version_relation" in binding else {})}
     if not _witnesses(heldout_trace, candidate, contracts):
         raise ValueError("held-out trace lacks a safe exact-argument edge witness")
     certified = {**compiled, "status": "trace_validated_read_only",

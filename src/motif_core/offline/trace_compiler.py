@@ -14,7 +14,7 @@ import re
 from typing import Any, Mapping
 
 
-_FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*$")
 
 
 def _digest(value: Any) -> str:
@@ -85,9 +85,12 @@ def _occurrence(trace: Any, tools: list[str]) -> list[Any]:
 def _field_value(observation: dict[str, Any] | None, path: str) -> Any:
     value: Any = observation
     for part in path.split("."):
-        if not isinstance(value, dict) or part not in value:
+        if isinstance(value, dict):
+            value = value.get(part)
+        elif isinstance(value, list) and part.isdecimal() and int(part) < len(value):
+            value = value[int(part)]
+        else:
             return None
-        value = value[part]
     if value in (None, "", []) or isinstance(value, dict):
         return None
     if isinstance(value, list) and any(

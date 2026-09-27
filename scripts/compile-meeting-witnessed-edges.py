@@ -48,6 +48,8 @@ def _witnessed_edges(trace) -> set[tuple[str, str, str, str]]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--contracts", type=Path,
+                        help="Explicit current read-only contract; omitted uses frozen manifest")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--online-out", type=Path,
                         help="Optional subset whose exact parameter edge can run online")
@@ -63,7 +65,9 @@ def main() -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if len(manifest.get("train", [])) != 2 or len(manifest.get("heldout", [])) != 1:
         parser.error("exactly two training and one independent held-out trace are required")
-    contracts = parse_tool_contracts(manifest["contracts"])
+    contract_rows = (json.loads(args.contracts.read_text(encoding="utf-8"))
+                     if args.contracts else manifest["contracts"])
+    contracts = parse_tool_contracts(contract_rows)
     loaded = [_load_trace(manifest_path.parent, row, contracts)
               for row in [*manifest["train"], *manifest["heldout"]]]
     traces = [pair[0] for pair in loaded]
@@ -76,6 +80,8 @@ def main() -> None:
         candidate = {"status": "candidate_only", "from_tool": source,
                      "from_field": field, "to_tool": target, "to_param": param,
                      "source_trace_ids": [row.trace_id for row in traces[:2]]}
+        if param == "object_id" and field.split(".")[-1].endswith("_id"):
+            candidate["version_relation"] = "object_lookup"
         try:
             compiled = compile_witnessed_edge_motif(candidate, traces[:2], contracts)
             artifact = certify_witnessed_edge_motif(compiled, traces[2], contracts)
@@ -106,8 +112,10 @@ def main() -> None:
             edge = artifact["transfer_evidence"]
             target_required = set(contracts[second].required_params)
             bound = {row["to_param"] for row in edge if row["to_tool"] == second}
+            source_version_field = ("event_version" if "event_version" in
+                                    contracts[first].output_fields else "version_sha256")
             if (target_required <= bound
-                    and "version_sha256" in contracts[first].output_fields
+                    and source_version_field in contracts[first].output_fields
                     and "version_sha256" in contracts[second].output_fields):
                 eligible.append(artifact)
         if not eligible:

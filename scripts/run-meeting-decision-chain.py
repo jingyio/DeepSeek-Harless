@@ -11,7 +11,9 @@ import os
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,6 +98,27 @@ def _online_prepare(manifest: Path, task: Path) -> dict:
     return module.prepare(manifest, task)
 
 
+def check_local_embedding(endpoint: str, model: str) -> None:
+    """Avoid a paid run when the local Motif selector cannot respond."""
+    parsed = urlparse(endpoint)
+    if (parsed.scheme != "http" or parsed.hostname not in
+            {"127.0.0.1", "localhost", "::1"} or
+            parsed.path != "/v1/embeddings" or not model):
+        raise ValueError("Motif needs the approved local embedding endpoint")
+    payload = json.dumps({"model": model,
+                          "input": ["SSS preflight", "versioned source"]}).encode()
+    request = urllib.request.Request(endpoint, data=payload,
+                                     headers={"Content-Type": "application/json"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=20) as response:
+        body = json.load(response)
+    rows = body.get("data")
+    if (not isinstance(rows, list) or len(rows) != 2 or
+            any(not isinstance(row.get("embedding"), list) or
+                not row["embedding"] for row in rows)):
+        raise ValueError("local embedding preflight returned no vector")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", choices=sorted(CASE_IDS), required=True)
@@ -146,6 +169,8 @@ def main() -> int:
     if float(os.environ["SSS_BUDGET_CAP_USD"]) > CAP_USD:
         parser.error("local cost gate exceeds the task cap")
     from deepseek_harness import DeepSeekHarness
+    if online:
+        check_local_embedding(args.embedding_endpoint, args.embedding_model)
     marker = out / "paid-attempt.marker"
     with marker.open("x", encoding="utf-8") as stream:
         stream.write("one authorized paid trial reserved\n")

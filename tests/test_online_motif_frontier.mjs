@@ -104,6 +104,138 @@ test('one DSH model stream is replaced by a certified tool call with provenance'
   assert.equal(events.at(-1).kind, 'model_request_skipped_verified');
 });
 
+test('cross-object continuation binds an approved object and checks its own version', async () => {
+  const change = 'mcp__research__read_change';
+  const pin = 'mcp__research__pin_object';
+  const objectId = 'wps:independent_case:run_2026w38';
+  const objectVersion = 'b'.repeat(64);
+  const manifest = sealManifest({
+    schema_version: 1, source_library_digest: 'a'.repeat(64),
+    artifacts: [{ motif_id: 'certified-change-pin', certified_digest: 'c'.repeat(64),
+      tools: [change, pin], supporting_task_count: 2,
+      validation_task_fingerprint: 'independent-heldout',
+      transfer_evidence: [{ from_tool: change, from_field: 'previous_experiment_id',
+        to_tool: pin, to_param: 'object_id', version_relation: 'object_lookup' }] }],
+    contracts: {
+      [change]: { read_only: true, required_params: ['event_id'],
+        default_params: {}, output_fields: ['previous_experiment_id', 'event_version'],
+        description: 'Read the research update event' },
+      [pin]: { read_only: true, required_params: ['object_id'],
+        default_params: {}, output_fields: ['version_sha256'],
+        description: 'Pin the approved referenced object' },
+    },
+    slot_rules: {}, version_fields: { [change]: 'event_version',
+      [pin]: 'version_sha256' },
+  });
+  const task = { schema_version: 1, task_id: 'independent-case', session_id: 's1',
+    intent: 'Check the previous experimental result', input_version: 'task-snapshot',
+    bindings: {}, source_versions: { [change]: 'event-v1',
+      [pin]: objectVersion }, object_versions: { [objectId]: objectVersion } };
+  validateOnlineManifest(manifest);
+  assert.equal(parseStructuredTask(task, manifest).object_versions[objectId], objectVersion);
+  const events = [];
+  const intercept = createOnlineInterceptor({ manifest, task, mode: 'execute',
+    similarity: async () => [0.99], audit: (row) => events.push(row) });
+  intercept.observe('s1', { name: change, callId: 'model-change',
+    arguments: { event_id: 'event:independent_case:w39' } },
+  { value: { structuredContent: { previous_experiment_id: objectId,
+    event_version: 'event-v1' } } });
+  const assembler = new BlockAssembler();
+  for await (const chunk of await intercept.intercept('s1',
+    { tools: [offered(pin, ['object_id'])] },
+    () => { throw new Error('certified object continuation should bypass model'); })) {
+    assembler.push(chunk);
+  }
+  const call = assembler.blocks().find((block) => block.type === 'tool-call');
+  assert.deepEqual(JSON.parse(call.arguments), { object_id: objectId });
+  intercept.observe('s1', { name: pin, callId: call.id,
+    arguments: { object_id: objectId } },
+  { value: { structuredContent: { version_sha256: objectVersion } } });
+  assert.equal(events.at(-1).kind, 'model_request_skipped_verified');
+
+  const unapproved = createOnlineInterceptor({ manifest,
+    task: { ...task, object_versions: {} }, mode: 'execute',
+    similarity: async () => [0.99] });
+  unapproved.observe('s1', { name: change, callId: 'model-change',
+    arguments: { event_id: 'event:independent_case:w39' } },
+  { value: { structuredContent: { previous_experiment_id: objectId,
+    event_version: 'event-v1' } } });
+  let providerCalls = 0;
+  await unapproved.intercept('s1', { tools: [offered(pin, ['object_id'])] },
+    () => { providerCalls++; return (async function* () {})(); });
+  assert.equal(providerCalls, 1);
+  assert.throws(() => parseStructuredTask({ ...task,
+    object_versions: { [objectId]: 'stale' } }, manifest), /object version/);
+
+  const changed = [];
+  const stale = createOnlineInterceptor({ manifest, task, mode: 'execute',
+    similarity: async () => [0.99], audit: (row) => changed.push(row) });
+  stale.observe('s1', { name: change, callId: 'model-change',
+    arguments: { event_id: 'event:independent_case:w39' } },
+  { value: { structuredContent: { previous_experiment_id: objectId,
+    event_version: 'event-v1' } } });
+  const staleAssembler = new BlockAssembler();
+  for await (const chunk of await stale.intercept('s1',
+    { tools: [offered(pin, ['object_id'])] },
+    () => { throw new Error('the object version is checked after execution'); })) {
+    staleAssembler.push(chunk);
+  }
+  const staleCall = staleAssembler.blocks().find((block) => block.type === 'tool-call');
+  stale.observe('s1', { name: pin, callId: staleCall.id,
+    arguments: { object_id: objectId } },
+  { value: { structuredContent: { version_sha256: 'd'.repeat(64) } } });
+  assert.equal(changed.at(-1).kind, 'bypass_result_unverified');
+});
+
+test('two independently certified object references from one event form a read batch', async () => {
+  const change = 'mcp__research__read_change';
+  const pin = 'mcp__research__pin_object';
+  const currentId = 'wps:independent_case:run_2026w39';
+  const priorId = 'wps:independent_case:run_2026w38';
+  const currentVersion = 'b'.repeat(64);
+  const priorVersion = 'c'.repeat(64);
+  const artifact = (field, id) => ({ motif_id: id, certified_digest: 'd'.repeat(64),
+    tools: [change, pin], supporting_task_count: 2,
+    validation_task_fingerprint: 'same-independent-heldout',
+    transfer_evidence: [{ from_tool: change, from_field: field,
+      to_tool: pin, to_param: 'object_id', version_relation: 'object_lookup' }] });
+  const manifest = sealManifest({ schema_version: 1,
+    source_library_digest: 'a'.repeat(64),
+    artifacts: [artifact('experiment_id', 'current'),
+      artifact('previous_experiment_id', 'previous')],
+    contracts: {
+      [change]: { read_only: true, required_params: ['event_id'],
+        default_params: {}, output_fields: ['experiment_id',
+          'previous_experiment_id', 'event_version'], description: 'Read update event' },
+      [pin]: { read_only: true, required_params: ['object_id'],
+        default_params: {}, output_fields: ['version_sha256'],
+        description: 'Pin an approved object' },
+    }, slot_rules: {}, version_fields: { [change]: 'event_version',
+      [pin]: 'version_sha256' } });
+  const task = { schema_version: 1, task_id: 'independent-case', session_id: 's1',
+    intent: 'Compare current and previous experimental results',
+    input_version: 'snapshot', bindings: {},
+    source_versions: { [change]: 'event-v1',
+      [pin]: [currentVersion, priorVersion] },
+    object_versions: { [currentId]: currentVersion, [priorId]: priorVersion } };
+  const intercept = createOnlineInterceptor({ manifest, task, mode: 'execute',
+    similarity: async (_query, descriptions) => descriptions.map(() => 0.98) });
+  intercept.observe('s1', { name: change, callId: 'event-call',
+    arguments: { event_id: 'event:independent_case:w39' } },
+  { value: { structuredContent: { experiment_id: currentId,
+    previous_experiment_id: priorId, event_version: 'event-v1' } } });
+  const assembler = new BlockAssembler();
+  for await (const chunk of await intercept.intercept('s1',
+    { tools: [offered(pin, ['object_id'])] },
+    () => { throw new Error('certified sibling batch should bypass model'); })) {
+    assembler.push(chunk);
+  }
+  const calls = assembler.blocks().filter((block) => block.type === 'tool-call');
+  assert.equal(calls.length, 2);
+  assert.deepEqual(new Set(calls.map((call) => JSON.parse(call.arguments).object_id)),
+    new Set([currentId, priorId]));
+});
+
 test('certified pure code node binds a transformed tool argument without a model', async () => {
   const { pin, read, manifest, task } = fixture();
   manifest.artifacts[0].transfer_evidence = [];

@@ -108,7 +108,14 @@ export function validateOnlineManifest(manifest) {
           !artifact.tools.includes(edge.to_tool) ||
           artifact.tools.indexOf(edge.from_tool) >= artifact.tools.indexOf(edge.to_tool) ||
           !manifest.contracts[edge.from_tool].output_fields.includes(edge.from_field) ||
-          !manifest.contracts[edge.to_tool].required_params.includes(edge.to_param)) {
+          !manifest.contracts[edge.to_tool].required_params.includes(edge.to_param) ||
+          (edge.version_relation !== undefined &&
+           edge.version_relation !== 'same_source' &&
+           edge.version_relation !== 'object_lookup') ||
+          (edge.version_relation === 'object_lookup' &&
+           (edge.to_param !== 'object_id' ||
+            !/(?:^|\.)(?:[a-z][a-z0-9_]*_id)$/.test(edge.from_field) ||
+            !manifest.version_fields[edge.to_tool]))) {
         throw new TypeError('online parameter edge is not certified by contracts');
       }
     }
@@ -199,6 +206,15 @@ export function parseStructuredTask(raw, manifest) {
           version.every(scalar) && new Set(version).size === version.length))) {
       throw new TypeError('invalid source version scope');
     }
+  }
+  if (task.object_versions !== undefined &&
+      (!task.object_versions || typeof task.object_versions !== 'object' ||
+       Array.isArray(task.object_versions) ||
+       Object.keys(task.object_versions).length > 64 ||
+       Object.entries(task.object_versions).some(([id, version]) =>
+         !/^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*:[A-Za-z0-9_]+$/.test(id) ||
+         !/^[a-f0-9]{64}$/.test(version)))) {
+    throw new TypeError('invalid approved object version scope');
   }
   return task;
 }
@@ -363,7 +379,13 @@ function matchingPrefixes(artifact, history, length, task, manifest) {
     artifact.transfer_evidence.every((edge) => {
       const from = prefix.find((row) => row.name === edge.from_tool);
       const to = prefix.find((row) => row.name === edge.to_tool);
-      return !from || !to || from.sourceVersion === to.sourceVersion;
+      if (!from || !to) return true;
+      if (edge.version_relation === 'object_lookup') {
+        const objectId = field(from.output, edge.from_field);
+        return scalar(objectId) && to.arguments?.[edge.to_param] === objectId &&
+          task.object_versions?.[objectId] === to.sourceVersion;
+      }
+      return from.sourceVersion === to.sourceVersion;
     }));
 }
 
@@ -403,9 +425,13 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
         const codeNodes = artifact.code_nodes?.filter((node) =>
           node.to_tool === nextTool) ?? [];
         if (!edges.length && !codeNodes.length) continue;
-        const versions = new Set([...edges.map((edge) => edge.from_tool),
-          ...codeNodes.map((node) => node.from_tool)].map((name) =>
-          prefix.find((row) => row.name === name)?.sourceVersion));
+        const versions = new Set([
+          ...edges.map((edge) => edge.version_relation === 'object_lookup'
+            ? task.object_versions?.[args[edge.to_param]]
+            : prefix.find((row) => row.name === edge.from_tool)?.sourceVersion),
+          ...codeNodes.map((node) =>
+            prefix.find((row) => row.name === node.from_tool)?.sourceVersion),
+        ]);
         if (versions.size !== 1) continue;
         const expectedVersion = [...versions][0];
         if (!versionAllowed(task, nextTool, expectedVersion)) continue;
@@ -418,6 +444,9 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
         candidates.push({ motif_id: artifact.motif_id,
           certified_digest: artifact.certified_digest, tool: nextTool,
           arguments: args, expected_version: expectedVersion,
+          version_relation: edges.length === 1 ?
+            (edges[0].version_relation ?? 'same_source') : 'mixed',
+          validation_task_fingerprint: artifact.validation_task_fingerprint,
           prefix_key: prefixKey,
           root_key: String(prefix[0].callId ?? prefix[0].historyIndex),
           prefix_length: length, supporting_task_count: artifact.supporting_task_count,
@@ -452,10 +481,17 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
       const prior = alternatives.get(key);
       if (!prior || row.score > prior.score) alternatives.set(key, row);
     }
-    // A shared root with different successors might be a scientific choice.
-    if (alternatives.size !== 1) continue;
-    const row = [...alternatives.values()][0];
-    if (row.similarity >= minSimilarity) selected.push(row);
+    const rows = [...alternatives.values()];
+    if (rows.length === 1) {
+      if (rows[0].similarity >= minSimilarity) selected.push(rows[0]);
+      continue;
+    }
+    // Independently certified object references in one event are sibling
+    // reads. Other competing successors may encode a scientific choice.
+    if (rows.every((row) => row.version_relation === 'object_lookup' &&
+        row.similarity >= minSimilarity && row.tool === rows[0].tool &&
+        row.validation_task_fingerprint === rows[0].validation_task_fingerprint &&
+        row.supporting_task_count >= 2)) selected.push(...rows);
   }
   if (!selected.length) return [];
   selected.sort((a, b) => b.score - a.score || a.prefix_key.localeCompare(b.prefix_key));
