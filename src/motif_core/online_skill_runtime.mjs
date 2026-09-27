@@ -1,6 +1,10 @@
 /** Bounded online continuation of independently certified read-only Motifs. */
 
 import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const PURE_CODE_WORKER = fileURLToPath(new URL('./pure_code.py', import.meta.url));
 
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -13,6 +17,25 @@ function canonical(value) {
 
 function digest(value) {
   return createHash('sha256').update(canonical(value)).digest('hex');
+}
+
+export async function runPureCode(expression, input) {
+  if (typeof expression !== 'string' || expression.length > 500 ||
+      JSON.stringify(input).length > 8000) {
+    throw new TypeError('pure code input exceeds the bounded contract');
+  }
+  const request = JSON.stringify({ expression, input });
+  const stdout = await new Promise((resolve, reject) => {
+    const child = execFile(process.env.SSS_PURE_CODE_PYTHON ?? 'python3',
+      ['-I', '-S', PURE_CODE_WORKER],
+      { timeout: 1500, maxBuffer: 4000,
+        env: { PYTHONIOENCODING: 'utf-8' } },
+      (error, output) => error ? reject(error) : resolve(output));
+    child.stdin.end(request);
+  });
+  const output = JSON.parse(stdout);
+  if (!scalar(output?.output)) throw new TypeError('pure code returned no bounded string');
+  return output.output;
 }
 
 /** Compile witnessed parameter edges into bounded code stored with one skill. */
@@ -93,6 +116,36 @@ export function validateOnlineManifest(manifest) {
         canonical(compileLocalPrograms(artifact))) {
       throw new TypeError('Motif local code differs from certified parameter edges');
     }
+    const codeNodes = artifact.code_nodes ?? [];
+    if (!Array.isArray(codeNodes) || codeNodes.length > 1 ||
+        (codeNodes.length && artifact.tools.length !== 2)) {
+      throw new TypeError('unsupported dynamic Motif code graph');
+    }
+    if (codeNodes.length) {
+      const node = codeNodes[0];
+      const body = Object.fromEntries(['kind', 'language', 'expression',
+        'from_tool', 'from_field', 'to_tool', 'to_param']
+        .map((key) => [key, node[key]]));
+      if (node.kind !== 'pure_code' ||
+          node.language !== 'sss-pure-python-expr-v1' ||
+          typeof node.expression !== 'string' ||
+          !node.expression.length || node.expression.length > 500 ||
+          node.from_tool !== artifact.tools[0] ||
+          node.to_tool !== artifact.tools[1] ||
+          !manifest.contracts[node.from_tool].output_fields.includes(node.from_field) ||
+          !manifest.contracts[node.to_tool].required_params.includes(node.to_param) ||
+          artifact.transfer_evidence.some((edge) => edge.to_param === node.to_param) ||
+          node.program_digest !== digest(body) ||
+          node.node_id !== `code_${digest(body).slice(0, 16)}` ||
+          canonical(artifact.code_dag) !== canonical({
+            nodes: [node.from_tool, node.node_id, node.to_tool],
+            edges: [[node.from_tool, node.node_id], [node.node_id, node.to_tool]]
+          })) {
+        throw new TypeError('dynamic Motif code node differs from certified gap');
+      }
+    } else if (artifact.code_dag) {
+      throw new TypeError('unbound dynamic Motif code graph');
+    }
   }
   for (const [tool, params] of Object.entries(manifest.slot_rules)) {
     if (!manifest.contracts[tool] || !params || typeof params !== 'object') {
@@ -165,16 +218,28 @@ export function observation(result) {
   } catch { return null; }
 }
 
-export function bindNext(artifact, nextTool, prefix, task, manifest) {
+export async function bindNext(artifact, nextTool, prefix, task, manifest,
+                               codeRunner = runPureCode) {
   const params = { ...manifest.contracts[nextTool].default_params };
   for (const param of manifest.contracts[nextTool].required_params) {
     const steps = artifact.local_programs[nextTool]?.steps.filter((step) =>
       step.to_param === param) ?? [];
-    if (steps.length > 1) return null;
+    const code = artifact.code_nodes?.find((node) =>
+      node.to_tool === nextTool && node.to_param === param);
+    if (steps.length > 1 || (steps.length && code)) return null;
     const taskValue = task.bindings[nextTool]?.[param];
     if (steps.length === 1) {
       const producer = prefix.find((row) => row.name === steps[0].from_tool);
       const value = field(producer?.output, steps[0].from_field);
+      if (!scalar(value) || (taskValue !== undefined && taskValue !== value)) return null;
+      params[param] = value;
+    } else if (code) {
+      const producer = prefix.find((row) => row.name === code.from_tool);
+      const input = field(producer?.output, code.from_field);
+      if (input === undefined) return null;
+      let value;
+      try { value = await codeRunner(code.expression, input); }
+      catch { return null; }
       if (!scalar(value) || (taskValue !== undefined && taskValue !== value)) return null;
       params[param] = value;
     } else if (taskValue !== undefined) {
@@ -240,7 +305,7 @@ export async function proposeNext({ manifest, task, history, availableTools,
             .some((param) => !Object.hasOwn(offered.parameters.properties ?? {}, param))) {
         continue;
       }
-      const args = bindNext(artifact, nextTool, prefix, task, manifest);
+      const args = await bindNext(artifact, nextTool, prefix, task, manifest);
       if (!args) continue;
       candidates.push({ artifact, nextTool, args, length,
         description: manifest.contracts[nextTool].description });
@@ -324,18 +389,23 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
       !(minMargin >= 0 && minMargin <= 1) ||
       !Number.isSafeInteger(maxBatch) || maxBatch < 1 || maxBatch > 8) return [];
   const candidates = [];
+  let codeAttempts = 0;
   for (const artifact of manifest.artifacts) {
     for (let length = 1; length < artifact.tools.length; length++) {
       const nextTool = artifact.tools[length];
       if (!manifest.version_fields[nextTool] ||
           !offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool])) continue;
       for (const prefix of matchingPrefixes(artifact, history, length, task, manifest)) {
-        const args = bindNext(artifact, nextTool, prefix, task, manifest);
+        if (artifact.code_nodes?.length && ++codeAttempts > 8) return [];
+        const args = await bindNext(artifact, nextTool, prefix, task, manifest);
         if (!args) continue;
         const edges = artifact.transfer_evidence.filter((edge) => edge.to_tool === nextTool);
-        if (!edges.length) continue;
-        const versions = new Set(edges.map((edge) =>
-          prefix.find((row) => row.name === edge.from_tool)?.sourceVersion));
+        const codeNodes = artifact.code_nodes?.filter((node) =>
+          node.to_tool === nextTool) ?? [];
+        if (!edges.length && !codeNodes.length) continue;
+        const versions = new Set([...edges.map((edge) => edge.from_tool),
+          ...codeNodes.map((node) => node.from_tool)].map((name) =>
+          prefix.find((row) => row.name === name)?.sourceVersion));
         if (versions.size !== 1) continue;
         const expectedVersion = [...versions][0];
         if (!versionAllowed(task, nextTool, expectedVersion)) continue;
@@ -351,6 +421,8 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
           prefix_key: prefixKey,
           root_key: String(prefix[0].callId ?? prefix[0].historyIndex),
           prefix_length: length, supporting_task_count: artifact.supporting_task_count,
+          code_node_ids: codeNodes.map((node) => node.node_id),
+          code_program_digests: codeNodes.map((node) => node.program_digest),
           description: manifest.contracts[nextTool].description });
       }
     }

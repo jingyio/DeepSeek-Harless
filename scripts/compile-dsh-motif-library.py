@@ -4,12 +4,15 @@
 The manifest names approved read-only tool contracts, distinct training and
 held-out event files, optional host-recorded call provenance sidecars, and an
 optional tool_schema_file with the corresponding MCP tools list.
+Optional code_candidate_files (or development-only inline code_candidates)
+propose bounded local code nodes for gaps in otherwise certified Motifs.
 All raw records stay local; only the compiled artifact is written under .local.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -25,11 +28,76 @@ from src.adapters.tool_contract_loader import parse_tool_contracts  # noqa: E402
 from src.adapters.task_identity import (  # noqa: E402
     load_trace_identity, require_distinct_decisions,
 )
-from src.motif_core.offline.library_builder import build_read_motif_library  # noqa: E402
+from src.motif_core.offline.library_builder import (  # noqa: E402
+    _digest as library_digest, build_read_motif_library,
+)
+from src.motif_core.offline.dynamic_code_nodes import (  # noqa: E402
+    certify_dynamic_code_node,
+)
+
+
+def attach_code_candidates(library: dict, candidates: list[dict],
+                           train: list, heldout: list,
+                           contracts: dict[str, ToolContract]) -> dict:
+    """Promote only code verified on this library's frozen independent tasks."""
+    if not isinstance(candidates, list):
+        raise ValueError("code_candidates must be a list")
+    by_trace = {row.trace_id: row for row in train}
+    heldout_by_id = {row.trace_id: row for row in heldout}
+    by_motif = {row["motif_id"]: index
+                for index, row in enumerate(library["artifacts"])}
+    if len(by_motif) != len(library["artifacts"]):
+        raise ValueError("library contains duplicate Motif IDs")
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            raise ValueError("code candidate must be an object")
+        motif_id = candidate.get("motif_id")
+        if motif_id is None and isinstance(candidate.get("tools"), list):
+            matches = [row["motif_id"] for row in library["artifacts"]
+                       if row["tools"] == candidate["tools"]]
+            motif_id = matches[0] if len(matches) == 1 else None
+        if not isinstance(motif_id, str):
+            raise ValueError("code candidate must identify one certified Motif")
+        if motif_id not in by_motif:
+            library["rejected"].append({"motif_id": motif_id,
+                                        "reason": "code candidate has no certified Motif"})
+            continue
+        artifact = library["artifacts"][by_motif[motif_id]]
+        try:
+            if candidate.get("trace_id") not in artifact["source_trace_ids"]:
+                raise ValueError("code proposal is not tied to a training trace")
+            training = [by_trace[key] for key in artifact["source_trace_ids"]]
+            validation = heldout_by_id[artifact["validation_trace_id"]]
+            body = {key: value for key, value in candidate.items()
+                    if key not in {"motif_id", "tools", "trace_id"}}
+            upgraded = certify_dynamic_code_node(artifact, body, training,
+                                                 validation, contracts)
+        except (KeyError, TypeError, ValueError) as exc:
+            library["rejected"].append({"motif_id": motif_id,
+                                        "reason": "code candidate rejected: " + str(exc)})
+            continue
+        library["artifacts"][by_motif[motif_id]] = upgraded
+    library["library_digest"] = library_digest({
+        key: value for key, value in library.items() if key != "library_digest"})
+    return library
 
 
 def _load(path: Path):
     return json.loads(path.resolve(strict=True).read_text(encoding="utf-8"))
+
+
+def _code_candidate_file(path: Path) -> dict:
+    target = path.resolve(strict=True)
+    if not target.is_relative_to((ROOT / ".local").resolve()):
+        raise ValueError("code candidate must stay under SSS/.local")
+    payload = _load(target)
+    if not isinstance(payload, dict) or payload.get("status") != "candidate_only":
+        raise ValueError("code proposal must remain a candidate")
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                     separators=(",", ":"))
+    if hashlib.sha256(raw.encode("utf-8")).hexdigest() != target.stem:
+        raise ValueError("code candidate file hash changed")
+    return {key: value for key, value in payload.items() if key != "status"}
 
 
 def _events(path: Path) -> list[dict]:
@@ -104,6 +172,15 @@ def main() -> int:
         train, heldout, contracts, task_identity_evidence=evidence)
     if not library["artifacts"]:
         raise ValueError("no candidate passed independent held-out certification")
+    candidate_files = manifest.get("code_candidate_files", [])
+    inline_candidates = manifest.get("code_candidates", [])
+    if not isinstance(candidate_files, list) or not isinstance(inline_candidates, list):
+        raise ValueError("code candidate entries must be lists")
+    candidates = list(inline_candidates)
+    candidates.extend(_code_candidate_file(manifest_path.parent / path)
+                      for path in candidate_files)
+    library = attach_code_candidates(library, candidates, train, heldout,
+                                     contracts)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix + ".tmp")
     temporary.write_text(json.dumps(library, ensure_ascii=False, indent=2) + "\n",

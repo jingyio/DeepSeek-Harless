@@ -21,6 +21,7 @@ from .handoff import (
 )
 from .offline.trace_compiler import artifact_signature, contract_signature
 from .offline.local_programs import compile_local_programs
+from .pure_code import validate_expression
 
 
 def _signature(value: Any) -> str:
@@ -44,6 +45,43 @@ def _validate_artifact(artifact: dict[str, Any], contracts: Mapping[str, Any]) -
         raise ValueError("repeated Motif contract no longer has one list frontier")
     graph = artifact.get("dependencies") or {}
     operators = graph.get("operators") or {}
+    code_nodes = artifact.get("code_nodes", [])
+    if code_nodes:
+        from .offline.dynamic_code_nodes import code_node_body
+        if (repeated or len(tools) != 2 or len(code_nodes) != 1
+                or graph.get("code_nodes") != code_nodes):
+            raise ValueError("Motif code graph is unsupported or changed")
+        code = code_nodes[0]
+        if (not isinstance(code, dict) or not all(key in code for key in (
+                "kind", "language", "expression", "from_tool", "from_field",
+                "to_tool", "to_param", "node_id", "program_digest"))):
+            raise ValueError("Motif code node is incomplete")
+        validate_expression(code["expression"])
+        body = code_node_body(code)
+        if (code.get("kind") != "pure_code"
+                or code.get("language") != "sss-pure-python-expr-v1"
+                or code.get("program_digest") != _signature(body)
+                or code.get("node_id") != "code_" + _signature(body)[:16]
+                or code.get("from_tool") != tools[0]
+                or code.get("to_tool") != tools[1]
+                or code.get("from_field") not in contracts[tools[0]].output_fields
+                or code.get("to_param") not in contracts[tools[1]].required_params
+                or code.get("source_trace_ids") != artifact["source_trace_ids"]
+                or code.get("source_task_fingerprints")
+                   != artifact["source_task_fingerprints"]
+                or code.get("validation_trace_id") != artifact["validation_trace_id"]
+                or code.get("validation_task_fingerprint")
+                   != artifact["validation_task_fingerprint"]
+                or any(edge["to_param"] == code["to_param"]
+                       for edge in artifact["transfer_evidence"])
+                or artifact.get("code_dag") != {
+                    "nodes": [tools[0], code["node_id"], tools[1]],
+                    "edges": [[tools[0], code["node_id"]],
+                              [code["node_id"], tools[1]]]}
+        ):
+            raise ValueError("Motif code node differs from its certified gap")
+    elif graph.get("code_nodes") or artifact.get("code_dag"):
+        raise ValueError("Motif has an unbound code graph")
     if graph.get("required_evidence") != tools or set(operators) != set(tools):
         raise ValueError("Motif operator graph does not match its execution plan")
     for index, name in enumerate(tools):
@@ -64,6 +102,9 @@ def _validate_artifact(artifact: dict[str, Any], contracts: Mapping[str, Any]) -
                 raise ValueError("Motif parameter edge is unsupported")
             if parent not in expected_parents:
                 expected_parents.append(parent)
+        if (code_nodes and name == code_nodes[0]["to_tool"]
+                and code_nodes[0]["from_tool"] not in expected_parents):
+            expected_parents.append(code_nodes[0]["from_tool"])
         if repeated and index == 1:
             frontier_rows = node.get("selection_frontiers") or []
             policy = (frontier_rows[0].get("policy")
@@ -171,13 +212,18 @@ def run_read_motif(
             raise ValueError("tool lost its read-only authorization")
         return execute_tool(tool.rstrip("+"), params)
 
+    effective_versions = dict(versions)
+    for code in artifact.get("code_nodes", []):
+        target = code["to_tool"]
+        effective_versions[target] = _signature(
+            [versions[target], code["program_digest"]])
     result = resolve_dependencies(
         artifact["dependencies"], manager.evidence, bindings,
         checked_execute, lambda tool: is_read_only(tool.rstrip("+")), emit,
         guard=lambda tool, params: not any(active_guard_matches(
             item, artifact, operator=tool,
             binding_signature=_signature(params), input_version=input_version)
-            for item in active_guards), node_versions=versions)
+            for item in active_guards), node_versions=effective_versions)
     outputs = {name: manager.evidence.get(name) for name in tools
                if name in manager.evidence}
     if result.status == "SUCCESS":

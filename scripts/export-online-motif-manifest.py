@@ -58,6 +58,8 @@ def export_manifest(library: dict, contract_rows: dict,
             "tools": tools,
             "transfer_evidence": artifact["transfer_evidence"],
             "local_programs": programs,
+            "code_nodes": artifact.get("code_nodes", []),
+            "code_dag": artifact.get("code_dag"),
             "supporting_task_count": len(artifact["source_task_fingerprints"]),
             "validation_task_fingerprint": artifact["validation_task_fingerprint"],
         })

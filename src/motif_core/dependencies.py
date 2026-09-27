@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable
 from .evidence import BoundEvidence
+from .pure_code import run_isolated
 from src.semantic_inputs import SemanticInputRequired
 
 
@@ -87,6 +88,27 @@ def resolve_dependencies(metadata: dict, evidence: dict, bindings: dict, execute
                     if edge["to_param"] in params and params[edge["to_param"]] != value:
                         return DependencyResult("BLOCKED", "conflicting_binding", tool, (edge["to_param"],))
                     params.setdefault(edge["to_param"], value)
+            for code in metadata.get("code_nodes", []):
+                if code.get("to_tool") != tool:
+                    continue
+                value = resolved.get(code["from_tool"])
+                for part in code["from_field"].split("."):
+                    value = value.get(part) if isinstance(value, dict) else None
+                if value is None:
+                    return DependencyResult("BLOCKED", "code_input_missing", tool,
+                                            (code["to_param"],))
+                try:
+                    output = run_isolated(code["expression"], value)
+                except ValueError:
+                    return DependencyResult("BLOCKED", "code_node_failed", tool,
+                                            (code["to_param"],))
+                param = code["to_param"]
+                if param in params and params[param] != output:
+                    return DependencyResult("BLOCKED", "conflicting_binding", tool,
+                                            (param,))
+                params.setdefault(param, output)
+                emit("local_code_executed", node_id=code["node_id"],
+                     program_digest=code["program_digest"])
             for frontier in node.get("selection_frontiers", []):
                 if (frontier.get("status") != "verified"
                         or frontier.get("policy") not in {"all_candidates", "bounded_subset"}):

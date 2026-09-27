@@ -79,5 +79,12 @@ The online DSH path now keeps deterministic parameter programs inside each
 exported Motif skill. `online_skill_runtime.mjs` validates these bounded
 programs against certified transfer edges and executes them in the core;
 the DSH adapter only observes host events and emits approved tool calls.
-Field transfer is a skill binding rather than a separate DAG node. General
-generated code nodes are not yet certified or executed by this path.
+Field transfer is a skill binding rather than a separate DAG node.
+
+SSS now adds a bounded dynamic-code extension in `pure_code.py` and
+`offline/dynamic_code_nodes.py`. A proposed pure expression is checked against
+two training task traces and one held-out task, then becomes a signed code
+node in a two-tool Motif skill. `dependencies.py` and the online skill runtime
+execute it before the dependent read. This extension is SSS code, not a copy
+of the frozen MotifAgent artifact; it currently handles one scalar result
+and does not authorize general Python programs.

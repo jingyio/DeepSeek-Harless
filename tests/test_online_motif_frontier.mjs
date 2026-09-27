@@ -103,6 +103,48 @@ test('one DSH model stream is replaced by a certified tool call with provenance'
   assert.equal(events.at(-1).kind, 'model_request_skipped_verified');
 });
 
+test('certified pure code node binds a transformed tool argument without a model', async () => {
+  const { pin, read, manifest, task } = fixture();
+  manifest.artifacts[0].transfer_evidence = [];
+  manifest.contracts[pin].output_fields.push('raw_id');
+  const body = { kind: 'pure_code', language: 'sss-pure-python-expr-v1',
+    expression: 'upper(strip(x))', from_tool: pin, from_field: 'raw_id',
+    to_tool: read, to_param: 'source_id' };
+  const codeId = `code_${digest(body).slice(0, 16)}`;
+  manifest.artifacts[0].code_nodes = [{ node_id: codeId, ...body,
+    program_digest: digest(body) }];
+  manifest.artifacts[0].code_dag = { nodes: [pin, codeId, read],
+    edges: [[pin, codeId], [codeId, read]] };
+  sealManifest(manifest);
+  const events = [];
+  const intercept = createOnlineInterceptor({ manifest, task, mode: 'execute',
+    similarity: async () => [0.98], audit: (row) => events.push(row) });
+  intercept.observe('s1', { name: pin, callId: 'pin-source',
+    arguments: { path: 'source:PAPER_1' } },
+  { value: { structuredContent: { raw_id: ' note-d ', version: 'v1' } } });
+  const assembler = new BlockAssembler();
+  for await (const chunk of await intercept.intercept('s1',
+    { tools: [offered(read, ['source_id'])] },
+    () => { throw new Error('model should be bypassed'); })) assembler.push(chunk);
+  assert.deepEqual(JSON.parse(assembler.blocks()[0].arguments),
+    { source_id: 'NOTE-D' });
+  assert.deepEqual(events[0].code_node_ids, [codeId]);
+  const call = assembler.blocks()[0];
+  intercept.observe('s1', { name: read, callId: call.id,
+    arguments: { source_id: 'NOTE-D' } },
+  { value: { structuredContent: { version: 'v1', text: 'checked' } } });
+  assert.equal(events.at(-1).kind, 'model_request_skipped_verified');
+  const failedCode = createOnlineInterceptor({ manifest, task, mode: 'execute',
+    similarity: async () => [0.98] });
+  failedCode.observe('s1', { name: pin, callId: 'blank-source',
+    arguments: { path: 'source:PAPER_1' } },
+  { value: { structuredContent: { raw_id: '   ', version: 'v1' } } });
+  let fallback = 0;
+  await failedCode.intercept('s1', { tools: [offered(read, ['source_id'])] },
+    () => { fallback++; return (async function* () {})(); });
+  assert.equal(fallback, 1);
+});
+
 test('a verified model-chosen locator can anchor a later certified read', async () => {
   const locate = 'mcp__research__locate_quote';
   const read = 'mcp__research__read_match';
