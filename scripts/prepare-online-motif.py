@@ -25,7 +25,7 @@ def prepare(manifest: Path, task: Path) -> dict:
         raise ValueError("manifest and task must be frozen versioned JSON")
     verifier = ("import fs from 'node:fs'; "
                 "import {validateOnlineManifest, parseStructuredTask} "
-                "from './src/adapters/online_motif_frontier.mjs'; "
+                "from './src/motif_core/online_skill_runtime.mjs'; "
                 "const manifest=JSON.parse(fs.readFileSync(process.argv[1])); "
                 "const task=JSON.parse(fs.readFileSync(process.argv[2])); "
                 "validateOnlineManifest(manifest); parseStructuredTask(task,manifest);")

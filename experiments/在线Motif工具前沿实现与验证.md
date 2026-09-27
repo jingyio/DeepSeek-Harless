@@ -7,7 +7,7 @@
 ## 已实现
 
 1. `scripts/export-online-motif-manifest.py` 重新验证完整 Motif 库和工具契约，只导出非重复、至少两个节点、有独立任务验证的只读算子。对未列在工具契约中的版本字段、输入槽和非只读工具拒绝导出。
-2. `src/adapters/online_motif_frontier.mjs` 严格解析结构化任务输入。正则只验证显式 ID 的格式。近期成功工具调用须与 Motif 前缀、已记录的参数来源、任务绑定和来源版本同时相符，才能成为候选。局部 embedding 相似度和跨任务支持数用于排序；低分或分差不足时回退。
+2. `src/motif_core/online_skill_runtime.mjs` 严格解析结构化任务输入，并执行随 Motif skill 编译保存的受限参数程序。正则只验证显式 ID 的格式。近期成功工具调用须与 Motif 前缀、已记录的参数来源、任务绑定和来源版本同时相符，才能成为候选。局部 embedding 相似度和跨任务支持数用于排序；低分或分差不足时回退。`src/adapters/online_motif_frontier.mjs` 仅保留旧导入路径兼容。
 3. `src/adapters/dsh_online_motif.mjs` 使用 DSH 的 `llm/stream` 插件接口。在 `execute` 模式下返回一条合规的工具调用流，不调用下游 DeepSeek stream。工具仍由 DSH 正常分派。结果版本匹配后才记录 `model_request_skipped_verified`；失败或版本变化记录为未验证，并由后续模型步骤处理。日志只写 `.local/online-motif/`。
 4. 默认 `shadow` 模式只记录候选，不跳过模型。没有配置文件时插件保持关闭。
 

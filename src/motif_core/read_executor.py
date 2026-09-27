@@ -20,6 +20,7 @@ from .handoff import (
     build_blocking_precheck_handoff, build_runtime_failure_handoff,
 )
 from .offline.trace_compiler import artifact_signature, contract_signature
+from .offline.local_programs import compile_local_programs
 
 
 def _signature(value: Any) -> str:
@@ -98,6 +99,9 @@ def _validate_artifact(artifact: dict[str, Any], contracts: Mapping[str, Any]) -
     if artifact.get("selection_evidence", []) != selection:
         raise ValueError("Motif selection evidence differs from repeat frontier")
     dag = artifact.get("dag")
+    if ("local_programs" in artifact
+            and artifact["local_programs"] != compile_local_programs(artifact)):
+        raise ValueError("Motif local code differs from certified parameter edges")
     if dag is not None and dag != {
         "nodes": tools,
         "order_edges": [[tools[index], tools[index + 1]]

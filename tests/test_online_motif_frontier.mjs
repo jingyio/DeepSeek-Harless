@@ -2,9 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BlockAssembler } from '@deepseek-ai/dsh-llm';
 import { createOnlineInterceptor } from '../src/adapters/dsh_online_motif.mjs';
-import { digest, parseStructuredTask, proposeNext, proposeReadyBatch,
+import { compileLocalPrograms, digest, parseStructuredTask, proposeNext, proposeReadyBatch,
   validateOnlineManifest }
   from '../src/adapters/online_motif_frontier.mjs';
+
+function sealManifest(manifest) {
+  for (const artifact of manifest.artifacts) {
+    artifact.local_programs = compileLocalPrograms(artifact);
+  }
+  manifest.manifest_digest = digest(Object.fromEntries(Object.entries(manifest)
+    .filter(([key]) => key !== 'manifest_digest')));
+  return manifest;
+}
 
 function fixture() {
   const pin = 'mcp__research__pin_source';
@@ -30,7 +39,7 @@ function fixture() {
     slot_rules: { [pin]: { path: 'source:[A-Za-z0-9_-]+' } },
     version_fields: { [pin]: 'version', [read]: 'version' },
   };
-  manifest.manifest_digest = digest(manifest);
+  sealManifest(manifest);
   const task = { schema_version: 1, task_id: 'research-1', session_id: 's1',
     intent: 'Read the pinned paper source for my research decision',
     input_version: 'snapshot-1',
@@ -53,7 +62,18 @@ test('strict structured input accepts only approved identifier slots', () => {
   assert.throws(() => validateOnlineManifest({ ...manifest,
     contracts: { ...manifest.contracts, [pin]: { ...manifest.contracts[pin], read_only: false } } }),
   /changed certified/);
+  const changedProgram = structuredClone(manifest);
+  changedProgram.artifacts[0].local_programs[changedProgram.artifacts[0].tools[1]]
+    .steps[0].from_field = 'invented';
+  sealManifestDigestOnly(changedProgram);
+  assert.throws(() => validateOnlineManifest(changedProgram),
+    /local code differs/);
 });
+
+function sealManifestDigestOnly(manifest) {
+  manifest.manifest_digest = digest(Object.fromEntries(Object.entries(manifest)
+    .filter(([key]) => key !== 'manifest_digest')));
+}
 
 test('one DSH model stream is replaced by a certified tool call with provenance', async () => {
   const { pin, read, manifest, task } = fixture();
@@ -103,7 +123,7 @@ test('a verified model-chosen locator can anchor a later certified read', async 
     },
     slot_rules: {}, version_fields: { [locate]: 'sha256', [read]: 'sha256' },
   };
-  manifest.manifest_digest = digest(manifest);
+  sealManifest(manifest);
   const task = { schema_version: 1, task_id: 'quote-impact', session_id: 's1',
     intent: 'Check a paper quotation against the current research claim',
     input_version: 'snapshot-1', bindings: {},
@@ -127,8 +147,7 @@ test('independent versioned source handles form one DSH tool batch', async () =>
   const list = 'mcp__research__list_approved_sources';
   manifest.contracts[list] = { read_only: true, required_params: [],
     default_params: {}, output_fields: [], description: 'List approved sources' };
-  manifest.manifest_digest = digest(Object.fromEntries(Object.entries(manifest)
-    .filter(([key]) => key !== 'manifest_digest')));
+  sealManifest(manifest);
   const scoped = { ...task, bindings: {},
     source_versions: { [pin]: ['v1', 'v2'], [read]: ['v1', 'v2'] } };
   assert.deepEqual(parseStructuredTask(scoped, manifest).source_versions[pin], ['v1', 'v2']);
@@ -211,8 +230,7 @@ test('verified results can continue to a later dependency layer without a model'
         default_params: {}, output_fields: ['finding', 'version'],
         description: 'Inspect a pinned paper page' } },
     version_fields: { ...manifest.version_fields, [inspect]: 'version' } };
-  extended.manifest_digest = digest(Object.fromEntries(Object.entries(extended)
-    .filter(([key]) => key !== 'manifest_digest')));
+  sealManifest(extended);
   const scoped = { ...task, source_versions: { ...task.source_versions,
     [inspect]: 'v1' } };
   const intercept = createOnlineInterceptor({ manifest: extended, task: scoped,
@@ -254,8 +272,7 @@ test('a dependent chain cannot continue across two individually approved source 
         default_params: {}, output_fields: ['version'],
         description: 'Inspect one approved page' } },
     version_fields: { ...manifest.version_fields, [inspect]: 'version' } };
-  extended.manifest_digest = digest(Object.fromEntries(Object.entries(extended)
-    .filter(([key]) => key !== 'manifest_digest')));
+  sealManifest(extended);
   const scoped = { ...task, source_versions: { [pin]: ['v1', 'v2'],
     [read]: ['v1', 'v2'], [inspect]: ['v1', 'v2'] } };
   const history = [
@@ -286,8 +303,7 @@ test('one observed root with competing certified successors defers to the model'
     contracts: { ...manifest.contracts,
       [alternate]: { ...manifest.contracts[read], description: 'Read alternate evidence' } },
     version_fields: { ...manifest.version_fields, [alternate]: 'version' } };
-  extended.manifest_digest = digest(Object.fromEntries(Object.entries(extended)
-    .filter(([key]) => key !== 'manifest_digest')));
+  sealManifest(extended);
   const history = [{ name: pin, callId: 'pin-1', ok: true,
     arguments: { path: 'source:PAPER_1' },
     output: { source_id: 'source-one', version: 'v1' },

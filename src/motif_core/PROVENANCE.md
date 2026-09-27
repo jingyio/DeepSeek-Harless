@@ -74,3 +74,10 @@ successor from current predecessor output, and suspends or reenters at any
 missing parameter. It supports chains and joins without a hop count limit.
 It does not execute intervening observed tools without certified dependencies,
 or yet cover write operations and top-level semantic workflow nodes.
+
+The online DSH path now keeps deterministic parameter programs inside each
+exported Motif skill. `online_skill_runtime.mjs` validates these bounded
+programs against certified transfer edges and executes them in the core;
+the DSH adapter only observes host events and emits approved tool calls.
+Field transfer is a skill binding rather than a separate DAG node. General
+generated code nodes are not yet certified or executed by this path.

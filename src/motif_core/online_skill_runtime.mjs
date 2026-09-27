@@ -1,0 +1,423 @@
+/** Bounded online continuation of independently certified read-only Motifs. */
+
+import { createHash } from 'node:crypto';
+
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) =>
+      `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function digest(value) {
+  return createHash('sha256').update(canonical(value)).digest('hex');
+}
+
+/** Compile witnessed parameter edges into bounded code stored with one skill. */
+export function compileLocalPrograms(artifact) {
+  const programs = {};
+  for (const target of artifact.tools.slice(1)) {
+    const steps = artifact.transfer_evidence
+      .filter((edge) => edge.to_tool === target)
+      .map((edge) => ({ op: 'copy_verified_field',
+        from_tool: edge.from_tool, from_field: edge.from_field,
+        to_param: edge.to_param }));
+    if (steps.length) {
+      const body = { language: 'sss-local-ops-v1', target_tool: target, steps };
+      programs[target] = { ...body, program_digest: digest(body) };
+    }
+  }
+  return programs;
+}
+
+const scalar = (value) => typeof value === 'string' && value.length > 0 &&
+  value.length <= 500 && !/[\x00-\x1f]/.test(value);
+const field = (value, path) => path.split('.').reduce((item, part) =>
+  item && typeof item === 'object' ? item[part] : undefined, value);
+
+export function validateOnlineManifest(manifest) {
+  if (!manifest || manifest.schema_version !== 1 ||
+      !/^[a-f0-9]{64}$/.test(manifest.source_library_digest ?? '') ||
+      !Array.isArray(manifest.artifacts) || !manifest.artifacts.length ||
+      !manifest.contracts || typeof manifest.contracts !== 'object' ||
+      !manifest.slot_rules || typeof manifest.slot_rules !== 'object' ||
+      !manifest.version_fields || typeof manifest.version_fields !== 'object' ||
+      manifest.manifest_digest !== digest(Object.fromEntries(
+        Object.entries(manifest).filter(([key]) => key !== 'manifest_digest')))) {
+    throw new TypeError('invalid or changed certified online Motif manifest');
+  }
+  const ids = new Set();
+  for (const contract of Object.values(manifest.contracts)) {
+    if (!contract || contract.read_only !== true ||
+        !Array.isArray(contract.required_params) ||
+        !Array.isArray(contract.output_fields) ||
+        !contract.default_params || typeof contract.default_params !== 'object') {
+      throw new TypeError('online manifest includes a non-read or invalid tool');
+    }
+  }
+  for (const artifact of manifest.artifacts) {
+    if (!scalar(artifact.motif_id) || ids.has(artifact.motif_id) ||
+        !/^[a-f0-9]{64}$/.test(artifact.certified_digest ?? '') ||
+        !Array.isArray(artifact.tools) || artifact.tools.length < 2 ||
+        artifact.tools.length > 12 ||
+        new Set(artifact.tools).size !== artifact.tools.length ||
+        !Number.isSafeInteger(artifact.supporting_task_count) ||
+        artifact.supporting_task_count < 2 ||
+        !scalar(artifact.validation_task_fingerprint) ||
+        !Array.isArray(artifact.transfer_evidence)) {
+      throw new TypeError('online Motif lacks independent read-only evidence');
+    }
+    ids.add(artifact.motif_id);
+    for (const tool of artifact.tools) {
+      const contract = manifest.contracts[tool];
+      if (!contract || contract.read_only !== true ||
+          !Array.isArray(contract.required_params) ||
+          !Array.isArray(contract.output_fields) ||
+          !contract.default_params || typeof contract.default_params !== 'object' ||
+          !scalar(contract.description) || contract.description.length > 160) {
+        throw new TypeError('online Motif tool contract is invalid');
+      }
+    }
+    for (const edge of artifact.transfer_evidence) {
+      if (!artifact.tools.includes(edge.from_tool) ||
+          !artifact.tools.includes(edge.to_tool) ||
+          artifact.tools.indexOf(edge.from_tool) >= artifact.tools.indexOf(edge.to_tool) ||
+          !manifest.contracts[edge.from_tool].output_fields.includes(edge.from_field) ||
+          !manifest.contracts[edge.to_tool].required_params.includes(edge.to_param)) {
+        throw new TypeError('online parameter edge is not certified by contracts');
+      }
+    }
+    if (canonical(artifact.local_programs) !==
+        canonical(compileLocalPrograms(artifact))) {
+      throw new TypeError('Motif local code differs from certified parameter edges');
+    }
+  }
+  for (const [tool, params] of Object.entries(manifest.slot_rules)) {
+    if (!manifest.contracts[tool] || !params || typeof params !== 'object') {
+      throw new TypeError('unknown structured-input slot');
+    }
+    for (const [param, pattern] of Object.entries(params)) {
+      if (!manifest.contracts[tool].required_params.includes(param) ||
+          typeof pattern !== 'string' || pattern.length > 120 ||
+          /[\n\r]/.test(pattern)) {
+        throw new TypeError('invalid structured-input slot pattern');
+      }
+      new RegExp(`^(?:${pattern})$`, 'u');
+    }
+  }
+  for (const [tool, path] of Object.entries(manifest.version_fields)) {
+    if (!manifest.contracts[tool] ||
+        !manifest.contracts[tool].output_fields.includes(path)) {
+      throw new TypeError('version guard is not an approved output field');
+    }
+  }
+  return manifest;
+}
+
+/** Regex only converts explicit identifiers; it never chooses scientific meaning. */
+export function parseStructuredTask(raw, manifest) {
+  const task = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  if (!task || task.schema_version !== 1 || !scalar(task.task_id) ||
+      !scalar(task.session_id) ||
+      !scalar(task.intent) || task.intent.length > 1000 ||
+      !scalar(task.input_version) || !task.bindings ||
+      typeof task.bindings !== 'object' || !task.source_versions ||
+      typeof task.source_versions !== 'object') {
+    throw new TypeError('structured task needs identity, intent, bindings and versions');
+  }
+  for (const [tool, params] of Object.entries(task.bindings)) {
+    if (!manifest.contracts[tool] || !params || typeof params !== 'object') {
+      throw new TypeError('task binding names an unknown tool');
+    }
+    for (const [param, value] of Object.entries(params)) {
+      const pattern = manifest.slot_rules[tool]?.[param];
+      if (!pattern || !scalar(value) ||
+          !new RegExp(`^(?:${pattern})$`, 'u').test(value)) {
+        throw new TypeError('task identifier does not match an approved slot');
+      }
+    }
+  }
+  for (const [tool, version] of Object.entries(task.source_versions)) {
+    if (!manifest.contracts[tool] ||
+        !(scalar(version) || (Array.isArray(version) &&
+          version.length > 0 && version.length <= 32 &&
+          version.every(scalar) && new Set(version).size === version.length))) {
+      throw new TypeError('invalid source version scope');
+    }
+  }
+  return task;
+}
+
+/** Successful MCP results are the only source of inferred parameter edges. */
+export function observation(result) {
+  if (result?.isError || result?.value?.isError) return null;
+  const value = result?.value ?? result;
+  if (value?.structuredContent && typeof value.structuredContent === 'object') {
+    return value.structuredContent;
+  }
+  const text = value?.content?.find((block) => block?.type === 'text')?.text;
+  if (typeof text !== 'string') return null;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch { return null; }
+}
+
+export function bindNext(artifact, nextTool, prefix, task, manifest) {
+  const params = { ...manifest.contracts[nextTool].default_params };
+  for (const param of manifest.contracts[nextTool].required_params) {
+    const steps = artifact.local_programs[nextTool]?.steps.filter((step) =>
+      step.to_param === param) ?? [];
+    if (steps.length > 1) return null;
+    const taskValue = task.bindings[nextTool]?.[param];
+    if (steps.length === 1) {
+      const producer = prefix.find((row) => row.name === steps[0].from_tool);
+      const value = field(producer?.output, steps[0].from_field);
+      if (!scalar(value) || (taskValue !== undefined && taskValue !== value)) return null;
+      params[param] = value;
+    } else if (taskValue !== undefined) {
+      params[param] = taskValue;
+    } else return null;
+  }
+  return params;
+}
+
+function witnessedPrefix(artifact, prefix, task, manifest) {
+  for (let index = 0; index < prefix.length; index++) {
+    const tool = artifact.tools[index];
+    const actual = prefix[index].arguments;
+    if (!actual || typeof actual !== 'object') return false;
+    for (const param of manifest.contracts[tool].required_params) {
+      const steps = artifact.local_programs[tool]?.steps.filter((step) =>
+        step.to_param === param) ?? [];
+      if (steps.length > 1) return false;
+      const expected = steps.length === 1
+        ? field(prefix.find((row) => row.name === steps[0].from_tool)?.output,
+          steps[0].from_field)
+        : task.bindings[tool]?.[param];
+      if (expected === undefined && index === 0 && steps.length === 0) {
+        // The model already chose and ran the first tool. A successful,
+        // version-matched observation may anchor its opaque inputs; they need
+        // not have existed when the structured task was created.
+        if (!scalar(actual[param])) return false;
+      } else if (!scalar(expected) || actual[param] !== expected) return false;
+    }
+    for (const [param, expected] of Object.entries(
+      manifest.contracts[tool].default_params)) {
+      if (Object.hasOwn(actual, param) && actual[param] !== expected) return false;
+    }
+  }
+  return true;
+}
+
+export async function proposeNext({ manifest, task, history, availableTools,
+                                    similarity, minSimilarity, minMargin }) {
+  if (!history.length || typeof similarity !== 'function' ||
+      !(minSimilarity >= 0 && minSimilarity <= 1) ||
+      !(minMargin >= 0 && minMargin <= 1)) return null;
+  const candidates = [];
+  for (const artifact of manifest.artifacts) {
+    for (let length = Math.min(history.length, artifact.tools.length - 1);
+         length >= 1; length--) {
+      const prefix = history.slice(-length);
+      if (!prefix.every((row, index) => row.ok &&
+          row.name === artifact.tools[index] &&
+          !!manifest.version_fields[row.name] &&
+          !!task.source_versions[row.name] &&
+          row.inputVersion === task.input_version &&
+          row.sourceVersion === task.source_versions[row.name])) continue;
+      if (!witnessedPrefix(artifact, prefix, task, manifest)) continue;
+      const nextTool = artifact.tools[length];
+      const offered = availableTools.get(nextTool);
+      const required = manifest.contracts[nextTool].required_params;
+      if (!offered || offered.parameters?.type !== 'object' ||
+          !Array.isArray(offered.parameters.required) ||
+          canonical([...offered.parameters.required].sort()) !==
+            canonical([...required].sort()) ||
+          [...required, ...Object.keys(manifest.contracts[nextTool].default_params)]
+            .some((param) => !Object.hasOwn(offered.parameters.properties ?? {}, param))) {
+        continue;
+      }
+      const args = bindNext(artifact, nextTool, prefix, task, manifest);
+      if (!args) continue;
+      candidates.push({ artifact, nextTool, args, length,
+        description: manifest.contracts[nextTool].description });
+      break;
+    }
+  }
+  if (!candidates.length) return null;
+  const query = `${task.intent}\nRecent tools: ${history.slice(-4).map((row) => row.name).join(', ')}`;
+  const scores = await similarity(query, candidates.map((row) => row.description));
+  if (!Array.isArray(scores) || scores.length !== candidates.length ||
+      scores.some((score) => typeof score !== 'number' || !Number.isFinite(score))) {
+    return null;
+  }
+  const ranked = candidates.map((row, index) => ({ ...row, similarity: scores[index],
+    score: scores[index] * 0.8 +
+      Math.min(row.artifact.supporting_task_count, 5) / 5 * 0.1 +
+      row.length / row.artifact.tools.length * 0.1 }))
+    .sort((a, b) => b.score - a.score || a.artifact.motif_id.localeCompare(b.artifact.motif_id));
+  const best = ranked[0];
+  if (best.similarity < minSimilarity ||
+      (ranked.length > 1 && best.score - ranked[1].score < minMargin)) return null;
+  return { motif_id: best.artifact.motif_id,
+    certified_digest: best.artifact.certified_digest,
+    tool: best.nextTool, arguments: best.args, score: best.score,
+    similarity: best.similarity, prefix_length: best.length };
+}
+
+const versionAllowed = (task, tool, value) => scalar(value) &&
+  (Array.isArray(task.source_versions[tool])
+    ? task.source_versions[tool].includes(value)
+    : task.source_versions[tool] === value);
+
+function matchingPrefixes(artifact, history, length, task, manifest) {
+  let partial = [[]];
+  for (const tool of artifact.tools.slice(0, length)) {
+    const next = [];
+    for (const prefix of partial) {
+      const after = prefix.length ? prefix.at(-1).historyIndex + 1 : 0;
+      for (let index = after; index < history.length; index++) {
+        const row = history[index];
+        if (row.name === tool && row.ok &&
+            row.inputVersion === task.input_version &&
+            manifest.version_fields[tool] &&
+            versionAllowed(task, tool, row.sourceVersion)) {
+          next.push([...prefix, { ...row, historyIndex: index }]);
+          if (next.length > 128) return [];
+        }
+      }
+    }
+    partial = next;
+    if (!partial.length) break;
+  }
+  return partial.filter((prefix) =>
+    witnessedPrefix(artifact, prefix, task, manifest) &&
+    artifact.transfer_evidence.every((edge) => {
+      const from = prefix.find((row) => row.name === edge.from_tool);
+      const to = prefix.find((row) => row.name === edge.to_tool);
+      return !from || !to || from.sourceVersion === to.sourceVersion;
+    }));
+}
+
+function offeredSchemaMatches(availableTools, tool, contract) {
+  const offered = availableTools.get(tool);
+  const required = contract.required_params;
+  return offered?.parameters?.type === 'object' &&
+    Array.isArray(offered.parameters.required) &&
+    canonical([...offered.parameters.required].sort()) ===
+      canonical([...required].sort()) &&
+    [...required, ...Object.keys(contract.default_params)]
+      .every((param) => Object.hasOwn(offered.parameters.properties ?? {}, param));
+}
+
+/** Find independent, provenance-bound continuations in interleaved tool history. */
+export async function proposeReadyBatch({ manifest, task, history, availableTools,
+                                         similarity, minSimilarity, minMargin,
+                                         usedPrefixes = new Set(), maxBatch = 4 }) {
+  const barrier = history.findLastIndex((row) => row.barrier === true);
+  history = history.slice(barrier + 1);
+  if (!history.length || typeof similarity !== 'function' ||
+      !(minSimilarity >= 0 && minSimilarity <= 1) ||
+      !(minMargin >= 0 && minMargin <= 1) ||
+      !Number.isSafeInteger(maxBatch) || maxBatch < 1 || maxBatch > 8) return [];
+  const candidates = [];
+  for (const artifact of manifest.artifacts) {
+    for (let length = 1; length < artifact.tools.length; length++) {
+      const nextTool = artifact.tools[length];
+      if (!manifest.version_fields[nextTool] ||
+          !offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool])) continue;
+      for (const prefix of matchingPrefixes(artifact, history, length, task, manifest)) {
+        const args = bindNext(artifact, nextTool, prefix, task, manifest);
+        if (!args) continue;
+        const edges = artifact.transfer_evidence.filter((edge) => edge.to_tool === nextTool);
+        if (!edges.length) continue;
+        const versions = new Set(edges.map((edge) =>
+          prefix.find((row) => row.name === edge.from_tool)?.sourceVersion));
+        if (versions.size !== 1) continue;
+        const expectedVersion = [...versions][0];
+        if (!versionAllowed(task, nextTool, expectedVersion)) continue;
+        const lastIndex = prefix.at(-1).historyIndex;
+        if (history.slice(lastIndex + 1).some((row) =>
+          row.name === nextTool && digest(row.arguments) === digest(args))) continue;
+        const prefixKey = digest([artifact.motif_id, nextTool,
+          prefix.map((row) => row.callId ?? row.historyIndex)]);
+        if (usedPrefixes.has(prefixKey)) continue;
+        candidates.push({ motif_id: artifact.motif_id,
+          certified_digest: artifact.certified_digest, tool: nextTool,
+          arguments: args, expected_version: expectedVersion,
+          prefix_key: prefixKey,
+          root_key: String(prefix[0].callId ?? prefix[0].historyIndex),
+          prefix_length: length, supporting_task_count: artifact.supporting_task_count,
+          description: manifest.contracts[nextTool].description });
+      }
+    }
+  }
+  if (!candidates.length) return [];
+  const query = `${task.intent}\nRecent tools: ${history.slice(-4)
+    .map((row) => row.name).join(', ')}`;
+  const scores = await similarity(query, candidates.map((row) => row.description));
+  if (!Array.isArray(scores) || scores.length !== candidates.length ||
+      scores.some((score) => typeof score !== 'number' || !Number.isFinite(score))) return [];
+  const ranked = candidates.map((row, index) => ({ ...row,
+    similarity: scores[index],
+    score: scores[index] * 0.8 +
+      Math.min(row.supporting_task_count, 5) / 5 * 0.1 +
+      row.prefix_length / manifest.artifacts.find((a) => a.motif_id === row.motif_id).tools.length * 0.1 }));
+  const byRoot = new Map();
+  for (const row of ranked) {
+    const group = byRoot.get(row.root_key) ?? [];
+    group.push(row);
+    byRoot.set(row.root_key, group);
+  }
+  const selected = [];
+  for (const group of byRoot.values()) {
+    const alternatives = new Map();
+    for (const row of group) {
+      const key = digest([row.tool, row.arguments]);
+      const prior = alternatives.get(key);
+      if (!prior || row.score > prior.score) alternatives.set(key, row);
+    }
+    // A shared root with different successors might be a scientific choice.
+    if (alternatives.size !== 1) continue;
+    const row = [...alternatives.values()][0];
+    if (row.similarity >= minSimilarity) selected.push(row);
+  }
+  if (!selected.length) return [];
+  selected.sort((a, b) => b.score - a.score || a.prefix_key.localeCompare(b.prefix_key));
+  if (selected.length > maxBatch &&
+      selected[maxBatch - 1].score - selected[maxBatch].score < minMargin) return [];
+  const distinct = [];
+  const calls = new Set();
+  for (const row of selected) {
+    const key = digest([row.tool, row.arguments]);
+    if (!calls.has(key)) { distinct.push(row); calls.add(key); }
+    if (distinct.length === maxBatch) break;
+  }
+  return distinct;
+}
+
+export function syntheticToolStream(callId, proposal) {
+  return syntheticToolStreamBatch([{ callId, proposal }]);
+}
+
+export function syntheticToolStreamBatch(calls) {
+  if (!Array.isArray(calls) || !calls.length || calls.length > 8) {
+    throw new TypeError('synthetic tool batch must contain 1–8 calls');
+  }
+  return (async function* () {
+    for (const [index, { callId, proposal }] of calls.entries()) {
+      const args = JSON.stringify(proposal.arguments);
+      yield { type: 'block-start', index, blockType: 'tool-call' };
+      yield { type: 'tool-call-delta', index, id: callId,
+        name: proposal.tool, argumentsDelta: args };
+      yield { type: 'block-end', index, block: { type: 'tool-call',
+        id: callId, name: proposal.tool, arguments: args } };
+    }
+    yield { type: 'finish', reason: { kind: 'tool-calls' } };
+  })();
+}
+
+export { digest };

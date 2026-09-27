@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { apply } from '../src/adapters/dsh_online_motif.mjs';
-import { digest } from '../src/adapters/online_motif_frontier.mjs';
+import { compileLocalPrograms, digest } from '../src/motif_core/online_skill_runtime.mjs';
 
 test('DSH plugin intercepts an agent loop stream before the provider', async () => {
   const root = mkdtempSync(join(tmpdir(), 'sss-online-motif-'));
@@ -33,6 +33,8 @@ test('DSH plugin intercepts an agent loop stream before the provider', async () 
       slot_rules: { [pin]: { path: 'paper:[A-Za-z0-9]+' } },
       version_fields: { [pin]: 'version', [read]: 'version' },
     };
+    manifest.artifacts[0].local_programs =
+      compileLocalPrograms(manifest.artifacts[0]);
     manifest.manifest_digest = digest(manifest);
     const task = { schema_version: 1, task_id: 't1', session_id: 's1',
       intent: 'Read paper', input_version: 'snapshot',

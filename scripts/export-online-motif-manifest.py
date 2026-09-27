@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 from src.adapters.tool_contract_loader import parse_tool_contracts
 from src.motif_core.offline.library_builder import validate_read_motif_library
 from src.motif_core.read_executor import _validate_artifact
+from src.motif_core.offline.local_programs import compile_local_programs
 
 
 def digest(value: dict) -> str:
@@ -48,11 +49,15 @@ def export_manifest(library: dict, contract_rows: dict,
             if not contract.description or len(contract.description) > 160:
                 raise ValueError("online Motif tool needs bounded documentation")
         used_tools.update(tools)
+        programs = (artifact.get("local_programs")
+                    if "local_programs" in artifact
+                    else compile_local_programs(artifact))
         artifacts.append({
             "motif_id": artifact["motif_id"],
             "certified_digest": artifact["certified_digest"],
             "tools": tools,
             "transfer_evidence": artifact["transfer_evidence"],
+            "local_programs": programs,
             "supporting_task_count": len(artifact["source_task_fingerprints"]),
             "validation_task_fingerprint": artifact["validation_task_fingerprint"],
         })

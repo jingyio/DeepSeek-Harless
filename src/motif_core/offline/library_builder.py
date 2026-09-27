@@ -20,6 +20,7 @@ from .motif_miner import normalize_repeated_tools
 from .trace_compiler import certify_read_motif, compile_read_motif
 from .repeat_compiler import certify_repeat_read_motif, compile_repeat_read_motif
 from .link_compiler import compile_read_links
+from .local_programs import compile_local_programs
 
 
 def _digest(value: Any) -> str:
@@ -122,6 +123,7 @@ def build_read_motif_library(
                 raise ValueError("no independent held-out occurrence validates parameter flow")
             artifact = validated[0]
             tools = artifact["tools"]
+            artifact["local_programs"] = compile_local_programs(artifact)
             artifact["dag"] = {
                 "nodes": tools,
                 "order_edges": [[tools[i], tools[i + 1]] for i in range(len(tools) - 1)],

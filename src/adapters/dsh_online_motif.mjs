@@ -5,7 +5,7 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { digest, observation, parseStructuredTask, proposeReadyBatch,
-  syntheticToolStreamBatch, validateOnlineManifest } from './online_motif_frontier.mjs';
+  syntheticToolStreamBatch, validateOnlineManifest } from '../motif_core/online_skill_runtime.mjs';
 
 export const name = 'sss-online-motif';
 export const inject = ['llm', 'agents'];
