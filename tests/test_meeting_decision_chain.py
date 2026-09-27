@@ -115,6 +115,12 @@ class MeetingMcpTest(unittest.IsolatedAsyncioTestCase):
             invalid = await client.call_tool("read_pinned_object", {
                 "source_id": "wps:hardware_latency:run_2026w39"})
             self.assertTrue(invalid.is_error)
+            claims_schema = offered["find_dependent_claims"].input_schema[
+                "properties"]["object_id"]
+            self.assertIn("previous_experiment_id", claims_schema["description"])
+            previous_claims = await client.call_tool("find_dependent_claims", {
+                "object_id": "wps:hardware_latency:run_2026w38"})
+            self.assertTrue(previous_claims.is_error)
             event = await client.call_tool("read_change",
                                            {"event_id": "event:hardware_latency:w39"})
             self.assertFalse(event.is_error)

@@ -38,9 +38,9 @@ DSH 工具补丁见 `config/meeting-decision-chain.patch.yml`，用于轨迹编�
 
 v1 的四题试跑与成本归因见 `experiments/组会决定链Motif前瞻试验_2026-09-27.md`。它测到在线整轮跳过，但没有合格交付总成本收益。v1 原始轨迹和结果留在本机 `.local/benchmarks/meeting-decision-chain-v1/`，不得拿它们认证下面 v2 新工具契约。
 
-## v2：新版工具契约与重复对照
+## v3：新版工具契约与重复对照
 
-MCP 的参数 schema 现在明确区分应用对象 ID、`pin_object` 返回的 `source_id`、实验表返回的 `dataset_id`；无效格式在工具入口拒绝。新版工具说明对普通组和 Motif 组完全相同。交付提示也对两组固定为可直接渲染的 Markdown 正文。新版运行记录存放在 `.local/benchmarks/meeting-decision-chain-v2/`，与 v1 隔离。
+MCP 的参数 schema 现在明确区分应用对象 ID、`pin_object` 返回的 `source_id`、实验表返回的 `dataset_id`；依赖查询仅接受当前 `experiment_id`。无效格式在工具入口拒绝。新版工具说明对普通组和 Motif 组完全相同。交付提示也对两组固定为可直接渲染的 Markdown 正文。正式新版记录存放在 `.local/benchmarks/meeting-decision-chain-v3/`，与 v1 隔离。此前 v2 的三项普通组试跑揭示了“上一版实验被错传给当前依赖查询”的接口缺口，因此只作诊断，不参与 v3 编译或成绩。
 
 先在 `family_shift`、`label_audit` 的**新版普通 Harness**轨迹上重新发现参数边；再用 `hardware_latency` 的新版轨迹独立认证。`site_transfer`、`tail_terms`、`lot_stability` 是三个新决定，只用于前瞻效果对照，不准进入编译、认证或阈值调节。其封存判定标准在 `review/v2_criteria.md`。每题普通组与 Motif 组均使用同一任务、工具、模型和输出格式，分别记录调用错误、跳过的模型请求、所有请求的输入/输出/推理 token、缓存命中、费用、时间和人工修订；特别对照最后写稿前与最后一次写稿的用量。先按质量合格判定，再比较合格交付总成本。
 

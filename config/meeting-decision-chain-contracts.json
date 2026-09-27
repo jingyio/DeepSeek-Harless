@@ -43,7 +43,7 @@
     "required_params": ["object_id"],
     "read_only": true,
     "output_fields": [],
-    "description": "用read_change返回的experiment_id查依赖；返回claim_id（元数据）、可固定的note_id和annotation_id。",
+    "description": "只用read_change返回的当前experiment_id查依赖，不接受previous_experiment_id；返回可固定的note_id和annotation_id。",
     "replay_stable": true
   }
 }

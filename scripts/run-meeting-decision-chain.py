@@ -28,7 +28,7 @@ CASE_IDS = frozenset(("family_shift", "label_audit", "hardware_latency",
 PROSPECTIVE_CASE_IDS = frozenset(("site_transfer", "tail_terms", "lot_stability"))
 PATCH = ROOT / "config/meeting-decision-chain.patch.yml"
 CONTRACTS = ROOT / "config/meeting-decision-chain-contracts.json"
-OUT = ROOT / ".local/benchmarks/meeting-decision-chain-v2"
+OUT = ROOT / ".local/benchmarks/meeting-decision-chain-v3"
 CAP_USD = 1.0
 MAX_REQUESTS = 15
 MAX_OUTPUT_TOKENS = 8000
@@ -68,7 +68,7 @@ def preview(case: str, arm: str, online_manifest: Path | None,
     elif online_manifest or online_task:
         raise ValueError("baseline must not receive a Motif manifest")
     return {"task_id": f"meeting-decision-{case}", "case": case, "arm": arm,
-            "benchmark_version": 2,
+            "benchmark_version": 3,
             "frozen_min_similarity": similarity_threshold if arm == "motif" else None,
             "classification": "synthetic_development_trial",
             "model": "deepseek-flash", "reasoning_effort": "high",

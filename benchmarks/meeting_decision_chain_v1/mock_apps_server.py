@@ -34,6 +34,9 @@ ObjectId = Annotated[str, Field(
     pattern=r"^(?:wps|obsidian|zotero):[a-z_]+:[A-Za-z0-9_]+$",
     description="应用对象 ID；取自 read_change 的 experiment_id / previous_experiment_id，"
                 "或 find_dependent_claims 的 note_id / annotation_id。claim_id 不是可固定对象。")]
+CurrentExperimentId = Annotated[str, Field(
+    pattern=r"^wps:[a-z_]+:run_2026w39$",
+    description="只填 read_change.experiment_id（当前实验）；previous_experiment_id 不在当前主张索引中。")]
 SourceId = Annotated[str, Field(
     pattern=r"^source-[0-9a-f]{32}$",
     description="只能填 pin_object 刚返回的 source_id，不能填 WPS/Obsidian/Zotero 对象 ID。")]
@@ -198,8 +201,8 @@ def aggregate_pinned_experiment(dataset_id: DatasetId, group_by: list[str]) -> d
             "group_by": group_by, "groups": groups, "synthetic": True}
 
 
-def find_dependent_claims(object_id: ObjectId) -> dict:
-    """Find claim metadata for an experiment object; claim_id is not pinnable."""
+def find_dependent_claims(object_id: CurrentExperimentId) -> dict:
+    """Find claims for the current experiment_id only, not the previous run."""
     if _object_kind(object_id) != "experiment":
         raise ValueError("dependency lookup needs an experiment object")
     note = _json("note")
