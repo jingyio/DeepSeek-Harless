@@ -1,0 +1,11 @@
+{
+  "event_id": "event:robot_protocol:w39",
+  "experiment_id": "wps:robot_protocol:run_2026w39",
+  "previous_experiment_id": "wps:robot_protocol:run_2026w38",
+  "previous_version_sha256": "18ef2dcd728342a7cac24046344405841afc2ea835cea3615ce3a9d95ea8bfbf",
+  "title": "自动化实验步骤在新协议下是否可靠",
+  "changed_fields": [
+    "successful_trials"
+  ],
+  "message": "新协议运行记录修订，请重新判断自动化可靠性主张。"
+}

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from itertools import combinations
 from typing import Any
 
 from .dsh_event_projection import is_original_tool_result
@@ -105,6 +106,33 @@ def _formal_simpson_reversal(rows: list[dict[str, Any]], contract: dict,
     return pooled_sign != 0 and len(subgroup_signs) == 1 and subgroup_signs == {-pooled_sign}
 
 
+def _observed_fractions(rows_by_object: dict[str, list[dict[str, Any]]],
+                        contract: dict, dimensions: list[str]) -> tuple[set[tuple[int, int]], set[int]]:
+    """Enumerate row and declared-group fractions; infer no scientific meaning."""
+    numerator, denominator = contract.get("numerator"), contract.get("denominator")
+    if not isinstance(numerator, str) or not isinstance(denominator, str):
+        return set(), set()
+    valid: set[tuple[int, int]] = set()
+    denominators: set[int] = set()
+    for rows in rows_by_object.values():
+        for width in range(len(dimensions) + 1):
+            for grouping in combinations(dimensions, width):
+                totals: dict[tuple[Any, ...], list[int]] = defaultdict(lambda: [0, 0])
+                for row in rows:
+                    top, bottom = row.get(numerator), row.get(denominator)
+                    if type(top) is not int or type(bottom) is not int or bottom <= 0:
+                        return set(), set()
+                    bucket = totals[tuple(row.get(field) for field in grouping)]
+                    bucket[0] += top
+                    bucket[1] += bottom
+                    valid.add((top, bottom))
+                    denominators.add(bottom)
+                for top, bottom in totals.values():
+                    valid.add((top, bottom))
+                    denominators.add(bottom)
+    return valid, denominators
+
+
 def audit_versioned_seed_claims(events: list[dict[str, Any]],
                                 draft: str) -> dict[str, Any]:
     """Return explicit contradictions; incomplete evidence yields no clearance."""
@@ -179,6 +207,14 @@ def audit_versioned_seed_claims(events: list[dict[str, Any]],
     markers = list(label_re.finditer(draft))
     conflicts = []
     checked = 0
+    fractions, observed_denominators = _observed_fractions(
+        rows_by_object, metric_contract, dimensions)
+    if fractions:
+        for match in re.finditer(r"(?<![\d.\-])(\d{1,6})\s*/\s*(\d{1,6})(?![\d.])", draft):
+            top, bottom = int(match.group(1)), int(match.group(2))
+            if bottom in observed_denominators and (top, bottom) not in fractions:
+                conflicts.append({"kind": "unobserved_fraction", "message":
+                                  f"报告中的 {top}/{bottom} 不属于已读取原始行或声明分组的聚合结果"})
     if len(rows_by_object[current_id]) == len(rows_by_object[previous_id]):
         for match in re.finditer(r"新增[^。；，、\n]{0,18}行", draft):
             prefix = draft[max(0, match.start() - 6):match.start()]
@@ -186,10 +222,22 @@ def audit_versioned_seed_claims(events: list[dict[str, Any]],
                 conflicts.append({"kind": "row_count", "message":
                                   "两版逐行记录数相同，不能声称新增了记录行"})
                 break
-    simpson_claims = [match for match in re.finditer(r"辛普森|Simpson", draft,
-                                                      re.IGNORECASE)
-                      if not re.search(r"(?:并非|不是|不构成|不能称为|不属于)\s*$",
-                                       draft[max(0, match.start() - 12):match.start()])]
+    simpson_claims = []
+    for match in re.finditer(r"辛普森|Simpson", draft, re.IGNORECASE):
+        start = max(draft.rfind(mark, 0, match.start()) for mark in "。！？；\n") + 1
+        end_candidates = [draft.find(mark, match.end()) for mark in "。！？；\n"]
+        end = min((index for index in end_candidates if index >= 0), default=len(draft))
+        sentence = draft[start:end]
+        before = draft[start:match.start()]
+        after = draft[match.end():end]
+        if ("是否" in before or re.search(r"[?？]\s*$", sentence) or
+                re.search(r"(?:并非|不是|不构成|不能|不得|不属于|不满足|未|无)"
+                          r"[^。；\n]{0,24}$", before) or
+                re.search(r"^(?:悖论)?(?:要求|定义|须|需)", after)):
+            continue
+        if (re.search(r"(?:存在|构成|呈现|出现|属于|可称为|是)\s*[^。；\n]{0,12}$",
+                      before) or re.search(r"^(?:式|型)", after)):
+            simpson_claims.append(match)
     if simpson_claims:
         reversal = _formal_simpson_reversal(rows_by_object[current_id],
                                             metric_contract, dimensions)

@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:model_rsi_state:transfer",
+  "text": "旧判断：可更新的内部能力状态可能提高未见任务迁移。整体正确率向好，但训练任务与留出任务必须分别复核，不能把已见任务增益当作迁移证据。",
+  "decision_options": [
+    "补留出任务重复实验",
+    "核查任务家族划分",
+    "维持跨任务迁移主张"
+  ],
+  "depends_on": "wps:model_rsi_state:run_2026w39"
+}

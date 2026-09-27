@@ -97,8 +97,8 @@ def _check_candidate(candidate: dict[str, Any], contracts: Mapping[str, Any]) ->
             or not contracts[source].read_only or not contracts[target].read_only
             or candidate.get("from_field") not in contracts[source].output_fields
             or candidate.get("to_param") not in contracts[target].required_params
-            or relation not in {"same_source", "object_lookup"}
-            or (relation == "object_lookup" and (
+            or relation not in {"same_source", "object_lookup", "lookup_index"}
+            or (relation in {"object_lookup", "lookup_index"} and (
                 candidate.get("to_param") != "object_id" or
                 not str(candidate.get("from_field", "")).split(".")[-1].endswith("_id")))):
         raise ValueError("a witnessed read-only parameter edge is required")
@@ -144,8 +144,8 @@ def compile_witnessed_edge_motif(candidate: dict[str, Any], traces: list[Any],
     motif_id = "edge_motif_" + hashlib.sha256(motif_key.encode()).hexdigest()[:12]
     binding = {"from_tool": source, "from_field": candidate["from_field"],
                "to_param": candidate["to_param"]}
-    if candidate.get("version_relation") == "object_lookup":
-        binding["version_relation"] = "object_lookup"
+    if candidate.get("version_relation") in {"object_lookup", "lookup_index"}:
+        binding["version_relation"] = candidate["version_relation"]
     source_shapes = dict(contracts[source].parameter_shapes)
     target_shapes = dict(contracts[target].parameter_shapes)
     source_defaults = dict(contracts[source].default_params)

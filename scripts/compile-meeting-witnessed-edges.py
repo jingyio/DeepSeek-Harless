@@ -20,6 +20,7 @@ from src.adapters.task_identity import (  # noqa: E402
 from src.adapters.tool_contract_loader import parse_tool_contracts  # noqa: E402
 from src.motif_core.offline.edge_compiler import (  # noqa: E402
     certify_witnessed_edge_motif, compile_witnessed_edge_motif,
+    safe_edge_witnesses,
 )
 from src.motif_core.offline.library_builder import (  # noqa: E402
     _digest, library_from_certified,
@@ -43,6 +44,35 @@ def _witnessed_edges(trace) -> set[tuple[str, str, str, str]]:
     return {(source["from_tool"], source["from_field"], record.name, param)
             for record in trace.records if record.eligible
             for param, source in (record.parameter_sources or {}).items()}
+
+
+def _field(value: dict, path: str):
+    for part in path.split("."):
+        if isinstance(value, dict):
+            value = value.get(part)
+        elif isinstance(value, list) and part.isdecimal() and int(part) < len(value):
+            value = value[int(part)]
+        else:
+            return None
+    return value
+
+
+def _witnessed_versions(artifact: dict, traces: list, contracts: dict,
+                        source_field: str, target_field: str) -> bool:
+    edge = artifact["transfer_evidence"][0]
+    candidate = {"status": "candidate_only", "from_tool": edge["from_tool"],
+                 "from_field": edge["from_field"], "to_tool": edge["to_tool"],
+                 "to_param": edge["to_param"],
+                 "version_relation": edge.get("version_relation", "same_source")}
+    for trace in traces:
+        pairs = safe_edge_witnesses(candidate, trace, contracts)
+        if not pairs or not any(
+            isinstance(_field(source.observation, source_field), str) and
+            isinstance(_field(target.observation, target_field), str)
+            for source, target in pairs
+        ):
+            return False
+    return True
 
 
 def main() -> None:
@@ -81,7 +111,9 @@ def main() -> None:
                      "from_field": field, "to_tool": target, "to_param": param,
                      "source_trace_ids": [row.trace_id for row in traces[:2]]}
         if param == "object_id" and field.split(".")[-1].endswith("_id"):
-            candidate["version_relation"] = "object_lookup"
+            candidate["version_relation"] = (
+                "lookup_index" if "index_version_sha256" in
+                contracts[target].output_fields else "object_lookup")
         try:
             compiled = compile_witnessed_edge_motif(candidate, traces[:2], contracts)
             artifact = certify_witnessed_edge_motif(compiled, traces[2], contracts)
@@ -112,11 +144,16 @@ def main() -> None:
             edge = artifact["transfer_evidence"]
             target_required = set(contracts[second].required_params)
             bound = {row["to_param"] for row in edge if row["to_tool"] == second}
-            source_version_field = ("event_version" if "event_version" in
-                                    contracts[first].output_fields else "version_sha256")
+            source_version_field = next((field for field in
+                ("event_version", "index_version_sha256", "version_sha256")
+                if field in contracts[first].output_fields), None)
+            target_version_field = next((field for field in
+                ("index_version_sha256", "version_sha256")
+                if field in contracts[second].output_fields), None)
             if (target_required <= bound
-                    and source_version_field in contracts[first].output_fields
-                    and "version_sha256" in contracts[second].output_fields):
+                    and source_version_field and target_version_field and
+                    _witnessed_versions(artifact, traces, contracts,
+                                        source_version_field, target_version_field)):
                 eligible.append(artifact)
         if not eligible:
             raise ValueError("no certified edge has complete parameter and version guards")

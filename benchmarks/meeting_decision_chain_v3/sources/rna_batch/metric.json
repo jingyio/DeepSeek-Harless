@@ -1,0 +1,9 @@
+{
+  "id": "call_yield",
+  "numerator": "valid_calls",
+  "denominator": "assays",
+  "allowed_groups": [
+    "variant",
+    "lab_batch"
+  ]
+}

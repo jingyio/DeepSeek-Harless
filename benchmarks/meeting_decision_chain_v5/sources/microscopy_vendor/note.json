@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:microscopy_vendor:transfer",
+  "text": "旧判断：候选分割方法在厂商 A 图像上提升人工接受率，或可迁移到厂商 B。须分别报告厂商与人工复核口径。",
+  "decision_options": [
+    "暂停跨厂商主张",
+    "核对人工复核规则",
+    "直接合并两厂商结果"
+  ],
+  "depends_on": "wps:microscopy_vendor:run_2026w39"
+}

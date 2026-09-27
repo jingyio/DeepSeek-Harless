@@ -21,9 +21,19 @@ from pydantic import Field
 
 
 ROOT = Path(__file__).resolve().parent
+V2_ROOT = ROOT.parent / "meeting_decision_chain_v2"
+V2_CASE_IDS = frozenset(("model_rsi_state", "aidd_mutation",
+                         "agent_tool_transfer"))
+V3_ROOT = ROOT.parent / "meeting_decision_chain_v3"
+V3_CASE_IDS = frozenset(("rna_batch", "retrieval_language", "robot_protocol"))
+V4_ROOT = ROOT.parent / "meeting_decision_chain_v4"
+V4_CASE_IDS = frozenset(("battery_cold", "corpus_shift", "remote_assay"))
+V5_ROOT = ROOT.parent / "meeting_decision_chain_v5"
+V5_CASE_IDS = frozenset(("microscopy_vendor", "chemistry_substrate",
+                         "materials_scaleup"))
 CASE_IDS = frozenset(("family_shift", "label_audit", "hardware_latency",
                       "novel_queries", "site_transfer", "tail_terms",
-                      "lot_stability"))
+                      "lot_stability")) | V2_CASE_IDS | V3_CASE_IDS | V4_CASE_IDS | V5_CASE_IDS
 _handles: dict[str, tuple[str, str]] = {}
 _datasets: dict[str, str] = {}
 
@@ -59,7 +69,12 @@ def _path(kind: str) -> Path:
              "annotation": "annotation.json"}
     if kind not in names:
         raise ValueError("unknown source kind")
-    return ROOT / "sources" / _case() / names[kind]
+    case = _case()
+    base = (V5_ROOT if case in V5_CASE_IDS else
+            V4_ROOT if case in V4_CASE_IDS else
+            V3_ROOT if case in V3_CASE_IDS else
+            V2_ROOT if case in V2_CASE_IDS else ROOT)
+    return base / "sources" / case / names[kind]
 
 
 def _sha(path: Path) -> str:
@@ -209,11 +224,14 @@ def find_dependent_claims(object_id: CurrentExperimentId) -> dict:
     if note["depends_on"] != object_id:
         raise ValueError("dependency index and source disagree")
     case = _case()
+    index_version = hashlib.sha256(":".join((
+        _sha(_path("experiment")), _sha(_path("note")),
+        _sha(_path("annotation")))).encode()).hexdigest()
     return {"experiment_id": object_id, "claims": [{
         "claim_id": note["claim_id"],
         "note_id": f"obsidian:{case}:claim",
         "annotation_id": f"zotero:{case}:annotation",
-    }], "synthetic": True}
+    }], "index_version_sha256": index_version, "synthetic": True}
 
 
 server = MCPServer(

@@ -1,0 +1,9 @@
+{
+  "id": "cycle_prediction_rate",
+  "numerator": "valid_predictions",
+  "denominator": "tested_cells",
+  "allowed_groups": [
+    "variant",
+    "temperature"
+  ]
+}

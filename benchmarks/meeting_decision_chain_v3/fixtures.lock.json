@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "classification": "synthetic_development_trial",
+  "input_sha256": {
+    "sources/retrieval_language/annotation.json": "242f2067a99a1a89dc66513731c19f2aff3ece2452331d7815d3fa3a5908b08e",
+    "sources/retrieval_language/event.json": "f367c02b6e62a549011eeaabb20c131c33533bcc0da8a32e0fc148a4008a7672",
+    "sources/retrieval_language/experiment.xlsx": "79f6358376dfb58ada4161850de72bcac79a6fe2c65fbe1549dea946e0579830",
+    "sources/retrieval_language/metric.json": "2f27053dd5f4d3e672b244448fb2cbc541dd11c15026553ac5494e2df3bd16d5",
+    "sources/retrieval_language/note.json": "39d4bca27b5cf8104fd01d906c848cb038de84fbe0e356d23e4c6eab8ca23ea3",
+    "sources/retrieval_language/previous_experiment.xlsx": "14ed89a0b98d2ea17976f606e412027225f36d7ad6d3120b46852f9e0a08c8a1",
+    "sources/rna_batch/annotation.json": "3d9ea6f66acc479fd22fafa81a01f1c56ccf8b2498de1d45d72da6a7d71315bf",
+    "sources/rna_batch/event.json": "1eb57ae6791fc3ba337c75cbf78303154d682966b8ce884abafb79b7a0d3dadf",
+    "sources/rna_batch/experiment.xlsx": "eee33a75264403ee163c72abca0c10a28504a327eaddf2d4540de39d16b53aba",
+    "sources/rna_batch/metric.json": "c8bf3e90b3923e1edd2a4d1111e402895436d148689cb0515a65288a9ce7acef",
+    "sources/rna_batch/note.json": "4abfaa445f9fbd024f9f8b2ba74d94be0451c2158e8bf5b2e320df4c97ed51f3",
+    "sources/rna_batch/previous_experiment.xlsx": "1e5ac6dc8b72a6d5bbab01fbdeb8756eb6b8141a1ee771fe54848c0c174c0298",
+    "sources/robot_protocol/annotation.json": "fa1d9900360402b5ab89d57f6c09e03c8f3030234b3f2c5338b1c24f55237ccc",
+    "sources/robot_protocol/event.json": "81463bfbb25e1191128771b9dccd87ad9a058af5a1184bca726e0eab53d5a76a",
+    "sources/robot_protocol/experiment.xlsx": "5c1f8caf792d915c9d22df2c9b02cedd049283902a5831568ec62d1452464698",
+    "sources/robot_protocol/metric.json": "fdf8c497d9f5285b6f4389a7a49e5e4b5554e2adf52360e8b38897c031408ab5",
+    "sources/robot_protocol/note.json": "4ce8de92cafdfb54a1b1c0eab2791cfccaff41e282251a0eeb83d1c9b2893fc9",
+    "sources/robot_protocol/previous_experiment.xlsx": "18ef2dcd728342a7cac24046344405841afc2ea835cea3615ce3a9d95ea8bfbf",
+    "tasks/retrieval_language.md": "e1bd8ce15a1047a46a69b1dcac0c5b5736bd1db7d23498f392205eecf39e19f3",
+    "tasks/rna_batch.md": "514508ef796d403492d4071d2f336271008d923bdf3ef66bb6d8e2561708c7dd",
+    "tasks/robot_protocol.md": "97ff0bed48f48ad4e85c498f80e1399bc586cf65da747f9b5140c315d091340b"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:materials_scaleup:transfer",
+  "text": "旧判断：候选合成策略在小试批次成功率较高，可能延伸到放大批次；放大时需另记设备和人工调整。",
+  "decision_options": [
+    "先查放大批次日志",
+    "增加放大重复实验",
+    "沿用总体收益"
+  ],
+  "depends_on": "wps:materials_scaleup:run_2026w39"
+}

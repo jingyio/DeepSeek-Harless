@@ -1,0 +1,11 @@
+{
+  "event_id": "event:battery_cold:w39",
+  "experiment_id": "wps:battery_cold:run_2026w39",
+  "previous_experiment_id": "wps:battery_cold:run_2026w38",
+  "previous_version_sha256": "ae2466c14d42b93683e7afd762ab6ce84eadce36e0ae6b969379877522c3ffd1",
+  "title": "电池寿命预测能否迁移到低温批次",
+  "changed_fields": [
+    "valid_predictions"
+  ],
+  "message": "低温批次预测核验数修订，请复核跨温度结论。"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "assay_success_rate",
+  "numerator": "successful_assays",
+  "denominator": "scheduled_assays",
+  "allowed_groups": [
+    "variant",
+    "site_type"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "trial_success_rate",
+  "numerator": "successful_trials",
+  "denominator": "trials",
+  "allowed_groups": [
+    "variant",
+    "protocol"
+  ]
+}

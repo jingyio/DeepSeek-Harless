@@ -43,7 +43,7 @@
   "mcp__meeting_decision_fixture__find_dependent_claims": {
     "required_params": ["object_id"],
     "read_only": true,
-    "output_fields": ["claims.0.note_id", "claims.0.annotation_id"],
+    "output_fields": ["claims.0.note_id", "claims.0.annotation_id", "index_version_sha256"],
     "provenance_params": ["object_id"],
     "description": "只用read_change返回的当前experiment_id查依赖，不接受previous_experiment_id；返回可固定的note_id和annotation_id。",
     "replay_stable": true

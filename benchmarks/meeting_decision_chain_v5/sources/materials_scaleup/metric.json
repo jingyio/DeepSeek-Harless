@@ -1,0 +1,9 @@
+{
+  "id": "synthesis_yield",
+  "numerator": "successful_batches",
+  "denominator": "scheduled_batches",
+  "allowed_groups": [
+    "variant",
+    "batch_scale"
+  ]
+}

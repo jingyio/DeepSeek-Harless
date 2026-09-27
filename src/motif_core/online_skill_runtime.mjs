@@ -111,8 +111,9 @@ export function validateOnlineManifest(manifest) {
           !manifest.contracts[edge.to_tool].required_params.includes(edge.to_param) ||
           (edge.version_relation !== undefined &&
            edge.version_relation !== 'same_source' &&
-           edge.version_relation !== 'object_lookup') ||
-          (edge.version_relation === 'object_lookup' &&
+           edge.version_relation !== 'object_lookup' &&
+           edge.version_relation !== 'lookup_index') ||
+          (['object_lookup', 'lookup_index'].includes(edge.version_relation) &&
            (edge.to_param !== 'object_id' ||
             !/(?:^|\.)(?:[a-z][a-z0-9_]*_id)$/.test(edge.from_field) ||
             !manifest.version_fields[edge.to_tool]))) {
@@ -215,6 +216,18 @@ export function parseStructuredTask(raw, manifest) {
          !/^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*:[A-Za-z0-9_]+$/.test(id) ||
          !/^[a-f0-9]{64}$/.test(version)))) {
     throw new TypeError('invalid approved object version scope');
+  }
+  if (task.lookup_versions !== undefined &&
+      (!task.lookup_versions || typeof task.lookup_versions !== 'object' ||
+       Array.isArray(task.lookup_versions) ||
+       Object.entries(task.lookup_versions).some(([tool, scoped]) =>
+         !manifest.version_fields[tool] || !scoped ||
+         typeof scoped !== 'object' || Array.isArray(scoped) ||
+         Object.keys(scoped).length > 64 ||
+         Object.entries(scoped).some(([id, version]) =>
+           !/^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*:[A-Za-z0-9_]+$/.test(id) ||
+           !/^[a-f0-9]{64}$/.test(version))))) {
+    throw new TypeError('invalid approved lookup version scope');
   }
   return task;
 }
@@ -385,6 +398,11 @@ function matchingPrefixes(artifact, history, length, task, manifest) {
         return scalar(objectId) && to.arguments?.[edge.to_param] === objectId &&
           task.object_versions?.[objectId] === to.sourceVersion;
       }
+      if (edge.version_relation === 'lookup_index') {
+        const objectId = field(from.output, edge.from_field);
+        return scalar(objectId) && to.arguments?.[edge.to_param] === objectId &&
+          task.lookup_versions?.[edge.to_tool]?.[objectId] === to.sourceVersion;
+      }
       return from.sourceVersion === to.sourceVersion;
     }));
 }
@@ -428,6 +446,8 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
         const versions = new Set([
           ...edges.map((edge) => edge.version_relation === 'object_lookup'
             ? task.object_versions?.[args[edge.to_param]]
+            : edge.version_relation === 'lookup_index'
+              ? task.lookup_versions?.[nextTool]?.[args[edge.to_param]]
             : prefix.find((row) => row.name === edge.from_tool)?.sourceVersion),
           ...codeNodes.map((node) =>
             prefix.find((row) => row.name === node.from_tool)?.sourceVersion),
@@ -488,8 +508,8 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     }
     // Independently certified object references in one event are sibling
     // reads. Other competing successors may encode a scientific choice.
-    if (rows.every((row) => row.version_relation === 'object_lookup' &&
-        row.similarity >= minSimilarity && row.tool === rows[0].tool &&
+    if (rows.every((row) => ['object_lookup', 'lookup_index']
+        .includes(row.version_relation) && row.similarity >= minSimilarity &&
         row.validation_task_fingerprint === rows[0].validation_task_fingerprint &&
         row.supporting_task_count >= 2)) selected.push(...rows);
   }

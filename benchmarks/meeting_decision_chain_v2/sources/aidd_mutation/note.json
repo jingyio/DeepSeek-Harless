@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:aidd_mutation:sample_efficiency",
+  "text": "旧判断：候选 AIDD 策略用相同测定预算获得更多有效预测，可能对未见突变也更省样本。新突变类别需独立统计，且测定预算口径不能变化。",
+  "decision_options": [
+    "补新突变测定",
+    "先审预算和类别口径",
+    "继续外推样本效率"
+  ],
+  "depends_on": "wps:aidd_mutation:run_2026w39"
+}

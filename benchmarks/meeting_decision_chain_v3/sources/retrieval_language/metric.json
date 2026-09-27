@@ -1,0 +1,9 @@
+{
+  "id": "retrieval_accuracy",
+  "numerator": "correct_queries",
+  "denominator": "queries",
+  "allowed_groups": [
+    "variant",
+    "language_group"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "classification": "synthetic_development_trial",
+  "input_sha256": {
+    "sources/battery_cold/annotation.json": "34736a74f6f99627869b27a4f70f1332952c2852642cff00ebbf4dfa21556111",
+    "sources/battery_cold/event.json": "03a0eb183dd476f81f3e3e1ca1ed293a8e98ebea71d1b38208e99f87e4147697",
+    "sources/battery_cold/experiment.xlsx": "7b8e96f270c16142a487aed053572484775825a7977431ceb67eade637cfcc67",
+    "sources/battery_cold/metric.json": "e7c6cc9978f31adea47e73bfdb00219f928fd4b3d11f8dfc6eaae07974384031",
+    "sources/battery_cold/note.json": "218dc7486a2a242699c4433e1e435ddad4bd8b3d73423ca5b57bf782ecae1639",
+    "sources/battery_cold/previous_experiment.xlsx": "ae2466c14d42b93683e7afd762ab6ce84eadce36e0ae6b969379877522c3ffd1",
+    "sources/corpus_shift/annotation.json": "88e9bbb422b93888790f9729ab240af06062da5afbd090e28ce4dce5284ebb35",
+    "sources/corpus_shift/event.json": "46f201dded7ee6723898726d0dfd7a327ad57fb02fbd3be213cf5158e3a42c8f",
+    "sources/corpus_shift/experiment.xlsx": "deb54fcf6b85364c8370786a87f5e5727221c67a241a18272dae1530761c683f",
+    "sources/corpus_shift/metric.json": "d66a0317d56309aaa01c8e55b1698512dd9cd07d518f7d4505e7d7b44e0c5dea",
+    "sources/corpus_shift/note.json": "0c579e3e21102dddb0a843402c26f88784053af788c1f93ef12834b78ca43481",
+    "sources/corpus_shift/previous_experiment.xlsx": "bbbe5b7abce1283d8ec8b085f42a64db87f6f3bebc784df389445e3b987cbbcb",
+    "sources/remote_assay/annotation.json": "b9493a6d14a0b7af181597f50ea1b4f0b9fca5086e5735c6185d92b61da8937a",
+    "sources/remote_assay/event.json": "cbd4a64bce73bd29dde3bc602d2f3a6515f7c8ce4058c8200fa0a5c8c67fed38",
+    "sources/remote_assay/experiment.xlsx": "f8d933a870eb1681bbde184749b582059b24b907132c979c6fbd19c43dd734b0",
+    "sources/remote_assay/metric.json": "149fc35027648a3b27684f515a4ab46e7c305afc969a87c3f0781726d9ff4be7",
+    "sources/remote_assay/note.json": "4cf712b3a6c60b1f73780b55424f1f856729fbc5fca31c3f4a5696391c8599f5",
+    "sources/remote_assay/previous_experiment.xlsx": "25a5e53f25f78931d31e0438ac991f877ade4b235a8b5fdf7e8a98141bd58ad4",
+    "tasks/battery_cold.md": "4718ccdd6d3398962f5f8ab2f3b094ff91356b0d7f9519a539db8f1eb02b4f1d",
+    "tasks/corpus_shift.md": "012f850828b7e2cfa90015406f75e624b2722bc836bd65177c7f91a3fdc0dccf",
+    "tasks/remote_assay.md": "87235df97da61ac2d6ae48e3ebf01faa7f72098f9e9c74b1532721c36395e337"
+  }
+}

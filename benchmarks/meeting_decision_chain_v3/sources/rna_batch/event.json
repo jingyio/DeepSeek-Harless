@@ -1,0 +1,11 @@
+{
+  "event_id": "event:rna_batch:w39",
+  "experiment_id": "wps:rna_batch:run_2026w39",
+  "previous_experiment_id": "wps:rna_batch:run_2026w38",
+  "previous_version_sha256": "1e5ac6dc8b72a6d5bbab01fbdeb8756eb6b8141a1ee771fe54848c0c174c0298",
+  "title": "RNA 校准在外部实验批次中是否仍有效",
+  "changed_fields": [
+    "valid_calls"
+  ],
+  "message": "外部实验室批次的复核结果更新，请重新审议校准迁移主张。"
+}

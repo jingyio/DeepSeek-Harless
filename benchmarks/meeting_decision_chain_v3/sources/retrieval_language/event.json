@@ -1,0 +1,11 @@
+{
+  "event_id": "event:retrieval_language:w39",
+  "experiment_id": "wps:retrieval_language:run_2026w39",
+  "previous_experiment_id": "wps:retrieval_language:run_2026w38",
+  "previous_version_sha256": "14ed89a0b98d2ea17976f606e412027225f36d7ad6d3120b46852f9e0a08c8a1",
+  "title": "检索增强是否覆盖低资源语种",
+  "changed_fields": [
+    "correct_queries"
+  ],
+  "message": "低资源语种新批次修正了检索正确数，请复核覆盖结论。"
+}

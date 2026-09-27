@@ -100,8 +100,9 @@ def _validate_artifact(artifact: dict[str, Any], contracts: Mapping[str, Any]) -
                     or edge.get("from_field") not in contracts[parent.rstrip("+")].output_fields
                     or edge.get("to_param") not in contracts[base].required_params
                     or edge.get("version_relation", "same_source") not in
-                    {"same_source", "object_lookup"}
-                    or (edge.get("version_relation") == "object_lookup" and
+                    {"same_source", "object_lookup", "lookup_index"}
+                    or (edge.get("version_relation") in
+                        {"object_lookup", "lookup_index"} and
                         (edge.get("to_param") != "object_id" or
                          not edge.get("from_field", "").split(".")[-1].endswith("_id")))):
                 raise ValueError("Motif parameter edge is unsupported")

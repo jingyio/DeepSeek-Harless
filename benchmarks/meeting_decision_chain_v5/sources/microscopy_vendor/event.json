@@ -1,0 +1,11 @@
+{
+  "event_id": "event:microscopy_vendor:w39",
+  "experiment_id": "wps:microscopy_vendor:run_2026w39",
+  "previous_experiment_id": "wps:microscopy_vendor:run_2026w38",
+  "previous_version_sha256": "46009c40e8ca6bb43a0052cfc03c6c88268671020a7715f53a45e80082cb7eac",
+  "title": "细胞分割方法能否迁移到另一显微镜厂商",
+  "changed_fields": [
+    "accepted_masks"
+  ],
+  "message": "厂商 B 的分割接受数修订，请复核迁移主张。"
+}

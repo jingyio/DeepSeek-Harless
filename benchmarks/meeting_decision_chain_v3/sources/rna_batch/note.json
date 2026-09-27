@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:rna_batch:transfer",
+  "text": "旧判断：校准方案在内部批次提高有效调用率，可能迁移到外部实验室批次。必须分批次复核，且先核查试剂与测定口径是否可比。",
+  "decision_options": [
+    "补外部批次重复实验",
+    "核查试剂与批次口径",
+    "继续宣称跨实验室迁移"
+  ],
+  "depends_on": "wps:rna_batch:run_2026w39"
+}

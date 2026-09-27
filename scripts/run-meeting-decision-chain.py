@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -25,28 +26,56 @@ from src.adapters.versioned_evidence_guard import audit_versioned_seed_claims  #
 
 
 BASE = ROOT / "benchmarks/meeting_decision_chain_v1"
+V2_BASE = ROOT / "benchmarks/meeting_decision_chain_v2"
+V3_BASE = ROOT / "benchmarks/meeting_decision_chain_v3"
+V4_BASE = ROOT / "benchmarks/meeting_decision_chain_v4"
+V5_BASE = ROOT / "benchmarks/meeting_decision_chain_v5"
 CASE_IDS = frozenset(("family_shift", "label_audit", "hardware_latency",
                       "novel_queries", "site_transfer", "tail_terms",
-                      "lot_stability"))
-PROSPECTIVE_CASE_IDS = frozenset(("site_transfer", "tail_terms", "lot_stability"))
+                      "lot_stability", "model_rsi_state", "aidd_mutation",
+                      "agent_tool_transfer", "rna_batch", "retrieval_language",
+                      "robot_protocol", "battery_cold", "corpus_shift",
+                      "remote_assay", "microscopy_vendor", "chemistry_substrate",
+                      "materials_scaleup"))
+PROSPECTIVE_CASE_IDS = frozenset(("site_transfer", "tail_terms", "lot_stability",
+                                  "model_rsi_state", "aidd_mutation",
+                                  "agent_tool_transfer", "rna_batch",
+                                  "retrieval_language", "robot_protocol",
+                                  "battery_cold", "corpus_shift", "remote_assay",
+                                  "microscopy_vendor", "chemistry_substrate",
+                                  "materials_scaleup"))
 PATCH = ROOT / "config/meeting-decision-chain.patch.yml"
 CONTRACTS = ROOT / "config/meeting-decision-chain-contracts.json"
 OUT = ROOT / ".local/benchmarks/meeting-decision-chain-v3"
 CAP_USD = 1.0
 MAX_REQUESTS = 15
 MAX_OUTPUT_TOKENS = 8000
-MAX_EVIDENCE_REPAIRS = 1
+MAX_EVIDENCE_REPAIRS = 2
 DELIVERY_CONTRACT = ("\n\n交付格式：只输出可直接渲染的 Markdown 正文，不要 YAML 页头、"
                      "代码围栏、额外前言或尾声。约 600–900 字；必要的证据表格可以另计。"
-                     "不得为遵守字数而省略关键数字、来源版本和限制。")
+                     "不得为遵守字数而省略关键数字、来源版本和限制。"
+                     "事件的 changed_fields 只说明哪些列的数值变化，不能据此推断修订原因、"
+                     "测量口径或上游流程发生了什么；分组标签也不能证明组内有多少独立对象。"
+                     "这些信息缺失时请明确写为待核实，不要补造。")
 
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def base_for(case: str) -> Path:
+    return (V5_BASE if case in {"microscopy_vendor", "chemistry_substrate",
+                                "materials_scaleup"} else
+            V4_BASE if case in {"battery_cold", "corpus_shift", "remote_assay"} else
+            V3_BASE if case in {"rna_batch", "retrieval_language",
+                                "robot_protocol"} else
+            V2_BASE if case in {"model_rsi_state", "aidd_mutation",
+                                "agent_tool_transfer"} else BASE)
+
+
 def prompt_for(case: str) -> str:
-    return (BASE / "tasks" / f"{case}.md").read_text(encoding="utf-8") + DELIVERY_CONTRACT
+    return ((base_for(case) / "tasks" / f"{case}.md")
+            .read_text(encoding="utf-8") + DELIVERY_CONTRACT)
 
 
 def private(path: Path, value: dict) -> None:
@@ -56,11 +85,19 @@ def private(path: Path, value: dict) -> None:
     path.chmod(0o600)
 
 
+def deliverable_body(raw: str) -> str:
+    """Remove a stray preamble while preserving the raw response in the trace."""
+    content = raw.strip()
+    heading = re.search(r"(?m)^# ", content)
+    return content[heading.start():].strip() if heading else content
+
+
 def preview(case: str, arm: str, online_manifest: Path | None,
             online_task: Path | None, similarity_threshold: float | None,
             output_root: Path = OUT) -> dict:
-    case_dir = BASE / "sources" / case
-    task = BASE / "tasks" / f"{case}.md"
+    base = base_for(case)
+    case_dir = base / "sources" / case
+    task = base / "tasks" / f"{case}.md"
     files = [task, PATCH, CONTRACTS,
              BASE / "mock_apps_server.py", Path(__file__).resolve(),
              ROOT / "src/adapters/versioned_evidence_guard.py",
@@ -74,7 +111,9 @@ def preview(case: str, arm: str, online_manifest: Path | None,
     elif online_manifest or online_task:
         raise ValueError("baseline must not receive a Motif manifest")
     return {"task_id": f"meeting-decision-{case}", "case": case, "arm": arm,
-            "benchmark_version": 3,
+            "benchmark_version": (7 if base == V5_BASE else 6 if base == V4_BASE
+                                  else 5 if base == V3_BASE
+                                  else 4 if base == V2_BASE else 3),
             "frozen_min_similarity": similarity_threshold if arm == "motif" else None,
             "classification": "synthetic_development_trial",
             "model": "deepseek-flash", "reasoning_effort": "off",
@@ -214,7 +253,12 @@ def main() -> int:
                 return {"status": "insufficient_evidence", "reason": "no_answer_or_trace"}
             events = [json.loads(line) for line in
                       events_file.read_text(encoding="utf-8").splitlines()]
-            return audit_versioned_seed_claims(events, draft)
+            audit = audit_versioned_seed_claims(events, draft)
+            if audit["status"] == "checked" and not draft.startswith("# "):
+                audit = {**audit, "status": "conflict", "conflicts": [{
+                    "kind": "delivery_format", "message":
+                    "交付正文必须从一级 Markdown 标题开始；不要加入思考过程或额外前言"}]}
+            return audit
 
         repair_requests = 0
         with DeepSeekHarness(
@@ -227,25 +271,56 @@ def main() -> int:
         ) as harness:
             result = harness.run(prompt_for(args.case),
                 session_id=session_id, on_notification=observe)
-            evidence_audit = evidence_check(result.final_response.strip())
-            if evidence_audit["status"] == "conflict":
-                private(out / "EVIDENCE_AUDIT_ATTEMPT_1.json", evidence_audit)
-                draft = out / "agent-answer.attempt-1.unverified.md"
+            evidence_audit = evidence_check(deliverable_body(result.final_response))
+            while repair_requests < MAX_EVIDENCE_REPAIRS:
+                repair_prompt = None
+                if evidence_audit["status"] == "conflict":
+                    facts = [(
+                        f"{row['version']} {row['group']}: 正确的逐种子值是 {row['expected']}"
+                        if row.get("kind") == "seed_series" else row["message"])
+                        for row in evidence_audit["conflicts"]]
+                    repair_prompt = (
+                        "上一份待审报告与已读取的原始数据冲突。请按以下经工具核验的事实"
+                        "重新输出完整 Markdown，核对版本、分组与统计术语：\n" +
+                        "\n".join(facts))
+                elif evidence_audit["status"] == "insufficient_evidence":
+                    reason = evidence_audit.get("reason")
+                    guidance = {
+                        "previous_version_mismatch":
+                            "上一版实验尚未以事件给出的对象 ID 固定并核对版本。"
+                            "请读取该对象和完整逐行数据，再与当前版逐行复算。",
+                        "full_row_pair_missing":
+                            "当前版和上一版的完整逐行数据尚未都读取。"
+                            "请分别读取两版完整记录并核对版本，再复算。",
+                        "metric_contract_missing":
+                            "当前实验的指标口径尚未读取。请固定并读取当前实验对象，"
+                            "依据返回的指标契约复算。",
+                        "row_version_mismatch":
+                            "逐行数据与已固定版本不符。请重新固定相关对象、核对版本，"
+                            "再读取数据；若无法一致，明确停在待复核。",
+                    }.get(reason)
+                    if guidance:
+                        repair_prompt = (
+                            "上一份稿件缺少交付所需的原始证据，当前不能通过版本核验。"
+                            + guidance + "不要只凭旧稿或哈希猜上一版数值；"
+                            "只有严格满足分层与总体反向时才能称辛普森悖论。"
+                            "完成工具核查后重新输出完整的一页 Markdown。")
+                if repair_prompt is None:
+                    break
+                attempt = repair_requests + 1
+                private(out / f"EVIDENCE_AUDIT_ATTEMPT_{attempt}.json", evidence_audit)
+                draft = out / f"agent-answer.attempt-{attempt}.unverified.md"
                 draft.write_text(result.final_response.strip() + "\n", encoding="utf-8")
                 draft.chmod(0o600)
-                facts = [(
-                    f"{row['version']} {row['group']}: 正确的逐种子值是 {row['expected']}"
-                    if row.get("kind") == "seed_series" else row["message"])
-                    for row in evidence_audit["conflicts"]]
-                repair_prompt = (
-                    "上一份待审报告的版本标注与已读取的逐行数据冲突。"
-                    "请按以下经工具结果核验的值，重新输出完整的一页 Markdown；"
-                    "重新核对所有新旧版本和变化方向，保留来源与科学判断边界。\n"
-                    + "\n".join(facts))
                 result = harness.run(repair_prompt, session_id=session_id,
                                      on_notification=observe)
-                repair_requests = 1
-        answer = result.final_response.strip()
+                repair_requests += 1
+                evidence_audit = evidence_check(deliverable_body(result.final_response))
+        answer = deliverable_body(result.final_response)
+        if answer != result.final_response.strip():
+            raw_path = out / "agent-raw-final.txt"
+            raw_path.write_text(result.final_response.strip() + "\n", encoding="utf-8")
+            raw_path.chmod(0o600)
         evidence_audit = evidence_check(answer)
         private(out / "EVIDENCE_AUDIT.json", evidence_audit)
         if answer:

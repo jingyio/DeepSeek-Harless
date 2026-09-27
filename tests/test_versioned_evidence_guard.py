@@ -33,7 +33,8 @@ def evidence() -> list[dict]:
             "source_id": source, "object_id": object_id,
             "version_sha256": f"{label}-version",
             "value": {"metric_contract": {
-                "allowed_groups": ["variant", "frequency_band"]}}})
+                "allowed_groups": ["variant", "frequency_band"],
+                "numerator": "correct", "denominator": "cases"}}})
         events += observation(f"rows-{label}", "read_dataset_rows", {
             "source_id": source, "version_sha256": f"{label}-version",
             "offset": 0, "total": 3,
@@ -77,6 +78,16 @@ class VersionedEvidenceGuardTest(unittest.TestCase):
         allowed = audit_versioned_seed_claims(evidence(), "w39 没有新增 tail 行。")
         self.assertEqual(allowed["status"], "checked")
 
+    def test_unobserved_fraction_with_known_denominator_is_blocked(self):
+        wrong = audit_versioned_seed_claims(evidence(), "上一版为 76/120。")
+        self.assertEqual(wrong["status"], "conflict")
+        self.assertEqual(wrong["conflicts"][0]["kind"], "unobserved_fraction")
+        right = audit_versioned_seed_claims(evidence(), "上一版为 75/120。")
+        self.assertEqual(right["status"], "checked")
+        series = audit_versioned_seed_claims(evidence(), "种子为 26/25/24。")
+        self.assertEqual(series["status"], "checked")
+
+
     def test_simpson_label_requires_reversal_in_every_stratum(self):
         contract = {"numerator": "correct", "denominator": "cases"}
         groups = ["variant", "site"]
@@ -94,6 +105,13 @@ class VersionedEvidenceGuardTest(unittest.TestCase):
         self.assertTrue(_formal_simpson_reversal(reversed_groups, contract, groups))
         negated = audit_versioned_seed_claims(evidence(), "这并非辛普森悖论。")
         self.assertEqual(negated["status"], "checked")
+        explanatory = audit_versioned_seed_claims(evidence(),
+            "## 是否为辛普森悖论\n辛普森悖论要求每层同向。"
+            "这里不满足严格的辛普森悖论方向反转，因此不得称辛普森悖论。")
+        self.assertEqual(explanatory["status"], "checked")
+        positive = audit_versioned_seed_claims(evidence(),
+            "整体与各层方向不一，存在辛普森式反转。")
+        self.assertEqual(positive["status"], "conflict")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+{
+  "event_id": "event:chemistry_substrate:w39",
+  "experiment_id": "wps:chemistry_substrate:run_2026w39",
+  "previous_experiment_id": "wps:chemistry_substrate:run_2026w38",
+  "previous_version_sha256": "e61c783cfb29ff4c06925349a29d22eb1ed32faccaad4f20cc6ffef83146f6f1",
+  "title": "反应预测器能否推广到新底物类",
+  "changed_fields": [
+    "successful_reactions"
+  ],
+  "message": "新底物类的反应成功数更新，请复核泛化判断。"
+}

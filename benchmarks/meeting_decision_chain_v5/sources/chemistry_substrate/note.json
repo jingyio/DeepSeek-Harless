@@ -1,0 +1,10 @@
+{
+  "claim_id": "claim:chemistry_substrate:generalization",
+  "text": "旧判断：候选反应预测器对已见底物有效，对新底物类尚缺独立证据，不能用总体成功率替代新类结果。",
+  "decision_options": [
+    "补独立新底物",
+    "限定新底物初步信号",
+    "宣称普遍泛化"
+  ],
+  "depends_on": "wps:chemistry_substrate:run_2026w39"
+}

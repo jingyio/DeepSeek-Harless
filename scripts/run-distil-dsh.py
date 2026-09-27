@@ -86,7 +86,10 @@ def main() -> int:
     if not ledger.is_relative_to(ROOT / ".local"):
         parser.error("budget ledger must stay under .local")
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT) + os.pathsep + str(DISTIL) + os.pathsep + env.get("PYTHONPATH", "")
+    dependency_paths = [str(ROOT)]
+    if args.mode == "distil":
+        dependency_paths.append(str(DISTIL))
+    env["PYTHONPATH"] = os.pathsep.join(dependency_paths + [env.get("PYTHONPATH", "")])
     env["DISTIL_HOME"] = str(home)
     env["DISTIL_NO_UPDATE_CHECK"] = "1"
     env["NO_PROXY"] = "127.0.0.1,localhost"

@@ -1,0 +1,9 @@
+{
+  "id": "reaction_success_rate",
+  "numerator": "successful_reactions",
+  "denominator": "attempted_reactions",
+  "allowed_groups": [
+    "variant",
+    "substrate"
+  ]
+}

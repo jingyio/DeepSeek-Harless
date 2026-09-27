@@ -1,0 +1,9 @@
+{
+  "id": "screening_recall",
+  "numerator": "relevant_found",
+  "denominator": "relevant_total",
+  "allowed_groups": [
+    "variant",
+    "field_group"
+  ]
+}

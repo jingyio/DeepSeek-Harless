@@ -1,0 +1,11 @@
+{
+  "event_id": "event:corpus_shift:w39",
+  "experiment_id": "wps:corpus_shift:run_2026w39",
+  "previous_experiment_id": "wps:corpus_shift:run_2026w38",
+  "previous_version_sha256": "bbbe5b7abce1283d8ec8b085f42a64db87f6f3bebc784df389445e3b987cbbcb",
+  "title": "新兴领域论文检索是否获得可迁移收益",
+  "changed_fields": [
+    "relevant_found"
+  ],
+  "message": "新兴领域筛选结果已更新，请复核检索器迁移主张。"
+}

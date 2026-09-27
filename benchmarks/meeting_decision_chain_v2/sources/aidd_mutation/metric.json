@@ -1,0 +1,9 @@
+{
+  "id": "assay_yield",
+  "numerator": "valid_predictions",
+  "denominator": "assays",
+  "allowed_groups": [
+    "variant",
+    "mutation_class"
+  ]
+}

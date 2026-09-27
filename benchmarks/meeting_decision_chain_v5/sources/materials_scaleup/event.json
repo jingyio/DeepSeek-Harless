@@ -1,0 +1,11 @@
+{
+  "event_id": "event:materials_scaleup:w39",
+  "experiment_id": "wps:materials_scaleup:run_2026w39",
+  "previous_experiment_id": "wps:materials_scaleup:run_2026w38",
+  "previous_version_sha256": "757fee25ef4318a4bb9965440ce84691589c266f735370752f8652921bedac61",
+  "title": "材料合成策略在放大批次能否维持收益",
+  "changed_fields": [
+    "successful_batches"
+  ],
+  "message": "放大批次的成功数修订，请重新判断策略迁移。"
+}
