@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -271,6 +273,104 @@ def read_pinned_pdf_pages(source_id: str, start_page: int = 1,
             **read_scoped_pdf_pages(role, start_page, max_pages)}
 
 
+def _normalized_pdf_text(value: str) -> str:
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", value)).strip().casefold()
+
+
+def _approved_pdf_page_numbers(row: dict[str, Any], page_count: int) -> list[int]:
+    ranges = row.get("allowed_page_ranges")
+    if ranges is None:
+        pages = list(range(1, page_count + 1))
+    else:
+        if (not isinstance(ranges, list) or not ranges
+                or any(not isinstance(span, list) or len(span) != 2
+                       or any(type(number) is not int for number in span)
+                       or not 1 <= span[0] <= span[1] <= page_count
+                       for span in ranges)):
+            raise ValueError("Invalid approved PDF page ranges")
+        pages = sorted({page for first, last in ranges for page in range(first, last + 1)})
+    if len(pages) > 100:
+        raise ValueError("PDF locator needs an approved range of at most 100 pages")
+    return pages
+
+
+def locate_pinned_pdf_quote(source_id: str, quote: str) -> dict[str, Any]:
+    """Find an exact quote in approved PDF pages; only a unique page yields a read handle.
+
+    This locates text, not scientific relevance. Whitespace and Unicode width are
+    normalized because PDF extraction may insert line breaks inside a sentence.
+    """
+    role = _resolve_pinned(source_id, "pdf")
+    if (not isinstance(quote, str) or not 12 <= len(quote) <= 500
+            or any(ord(char) < 32 and char not in "\t\r\n" for char in quote)):
+        raise ValueError("Quote must be 12–500 visible characters")
+    needle = _normalized_pdf_text(quote)
+    if len(needle) < 12:
+        raise ValueError("Normalized quote is too short")
+    from io import BytesIO
+
+    row, raw = _approved_local(role, {".pdf"})
+    reader = PdfReader(BytesIO(raw))
+    if reader.is_encrypted or not 1 <= len(reader.pages) <= 1000:
+        raise ValueError("PDF is encrypted or has an invalid page count")
+    allowed = _approved_pdf_page_numbers(row, len(reader.pages))
+    matches = []
+    for page_number in allowed:
+        extracted = reader.pages[page_number - 1].extract_text() or ""
+        normalized = _normalized_pdf_text(extracted)
+        offset = normalized.find(needle)
+        if offset >= 0:
+            matches.append({"pdf_page": page_number,
+                            "snippet": normalized[max(0, offset - 60):
+                                                  min(len(normalized), offset + len(needle) + 60)][:240],
+                            "page_text_sha256": hashlib.sha256(extracted.encode()).hexdigest()})
+    result: dict[str, Any] = {
+        "source_id": source_id, "role": role, "sha256": row["sha256"],
+        "quote_sha256": hashlib.sha256(needle.encode()).hexdigest(),
+        "scanned_pages": len(allowed), "match_count": len(matches),
+        "matches": matches[:10], "matches_truncated": len(matches) > 10,
+        "status": "unique" if len(matches) == 1 else
+                  "not_found" if not matches else "ambiguous",
+    }
+    if len(matches) == 1:
+        scope_path = _scope_file()
+        result["match_id"] = _HANDLE_STORE.put("match", {
+            "scope_path": str(scope_path),
+            "scope_sha256": hashlib.sha256(scope_path.read_bytes()).hexdigest(),
+            "source_id": source_id, "role": role, "pdf_page": matches[0]["pdf_page"],
+            "page_text_sha256": matches[0]["page_text_sha256"],
+            "normalized_quote": needle,
+        })
+    return result
+
+
+def read_pinned_pdf_match(match_id: str) -> dict[str, Any]:
+    """Read the unique approved PDF page named by a locator's versioned handle."""
+    match = _HANDLE_STORE.get(match_id, "match")
+    scope_path = _scope_file()
+    if (match.get("scope_path") != str(scope_path)
+            or match.get("scope_sha256") != hashlib.sha256(scope_path.read_bytes()).hexdigest()):
+        raise ValueError("PDF match scope changed; locate the quote again")
+    source_id = match.get("source_id")
+    role = _resolve_pinned(source_id, "pdf")
+    if role != match.get("role"):
+        raise ValueError("PDF match source changed")
+    from io import BytesIO
+
+    row, raw = _approved_local(role, {".pdf"})
+    reader = PdfReader(BytesIO(raw))
+    page = match.get("pdf_page")
+    if (reader.is_encrypted or type(page) is not int
+            or page not in _approved_pdf_page_numbers(row, len(reader.pages))):
+        raise ValueError("PDF match page is outside the approved range")
+    extracted = reader.pages[page - 1].extract_text() or ""
+    if (hashlib.sha256(extracted.encode()).hexdigest() != match.get("page_text_sha256")
+            or match.get("normalized_quote") not in _normalized_pdf_text(extracted)):
+        raise ValueError("PDF match no longer resolves to the same text")
+    return {"match_id": match_id,
+            **read_pinned_pdf_pages(source_id, start_page=page, max_pages=1)}
+
+
 def create_server(*, handle_mode: bool) -> MCPServer:
     """Keep the earlier role-read pilot stable while enabling provenance trials."""
     instance = MCPServer(
@@ -284,7 +384,8 @@ def create_server(*, handle_mode: bool) -> MCPServer:
             readOnlyHint=True, destructiveHint=False, openWorldHint=False))
     if handle_mode:
         functions = (pin_scoped_source, read_pinned_note, read_pinned_text,
-                     read_pinned_pdf_pages)
+                     read_pinned_pdf_pages, locate_pinned_pdf_quote,
+                     read_pinned_pdf_match)
     else:
         functions = (read_scoped_note, read_scoped_text, read_scoped_pdf_pages)
     for function in functions:

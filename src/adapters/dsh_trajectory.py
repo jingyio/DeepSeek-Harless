@@ -53,7 +53,7 @@ class DshTrace:
     task_fingerprint: str | None = None
 
 
-HANDLE_PATTERN = re.compile(r"^(?:source|dataset|result)-[0-9a-f]{32}$")
+HANDLE_PATTERN = re.compile(r"^(?:source|dataset|result|match)-[0-9a-f]{32}$")
 
 
 def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],

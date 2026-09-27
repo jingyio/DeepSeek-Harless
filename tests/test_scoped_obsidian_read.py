@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from mcp import Client
 from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from src.mcp import scoped_obsidian_read_server as scoped
 from src.mcp.structured_research_tools import HandleStore
@@ -113,7 +114,8 @@ class ScopedObsidianMCPTests(unittest.IsolatedAsyncioTestCase):
             names = {item.name for item in (await client.list_tools()).tools}
         self.assertEqual(names, {"list_scoped_notes", "list_scoped_local_sources",
                                  "pin_scoped_source", "read_pinned_note",
-                                 "read_pinned_text", "read_pinned_pdf_pages"})
+                                 "read_pinned_text", "read_pinned_pdf_pages",
+                                 "locate_pinned_pdf_quote", "read_pinned_pdf_match"})
 
 
 class ScopedSourceHandleTests(unittest.TestCase):
@@ -161,6 +163,65 @@ class ScopedSourceHandleTests(unittest.TestCase):
         self.scope_file.write_text(json.dumps(scope), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "scope or type changed"):
             scoped._resolve_pinned(pinned["source_id"], "note")
+
+    def _pdf_with_text(self, pages: list[str]) -> Path:
+        writer = PdfWriter()
+        font = writer._add_object(DictionaryObject({
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }))
+        for text in pages:
+            page = writer.add_blank_page(width=400, height=400)
+            page[NameObject("/Resources")] = DictionaryObject({
+                NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})})
+            stream = DecodedStreamObject()
+            stream.set_data(f"BT /F1 12 Tf 40 350 Td ({text}) Tj ET".encode("ascii"))
+            page[NameObject("/Contents")] = writer._add_object(stream)
+        target = self.root / "paper.pdf"
+        with target.open("wb") as output:
+            writer.write(output)
+        scope = json.loads(self.scope_file.read_text(encoding="utf-8"))
+        scope["sources"].append({"role": "paper", "path": str(target),
+            "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            "allowed_page_ranges": [[2, 3]],
+            "external_model_excerpt_allowed": True})
+        self.scope_file.write_text(json.dumps(scope), encoding="utf-8")
+        return target
+
+    def test_quote_locator_unique_ambiguous_unapproved_and_stale(self) -> None:
+        pdf = self._pdf_with_text([
+            "Outside scope anchor only appears on page one.",
+            "An exact annotation quotation appears here.",
+            "A different result appears here.",
+            "Outside scope anchor only appears on page four.",
+        ])
+        source = scoped.pin_scoped_source("paper")["source_id"]
+        found = scoped.locate_pinned_pdf_quote(source, "annotation quotation appears")
+        self.assertEqual(found["status"], "unique")
+        self.assertEqual([item["pdf_page"] for item in found["matches"]], [2])
+        self.assertEqual(scoped.read_pinned_pdf_match(found["match_id"])["pages"][0]["pdf_page"], 2)
+        self.assertEqual(scoped.locate_pinned_pdf_quote(source, "Outside scope anchor")["status"],
+                         "not_found")
+        with self.assertRaisesRegex(ValueError, "too short|12–500"):
+            scoped.locate_pinned_pdf_quote(source, "result")
+        with self.assertRaisesRegex(ValueError, "Expected a match handle"):
+            scoped.read_pinned_pdf_match(source)
+        pdf.write_bytes(pdf.read_bytes() + b"\n% changed")
+        with self.assertRaisesRegex(ValueError, "version changed"):
+            scoped.read_pinned_pdf_match(found["match_id"])
+
+    def test_quote_locator_does_not_choose_between_two_pages(self) -> None:
+        self._pdf_with_text([
+            "Outside approved range.",
+            "The same exact quoted sentence appears here.",
+            "The same exact quoted sentence appears here again.",
+        ])
+        source = scoped.pin_scoped_source("paper")["source_id"]
+        found = scoped.locate_pinned_pdf_quote(source, "same exact quoted sentence")
+        self.assertEqual(found["status"], "ambiguous")
+        self.assertEqual([item["pdf_page"] for item in found["matches"]], [2, 3])
+        self.assertNotIn("match_id", found)
 
 
 if __name__ == "__main__":

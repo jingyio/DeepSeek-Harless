@@ -6,6 +6,8 @@
 
 这些接口已通过本地伪来源的版本／授权失效测试；Model RSI 真实批准来源的 Obsidian pin→read 已在无模型 MCP 客户端调用中验证。Zotero pin→read 尚未对用户私人条目开放模型试验，且目前没有两个应用的真实 DSH 参数链。因此，接口可用不等于已挖到跨任务 Motif。
 
+受限 PDF 来源另提供 `locate_pinned_pdf_quote(source_id, quote)` 和 `read_pinned_pdf_match(match_id)`：前者只扫描本任务批准的文件页，按精确引文匹配；仅有一个匹配页时生成带来源及 scope 版本的 `match_id`，后者据此读取该页。多页命中或未命中只返回候选／缺口，不自动决定科学相关性；PDF 是扫描件、抽取文字失真、引文改写或跨页断句时可能找不到。`match_id` 可在实际工具轨迹中为后续读取提供可核验的参数边，但还没有据此认证新的跨任务 Motif。2026-09-27 无模型检查中，P1 已批准的六条 Zotero 高亮分别在批准 PDF 页内唯一定位；MCP 客户端完成一次 pin→locate→read，未向模型发请求。本工具只加入可选的受限来源服务，默认 87 工具清单不变。
+
 `npm run dev` 会按本机准备情况连接多个 MCP 服务，工具在 DeepSeek Harness 中分别以 `mcp__local_research_tools__`、`mcp__literature_discovery__`、`mcp__zotero__`、`mcp__obsidian__`、`mcp__google_calendar__` 和 `mcp__google_gmail__` 为前缀。`local_research_tools` 只是 Python、文件与 Quarto 的适配层，不是 SSS 核心运行时；编程环境本身也不依赖 MCP。早期调研 MCP 原型已删除；MotifAgent 主控内核仍在迁移。跨服务的逐步骤工具切换尚未实现。
 
 一个 MCP 服务可暴露多个工具。当前代码的默认清单为 **87 个**：Zotero 21、Obsidian 19、Gmail 13、Google 日历 11、本地 Python／Quarto／结构化核查 13、文献发现 10；配置第三方 Google Scholar 接入后为 88 个。新工具要重启 Harness 才会出现在新会话；旧会话的工具清单不变。Zotero 上游虽列出 41 个工具，但本机 Zotero 9 不支持本地写入，桥接层仅暴露 21 个读／能力检查工具。Gmail `send_email` 和日历 `create-event` 都只准备本机待审项，实际写入必须由人在浏览器页面确认。清单数量不是已验证能完成任务的能力数量；后续评测应记录每个工具的实际调用成功率和任务贡献。
