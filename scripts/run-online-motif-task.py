@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -46,6 +47,10 @@ def main() -> int:
     parser.add_argument("--model", default="deepseek-flash",
                         choices=["deepseek-flash", "deepseek-pro"])
     parser.add_argument("--mode", default="shadow", choices=["shadow", "execute"])
+    parser.add_argument("--projection-artifact", type=Path,
+                        help="SSS certified Motif for latest tool-output projection")
+    parser.add_argument("--budget-usd", type=float,
+                        help="required with projection when starting the local cost gate")
     parser.add_argument("--call-model", action="store_true")
     args = parser.parse_args()
     endpoint = urlparse(args.embedding_endpoint)
@@ -60,21 +65,50 @@ def main() -> int:
     if not prompt.strip() or len(prompt) > 100_000:
         raise ValueError("research task prompt is missing or unbounded")
     task = json.loads(args.task.read_text(encoding="utf-8"))
+    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    projection_digest = None
+    if args.projection_artifact is not None:
+        from src.adapters.motif_output_projection import load_certified_projection
+
+        projection_digest, _ = load_certified_projection(
+            args.projection_artifact.resolve(strict=True))
+        if projection_digest not in {
+            row["certified_digest"] for row in manifest["artifacts"]
+        }:
+            raise ValueError("projection artifact is not in this online Motif manifest")
+        if args.budget_usd is None or not 0 < args.budget_usd <= 100:
+            parser.error("projection runs require a positive --budget-usd (at most US$100)")
+    elif args.budget_usd is not None:
+        parser.error("--budget-usd belongs to a --projection-artifact run")
     preview = {
         "task_id": task["task_id"], "session_id": task["session_id"],
         "model": args.model, "mode": args.mode,
         "base_patch": str(base_patch), "online_patch": prepared["patch"],
-        "manifest_digest": json.loads(args.manifest.read_text(encoding="utf-8"))["manifest_digest"],
+        "manifest_digest": manifest["manifest_digest"],
         "task_sha256": hashlib.sha256(args.task.read_bytes()).hexdigest(),
         "prompt_sha256": hashlib.sha256(prompt_file.read_bytes()).hexdigest(),
         "embedding_endpoint": args.embedding_endpoint,
         "max_model_requests": None,
-        "provider_budget_cap_usd": os.environ.get("SSS_BUDGET_CAP_USD"),
+        "provider_budget_cap_usd": (args.budget_usd if projection_digest
+                                    else os.environ.get("SSS_BUDGET_CAP_USD")),
+        "projection_artifact_digest": projection_digest,
+        "projection_mode": "SSS latest tool batch" if projection_digest else "off",
         "paid_api_called": args.call_model,
     }
     print(json.dumps(preview, ensure_ascii=False, indent=2), flush=True)
     if not args.call_model:
         return 0
+    if projection_digest and os.environ.get("SSS_ONLINE_PROJECTION_CHILD") != "1":
+        command = [sys.executable, str(ROOT / "scripts/run-distil-dsh.py"),
+                   "--mode", "plain", "--budget-usd", str(args.budget_usd),
+                   "--budget-max-output", "8000", "--motif-output-projection",
+                   str(args.projection_artifact.resolve(strict=True)), "--",
+                   sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]]
+        env = os.environ.copy()
+        env["SSS_ONLINE_PROJECTION_CHILD"] = "1"
+        return subprocess.call(command, env=env, cwd=ROOT)
+    if projection_digest and os.environ.get("SSS_PROJECTION_ARTIFACT_DIGEST") != projection_digest:
+        raise ValueError("running projection proxy does not match the certified Motif")
     require_budget_gate()
     lock_dir = ROOT / ".local/online-motif/session-locks"
     lock_dir.mkdir(parents=True, exist_ok=True, mode=0o700)

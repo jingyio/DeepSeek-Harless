@@ -19,12 +19,13 @@
 
 1. 从独立任务轨迹生成并验证 Motif 库；准备已审核的工具契约、根参数正则和工具输出版本字段。
 2. 用 `scripts/export-online-motif-manifest.py` 生成 `.local/` 清单；用 `scripts/prepare-online-motif.py` 生成 DSH 插件 patch。两个命令均不调用付费 API。
-3. `scripts/run-online-motif-task.py` 接受 Motif 清单、结构化任务、原 MCP patch、研究提示及本机 embedding 端点。默认仅输出预算与输入版本预览；只有显式传入 `--call-model`，且现有本地费用代理已开启，才运行 DeepSeek。脚本自动加载生成的插件 patch，并将敏感轨迹保存在忽略版本控制的 `.local/`。embedding 端点仅允许本机回环地址。一次任务使用独立会话 ID；插件还核对唯一的人类提示及其哈希，避免旧任务状态接管新消息。
+3. `scripts/run-online-motif-task.py` 接受 Motif 清单、结构化任务、原 MCP patch、研究提示及本机 embedding 端点。默认仅输出预算与输入版本预览；只有显式传入 `--call-model` 才运行 DeepSeek。若指定 `--projection-artifact` 和 `--budget-usd`，入口核对投影 Motif 的认证摘要属于在线清单，并自动启动 SSS 字段投影代理及费用闸门；无需手动串联代理。未指定投影时，仍要求外部已开启费用闸门。脚本自动加载在线插件 patch，并将敏感轨迹保存在忽略版本控制的 `.local/`。embedding 端点仅允许本机回环地址。一次任务使用独立会话 ID；插件还核对唯一的人类提示及其哈希，避免旧任务状态接管新消息。
 4. 先运行默认 `shadow` 模式，核查候选、版本和结果；只有同类独立任务校准阈值并评估交付质量后，才设 `SSS_ONLINE_MOTIF_MODE=execute`。可用 `SSS_MOTIF_MIN_SIMILARITY`、`SSS_MOTIF_MIN_MARGIN` 显式设置经校准的门槛。
 
 ## 当前证据与限制
 
 - 单元及插件协议测试证明：符合条件时不会调用下游模型流，DSH 的 `BlockAssembler` 可以接受生成的工具调用；改变版本、缺失参数、无工具权限或语义分数不足时回退。
+- 在线入口与 SSS 最近一轮字段投影已有组合启动检查：只接受同一认证 Motif，实际模型请求经过投影和本地费用闸门，`sss_expand` 可恢复本机原文。投影只改变送往模型的工具输出副本，不裁剪在线 Motif 插件所见的原始工具结果；已跳过的模型请求本身不会经过投影代理。两种机制能在一次任务中启用，但不保证在同一步产生叠加节省。
 - 尚未在付费的真实跨应用科研任务上观察到经核验的跳过。现有 AIDD 与 Model RSI 轨迹不能凭空变成可执行 Motif；需要新的独立任务轨迹和完整版本字段。
 - 当前在线适配器只支持非重复的线性只读 Motif，一次接管一个工具调用。复杂 DAG、列表前沿、写入工具、独立校准服务和多任务共享进程留在后续验证范围。结构化任务不代替论文相关性或研究结论判断。
 - 对照实验仍须保留普通 Harness、简单脚本／缓存及 Motif 三组；统计请求数、缓存命中/未命中 token、embedding 开销、实际 API 费用、人工修订与质量。
