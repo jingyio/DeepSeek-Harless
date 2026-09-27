@@ -93,10 +93,11 @@ test('one DSH model stream is replaced by a certified tool call with provenance'
   for await (const chunk of stream) { chunks.push(chunk); assembler.push(chunk); }
   assert.equal(providerCalled, 0);
   assert.equal(chunks.at(-1).reason.kind, 'tool-calls');
-  assert.equal(assembler.blocks()[0].name, read);
-  assert.deepEqual(JSON.parse(assembler.blocks()[0].arguments),
+  const toolBlock = assembler.blocks().find((block) => block.type === 'tool-call');
+  assert.equal(toolBlock.name, read);
+  assert.deepEqual(JSON.parse(toolBlock.arguments),
     { source_id: 'source-opaque' });
-  const callId = assembler.blocks()[0].id;
+  const callId = toolBlock.id;
   intercept.observe('s1', { name: read, callId, arguments: {
     source_id: 'source-opaque' } },
   { value: { structuredContent: { text: 'research evidence', version: 'v1' } } });
@@ -126,10 +127,11 @@ test('certified pure code node binds a transformed tool argument without a model
   for await (const chunk of await intercept.intercept('s1',
     { tools: [offered(read, ['source_id'])] },
     () => { throw new Error('model should be bypassed'); })) assembler.push(chunk);
-  assert.deepEqual(JSON.parse(assembler.blocks()[0].arguments),
+  assert.deepEqual(JSON.parse(assembler.blocks().find((block) =>
+    block.type === 'tool-call').arguments),
     { source_id: 'NOTE-D' });
   assert.deepEqual(events[0].code_node_ids, [codeId]);
-  const call = assembler.blocks()[0];
+  const call = assembler.blocks().find((block) => block.type === 'tool-call');
   intercept.observe('s1', { name: read, callId: call.id,
     arguments: { source_id: 'NOTE-D' } },
   { value: { structuredContent: { version: 'v1', text: 'checked' } } });
@@ -216,7 +218,7 @@ test('independent versioned source handles form one DSH tool batch', async () =>
     assembler.push(chunk);
   }
   assert.equal(providerCalls, 0);
-  const blocks = assembler.blocks();
+  const blocks = assembler.blocks().filter((block) => block.type === 'tool-call');
   assert.equal(blocks.length, 2);
   assert.deepEqual(blocks.map((block) => JSON.parse(block.arguments).source_id),
     ['source-one', 'source-two']);
@@ -232,6 +234,24 @@ test('independent versioned source handles form one DSH tool batch', async () =>
   assert.equal(intercept.state('s1').attempted, 1);
   await intercept.intercept('s1', options, next);
   assert.equal(providerCalls, 1);
+});
+
+test('five independent read continuations do not disappear at a four-call boundary', async () => {
+  const { pin, read, manifest, task } = fixture();
+  const scoped = { ...task, bindings: {} };
+  const intercept = createOnlineInterceptor({ manifest, task: scoped,
+    mode: 'execute', similarity: async (_query, descriptions) =>
+      descriptions.map(() => 0.97) });
+  for (let index = 0; index < 5; index++) {
+    intercept.observe('s1', { name: pin, callId: `pin-${index}`,
+      arguments: { path: `source:PAPER_${index}` } },
+    { value: { structuredContent: { source_id: `source-${index}`, version: 'v1' } } });
+  }
+  const noProvider = () => { throw new Error('independent roots should bypass the provider'); };
+  const assembler = new BlockAssembler();
+  for await (const chunk of await intercept.intercept('s1',
+    { tools: [offered(read, ['source_id'])] }, noProvider)) assembler.push(chunk);
+  assert.equal(assembler.blocks().filter((block) => block.type === 'tool-call').length, 5);
 });
 
 test('an unapproved or failed interleaved call is a Motif barrier', async () => {
@@ -285,7 +305,7 @@ test('verified results can continue to a later dependency layer without a model'
   let first;
   for await (const chunk of await intercept.intercept('s1',
     { tools: [offered(read, ['source_id']), offered(inspect, ['page_id'])] }, noProvider)) {
-    if (chunk.type === 'block-end') first = chunk.block;
+    if (chunk.type === 'block-end' && chunk.block.type === 'tool-call') first = chunk.block;
   }
   assert.equal(first.name, read);
   intercept.observe('s1', { name: read, callId: first.id,
@@ -294,7 +314,7 @@ test('verified results can continue to a later dependency layer without a model'
   let second;
   for await (const chunk of await intercept.intercept('s1',
     { tools: [offered(read, ['source_id']), offered(inspect, ['page_id'])] }, noProvider)) {
-    if (chunk.type === 'block-end') second = chunk.block;
+    if (chunk.type === 'block-end' && chunk.block.type === 'tool-call') second = chunk.block;
   }
   assert.equal(second.name, inspect);
   assert.deepEqual(JSON.parse(second.arguments), { page_id: 'page-two' });
@@ -417,7 +437,8 @@ test('a stale result after a bypass is never counted as a verified skip', async 
     { tools: [offered(read, ['source_id'])] }, () => { throw new Error('provider must be skipped'); })) {
     chunks.push(chunk);
   }
-  intercept.observe('s1', { name: read, callId: chunks[1].id,
+  intercept.observe('s1', { name: read, callId: chunks.find((chunk) =>
+    chunk.type === 'tool-call-delta').id,
     arguments: { source_id: 'opaque' } },
   { value: { structuredContent: { text: 'changed', version: 'v2' } } });
   assert.equal(events.at(-1).kind, 'bypass_result_unverified');

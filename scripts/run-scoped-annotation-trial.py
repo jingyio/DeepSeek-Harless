@@ -54,8 +54,12 @@ def main() -> int:
     parser.add_argument("--embedding-model", default="Qwen/Qwen3-Embedding-0.6B")
     parser.add_argument("--resume", action="store_true",
                         help="finish one truncated baseline in its original DSH session")
+    parser.add_argument("--diagnostic", action="store_true",
+                        help="label a repaired Motif rerun as diagnostic, not heldout evidence")
     parser.add_argument("--prior-ledger", type=Path,
                         help="original cost-gate ledger, required for a continuation")
+    parser.add_argument("--diagnostic-ledger", type=Path, action="append", default=[],
+                        help="cost ledger for each previous labeled diagnostic")
     parser.add_argument("--call-model", action="store_true")
     args = parser.parse_args()
     spec_path = args.spec.resolve(strict=True)
@@ -67,8 +71,14 @@ def main() -> int:
         parser.error(f"{args.arm} arm is not budgeted in the frozen preview")
     if args.resume and (args.arm != "baseline" or args.prior_ledger is None):
         parser.error("only a truncated baseline with its original ledger can resume")
-    if not args.resume and args.prior_ledger is not None:
-        parser.error("--prior-ledger belongs to --resume")
+    if args.diagnostic and (args.arm != "motif" or args.prior_ledger is None):
+        parser.error("a Motif diagnostic needs its original cost ledger")
+    if args.resume and args.diagnostic:
+        parser.error("a continuation is not a diagnostic rerun")
+    if args.diagnostic_ledger and not args.diagnostic:
+        parser.error("--diagnostic-ledger belongs to --diagnostic")
+    if not (args.resume or args.diagnostic) and args.prior_ledger is not None:
+        parser.error("--prior-ledger belongs to --resume or --diagnostic")
     scope = out / "source-scope.json"
     preview_file = out / "RUN-PREVIEW.json"
     prompt = Path(spec["prompt_path"]).resolve(strict=True)
@@ -114,12 +124,36 @@ def main() -> int:
         ledger = args.prior_ledger.resolve(strict=True)
         if not ledger.is_relative_to((ROOT / ".local").resolve()):
             parser.error("original cost ledger must stay under .local")
-        spent = sum(float(json.loads(line).get("observed_peak_usd", 0))
+        spent = sum(float(json.loads(line).get("observed_peak_usd") or 0)
                     for line in ledger.read_text(encoding="utf-8").splitlines())
         if spent <= 0 or spent + float(os.environ["SSS_BUDGET_CAP_USD"]) > float(
                 arm_budgets["baseline"]):
             parser.error("continuation gate exceeds the remaining approved budget")
-    run_out = out / args.arm
+    if args.diagnostic:
+        original = out / "motif" / "agent-metrics.json"
+        if not original.is_file():
+            parser.error("diagnostic requires a completed original Motif run")
+        ledger = args.prior_ledger.resolve(strict=True)
+        if not ledger.is_relative_to((ROOT / ".local").resolve()):
+            parser.error("original cost ledger must stay under .local")
+        ledgers = [ledger, *(p.resolve(strict=True) for p in args.diagnostic_ledger)]
+        if any(not item.is_relative_to((ROOT / ".local").resolve()) for item in ledgers):
+            parser.error("diagnostic cost ledgers must stay under .local")
+        spent = sum(float(json.loads(line).get("observed_peak_usd") or 0)
+                    for item in ledgers
+                    for line in item.read_text(encoding="utf-8").splitlines())
+        if spent <= 0 or spent + float(os.environ["SSS_BUDGET_CAP_USD"]) > float(
+                arm_budgets["motif"]):
+            parser.error("diagnostic gate exceeds the remaining approved budget")
+    if args.diagnostic:
+        n = 1
+        while (out / f"motif-diagnostic-{n:02d}").exists():
+            n += 1
+        if n > 7:
+            parser.error("at most seven labeled Motif diagnostics are allowed")
+        run_out = out / f"motif-diagnostic-{n:02d}"
+    else:
+        run_out = out / args.arm
     if args.resume:
         first = run_out / "continuation-01"
         if first.exists():
@@ -174,7 +208,7 @@ def main() -> int:
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
             reasoning_effort="high", max_tokens=8000,
-            cwd=str(out / args.arm), runtime_cwd=str(out / args.arm),
+            cwd=str(run_out), runtime_cwd=str(run_out),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"),
             profile="sss-native-resume-sdk" if args.resume else "sdk",
             patches=tuple(patches), dsh_home=str(ROOT / ".local/dsh"),
@@ -194,8 +228,15 @@ def main() -> int:
     metrics.update({"session_id": session_id,
                     "elapsed_seconds": round(time.monotonic() - started, 3),
                     "started_requests": guard.started_requests,
+                    "run_kind": "diagnostic" if args.diagnostic else
+                                "continuation" if args.resume else "frozen_arm",
                     **_usage(guard.events)})
     if online:
+        metrics.update({"online_manifest_sha256": _digest(args.online_manifest),
+                        "online_task_sha256": _digest(args.online_task),
+                        "motif_min_similarity": float(os.environ.get(
+                            "SSS_MOTIF_MIN_SIMILARITY", "0.8")),
+                        "embedding_model": args.embedding_model})
         audit = run_out / ".local/online-motif" / (
             hashlib.sha256(session_id.encode()).hexdigest() + ".jsonl")
         decisions = ([json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]

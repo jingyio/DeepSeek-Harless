@@ -381,7 +381,7 @@ function offeredSchemaMatches(availableTools, tool, contract) {
 /** Find independent, provenance-bound continuations in interleaved tool history. */
 export async function proposeReadyBatch({ manifest, task, history, availableTools,
                                          similarity, minSimilarity, minMargin,
-                                         usedPrefixes = new Set(), maxBatch = 4 }) {
+                                         usedPrefixes = new Set(), maxBatch = 8 }) {
   const barrier = history.findLastIndex((row) => row.barrier === true);
   history = history.slice(barrier + 1);
   if (!history.length || typeof similarity !== 'function' ||
@@ -459,8 +459,9 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
   }
   if (!selected.length) return [];
   selected.sort((a, b) => b.score - a.score || a.prefix_key.localeCompare(b.prefix_key));
-  if (selected.length > maxBatch &&
-      selected[maxBatch - 1].score - selected[maxBatch].score < minMargin) return [];
+  // Distinct roots are independent read-only continuations. A batch limit is
+  // transport capacity, not semantic ambiguity; execute a stable prefix and
+  // reconsider the remaining roots after their results are observed.
   const distinct = [];
   const calls = new Set();
   for (const row of selected) {
@@ -480,12 +481,20 @@ export function syntheticToolStreamBatch(calls) {
     throw new TypeError('synthetic tool batch must contain 1–8 calls');
   }
   return (async function* () {
+    // DeepSeek thinking mode requires reasoning_content on every previous
+    // assistant turn when tools are present. This is a transparent runtime
+    // provenance marker, not fabricated model reasoning.
+    const provenance = 'SSS runtime executed certified read-only tool continuations.';
+    yield { type: 'block-start', index: 0, blockType: 'reasoning' };
+    yield { type: 'reasoning-delta', index: 0, text: provenance };
+    yield { type: 'block-end', index: 0,
+      block: { type: 'reasoning', text: provenance } };
     for (const [index, { callId, proposal }] of calls.entries()) {
       const args = JSON.stringify(proposal.arguments);
-      yield { type: 'block-start', index, blockType: 'tool-call' };
-      yield { type: 'tool-call-delta', index, id: callId,
+      yield { type: 'block-start', index: index + 1, blockType: 'tool-call' };
+      yield { type: 'tool-call-delta', index: index + 1, id: callId,
         name: proposal.tool, argumentsDelta: args };
-      yield { type: 'block-end', index, block: { type: 'tool-call',
+      yield { type: 'block-end', index: index + 1, block: { type: 'tool-call',
         id: callId, name: proposal.tool, arguments: args } };
     }
     yield { type: 'finish', reason: { kind: 'tool-calls' } };

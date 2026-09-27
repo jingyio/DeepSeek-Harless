@@ -79,7 +79,11 @@ test('DSH plugin intercepts an agent loop stream before the provider', async () 
     assert.equal(providerCalls, 1);
     const request = markAgentLoopRequest(Object.freeze({
       sessionId: 's1', messages: [{ role: 'user', source: { kind: 'user' },
-        content: [{ type: 'text', text: 'Read paper' }] }],
+        content: [{ type: 'text', text: 'Read paper' }] },
+      { role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: '<system-reminder>\nWorkspace instructions' }] },
+      { role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: 'Current runtime context. This snapshot supersedes earlier runtime-context snapshots.' }] }],
       tools: [{ name: read, parameters: { type: 'object',
         required: ['id'], properties: { id: { type: 'string' } } } }] }));
     const chunks = [];
@@ -88,9 +92,18 @@ test('DSH plugin intercepts an agent loop stream before the provider', async () 
       return (async function* () {})();
     })) chunks.push(chunk);
     assert.equal(providerCalls, 1);
-    assert.equal(chunks[1].name, read);
-    assert.deepEqual(JSON.parse(chunks[1].argumentsDelta), { id: 'opaque-id' });
+    const call = chunks.find((chunk) => chunk.type === 'tool-call-delta');
+    assert.equal(call.name, read);
+    assert.deepEqual(JSON.parse(call.argumentsDelta), { id: 'opaque-id' });
     assert.equal(chunks.at(-1).reason.kind, 'tool-calls');
+    const changedEnvelope = markAgentLoopRequest(Object.freeze({ ...request,
+      messages: request.messages.map((message, index) =>
+        ({ ...message, id: `changed-${index}` })) }));
+    for await (const _ of listeners.get('llm/stream')(changedEnvelope, () => {
+      providerCalls++;
+      return (async function* () {})();
+    })) { /* Changed user envelope must return to the provider. */ }
+    assert.equal(providerCalls, 2);
   } finally {
     globalThis.fetch = priorFetch;
     process.env = saved;

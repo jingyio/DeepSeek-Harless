@@ -187,28 +187,54 @@ export function apply(ctx) {
     minSimilarity: Number(process.env.SSS_MOTIF_MIN_SIMILARITY ?? 0.8),
     minMargin: Number(process.env.SSS_MOTIF_MIN_MARGIN ?? 0.1),
     audit: (row) => privateAudit(process.cwd(), row.session_id, row) });
+  const audit = (kind, reason) => privateAudit(process.cwd(), task.session_id,
+    { kind, session_id: task.session_id, reason });
+  audit('motif_plugin_loaded', 'manifest_validated');
   const live = new Set();
+  let trustedUserEnvelope = null;
   ctx.on('agent/created', ({ agent }) => {
     if (agent.session.id !== task.session_id) return;
+    audit('motif_agent_attached', 'session_matched');
     live.add(agent.session.id);
     agent.ctx.on('tools/result', (exec, result) =>
       interceptor.observe(agent.session.id, exec, result));
   });
   ctx.on('agent/disposed', ({ agent }) => live.delete(agent.session.id));
   ctx.on('llm/stream', (options, next) => {
-    if (!isAgentLoopRequest(options) || !live.has(options.sessionId)) return next();
-    const human = options.messages?.filter((message) =>
-      message?.role === 'user' && message?.source?.kind === 'user') ?? [];
-    if (human.length !== 1) return next();
-    const promptText = human[0].content?.length === 1 &&
-      human[0].content[0]?.type === 'text' ? human[0].content[0].text : null;
-    if (typeof promptText !== 'string' || (promptHash &&
-        createHash('sha256').update(promptText).digest('hex') !== promptHash)) {
+    if (options.sessionId !== task.session_id) return next();
+    if (!isAgentLoopRequest(options)) {
+      audit('motif_gate_deferred', 'not_agent_loop_request');
       return next();
     }
+    if (!live.has(options.sessionId)) {
+      audit('motif_gate_deferred', 'agent_not_live');
+      return next();
+    }
+    const human = options.messages?.filter((message) =>
+      message?.role === 'user' && message?.source?.kind === 'user') ?? [];
+    const texts = human.map((message) => message.content?.length === 1 &&
+      message.content[0]?.type === 'text' ? message.content[0].text : null);
+    const matching = texts.filter((value) => typeof value === 'string' &&
+      createHash('sha256').update(value).digest('hex') === promptHash);
+    const reminder = texts.filter((value) => typeof value === 'string' &&
+      value.startsWith('<system-reminder>\n'));
+    const runtime = texts.filter((value) => typeof value === 'string' &&
+      value.startsWith('Current runtime context. This snapshot supersedes'));
+    if (matching.length !== 1 || reminder.length > 1 || runtime.length > 1 ||
+        matching.length + reminder.length + runtime.length !== human.length) {
+      audit('motif_gate_deferred', 'prompt_or_scaffold_mismatch');
+      return next();
+    }
+    const envelope = digest(human.map((message) =>
+      ({ id: message.id, content: message.content })));
+    if (trustedUserEnvelope !== null && envelope !== trustedUserEnvelope) {
+      audit('motif_gate_deferred', 'user_envelope_changed');
+      return next();
+    }
+    trustedUserEnvelope = envelope;
     return (async function* () {
       const stream = await interceptor.intercept(options.sessionId, options, next);
       yield* stream;
     })();
-  });
+  }, { global: true });
 }
