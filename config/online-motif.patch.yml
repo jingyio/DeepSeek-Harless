@@ -1,0 +1,5 @@
+# Opt-in DSH adapter. Only mounts the host plugin; credentials stay in DSH.
+# The plugin stays inert unless SSS_ONLINE_MOTIF_MANIFEST and TASK are set.
+- insert:
+    - id: sss-online-motif
+      name: __SSS_ONLINE_MOTIF_PLUGIN__

@@ -33,6 +33,7 @@
     "gmail:review-web": "bash scripts/review-google-gmail.sh --web",
     "gmail:test": "node --test tests/test_gmail_outbox.cjs",
     "calendar:test": "node --test tests/test_calendar_outbox.cjs",
+    "motif:online:test": "node --test tests/test_online_motif_frontier.mjs tests/test_dsh_online_motif.mjs && .venv312/bin/python -m unittest tests.test_export_online_motif_manifest -v",
     "obsidian:connect": "bash scripts/connect-obsidian.sh",
     "motif:office": ".venv312/bin/python scripts/run-motif-office.py",
     "laya:start": "bash scripts/start-laya.sh",
