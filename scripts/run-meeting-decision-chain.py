@@ -71,7 +71,7 @@ def preview(case: str, arm: str, online_manifest: Path | None,
             "benchmark_version": 3,
             "frozen_min_similarity": similarity_threshold if arm == "motif" else None,
             "classification": "synthetic_development_trial",
-            "model": "deepseek-flash", "reasoning_effort": "high",
+            "model": "deepseek-flash", "reasoning_effort": "off",
             "budget_cap_usd": CAP_USD, "max_model_requests": MAX_REQUESTS,
             "max_output_tokens_per_request": MAX_OUTPUT_TOKENS,
             "read_only": True,
@@ -176,7 +176,7 @@ def main() -> int:
 
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
-            reasoning_effort="high", max_tokens=MAX_OUTPUT_TOKENS,
+            reasoning_effort="off", max_tokens=MAX_OUTPUT_TOKENS,
             cwd=str(out), runtime_cwd=str(out),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"), profile="sdk",
             patches=tuple(patches), dsh_home=str(ROOT / ".local/dsh"),

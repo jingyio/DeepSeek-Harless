@@ -115,7 +115,7 @@ def main() -> int:
 
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
-            reasoning_effort="high", max_tokens=8000,
+            reasoning_effort="off", max_tokens=8000,
             cwd=str(out), runtime_cwd=str(out),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"),
             profile="sss-native-resume-sdk", patches=(str(PATCH),),

@@ -96,7 +96,7 @@ def preview(scope: dict) -> dict:
     encoded = (json.dumps(scope, ensure_ascii=False, indent=2) + "\n").encode()
     return {"task": "Flexibility Trap highlighters versus structural-prior claim",
             "event_status": "simulated release of real historical annotations",
-            "model": "deepseek-flash", "reasoning_effort": "high",
+            "model": "deepseek-flash", "reasoning_effort": "off",
             "budget_cap_usd": BUDGET_USD, "max_model_requests": None,
             "max_output_tokens_per_request": 6000,
             "source_roles": [row["role"] for row in scope["sources"]],
@@ -159,7 +159,7 @@ def main() -> int:
 
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
-            reasoning_effort="high", max_tokens=6000,
+            reasoning_effort="off", max_tokens=6000,
             cwd=str(OUT), runtime_cwd=str(OUT),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"), profile="sdk",
             patches=(str(PATCH),), dsh_home=str(ROOT / ".local/dsh"),

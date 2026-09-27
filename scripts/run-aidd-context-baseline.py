@@ -40,7 +40,7 @@ def preview() -> dict:
     spec.loader.exec_module(original)
     original._check_scope(paid=True)
     return {"task": "AIDD ordinary Harness with early context compaction",
-            "model": "deepseek-flash", "reasoning_effort": "high",
+            "model": "deepseek-flash", "reasoning_effort": "off",
             "max_agent_requests": 30,
             "compaction_requests": "additional, counted in proxy spending ledger",
             "max_output_tokens_per_request": 8000,
@@ -111,7 +111,7 @@ def main() -> int:
 
     try:
         with DeepSeekHarness(
-            provider="deepseek-official", model="deepseek-flash", reasoning_effort="high",
+            provider="deepseek-official", model="deepseek-flash", reasoning_effort="off",
             max_tokens=8000, cwd=str(OUT), runtime_cwd=str(OUT),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"), profile="sdk",
             patches=(str(SCOPE_PATCH), str(CONTEXT_PATCH)),

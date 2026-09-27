@@ -71,7 +71,7 @@ def narrowed_scope() -> dict:
 def preview(scope: dict) -> dict:
     raw = (json.dumps(scope, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     return {"task": "AIDD antibody paper impact card; development trial",
-            "model": "deepseek-flash", "reasoning_effort": "high",
+            "model": "deepseek-flash", "reasoning_effort": "off",
             "budget_cap_usd": BUDGET_USD, "max_model_requests": None,
             "max_output_tokens_per_request": 8000,
             "source_roles": sorted(ALLOWED_SOURCES),
@@ -143,7 +143,7 @@ def main() -> int:
     try:
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
-            reasoning_effort="high", max_tokens=8000,
+            reasoning_effort="off", max_tokens=8000,
             cwd=str(OUT), runtime_cwd=str(OUT),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"), profile="sdk",
             patches=(str(PATCH),), dsh_home=str(ROOT / ".local/dsh"),

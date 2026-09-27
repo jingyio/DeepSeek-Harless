@@ -99,7 +99,7 @@ def main() -> int:
 
     try:
         with DeepSeekHarness(
-            provider="deepseek-official", model="deepseek-flash", reasoning_effort="high",
+            provider="deepseek-official", model="deepseek-flash", reasoning_effort="off",
             max_tokens=3000, cwd=str(OUT), runtime_cwd=str(OUT),
             dsh_bin=str(ROOT / "node_modules/.bin/dsh"), profile="sdk",
             patches=(str(PATCH),), dsh_home=str(ROOT / ".local/dsh"),
