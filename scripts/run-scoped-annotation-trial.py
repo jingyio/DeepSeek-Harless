@@ -51,7 +51,7 @@ def main() -> int:
     parser.add_argument("--online-manifest", type=Path)
     parser.add_argument("--online-task", type=Path)
     parser.add_argument("--embedding-endpoint", default="http://127.0.0.1:8776/v1/embeddings")
-    parser.add_argument("--embedding-model", default="Qwen3-Embedding-0.6B")
+    parser.add_argument("--embedding-model", default="Qwen/Qwen3-Embedding-0.6B")
     parser.add_argument("--resume", action="store_true",
                         help="finish one truncated baseline in its original DSH session")
     parser.add_argument("--prior-ledger", type=Path,
@@ -119,7 +119,16 @@ def main() -> int:
         if spent <= 0 or spent + float(os.environ["SSS_BUDGET_CAP_USD"]) > float(
                 arm_budgets["baseline"]):
             parser.error("continuation gate exceeds the remaining approved budget")
-    run_out = out / args.arm / "continuation-01" if args.resume else out / args.arm
+    run_out = out / args.arm
+    if args.resume:
+        first = run_out / "continuation-01"
+        if first.exists():
+            failed = json.loads((first / "agent-metrics.json").read_text(encoding="utf-8"))
+            if failed.get("status") != "error" or failed.get("model_requests") != 0:
+                parser.error("a continuation has already used the approved session")
+            run_out = run_out / "continuation-02"
+        else:
+            run_out = first
     run_out.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (run_out / "paid-attempt.marker").open("x", encoding="utf-8") as stream:
         stream.write("one approved paid trial reserved\n")
@@ -164,9 +173,10 @@ def main() -> int:
 
         with DeepSeekHarness(
             provider="deepseek-official", model="deepseek-flash",
-            reasoning_effort="high", max_tokens=8000 if args.resume else 6000,
+            reasoning_effort="high", max_tokens=8000,
             cwd=str(out / args.arm), runtime_cwd=str(out / args.arm),
-            dsh_bin=str(ROOT / "node_modules/.bin/dsh"), profile="sdk",
+            dsh_bin=str(ROOT / "node_modules/.bin/dsh"),
+            profile="sss-native-resume-sdk" if args.resume else "sdk",
             patches=tuple(patches), dsh_home=str(ROOT / ".local/dsh"),
             request_timeout_seconds=900,
         ) as harness:
