@@ -72,6 +72,8 @@ def export_manifest(library: dict, contract_rows: dict,
                    or field not in contracts[tool].output_fields
                    for tool, field in versions.items())):
         raise ValueError("version fields must name approved tool outputs")
+    approved_tools = {name for name, contract in contracts.items()
+                      if contract.read_only and contract.replay_stable}
     manifest = {
         "schema_version": 1,
         "source_library_digest": library["library_digest"],
@@ -83,7 +85,7 @@ def export_manifest(library: dict, contract_rows: dict,
                 "default_params": dict(contracts[tool].default_params),
                 "description": contracts[tool].description,
                 "read_only": True,
-            } for tool in sorted(used_tools)
+            } for tool in sorted(approved_tools)
         },
         "slot_rules": rules,
         "version_fields": versions,

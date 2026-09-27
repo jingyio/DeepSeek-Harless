@@ -32,6 +32,14 @@ export function validateOnlineManifest(manifest) {
     throw new TypeError('invalid or changed certified online Motif manifest');
   }
   const ids = new Set();
+  for (const contract of Object.values(manifest.contracts)) {
+    if (!contract || contract.read_only !== true ||
+        !Array.isArray(contract.required_params) ||
+        !Array.isArray(contract.output_fields) ||
+        !contract.default_params || typeof contract.default_params !== 'object') {
+      throw new TypeError('online manifest includes a non-read or invalid tool');
+    }
+  }
   for (const artifact of manifest.artifacts) {
     if (!scalar(artifact.motif_id) || ids.has(artifact.motif_id) ||
         !/^[a-f0-9]{64}$/.test(artifact.certified_digest ?? '') ||
@@ -111,7 +119,10 @@ export function parseStructuredTask(raw, manifest) {
     }
   }
   for (const [tool, version] of Object.entries(task.source_versions)) {
-    if (!manifest.contracts[tool] || !scalar(version)) {
+    if (!manifest.contracts[tool] ||
+        !(scalar(version) || (Array.isArray(version) &&
+          version.length > 0 && version.length <= 32 &&
+          version.every(scalar) && new Set(version).size === version.length))) {
       throw new TypeError('invalid source version scope');
     }
   }
@@ -236,14 +247,154 @@ export async function proposeNext({ manifest, task, history, availableTools,
     similarity: best.similarity, prefix_length: best.length };
 }
 
+const versionAllowed = (task, tool, value) => scalar(value) &&
+  (Array.isArray(task.source_versions[tool])
+    ? task.source_versions[tool].includes(value)
+    : task.source_versions[tool] === value);
+
+function matchingPrefixes(artifact, history, length, task, manifest) {
+  let partial = [[]];
+  for (const tool of artifact.tools.slice(0, length)) {
+    const next = [];
+    for (const prefix of partial) {
+      const after = prefix.length ? prefix.at(-1).historyIndex + 1 : 0;
+      for (let index = after; index < history.length; index++) {
+        const row = history[index];
+        if (row.name === tool && row.ok &&
+            row.inputVersion === task.input_version &&
+            manifest.version_fields[tool] &&
+            versionAllowed(task, tool, row.sourceVersion)) {
+          next.push([...prefix, { ...row, historyIndex: index }]);
+          if (next.length > 128) return [];
+        }
+      }
+    }
+    partial = next;
+    if (!partial.length) break;
+  }
+  return partial.filter((prefix) =>
+    witnessedPrefix(artifact, prefix, task, manifest) &&
+    artifact.transfer_evidence.every((edge) => {
+      const from = prefix.find((row) => row.name === edge.from_tool);
+      const to = prefix.find((row) => row.name === edge.to_tool);
+      return !from || !to || from.sourceVersion === to.sourceVersion;
+    }));
+}
+
+function offeredSchemaMatches(availableTools, tool, contract) {
+  const offered = availableTools.get(tool);
+  const required = contract.required_params;
+  return offered?.parameters?.type === 'object' &&
+    Array.isArray(offered.parameters.required) &&
+    canonical([...offered.parameters.required].sort()) ===
+      canonical([...required].sort()) &&
+    [...required, ...Object.keys(contract.default_params)]
+      .every((param) => Object.hasOwn(offered.parameters.properties ?? {}, param));
+}
+
+/** Find independent, provenance-bound continuations in interleaved tool history. */
+export async function proposeReadyBatch({ manifest, task, history, availableTools,
+                                         similarity, minSimilarity, minMargin,
+                                         usedPrefixes = new Set(), maxBatch = 4 }) {
+  const barrier = history.findLastIndex((row) => row.barrier === true);
+  history = history.slice(barrier + 1);
+  if (!history.length || typeof similarity !== 'function' ||
+      !(minSimilarity >= 0 && minSimilarity <= 1) ||
+      !(minMargin >= 0 && minMargin <= 1) ||
+      !Number.isSafeInteger(maxBatch) || maxBatch < 1 || maxBatch > 8) return [];
+  const candidates = [];
+  for (const artifact of manifest.artifacts) {
+    for (let length = 1; length < artifact.tools.length; length++) {
+      const nextTool = artifact.tools[length];
+      if (!manifest.version_fields[nextTool] ||
+          !offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool])) continue;
+      for (const prefix of matchingPrefixes(artifact, history, length, task, manifest)) {
+        const args = bindNext(artifact, nextTool, prefix, task, manifest);
+        if (!args) continue;
+        const edges = artifact.transfer_evidence.filter((edge) => edge.to_tool === nextTool);
+        if (!edges.length) continue;
+        const versions = new Set(edges.map((edge) =>
+          prefix.find((row) => row.name === edge.from_tool)?.sourceVersion));
+        if (versions.size !== 1) continue;
+        const expectedVersion = [...versions][0];
+        if (!versionAllowed(task, nextTool, expectedVersion)) continue;
+        const lastIndex = prefix.at(-1).historyIndex;
+        if (history.slice(lastIndex + 1).some((row) =>
+          row.name === nextTool && digest(row.arguments) === digest(args))) continue;
+        const prefixKey = digest([artifact.motif_id, nextTool,
+          prefix.map((row) => row.callId ?? row.historyIndex)]);
+        if (usedPrefixes.has(prefixKey)) continue;
+        candidates.push({ motif_id: artifact.motif_id,
+          certified_digest: artifact.certified_digest, tool: nextTool,
+          arguments: args, expected_version: expectedVersion,
+          prefix_key: prefixKey,
+          root_key: String(prefix[0].callId ?? prefix[0].historyIndex),
+          prefix_length: length, supporting_task_count: artifact.supporting_task_count,
+          description: manifest.contracts[nextTool].description });
+      }
+    }
+  }
+  if (!candidates.length) return [];
+  const query = `${task.intent}\nRecent tools: ${history.slice(-4)
+    .map((row) => row.name).join(', ')}`;
+  const scores = await similarity(query, candidates.map((row) => row.description));
+  if (!Array.isArray(scores) || scores.length !== candidates.length ||
+      scores.some((score) => typeof score !== 'number' || !Number.isFinite(score))) return [];
+  const ranked = candidates.map((row, index) => ({ ...row,
+    similarity: scores[index],
+    score: scores[index] * 0.8 +
+      Math.min(row.supporting_task_count, 5) / 5 * 0.1 +
+      row.prefix_length / manifest.artifacts.find((a) => a.motif_id === row.motif_id).tools.length * 0.1 }));
+  const byRoot = new Map();
+  for (const row of ranked) {
+    const group = byRoot.get(row.root_key) ?? [];
+    group.push(row);
+    byRoot.set(row.root_key, group);
+  }
+  const selected = [];
+  for (const group of byRoot.values()) {
+    const alternatives = new Map();
+    for (const row of group) {
+      const key = digest([row.tool, row.arguments]);
+      const prior = alternatives.get(key);
+      if (!prior || row.score > prior.score) alternatives.set(key, row);
+    }
+    // A shared root with different successors might be a scientific choice.
+    if (alternatives.size !== 1) continue;
+    const row = [...alternatives.values()][0];
+    if (row.similarity >= minSimilarity) selected.push(row);
+  }
+  if (!selected.length) return [];
+  selected.sort((a, b) => b.score - a.score || a.prefix_key.localeCompare(b.prefix_key));
+  if (selected.length > maxBatch &&
+      selected[maxBatch - 1].score - selected[maxBatch].score < minMargin) return [];
+  const distinct = [];
+  const calls = new Set();
+  for (const row of selected) {
+    const key = digest([row.tool, row.arguments]);
+    if (!calls.has(key)) { distinct.push(row); calls.add(key); }
+    if (distinct.length === maxBatch) break;
+  }
+  return distinct;
+}
+
 export function syntheticToolStream(callId, proposal) {
-  const args = JSON.stringify(proposal.arguments);
+  return syntheticToolStreamBatch([{ callId, proposal }]);
+}
+
+export function syntheticToolStreamBatch(calls) {
+  if (!Array.isArray(calls) || !calls.length || calls.length > 8) {
+    throw new TypeError('synthetic tool batch must contain 1–8 calls');
+  }
   return (async function* () {
-    yield { type: 'block-start', index: 0, blockType: 'tool-call' };
-    yield { type: 'tool-call-delta', index: 0, id: callId,
-      name: proposal.tool, argumentsDelta: args };
-    yield { type: 'block-end', index: 0, block: { type: 'tool-call',
-      id: callId, name: proposal.tool, arguments: args } };
+    for (const [index, { callId, proposal }] of calls.entries()) {
+      const args = JSON.stringify(proposal.arguments);
+      yield { type: 'block-start', index, blockType: 'tool-call' };
+      yield { type: 'tool-call-delta', index, id: callId,
+        name: proposal.tool, argumentsDelta: args };
+      yield { type: 'block-end', index, block: { type: 'tool-call',
+        id: callId, name: proposal.tool, arguments: args } };
+    }
     yield { type: 'finish', reason: { kind: 'tool-calls' } };
   })();
 }

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from mcp import Client
 from pypdf import PdfWriter
@@ -54,7 +54,7 @@ class ScopedObsidianTests(unittest.TestCase):
     def test_approved_note_excerpt_rejects_outside_lines_before_mcp(self) -> None:
         self.scope["sources"][0]["external_model_excerpt_allowed"] = True
         self.scope["sources"][0]["allowed_line_ranges"] = [[2, 4]]
-        with self.assertRaisesRegex(ValueError, "exceed approved excerpt"):
+        with self.assertRaisesRegex(ValueError, "outside approved excerpt"):
             import asyncio
             asyncio.run(scoped.read_scoped_note("current_state", start_line=1, max_lines=2))
 
@@ -92,10 +92,13 @@ class ScopedObsidianTests(unittest.TestCase):
                "external_model_excerpt_allowed": True}
         self.scope["sources"].append(row)
         self.assertEqual(len(scoped.read_scoped_pdf_pages("paper", 2, 2)["pages"]), 2)
-        with self.assertRaisesRegex(ValueError, "exceed approved excerpt"):
+        with self.assertRaisesRegex(ValueError, "outside approved excerpt"):
             scoped.read_scoped_pdf_pages("paper", 1, 2)
-        with self.assertRaisesRegex(ValueError, "exceed approved excerpt"):
-            scoped.read_scoped_pdf_pages("paper", 3, 2)
+        clipped = scoped.read_scoped_pdf_pages("paper", 3, 3)
+        self.assertEqual([page["pdf_page"] for page in clipped["pages"]], [3])
+        self.assertTrue(clipped["clipped_to_tool_limit"])
+        self.assertTrue(clipped["clipped_to_approved_excerpt"])
+        self.assertIsNone(clipped["next_page"])
         row["allowed_page_ranges"] = [[0, 3]]
         with self.assertRaisesRegex(ValueError, "Invalid approved PDF page ranges"):
             scoped.read_scoped_pdf_pages("paper", 2, 1)
@@ -114,6 +117,7 @@ class ScopedObsidianMCPTests(unittest.IsolatedAsyncioTestCase):
             names = {item.name for item in (await client.list_tools()).tools}
         self.assertEqual(names, {"list_scoped_notes", "list_scoped_local_sources",
                                  "pin_scoped_source", "read_pinned_note",
+                                 "read_pinned_approved_note_excerpt",
                                  "read_pinned_text", "read_pinned_pdf_pages",
                                  "locate_pinned_pdf_quote", "read_pinned_pdf_match"})
 
@@ -156,6 +160,12 @@ class ScopedSourceHandleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "version changed"):
             scoped.read_pinned_text(pinned["source_id"])
 
+    def test_approved_note_overlong_request_is_clipped_without_exposure(self) -> None:
+        self.assertEqual(scoped._approved_note_read_limit([[120, 175]], 120, 60),
+                         (56, 175))
+        with self.assertRaisesRegex(ValueError, "outside approved excerpt"):
+            scoped._approved_note_read_limit([[120, 175]], 1, 80)
+
     def test_permission_change_invalidates_existing_handle(self) -> None:
         pinned = scoped.pin_scoped_source("note")
         scope = json.loads(self.scope_file.read_text(encoding="utf-8"))
@@ -163,6 +173,28 @@ class ScopedSourceHandleTests(unittest.TestCase):
         self.scope_file.write_text(json.dumps(scope), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "scope or type changed"):
             scoped._resolve_pinned(pinned["source_id"], "note")
+
+    def test_approved_note_excerpt_uses_scope_ranges_without_model_line_choice(self) -> None:
+        import asyncio
+
+        scope = json.loads(self.scope_file.read_text(encoding="utf-8"))
+        scope["sources"][0]["allowed_line_ranges"] = [[2, 2]]
+        self.scope_file.write_text(json.dumps(scope), encoding="utf-8")
+        source = scoped.pin_scoped_source("note")["source_id"]
+        result = {"sha256": scope["sources"][0]["sha256"],
+                  "numbered_text": "2: two"}
+        with patch.object(scoped, "read_scoped_note", new_callable=AsyncMock,
+                          return_value=result) as read:
+            excerpt = asyncio.run(scoped.read_pinned_approved_note_excerpt(source))
+        read.assert_awaited_once_with("note", start_line=2, max_lines=1)
+        self.assertEqual(excerpt["segments"], [{"start_line": 2,
+                                                "end_line": 2,
+                                                "numbered_text": "2: two"}])
+        scope["sources"][0]["allowed_line_ranges"] = [[1, 200]]
+        self.scope_file.write_text(json.dumps(scope), encoding="utf-8")
+        source = scoped.pin_scoped_source("note")["source_id"]
+        with self.assertRaisesRegex(ValueError, "exceeds 120 lines"):
+            asyncio.run(scoped.read_pinned_approved_note_excerpt(source))
 
     def _pdf_with_text(self, pages: list[str]) -> Path:
         writer = PdfWriter()

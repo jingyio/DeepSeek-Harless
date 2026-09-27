@@ -100,6 +100,24 @@ def _numbered_lines(content: str, start_line: int, max_lines: int) -> dict[str, 
             next_line if next_line <= len(lines) else None, "numbered_text": numbered}
 
 
+def _approved_note_read_limit(allowed: Any, start_line: int,
+                              max_lines: int) -> tuple[int, int | None]:
+    if not 1 <= start_line <= 10_000 or not 1 <= max_lines <= 1000:
+        raise ValueError("Read from line 1–10000 and request 1–1000 lines")
+    if allowed is None:
+        return max_lines, None
+    if (not isinstance(allowed, list) or not allowed
+            or any(not isinstance(span, list) or len(span) != 2
+                   or any(type(number) is not int for number in span)
+                   or not 1 <= span[0] <= span[1] for span in allowed)):
+        raise ValueError("Invalid approved note line ranges")
+    approved_end = next((last for first, last in allowed
+                         if first <= start_line <= last), None)
+    if approved_end is None:
+        raise ValueError("Note start line is outside approved excerpt")
+    return min(max_lines, 100, approved_end - start_line + 1), approved_end
+
+
 def list_scoped_notes() -> dict[str, Any]:
     """List note roles in this trial without reading or exposing note contents."""
     scope = _scope()
@@ -116,16 +134,8 @@ async def read_scoped_note(role: str, start_line: int = 1,
     """Read bounded lines through Obsidian MCP from an approved exact note version."""
     row, relative = _approved_note(role)
     allowed = row.get("allowed_line_ranges")
-    if allowed is not None:
-        if (not isinstance(allowed, list) or not allowed
-                or any(not isinstance(span, list) or len(span) != 2
-                       or any(type(number) is not int for number in span)
-                       or not 1 <= span[0] <= span[1] for span in allowed)):
-            raise ValueError("Invalid approved note line ranges")
-        last_line = start_line + min(max_lines, 100) - 1
-        if not any(first <= start_line <= last_line <= last
-                   for first, last in allowed):
-            raise ValueError("Requested note lines exceed approved excerpt")
+    bounded_lines, approved_end = _approved_note_read_limit(
+        allowed, start_line, max_lines)
     key_file = LOCAL / "obsidian-api-key"
     cert_file = LOCAL / "obsidian-ca.crt"
     token = key_file.read_text(encoding="utf-8").strip()
@@ -149,8 +159,13 @@ async def read_scoped_note(role: str, start_line: int = 1,
                     raise RuntimeError("Obsidian returned an unexpected note")
                 if hashlib.sha256(content.encode("utf-8")).hexdigest() != row["sha256"]:
                     raise ValueError("Obsidian note differs from approved file version")
+                result = _numbered_lines(content, start_line, bounded_lines)
+                if approved_end is not None and result["next_line"] is not None:
+                    if result["next_line"] > approved_end:
+                        result["next_line"] = None
                 return {"role": role, "vault_path": relative, "sha256": row["sha256"],
-                        **_numbered_lines(content, start_line, max_lines)}
+                        **result, "requested_max_lines": max_lines,
+                        "clipped_to_approved_excerpt": bounded_lines < min(max_lines, 100)}
 
 
 def list_scoped_local_sources() -> dict[str, Any]:
@@ -174,8 +189,8 @@ def read_scoped_text(role: str, start_line: int = 1, max_lines: int = 80) -> dic
 def read_scoped_pdf_pages(role: str, start_page: int = 1,
                           max_pages: int = 2) -> dict[str, Any]:
     """Read up to two page-labelled text excerpts from an approved local PDF."""
-    if not 1 <= start_page <= 1000 or not 1 <= max_pages <= 2:
-        raise ValueError("Read at most two PDF pages from page 1–1000")
+    if not 1 <= start_page <= 1000 or not 1 <= max_pages <= 1000:
+        raise ValueError("Read from page 1–1000 and request 1–1000 pages")
     from io import BytesIO
 
     row, raw = _approved_local(role, {".pdf"})
@@ -183,6 +198,7 @@ def read_scoped_pdf_pages(role: str, start_page: int = 1,
     if reader.is_encrypted or len(reader.pages) > 1000 or start_page > len(reader.pages):
         raise ValueError("PDF is encrypted, too long or page is unavailable")
     allowed = row.get("allowed_page_ranges")
+    approved_end = len(reader.pages)
     if allowed is not None:
         if (not isinstance(allowed, list) or not allowed
                 or any(not isinstance(span, list) or len(span) != 2
@@ -190,18 +206,25 @@ def read_scoped_pdf_pages(role: str, start_page: int = 1,
                        or not 1 <= span[0] <= span[1] <= len(reader.pages)
                        for span in allowed)):
             raise ValueError("Invalid approved PDF page ranges")
-        last_page = min(start_page + max_pages - 1, len(reader.pages))
-        if not any(first <= start_page <= last_page <= last
-                   for first, last in allowed):
-            raise ValueError("Requested PDF pages exceed approved excerpt")
+        selected_end = next((last for first, last in allowed
+                             if first <= start_page <= last), None)
+        if selected_end is None:
+            raise ValueError("PDF start page is outside approved excerpt")
+        approved_end = selected_end
+    returned_pages = min(max_pages, 2, approved_end - start_page + 1)
     pages = []
-    for page in range(start_page, min(start_page + max_pages, len(reader.pages) + 1)):
+    for page in range(start_page, start_page + returned_pages):
         content = (reader.pages[page - 1].extract_text() or "").strip()
         pages.append({"pdf_page": page, "text": content[:6000],
                       "total_chars": len(content), "truncated": len(content) > 6000,
                       "low_text": len(content) < 80})
     return {"role": role, "sha256": row["sha256"],
-            "pdf_page_count": len(reader.pages), "pages": pages}
+            "pdf_page_count": len(reader.pages), "pages": pages,
+            "requested_max_pages": max_pages, "returned_pages": len(pages),
+            "clipped_to_tool_limit": max_pages > 2,
+            "clipped_to_approved_excerpt": start_page + min(max_pages, 2) - 1 > approved_end,
+            "next_page": start_page + len(pages) if start_page + len(pages) <= approved_end
+                         else None}
 
 
 def pin_scoped_source(role: str) -> dict[str, Any]:
@@ -255,6 +278,33 @@ async def read_pinned_note(source_id: str, start_line: int = 1,
     role = _resolve_pinned(source_id, "note")
     return {"source_id": source_id,
             **await read_scoped_note(role, start_line, max_lines)}
+
+
+async def read_pinned_approved_note_excerpt(source_id: str) -> dict[str, Any]:
+    """Read only the note lines explicitly approved by this task's scope."""
+    role = _resolve_pinned(source_id, "note")
+    row, _ = _approved_note(role)
+    spans = row.get("allowed_line_ranges")
+    if (not isinstance(spans, list) or not 1 <= len(spans) <= 4
+            or any(not isinstance(span, list) or len(span) != 2
+                   or any(type(line) is not int for line in span)
+                   or not 1 <= span[0] <= span[1]
+                   or span[1] - span[0] + 1 > 100 for span in spans)
+            or sum(last - first + 1 for first, last in spans) > 120):
+        raise ValueError("Approved note excerpt is missing or exceeds 120 lines")
+    ordered = sorted(spans)
+    if any(left[1] >= right[0] for left, right in zip(ordered, ordered[1:])):
+        raise ValueError("Approved note line ranges overlap")
+    segments = []
+    for first, last in ordered:
+        excerpt = await read_scoped_note(role, start_line=first,
+                                         max_lines=last - first + 1)
+        if excerpt.get("sha256") != row["sha256"]:
+            raise ValueError("Approved note version changed while reading")
+        segments.append({"start_line": first, "end_line": last,
+                         "numbered_text": excerpt["numbered_text"]})
+    return {"source_id": source_id, "role": role, "sha256": row["sha256"],
+            "segments": segments}
 
 
 def read_pinned_text(source_id: str, start_line: int = 1,
@@ -383,7 +433,8 @@ def create_server(*, handle_mode: bool) -> MCPServer:
         instance.add_tool(function, annotations=ToolAnnotations(
             readOnlyHint=True, destructiveHint=False, openWorldHint=False))
     if handle_mode:
-        functions = (pin_scoped_source, read_pinned_note, read_pinned_text,
+        functions = (pin_scoped_source, read_pinned_note,
+                     read_pinned_approved_note_excerpt, read_pinned_text,
                      read_pinned_pdf_pages, locate_pinned_pdf_quote,
                      read_pinned_pdf_match)
     else:

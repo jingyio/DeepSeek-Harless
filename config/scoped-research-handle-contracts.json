@@ -17,7 +17,7 @@
     ],
     "read_only": true,
     "output_fields": [
-      "source_id"
+      "source_id", "sha256"
     ],
     "description": "Pin one approved source version to an unpredictable handle.",
     "replay_stable": true
@@ -27,7 +27,7 @@
       "source_id"
     ],
     "read_only": true,
-    "output_fields": [],
+    "output_fields": ["sha256"],
     "provenance_params": [
       "source_id"
     ],
@@ -45,6 +45,14 @@
       "start_line",
       "max_lines"
     ],
+    "replay_stable": true
+  },
+  "mcp__scoped_research_read__read_pinned_approved_note_excerpt": {
+    "required_params": ["source_id"],
+    "read_only": true,
+    "output_fields": ["sha256"],
+    "provenance_params": ["source_id"],
+    "description": "Read only the versioned note lines explicitly approved for this research task.",
     "replay_stable": true
   },
   "mcp__scoped_research_read__read_pinned_text": {

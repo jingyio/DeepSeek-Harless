@@ -2,7 +2,7 @@
 
 ## 任务范围内的来源句柄（实验性）
 
-针对真实科研任务，`src.mcp.scoped_obsidian_read_server` 可在 `SSS_SCOPED_HANDLE_MODE=1` 时只暴露 `pin_scoped_source → read_pinned_note/text/pdf_pages` 等受限读取工具；另有独立的 `src.mcp.scoped_zotero_read_server`，暴露 `pin_scoped_zotero_source → read_pinned_zotero_item/annotation`。两者以 `.local` 中的任务 scope 圈定确切来源和 SHA／Zotero 版本，读取时重新核验授权与版本，返回不透明 `source_id`。工具契约分别在 `config/scoped-research-handle-contracts.json` 和 `config/scoped-zotero-handle-contracts.json`，轨迹审计可重复传入 `--contracts` 合并。Zotero 受限服务是**另一个可选的只读 MCP**，未加入下面默认 87 个工具，也不替代现有 Zotero 桥接；未批准的私人摘录不会被暴露。
+针对真实科研任务，`src.mcp.scoped_obsidian_read_server` 可在 `SSS_SCOPED_HANDLE_MODE=1` 时只暴露 `pin_scoped_source → read_pinned_note/text/pdf_pages` 等受限读取工具；另有独立的 `src.mcp.scoped_zotero_read_server`，暴露 `pin_scoped_zotero_source → read_pinned_zotero_item/annotation`。两者以 `.local` 中的任务 scope 圈定确切来源和 SHA／Zotero 版本，读取时重新核验授权与版本，返回不透明 `source_id`。工具契约分别在 `config/scoped-research-handle-contracts.json` 和 `config/scoped-zotero-handle-contracts.json`，轨迹审计可重复传入 `--contracts` 合并。Zotero 受限服务是**另一个可选的只读 MCP**，未加入下面默认 87 个工具，也不替代现有 Zotero 桥接；未批准的私人摘录不会被暴露。`read_pinned_approved_note_excerpt(source_id)` 可直接读取 scope 已批准的笔记行段（最多 120 行），无需模型猜行号；没有明确行段、版本变化或权限变化时拒绝读取。
 
 这些接口已通过本地伪来源的版本／授权失效测试；Model RSI 真实批准来源的 Obsidian pin→read 已在无模型 MCP 客户端调用中验证。Zotero pin→read 尚未对用户私人条目开放模型试验，且目前没有两个应用的真实 DSH 参数链。因此，接口可用不等于已挖到跨任务 Motif。
 

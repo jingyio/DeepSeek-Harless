@@ -1,11 +1,11 @@
-/** DSH adapter: replace one model decision with one certified read-only tool call. */
+/** DSH adapter: replace one model decision with certified read-only calls. */
 
 import { randomUUID, createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
-import { digest, observation, parseStructuredTask, proposeNext,
-  syntheticToolStream, validateOnlineManifest } from './online_motif_frontier.mjs';
+import { digest, observation, parseStructuredTask, proposeReadyBatch,
+  syntheticToolStreamBatch, validateOnlineManifest } from './online_motif_frontier.mjs';
 
 export const name = 'sss-online-motif';
 export const inject = ['llm', 'agents'];
@@ -13,6 +13,12 @@ export const inject = ['llm', 'agents'];
 function outputField(output, path) {
   return path?.split('.').reduce((value, key) =>
     value && typeof value === 'object' ? value[key] : undefined, output);
+}
+
+function versionWithinTask(task, tool, value) {
+  const allowed = task.source_versions[tool];
+  return typeof value === 'string' &&
+    (Array.isArray(allowed) ? allowed.includes(value) : allowed === value);
 }
 
 function cosine(a, b) {
@@ -68,7 +74,8 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
   function state(sessionId) {
     let found = states.get(sessionId);
     if (!found) {
-      found = { history: [], pending: new Map(), attempted: 0 };
+      found = { history: [], pending: new Map(), batches: new Map(),
+        usedPrefixes: new Set(), attempted: 0, halted: false };
       states.set(sessionId, found);
     }
     return found;
@@ -79,8 +86,11 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     const output = observation(result);
     const version = outputField(output, manifest.version_fields[exec.name]);
     const ok = result?.isError !== true && output !== null;
-    current.history.push({ name: exec.name, ok,
-      arguments: exec.arguments, output, sourceVersion: version,
+    const barrier = !ok || manifest.contracts[exec.name]?.read_only !== true ||
+      (!!manifest.version_fields[exec.name] &&
+       !versionWithinTask(parsedTask, exec.name, version));
+    current.history.push({ name: exec.name, callId: exec.callId, ok,
+      barrier, arguments: exec.arguments, output, sourceVersion: version,
       inputVersion: parsedTask.input_version });
     current.history.splice(0, Math.max(0, current.history.length - 12));
     const pending = current.pending.get(exec.callId);
@@ -88,46 +98,64 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
       const verified = ok && exec.name === pending.tool &&
         exec.arguments && typeof exec.arguments === 'object' &&
         digest(exec.arguments) === digest(pending.arguments) &&
-        version === parsedTask.source_versions[exec.name];
-      audit({ kind: verified ? 'model_request_skipped_verified' : 'bypass_result_unverified',
-        session_id: sessionId, call_id: exec.callId, motif_id: pending.motif_id,
-        tool: exec.name });
+        version === pending.expected_version;
+      const batch = current.batches.get(pending.batch_id);
+      batch.remaining.delete(exec.callId);
+      batch.failed ||= !verified;
+      audit({ kind: verified ? 'motif_tool_result_verified' : 'motif_tool_result_unverified',
+        session_id: sessionId, batch_id: pending.batch_id,
+        call_id: exec.callId, motif_id: pending.motif_id, tool: exec.name });
       current.pending.delete(exec.callId);
+      if (!batch.remaining.size) {
+        audit({ kind: batch.failed ? 'bypass_result_unverified' : 'model_request_skipped_verified',
+          session_id: sessionId, batch_id: pending.batch_id,
+          tool_count: batch.tool_count });
+        if (batch.failed) current.halted = true;
+        current.batches.delete(pending.batch_id);
+      }
     }
   }
   async function intercept(sessionId, options, next) {
     if (sessionId !== parsedTask.session_id) return next();
     const current = state(sessionId);
+    if (current.halted || current.pending.size) return next();
     const availableTools = new Map((options.tools ?? [])
       .filter((tool) => typeof tool?.name === 'string')
       .map((tool) => [tool.name, tool]));
-    let proposal;
+    let proposals;
     try {
-      proposal = await proposeNext({ manifest, task: parsedTask,
+      proposals = await proposeReadyBatch({ manifest, task: parsedTask,
         history: current.history, availableTools, similarity,
-        minSimilarity, minMargin });
+        minSimilarity, minMargin, usedPrefixes: current.usedPrefixes });
     } catch (error) {
       audit({ kind: 'motif_deferred', session_id: sessionId,
         reason: error?.name ?? 'candidate_error' });
       return next();
     }
-    if (!proposal || !manifest.version_fields[proposal.tool] ||
-        !parsedTask.source_versions[proposal.tool] || current.pending.size) {
-      return next();
-    }
+    if (!proposals.length) return next();
     if (mode === 'shadow') {
       audit({ kind: 'shadow_candidate', session_id: sessionId,
-        motif_id: proposal.motif_id, tool: proposal.tool });
+        motifs: proposals.map((row) => row.motif_id),
+        tools: proposals.map((row) => row.tool) });
       return next();
     }
-    const callId = `sss-motif-${randomUUID()}`;
-    current.pending.set(callId, proposal);
+    const batchId = `sss-batch-${randomUUID()}`;
+    const calls = proposals.map((proposal) => ({
+      callId: `sss-motif-${randomUUID()}`, proposal }));
+    current.batches.set(batchId, { remaining: new Set(calls.map((row) => row.callId)),
+      failed: false, tool_count: calls.length });
+    for (const { callId, proposal } of calls) {
+      current.pending.set(callId, { ...proposal, batch_id: batchId });
+      current.usedPrefixes.add(proposal.prefix_key);
+    }
     current.attempted++;
     audit({ kind: 'motif_bypass_attempt', session_id: sessionId,
-      call_id: callId, motif_id: proposal.motif_id,
-      certified_digest: proposal.certified_digest, tool: proposal.tool,
-      similarity: proposal.similarity, score: proposal.score });
-    return syntheticToolStream(callId, proposal);
+      batch_id: batchId, call_ids: calls.map((row) => row.callId),
+      motifs: proposals.map((row) => row.motif_id),
+      certified_digests: proposals.map((row) => row.certified_digest),
+      tools: proposals.map((row) => row.tool),
+      similarities: proposals.map((row) => row.similarity) });
+    return syntheticToolStreamBatch(calls);
   }
   return { observe, intercept, state };
 }

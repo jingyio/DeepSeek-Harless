@@ -10,9 +10,8 @@
       "role"
     ],
     "read_only": true,
-    "output_fields": [
-      "source_id"
-    ],
+    "output_fields": ["source_id", "data_sha256"],
+    "description": "Pin one approved Zotero item or annotation version to a handle.",
     "replay_stable": true
   },
   "mcp__scoped_zotero_read__read_pinned_zotero_item": {
@@ -20,10 +19,11 @@
       "source_id"
     ],
     "read_only": true,
-    "output_fields": [],
+    "output_fields": ["data_sha256"],
     "provenance_params": [
       "source_id"
     ],
+    "description": "Read versioned metadata from one pinned Zotero item.",
     "replay_stable": true
   },
   "mcp__scoped_zotero_read__read_pinned_zotero_annotation": {
@@ -31,10 +31,11 @@
       "source_id"
     ],
     "read_only": true,
-    "output_fields": [],
+    "output_fields": ["data_sha256"],
     "provenance_params": [
       "source_id"
     ],
+    "description": "Read one versioned Zotero annotation and its highlighted text.",
     "replay_stable": true
   }
 }

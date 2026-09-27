@@ -43,6 +43,19 @@ class OnlineExportTests(unittest.TestCase):
             MODULE.export_manifest(library(), self.rows(),
                                    version_fields={"search": "invented"})
 
+    def test_approved_interleaving_read_is_exported_without_becoming_a_motif(self):
+        rows = self.rows()
+        rows["list_sources"] = {"required_params": [], "output_fields": [],
+                                "read_only": True, "replay_stable": True,
+                                "description": "List approved sources"}
+        rows["write_note"] = {"required_params": ["text"], "output_fields": [],
+                              "read_only": False, "replay_stable": False,
+                              "description": "Write a note"}
+        manifest = MODULE.export_manifest(library(), rows)
+        self.assertIn("list_sources", manifest["contracts"])
+        self.assertNotIn("write_note", manifest["contracts"])
+        self.assertEqual(manifest["artifacts"][0]["tools"], ["search", "read"])
+
 
 if __name__ == "__main__":
     unittest.main()
