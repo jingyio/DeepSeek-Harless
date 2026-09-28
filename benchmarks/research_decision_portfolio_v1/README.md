@@ -1,0 +1,34 @@
+# 科研决定任务集 v1：三类九题
+
+这是一套**合成、可运行的开发基准**，供导师检查 SSS 是否在不同科研工作中发现局部结构、跳过完整模型请求，同时保留必须由模型或研究者判断的环节。它不含真实论文、真实邮件或真实课题组实验结果；所有应用入口由隔离的只读 MCP 模拟。任务文件和隐藏评审标准分开保存，运行时一次只暴露一个 case。
+
+现有 `meeting_decision_chain_v1` 至 `v5` 已有多项独立决定，但主要复用同一个“更新事件→两版表格→旧主张”形状。本集**不把跨学科换名当作新任务类型**，增加以下三种不同输入拓扑、决策与交付：
+
+| 类型 | 三项独立科研决定 | 自然工具机会 | 语义分叉与结构继续 |
+| --- | --- | --- | --- |
+| 文献证据改变研究主张 | `l_state_update` 内部能力状态；`l_mutation_generalization` 跨蛋白泛化；`l_retrieval_persistence` 检索记忆与持久状态 | 文献摘录、Zotero 批注、Obsidian 主张；固定来源、精确定位引文、找依赖 | Agent 比较方法与评估单位，选择需要更新的主张；其后可沿版本来源继续读取和定位 |
+| 实验结果的可比性排查 | `r_label_policy` 标注政策；`r_hardware_mix` 运行器构成；`r_assay_batch` 重试口径 | WPS 表格、GitHub 方案／配置、Obsidian 主张、Zotero 方法批注；逐行读取、分组复算、版本比较 | 统计差异可机械计算；是否同口径、是否能归因于方法，须由模型判断；方案改变应打断旧统计解释 |
+| 协作反馈后的科研决定 | `c_subgroup_reply` 子组质疑；`c_protocol_conflict` 新旧模板冲突；`c_negative_control` 负对照审稿意见 | Gmail 线索、WPS 记录、Obsidian 状态、Zotero 批注、日历忙闲；依事件定位、读取、计算 | 邮件要求选择下一步证据和可承诺内容；后续取数与查忙闲可结构执行；仅产出待审草稿，不实际发送或建会 |
+
+每题是不同的研究决定，而非同一决定的三次改写。Agent 可见 `cases/<id>/task.md` 和该题 MCP 返回的事件与对象；`review.json` 是隐藏的研究事实与重大错误边界。一个题中的旧版和新版资料仍算**一题**。所有文件的 SHA-256 见 `fixtures.lock.json`。
+
+## 运行方式与权限
+
+```sh
+.venv312/bin/python -m benchmarks.research_decision_portfolio_v1.build_fixtures
+.venv312/bin/python -m unittest tests.test_research_decision_portfolio
+SSS_PORTFOLIO_CASE=l_state_update .venv312/bin/python benchmarks/research_decision_portfolio_v1/mock_apps_server.py
+```
+
+第三条启动 stdio MCP 服务，会等待客户端。DeepSeek Harness 可用 `config/research-decision-portfolio.patch.yml` 挂载；需设置 `SSS_PROJECT_ROOT`、`SSS_MCP_PYTHON` 和 `SSS_PORTFOLIO_CASE`。Agent 工作目录放 `.local`，禁用读取仓库和执行 shell 的工具，避免它绕过 MCP 直接看到 `sources.json` 或 `review.json`。来源 ID 仅在当前 case 有效，`pin_resource` 返回的句柄绑定内容哈希；内容改变后旧句柄失效。服务器不读取隐藏评审文件。
+
+八个只读工具：`read_event`、`pin_resource`、`read_pinned`、`read_rows`、`aggregate_rate`、`compare_tables`、`find_dependents`、`locate_excerpt`。`compare_tables` 返回数据变化与 `protocol_changed`，不自行宣称新旧结果可比；`locate_excerpt` 只定位精确文字，不判断其是否支持主张。实际发送邮件、创建日历事件和写应用均没有工具入口。
+
+## 预登记的实验与强基线
+
+1. **任务冻结。** 选定训练、认证、留出题，记录任务哈希、模型版本、提示与工具 schema 顺序、预算。不同题的隐藏评审只给评审者，不给 Agent 或 Motif 编译器。同一题的普通组与 Motif 组使用相同可见资料与工具；思考模式均关闭。
+2. **先收普通 Harness 轨迹。** 观察真实调用链和参数来源，再从至少两项独立决定编译局部 Motif。留出题不得反向调整阈值、提示或工具合同。可能的边包括事件对象 ID→固定来源、固定来源 ID→读取、数据 ID→逐行核查、文献摘录→精确定位；它们只是机会，不是预写步骤。
+3. **同题三组比较。** 普通 Harness、认证 Motif、强脚本＋同模型。强脚本可读取同样的授权对象、做版本检查和确定性计算，并允许模型在必要处作选择；其脚本开发和维护工作另记，不能为让 Motif 获胜故意削弱脚本。先评答案是否合格及人工修订分钟数，再看实际付费请求、缓存命中／未命中、输出与修复 token、估费/账单、端到端时间。
+4. **逐边判断。** 每个被接管的模型轮次注明哪个工具结果给下一个参数、版本和权限如何核验。记录正确沿用、因新论文／方案／邮件要求而正确中断，以及错误跳过。若普通 Harness 同轮已并行完成后续读取，或强脚本更便宜，照实记录；不能用工具调用数代替模型请求节省。
+
+文献题、实验题、协作题各自至少保留一项未参与编译的留出决定。九题足以做**机制开发和失败发现**，不足以推断普遍科研场景的合格总成本收益。面向导师的下一道证据门槛是：每类至少一个真实研究者问题与真实来源的只读试跑，盲评交付质量后，再报告 Motif 相对普通 Harness 和强脚本的成本。模拟 Gmail/日历题不能计为真实沟通闭环。

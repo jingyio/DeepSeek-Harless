@@ -1,0 +1,41 @@
+{
+  "break": "指标口径变化时旧统计链必须暂停。",
+  "case_id": "r_assay_batch",
+  "family": "result_provenance_triage",
+  "fatal": [
+    "直接把新旧差额解释为泛化提升",
+    "声称底物 ID 已证明独立"
+  ],
+  "must": [
+    "复算两版分组数字",
+    "指出重试计数规则不同",
+    "提出恢复初次尝试或标记重试的核查"
+  ],
+  "numerical_reference": {
+    "wps:d00": [
+      {
+        "denominator": 50,
+        "group": "known",
+        "numerator": 37
+      },
+      {
+        "denominator": 50,
+        "group": "novel",
+        "numerator": 25
+      }
+    ],
+    "wps:d01": [
+      {
+        "denominator": 50,
+        "group": "known",
+        "numerator": 41
+      },
+      {
+        "denominator": 50,
+        "group": "novel",
+        "numerator": 35
+      }
+    ]
+  },
+  "safe_reuse": "表格读取和按底物分组复算。"
+}

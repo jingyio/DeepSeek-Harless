@@ -1,0 +1,48 @@
+{
+  "families": {
+    "collaboration_decision_handoff": [
+      "c_negative_control",
+      "c_protocol_conflict",
+      "c_subgroup_reply"
+    ],
+    "literature_claim_revision": [
+      "l_mutation_generalization",
+      "l_retrieval_persistence",
+      "l_state_update"
+    ],
+    "result_provenance_triage": [
+      "r_assay_batch",
+      "r_hardware_mix",
+      "r_label_policy"
+    ]
+  },
+  "sha256": {
+    "cases/c_negative_control/review.json": "03d7798cc321ee34fec28deb173e5300c7850e27062ad0ad9d41085b65ea4eb8",
+    "cases/c_negative_control/sources.json": "566ea0cd5ea629b5e2558463587a925fae669f441211564d4608eed4ba131914",
+    "cases/c_negative_control/task.md": "7a41ab4287720b0a0f32098b824300472d9ce8038728ec7d3738cd4bf145bdbf",
+    "cases/c_protocol_conflict/review.json": "4b05074cdf30a695009838425ad83081b2f6f36c83ab0ae505b31f271a397595",
+    "cases/c_protocol_conflict/sources.json": "60fa77e8057ed703663401d634879aec395a63a5b71fe33e9e8f2f46e23e2476",
+    "cases/c_protocol_conflict/task.md": "fa84c0262ab984d3c0d61b66a3019c77e3f12c3497d3ac53eb4815fb1c0b4928",
+    "cases/c_subgroup_reply/review.json": "cdd8430de0879088e31eac51d91d28b16eb4e3a4443946ed1ec5d5d1d02bc2b5",
+    "cases/c_subgroup_reply/sources.json": "68bbdc545c19da8e31dfc17223f998c7de8fce653a5c2978603f41af70a30214",
+    "cases/c_subgroup_reply/task.md": "007ec6b78b34761ca06ffa9d9a3997edca317a7d9286a27a6d0ec9865467c8a2",
+    "cases/l_mutation_generalization/review.json": "02bf4524f0cace075ab4301ff61fb489955f6816c55afd7ef3c99246a919e5e7",
+    "cases/l_mutation_generalization/sources.json": "19b9b02b7b5c5d988e5e7139b179a758417845c37001de9db782b61ab84e2364",
+    "cases/l_mutation_generalization/task.md": "5bd591bebe4c6ed80022400b747c412485877d10d429de0791f373510b6403ce",
+    "cases/l_retrieval_persistence/review.json": "bd036a47e2d2ee4fc35ebb90a7abc664ffc0c90c161a5f6b11a9f68b53193a17",
+    "cases/l_retrieval_persistence/sources.json": "3f41a3f2d97dcbf1766ae23f04f3859143c74ebf7f919633dd551e38be873958",
+    "cases/l_retrieval_persistence/task.md": "f79972570e414c12d3e4b1f518661f71afc3cbadfdc18caa89b8809d94c3c33a",
+    "cases/l_state_update/review.json": "51ea1689cecc59d2016f0d0da991f8ce242138aefee243682720ec1e11838158",
+    "cases/l_state_update/sources.json": "16e1b6ce481b2c236a2ee8d856a93032dcfb57d7c00b5f4bb2a963644c6c4ad7",
+    "cases/l_state_update/task.md": "1a408a38e133aa9332d6a87d4ae9b13339086b0c4ee9238a7c60bb1e3dccd5df",
+    "cases/r_assay_batch/review.json": "418135986f9003a15f6018e9b9d68259cf3499c1d384b92f23098d1332a196c5",
+    "cases/r_assay_batch/sources.json": "fc7366e2e93633bb1ab0398ac172d09226e7bd5610a37395c2638bce03c40379",
+    "cases/r_assay_batch/task.md": "a9d676a51ea67067d81703ea5527ffb3a04762c3441d48527d806b1cb69991a0",
+    "cases/r_hardware_mix/review.json": "79ec473bf4269ea23bca39797c9a6f17b0180aa5c2ab41889349d72c2dd6d76d",
+    "cases/r_hardware_mix/sources.json": "639eb1e6054233149f2da396d79db41ff3395c16285a8e547217091fe5401011",
+    "cases/r_hardware_mix/task.md": "fa7e1483b110a740888c129850fa4d05bff630a154b47e2a8c8b1b24d97b4f01",
+    "cases/r_label_policy/review.json": "aa96285b07184af98d9949cba2f107d952b2dacc2cf4d52336c25e8e402d5bf2",
+    "cases/r_label_policy/sources.json": "a9e5864859e4e1fec5280164f66ad2dcfb3e4f3887f5f21d215a3b6ef1741850",
+    "cases/r_label_policy/task.md": "2d4595002e193f43982d26e1d7d8ebe1e2ed134c3530cfa237176c630cb06390"
+  }
+}

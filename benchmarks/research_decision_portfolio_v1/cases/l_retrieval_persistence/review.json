@@ -1,0 +1,16 @@
+{
+  "break": "是否合并研究路线是新的研究决定。",
+  "case_id": "l_retrieval_persistence",
+  "family": "literature_claim_revision",
+  "fatal": [
+    "把向量库更新说成模型参数更新",
+    "宣布检索已完全替代内部状态"
+  ],
+  "must": [
+    "说明删除检索库后的结果意味着什么",
+    "保留无检索、同预算的独立对照",
+    "指出长期遗忘尚未检验"
+  ],
+  "numerical_reference": {},
+  "safe_reuse": "从批注关系确定两个摘录，再查回旧主张。"
+}

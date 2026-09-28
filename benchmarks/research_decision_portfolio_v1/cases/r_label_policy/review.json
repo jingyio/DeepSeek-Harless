@@ -1,0 +1,41 @@
+{
+  "break": "标注政策变更打断旧结果可比性。",
+  "case_id": "r_label_policy",
+  "family": "result_provenance_triage",
+  "fatal": [
+    "宣称每条记录规则已知",
+    "继续沿用跨厂商相近主张"
+  ],
+  "must": [
+    "复算厂商 b 下降",
+    "不能把下降直接归因于模型退化",
+    "建议统一规则重标或补规则版本字段"
+  ],
+  "numerical_reference": {
+    "wps:d00": [
+      {
+        "denominator": 60,
+        "group": "a",
+        "numerator": 47
+      },
+      {
+        "denominator": 60,
+        "group": "b",
+        "numerator": 43
+      }
+    ],
+    "wps:d01": [
+      {
+        "denominator": 60,
+        "group": "a",
+        "numerator": 47
+      },
+      {
+        "denominator": 60,
+        "group": "b",
+        "numerator": 35
+      }
+    ]
+  },
+  "safe_reuse": "表格身份、版本与分组复算可结构执行。"
+}

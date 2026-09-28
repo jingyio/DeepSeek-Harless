@@ -1,0 +1,126 @@
+{
+  "event": {
+    "event_id": "event:r_hardware_mix:01",
+    "message": "两版基准结果已上传，运行器配置同时变更；需分清方法与硬件混合比例。",
+    "root_objects": [
+      "wps:d01",
+      "github:c01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "github:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "change_log",
+      "links": [
+        "wps:d00",
+        "zotero:a01"
+      ],
+      "text": "新报告将 fast 设备运行重复 4 次、slow 设备运行 1 次；旧报告二者各一次。阈值与计时代码未变。",
+      "title": "运行器配置"
+    },
+    "obsidian:n01": {
+      "app": "Obsidian",
+      "depends_on": [
+        "wps:d00"
+      ],
+      "kind": "claim",
+      "links": [],
+      "text": "旧判断：候选方法可能降低推理延迟；报告准备引用总体达标率。",
+      "title": "效率主张"
+    },
+    "wps:d00": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "device"
+        ],
+        "denominator": "reviewed",
+        "id": "within_latency_budget",
+        "numerator": "accepted"
+      },
+      "protocol": "",
+      "rows": [
+        {
+          "accepted": 80,
+          "device": "fast",
+          "reviewed": 100,
+          "seed": 1
+        },
+        {
+          "accepted": 82,
+          "device": "fast",
+          "reviewed": 100,
+          "seed": 2
+        },
+        {
+          "accepted": 39,
+          "device": "slow",
+          "reviewed": 100,
+          "seed": 1
+        },
+        {
+          "accepted": 41,
+          "device": "slow",
+          "reviewed": 100,
+          "seed": 2
+        }
+      ],
+      "title": "旧延迟采样"
+    },
+    "wps:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "device"
+        ],
+        "denominator": "reviewed",
+        "id": "within_latency_budget",
+        "numerator": "accepted"
+      },
+      "protocol": "",
+      "rows": [
+        {
+          "accepted": 78,
+          "device": "fast",
+          "reviewed": 100,
+          "seed": 1
+        },
+        {
+          "accepted": 79,
+          "device": "fast",
+          "reviewed": 100,
+          "seed": 2
+        },
+        {
+          "accepted": 37,
+          "device": "slow",
+          "reviewed": 100,
+          "seed": 1
+        },
+        {
+          "accepted": 38,
+          "device": "slow",
+          "reviewed": 100,
+          "seed": 2
+        }
+      ],
+      "title": "新延迟采样"
+    },
+    "zotero:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "跨设备混合权重变化时，总体达标率不可直接用于算法效率归因；须同设备、同负载配对。",
+      "title": "分层比较批注"
+    }
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "event": {
+    "event_id": "event:r_assay_batch:01",
+    "message": "新批次表格和实验方案修订一起到达；需要重核之前的泛化主张。",
+    "root_objects": [
+      "wps:d01",
+      "github:c01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "github:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "protocol",
+      "links": [
+        "wps:d00",
+        "zotero:a01"
+      ],
+      "text": "新批次把失败后重试计为新的独立尝试；旧批次只记初次尝试。底物 ID 可以配对，但当前导出缺少重试标识。",
+      "title": "实验方案修订"
+    },
+    "obsidian:n01": {
+      "app": "Obsidian",
+      "depends_on": [
+        "wps:d00"
+      ],
+      "kind": "claim",
+      "links": [],
+      "text": "旧状态：新底物成功率仍低，先不要扩展到更多底物类。",
+      "title": "新底物泛化"
+    },
+    "wps:d00": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "substrate"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "失败重试不另计尝试。",
+      "rows": [
+        {
+          "accepted": 18,
+          "reviewed": 25,
+          "seed": 1,
+          "substrate": "known"
+        },
+        {
+          "accepted": 19,
+          "reviewed": 25,
+          "seed": 2,
+          "substrate": "known"
+        },
+        {
+          "accepted": 12,
+          "reviewed": 25,
+          "seed": 1,
+          "substrate": "novel"
+        },
+        {
+          "accepted": 13,
+          "reviewed": 25,
+          "seed": 2,
+          "substrate": "novel"
+        }
+      ],
+      "title": "旧试点"
+    },
+    "wps:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "substrate"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "失败重试作为新的尝试行。",
+      "rows": [
+        {
+          "accepted": 20,
+          "reviewed": 25,
+          "seed": 1,
+          "substrate": "known"
+        },
+        {
+          "accepted": 21,
+          "reviewed": 25,
+          "seed": 2,
+          "substrate": "known"
+        },
+        {
+          "accepted": 17,
+          "reviewed": 25,
+          "seed": 1,
+          "substrate": "novel"
+        },
+        {
+          "accepted": 18,
+          "reviewed": 25,
+          "seed": 2,
+          "substrate": "novel"
+        }
+      ],
+      "title": "新批次"
+    },
+    "zotero:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "不同重试口径的成功率不可直接当改进证据；先恢复初次尝试口径。",
+      "title": "方案批注"
+    }
+  }
+}

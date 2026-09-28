@@ -1,0 +1,93 @@
+{
+  "event": {
+    "event_id": "event:c_negative_control:01",
+    "message": "审稿邮件指出原主张缺负对照；本周可用设备窗口已更新。",
+    "root_objects": [
+      "gmail:m01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "calendar:slots01": {
+      "app": "Google Calendar",
+      "depends_on": [],
+      "kind": "availability",
+      "links": [],
+      "text": "周五 09:00–11:00 设备空闲，下午维护；仅用于建议，不可实际预约。",
+      "title": "合成设备窗口"
+    },
+    "gmail:m01": {
+      "app": "Gmail",
+      "depends_on": [],
+      "kind": "mail",
+      "links": [
+        "wps:d01",
+        "obsidian:n01",
+        "zotero:a01",
+        "calendar:slots01"
+      ],
+      "text": "现有结果能否排除批次效应？请报告负对照，并解释为什么原稿称为方法改进。",
+      "title": "合成邮件：负对照"
+    },
+    "obsidian:n01": {
+      "app": "Obsidian",
+      "depends_on": [
+        "wps:d01"
+      ],
+      "kind": "claim",
+      "links": [],
+      "text": "原稿称候选方法改善接受率；目前只有两个处理批次，未登记空白处理或随机打乱标签的负对照。",
+      "title": "论文段落状态"
+    },
+    "wps:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "batch"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "",
+      "rows": [
+        {
+          "accepted": 19,
+          "batch": "batch_a",
+          "reviewed": 25,
+          "seed": 1
+        },
+        {
+          "accepted": 20,
+          "batch": "batch_a",
+          "reviewed": 25,
+          "seed": 2
+        },
+        {
+          "accepted": 14,
+          "batch": "batch_b",
+          "reviewed": 25,
+          "seed": 1
+        },
+        {
+          "accepted": 15,
+          "batch": "batch_b",
+          "reviewed": 25,
+          "seed": 2
+        }
+      ],
+      "title": "已有批次观察"
+    },
+    "zotero:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "批次效应可用同批次空白处理或随机标签对照辨别；现有两个处理批次不足以排除。",
+      "title": "负对照方法批注"
+    }
+  }
+}

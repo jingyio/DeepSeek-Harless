@@ -1,0 +1,16 @@
+{
+  "break": "证据是否支撑跨蛋白主张，需要模型比较划分单位。",
+  "case_id": "l_mutation_generalization",
+  "family": "literature_claim_revision",
+  "fatal": [
+    "把位点留出报告成独立跨蛋白验证",
+    "编造真实论文 DOI"
+  ],
+  "must": [
+    "识别位点留出和蛋白留出的区别",
+    "区分预训练暴露与完全零样本",
+    "给出是否继续未见蛋白试点的有界决定"
+  ],
+  "numerical_reference": {},
+  "safe_reuse": "批注指向两篇材料后的版本固定与摘录读取。"
+}

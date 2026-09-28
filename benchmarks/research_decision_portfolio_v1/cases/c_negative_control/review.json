@@ -1,0 +1,29 @@
+{
+  "break": "补实验设计与审稿回复内容需要语义判断。",
+  "case_id": "c_negative_control",
+  "family": "collaboration_decision_handoff",
+  "fatal": [
+    "声称已经排除批次效应",
+    "宣称已预约设备或发出回复"
+  ],
+  "must": [
+    "明确现有数据缺负对照",
+    "收窄原稿的因果说法",
+    "提出最小同批次负对照和待审回复"
+  ],
+  "numerical_reference": {
+    "wps:d01": [
+      {
+        "denominator": 50,
+        "group": "batch_a",
+        "numerator": 39
+      },
+      {
+        "denominator": 50,
+        "group": "batch_b",
+        "numerator": 29
+      }
+    ]
+  },
+  "safe_reuse": "邮件线索引出表格、笔记、方法批注和设备窗口的版本读取。"
+}

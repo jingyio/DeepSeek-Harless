@@ -1,0 +1,49 @@
+{
+  "event": {
+    "event_id": "event:l_mutation_generalization:01",
+    "message": "一条新的 Zotero 批注指出论文划分单位可能不是蛋白；原笔记的泛化表述需要复核。",
+    "root_objects": [
+      "zotero:a01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "obsidian:n01": {
+      "app": "Obsidian",
+      "depends_on": [
+        "paper:p01"
+      ],
+      "kind": "claim",
+      "links": [],
+      "text": "旧状态：优先在未见蛋白上验证突变预测泛化。此前把位点留出成绩作为支持，但独立单位尚未确认。",
+      "title": "AIDD 迁移假设"
+    },
+    "paper:p01": {
+      "app": "literature",
+      "depends_on": [],
+      "kind": "paper_excerpt",
+      "links": [],
+      "text": "训练与测试按突变位点划分，同一蛋白可同时出现在两侧；评估报告未见位点的相关系数。附录另列少量未见蛋白，无独立置信区间。",
+      "title": "突变效应划分说明"
+    },
+    "paper:p02": {
+      "app": "literature",
+      "depends_on": [],
+      "kind": "paper_excerpt",
+      "links": [],
+      "text": "按蛋白 ID 分组留出测试，并报告每个蛋白的样本量。预训练可能包含测试蛋白序列，不能据此称完全零样本。",
+      "title": "跨蛋白评估备选"
+    },
+    "zotero:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [
+        "paper:p01",
+        "paper:p02"
+      ],
+      "text": "若同一蛋白横跨训练和测试，位点留出不等于蛋白留出；比较两篇时还要核查预训练序列暴露。",
+      "title": "批注：独立单位"
+    }
+  }
+}

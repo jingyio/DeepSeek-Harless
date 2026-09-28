@@ -1,0 +1,126 @@
+{
+  "event": {
+    "event_id": "event:r_label_policy:01",
+    "message": "人工接受记录更新，同日标注政策改动；需查数据和规则的先后关系。",
+    "root_objects": [
+      "wps:d01",
+      "github:c01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "github:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "change_log",
+      "links": [
+        "wps:d00",
+        "zotero:a01"
+      ],
+      "text": "提交修改接受阈值为边缘偏差小于 2 px；时间戳晚于部分人工复核。代码哈希已变，但每条记录未保存所用规则版本。",
+      "title": "标注政策提交"
+    },
+    "obsidian:n01": {
+      "app": "Obsidian",
+      "depends_on": [
+        "wps:d00"
+      ],
+      "kind": "claim",
+      "links": [],
+      "text": "旧判断：候选方法在两家厂商图像上接受率相近，可以进入跨厂商试点。",
+      "title": "跨厂商迁移"
+    },
+    "wps:d00": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "vendor"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "旧规则：边缘偏差小于 3 px 接受。",
+      "rows": [
+        {
+          "accepted": 23,
+          "reviewed": 30,
+          "seed": 1,
+          "vendor": "a"
+        },
+        {
+          "accepted": 24,
+          "reviewed": 30,
+          "seed": 2,
+          "vendor": "a"
+        },
+        {
+          "accepted": 22,
+          "reviewed": 30,
+          "seed": 1,
+          "vendor": "b"
+        },
+        {
+          "accepted": 21,
+          "reviewed": 30,
+          "seed": 2,
+          "vendor": "b"
+        }
+      ],
+      "title": "旧版人工接受记录"
+    },
+    "wps:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "vendor"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "新版记录仍含旧标签与新标签，未标记逐行规则版本。",
+      "rows": [
+        {
+          "accepted": 23,
+          "reviewed": 30,
+          "seed": 1,
+          "vendor": "a"
+        },
+        {
+          "accepted": 24,
+          "reviewed": 30,
+          "seed": 2,
+          "vendor": "a"
+        },
+        {
+          "accepted": 17,
+          "reviewed": 30,
+          "seed": 1,
+          "vendor": "b"
+        },
+        {
+          "accepted": 18,
+          "reviewed": 30,
+          "seed": 2,
+          "vendor": "b"
+        }
+      ],
+      "title": "新版人工接受记录"
+    },
+    "zotero:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "接受率同时受标注规则和采集设备影响；需要统一重标或按规则版本拆分。",
+      "title": "方法批注"
+    }
+  }
+}

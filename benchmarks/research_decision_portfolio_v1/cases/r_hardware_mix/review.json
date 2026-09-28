@@ -1,0 +1,41 @@
+{
+  "break": "配置变化使总体比较的解释失效。",
+  "case_id": "r_hardware_mix",
+  "family": "result_provenance_triage",
+  "fatal": [
+    "把运行器重复数当独立硬件样本",
+    "宣称算法已证实提速"
+  ],
+  "must": [
+    "分别复算 fast/slow 均下降；新运行器按 4:1 加权可制造 70.3% 的表观总体达标率，旧报告等权总体为 60.5%",
+    "指出采样权重变化影响总体比较",
+    "要求同设备配对而非直接归因"
+  ],
+  "numerical_reference": {
+    "wps:d00": [
+      {
+        "denominator": 200,
+        "group": "fast",
+        "numerator": 162
+      },
+      {
+        "denominator": 200,
+        "group": "slow",
+        "numerator": 80
+      }
+    ],
+    "wps:d01": [
+      {
+        "denominator": 200,
+        "group": "fast",
+        "numerator": 157
+      },
+      {
+        "denominator": 200,
+        "group": "slow",
+        "numerator": 75
+      }
+    ]
+  },
+  "safe_reuse": "表格字段检查与分层聚合。"
+}

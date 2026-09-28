@@ -1,0 +1,49 @@
+{
+  "event": {
+    "event_id": "event:l_state_update:01",
+    "message": "新发现两篇相关论文；研究笔记中的‘参数外可更新能力状态’主张需要重新核对。",
+    "root_objects": [
+      "zotero:a01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "obsidian:n01": {
+      "app": "Obsidian",
+      "depends_on": [
+        "paper:p01"
+      ],
+      "kind": "claim",
+      "links": [],
+      "text": "当前主张：内部能力状态可通过反馈持续更新。待证据：这种状态是否比检索记忆产生额外迁移收益。下一步候选为门控最小实验或先复现检索记忆。",
+      "title": "Model RSI idea 状态"
+    },
+    "paper:p01": {
+      "app": "literature",
+      "depends_on": [],
+      "kind": "paper_excerpt",
+      "links": [],
+      "text": "方法在每轮推理前检索可更新的外部状态，并把状态摘要放入上下文。实验未改变模型参数，未测试跨会话状态冲突。",
+      "title": "外部状态与任务适应"
+    },
+    "paper:p02": {
+      "app": "literature",
+      "depends_on": [],
+      "kind": "paper_excerpt",
+      "links": [],
+      "text": "方法训练一个能力门控向量，在新任务反馈后更新该向量；报告同任务族迁移，未比较长时间持续更新。",
+      "title": "模型内部能力门控"
+    },
+    "zotero:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [
+        "paper:p01",
+        "paper:p02"
+      ],
+      "text": "外部检索记忆与模型内部可更新能力状态是两种机制。必须分别查更新发生的位置、跨会话保持方式与失败恢复。",
+      "title": "批注：更新对象不能混淆"
+    }
+  }
+}
