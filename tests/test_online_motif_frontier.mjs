@@ -208,6 +208,45 @@ test('competing pinned-source reads still require a semantic choice', async () =
     similarity: async () => [0.99, 0.99], minSimilarity: 0.8, minMargin: 0.1 }), []);
 });
 
+test('two closed reads batch only with shared independent trace witnesses', async () => {
+  const { pin, read, manifest, task } = fixture();
+  const item = 'mcp__research__read_pinned_item';
+  const annotation = 'mcp__research__read_pinned_annotation';
+  const witnesses = ['independent-a', 'independent-b'];
+  manifest.artifacts = [item, annotation].map((tool, index) => ({
+    ...structuredClone(manifest.artifacts[0]), motif_id: `joint-read-${index}`,
+    tools: [pin, tool], transfer_evidence: [{ from_tool: pin,
+      from_field: 'source_id', to_tool: tool, to_param: 'source_id',
+      supporting_trace_ids: witnesses }] }));
+  manifest.contracts[item] = manifest.contracts[read];
+  manifest.contracts[annotation] = manifest.contracts[read];
+  manifest.version_fields[item] = 'version';
+  manifest.version_fields[annotation] = 'version';
+  delete manifest.contracts[read];
+  delete manifest.version_fields[read];
+  sealManifest(manifest);
+  const scoped = { ...task, source_versions: { [pin]: 'v1', [item]: 'v1',
+    [annotation]: 'v1' } };
+  const history = [{ name: pin, callId: 'model-selected-source', ok: true,
+    arguments: { path: 'source:PAPER_1' },
+    output: { source_id: 'opaque-source', version: 'v1' },
+    sourceVersion: 'v1', inputVersion: 'snapshot-1' }];
+  const args = { manifest, task: scoped, history,
+    availableTools: new Map([[item, offered(item, ['source_id'])],
+      [annotation, offered(annotation, ['source_id'])]]),
+    similarity: async () => { throw new Error('certified closed reads need no embedding'); },
+    minSimilarity: 0.8, minMargin: 0.1 };
+  const batch = await proposeReadyBatch(args);
+  assert.deepEqual(new Set(batch.map((row) => row.tool)), new Set([item, annotation]));
+  assert.ok(batch.every((row) => row.selection_basis === 'closed_source_read' &&
+    row.arguments.source_id === 'opaque-source'));
+  manifest.artifacts[1].transfer_evidence[0].supporting_trace_ids =
+    ['independent-b', 'different-c'];
+  sealManifest(manifest);
+  assert.deepEqual(await proposeReadyBatch({ ...args,
+    similarity: async (_query, descriptions) => descriptions.map(() => 0.99) }), []);
+});
+
 test('strict structured input accepts only approved identifier slots', () => {
   const { pin, manifest, task } = fixture();
   validateOnlineManifest(manifest);
