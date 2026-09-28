@@ -1,0 +1,17 @@
+{
+  "mcp__scoped_gmail_request__search_emails": {
+    "required_params": ["query"],
+    "read_only": true,
+    "output_fields": ["message_ids.0", "result_digest"],
+    "description": "Search one approved Gmail query and return verified message IDs.",
+    "replay_stable": false
+  },
+  "mcp__scoped_gmail_request__read_email": {
+    "required_params": ["messageId"],
+    "read_only": true,
+    "output_fields": ["message_id", "thread_id", "source_version"],
+    "provenance_params": ["messageId"],
+    "description": "Read one message selected from a uniquely witnessed search result.",
+    "replay_stable": true
+  }
+}

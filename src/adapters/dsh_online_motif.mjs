@@ -83,7 +83,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
   function observe(sessionId, exec, result) {
     if (sessionId !== parsedTask.session_id) return;
     const current = state(sessionId);
-    const output = observation(result);
+    const output = observation(result, exec.name);
     const version = outputField(output, manifest.version_fields[exec.name]);
     const ok = result?.isError !== true && output !== null;
     const barrier = !ok || manifest.contracts[exec.name]?.read_only !== true ||

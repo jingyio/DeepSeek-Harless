@@ -19,3 +19,15 @@
 当前在线 Motif 清单只认证只读的 Zotero 固定来源→读取边；**没有 Gmail 真实科研任务轨迹、Gmail 参数边认证或邮件写入 Motif**。结构化 ID 只是让将来的参数来源可审计，不会自动注册 `search→read` 为 Motif。运行时要求 `read_only=true`，不会自动准备、打开或发送邮件。要声称 Gmail 收益，至少需要不同真实邮件决定的普通轨迹用于编译，再用留出任务比较：合格回复、实际 API 请求数、缓存计价费用、工具失败和人工审核时间。发送的人工确认永远不能被 Motif 计作跳过。
 
 因此下一步是 Gmail 只读搜索／读取阶段的实际轨迹采集与参数来源审计；若它没有产生完整结构轮次，就把邮件写入作为产品功能而非 Motif 成本效果样本。日历安排和 Obsidian 状态同步也应按相同标准检查。
+
+## 2026-09-28 自发自收请求诊断
+
+构造了一条有边界的真实 Gmail 请求：从已有的 SSS 自发自收测试邮件中搜索并读取唯一消息，核对收件地址，再准备一封**新的**研究进展邮件供本人审阅。旧邮件明确写有“无需回复”，因此任务没有要求回复它。允许的 Gmail 工具限于 `search_emails`、`read_email`、`prepare_email`、`get_prepared_email`；搜索词、可读消息 ID、唯一收件地址分别锁定在 `.local/benchmarks/research-weekly-loop/gmail-request-pilot-20260928/scope.json`。任务原文和原始轨迹仅保存在该忽略目录，不入 Git。`prepare_email` 只写本机待审队列，本次没有调用发送或打开审核页。
+
+正常 DeepSeek Harness 运行的四轮依次是：搜索、用搜索结果的 ID 读取、依据邮件及已核实的实验事实写本地待审草稿、报告草稿状态。实际调用 Gmail MCP 3 次，DeepSeek Flash 4 次，`reasoning_effort="off"`；未命中输入 4,960 token、缓存命中输入 13,440 token、输出 810 token，用时 13.869 秒。根据逐请求 API usage 和当前计价估算费用为 **US$0.00254063**，不是与控制台对账后的账单。完整预览、模型输出、事件与预算账本分别位于上述目录的 `preview.json`、`baseline/answer.md`、`baseline/agent-events.jsonl` 和 `baseline/metrics.json`，运行入口是 `scripts/run-gmail-request-pilot.py`；本次预算门槛为 US$2。
+
+这一轨迹说明第二轮有**潜在的整次请求跳过机会**：查询已经由第一轮选定，搜索只返回一个消息，第二轮只是把返回的消息 ID 填入 `read_email`。第三轮需要撰写正文，仍是语义工作；第四轮只做状态报告，但普通确定性 UI 也可能完成，不能直接归功于 Motif。完整基线是 4 次请求，不是零模型任务。
+
+初次运行还发现 DSH 的 `tool/result` 丢弃 MCP `structuredContent`。桥接虽然提供结构化 ID，轨迹适配器却看不见，因此初次轨迹中的读取被标记 `missing_parameter_provenance`。修复后，桥接在保留完整原文的同时，给经过严格解析的搜索／读取元数据加固定标记；在线与离线适配器只对本试验的 scoped Gmail 工具解析该标记。一次独立的**同消息技术复跑**实际再次搜索并读取：3 次 Flash 请求、2 次 Gmail MCP 调用，未命中输入 4,525 token、缓存命中 8,320 token、输出 285 token、用时 12.476 秒，估算 US$0.00174942；轨迹适配器确认 `read_email.messageId ← search_emails.message_ids.0`，两个只读节点均合格。技术复跑不算第二项研究决定或留出任务。
+
+这仍**不是 Motif 已经跳过了请求**。当前 Gmail 搜索结果随收件箱变化，合同标记 `replay_stable=false`，现有认证编译器不会把它当成可直接重放的来源；而且只有一条独立邮件任务，缺少跨任务认证与留出验证。可以从“模型已发起搜索，运行时观察到唯一新鲜 ID 后接管读取”这一边界设计动态来源锚点，但不能把本次重复访问同一封邮件伪装成迁移证据。下一次效果试验需用不同真实邮件决定的普通轨迹认证该边，并比较原生 Harness、Motif、直接脚本／缓存在合格交付下的请求数和总成本。

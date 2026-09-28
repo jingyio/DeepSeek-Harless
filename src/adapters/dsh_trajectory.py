@@ -56,6 +56,10 @@ class DshTrace:
 HANDLE_PATTERN = re.compile(r"^(?:source|dataset|result|match)-[0-9a-f]{32}$")
 OBJECT_ID_PATTERN = re.compile(
     r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*:[A-Za-z0-9_]+$")
+GMAIL_MESSAGE_ID_PATTERN = re.compile(r"^[0-9a-f]{16,32}$")
+GMAIL_SEARCH = "mcp__scoped_gmail_request__search_emails"
+GMAIL_READ = "mcp__scoped_gmail_request__read_email"
+GMAIL_METADATA_MARKER = "SSS_STRUCTURED_METADATA_V1 "
 
 
 def _field_value(value: Any, path: str) -> Any:
@@ -103,7 +107,9 @@ def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
                 value = arguments.get(param)
                 if not isinstance(value, str) or not (
                     HANDLE_PATTERN.fullmatch(value) or
-                    (param == "object_id" and OBJECT_ID_PATTERN.fullmatch(value))
+                    (param == "object_id" and OBJECT_ID_PATTERN.fullmatch(value)) or
+                    (name == GMAIL_READ and param == "messageId" and
+                     GMAIL_MESSAGE_ID_PATTERN.fullmatch(value))
                 ):
                     continue
                 producer = producers.get(value)
@@ -116,13 +122,16 @@ def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
             call_id = source.get("callId") if isinstance(source, dict) else None
             name = call_names.get(call_id, "")
             contract = approved_tools.get(name)
-            success, _, observation = _observation_digest(event)
+            success, _, observation = _observation_digest(event, name)
             if not success or not isinstance(observation, dict) or contract is None:
                 continue
             for field in contract.output_fields:
                 value = _field_value(observation, field)
                 if not isinstance(value, str) or not (
-                    HANDLE_PATTERN.fullmatch(value) or OBJECT_ID_PATTERN.fullmatch(value)
+                    HANDLE_PATTERN.fullmatch(value) or OBJECT_ID_PATTERN.fullmatch(value) or
+                    (name == GMAIL_SEARCH and field == "message_ids.0" and
+                     observation.get("count") == 1 and
+                     GMAIL_MESSAGE_ID_PATTERN.fullmatch(value))
                 ):
                     continue
                 if value in producers:
@@ -131,7 +140,8 @@ def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
                     producers[value] = (call_id, field)
     return inferred
 
-def _observation_digest(result: Mapping[str, Any]) -> tuple[bool, str | None, dict[str, Any] | None]:
+def _observation_digest(result: Mapping[str, Any], tool_name: str = ""
+                        ) -> tuple[bool, str | None, dict[str, Any] | None]:
     data = result.get("data")
     if not isinstance(data, dict) or not isinstance(data.get("message"), dict):
         return False, None, None
@@ -151,7 +161,16 @@ def _observation_digest(result: Mapping[str, Any]) -> tuple[bool, str | None, di
             item = content[0]
             if item.get("type") == "text" and isinstance(item.get("text"), str):
                 try:
-                    parsed = json.loads(item["text"])
+                    text = item["text"]
+                    if tool_name in (GMAIL_SEARCH, GMAIL_READ) and text.startswith(
+                            GMAIL_METADATA_MARKER):
+                        header, separator, original = text.partition("\n")
+                        if (not separator or not original.startswith(
+                                "<untrusted-tool-output>\n") or not original.rstrip().endswith(
+                                "</untrusted-tool-output>")):
+                            raise ValueError("invalid Gmail metadata envelope")
+                        text = header[len(GMAIL_METADATA_MARKER):]
+                    parsed = json.loads(text)
                     observation = parsed if isinstance(parsed, dict) else None
                 except ValueError:
                     pass
@@ -204,7 +223,7 @@ def extract_dsh_trace(events: Iterable[Mapping[str, Any]],
             pass
         result_pair = results.get(call["callId"])
         result = result_pair[1] if result_pair is not None else None
-        success, digest, observation = (_observation_digest(result)
+        success, digest, observation = (_observation_digest(result, name)
                                         if result is not None else (False, None, None))
         if contract is None:
             reason = "unapproved_tool"

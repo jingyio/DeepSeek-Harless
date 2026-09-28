@@ -233,7 +233,7 @@ export function parseStructuredTask(raw, manifest) {
 }
 
 /** Successful MCP results are the only source of inferred parameter edges. */
-export function observation(result) {
+export function observation(result, toolName = '') {
   if (result?.isError || result?.value?.isError) return null;
   const value = result?.value ?? result;
   if (value?.structuredContent && typeof value.structuredContent === 'object') {
@@ -241,6 +241,19 @@ export function observation(result) {
   }
   const text = value?.content?.find((block) => block?.type === 'text')?.text;
   if (typeof text !== 'string') return null;
+  if (toolName === 'mcp__scoped_gmail_request__search_emails' ||
+      toolName === 'mcp__scoped_gmail_request__read_email') {
+    const marker = 'SSS_STRUCTURED_METADATA_V1 ';
+    const split = text.indexOf('\n');
+    if (split > marker.length && text.startsWith(marker) &&
+        text.slice(split + 1).startsWith('<untrusted-tool-output>\n') &&
+        text.trimEnd().endsWith('</untrusted-tool-output>')) {
+      try {
+        const parsed = JSON.parse(text.slice(marker.length, split));
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+      } catch { return null; }
+    }
+  }
   try {
     const parsed = JSON.parse(text);
     return parsed && typeof parsed === 'object' ? parsed : null;

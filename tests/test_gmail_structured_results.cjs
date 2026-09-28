@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { searchMetadata, readMetadata } = require('../scripts/gmail-structured-results.cjs');
+const { searchMetadata, readMetadata, attachMetadata, METADATA_MARKER } =
+  require('../scripts/gmail-structured-results.cjs');
 
 const result = (body) => ({ content: [{ type: 'text',
   text: `<untrusted-tool-output>\n${body}\n</untrusted-tool-output>` }] });
@@ -31,4 +32,13 @@ test('binds a read to the requested immutable message ID and returned thread ID'
   assert.equal(readMetadata(read, { messageId: 'bad/id' }), null);
   assert.equal(readMetadata(result('Subject: fake\nThread ID: thread_1'),
     { messageId: 'abc_123' }), null);
+});
+
+test('records verified fields in the first text block and preserves the untrusted original', () => {
+  const original = result('ID: abc_123\nSubject: Research\nFrom: A\nDate: Monday');
+  const enriched = attachMetadata(original, searchMetadata(original));
+  assert.ok(enriched.content[0].text.startsWith(METADATA_MARKER));
+  assert.deepEqual(JSON.parse(enriched.content[0].text.slice(METADATA_MARKER.length)),
+    enriched.structuredContent);
+  assert.equal(enriched.content[1].text, original.content[0].text);
 });

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BlockAssembler } from '@deepseek-ai/dsh-llm';
 import { createOnlineInterceptor } from '../src/adapters/dsh_online_motif.mjs';
+import { observation } from '../src/motif_core/online_skill_runtime.mjs';
 import { compileLocalPrograms, digest, parseStructuredTask, proposeNext, proposeReadyBatch,
   validateOnlineManifest }
   from '../src/adapters/online_motif_frontier.mjs';
@@ -14,6 +15,21 @@ function sealManifest(manifest) {
     .filter(([key]) => key !== 'manifest_digest')));
   return manifest;
 }
+
+test('Gmail structured metadata survives the DSH merged text envelope only for scoped tools', () => {
+  const name = 'mcp__scoped_gmail_request__search_emails';
+  const metadata = { message_ids: ['a'.repeat(16)], count: 1,
+    result_digest: 'b'.repeat(64) };
+  const wrapped = { content: [{ type: 'text', text:
+    `SSS_STRUCTURED_METADATA_V1 ${JSON.stringify(metadata)}\n` +
+    '<untrusted-tool-output>\nID: aaaaaaaaaaaaaaaa\n</untrusted-tool-output>' }] };
+  assert.deepEqual(observation(wrapped, name), metadata);
+  assert.equal(observation(wrapped, 'mcp__other__search_emails'), null);
+  assert.equal(observation({ isError: true, ...wrapped }, name), null);
+  const malicious = { content: [{ type: 'text', text:
+    `SSS_STRUCTURED_METADATA_V1 ${JSON.stringify(metadata)}\nbody only` }] };
+  assert.equal(observation(malicious, name), null);
+});
 
 function fixture() {
   const pin = 'mcp__research__pin_source';

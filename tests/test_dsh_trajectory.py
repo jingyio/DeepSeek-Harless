@@ -42,6 +42,40 @@ CONTRACTS = {
 
 
 class DshTrajectoryTests(unittest.TestCase):
+    def test_scoped_gmail_search_to_read_has_witnessed_message_id(self):
+        contracts = parse_tool_contracts(json.loads((
+            Path(__file__).resolve().parents[1] /
+            "config/scoped-gmail-request-contracts.json").read_text()))
+        message_id = "a" * 16
+        search = event_pair(1, "mcp__scoped_gmail_request__search_emails",
+                            {"query": "subject:SSS"}, {"ignored": True})
+        read = event_pair(2, "mcp__scoped_gmail_request__read_email",
+                          {"messageId": message_id}, {"ignored": True})
+        for pair, metadata in ((search, {"message_ids": [message_id],
+                                        "count": 1, "result_digest": "b" * 64}),
+                               (read, {"message_id": message_id,
+                                       "thread_id": "c" * 16,
+                                       "source_version": message_id})):
+            pair[1]["data"]["message"]["content"][0]["content"][0]["text"] = (
+                "SSS_STRUCTURED_METADATA_V1 " + json.dumps(metadata) + "\n"
+                "<untrusted-tool-output>\nsource text\n</untrusted-tool-output>")
+        events = search + read
+        provenance = infer_dsh_provenance(events, contracts)
+        self.assertEqual(provenance["c2"]["messageId"],
+                         {"from_call_id": "c1", "from_field": "message_ids.0"})
+        trace = extract_dsh_trace(events, contracts, trace_id="gmail-diagnostic",
+                                  provenance_by_call_id=provenance)
+        self.assertEqual(trace.segments, (("mcp__scoped_gmail_request__search_emails",
+                                           "mcp__scoped_gmail_request__read_email"),))
+        self.assertTrue(all(row.eligible for row in trace.records))
+        two_results = deepcopy(events)
+        two_results[1]["data"]["message"]["content"][0]["content"][0]["text"] = (
+            "SSS_STRUCTURED_METADATA_V1 " + json.dumps({
+                "message_ids": [message_id, "d" * 16], "count": 2,
+                "result_digest": "e" * 64}) + "\n"
+            "<untrusted-tool-output>\nsource text\n</untrusted-tool-output>")
+        self.assertNotIn("c2", infer_dsh_provenance(two_results, contracts))
+
     def test_native_sss_frontier_provenance_can_be_compiled_only_when_witnessed(self):
         contracts = parse_tool_contracts(json.loads((
             Path(__file__).resolve().parents[1] /

@@ -6,6 +6,7 @@ const { createHash } = require('node:crypto');
 const OPEN = '<untrusted-tool-output>\n';
 const CLOSE = '</untrusted-tool-output>';
 const ID = '[A-Za-z0-9_-]{1,256}';
+const METADATA_MARKER = 'SSS_STRUCTURED_METADATA_V1 ';
 
 function payload(result) {
   if (result?.isError || result?.structuredContent ||
@@ -49,4 +50,12 @@ function readMetadata(result, args) {
     source_version: messageId };
 }
 
-module.exports = { searchMetadata, readMetadata };
+function attachMetadata(result, metadata) {
+  return metadata ? { ...result, structuredContent: metadata,
+    // DSH merges MCP text blocks and drops structuredContent in tool/result.
+    // A marked first line survives that merge for the audited Gmail bridge.
+    content: [{ type: 'text', text: METADATA_MARKER + JSON.stringify(metadata) },
+      ...result.content] } : result;
+}
+
+module.exports = { searchMetadata, readMetadata, attachMetadata, METADATA_MARKER };

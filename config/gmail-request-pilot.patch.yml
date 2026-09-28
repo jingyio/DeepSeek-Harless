@@ -1,0 +1,55 @@
+# Gmail self-mail diagnostic: read one scoped message and prepare locally only.
+- id: plan-mode
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-web
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: session-title-llm
+  disabled: true
+- insert:
+    - id: sss-scoped-gmail-request-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: scoped_gmail_request
+        transport: stdio
+        command: node
+        args: ['scripts/gmail-guarded-mcp.cjs']
+        cwd: !!js process.env.SSS_PROJECT_ROOT
+        env:
+          GMAIL_OAUTH_PATH: !!js process.env.SSS_GOOGLE_GMAIL_OAUTH
+          GMAIL_CREDENTIALS_PATH: !!js process.env.SSS_GOOGLE_GMAIL_TOKENS
+          GMAIL_MCP_STATE_DIR: !!js process.env.SSS_GOOGLE_GMAIL_STATE
+          GMAIL_MCP_DRY_RUN: 'true'
+          SSS_NO_OPEN: '1'
+          SSS_GMAIL_TOOL_ALLOWLIST: 'search_emails,read_email,prepare_email,get_prepared_email'
+          SSS_GMAIL_ALLOWED_QUERY: !!js process.env.SSS_GMAIL_ALLOWED_QUERY
+          SSS_GMAIL_ALLOWED_MESSAGE_ID: !!js process.env.SSS_GMAIL_ALLOWED_MESSAGE_ID
+          SSS_GMAIL_ALLOWED_RECIPIENT: !!js process.env.SSS_GMAIL_ALLOWED_RECIPIENT
+        failOnStartupError: true

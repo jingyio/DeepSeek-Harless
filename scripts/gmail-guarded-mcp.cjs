@@ -34,7 +34,7 @@ const { ListToolsRequestSchema, CallToolRequestSchema, ErrorCode } = require('@m
 const path = require('path');
 const outbox = require('./gmail-outbox.cjs');
 const reviewWeb = require('./gmail-review-web.cjs');
-const { searchMetadata, readMetadata } = require('./gmail-structured-results.cjs');
+const { searchMetadata, readMetadata, attachMetadata } = require('./gmail-structured-results.cjs');
 const reviewPages = new Map();
 const READ_TIMEOUT_MS = 25000;
 
@@ -103,6 +103,33 @@ const localTools = [
     },
   },
 ];
+const exposedNames = process.env.SSS_GMAIL_TOOL_ALLOWLIST
+  ? new Set(process.env.SSS_GMAIL_TOOL_ALLOWLIST.split(',').map((name) => name.trim()))
+  : null;
+if (exposedNames && [...exposedNames].some((name) =>
+    !allowed.has(name) && !localTools.some((tool) => tool.name === name))) {
+  throw new Error('Gmail tool allowlist includes an unknown tool');
+}
+
+function scopeError(name, args) {
+  if (exposedNames && !exposedNames.has(name)) return 'Gmail tool is outside this task scope.';
+  if (name === 'search_emails' && process.env.SSS_GMAIL_ALLOWED_QUERY &&
+      args?.query !== process.env.SSS_GMAIL_ALLOWED_QUERY) {
+    return 'Gmail query is outside this task scope.';
+  }
+  if (name === 'read_email' && process.env.SSS_GMAIL_ALLOWED_MESSAGE_ID &&
+      args?.messageId !== process.env.SSS_GMAIL_ALLOWED_MESSAGE_ID) {
+    return 'Gmail message is outside this task scope.';
+  }
+  if ((name === 'prepare_email' || name === 'send_email') &&
+      process.env.SSS_GMAIL_ALLOWED_RECIPIENT &&
+      (args?.to?.length !== 1 ||
+       args.to[0] !== process.env.SSS_GMAIL_ALLOWED_RECIPIENT ||
+       args?.cc?.length || args?.bcc?.length)) {
+    return 'Gmail recipient is outside this task scope.';
+  }
+  return null;
+}
 
 async function main() {
   const upstream = new Client({ name: 'sss-gmail-readonly-bridge', version: '1.0.0' });
@@ -118,10 +145,13 @@ async function main() {
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const result = await upstream.listTools();
-    return { tools: [...result.tools.filter((tool) => allowed.has(tool.name)), ...localTools] };
+    return { tools: [...result.tools.filter((tool) => allowed.has(tool.name)), ...localTools]
+      .filter((tool) => !exposedNames || exposedNames.has(tool.name)) };
   });
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    const denied = scopeError(name, args);
+    if (denied) return { isError: true, content: [{ type: 'text', text: denied }] };
     try {
       if (name === 'prepare_email') {
         const record = outbox.prepare(args ?? {});
@@ -157,7 +187,10 @@ async function main() {
       );
       const metadata = name === 'search_emails' ? searchMetadata(result)
         : name === 'read_email' ? readMetadata(result, args) : null;
-      return metadata ? { ...result, structuredContent: metadata } : result;
+      // DSH drops structuredContent and merges MCP text blocks in tool/result.
+      // The helper prefixes verified fields with a protocol marker; the full
+      // untrusted upstream text remains in the following block for the model.
+      return attachMetadata(result, metadata);
     } catch (error) {
       const message = error?.code === ErrorCode.RequestTimeout
         ? 'Gmail read did not complete within 25 seconds. Check the connection and retry; no email was sent or modified.'
