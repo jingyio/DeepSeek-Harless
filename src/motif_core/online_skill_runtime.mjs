@@ -418,6 +418,25 @@ function offeredSchemaMatches(availableTools, tool, contract) {
       .every((param) => Object.hasOwn(offered.parameters.properties ?? {}, param));
 }
 
+// A model-selected, versioned source can be dereferenced without another
+// semantic choice only when the certified edge supplies the entire input.
+// Keep this deliberately narrower than a general one-candidate Motif: a
+// unique statistic, PDF page, or write action may still encode a decision.
+function isClosedSourceRead(row, manifest) {
+  const artifact = manifest.artifacts.find((item) => item.motif_id === row.motif_id);
+  const contract = manifest.contracts[row.tool];
+  const edges = artifact.transfer_evidence.filter((edge) => edge.to_tool === row.tool);
+  return row.version_relation === 'same_source' &&
+    row.code_node_ids.length === 0 &&
+    contract.read_only === true &&
+    contract.required_params.length === 1 &&
+    contract.required_params[0] === 'source_id' &&
+    Object.keys(contract.default_params).length === 0 &&
+    edges.length === 1 && edges[0].to_param === 'source_id' &&
+    edges[0].from_field === 'source_id' &&
+    /(?:^|__)read_pinned_[a-z0-9_]+$/.test(row.tool);
+}
+
 /** Find independent, provenance-bound continuations in interleaved tool history. */
 export async function proposeReadyBatch({ manifest, task, history, availableTools,
                                          similarity, minSimilarity, minMargin,
@@ -477,16 +496,34 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     }
   }
   if (!candidates.length) return [];
+  const roots = new Map();
+  for (const candidate of candidates) {
+    const rows = roots.get(candidate.root_key) ?? [];
+    rows.push(candidate);
+    roots.set(candidate.root_key, rows);
+  }
+  const closedRoots = new Set([...roots.entries()]
+    .filter(([, rows]) => new Set(rows.map((row) =>
+      digest([row.tool, row.arguments]))).size === 1 &&
+      rows.every((row) => isClosedSourceRead(row, manifest)))
+    .map(([root]) => root));
   const query = `${task.intent}\nRecent tools: ${history.slice(-4)
     .map((row) => row.name).join(', ')}`;
-  const scores = await similarity(query, candidates.map((row) => row.description));
-  if (!Array.isArray(scores) || scores.length !== candidates.length ||
+  const semanticCandidates = candidates.filter((row) => !closedRoots.has(row.root_key));
+  const scores = semanticCandidates.length
+    ? await similarity(query, semanticCandidates.map((row) => row.description)) : [];
+  if (!Array.isArray(scores) || scores.length !== semanticCandidates.length ||
       scores.some((score) => typeof score !== 'number' || !Number.isFinite(score))) return [];
-  const ranked = candidates.map((row, index) => ({ ...row,
-    similarity: scores[index],
-    score: scores[index] * 0.8 +
+  let scoreIndex = 0;
+  const ranked = candidates.map((row) => {
+    const closed = closedRoots.has(row.root_key);
+    const similarityScore = closed ? null : scores[scoreIndex++];
+    return { ...row, similarity: similarityScore,
+    selection_basis: closed ? 'closed_source_read' : 'semantic_score',
+    score: (closed ? 0.8 : similarityScore * 0.8) +
       Math.min(row.supporting_task_count, 5) / 5 * 0.1 +
-      row.prefix_length / manifest.artifacts.find((a) => a.motif_id === row.motif_id).tools.length * 0.1 }));
+      row.prefix_length / manifest.artifacts.find((a) => a.motif_id === row.motif_id).tools.length * 0.1 };
+  });
   const byRoot = new Map();
   for (const row of ranked) {
     const group = byRoot.get(row.root_key) ?? [];
@@ -503,7 +540,8 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     }
     const rows = [...alternatives.values()];
     if (rows.length === 1) {
-      if (rows[0].similarity >= minSimilarity) selected.push(rows[0]);
+      if (rows[0].selection_basis === 'closed_source_read' ||
+          rows[0].similarity >= minSimilarity) selected.push(rows[0]);
       continue;
     }
     // Independently certified object references in one event are sibling

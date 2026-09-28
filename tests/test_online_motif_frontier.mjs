@@ -52,6 +52,61 @@ const offered = (name, required) => ({ name, parameters: { type: 'object',
   required, properties: Object.fromEntries(required.map((key) =>
     [key, { type: 'string' }])) } });
 
+test('unique certified pinned-source read bypasses a broad-intent similarity gate', async () => {
+  const { pin, read, manifest, task } = fixture();
+  const pinnedRead = 'mcp__research__read_pinned_item';
+  manifest.artifacts[0].tools = [pin, pinnedRead];
+  manifest.artifacts[0].transfer_evidence[0].to_tool = pinnedRead;
+  manifest.contracts[pinnedRead] = manifest.contracts[read];
+  manifest.version_fields[pinnedRead] = 'version';
+  delete manifest.contracts[read];
+  delete manifest.version_fields[read];
+  sealManifest(manifest);
+  const scoped = { ...task, source_versions: { [pin]: 'v1', [pinnedRead]: 'v1' } };
+  const history = [{ name: pin, callId: 'chosen-by-model', ok: true,
+    arguments: { path: 'source:PAPER_1' },
+    output: { source_id: 'opaque-source', version: 'v1' },
+    sourceVersion: 'v1', inputVersion: 'snapshot-1' }];
+  const base = { manifest, task: scoped, history,
+    availableTools: new Map([[pinnedRead, offered(pinnedRead, ['source_id'])]]),
+    minSimilarity: 0.8, minMargin: 0.1 };
+  const proposals = await proposeReadyBatch({ ...base,
+    similarity: async () => { throw new Error('closed read must not need embeddings'); } });
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0].selection_basis, 'closed_source_read');
+  assert.equal(proposals[0].similarity, null);
+  assert.deepEqual(proposals[0].arguments, { source_id: 'opaque-source' });
+  assert.deepEqual(await proposeReadyBatch({ ...base,
+    task: { ...scoped, source_versions: { [pin]: 'v1', [pinnedRead]: 'v2' } },
+    similarity: async () => { throw new Error('no candidate expected'); } }), []);
+});
+
+test('competing pinned-source reads still require a semantic choice', async () => {
+  const { pin, read, manifest, task } = fixture();
+  const first = 'mcp__research__read_pinned_item';
+  const second = 'mcp__research__read_pinned_annotation';
+  manifest.artifacts = [first, second].map((tool, index) => ({
+    ...structuredClone(manifest.artifacts[0]), motif_id: `read-kind-${index}`,
+    tools: [pin, tool], transfer_evidence: [{ from_tool: pin,
+      from_field: 'source_id', to_tool: tool, to_param: 'source_id' }] }));
+  manifest.contracts[first] = manifest.contracts[read];
+  manifest.contracts[second] = manifest.contracts[read];
+  manifest.version_fields[first] = 'version';
+  manifest.version_fields[second] = 'version';
+  delete manifest.contracts[read];
+  delete manifest.version_fields[read];
+  sealManifest(manifest);
+  const scoped = { ...task, source_versions: { [pin]: 'v1', [first]: 'v1', [second]: 'v1' } };
+  const history = [{ name: pin, callId: 'chosen-by-model', ok: true,
+    arguments: { path: 'source:PAPER_1' },
+    output: { source_id: 'opaque-source', version: 'v1' },
+    sourceVersion: 'v1', inputVersion: 'snapshot-1' }];
+  assert.deepEqual(await proposeReadyBatch({ manifest, task: scoped, history,
+    availableTools: new Map([[first, offered(first, ['source_id'])],
+      [second, offered(second, ['source_id'])]]),
+    similarity: async () => [0.99, 0.99], minSimilarity: 0.8, minMargin: 0.1 }), []);
+});
+
 test('strict structured input accepts only approved identifier slots', () => {
   const { pin, manifest, task } = fixture();
   validateOnlineManifest(manifest);

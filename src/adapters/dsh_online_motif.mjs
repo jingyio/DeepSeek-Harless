@@ -160,6 +160,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
       motifs: proposals.map((row) => row.motif_id),
       certified_digests: proposals.map((row) => row.certified_digest),
       tools: proposals.map((row) => row.tool),
+      selection_bases: proposals.map((row) => row.selection_basis),
       code_node_ids: proposals.flatMap((row) => row.code_node_ids),
       code_program_digests: proposals.flatMap((row) => row.code_program_digests),
       similarities: proposals.map((row) => row.similarity) });
