@@ -132,7 +132,13 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
         reason: error?.name ?? 'candidate_error' });
       return next();
     }
-    if (!proposals.length) return next();
+    if (!proposals.length) {
+      audit({ kind: 'motif_frontier_empty', session_id: sessionId,
+        observed_tool_count: current.history.length,
+        recent_tools: current.history.slice(-4).map((row) => row.name),
+        recent_barriers: current.history.slice(-4).map((row) => row.barrier) });
+      return next();
+    }
     if (mode === 'shadow') {
       audit({ kind: 'shadow_candidate', session_id: sessionId,
         motifs: proposals.map((row) => row.motif_id),
@@ -201,6 +207,8 @@ export function apply(ctx) {
   });
   ctx.on('agent/disposed', ({ agent }) => live.delete(agent.session.id));
   ctx.on('llm/stream', (options, next) => {
+    audit('motif_stream_seen', options.sessionId === task.session_id
+      ? 'session_matched' : 'other_session');
     if (options.sessionId !== task.session_id) return next();
     if (!isAgentLoopRequest(options)) {
       audit('motif_gate_deferred', 'not_agent_loop_request');

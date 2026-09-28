@@ -25,7 +25,9 @@ from src.mcp.structured_research_tools import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKSPACE = ROOT / ".local" / "python-workspace"
+WORKSPACE = Path(os.environ.get("SSS_PYTHON_WORKSPACE", str(ROOT / ".local" / "python-workspace"))).resolve()
+if not WORKSPACE.is_relative_to((ROOT / ".local").resolve()):
+    raise ValueError("Python workspace must stay under SSS/.local")
 WORKSPACE.mkdir(parents=True, exist_ok=True)
 QUARTO = shutil.which("quarto") or "/usr/local/bin/quarto"
 SANDBOX = shutil.which("sandbox-exec")
@@ -54,6 +56,7 @@ def _sandboxed(command: list[str], timeout_seconds: int) -> dict[str, Any]:
     if not SANDBOX:
         raise RuntimeError("This host needs a filesystem sandbox before code execution")
     private = (ROOT / ".local" / "obsidian-api-key",
+               ROOT / ".local" / "sealed",
                ROOT / ".local" / "google-calendar",
                ROOT / ".local" / "google-gmail",
                ROOT / ".local" / "dsh",
