@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from src.motif_core.offline.trace_compiler import artifact_signature
-from src.motif_core.output_view_codecs import CODECS
+from src.motif_core.output_view_codecs import CODECS, CONTEXT_CODECS
 
 
 _PATH = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
@@ -75,10 +75,24 @@ def load_certified_evidence_views(path: Path) -> dict[str, str]:
         raise ValueError("invalid compiled output projection tools")
     views = {}
     for tool, rule in rules.items():
-        if (not isinstance(rule, dict) or rule.get("codec") not in CODECS
+        codec_id = rule.get("codec") if isinstance(rule, dict) else None
+        contextual = codec_id in CONTEXT_CODECS
+        locator_tool = "mcp__scoped_research_read__locate_pinned_pdf_quote"
+        if (not isinstance(rule, dict)
+                or codec_id not in CODECS and codec_id not in CONTEXT_CODECS
                 or rule.get("training_trace_ids") != artifact["source_trace_ids"]
                 or rule.get("validation_trace_id") != artifact["validation_trace_id"]
-                or rule.get("evidence_retention") != "all_visible_text_and_headers"
+                or rule.get("evidence_retention") != (
+                    "exact_quote_and_context" if contextual
+                    else "all_visible_text_and_headers")
+                or contextual and (tool != "mcp__scoped_research_read__read_pinned_pdf_match"
+                                   or rule.get("context_from_tool") != locator_tool
+                                   or rule.get("task_scope") != "quote_verification"
+                                   or not any(edge.get("from_tool") == locator_tool
+                                              and edge.get("from_field") == "match_id"
+                                              and edge.get("to_tool") == tool
+                                              and edge.get("to_param") == "match_id"
+                                              for edge in artifact.get("transfer_evidence", [])))
                 or rule.get("restore") != "exact_original"
                 or not isinstance(rule.get("proofs"), list)
                 or len(rule["proofs"]) != len(artifact["source_trace_ids"]) + 1
@@ -91,7 +105,9 @@ def load_certified_evidence_views(path: Path) -> dict[str, str]:
                 or any(not all(isinstance(row.get(key), str)
                                    and re.fullmatch(r"[0-9a-f]{64}", row[key])
                                    for key in ("original_sha256", "view_sha256",
-                                               "observation_sha256"))
+                                               "observation_sha256",
+                                               *(["locator_observation_sha256"]
+                                                 if contextual else [])))
                        or not isinstance(row.get("visible_fragments"), int)
                        or row["visible_fragments"] < 2
                        or not isinstance(row.get("original_bytes"), int)
@@ -99,8 +115,41 @@ def load_certified_evidence_views(path: Path) -> dict[str, str]:
                        or row["view_bytes"] >= row["original_bytes"] * 0.75
                        for row in proofs)):
             raise ValueError("compiled output projection proof is invalid")
-        views[tool] = rule["codec"]
+        views[tool] = codec_id
     return views
+
+
+def _pdf_quote_context(messages: list[dict[str, Any]],
+                       before: int, match_id: str) -> dict[str, Any] | None:
+    """Recover one earlier witnessed locator call/result pair from the chat."""
+    calls: dict[str, str] = {}
+    locators = []
+    for message in messages[:before]:
+        if not isinstance(message, dict):
+            continue
+        if message.get("role") == "assistant":
+            for call in message.get("tool_calls") or []:
+                if (isinstance(call, dict) and isinstance(call.get("function"), dict)
+                        and call["function"].get("name")
+                        == "mcp__scoped_research_read__locate_pinned_pdf_quote"):
+                    try:
+                        args = json.loads(call["function"].get("arguments") or "{}")
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(args, dict) and isinstance(args.get("quote"), str):
+                        calls[call.get("id")] = args["quote"]
+        elif message.get("role") == "tool":
+            quote = calls.get(message.get("tool_call_id"))
+            if quote is None or not isinstance(message.get("content"), str):
+                continue
+            try:
+                locator = json.loads(message["content"])
+            except ValueError:
+                continue
+            if isinstance(locator, dict) and locator.get("match_id") == match_id:
+                locators.append({"quote": quote, "locator": locator,
+                                 "match_id": match_id})
+    return locators[0] if len(locators) == 1 else None
 
 
 def _get_path(value: dict[str, Any], path: str) -> Any:
@@ -135,9 +184,11 @@ def _write_private(path: Path, data: bytes) -> None:
 
 
 class LatestToolProjector:
-    def __init__(self, artifact: Path, local_dir: Path) -> None:
+    def __init__(self, artifact: Path, local_dir: Path,
+                 *, evidence_scope: str | None = None) -> None:
         self.signature, self.fields = load_certified_projection(artifact)
         self.evidence_views = load_certified_evidence_views(artifact)
+        self.evidence_scope = evidence_scope
         self.local_dir = local_dir
         self.local_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._lock = threading.RLock()
@@ -168,9 +219,17 @@ class LatestToolProjector:
         _write_private(self.local_dir / "expansions" / uuid4().hex, b"restored\n")
         return original.decode("utf-8")
 
-    def _project_tool(self, tool: str, call_id: str, raw: str, *, latest: bool) -> str:
+    def _project_tool(self, tool: str, call_id: str, raw: str, *, latest: bool,
+                      context: dict[str, Any] | None = None) -> str:
+        codec_id = self.evidence_views.get(tool)
+        if codec_id in CONTEXT_CODECS and (
+                self.evidence_scope != "quote_verification" or context is None):
+            return raw
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-        key = hashlib.sha256(f"{self.signature}\0{tool}\0{call_id}\0{digest}".encode()).hexdigest()
+        context_digest = hashlib.sha256(json.dumps(
+            context, sort_keys=True, ensure_ascii=False).encode()).hexdigest() if context else ""
+        key = hashlib.sha256(f"{self.signature}\0{tool}\0{call_id}\0{digest}"
+                             f"\0{context_digest}".encode()).hexdigest()
         seen = (self.local_dir / "originals" / f"{key}.json").exists()
         self._store_original(key, tool, call_id, raw)
         saved = self.local_dir / "views" / f"{key}.txt"
@@ -180,17 +239,18 @@ class LatestToolProjector:
         if seen or not latest or (not self.fields.get(tool)
                                    and tool not in self.evidence_views):
             return raw
-        codec_id = self.evidence_views.get(tool)
         if codec_id:
             try:
-                evidence, _ = CODECS[codec_id](raw)
+                evidence, _ = (CONTEXT_CODECS[codec_id](raw, context)
+                               if codec_id in CONTEXT_CODECS else CODECS[codec_id](raw))
             except (ValueError, TypeError, KeyError):
                 return raw
             handle = digest[:8]
             view = json.dumps({"sss_projection": {
                 "tool": tool, "codec": codec_id,
                 "evidence": evidence,
-                "omitted": "presentation HTML and link URLs",
+                "omitted": ("other PDF page text" if codec_id in CONTEXT_CODECS
+                            else "presentation HTML and link URLs"),
                 "restore": f"<<sss_expand full tool result, handle={handle}>>"}},
                 ensure_ascii=False, separators=(",", ":"))
             if len(view.encode("utf-8")) >= len(raw.encode("utf-8")):
@@ -242,7 +302,7 @@ class LatestToolProjector:
             newest_call = -1
         changed = False
         projected = []
-        active_calls: dict[str, tuple[str, int]] = {}
+        active_calls: dict[str, tuple[str, int, dict[str, Any]]] = {}
         with self._lock:
             for index, message in enumerate(messages):
                 if not isinstance(message, dict):
@@ -255,7 +315,12 @@ class LatestToolProjector:
                         if isinstance(row, dict) and isinstance(row.get("function"), dict):
                             call_id, name = row.get("id"), row["function"].get("name")
                             if isinstance(call_id, str) and isinstance(name, str):
-                                active_calls[call_id] = (name, index)
+                                try:
+                                    arguments = json.loads(row["function"].get("arguments") or "{}")
+                                except (TypeError, ValueError):
+                                    arguments = {}
+                                active_calls[call_id] = (
+                                    name, index, arguments if isinstance(arguments, dict) else {})
                     projected.append(message)
                     continue
                 if message.get("role") != "tool":
@@ -269,8 +334,15 @@ class LatestToolProjector:
                 if entry is None or entry[1] >= index:
                     projected.append(message)
                     continue
-                tool, call_index = entry
-                view = self._project_tool(tool, call_id, raw, latest=call_index == newest_call)
+                tool, call_index, arguments = entry
+                context = None
+                if self.evidence_views.get(tool) == "pdf_match_quote_window_v1":
+                    match_id = arguments.get("match_id")
+                    if isinstance(match_id, str):
+                        context = _pdf_quote_context(messages, call_index, match_id)
+                view = self._project_tool(tool, call_id, raw,
+                                          latest=call_index == newest_call,
+                                          context=context)
                 changed |= view != raw
                 projected.append({**message, "content": view} if view != raw else message)
         return {**body, "messages": projected} if changed else body
@@ -343,11 +415,13 @@ def _merge_usage(responses: list[dict[str, Any]]) -> dict[str, Any] | None:
     return result
 
 
-def serve(upstream: str, artifact: Path, local_dir: Path, port: int) -> None:
+def serve(upstream: str, artifact: Path, local_dir: Path, port: int,
+          evidence_scope: str | None = None) -> None:
     target = urlsplit(upstream)
     if target.scheme != "http" or target.hostname not in {"127.0.0.1", "localhost"}:
         raise ValueError("projection proxy only forwards to a local HTTP proxy")
-    projector = LatestToolProjector(artifact, local_dir)
+    projector = LatestToolProjector(artifact, local_dir,
+                                    evidence_scope=evidence_scope)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
@@ -461,8 +535,10 @@ def main() -> int:
     parser.add_argument("--artifact", type=Path, required=True)
     parser.add_argument("--local-dir", type=Path, required=True)
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--evidence-scope", choices=["quote_verification"])
     args = parser.parse_args()
-    serve(args.upstream, args.artifact, args.local_dir, args.port)
+    serve(args.upstream, args.artifact, args.local_dir, args.port,
+          args.evidence_scope)
     return 0
 
 

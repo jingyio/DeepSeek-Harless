@@ -11,16 +11,21 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import unicodedata
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.motif_core.output_view_codecs import pdf_match_quote_window_v1  # noqa: E402
 
 
 def normalized(text: str) -> str:
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip().casefold()
 
 
-def tool_observations(path: Path) -> list[tuple[int, str, dict[str, Any], int, dict]]:
+def tool_observations(path: Path) -> list[tuple[int, str, dict[str, Any], str, dict]]:
     calls: dict[str, tuple[str, dict]] = {}
     observations = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -54,8 +59,7 @@ def tool_observations(path: Path) -> list[tuple[int, str, dict[str, Any], int, d
         except ValueError:
             continue
         if isinstance(value, dict):
-            observations.append((event["seq"], name, value,
-                                 len(raw.encode("utf-8")), arguments))
+            observations.append((event["seq"], name, value, raw, arguments))
     return observations
 
 
@@ -90,16 +94,20 @@ def audit(path: Path) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "trace": str(path), "annotation_reads": 0, "pdf_reads": 0,
         "pdf_pages": 0, "matched_pages": 0, "matched_quote_occurrences": 0,
-        "selected_tool_result_bytes": sum(row[3] for row in observations),
+        "selected_tool_result_bytes": sum(len(row[3].encode("utf-8"))
+                                          for row in observations),
         "pdf_result_bytes": 0, "pdf_page_text_characters": 0,
         "matched_page_text_characters": 0,
         "matched_page_quote_window_characters": 0,
         "locator_unique_reads": 0, "locator_matched_pages": 0,
         "locator_page_text_characters": 0,
         "locator_quote_window_characters": 0,
+        "locator_candidate_codec_passed": 0,
+        "locator_candidate_view_bytes": 0,
+        "locator_candidate_original_bytes": 0,
     }
-    locators: dict[str, tuple[int, str, str]] = {}
-    for seq, name, value, length, arguments in observations:
+    locators: dict[str, tuple[int, str, dict[str, Any]]] = {}
+    for seq, name, value, raw, arguments in observations:
         if name.endswith("read_pinned_zotero_annotation"):
             summary["annotation_reads"] += 1
             marked = value.get("marked_text")
@@ -114,17 +122,27 @@ def audit(path: Path) -> dict[str, Any]:
                     and isinstance(match_id, str) and match_id
                     and isinstance(quote, str) and len(normalized(quote)) >= 20
                     and isinstance(source_hash, str)):
-                locators[match_id] = (seq, quote, source_hash)
+                locators[match_id] = (seq, quote, value)
         else:
             summary["pdf_reads"] += 1
-            summary["pdf_result_bytes"] += length
+            summary["pdf_result_bytes"] += len(raw.encode("utf-8"))
             locator = locators.get(arguments.get("match_id")) if name.endswith(
                 "read_pinned_pdf_match") else None
             if locator and (locator[0] >= seq or value.get("match_id") != arguments["match_id"]
-                            or value.get("sha256") != locator[2]):
+                            or value.get("sha256") != locator[2].get("sha256")):
                 locator = None
             if locator:
                 summary["locator_unique_reads"] += 1
+                try:
+                    _, stats = pdf_match_quote_window_v1(raw, {
+                        "quote": locator[1], "locator": locator[2],
+                        "match_id": arguments["match_id"]})
+                except (ValueError, TypeError, KeyError):
+                    pass
+                else:
+                    summary["locator_candidate_codec_passed"] += 1
+                    summary["locator_candidate_original_bytes"] += stats["original_bytes"]
+                    summary["locator_candidate_view_bytes"] += stats["view_bytes"]
             for page in value.get("pages", []):
                 if not isinstance(page, dict) or not isinstance(page.get("text"), str):
                     continue

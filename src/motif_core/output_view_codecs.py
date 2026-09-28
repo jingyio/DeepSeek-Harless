@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
+import unicodedata
 from html.parser import HTMLParser
+from typing import Any, Mapping
 
 
 _METADATA = "SSS_STRUCTURED_METADATA_V1 "
@@ -132,3 +135,100 @@ def marked_html_visible_text_v1(raw: str) -> tuple[str, dict[str, int]]:
 
 
 CODECS = {"marked_html_visible_text_v1": marked_html_visible_text_v1}
+
+
+def _normalized_with_offsets(raw: str) -> tuple[str, list[int]]:
+    """Mirror the PDF locator normalization and retain positions in raw text."""
+    characters: list[str] = []
+    offsets: list[int] = []
+    for index, source in enumerate(raw):
+        for character in unicodedata.normalize("NFKC", source).casefold():
+            if character.isspace():
+                if characters and characters[-1] != " ":
+                    characters.append(" ")
+                    offsets.append(index)
+            else:
+                characters.append(character)
+                offsets.append(index)
+    if characters and characters[-1] == " ":
+        characters.pop()
+        offsets.pop()
+    rendered = "".join(characters)
+    expected = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", raw)).strip().casefold()
+    if rendered != expected:
+        raise ValueError("PDF text normalization cannot preserve quote offsets")
+    return rendered, offsets
+
+
+def pdf_match_quote_window_v1(
+    raw: str, context: Mapping[str, Any], *, radius: int = 500,
+) -> tuple[str, dict[str, int]]:
+    """Show a witnessed exact quote and nearby PDF text for quote checks only.
+
+    The caller must gate this on a certified locator->read parameter edge and
+    an explicit quote-verification task scope. This codec alone does not decide
+    that other content on the PDF page is irrelevant to scientific judgment.
+    """
+    value = json.loads(raw)
+    locator = context.get("locator")
+    quote = context.get("quote")
+    if (not isinstance(value, dict) or not isinstance(locator, dict)
+            or not isinstance(quote, str) or not 12 <= len(quote) <= 500
+            or locator.get("status") != "unique" or locator.get("match_count") != 1
+            or value.get("match_id") != context.get("match_id")
+            or value.get("match_id") != locator.get("match_id")
+            or not isinstance(value.get("match_id"), str)
+            or re.fullmatch(r"match-[0-9a-f]{32}", value["match_id"]) is None
+            or value.get("sha256") != locator.get("sha256")
+            or not isinstance(value.get("source_id"), str)
+            or not isinstance(value.get("role"), str) or not value["role"]
+            or not isinstance(value.get("sha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", value["sha256"]) is None
+            or type(value.get("pdf_page_count")) is not int
+            or value["pdf_page_count"] < 1
+            or not isinstance(value.get("pages"), list) or len(value["pages"]) != 1
+            or not isinstance(locator.get("matches"), list)
+            or len(locator["matches"]) != 1):
+        raise ValueError("PDF quote view lacks one versioned locator match")
+    needle = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", quote)).strip().casefold()
+    if (len(needle) < 12 or locator.get("quote_sha256")
+            != hashlib.sha256(needle.encode()).hexdigest()):
+        raise ValueError("PDF quote does not match the locator's quote hash")
+    page = value["pages"][0]
+    match = locator["matches"][0]
+    if (not isinstance(page, dict) or not isinstance(match, dict)
+            or type(page.get("pdf_page")) is not int
+            or page["pdf_page"] != match.get("pdf_page")
+            or not isinstance(page.get("text"), str)
+            or type(page.get("total_chars")) is not int
+            or page["total_chars"] < len(page["text"])
+            or type(page.get("truncated")) is not bool
+            or page.get("low_text") is True
+            or not isinstance(match.get("page_text_sha256"), str)):
+        # read_pinned_pdf_match verifies the complete page hash before returning
+        # a page excerpt. The excerpt may be truncated by the reader's limit.
+        raise ValueError("PDF page does not match the locator's witnessed page")
+    normalized, offsets = _normalized_with_offsets(page["text"])
+    if normalized.count(needle) != 1:
+        raise ValueError("PDF quote is absent or ambiguous in the returned page")
+    position = normalized.find(needle)
+    first = offsets[max(0, position - radius)]
+    last = offsets[min(len(offsets) - 1, position + len(needle) + radius - 1)] + 1
+    excerpt = page["text"][first:last]
+    result = {
+        "source_id": value["source_id"], "role": value.get("role"),
+        "sha256": value["sha256"], "match_id": value["match_id"],
+        "pdf_page_count": value.get("pdf_page_count"),
+        "pdf_page": page["pdf_page"], "quote": quote,
+        "quote_context": excerpt, "page_total_chars": page.get("total_chars"),
+        "page_truncated_by_tool": page.get("truncated"),
+        "view_scope": "verify_this_quote_only",
+        "notice": "Other page text is omitted. Restore the original result before broader scientific claims.",
+    }
+    view = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+    return view, {"visible_fragments": 2,
+                  "original_bytes": len(raw.encode("utf-8")),
+                  "view_bytes": len(view.encode("utf-8"))}
+
+
+CONTEXT_CODECS = {"pdf_match_quote_window_v1": pdf_match_quote_window_v1}

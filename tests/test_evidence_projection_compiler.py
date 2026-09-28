@@ -14,9 +14,12 @@ from src.adapters.motif_output_projection import LatestToolProjector
 from src.motif_core.offline.evidence_projection_compiler import compile_evidence_projections
 from src.motif_core.offline.trace_compiler import artifact_signature
 from src.motif_core.output_view_codecs import marked_html_visible_text_v1
+from src.motif_core.output_view_codecs import pdf_match_quote_window_v1
 
 
 TOOL = "read_email"
+LOCATOR = "mcp__scoped_research_read__locate_pinned_pdf_quote"
+PDF_READ = "mcp__scoped_research_read__read_pinned_pdf_match"
 
 
 def email(title: str, *, unsafe: bool = False) -> str:
@@ -118,6 +121,92 @@ class EvidenceProjectionTest(unittest.TestCase):
             path.write_text(json.dumps(artifact))
             with self.assertRaisesRegex(ValueError, "proof is invalid"):
                 LatestToolProjector(path, Path(temporary) / "state")
+
+    def test_pdf_quote_view_requires_certified_edge_scope_and_witness(self) -> None:
+        artifact = {"status": "trace_validated_read_only", "tools": [LOCATOR, PDF_READ],
+                    "source_trace_ids": ["paper-a", "paper-b"],
+                    "validation_trace_id": "paper-c", "selection_evidence": [],
+                    "transfer_evidence": [{"from_tool": LOCATOR,
+                                           "from_field": "match_id",
+                                           "to_tool": PDF_READ,
+                                           "to_param": "match_id"}]}
+        traces, samples = {}, {}
+        for trace_id in ("paper-a", "paper-b", "paper-c"):
+            quote = f"The measured result in {trace_id} needs careful checking."
+            page_text = "Unrelated opening. " + ("prior material " * 65) + quote + (
+                " later material " * 65)
+            match_id = "match-" + hashlib.sha256(trace_id.encode()).hexdigest()[:32]
+            version = hashlib.sha256((trace_id + ":version").encode()).hexdigest()
+            locator = {"status": "unique", "match_count": 1,
+                       "match_id": match_id, "sha256": version,
+                       "quote_sha256": hashlib.sha256(quote.casefold().encode()).hexdigest(),
+                       "matches": [{"pdf_page": 3,
+                                    "page_text_sha256": hashlib.sha256(
+                                        page_text.encode()).hexdigest()}]}
+            raw = json.dumps({"source_id": "source-" + trace_id, "role": "pdf",
+                              "sha256": version, "match_id": match_id,
+                              "pdf_page_count": 9,
+                              "pages": [{"pdf_page": 3, "text": page_text,
+                                         "total_chars": len(page_text),
+                                         "truncated": False, "low_text": False}]})
+            locator_hash = hashlib.sha256((trace_id + ":locator").encode()).hexdigest()
+            read_hash = hashlib.sha256((trace_id + ":read").encode()).hexdigest()
+            traces[trace_id] = SimpleNamespace(records=(
+                SimpleNamespace(name=LOCATOR, eligible=True,
+                                arguments={"quote": quote}, observation=locator,
+                                observation_sha256=locator_hash),
+                SimpleNamespace(name=PDF_READ, eligible=True,
+                                arguments={"match_id": match_id},
+                                observation_sha256=read_hash)))
+            samples[trace_id] = {PDF_READ: {
+                "text": raw, "observation_sha256": read_hash,
+                "locator_observation_sha256": locator_hash,
+                "context": {"quote": quote, "locator": locator,
+                            "match_id": match_id}}}
+        artifact["output_projections"] = compile_evidence_projections(
+            artifact, traces, samples, {PDF_READ: "pdf_match_quote_window_v1"})
+        artifact["certified_digest"] = artifact_signature(artifact)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "artifact.json"
+            path.write_text(json.dumps(artifact))
+            sample = samples["paper-c"][PDF_READ]
+            context = sample["context"]
+            request = {"messages": [
+                {"role": "assistant", "tool_calls": [{"id": "loc", "type": "function",
+                    "function": {"name": LOCATOR, "arguments": json.dumps(
+                        {"quote": context["quote"]})}}]},
+                {"role": "tool", "tool_call_id": "loc", "content": json.dumps(
+                    context["locator"])},
+                {"role": "assistant", "tool_calls": [{"id": "read", "type": "function",
+                    "function": {"name": PDF_READ, "arguments": json.dumps(
+                        {"match_id": context["match_id"]})}}]},
+                {"role": "tool", "tool_call_id": "read", "content": sample["text"]}]}
+            self.assertEqual(LatestToolProjector(
+                path, Path(temporary) / "no-scope").project(request), request)
+            projector = LatestToolProjector(
+                path, Path(temporary) / "scoped",
+                evidence_scope="quote_verification")
+            result = projector.project(request)
+            view = json.loads(result["messages"][-1]["content"])["sss_projection"]
+            self.assertIn(context["quote"], view["evidence"])
+            self.assertIn("verify_this_quote_only", view["evidence"])
+            self.assertLess(len(view["evidence"]), len(sample["text"]) * 0.75)
+            handle = re.search(r"handle=([0-9a-f]{8})", view["restore"]).group(1)
+            self.assertEqual(projector.expand(handle), sample["text"])
+            self.assertEqual(LatestToolProjector(
+                path, Path(temporary) / "scoped").project(request), request)
+            tampered = json.loads(json.dumps(request))
+            tampered["messages"][1]["content"] = json.dumps(
+                {**context["locator"], "sha256": "changed"})
+            self.assertEqual(projector.project(tampered), tampered)
+            missing = json.loads(json.dumps(request))
+            missing["messages"].pop(1)
+            self.assertEqual(projector.project(missing), missing)
+        bad = json.loads(json.dumps(samples))
+        bad["paper-c"][PDF_READ]["context"]["quote"] = "fabricated evidence"
+        with self.assertRaisesRegex(ValueError, "trace-bound locator"):
+            compile_evidence_projections(artifact, traces, bad,
+                                         {PDF_READ: "pdf_match_quote_window_v1"})
 
 
 if __name__ == "__main__":
