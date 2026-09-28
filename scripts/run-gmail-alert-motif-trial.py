@@ -37,7 +37,8 @@ def sha(value: str) -> str:
 
 def projection_stats(home: str | None) -> dict[str, int]:
     if not home:
-        return {"projected_results": 0, "projected_bytes_saved": 0}
+        return {"projected_results": 0, "projected_bytes_saved": 0,
+                "projection_recoveries": 0}
     root = Path(home).resolve()
     if not root.is_relative_to(ROOT / ".local/distil-sss/projections"):
         raise ValueError("projection state must stay under the private run directory")
@@ -49,7 +50,8 @@ def projection_stats(home: str | None) -> dict[str, int]:
         raw = json.loads(original.read_text(encoding="utf-8"))["content"]
         saved += len(raw.encode("utf-8")) - view.stat().st_size
         count += 1
-    return {"projected_results": count, "projected_bytes_saved": saved}
+    return {"projected_results": count, "projected_bytes_saved": saved,
+            "projection_recoveries": len(list((root / "expansions").glob("*")))}
 
 
 def prompt_for(query: str, version: int = 1) -> str:
@@ -103,10 +105,15 @@ def main() -> int:
         raise ValueError("invalid frozen query")
     projection_digest = os.environ.get("SSS_PROJECTION_ARTIFACT_DIGEST")
     projection_fields = None
+    projection_evidence_views = None
     if projection_digest:
-        from src.adapters.motif_output_projection import load_certified_projection
+        from src.adapters.motif_output_projection import (
+            load_certified_evidence_views, load_certified_projection,
+        )
 
         actual_digest, projection_fields = load_certified_projection(
+            BASE / "certified-library.json")
+        projection_evidence_views = load_certified_evidence_views(
             BASE / "certified-library.json")
         if actual_digest != projection_digest:
             raise ValueError("active projection does not match the Gmail certified Motif")
@@ -138,6 +145,7 @@ def main() -> int:
                "projection_mode": "compiled_latest_batch" if projection_digest else "off",
                "projection_artifact_digest": projection_digest,
                "projection_fields": projection_fields,
+               "projection_evidence_views": projection_evidence_views,
                "budget_cap_usd": 2.0, "read_only": True,
                "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest()
                if args.manifest else None,
@@ -227,6 +235,9 @@ def main() -> int:
     audit = output / ".local/online-motif" / (sha(session_id) + ".jsonl")
     decisions = ([json.loads(line) for line in audit.read_text().splitlines()]
                  if audit.exists() else [])
+    ledger_path = Path(os.environ["SSS_BUDGET_LEDGER"])
+    upstream_requests = (len(ledger_path.read_text(encoding="utf-8").splitlines())
+                         if ledger_path.exists() else 0)
     metrics.update({"elapsed_seconds": round(time.monotonic() - started, 3),
                     "started_requests": guard.started_requests,
                     "tool_calls_by_name": {name: tools.count(name)
@@ -237,6 +248,7 @@ def main() -> int:
                         row.get("kind") == "model_request_skipped_verified"
                         for row in decisions),
                     "budget_ledger": os.environ.get("SSS_BUDGET_LEDGER"),
+                    "upstream_model_requests": upstream_requests,
                     **projection_stats(os.environ.get("SSS_PROJECTION_HOME")),
                     **_usage(guard.events)})
     write_private(output / "metrics.json",

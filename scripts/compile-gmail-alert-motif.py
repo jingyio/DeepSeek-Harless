@@ -36,6 +36,27 @@ def save(path: Path, value: dict) -> None:
     path.chmod(0o600)
 
 
+def read_result_evidence(events: list[dict], tool: str) -> dict[str, str]:
+    ids = {row.get("data", {}).get("callId") for row in events
+           if row.get("type") == "tool/call"
+           and row.get("data", {}).get("name") == tool}
+    if len(ids) != 1:
+        raise ValueError("output evidence needs one witnessed read call")
+    matches = [row["data"]["message"]["content"]
+               for row in events if row.get("type") == "tool/result"
+               and row.get("data", {}).get("message", {}).get("source", {}).get("callId")
+               in ids]
+    if (len(matches) != 1 or len(matches[0]) != 1
+            or matches[0][0].get("isError") is True
+            or len(matches[0][0].get("content", [])) != 1
+            or matches[0][0]["content"][0].get("type") != "text"):
+        raise ValueError("output evidence needs one successful text result")
+    payload = json.dumps(matches[0], sort_keys=True, ensure_ascii=False,
+                         separators=(",", ":"))
+    return {"text": matches[0][0]["content"][0]["text"],
+            "observation_sha256": sha(payload.encode())}
+
+
 def main() -> None:
     case_file = BASE / "cases.json"
     cases = json.loads(case_file.read_text(encoding="utf-8"))["cases"]
@@ -43,6 +64,7 @@ def main() -> None:
     contracts = parse_tool_contracts(rows)
     traces = {"train": [], "validation": []}
     evidence = {}
+    output_samples = {}
     for case_id, case in cases.items():
         if case["role"] not in traces:
             continue
@@ -62,6 +84,7 @@ def main() -> None:
                     "from_tool": SEARCH, "from_field": "selected_message_id"}):
             raise ValueError(f"{case_id} lacks a witnessed unique search-to-read edge")
         traces[case["role"]].append(trace)
+        output_samples[trace_id] = {READ: read_result_evidence(events, READ)}
         evidence[trace_id] = {
             "research_decision_id": fingerprint,
             "manifest_sha256": sha(json.dumps(case, ensure_ascii=False,
@@ -73,7 +96,10 @@ def main() -> None:
     if len(traces["train"]) != 2 or len(traces["validation"]) != 1:
         raise ValueError("need two independent training alerts and one held-out alert")
     library = build_read_motif_library(traces["train"], traces["validation"],
-                                       contracts, task_identity_evidence=evidence)
+                                       contracts, task_identity_evidence=evidence,
+                                       output_projection_codecs={
+                                           READ: "marked_html_visible_text_v1"},
+                                       output_projection_samples=output_samples)
     if len(library["artifacts"]) != 1:
         raise ValueError(f"expected one certified Motif: {library['rejected']}")
     slot_rules = {SEARCH: {"query":

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import html
 import json
@@ -11,7 +12,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / ".local/benchmarks/research-weekly-loop/gmail-alert-motif-20260928"
-OUT = BASE / "blind-review-v2"
 
 
 class VisibleText(HTMLParser):
@@ -35,9 +35,20 @@ def save(path: Path, value: str) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--comparison", choices=("motif", "projection",
+                                                 "baseline-projection"),
+                        default="motif")
+    args = parser.parse_args()
+    out = BASE / {"motif": "blind-review-v2",
+                  "projection": "blind-review-evidence-projection",
+                  "baseline-projection": "blind-review-baseline-projection"}[
+                      args.comparison]
     mapping = {}
     index = ["# Gmail 论文提醒匿名 A/B 审阅", "",
              "每题请分别检查：是否误把相邻工作列为直接相关；论文标题和线索是否出自邮件；阅读建议是否有用。",
+             "本组额外比较编译证据视图是否改变必要的研究判断。" if
+             args.comparison != "motif" else "",
              "邮件只作为发现线索，勿把其中摘要当成论文原文。", ""]
     for case in ("alert-g", "alert-h", "alert-i"):
         source_events = BASE / case / "baseline/agent-events.jsonl"
@@ -53,21 +64,25 @@ def main() -> None:
         parser.feed("<!doctype html>" + body[1])
         source = html.unescape(" ".join(parser.parts))
         source = "\n".join(line.strip() for line in source.splitlines() if line.strip())
-        save(OUT / case / "source.txt", source + "\n")
-        order = ("baseline", "motif") if hashlib.sha256(case.encode()).digest()[0] % 2 else (
-            "motif", "baseline")
+        save(out / case / "source.txt", source + "\n")
+        choices = ({"motif": ("baseline", "motif"),
+                    "projection": ("motif", "motif-retry-1" if case == "alert-i"
+                                   else "motif-retry-2"),
+                    "baseline-projection": ("baseline", "baseline-retry-1")})[
+                        args.comparison]
+        order = choices if hashlib.sha256(case.encode()).digest()[0] % 2 else choices[::-1]
         mapping[case] = {"A": order[0], "B": order[1]}
         for label, mode in mapping[case].items():
             answer = (BASE / case / mode / "answer.md").read_text()
-            save(OUT / case / f"answer-{label}.md", answer)
+            save(out / case / f"answer-{label}.md", answer)
         index.extend([f"## {case}", "",
                       f"- [邮件原始可见文字]({case}/source.txt)",
                       f"- [答案 A]({case}/answer-A.md)",
                       f"- [答案 B]({case}/answer-B.md)", ""])
-    save(OUT / "review.md", "\n".join(index))
-    save(OUT / "sealed-mapping.json",
+    save(out / "review.md", "\n".join(index))
+    save(out / "sealed-mapping.json",
          json.dumps(mapping, ensure_ascii=False, indent=2) + "\n")
-    print(json.dumps({"review": str(OUT / "review.md"), "tasks": len(mapping),
+    print(json.dumps({"review": str(out / "review.md"), "tasks": len(mapping),
                       "mapping_separate": True}))
 
 

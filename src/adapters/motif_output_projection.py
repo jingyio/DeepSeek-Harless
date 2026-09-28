@@ -17,8 +17,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from src.motif_core.offline.trace_compiler import artifact_signature
+from src.motif_core.output_view_codecs import CODECS
 
 
 _PATH = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
@@ -62,6 +64,45 @@ def load_certified_projection(path: Path) -> tuple[str, dict[str, tuple[str, ...
     return artifact["certified_digest"], {name: tuple(sorted(paths)) for name, paths in fields.items()}
 
 
+def load_certified_evidence_views(path: Path) -> dict[str, str]:
+    """Accept only codec plans sealed into the selected certified Motif."""
+    load_certified_projection(path)
+    artifact = json.loads(path.read_text(encoding="utf-8"))
+    if artifact.get("status") == "certified_read_library":
+        artifact = artifact["artifacts"][0]
+    rules = artifact.get("output_projections", {})
+    if not isinstance(rules, dict) or set(rules) - set(artifact["tools"]):
+        raise ValueError("invalid compiled output projection tools")
+    views = {}
+    for tool, rule in rules.items():
+        if (not isinstance(rule, dict) or rule.get("codec") not in CODECS
+                or rule.get("training_trace_ids") != artifact["source_trace_ids"]
+                or rule.get("validation_trace_id") != artifact["validation_trace_id"]
+                or rule.get("evidence_retention") != "all_visible_text_and_headers"
+                or rule.get("restore") != "exact_original"
+                or not isinstance(rule.get("proofs"), list)
+                or len(rule["proofs"]) != len(artifact["source_trace_ids"]) + 1
+                or any(not isinstance(row, dict) for row in rule["proofs"])
+                or [row.get("trace_id") for row in rule["proofs"]]
+                != [*artifact["source_trace_ids"], artifact["validation_trace_id"]]):
+            raise ValueError("compiled output projection lacks independent evidence")
+        proofs = rule["proofs"]
+        if (len({row.get("original_sha256") for row in proofs}) != len(proofs)
+                or any(not all(isinstance(row.get(key), str)
+                                   and re.fullmatch(r"[0-9a-f]{64}", row[key])
+                                   for key in ("original_sha256", "view_sha256",
+                                               "observation_sha256"))
+                       or not isinstance(row.get("visible_fragments"), int)
+                       or row["visible_fragments"] < 2
+                       or not isinstance(row.get("original_bytes"), int)
+                       or not isinstance(row.get("view_bytes"), int)
+                       or row["view_bytes"] >= row["original_bytes"] * 0.75
+                       for row in proofs)):
+            raise ValueError("compiled output projection proof is invalid")
+        views[tool] = rule["codec"]
+    return views
+
+
 def _get_path(value: dict[str, Any], path: str) -> Any:
     node: Any = value
     for segment in path.split("."):
@@ -96,6 +137,7 @@ def _write_private(path: Path, data: bytes) -> None:
 class LatestToolProjector:
     def __init__(self, artifact: Path, local_dir: Path) -> None:
         self.signature, self.fields = load_certified_projection(artifact)
+        self.evidence_views = load_certified_evidence_views(artifact)
         self.local_dir = local_dir
         self.local_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._lock = threading.RLock()
@@ -112,18 +154,19 @@ class LatestToolProjector:
     def _register_handle(self, handle: str, raw: str) -> bool:
         path = self.local_dir / "restore" / handle
         if path.exists():
-            return path.read_text(encoding="utf-8") == raw
+            return path.read_bytes() == raw.encode("utf-8")
         _write_private(path, raw.encode("utf-8"))
-        return path.read_text(encoding="utf-8") == raw
+        return path.read_bytes() == raw.encode("utf-8")
 
     def expand(self, handle: str) -> str:
         if not re.fullmatch(r"[0-9a-f]{8}", handle):
             raise KeyError("invalid SSS handle")
         path = self.local_dir / "restore" / handle
-        raw = path.read_text(encoding="utf-8")
-        if hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8] != handle:
+        original = path.read_bytes()
+        if hashlib.sha256(original).hexdigest()[:8] != handle:
             raise ValueError("SSS restore content does not match handle")
-        return raw
+        _write_private(self.local_dir / "expansions" / uuid4().hex, b"restored\n")
+        return original.decode("utf-8")
 
     def _project_tool(self, tool: str, call_id: str, raw: str, *, latest: bool) -> str:
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -134,8 +177,28 @@ class LatestToolProjector:
         if saved.exists():
             view = saved.read_text(encoding="utf-8")
             return view if self._register_handle(digest[:8], raw) else raw
-        if seen or not latest or not self.fields.get(tool):
+        if seen or not latest or (not self.fields.get(tool)
+                                   and tool not in self.evidence_views):
             return raw
+        codec_id = self.evidence_views.get(tool)
+        if codec_id:
+            try:
+                evidence, _ = CODECS[codec_id](raw)
+            except (ValueError, TypeError, KeyError):
+                return raw
+            handle = digest[:8]
+            view = json.dumps({"sss_projection": {
+                "tool": tool, "codec": codec_id,
+                "evidence": evidence,
+                "omitted": "presentation HTML and link URLs",
+                "restore": f"<<sss_expand full tool result, handle={handle}>>"}},
+                ensure_ascii=False, separators=(",", ":"))
+            if len(view.encode("utf-8")) >= len(raw.encode("utf-8")):
+                return raw
+            if not self._register_handle(handle, raw):
+                return raw
+            _write_private(saved, view.encode("utf-8"))
+            return view
         try:
             value = json.loads(raw)
             if not isinstance(value, dict):

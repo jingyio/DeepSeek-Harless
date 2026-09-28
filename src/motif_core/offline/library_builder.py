@@ -21,6 +21,7 @@ from .trace_compiler import certify_read_motif, compile_read_motif
 from .repeat_compiler import certify_repeat_read_motif, compile_repeat_read_motif
 from .link_compiler import compile_read_links
 from .local_programs import compile_local_programs
+from .evidence_projection_compiler import compile_evidence_projections
 
 
 def _digest(value: Any) -> str:
@@ -78,6 +79,8 @@ def build_read_motif_library(
     training: list[DshTrace], heldout: list[DshTrace],
     contracts: Mapping[str, Any], *, min_trace_support: int = 2,
     task_identity_evidence: Mapping[str, Mapping[str, str]] | None = None,
+    output_projection_codecs: Mapping[str, str] | None = None,
+    output_projection_samples: Mapping[str, Mapping[str, Mapping[str, str]]] | None = None,
 ) -> dict[str, Any]:
     """Certify every eligible mined motif on an unseen task and record rejects.
 
@@ -104,6 +107,8 @@ def build_read_motif_library(
                                                "identity_sha256", "question_sha256"))
                        for row in rows)):
             raise ValueError("identity evidence must match every frozen trace")
+    if bool(output_projection_codecs) != bool(output_projection_samples):
+        raise ValueError("output projection needs both codecs and original samples")
     candidates = mine_dsh_traces(training, min_trace_support=min_trace_support)
     artifacts: list[dict[str, Any]] = []
     rejected: list[dict[str, str]] = []
@@ -132,6 +137,13 @@ def build_read_motif_library(
                                                  + artifact.get("selection_evidence", []))],
                 "parallel_groups": [[name] for name in tools],
             }
+            if output_projection_codecs:
+                eligible_codecs = {tool: codec for tool, codec in
+                                   output_projection_codecs.items() if tool in tools}
+                if eligible_codecs:
+                    artifact["output_projections"] = compile_evidence_projections(
+                        artifact, {trace.trace_id: trace for trace in training + heldout},
+                        output_projection_samples or {}, eligible_codecs)
             # DAG annotation is part of the immutable executable artifact.
             from .trace_compiler import artifact_signature
             artifact["certified_digest"] = artifact_signature(artifact)
