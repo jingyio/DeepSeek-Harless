@@ -208,10 +208,10 @@ test('competing pinned-source reads still require a semantic choice', async () =
     similarity: async () => [0.99, 0.99], minSimilarity: 0.8, minMargin: 0.1 }), []);
 });
 
-test('two closed reads batch only with shared independent trace witnesses', async () => {
+test('Zotero typed reads follow the pinned source kind', async () => {
   const { pin, read, manifest, task } = fixture();
-  const item = 'mcp__research__read_pinned_item';
-  const annotation = 'mcp__research__read_pinned_annotation';
+  const item = 'mcp__scoped_zotero_read__read_pinned_zotero_item';
+  const annotation = 'mcp__scoped_zotero_read__read_pinned_zotero_annotation';
   const witnesses = ['independent-a', 'independent-b'];
   manifest.artifacts = [item, annotation].map((tool, index) => ({
     ...structuredClone(manifest.artifacts[0]), motif_id: `joint-read-${index}`,
@@ -229,22 +229,25 @@ test('two closed reads batch only with shared independent trace witnesses', asyn
     [annotation]: 'v1' } };
   const history = [{ name: pin, callId: 'model-selected-source', ok: true,
     arguments: { path: 'source:PAPER_1' },
-    output: { source_id: 'opaque-source', version: 'v1' },
+    output: { source_id: 'opaque-source', version: 'v1', kind: 'item' },
     sourceVersion: 'v1', inputVersion: 'snapshot-1' }];
   const args = { manifest, task: scoped, history,
     availableTools: new Map([[item, offered(item, ['source_id'])],
       [annotation, offered(annotation, ['source_id'])]]),
-    similarity: async () => { throw new Error('certified closed reads need no embedding'); },
+    similarity: async () => { throw new Error('typed closed read needs no embedding'); },
     minSimilarity: 0.8, minMargin: 0.1 };
-  const batch = await proposeReadyBatch(args);
-  assert.deepEqual(new Set(batch.map((row) => row.tool)), new Set([item, annotation]));
-  assert.ok(batch.every((row) => row.selection_basis === 'closed_source_read' &&
+  const itemBatch = await proposeReadyBatch(args);
+  assert.deepEqual(itemBatch.map((row) => row.tool), [item]);
+  assert.ok(itemBatch.every((row) => row.selection_basis === 'closed_source_read' &&
     row.arguments.source_id === 'opaque-source'));
-  manifest.artifacts[1].transfer_evidence[0].supporting_trace_ids =
-    ['independent-b', 'different-c'];
-  sealManifest(manifest);
+  const annotationHistory = [{ ...history[0], output: {
+    ...history[0].output, kind: 'annotation' } }];
+  assert.deepEqual((await proposeReadyBatch({ ...args,
+    history: annotationHistory })).map((row) => row.tool), [annotation]);
+  const untypedHistory = [{ ...history[0], output: {
+    source_id: 'opaque-source', version: 'v1' } }];
   assert.deepEqual(await proposeReadyBatch({ ...args,
-    similarity: async (_query, descriptions) => descriptions.map(() => 0.99) }), []);
+    history: untypedHistory }), []);
 });
 
 test('strict structured input accepts only approved identifier slots', () => {

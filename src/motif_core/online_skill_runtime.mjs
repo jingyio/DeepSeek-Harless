@@ -505,23 +505,14 @@ function isClosedUniqueMessageRead(row, manifest) {
     artifact.transfer_evidence[0].to_param === 'messageId';
 }
 
-// Distinct read views of the same approved source may be issued together only
-// when the *same independent traces* witnessed every view. Separate edge
-// certificates alone do not establish that their successors belong in a batch.
-function jointlyCertifiedClosedReads(rows, manifest) {
-  if (rows.length < 2 || !rows.every((row) =>
-    isClosedSourceRead(row, manifest) && row.supporting_task_count >= 2 &&
-    row.validation_task_fingerprint === rows[0].validation_task_fingerprint &&
-    row.expected_version === rows[0].expected_version)) return false;
-  let shared = null;
-  for (const row of rows) {
-    const artifact = manifest.artifacts.find((item) => item.motif_id === row.motif_id);
-    const edge = artifact?.transfer_evidence.find((item) => item.to_tool === row.tool);
-    const witnessed = new Set(edge?.supporting_trace_ids ?? []);
-    if (witnessed.size < 2) return false;
-    shared = shared === null ? witnessed : new Set([...shared].filter((id) => witnessed.has(id)));
-  }
-  return shared.size >= 2;
+// Zotero pins identify either an item or an annotation. The same source_id
+// cannot be read through both typed endpoints, even if historical traces
+// happened to contain both tool names.
+function sourceKindMatches(tool, prefix) {
+  const kind = tool === 'mcp__scoped_zotero_read__read_pinned_zotero_item'
+    ? 'item' : tool === 'mcp__scoped_zotero_read__read_pinned_zotero_annotation'
+      ? 'annotation' : null;
+  return kind === null || prefix[0]?.output?.kind === kind;
 }
 
 /** Find independent, provenance-bound continuations in interleaved tool history. */
@@ -542,6 +533,7 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
       if (!manifest.version_fields[nextTool] ||
           !offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool])) continue;
       for (const prefix of matchingPrefixes(artifact, history, length, task, manifest)) {
+        if (!sourceKindMatches(nextTool, prefix)) continue;
         if (artifact.code_nodes?.length && ++codeAttempts > 8) return [];
         const args = await bindNext(artifact, nextTool, prefix, task, manifest);
         if (!args) continue;
@@ -596,7 +588,7 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     roots.set(candidate.root_key, rows);
   }
   const closedRoots = new Set([...roots.entries()]
-    .filter(([, rows]) => jointlyCertifiedClosedReads(rows, manifest) ||
+    .filter(([, rows]) =>
       (new Set(rows.map((row) => digest([row.tool, row.arguments]))).size === 1 &&
         rows.every((row) => isClosedSourceRead(row, manifest) ||
           isClosedUniqueMessageRead(row, manifest))))
@@ -641,10 +633,6 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     }
     // Independently certified object references in one event are sibling
     // reads. Other competing successors may encode a scientific choice.
-    if (jointlyCertifiedClosedReads(rows, manifest)) {
-      selected.push(...rows);
-      continue;
-    }
     if (rows.every((row) => ['object_lookup', 'lookup_index']
         .includes(row.version_relation) && row.similarity >= minSimilarity &&
         row.validation_task_fingerprint === rows[0].validation_task_fingerprint &&
