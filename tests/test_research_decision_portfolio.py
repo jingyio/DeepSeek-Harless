@@ -14,6 +14,7 @@ from mcp import Client, StdioServerParameters
 
 from benchmarks.research_decision_portfolio_v1 import build_fixtures as fixtures
 from benchmarks.research_decision_portfolio_v1 import mock_apps_server as apps
+from src.adapters.tool_contract_loader import parse_tool_contracts
 
 
 ROOT = Path(fixtures.__file__).resolve().parent
@@ -34,6 +35,17 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
         self.assertEqual(len({case for ids in lock["families"].values() for case in ids}), 9)
         for filename, digest in lock["sha256"].items():
             self.assertEqual(hashlib.sha256((ROOT / filename).read_bytes()).hexdigest(), digest)
+
+    def test_motif_contracts_name_only_observable_fields(self):
+        project = ROOT.parent.parent
+        rows = json.loads((project / "config/research-portfolio-tool-contracts.json")
+                          .read_text())
+        contracts = parse_tool_contracts(rows)
+        self.assertEqual(len(contracts), 8)
+        self.assertTrue(all(contract.read_only and contract.replay_stable
+                            for contract in contracts.values()))
+        self.assertIn("root_object_id", contracts[
+            "mcp__research_portfolio_fixture__read_event"].output_fields)
 
     def test_every_case_has_bounded_sources_and_separate_review(self):
         for case_id, spec in fixtures.CASES.items():

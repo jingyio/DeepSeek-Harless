@@ -11,15 +11,31 @@ import json
 import os
 from collections import defaultdict
 from pathlib import Path
+from typing import Annotated
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 
 ROOT = Path(__file__).resolve().parent
 _handles: dict[str, tuple[str, str]] = {}
 _datasets: dict[str, str] = {}
 _discovered: set[str] = set()
+
+EventId = Annotated[str, Field(
+    pattern=r"^event:[a-z_]+:01$",
+    description="从任务卡复制事件 ID；先读事件才会得到本题初始对象 ID。")]
+ObjectId = Annotated[str, Field(
+    pattern=r"^(?:paper|zotero|obsidian|wps|github|gmail|calendar):[a-z][a-z0-9_]*$",
+    description="应用对象 ID，须先由 read_event、read_pinned.links 或 find_dependents 返回；"
+                "不能把 source_id 或 dataset_id 当成对象 ID。")]
+SourceId = Annotated[str, Field(
+    pattern=r"^source-[0-9a-f]{32}$",
+    description="只能使用 pin_resource 返回的 source_id；它绑定对象的内容版本。")]
+DatasetId = Annotated[str, Field(
+    pattern=r"^dataset-[0-9a-f]{32}$",
+    description="只能使用 read_pinned 读取表格后返回的 value.dataset_id。")]
 
 
 def _case_dir() -> Path:
@@ -49,16 +65,19 @@ def _object(object_id: str) -> dict:
         raise ValueError("object is outside the selected case") from exc
 
 
-def read_event(event_id: str) -> dict:
+def read_event(event_id: EventId) -> dict:
     """Read this task's update and discover its scoped source IDs."""
     event = _sources()["event"]
     if event_id != event["event_id"]:
         raise ValueError("event is outside the selected case")
     _discovered.update(event["root_objects"])
-    return {**event, "version_sha256": _version(event)}
+    roots = event["root_objects"]
+    return {**event, "root_object_id": roots[0],
+            "additional_object_id": roots[1] if len(roots) > 1 else None,
+            "version_sha256": _version(event)}
 
 
-def pin_resource(object_id: str) -> dict:
+def pin_resource(object_id: ObjectId) -> dict:
     """Bind one authorized application object to its current content version."""
     obj = _object(object_id)
     if object_id not in _discovered:
@@ -83,7 +102,7 @@ def _pinned(source_id: str) -> tuple[str, dict, str]:
     return object_id, obj, version
 
 
-def read_pinned(source_id: str) -> dict:
+def read_pinned(source_id: SourceId) -> dict:
     """Read a pinned note, paper excerpt, annotation, email, log or table schema."""
     object_id, obj, version = _pinned(source_id)
     if obj["kind"] == "table":
@@ -95,6 +114,8 @@ def read_pinned(source_id: str) -> dict:
     else:
         value = {key: obj[key] for key in ("title", "text", "links", "depends_on")}
         _discovered.update(obj.get("links", []))
+        for index, linked in enumerate(obj.get("links", [])[:4]):
+            value[f"link_{index}_object_id"] = linked
     return {"source_id": source_id, "object_id": object_id,
             "version_sha256": version, "value": value, "synthetic": True}
 
@@ -110,7 +131,7 @@ def _dataset(dataset_id: str) -> tuple[str, dict, str]:
     return source_id, obj, version
 
 
-def read_rows(dataset_id: str, offset: int = 0, limit: int = 20) -> dict:
+def read_rows(dataset_id: DatasetId, offset: int = 0, limit: int = 20) -> dict:
     """Return a bounded range of raw, version-bound table rows."""
     source_id, obj, version = _dataset(dataset_id)
     if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
@@ -120,7 +141,7 @@ def read_rows(dataset_id: str, offset: int = 0, limit: int = 20) -> dict:
             "rows": obj["rows"][offset:offset + limit], "synthetic": True}
 
 
-def aggregate_rate(dataset_id: str, group_by: str) -> dict:
+def aggregate_rate(dataset_id: DatasetId, group_by: str) -> dict:
     """Sum the declared numerator and denominator for one chosen group field."""
     source_id, obj, version = _dataset(dataset_id)
     contract = obj["metric"]
@@ -142,7 +163,7 @@ def aggregate_rate(dataset_id: str, group_by: str) -> dict:
             "metric_id": contract["id"], "groups": groups, "synthetic": True}
 
 
-def compare_tables(previous_dataset_id: str, current_dataset_id: str) -> dict:
+def compare_tables(previous_dataset_id: DatasetId, current_dataset_id: DatasetId) -> dict:
     """Compare same-key rows; report changes without explaining their meaning."""
     _, old, old_version = _dataset(previous_dataset_id)
     _, new, new_version = _dataset(current_dataset_id)
@@ -170,7 +191,7 @@ def compare_tables(previous_dataset_id: str, current_dataset_id: str) -> dict:
             "synthetic": True}
 
 
-def find_dependents(object_id: str) -> dict:
+def find_dependents(object_id: ObjectId) -> dict:
     """Find scoped notes that explicitly depend on an object, with index version."""
     _object(object_id)
     if object_id not in _discovered:
@@ -181,10 +202,11 @@ def find_dependents(object_id: str) -> dict:
               if object_id in obj.get("depends_on", [])]
     _discovered.update(claim["object_id"] for claim in claims)
     return {"object_id": object_id, "claims": claims,
+            "claim_object_id": claims[0]["object_id"] if len(claims) == 1 else None,
             "index_version_sha256": _version(objects), "synthetic": True}
 
 
-def locate_excerpt(source_id: str, exact_text: str) -> dict:
+def locate_excerpt(source_id: SourceId, exact_text: str) -> dict:
     """Locate an exact quoted phrase in one pinned document; return all offsets."""
     if not 3 <= len(exact_text) <= 200:
         raise ValueError("exact_text must contain 3 to 200 characters")

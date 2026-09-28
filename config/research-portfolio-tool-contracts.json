@@ -1,0 +1,66 @@
+{
+  "mcp__research_portfolio_fixture__read_event": {
+    "required_params": ["event_id"],
+    "read_only": true,
+    "output_fields": ["root_object_id", "additional_object_id", "version_sha256"],
+    "description": "读任务事件并取得本题初始对象 ID；其余对象从资料关联逐步发现。",
+    "replay_stable": true
+  },
+  "mcp__research_portfolio_fixture__pin_resource": {
+    "required_params": ["object_id"],
+    "read_only": true,
+    "output_fields": ["source_id", "object_id", "version_sha256"],
+    "provenance_params": ["object_id"],
+    "description": "固定已发现的应用对象及其内容版本，返回只可用于读取的 source_id。",
+    "replay_stable": true
+  },
+  "mcp__research_portfolio_fixture__read_pinned": {
+    "required_params": ["source_id"],
+    "read_only": true,
+    "output_fields": ["value.dataset_id", "value.link_0_object_id", "value.link_1_object_id", "value.link_2_object_id", "value.link_3_object_id", "version_sha256"],
+    "provenance_params": ["source_id"],
+    "description": "使用 pin_resource 返回的 source_id 读已固定版本；文档可返回关联对象，表格返回 dataset_id。",
+    "replay_stable": true
+  },
+  "mcp__research_portfolio_fixture__read_rows": {
+    "required_params": ["dataset_id"],
+    "default_params": [["offset", 0], ["limit", 20]],
+    "read_only": true,
+    "output_fields": ["version_sha256"],
+    "provenance_params": ["dataset_id"],
+    "description": "从 read_pinned 的 dataset_id 读取有限范围原始表格行；不解释统计意义。",
+    "replay_stable": true
+  },
+  "mcp__research_portfolio_fixture__aggregate_rate": {
+    "required_params": ["dataset_id", "group_by"],
+    "read_only": true,
+    "output_fields": ["version_sha256"],
+    "provenance_params": ["dataset_id"],
+    "description": "用已读取表格的 dataset_id 和模型选定的分组字段计算分子分母。",
+    "replay_stable": true
+  },
+  "mcp__research_portfolio_fixture__compare_tables": {
+    "required_params": ["previous_dataset_id", "current_dataset_id"],
+    "read_only": true,
+    "output_fields": ["previous_version_sha256", "current_version_sha256"],
+    "provenance_params": ["previous_dataset_id", "current_dataset_id"],
+    "description": "比较两版表格同键记录，报告变更及方案字段是否改变；不判断可比性。",
+    "replay_stable": true
+  },
+  "mcp__research_portfolio_fixture__find_dependents": {
+    "required_params": ["object_id"],
+    "read_only": true,
+    "output_fields": ["claim_object_id", "index_version_sha256"],
+    "provenance_params": ["object_id"],
+    "description": "查询已发现来源关联的旧研究主张；仅有唯一结果时返回 claim_object_id。",
+    "replay_stable": true
+  },
+  "mcp__research_portfolio_fixture__locate_excerpt": {
+    "required_params": ["source_id", "exact_text"],
+    "read_only": true,
+    "output_fields": ["version_sha256"],
+    "provenance_params": ["source_id"],
+    "description": "在已固定文本中精确定位模型给出的文字；歧义或无命中时不判断证据。",
+    "replay_stable": true
+  }
+}
