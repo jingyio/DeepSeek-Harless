@@ -35,6 +35,23 @@ def sha(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def projection_stats(home: str | None) -> dict[str, int]:
+    if not home:
+        return {"projected_results": 0, "projected_bytes_saved": 0}
+    root = Path(home).resolve()
+    if not root.is_relative_to(ROOT / ".local/distil-sss/projections"):
+        raise ValueError("projection state must stay under the private run directory")
+    views = root / "views"
+    originals = root / "originals"
+    count = saved = 0
+    for view in views.glob("*.txt"):
+        original = originals / (view.stem + ".json")
+        raw = json.loads(original.read_text(encoding="utf-8"))["content"]
+        saved += len(raw.encode("utf-8")) - view.stat().st_size
+        count += 1
+    return {"projected_results": count, "projected_bytes_saved": saved}
+
+
 def prompt_for(query: str, version: int = 1) -> str:
     if version == 2:
         return (
@@ -84,6 +101,20 @@ def main() -> int:
     query = selected["query"]
     if not isinstance(query, str) or len(query) > 300:
         raise ValueError("invalid frozen query")
+    projection_digest = os.environ.get("SSS_PROJECTION_ARTIFACT_DIGEST")
+    projection_fields = None
+    if projection_digest:
+        from src.adapters.motif_output_projection import load_certified_projection
+
+        actual_digest, projection_fields = load_certified_projection(
+            BASE / "certified-library.json")
+        if actual_digest != projection_digest:
+            raise ValueError("active projection does not match the Gmail certified Motif")
+        if args.mode == "motif":
+            manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+            if actual_digest not in {row["certified_digest"]
+                                     for row in manifest["artifacts"]}:
+                raise ValueError("projection artifact is not in the online Motif manifest")
     prompt_version = selected.get("prompt_version", 1)
     prompt = prompt_for(query, prompt_version)
     prompt_file = BASE / args.case / "prompt.md"
@@ -104,6 +135,9 @@ def main() -> int:
                "query_sha256": sha(query), "prompt_sha256": sha(prompt),
                "model": "deepseek-flash", "reasoning_effort": "off",
                "allowed_tools": ["search_emails", "read_email"],
+               "projection_mode": "compiled_latest_batch" if projection_digest else "off",
+               "projection_artifact_digest": projection_digest,
+               "projection_fields": projection_fields,
                "budget_cap_usd": 2.0, "read_only": True,
                "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest()
                if args.manifest else None,
@@ -203,6 +237,7 @@ def main() -> int:
                         row.get("kind") == "model_request_skipped_verified"
                         for row in decisions),
                     "budget_ledger": os.environ.get("SSS_BUDGET_LEDGER"),
+                    **projection_stats(os.environ.get("SSS_PROJECTION_HOME")),
                     **_usage(guard.events)})
     write_private(output / "metrics.json",
                   json.dumps(metrics, ensure_ascii=False, indent=2) + "\n")

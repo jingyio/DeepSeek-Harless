@@ -33,6 +33,17 @@ e 的首次 Motif 尝试在**第一个 API 请求**收到 HTTP 402 `Insufficient
 
 费用归因：被省掉的中间请求本来便宜，通常只有约 80–100 输出 token，且其输入大量命中缓存。Motif 的最终请求少了一部分缓存预热，单次输入未命中 token 可能增加；最终答案的输出长度也会波动。因此请求数稳定减少，并不保证每题费用或耗时都下降。第二版通过缩短、明确语义交付，三题才都出现小幅费用节省，不能把提示格式的收益归于 Motif。
 
+## 编译字段投影的开启与实际效果
+
+按同一冻结提示、同一在线 Motif，在 g、h 两封 serving 邮件上另起一次只读复跑；通过 `run-distil-dsh.py --mode plain --motif-output-projection .local/benchmarks/research-weekly-loop/gmail-alert-motif-20260928/certified-library.json` 启用 SSS 投影，Distil 仍关闭，`reasoning_effort="off"`，每次独立预算门槛 US$2。`run-gmail-alert-motif-trial.py` 现在核对投影摘要与在线 manifest，并在私有预览和运行指标中记录编译字段、实际投影视图数和节省字节数。
+
+| 复跑 | 模型请求 | Motif 经验证跳过 | 实际投影视图 | 实际删减字节 | 未命中输入 token | 缓存命中输入 token | 输出 token | 峰时价格估算 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| g，投影开启 | 2 | 1 | 0 | 0 | 18,015 | 3,968 | 209 | $0.00567911 |
+| h，投影开启 | 2 | 1 | 0 | 0 | 17,865 | 3,968 | 238 | $0.00566891 |
+
+认证编译结果只要求 `search_emails.selected_message_id`，`read_email` 没有可投影字段。当前 SSS 只投影**最近一轮**工具输出；最后一次模型判断前最近的是邮件读取，必须保留其正文才能分拣论文，因此两次运行均没有产生压缩视图。投影代理已启动并保存原始输出到本机私有目录，**但这些数据不能作为“压缩省费”成绩**。与先前未开启投影的 g、h 两次运行相比，估算费用数值略低，原因至少包含最终生成长度和缓存命中差异；本次实际删减为零，不能把费用波动归功于投影。真正裁剪邮件 HTML 需另做可恢复的正文结构化视图，并检验标题、摘要、链接及相反线索不丢失；那是下一项独立实验，不能冒充现有 Motif 的编译字段。
+
 ## 可复现入口和界限
 
 - `scripts/run-gmail-alert-motif-trial.py`：按私有 case manifest 做预览、普通组或 Motif 组。所有付费运行都经 `scripts/run-distil-dsh.py` 的明确预算门槛；`--attempt retry-N` 保留失败尝试。
