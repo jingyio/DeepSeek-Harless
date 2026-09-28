@@ -87,6 +87,17 @@ class VersionedEvidenceGuardTest(unittest.TestCase):
         series = audit_versioned_seed_claims(evidence(), "种子为 26/25/24。")
         self.assertEqual(series["status"], "checked")
 
+    def test_full_table_denominator_is_checked_only_when_explicit(self):
+        wrong = audit_versioned_seed_claims(evidence(),
+            "分母 cases 未变，每个 seed 为 40，全表 80。")
+        self.assertEqual(wrong["status"], "conflict")
+        self.assertEqual(wrong["conflicts"][0]["kind"], "full_table_denominator")
+        right = audit_versioned_seed_claims(evidence(),
+            "分母 cases 未变，每个 seed 为 40，全表 120。")
+        self.assertEqual(right["status"], "checked")
+        unrelated = audit_versioned_seed_claims(evidence(), "全表 80 字说明。")
+        self.assertEqual(unrelated["status"], "checked")
+
 
     def test_simpson_label_requires_reversal_in_every_stratum(self):
         contract = {"numerator": "correct", "denominator": "cases"}

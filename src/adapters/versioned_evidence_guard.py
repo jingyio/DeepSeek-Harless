@@ -215,6 +215,23 @@ def audit_versioned_seed_claims(events: list[dict[str, Any]],
             if bottom in observed_denominators and (top, bottom) not in fractions:
                 conflicts.append({"kind": "unobserved_fraction", "message":
                                   f"报告中的 {top}/{bottom} 不属于已读取原始行或声明分组的聚合结果"})
+    denominator_field = metric_contract.get("denominator")
+    if isinstance(denominator_field, str):
+        full_table_denominators = {
+            sum(row[denominator_field] for row in rows)
+            for rows in rows_by_object.values()
+            if all(type(row.get(denominator_field)) is int for row in rows)
+        }
+        if full_table_denominators:
+            for match in re.finditer(
+                    r"(?:分母|denominator)[^。；\n]{0,80}?"
+                    r"(?:全表|整表|全数据集|whole\s+table)\s*(?:为|是|共|=|:|：)?\s*(\d{1,8})",
+                    draft, re.IGNORECASE):
+                claimed = int(match.group(1))
+                if claimed not in full_table_denominators:
+                    conflicts.append({"kind": "full_table_denominator", "message":
+                                      f"声称全表分母为 {claimed}，已读取版本的全表分母为"
+                                      f" {sorted(full_table_denominators)}"})
     if len(rows_by_object[current_id]) == len(rows_by_object[previous_id]):
         for match in re.finditer(r"新增[^。；，、\n]{0,18}行", draft):
             prefix = draft[max(0, match.start() - 6):match.start()]
