@@ -40,8 +40,6 @@ def main() -> int:
                         help="explicit persistent Distil state; default isolates each trial")
     parser.add_argument("--motif-output-projection", type=Path,
                         help="certified compiled Motif; SSS projects the latest tool batch and owns restoration")
-    parser.add_argument("--evidence-scope", choices=["quote_verification"],
-                        help="explicit narrow task scope required by context-dependent evidence views")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.mode == "distil":
@@ -57,8 +55,6 @@ def main() -> int:
         parser.error("provide an isolated DSH command after --")
     if args.upstream == "https://api.deepseek.com" and args.budget_usd is None:
         parser.error("real DeepSeek requests require --budget-usd and prior research approval")
-    if args.evidence_scope and args.motif_output_projection is None:
-        parser.error("evidence scope requires a certified Motif output projection")
     if args.mode == "plain" and args.budget_usd is None:
         parser.error("plain mode requires a local budget gate")
     if args.budget_usd is not None and not 0 < args.budget_usd <= 100:
@@ -145,8 +141,6 @@ def main() -> int:
             projection_cmd = [sys.executable, "-m", "src.adapters.motif_output_projection",
                               "--port", str(projection_port), "--upstream", projection_upstream,
                               "--artifact", str(artifact_path), "--local-dir", str(projection_home)]
-            if args.evidence_scope:
-                projection_cmd += ["--evidence-scope", args.evidence_scope]
             projection = subprocess.Popen(projection_cmd, env=env, cwd=ROOT,
                                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             healthy(projection, f"http://127.0.0.1:{projection_port}/projection/health")
@@ -161,7 +155,6 @@ def main() -> int:
         if projection is not None:
             child_env["SSS_PROJECTION_HOME"] = str(projection_home)
             child_env["SSS_PROJECTION_ARTIFACT_DIGEST"] = load_certified_projection(artifact_path)[0]
-            child_env["SSS_EVIDENCE_SCOPE"] = args.evidence_scope or "none"
         if gate is not None:
             child_env["SSS_BUDGET_GATE_ACTIVE"] = "1"
             child_env["SSS_BUDGET_CAP_USD"] = str(args.budget_usd)
