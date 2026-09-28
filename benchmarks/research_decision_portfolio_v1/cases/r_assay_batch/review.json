@@ -12,7 +12,7 @@
     "提出恢复初次尝试或标记重试的核查"
   ],
   "numerical_reference": {
-    "wps:d00": [
+    "wps:r_assay_batch:d00": [
       {
         "denominator": 50,
         "group": "known",
@@ -24,7 +24,7 @@
         "numerator": 25
       }
     ],
-    "wps:d01": [
+    "wps:r_assay_batch:d01": [
       {
         "denominator": 50,
         "group": "known",

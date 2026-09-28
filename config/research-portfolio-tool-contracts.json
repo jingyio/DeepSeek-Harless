@@ -9,7 +9,7 @@
   "mcp__research_portfolio_fixture__pin_resource": {
     "required_params": ["object_id"],
     "read_only": true,
-    "output_fields": ["source_id", "object_id", "version_sha256"],
+    "output_fields": ["source_id", "version_sha256"],
     "provenance_params": ["object_id"],
     "description": "固定已发现的应用对象及其内容版本，返回只可用于读取的 source_id。",
     "replay_stable": true

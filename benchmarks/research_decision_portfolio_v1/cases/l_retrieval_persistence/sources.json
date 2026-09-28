@@ -3,22 +3,22 @@
     "event_id": "event:l_retrieval_persistence:01",
     "message": "一份新方法摘录声称有长期记忆收益；旧研究笔记将其视作内部状态的替代。",
     "root_objects": [
-      "zotero:a01"
+      "zotero:l_retrieval_persistence:a01"
     ],
     "synthetic": true
   },
   "objects": {
-    "obsidian:n01": {
+    "obsidian:l_retrieval_persistence:n01": {
       "app": "Obsidian",
       "depends_on": [
-        "paper:p01"
+        "paper:l_retrieval_persistence:p01"
       ],
       "kind": "claim",
       "links": [],
       "text": "旧判断：检索记忆可作为内部可更新状态的廉价替代。未规定无检索对照，也未记录长时遗忘。",
       "title": "两条基线的关系"
     },
-    "paper:p01": {
+    "paper:l_retrieval_persistence:p01": {
       "app": "literature",
       "depends_on": [],
       "kind": "paper_excerpt",
@@ -26,7 +26,7 @@
       "text": "系统把以往任务摘要写入向量库，在测试时检索相似记录；删除向量库后收益消失。报告任务准确率，未测试模型内部参数变化。",
       "title": "可检索任务记忆"
     },
-    "paper:p02": {
+    "paper:l_retrieval_persistence:p02": {
       "app": "literature",
       "depends_on": [],
       "kind": "paper_excerpt",
@@ -34,13 +34,13 @@
       "text": "系统对低秩能力表示做反馈更新，并在无历史检索条件下测试后续任务；只报告三个任务族，未检验长期遗忘。",
       "title": "持久能力表示"
     },
-    "zotero:a01": {
+    "zotero:l_retrieval_persistence:a01": {
       "app": "Zotero",
       "depends_on": [],
       "kind": "annotation",
       "links": [
-        "paper:p01",
-        "paper:p02"
+        "paper:l_retrieval_persistence:p01",
+        "paper:l_retrieval_persistence:p02"
       ],
       "text": "删除检索库是判断收益来源的关键消融；无检索时的能力表示实验还需要同等 token 与训练预算对照。",
       "title": "批注：删除记忆对照"

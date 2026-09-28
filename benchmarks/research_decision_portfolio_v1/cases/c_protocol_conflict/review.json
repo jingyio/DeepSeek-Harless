@@ -12,7 +12,7 @@
     "拟一份有事实边界的回复及最小回溯计划"
   ],
   "numerical_reference": {
-    "wps:d01": [
+    "wps:c_protocol_conflict:d01": [
       {
         "denominator": 48,
         "group": "known",

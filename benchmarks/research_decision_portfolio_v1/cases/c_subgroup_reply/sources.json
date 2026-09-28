@@ -3,12 +3,12 @@
     "event_id": "event:c_subgroup_reply:01",
     "message": "合作者邮件回复要求解释未见家族下降；需根据原始表和研究状态准备待审回复。",
     "root_objects": [
-      "gmail:m01"
+      "gmail:c_subgroup_reply:m01"
     ],
     "synthetic": true
   },
   "objects": {
-    "calendar:slots01": {
+    "calendar:c_subgroup_reply:slots01": {
       "app": "Google Calendar",
       "depends_on": [],
       "kind": "availability",
@@ -16,29 +16,29 @@
       "text": "周四 14:00–14:30 空闲，15:00–15:30 忙碌；均为本地模拟，不允许实际建会。",
       "title": "合成忙闲窗口"
     },
-    "gmail:m01": {
+    "gmail:c_subgroup_reply:m01": {
       "app": "Gmail",
       "depends_on": [],
       "kind": "mail",
       "links": [
-        "wps:d01",
-        "obsidian:n01",
-        "calendar:slots01"
+        "wps:c_subgroup_reply:d01",
+        "obsidian:c_subgroup_reply:n01",
+        "calendar:c_subgroup_reply:slots01"
       ],
       "text": "请不要只报总体准确率。未见家族是否比基线更差？如果是，周四讨论前能否先核对训练/测试家族重叠？",
       "title": "合成邮件：未见家族"
     },
-    "obsidian:n01": {
+    "obsidian:c_subgroup_reply:n01": {
       "app": "Obsidian",
       "depends_on": [
-        "wps:d01"
+        "wps:c_subgroup_reply:d01"
       ],
       "kind": "claim",
       "links": [],
       "text": "旧判断：总体正确率提升，可以先向合作者展示；未见家族未独立核查。",
       "title": "Model RSI 试验状态"
     },
-    "wps:d01": {
+    "wps:c_subgroup_reply:d01": {
       "app": "WPS",
       "depends_on": [],
       "kind": "table",

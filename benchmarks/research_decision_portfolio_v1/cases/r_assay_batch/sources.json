@@ -3,34 +3,34 @@
     "event_id": "event:r_assay_batch:01",
     "message": "新批次表格和实验方案修订一起到达；需要重核之前的泛化主张。",
     "root_objects": [
-      "wps:d01",
-      "github:c01"
+      "wps:r_assay_batch:d01",
+      "github:r_assay_batch:c01"
     ],
     "synthetic": true
   },
   "objects": {
-    "github:c01": {
+    "github:r_assay_batch:c01": {
       "app": "GitHub",
       "depends_on": [],
       "kind": "protocol",
       "links": [
-        "wps:d00",
-        "zotero:a01"
+        "wps:r_assay_batch:d00",
+        "zotero:r_assay_batch:a01"
       ],
       "text": "新批次把失败后重试计为新的独立尝试；旧批次只记初次尝试。底物 ID 可以配对，但当前导出缺少重试标识。",
       "title": "实验方案修订"
     },
-    "obsidian:n01": {
+    "obsidian:r_assay_batch:n01": {
       "app": "Obsidian",
       "depends_on": [
-        "wps:d00"
+        "wps:r_assay_batch:d00"
       ],
       "kind": "claim",
       "links": [],
       "text": "旧状态：新底物成功率仍低，先不要扩展到更多底物类。",
       "title": "新底物泛化"
     },
-    "wps:d00": {
+    "wps:r_assay_batch:d00": {
       "app": "WPS",
       "depends_on": [],
       "kind": "table",
@@ -72,7 +72,7 @@
       ],
       "title": "旧试点"
     },
-    "wps:d01": {
+    "wps:r_assay_batch:d01": {
       "app": "WPS",
       "depends_on": [],
       "kind": "table",
@@ -114,7 +114,7 @@
       ],
       "title": "新批次"
     },
-    "zotero:a01": {
+    "zotero:r_assay_batch:a01": {
       "app": "Zotero",
       "depends_on": [],
       "kind": "annotation",

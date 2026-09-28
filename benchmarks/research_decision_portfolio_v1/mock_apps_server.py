@@ -27,7 +27,7 @@ EventId = Annotated[str, Field(
     pattern=r"^event:[a-z_]+:01$",
     description="从任务卡复制事件 ID；先读事件才会得到本题初始对象 ID。")]
 ObjectId = Annotated[str, Field(
-    pattern=r"^(?:paper|zotero|obsidian|wps|github|gmail|calendar):[a-z][a-z0-9_]*$",
+    pattern=r"^(?:paper|zotero|obsidian|wps|github|gmail|calendar):[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$",
     description="应用对象 ID，须先由 read_event、read_pinned.links 或 find_dependents 返回；"
                 "不能把 source_id 或 dataset_id 当成对象 ID。")]
 SourceId = Annotated[str, Field(

@@ -12,7 +12,7 @@
     "要求同设备配对而非直接归因"
   ],
   "numerical_reference": {
-    "wps:d00": [
+    "wps:r_hardware_mix:d00": [
       {
         "denominator": 200,
         "group": "fast",
@@ -24,7 +24,7 @@
         "numerator": 80
       }
     ],
-    "wps:d01": [
+    "wps:r_hardware_mix:d01": [
       {
         "denominator": 200,
         "group": "fast",

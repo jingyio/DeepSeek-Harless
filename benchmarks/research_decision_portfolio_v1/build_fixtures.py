@@ -304,6 +304,17 @@ def validate_discovery_graph(roots: list[str], objects: dict[str, dict]) -> None
         raise ValueError(f"sources are unreachable from event: {sorted(set(objects) - reached)}")
 
 
+def scoped_objects(case_id: str, objects: dict[str, dict]) -> dict[str, dict]:
+    """Keep authoring IDs short, but expose stable three-part application IDs."""
+    def scoped(identifier: str) -> str:
+        app, short = identifier.split(":", 1)
+        return f"{app}:{case_id}:{short}"
+    return {scoped(identifier): {**obj,
+            "links": [scoped(link) for link in obj.get("links", [])],
+            "depends_on": [scoped(parent) for parent in obj.get("depends_on", [])]}
+            for identifier, obj in objects.items()}
+
+
 def build() -> None:
     expected_families = {"literature_claim_revision", "result_provenance_triage",
                          "collaboration_decision_handoff"}
@@ -312,14 +323,16 @@ def build() -> None:
     for case_id, spec in sorted(CASES.items()):
         families[spec["family"]].append(case_id)
         validate_discovery_graph(spec["roots"], spec["objects"])
+        objects = scoped_objects(case_id, spec["objects"])
         case_dir = ROOT / "cases" / case_id
         case_dir.mkdir(parents=True, exist_ok=True)
         event_id = f"event:{case_id}:01"
         event = {"event_id": event_id, "message": spec["event"],
-                 "root_objects": spec["roots"], "synthetic": True}
-        sources = {"event": event, "objects": spec["objects"]}
+                 "root_objects": [f"{root.split(':')[0]}:{case_id}:{root.split(':')[1]}"
+                                  for root in spec["roots"]], "synthetic": True}
+        sources = {"event": event, "objects": objects}
         review = {"case_id": case_id, "family": spec["family"], **spec["review"],
-                  "numerical_reference": numerical_reference(spec["objects"])}
+                  "numerical_reference": numerical_reference(objects)}
         prompt = (f"# {spec['question']}\n\n"
                   f"事件 ID：`{event_id}`。只读范围为该事件返回的对象及其已授权关联。"
                   "请基于原始来源完成可审阅的科研决定；资料不足时明确标记。"

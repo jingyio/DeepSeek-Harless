@@ -20,6 +20,11 @@ from src.adapters.tool_contract_loader import parse_tool_contracts
 ROOT = Path(fixtures.__file__).resolve().parent
 
 
+def scoped(case: str, short: str) -> str:
+    app, suffix = short.split(":", 1)
+    return f"{app}:{case}:{suffix}"
+
+
 class ResearchDecisionPortfolioTest(unittest.TestCase):
     def setUp(self):
         apps._handles.clear()
@@ -55,7 +60,8 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
                 hidden = json.loads((ROOT / "cases" / case_id / "review.json").read_text())
                 sources = json.loads((ROOT / "cases" / case_id / "sources.json").read_text())
                 event = apps.read_event(f"event:{case_id}:01")
-                self.assertEqual(event["root_objects"], spec["roots"])
+                self.assertEqual(event["root_objects"],
+                                 [scoped(case_id, value) for value in spec["roots"]])
                 self.assertEqual(hidden["case_id"], case_id)
                 self.assertEqual(hidden["numerical_reference"],
                                  fixtures.numerical_reference(sources["objects"]))
@@ -71,10 +77,12 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
     def test_table_comparison_reports_protocol_change_without_interpreting_it(self):
         with patch.dict(os.environ, {"SSS_PORTFOLIO_CASE": "r_assay_batch"}):
             apps.read_event("event:r_assay_batch:01")
-            commit = apps.pin_resource("github:c01")["source_id"]
+            commit = apps.pin_resource(scoped("r_assay_batch", "github:c01"))["source_id"]
             apps.read_pinned(commit)
-            older = apps.read_pinned(apps.pin_resource("wps:d00")["source_id"])
-            newer = apps.read_pinned(apps.pin_resource("wps:d01")["source_id"])
+            older = apps.read_pinned(apps.pin_resource(
+                scoped("r_assay_batch", "wps:d00"))["source_id"])
+            newer = apps.read_pinned(apps.pin_resource(
+                scoped("r_assay_batch", "wps:d01"))["source_id"])
             old_id, new_id = older["value"]["dataset_id"], newer["value"]["dataset_id"]
             result = apps.compare_tables(old_id, new_id)
             self.assertEqual(result["status"], "compared")
@@ -109,11 +117,11 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
             with patch.object(apps, "ROOT", root), patch.dict(os.environ,
                   {"SSS_PORTFOLIO_CASE": "l_state_update"}):
                 apps.read_event("event:l_state_update:01")
-                annotation = apps.pin_resource("zotero:a01")["source_id"]
+                annotation = apps.pin_resource(scoped("l_state_update", "zotero:a01"))["source_id"]
                 apps.read_pinned(annotation)
-                source_id = apps.pin_resource("paper:p01")["source_id"]
+                source_id = apps.pin_resource(scoped("l_state_update", "paper:p01"))["source_id"]
                 data = json.loads(path.read_text())
-                data["objects"]["paper:p01"]["text"] += " 新版本。"
+                data["objects"][scoped("l_state_update", "paper:p01")]["text"] += " 新版本。"
                 path.write_text(json.dumps(data, ensure_ascii=False))
                 with self.assertRaisesRegex(ValueError, "changed since pin"):
                     apps.read_pinned(source_id)
@@ -122,9 +130,10 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
         with patch.dict(os.environ, {"SSS_PORTFOLIO_CASE": "l_state_update"}):
             apps.read_event("event:l_state_update:01")
             with self.assertRaisesRegex(ValueError, "not been discovered"):
-                apps.pin_resource("paper:p01")
-            apps.read_pinned(apps.pin_resource("zotero:a01")["source_id"])
-            source = apps.pin_resource("paper:p01")["source_id"]
+                apps.pin_resource(scoped("l_state_update", "paper:p01"))
+            apps.read_pinned(apps.pin_resource(
+                scoped("l_state_update", "zotero:a01"))["source_id"])
+            source = apps.pin_resource(scoped("l_state_update", "paper:p01"))["source_id"]
             result = apps.locate_excerpt(source, "外部状态")
             self.assertEqual(result["positions"], [14])
             self.assertTrue(result["unique"])
@@ -134,10 +143,11 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
 class ResearchDecisionPortfolioMcpTest(unittest.IsolatedAsyncioTestCase):
     async def test_stdio_mcp_round_trip_for_each_family(self):
         project = ROOT.parent.parent
-        for case_id, object_id in (("l_state_update", "zotero:a01"),
-                                   ("r_assay_batch", "wps:d01"),
-                                   ("c_negative_control", "gmail:m01")):
+        for case_id, short_id in (("l_state_update", "zotero:a01"),
+                                  ("r_assay_batch", "wps:d01"),
+                                  ("c_negative_control", "gmail:m01")):
             with self.subTest(case_id=case_id):
+                object_id = scoped(case_id, short_id)
                 params = StdioServerParameters(
                     command=str(project / ".venv312/bin/python"),
                     args=[str(ROOT / "mock_apps_server.py")], cwd=project,

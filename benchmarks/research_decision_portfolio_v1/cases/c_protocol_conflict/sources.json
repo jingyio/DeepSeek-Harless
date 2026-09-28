@@ -3,12 +3,12 @@
     "event_id": "event:c_protocol_conflict:01",
     "message": "邮件线程提出把旧批次结果填入新口径报告；负责人要一份可审阅回复和复算计划。",
     "root_objects": [
-      "gmail:m01"
+      "gmail:c_protocol_conflict:m01"
     ],
     "synthetic": true
   },
   "objects": {
-    "calendar:slots01": {
+    "calendar:c_protocol_conflict:slots01": {
       "app": "Google Calendar",
       "depends_on": [],
       "kind": "availability",
@@ -16,7 +16,7 @@
       "text": "明天 10:00–10:20 空闲，11:00–11:20 忙碌；不可实际创建日历事件。",
       "title": "合成忙闲窗口"
     },
-    "github:c01": {
+    "github:c_protocol_conflict:c01": {
       "app": "GitHub",
       "depends_on": [],
       "kind": "protocol",
@@ -24,30 +24,30 @@
       "text": "成功率按初次尝试计；每行必须含底物 ID、批次 ID、重试标识与初次测量结果。",
       "title": "新模板定义"
     },
-    "gmail:m01": {
+    "gmail:c_protocol_conflict:m01": {
       "app": "Gmail",
       "depends_on": [],
       "kind": "mail",
       "links": [
-        "wps:d01",
-        "github:c01",
-        "obsidian:n01",
-        "calendar:slots01"
+        "wps:c_protocol_conflict:d01",
+        "github:c_protocol_conflict:c01",
+        "obsidian:c_protocol_conflict:n01",
+        "calendar:c_protocol_conflict:slots01"
       ],
       "text": "明天能否把上个月的反应成功率直接放进新模板？如果不行，请列出缺的字段。",
       "title": "合成邮件：口径统一"
     },
-    "obsidian:n01": {
+    "obsidian:c_protocol_conflict:n01": {
       "app": "Obsidian",
       "depends_on": [
-        "wps:d01"
+        "wps:c_protocol_conflict:d01"
       ],
       "kind": "claim",
       "links": [],
       "text": "旧简报把所有尝试合并为分母，尚未建立初次尝试映射。",
       "title": "旧组会数值"
     },
-    "wps:d01": {
+    "wps:c_protocol_conflict:d01": {
       "app": "WPS",
       "depends_on": [],
       "kind": "table",

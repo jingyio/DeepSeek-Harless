@@ -12,7 +12,7 @@
     "建议统一规则重标或补规则版本字段"
   ],
   "numerical_reference": {
-    "wps:d00": [
+    "wps:r_label_policy:d00": [
       {
         "denominator": 60,
         "group": "a",
@@ -24,7 +24,7 @@
         "numerator": 43
       }
     ],
-    "wps:d01": [
+    "wps:r_label_policy:d01": [
       {
         "denominator": 60,
         "group": "a",

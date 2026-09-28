@@ -12,7 +12,7 @@
     "仅建议可行的周四窗口并给出待审邮件草稿"
   ],
   "numerical_reference": {
-    "wps:d01": [
+    "wps:c_subgroup_reply:d01": [
       {
         "denominator": 60,
         "group": "seen",

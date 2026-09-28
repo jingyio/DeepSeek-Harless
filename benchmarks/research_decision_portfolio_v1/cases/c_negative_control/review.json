@@ -12,7 +12,7 @@
     "提出最小同批次负对照和待审回复"
   ],
   "numerical_reference": {
-    "wps:d01": [
+    "wps:c_negative_control:d01": [
       {
         "denominator": 50,
         "group": "batch_a",

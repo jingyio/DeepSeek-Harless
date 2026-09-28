@@ -3,34 +3,34 @@
     "event_id": "event:r_hardware_mix:01",
     "message": "两版基准结果已上传，运行器配置同时变更；需分清方法与硬件混合比例。",
     "root_objects": [
-      "wps:d01",
-      "github:c01"
+      "wps:r_hardware_mix:d01",
+      "github:r_hardware_mix:c01"
     ],
     "synthetic": true
   },
   "objects": {
-    "github:c01": {
+    "github:r_hardware_mix:c01": {
       "app": "GitHub",
       "depends_on": [],
       "kind": "change_log",
       "links": [
-        "wps:d00",
-        "zotero:a01"
+        "wps:r_hardware_mix:d00",
+        "zotero:r_hardware_mix:a01"
       ],
       "text": "新报告将 fast 设备运行重复 4 次、slow 设备运行 1 次；旧报告二者各一次。阈值与计时代码未变。",
       "title": "运行器配置"
     },
-    "obsidian:n01": {
+    "obsidian:r_hardware_mix:n01": {
       "app": "Obsidian",
       "depends_on": [
-        "wps:d00"
+        "wps:r_hardware_mix:d00"
       ],
       "kind": "claim",
       "links": [],
       "text": "旧判断：候选方法可能降低推理延迟；报告准备引用总体达标率。",
       "title": "效率主张"
     },
-    "wps:d00": {
+    "wps:r_hardware_mix:d00": {
       "app": "WPS",
       "depends_on": [],
       "kind": "table",
@@ -72,7 +72,7 @@
       ],
       "title": "旧延迟采样"
     },
-    "wps:d01": {
+    "wps:r_hardware_mix:d01": {
       "app": "WPS",
       "depends_on": [],
       "kind": "table",
@@ -114,7 +114,7 @@
       ],
       "title": "新延迟采样"
     },
-    "zotero:a01": {
+    "zotero:r_hardware_mix:a01": {
       "app": "Zotero",
       "depends_on": [],
       "kind": "annotation",
