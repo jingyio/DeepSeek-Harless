@@ -1,0 +1,92 @@
+{
+  "event": {
+    "event_id": "event:a_mutation_supplement:01",
+    "message": "Quarto 附录新增跨蛋白字样；归档前需核对切分脚本与原始表。",
+    "root_objects": [
+      "quarto:a_mutation_supplement:q01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "github:a_mutation_supplement:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "split_code",
+      "links": [],
+      "text": "train/test 按 mutation_id 随机划分，不按 protein_id 留出；同一蛋白可同时出现在训练与测试。",
+      "title": "数据划分提交"
+    },
+    "obsidian:a_mutation_supplement:n01": {
+      "app": "Obsidian",
+      "depends_on": [
+        "quarto:a_mutation_supplement:q01"
+      ],
+      "kind": "claim",
+      "links": [],
+      "text": "旧状态：附录若能支持跨蛋白泛化即可给导师审阅。",
+      "title": "附录归档状态"
+    },
+    "quarto:a_mutation_supplement:q01": {
+      "app": "Quarto",
+      "depends_on": [],
+      "kind": "supplement",
+      "links": [
+        "github:a_mutation_supplement:c01",
+        "wps:a_mutation_supplement:d01",
+        "zotero:a_mutation_supplement:a01"
+      ],
+      "text": "附录图题称未见蛋白泛化；表中仅列 2 个随机种子的总体接受率，没有蛋白级样本量。",
+      "title": "突变预测附录"
+    },
+    "wps:a_mutation_supplement:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "split"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "样本单位是突变位点；未见蛋白数未保存。",
+      "rows": [
+        {
+          "accepted": 38,
+          "reviewed": 50,
+          "seed": 1,
+          "split": "heldout_mutation"
+        },
+        {
+          "accepted": 39,
+          "reviewed": 50,
+          "seed": 2,
+          "split": "heldout_mutation"
+        },
+        {
+          "accepted": 42,
+          "reviewed": 50,
+          "seed": 1,
+          "split": "seen_mutation"
+        },
+        {
+          "accepted": 41,
+          "reviewed": 50,
+          "seed": 2,
+          "split": "seen_mutation"
+        }
+      ],
+      "title": "位点留出统计"
+    },
+    "zotero:a_mutation_supplement:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "若声称跨蛋白，必须按蛋白 ID 留出并报告每蛋白样本量及预训练序列暴露。",
+      "title": "独立蛋白评估要求"
+    }
+  }
+}

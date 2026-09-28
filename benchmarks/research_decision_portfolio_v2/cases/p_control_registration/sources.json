@@ -1,0 +1,82 @@
+{
+  "event": {
+    "event_id": "event:p_control_registration:01",
+    "message": "复现清单请求结项，但负对照运行未出现在登记表。",
+    "root_objects": [
+      "obsidian:p_control_registration:n01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "github:p_control_registration:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "run_manifest",
+      "links": [],
+      "text": "只记录候选与基线各两粒种子；无随机标签任务 ID，无法把其他目录的日志自动认作负对照。",
+      "title": "已完成运行"
+    },
+    "obsidian:p_control_registration:n01": {
+      "app": "Obsidian",
+      "depends_on": [],
+      "kind": "checklist",
+      "links": [
+        "github:p_control_registration:c01",
+        "wps:p_control_registration:d01",
+        "zotero:p_control_registration:a01"
+      ],
+      "text": "要求候选、基线、随机标签负对照在同一批次和同一分母口径下报告；当前负对照栏为空。",
+      "title": "复现结项清单"
+    },
+    "wps:p_control_registration:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "arm"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "同一批次；尚无 control_type 字段。",
+      "rows": [
+        {
+          "accepted": 38,
+          "arm": "candidate",
+          "reviewed": 50,
+          "seed": 1
+        },
+        {
+          "accepted": 39,
+          "arm": "candidate",
+          "reviewed": 50,
+          "seed": 2
+        },
+        {
+          "accepted": 34,
+          "arm": "baseline",
+          "reviewed": 50,
+          "seed": 1
+        },
+        {
+          "accepted": 35,
+          "arm": "baseline",
+          "reviewed": 50,
+          "seed": 2
+        }
+      ],
+      "title": "当前复现结果"
+    },
+    "zotero:p_control_registration:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "随机标签对照必须使用同批次输入和预先登记的任务 ID，否则无法排除流程泄漏。",
+      "title": "负对照批注"
+    }
+  }
+}

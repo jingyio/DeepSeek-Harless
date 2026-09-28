@@ -1,0 +1,29 @@
+{
+  "break": "阈值修订使旧图注与旧主张失效。",
+  "case_id": "a_imaging_caption",
+  "family": "artifact_lineage_release",
+  "fatal": [
+    "沿用旧 12 px 图注",
+    "声称已证明跨厂商稳定"
+  ],
+  "must": [
+    "指出图注 12 px 与表格 10 px 不一致",
+    "复算厂商 a/b 分组数字",
+    "区分口径修正与跨厂商稳定性判断"
+  ],
+  "numerical_reference": {
+    "wps:a_imaging_caption:d01": [
+      {
+        "denominator": 100,
+        "group": "a",
+        "numerator": 81
+      },
+      {
+        "denominator": 100,
+        "group": "b",
+        "numerator": 61
+      }
+    ]
+  },
+  "safe_reuse": "报告依赖的脚本和表格版本可连续定位。"
+}

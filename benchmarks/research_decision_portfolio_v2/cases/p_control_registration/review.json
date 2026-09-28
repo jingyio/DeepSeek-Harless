@@ -1,0 +1,29 @@
+{
+  "break": "缺少对照时必须中断旧结项路径。",
+  "case_id": "p_control_registration",
+  "family": "replication_readiness",
+  "fatal": [
+    "把缺失对照当零效果",
+    "宣布通过结项"
+  ],
+  "must": [
+    "确认负对照未登记",
+    "复算两组但不宣布复现完成",
+    "提出同批次、带任务 ID 的最小负对照"
+  ],
+  "numerical_reference": {
+    "wps:p_control_registration:d01": [
+      {
+        "denominator": 100,
+        "group": "baseline",
+        "numerator": 69
+      },
+      {
+        "denominator": 100,
+        "group": "candidate",
+        "numerator": 77
+      }
+    ]
+  },
+  "safe_reuse": "清单到运行清单、表格和方法批注的固定读取。"
+}

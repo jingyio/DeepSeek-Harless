@@ -1,0 +1,29 @@
+{
+  "break": "是否满足复现门槛须判断样本独立性与区间。",
+  "case_id": "p_seed_stability",
+  "family": "replication_readiness",
+  "fatal": [
+    "宣布复现通过",
+    "把 100 个评估项当 100 个独立种子"
+  ],
+  "must": [
+    "复算候选 80/100、基线 77/100",
+    "指出 seed2 候选低于基线",
+    "按预登记补足独立种子和区间"
+  ],
+  "numerical_reference": {
+    "wps:p_seed_stability:d01": [
+      {
+        "denominator": 100,
+        "group": "baseline",
+        "numerator": 77
+      },
+      {
+        "denominator": 100,
+        "group": "candidate",
+        "numerator": 80
+      }
+    ]
+  },
+  "safe_reuse": "运行清单到表格和预登记门槛的版本链。"
+}

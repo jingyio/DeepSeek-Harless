@@ -1,0 +1,91 @@
+{
+  "event": {
+    "event_id": "event:e_state_vs_retrieval:01",
+    "message": "研究者要在本周有限计算窗口选一项最能区分机制的试验。",
+    "root_objects": [
+      "obsidian:e_state_vs_retrieval:n01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "calendar:e_state_vs_retrieval:slots01": {
+      "app": "Google Calendar",
+      "depends_on": [],
+      "kind": "availability",
+      "links": [],
+      "text": "周三 13:00–15:00 计算节点空闲；仅作试验建议，不得预约。",
+      "title": "计算窗口"
+    },
+    "obsidian:e_state_vs_retrieval:n01": {
+      "app": "Obsidian",
+      "depends_on": [],
+      "kind": "hypothesis",
+      "links": [
+        "paper:e_state_vs_retrieval:p01",
+        "paper:e_state_vs_retrieval:p02",
+        "wps:e_state_vs_retrieval:d01",
+        "calendar:e_state_vs_retrieval:slots01"
+      ],
+      "text": "问题是更新是否存在于模型可持久状态，而不是外部检索上下文；现有试点只比较总体成绩。",
+      "title": "内部能力状态假设"
+    },
+    "paper:e_state_vs_retrieval:p01": {
+      "app": "literature",
+      "depends_on": [],
+      "kind": "method_excerpt",
+      "links": [],
+      "text": "删除检索库后收益消失；没有模型参数更新。",
+      "title": "检索记忆方法"
+    },
+    "paper:e_state_vs_retrieval:p02": {
+      "app": "literature",
+      "depends_on": [],
+      "kind": "method_excerpt",
+      "links": [],
+      "text": "反馈后可更新门控向量，但长期保持尚未测试。",
+      "title": "内部门控方法"
+    },
+    "wps:e_state_vs_retrieval:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "arm"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "两组预算尚未对齐；仅同任务族。",
+      "rows": [
+        {
+          "accepted": 36,
+          "arm": "retrieval",
+          "reviewed": 50,
+          "seed": 1
+        },
+        {
+          "accepted": 37,
+          "arm": "retrieval",
+          "reviewed": 50,
+          "seed": 2
+        },
+        {
+          "accepted": 35,
+          "arm": "state",
+          "reviewed": 50,
+          "seed": 1
+        },
+        {
+          "accepted": 36,
+          "arm": "state",
+          "reviewed": 50,
+          "seed": 2
+        }
+      ],
+      "title": "试点正确率"
+    }
+  }
+}

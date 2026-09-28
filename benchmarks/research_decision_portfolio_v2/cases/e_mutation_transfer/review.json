@@ -1,0 +1,29 @@
+{
+  "break": "有限预算下选择识别目标最强的试验。",
+  "case_id": "e_mutation_transfer",
+  "family": "evidence_gap_experiment_choice",
+  "fatal": [
+    "重复建议方案 A 作为唯一下一步",
+    "宣称完全零样本已证实"
+  ],
+  "must": [
+    "识别现有位点留出无法回答跨蛋白",
+    "选 protein_id 留出",
+    "要求记录预训练序列交集与每蛋白分母"
+  ],
+  "numerical_reference": {
+    "wps:e_mutation_transfer:d01": [
+      {
+        "denominator": 100,
+        "group": "heldout_site",
+        "numerator": 77
+      },
+      {
+        "denominator": 100,
+        "group": "same_protein",
+        "numerator": 83
+      }
+    ]
+  },
+  "safe_reuse": "假设到方法、脚本、表格与批注的来源链。"
+}

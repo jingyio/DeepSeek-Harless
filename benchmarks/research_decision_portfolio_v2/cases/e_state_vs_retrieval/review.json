@@ -1,0 +1,29 @@
+{
+  "break": "选择哪个对照最能识别机制需要语义判断。",
+  "case_id": "e_state_vs_retrieval",
+  "family": "evidence_gap_experiment_choice",
+  "fatal": [
+    "用试点均值证明内部状态更优",
+    "声称已预约计算节点"
+  ],
+  "must": [
+    "区分外部检索与内部状态机制",
+    "复算试点并指出预算未对齐",
+    "建议等预算的删库/无检索对照"
+  ],
+  "numerical_reference": {
+    "wps:e_state_vs_retrieval:d01": [
+      {
+        "denominator": 100,
+        "group": "retrieval",
+        "numerator": 73
+      },
+      {
+        "denominator": 100,
+        "group": "state",
+        "numerator": 71
+      }
+    ]
+  },
+  "safe_reuse": "假设节点到两篇方法和试点表的版本读取。"
+}

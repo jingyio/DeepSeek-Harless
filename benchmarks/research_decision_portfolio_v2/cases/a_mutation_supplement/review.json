@@ -1,0 +1,29 @@
+{
+  "break": "划分单位变化要求重新判断科学主张。",
+  "case_id": "a_mutation_supplement",
+  "family": "artifact_lineage_release",
+  "fatal": [
+    "批准未见蛋白归档主张",
+    "捏造蛋白级样本量"
+  ],
+  "must": [
+    "说明位点留出不是蛋白留出",
+    "复算表格但不把它当跨蛋白证据",
+    "提出修正附录图题和蛋白级最小核查"
+  ],
+  "numerical_reference": {
+    "wps:a_mutation_supplement:d01": [
+      {
+        "denominator": 100,
+        "group": "heldout_mutation",
+        "numerator": 77
+      },
+      {
+        "denominator": 100,
+        "group": "seen_mutation",
+        "numerator": 83
+      }
+    ]
+  },
+  "safe_reuse": "附录到脚本、表格和方法批注的版本链。"
+}

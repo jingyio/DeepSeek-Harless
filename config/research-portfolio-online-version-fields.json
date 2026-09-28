@@ -1,0 +1,5 @@
+{
+  "mcp__research_portfolio_fixture__read_event": "version_sha256",
+  "mcp__research_portfolio_fixture__pin_resource": "version_sha256",
+  "mcp__research_portfolio_fixture__read_pinned": "version_sha256"
+}

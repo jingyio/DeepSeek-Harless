@@ -1,0 +1,48 @@
+{
+  "families": {
+    "artifact_lineage_release": [
+      "a_imaging_caption",
+      "a_model_rsi_figure",
+      "a_mutation_supplement"
+    ],
+    "evidence_gap_experiment_choice": [
+      "e_assay_initial_attempt",
+      "e_mutation_transfer",
+      "e_state_vs_retrieval"
+    ],
+    "replication_readiness": [
+      "p_control_registration",
+      "p_dataset_shift",
+      "p_seed_stability"
+    ]
+  },
+  "sha256": {
+    "cases/a_imaging_caption/review.json": "95ccd9f99fdec2dd00acaaec9447fd1ffb5cbefe6f70a5390808bf397f2f62e4",
+    "cases/a_imaging_caption/sources.json": "8c9467dd0ce93c5ab1278fe292c099cc4b06f0ed3f4db9965e9730271aa0218e",
+    "cases/a_imaging_caption/task.md": "62e434950a385525da017b62bb5671ee57c5ffbf09beb1f46ae76971d459c32b",
+    "cases/a_model_rsi_figure/review.json": "04d994701a86e1ba48906d57ed2f085e88c32ce14718bbf2a155e00d35360cbf",
+    "cases/a_model_rsi_figure/sources.json": "27e8e8dc8c901df2399ba9f03a4993ae9228696534db0e8ddb5cf229c67eb328",
+    "cases/a_model_rsi_figure/task.md": "3f2ea7db8c57117289d39e5b1a8866a741d860ef959c6f716ffa276c485997f7",
+    "cases/a_mutation_supplement/review.json": "3b0d74f7615f22726825110b4cbb4134cbe4a5d5c53b5ef04e146688e0f1fb47",
+    "cases/a_mutation_supplement/sources.json": "f46b9f9827617ab16d35a7058b121a6ec0eedf7529d6296f977fb73178e6e57c",
+    "cases/a_mutation_supplement/task.md": "0d92f6c732fc2cf0fbd370f03f38a13ddcaa8b2ccfc4db2ad914c006eb10e951",
+    "cases/e_assay_initial_attempt/review.json": "1b1d0762ab5f3bb6dbd174b92d739d007402fe49798b4056b59363e2e8a8ca28",
+    "cases/e_assay_initial_attempt/sources.json": "194a82aa9d753df93b751b08e4897a269d13c3b5066831e61ab9fb8fa29d86a9",
+    "cases/e_assay_initial_attempt/task.md": "82f8db85f986e7ff67b223d3d8e0351630a300022d1ee1f881adb3902ff587fd",
+    "cases/e_mutation_transfer/review.json": "49cc5533559668d6d4abb91da077658c9fb71373c2967f02dd807795b2dce348",
+    "cases/e_mutation_transfer/sources.json": "499b852fe136feceba19b28071cc45d20818617a1d83b9bfbab56ea4913fdfb4",
+    "cases/e_mutation_transfer/task.md": "499ec801cdee2388eb7670cd9507a734a48cd5827d41f2eee620dad57c19247e",
+    "cases/e_state_vs_retrieval/review.json": "0b0826ed845b3b1f0b60102dd82fb45637ed081e544cbaa5654ff20148809385",
+    "cases/e_state_vs_retrieval/sources.json": "04ecc0cd1c73182efd0b7853882754cb846eeacc1405b9d8e35601603140be04",
+    "cases/e_state_vs_retrieval/task.md": "c966869a857577d31fea5a844d56970b19b2d2805bdc757a89023b5e6366816a",
+    "cases/p_control_registration/review.json": "2865a29f214740ab72c8451a2d2168730cd5879cc16d8f1d265fe1055dca56c9",
+    "cases/p_control_registration/sources.json": "20bb75964de7875dbb41e510dbe0fe6fa538a872d3ab5c2411d98613f28ebe96",
+    "cases/p_control_registration/task.md": "ca7ad583041eae3cbccb32cbc8189952fe5b1a274d06787c86eec37b7a510bd7",
+    "cases/p_dataset_shift/review.json": "a461dcc84c480a1c8bfcc3f7bb543121fc0d7c353ffa32968af3686e9fb286f8",
+    "cases/p_dataset_shift/sources.json": "4e81725c2b0d0b9a9593fd863f32141e4d86f807b193d653b7267c4bb338cced",
+    "cases/p_dataset_shift/task.md": "5964ead996f81c46885716c1032e0402ab8d16e2e85d8bbcfb034c8f3101cd08",
+    "cases/p_seed_stability/review.json": "3c1172b4f643ff9e37889a8498a1521fea1b3e183efc6815c1b906340aa87ce1",
+    "cases/p_seed_stability/sources.json": "acee593bc2b3c665bc3063412dcb993a1ac93ff3ad3beca863bd1ff00ece7d40",
+    "cases/p_seed_stability/task.md": "5741a4d7787e1521e9921e4e7b5adeedb6ae6d6bf8689c0138dfe485affacc27"
+  }
+}

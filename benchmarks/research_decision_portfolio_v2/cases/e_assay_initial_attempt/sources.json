@@ -1,0 +1,91 @@
+{
+  "event": {
+    "event_id": "event:e_assay_initial_attempt:01",
+    "message": "下周只能安排一批验证，研究者需要先消除成功率口径歧义。",
+    "root_objects": [
+      "obsidian:e_assay_initial_attempt:n01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "calendar:e_assay_initial_attempt:slots01": {
+      "app": "Google Calendar",
+      "depends_on": [],
+      "kind": "availability",
+      "links": [],
+      "text": "下周二 09:00–11:00 可做一批验证；只给建议，不得实际建会。",
+      "title": "设备窗口"
+    },
+    "github:e_assay_initial_attempt:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "capture_plan",
+      "links": [],
+      "text": "选项 A 扩大底物类别但沿用旧导出；选项 B 保留同批次并逐次记录 attempt_index 与 substrate_id。",
+      "title": "数据采集计划"
+    },
+    "obsidian:e_assay_initial_attempt:n01": {
+      "app": "Obsidian",
+      "depends_on": [],
+      "kind": "hypothesis",
+      "links": [
+        "wps:e_assay_initial_attempt:d01",
+        "github:e_assay_initial_attempt:c01",
+        "zotero:e_assay_initial_attempt:a01",
+        "calendar:e_assay_initial_attempt:slots01"
+      ],
+      "text": "旧判断：新底物接受率可能提高，但失败重试是否计入新尝试尚未记清。",
+      "title": "新底物外推状态"
+    },
+    "wps:e_assay_initial_attempt:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "substrate"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "每行无 attempt_index；可能含失败重试。",
+      "rows": [
+        {
+          "accepted": 19,
+          "reviewed": 25,
+          "seed": 1,
+          "substrate": "known"
+        },
+        {
+          "accepted": 20,
+          "reviewed": 25,
+          "seed": 2,
+          "substrate": "known"
+        },
+        {
+          "accepted": 13,
+          "reviewed": 25,
+          "seed": 1,
+          "substrate": "novel"
+        },
+        {
+          "accepted": 14,
+          "reviewed": 25,
+          "seed": 2,
+          "substrate": "novel"
+        }
+      ],
+      "title": "新底物小试"
+    },
+    "zotero:e_assay_initial_attempt:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "重试不可当新的独立底物样本；先恢复初次尝试与同批次比较。",
+      "title": "独立尝试批注"
+    }
+  }
+}

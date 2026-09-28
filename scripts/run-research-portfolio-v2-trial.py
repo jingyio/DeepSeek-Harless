@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one frozen research portfolio case through budget-gated DeepSeek Harness."""
+"""Run one frozen v2 research portfolio case through budget-gated DSH."""
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ from src.adapters.dsh_client import _usage, require_budget_gate  # noqa: E402
 from src.adapters.native_budget import NativeBudgetGuard  # noqa: E402
 
 
-BENCH = ROOT / "benchmarks/research_decision_portfolio_v1"
-PATCH = ROOT / "config/research-decision-portfolio.patch.yml"
+BENCH = ROOT / "benchmarks/research_decision_portfolio_v2"
+PATCH = ROOT / "config/research-decision-portfolio-v2.patch.yml"
 CONTRACTS = ROOT / "config/research-portfolio-tool-contracts.json"
-OUT = ROOT / ".local/benchmarks/research-decision-portfolio-v1"
+OUT = ROOT / ".local/benchmarks/research-portfolio-v2-transfer"
 CAP_USD = 1.0
 MAX_REQUESTS = 15
 MAX_OUTPUT_TOKENS = 8000
@@ -73,7 +73,7 @@ def preview(case: str, arm: str, output_root: Path,
                   ROOT / "src/motif_core/online_skill_runtime.mjs"]
     elif manifest is not None or task is not None:
         raise ValueError("ordinary baseline cannot receive a Motif artifact")
-    return {"task_id": f"research-portfolio-{case}", "case": case,
+    return {"task_id": f"research-portfolio-v2-{case}", "case": case,
             "arm": arm, "classification": "synthetic_development_trial",
             "model": "deepseek-flash", "reasoning_effort": "off",
             "budget_cap_usd": CAP_USD, "max_model_requests": MAX_REQUESTS,

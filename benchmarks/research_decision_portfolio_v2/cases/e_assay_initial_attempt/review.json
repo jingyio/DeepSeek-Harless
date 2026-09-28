@@ -1,0 +1,29 @@
+{
+  "break": "试验选择须根据科学可识别性，而非旧路径惯性。",
+  "case_id": "e_assay_initial_attempt",
+  "family": "evidence_gap_experiment_choice",
+  "fatal": [
+    "把重试当独立底物证明外推",
+    "声称已预约设备"
+  ],
+  "must": [
+    "复算 known/novel 当前值但说明重试口径不明",
+    "优先选记录 attempt_index 的 B",
+    "提出同批次初次尝试比较"
+  ],
+  "numerical_reference": {
+    "wps:e_assay_initial_attempt:d01": [
+      {
+        "denominator": 50,
+        "group": "known",
+        "numerator": 39
+      },
+      {
+        "denominator": 50,
+        "group": "novel",
+        "numerator": 27
+      }
+    ]
+  },
+  "safe_reuse": "假设到采集计划、试点表和批注的读取。"
+}

@@ -1,0 +1,91 @@
+{
+  "event": {
+    "event_id": "event:e_mutation_transfer:01",
+    "message": "课题组只能再运行一个留出方案，需要选择最能检验泛化假设的试验。",
+    "root_objects": [
+      "obsidian:e_mutation_transfer:n01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "github:e_mutation_transfer:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "compute_plan",
+      "links": [],
+      "text": "方案 A 按位点随机留出，已跑；方案 B 按 protein_id 留出，尚未跑。两方案耗时相近。",
+      "title": "留出候选脚本"
+    },
+    "obsidian:e_mutation_transfer:n01": {
+      "app": "Obsidian",
+      "depends_on": [],
+      "kind": "hypothesis",
+      "links": [
+        "paper:e_mutation_transfer:p01",
+        "wps:e_mutation_transfer:d01",
+        "github:e_mutation_transfer:c01",
+        "zotero:e_mutation_transfer:a01"
+      ],
+      "text": "关键主张是未见蛋白上的突变效应；目前仅有按位点划分的成绩。",
+      "title": "跨蛋白泛化设想"
+    },
+    "paper:e_mutation_transfer:p01": {
+      "app": "literature",
+      "depends_on": [],
+      "kind": "method_excerpt",
+      "links": [],
+      "text": "以 protein_id 为独立分组留出；同时报告预训练语料与测试蛋白序列的交集。",
+      "title": "蛋白留出方法"
+    },
+    "wps:e_mutation_transfer:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "split"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "测试位点未见，但蛋白可出现在训练集。",
+      "rows": [
+        {
+          "accepted": 42,
+          "reviewed": 50,
+          "seed": 1,
+          "split": "same_protein"
+        },
+        {
+          "accepted": 41,
+          "reviewed": 50,
+          "seed": 2,
+          "split": "same_protein"
+        },
+        {
+          "accepted": 39,
+          "reviewed": 50,
+          "seed": 1,
+          "split": "heldout_site"
+        },
+        {
+          "accepted": 38,
+          "reviewed": 50,
+          "seed": 2,
+          "split": "heldout_site"
+        }
+      ],
+      "title": "位点留出试点"
+    },
+    "zotero:e_mutation_transfer:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "即使按蛋白留出，若预训练见过测试蛋白序列也不能称完全零样本。",
+      "title": "预训练暴露批注"
+    }
+  }
+}

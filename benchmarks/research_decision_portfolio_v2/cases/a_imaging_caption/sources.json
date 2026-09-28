@@ -1,0 +1,92 @@
+{
+  "event": {
+    "event_id": "event:a_imaging_caption:01",
+    "message": "图注所在 Quarto 简报更新，但质控脚本同时改了阈值。",
+    "root_objects": [
+      "quarto:a_imaging_caption:q01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "github:a_imaging_caption:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "analysis_code",
+      "links": [],
+      "text": "本周分析脚本把合格阈值从 12 px 改为 10 px；两家厂商均重新计数，但未重算旧图注。",
+      "title": "质控阈值提交"
+    },
+    "obsidian:a_imaging_caption:n01": {
+      "app": "Obsidian",
+      "depends_on": [
+        "quarto:a_imaging_caption:q01"
+      ],
+      "kind": "claim",
+      "links": [],
+      "text": "旧判断：12 px 图注与本周合格率一致，准备归档。",
+      "title": "图注核查状态"
+    },
+    "quarto:a_imaging_caption:q01": {
+      "app": "Quarto",
+      "depends_on": [],
+      "kind": "report",
+      "links": [
+        "github:a_imaging_caption:c01",
+        "wps:a_imaging_caption:d01",
+        "zotero:a_imaging_caption:a01"
+      ],
+      "text": "图注：边缘误差 <12 px 的样本定义为合格，候选方法跨厂商稳定。图由本周表格生成。",
+      "title": "显微图注"
+    },
+    "wps:a_imaging_caption:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "vendor"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "本周 10 px 阈值；各厂商仅两个种子。",
+      "rows": [
+        {
+          "accepted": 41,
+          "reviewed": 50,
+          "seed": 1,
+          "vendor": "a"
+        },
+        {
+          "accepted": 40,
+          "reviewed": 50,
+          "seed": 2,
+          "vendor": "a"
+        },
+        {
+          "accepted": 30,
+          "reviewed": 50,
+          "seed": 1,
+          "vendor": "b"
+        },
+        {
+          "accepted": 31,
+          "reviewed": 50,
+          "seed": 2,
+          "vendor": "b"
+        }
+      ],
+      "title": "新阈值合格记录"
+    },
+    "zotero:a_imaging_caption:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "阈值统一只解决测量口径；跨厂商稳定还需设备与样本分布配对。",
+      "title": "厂商迁移批注"
+    }
+  }
+}

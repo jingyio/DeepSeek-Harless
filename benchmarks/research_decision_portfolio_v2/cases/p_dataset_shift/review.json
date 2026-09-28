@@ -1,0 +1,29 @@
+{
+  "break": "数据定义变化使旧总体成绩不可直接比较。",
+  "case_id": "p_dataset_shift",
+  "family": "replication_readiness",
+  "fatal": [
+    "直接归因模型退化",
+    "把诊断 short 行当正式指标已纳入"
+  ],
+  "must": [
+    "指出正式指标排除短样本而原方案包含",
+    "复算短长分层数字",
+    "提出恢复旧过滤规则的最小配对重跑"
+  ],
+  "numerical_reference": {
+    "wps:p_dataset_shift:d01": [
+      {
+        "denominator": 100,
+        "group": "long",
+        "numerator": 81
+      },
+      {
+        "denominator": 50,
+        "group": "short",
+        "numerator": 29
+      }
+    ]
+  },
+  "safe_reuse": "数据清单、方案和分层表的来源链。"
+}

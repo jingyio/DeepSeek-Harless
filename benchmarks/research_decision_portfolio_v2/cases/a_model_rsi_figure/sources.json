@@ -1,0 +1,92 @@
+{
+  "event": {
+    "event_id": "event:a_model_rsi_figure:01",
+    "message": "Quarto 图卡已更新，图题沿用旧结论；需要在归档前核对表格、脚本和研究主张。",
+    "root_objects": [
+      "quarto:a_model_rsi_figure:q01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "github:a_model_rsi_figure:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "plot_code",
+      "links": [],
+      "text": "当前脚本按 accepted/reviewed 聚合；仓库旧图题缓存的数值 75%、66% 来自上周 CSV，不是本周表格。",
+      "title": "图卡生成脚本提交"
+    },
+    "obsidian:a_model_rsi_figure:n01": {
+      "app": "Obsidian",
+      "depends_on": [
+        "quarto:a_model_rsi_figure:q01"
+      ],
+      "kind": "claim",
+      "links": [],
+      "text": "旧判断：内部状态已经在组会图中超越检索记忆，可作为主结果展示。",
+      "title": "内部状态结果状态"
+    },
+    "quarto:a_model_rsi_figure:q01": {
+      "app": "Quarto",
+      "depends_on": [],
+      "kind": "report",
+      "links": [
+        "wps:a_model_rsi_figure:d01",
+        "github:a_model_rsi_figure:c01",
+        "zotero:a_model_rsi_figure:a01"
+      ],
+      "text": "图题：持久能力状态显著优于检索记忆。正文写状态组 75%、检索组 66%；图卡尚未记录区间、任务族分层或版本来源。",
+      "title": "组会图卡 v2"
+    },
+    "wps:a_model_rsi_figure:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "arm"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "两个种子、同一任务族；尚未独立检验跨会话保持。",
+      "rows": [
+        {
+          "accepted": 35,
+          "arm": "state",
+          "reviewed": 50,
+          "seed": 1
+        },
+        {
+          "accepted": 36,
+          "arm": "state",
+          "reviewed": 50,
+          "seed": 2
+        },
+        {
+          "accepted": 34,
+          "arm": "retrieval",
+          "reviewed": 50,
+          "seed": 1
+        },
+        {
+          "accepted": 34,
+          "arm": "retrieval",
+          "reviewed": 50,
+          "seed": 2
+        }
+      ],
+      "title": "本周状态与检索对照"
+    },
+    "zotero:a_model_rsi_figure:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "一周内的两个种子不能证明长期保持；比较持久状态与检索须同预算、同任务族。",
+      "title": "长期保持批注"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "break": "图题是否过度解释及是否可发布须语义审核。",
+  "case_id": "a_model_rsi_figure",
+  "family": "artifact_lineage_release",
+  "fatal": [
+    "把 75% 与 66% 当本周复算结果",
+    "宣称长期优势已证明"
+  ],
+  "must": [
+    "复算本周两组为 71% 与 68%",
+    "指出图题数字来自旧 CSV 且缺长期保持证据",
+    "建议暂缓发布或改为描述性图题"
+  ],
+  "numerical_reference": {
+    "wps:a_model_rsi_figure:d01": [
+      {
+        "denominator": 100,
+        "group": "retrieval",
+        "numerator": 68
+      },
+      {
+        "denominator": 100,
+        "group": "state",
+        "numerator": 71
+      }
+    ]
+  },
+  "safe_reuse": "报告链接到表格、脚本与批注的固定版本读取及复算。"
+}

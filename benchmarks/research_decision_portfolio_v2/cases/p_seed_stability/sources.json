@@ -1,0 +1,82 @@
+{
+  "event": {
+    "event_id": "event:p_seed_stability:01",
+    "message": "复现运行清单完成，研究者需决定是否结束复现或补跑。",
+    "root_objects": [
+      "github:p_seed_stability:c01"
+    ],
+    "synthetic": true
+  },
+  "objects": {
+    "github:p_seed_stability:c01": {
+      "app": "GitHub",
+      "depends_on": [],
+      "kind": "run_manifest",
+      "links": [
+        "wps:p_seed_stability:d01",
+        "obsidian:p_seed_stability:n01",
+        "zotero:p_seed_stability:a01"
+      ],
+      "text": "只完成 seed 1 与 seed 2；模型、数据版本固定。预登记要求至少 5 个独立种子，且报告区间。",
+      "title": "复现运行清单"
+    },
+    "obsidian:p_seed_stability:n01": {
+      "app": "Obsidian",
+      "depends_on": [],
+      "kind": "preregistered_rule",
+      "links": [],
+      "text": "至少 5 个独立种子；以配对差值区间排除零作为通过条件。当前状态未通过人工审查。",
+      "title": "复现通过门槛"
+    },
+    "wps:p_seed_stability:d01": {
+      "app": "WPS",
+      "depends_on": [],
+      "kind": "table",
+      "links": [],
+      "metric": {
+        "allowed_groups": [
+          "arm"
+        ],
+        "denominator": "reviewed",
+        "id": "accepted/reviewed",
+        "numerator": "accepted"
+      },
+      "protocol": "每粒 seed 50 个评估项；同一数据版本。",
+      "rows": [
+        {
+          "accepted": 44,
+          "arm": "candidate",
+          "reviewed": 50,
+          "seed": 1
+        },
+        {
+          "accepted": 36,
+          "arm": "candidate",
+          "reviewed": 50,
+          "seed": 2
+        },
+        {
+          "accepted": 40,
+          "arm": "baseline",
+          "reviewed": 50,
+          "seed": 1
+        },
+        {
+          "accepted": 37,
+          "arm": "baseline",
+          "reviewed": 50,
+          "seed": 2
+        }
+      ],
+      "title": "两种子复现成绩"
+    },
+    "zotero:p_seed_stability:a01": {
+      "app": "Zotero",
+      "depends_on": [],
+      "kind": "annotation",
+      "links": [],
+      "text": "两个种子可复算描述性均值，但不能当作预登记区间检验已完成。",
+      "title": "配对种子批注"
+    }
+  }
+}
