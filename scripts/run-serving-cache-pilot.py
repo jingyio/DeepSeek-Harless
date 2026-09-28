@@ -57,22 +57,27 @@ def verify_scope(scope_file: Path, task_id: str,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arm", choices=["baseline", "motif"], required=True)
-    parser.add_argument("--variant", choices=["v1", "v2", "v3", "triage"], default="v1")
+    parser.add_argument("--variant", choices=["v1", "v2", "v3", "triage", "ai4s"], default="v1")
     parser.add_argument("--call-model", action="store_true")
     args = parser.parse_args()
-    base = (ROOT / ".local/benchmarks/research-weekly-loop/serving-baseline-triage-20260928"
+    base = (ROOT / ".local/benchmarks/research-weekly-loop/ai4s-affinity-literature-triage-20260928"
+            if args.variant == "ai4s" else
+            ROOT / ".local/benchmarks/research-weekly-loop/serving-baseline-triage-20260928"
             if args.variant == "triage" else
             TASK_ROOT if args.variant == "v1" else TASK_ROOT / args.variant)
     scope_file = base / "source-scope.json"
     prompt_file = base / "agent-prompt.md"
     task_file = base / "online-task.json"
-    patch = (ROOT / "config/aidd-scoped-baseline.patch.yml" if args.variant == "v1"
+    patch = (ROOT / "config/scoped-zotero-obsidian-only.patch.yml"
+             if args.variant == "ai4s" else
+             ROOT / "config/aidd-scoped-baseline.patch.yml" if args.variant == "v1"
              else ROOT / "config/serving-cache-pilot.patch.yml")
-    task_id = ("serving-baseline-triage-20260928" if args.variant == "triage"
+    task_id = ("ai4s-affinity-literature-triage-20260928" if args.variant == "ai4s"
+               else "serving-baseline-triage-20260928" if args.variant == "triage"
                else "serving-cache-baseline-decision-20260928" if args.variant == "v1"
                else f"serving-cache-baseline-decision-{args.variant}-20260928")
-    scope = verify_scope(scope_file, task_id, 1 if args.variant == "triage" else 3,
-                         6 if args.variant == "triage" else 2)
+    scope = verify_scope(scope_file, task_id, 1 if args.variant in {"triage", "ai4s"} else 3,
+                         6 if args.variant in {"triage", "ai4s"} else 2)
     spec = importlib.util.spec_from_file_location("online_prepare", ROOT / "scripts/prepare-online-motif.py")
     helper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(helper)

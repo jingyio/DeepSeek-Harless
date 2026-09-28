@@ -1,14 +1,41 @@
 #!/usr/bin/env node
-// Read Gmail and prepare local emails. Sending is deliberately absent from MCP.
+// Read Gmail and prepare local emails. Actual sending requires the human review page.
+const { execFileSync } = require('node:child_process');
+
+// macOS desktop apps can use the system proxy while stdio MCP children do not.
+// Carry that setting into both Gmail reads and the later human-reviewed send.
+if (process.platform === 'darwin' && !process.env.HTTPS_PROXY && !process.env.https_proxy) {
+  try {
+    const settings = execFileSync('/usr/sbin/scutil', ['--proxy'],
+      { encoding: 'utf8', timeout: 1500 });
+    const setting = (key) => settings.match(new RegExp(`^\\s*${key}\\s*:\\s*(\\S+)`, 'm'))?.[1];
+    const host = setting('HTTPSProxy');
+    const port = Number(setting('HTTPSPort'));
+    if (setting('HTTPSEnable') === '1' && host && Number.isInteger(port) &&
+        port > 0 && port <= 65535) {
+      const proxy = new URL(`http://${host}:${port}`);
+      process.env.HTTPS_PROXY = proxy.href;
+      process.env.https_proxy = proxy.href;
+      const bypass = new Set((process.env.NO_PROXY || process.env.no_proxy || '')
+        .split(',').map((value) => value.trim()).filter(Boolean));
+      bypass.add('127.0.0.1');
+      bypass.add('localhost');
+      process.env.NO_PROXY = [...bypass].join(',');
+      process.env.no_proxy = process.env.NO_PROXY;
+    }
+  } catch { /* A missing system proxy leaves the explicit environment alone. */ }
+}
+
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
-const { ListToolsRequestSchema, CallToolRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
+const { ListToolsRequestSchema, CallToolRequestSchema, ErrorCode } = require('@modelcontextprotocol/sdk/types.js');
 const path = require('path');
 const outbox = require('./gmail-outbox.cjs');
 const reviewWeb = require('./gmail-review-web.cjs');
 const reviewPages = new Map();
+const READ_TIMEOUT_MS = 25000;
 
 async function openReview(id) {
   if (!reviewPages.has(id)) {
@@ -122,7 +149,18 @@ async function main() {
     if (!allowed.has(name)) {
       return { isError: true, content: [{ type: 'text', text: 'This Gmail MCP cannot send or modify Gmail messages.' }] };
     }
-    return upstream.callTool({ name, arguments: args ?? {} });
+    try {
+      return await upstream.callTool(
+        { name, arguments: args ?? {} }, undefined,
+        { timeout: READ_TIMEOUT_MS, maxTotalTimeout: READ_TIMEOUT_MS },
+      );
+    } catch (error) {
+      const message = error?.code === ErrorCode.RequestTimeout
+        ? 'Gmail read did not complete within 25 seconds. Check the connection and retry; no email was sent or modified.'
+        : 'Gmail read failed. Check the connection or account authorization; no email was sent or modified.';
+      return { isError: true, content: [{ type: 'text',
+        text: message }] };
+    }
   });
   await server.connect(new StdioServerTransport());
 

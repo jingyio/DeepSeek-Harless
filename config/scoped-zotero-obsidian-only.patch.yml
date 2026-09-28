@@ -1,0 +1,59 @@
+# Scoped Zotero/Obsidian literature triage: no public discovery or native tools.
+- id: plan-mode
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-web
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: session-title-llm
+  disabled: true
+- insert:
+    - id: sss-scoped-research-read-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: scoped_research_read
+        transport: stdio
+        command: !!js process.env.SSS_MCP_PYTHON
+        args: ['-m', 'src.mcp.scoped_obsidian_read_server']
+        cwd: !!js process.env.SSS_PROJECT_ROOT
+        env:
+          SSS_RESEARCH_SCOPE_FILE: !!js process.env.SSS_RESEARCH_SCOPE_FILE
+          SSS_SCOPED_HANDLE_MODE: '1'
+        failOnStartupError: true
+    - id: sss-scoped-zotero-read-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: scoped_zotero_read
+        transport: stdio
+        command: !!js process.env.SSS_MCP_PYTHON
+        args: ['-m', 'src.mcp.scoped_zotero_read_server']
+        cwd: !!js process.env.SSS_PROJECT_ROOT
+        env:
+          SSS_RESEARCH_SCOPE_FILE: !!js process.env.SSS_RESEARCH_SCOPE_FILE
+        failOnStartupError: true
