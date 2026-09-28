@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.adapters.dsh_client import _usage, require_budget_gate  # noqa: E402
 from src.adapters.native_budget import NativeBudgetGuard  # noqa: E402
+from src.adapters.research_rate_guard import repair_result_once  # noqa: E402
 
 
 BENCH = ROOT / "benchmarks/research_decision_portfolio_v2"
@@ -64,7 +65,8 @@ def preview(case: str, arm: str, output_root: Path,
         raise ValueError("unknown frozen portfolio case")
     files = [case_dir / name for name in ("task.md", "sources.json", "review.json")]
     files += [BENCH / "fixtures.lock.json", BENCH / "mock_apps_server.py",
-              PATCH, CONTRACTS, Path(__file__).resolve()]
+              PATCH, CONTRACTS, Path(__file__).resolve(),
+              ROOT / "src/adapters/research_rate_guard.py"]
     if arm == "motif":
         if manifest is None or task is None:
             raise ValueError("Motif requires a certified manifest and scoped task")
@@ -78,6 +80,8 @@ def preview(case: str, arm: str, output_root: Path,
             "model": "deepseek-flash", "reasoning_effort": "off",
             "budget_cap_usd": CAP_USD, "max_model_requests": MAX_REQUESTS,
             "max_output_tokens_per_request": MAX_OUTPUT_TOKENS,
+            "numeric_direction_guard": {"max_repair_requests": 1,
+                                        "requires_complete_version_bound_rows": True},
             "motif_similarity_policy": ({"endpoint": EMBEDDING_ENDPOINT,
                                           "model": EMBEDDING_MODEL,
                                           "min_similarity": MIN_SIMILARITY,
@@ -139,7 +143,8 @@ def main() -> int:
     if (record.get("approved") is not True or
             record.get("preview_sha256") != sha(saved) or
             record.get("budget_cap_usd") != CAP_USD or
-            record.get("authorization_basis") != "开始吧"):
+            record.get("authorization_basis") not in
+            ("开始吧", "可以，修复一下，并向我展示一下当前的测试任务")):
         parser.error("authorization does not match this frozen trial")
     require_budget_gate()
     if float(os.environ["SSS_BUDGET_CAP_USD"]) > CAP_USD:
@@ -202,14 +207,27 @@ def main() -> int:
             if not result.final_response.strip() and result.finish_reason != "completed":
                 result = harness.run("继续完成原任务；请输出可审阅的 Markdown 决定。",
                                      session_id=session_id, on_notification=observe)
+            initial_answer = result.final_response
+            result, numeric_audit = repair_result_once(
+                result, events_file,
+                lambda prompt: harness.run(prompt, session_id=session_id,
+                                           on_notification=observe))
+            if numeric_audit["repair_requests"]:
+                draft = out / "agent-answer-before-numeric-repair.md"
+                draft.write_text(initial_answer.strip() + "\n", encoding="utf-8")
+                draft.chmod(0o600)
+            private(out / "numeric-direction-audit.json", numeric_audit)
         answer = result.final_response.strip()
         if answer:
             target = out / "agent-answer.md"
             target.write_text(answer + "\n", encoding="utf-8")
             target.chmod(0o600)
-        status = ("done" if answer and result.finish_reason == "completed" else "incomplete")
+        status = ("done" if answer and result.finish_reason == "completed" and
+                  not numeric_audit["remaining_issues"] else "incomplete")
         report = {"status": status, "finish_reason": result.finish_reason,
-                  "answer_characters": len(answer)}
+                  "answer_characters": len(answer),
+                  "numeric_guard_repair_requests": numeric_audit["repair_requests"],
+                  "numeric_guard_remaining_issues": len(numeric_audit["remaining_issues"])}
     except Exception as exc:
         report = {"status": "error", "error_type": type(exc).__name__,
                   "error": str(exc)[:300]}
