@@ -34,6 +34,7 @@ const { ListToolsRequestSchema, CallToolRequestSchema, ErrorCode } = require('@m
 const path = require('path');
 const outbox = require('./gmail-outbox.cjs');
 const reviewWeb = require('./gmail-review-web.cjs');
+const { searchMetadata, readMetadata } = require('./gmail-structured-results.cjs');
 const reviewPages = new Map();
 const READ_TIMEOUT_MS = 25000;
 
@@ -150,10 +151,13 @@ async function main() {
       return { isError: true, content: [{ type: 'text', text: 'This Gmail MCP cannot send or modify Gmail messages.' }] };
     }
     try {
-      return await upstream.callTool(
+      const result = await upstream.callTool(
         { name, arguments: args ?? {} }, undefined,
         { timeout: READ_TIMEOUT_MS, maxTotalTimeout: READ_TIMEOUT_MS },
       );
+      const metadata = name === 'search_emails' ? searchMetadata(result)
+        : name === 'read_email' ? readMetadata(result, args) : null;
+      return metadata ? { ...result, structuredContent: metadata } : result;
     } catch (error) {
       const message = error?.code === ErrorCode.RequestTimeout
         ? 'Gmail read did not complete within 25 seconds. Check the connection and retry; no email was sent or modified.'
