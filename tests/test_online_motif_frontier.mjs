@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { BlockAssembler } from '@deepseek-ai/dsh-llm';
 import { createOnlineInterceptor } from '../src/adapters/dsh_online_motif.mjs';
 import { observation } from '../src/motif_core/online_skill_runtime.mjs';
@@ -19,6 +20,7 @@ function sealManifest(manifest) {
 test('Gmail structured metadata survives the DSH merged text envelope only for scoped tools', () => {
   const name = 'mcp__scoped_gmail_request__search_emails';
   const metadata = { message_ids: ['a'.repeat(16)], count: 1,
+    selected_message_id: 'a'.repeat(16),
     result_digest: 'b'.repeat(64) };
   const wrapped = { content: [{ type: 'text', text:
     `SSS_STRUCTURED_METADATA_V1 ${JSON.stringify(metadata)}\n` +
@@ -29,6 +31,89 @@ test('Gmail structured metadata survives the DSH merged text envelope only for s
   const malicious = { content: [{ type: 'text', text:
     `SSS_STRUCTURED_METADATA_V1 ${JSON.stringify(metadata)}\nbody only` }] };
   assert.equal(observation(malicious, name), null);
+});
+
+test('fresh unique Gmail search can anchor one model-free read, but ambiguous results defer', async () => {
+  const search = 'mcp__scoped_gmail_request__search_emails';
+  const read = 'mcp__scoped_gmail_request__read_email';
+  const id = 'a'.repeat(16);
+  const manifest = sealManifest({ schema_version: 1,
+    source_library_digest: 'a'.repeat(64),
+    artifacts: [{ motif_id: 'certified-gmail-read', certified_digest: 'b'.repeat(64),
+      tools: [search, read], supporting_task_count: 2,
+      validation_task_fingerprint: 'independent-email-task',
+      transfer_evidence: [{ from_tool: search, from_field: 'selected_message_id',
+        to_tool: read, to_param: 'messageId' }] }],
+    contracts: {
+      [search]: { read_only: true, observed_anchor: true,
+        required_params: ['query'], default_params: {},
+        output_fields: ['selected_message_id', 'result_digest'],
+        description: 'Search an approved Gmail query' },
+      [read]: { read_only: true, required_params: ['messageId'],
+        default_params: {}, output_fields: ['source_version'],
+        description: 'Read the unique selected Gmail message' },
+    },
+    slot_rules: { [search]: { query: 'subject:SSS' } },
+    version_fields: { [search]: 'selected_message_id', [read]: 'source_version' },
+  });
+  const task = { schema_version: 1, task_id: 'gmail-case', session_id: 's-gmail',
+    intent: 'Check the scoped email and decide what to do', input_version: 'inbox-v1',
+    bindings: { [search]: { query: 'subject:SSS' } },
+    source_versions: { [search]: '@observed', [read]: '@from_anchor' } };
+  const selected = { message_ids: [id], selected_message_id: id, count: 1,
+    result_digest: createHash('sha256').update(JSON.stringify([id])).digest('hex') };
+  const row = { name: search, callId: 'model-search', ok: true,
+    arguments: { query: 'subject:SSS' }, output: selected,
+    sourceVersion: id, inputVersion: 'inbox-v1' };
+  const args = { manifest, task, history: [row],
+    availableTools: new Map([[read, offered(read, ['messageId'])]]),
+    similarity: async () => { throw new Error('unique read needs no embedding'); },
+    minSimilarity: 0.8, minMargin: 0.1 };
+  const candidates = await proposeReadyBatch(args);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].selection_basis, 'closed_unique_message_read');
+  assert.deepEqual(candidates[0].arguments, { messageId: id });
+  assert.deepEqual(await proposeReadyBatch({ ...args, history: [{ ...row,
+    output: { ...selected, count: 2 } }] }), []);
+  assert.deepEqual(await proposeReadyBatch({ ...args, history: [{ ...row,
+    arguments: { query: 'different' } }] }), []);
+  assert.deepEqual(await proposeReadyBatch({ ...args, history: [{ ...row,
+    output: { ...selected, result_digest: '0'.repeat(64) } }] }), []);
+  assert.throws(() => parseStructuredTask({ ...task,
+    source_versions: { [search]: '@observed', [read]: '@observed' } }, manifest),
+  /observed version/);
+  const audit = [];
+  const interceptor = createOnlineInterceptor({ manifest, task,
+    similarity: args.similarity, mode: 'execute', audit: (event) => audit.push(event) });
+  interceptor.observe(task.session_id, { name: search, callId: 'model-search',
+    arguments: { query: 'subject:SSS' } }, { structuredContent: selected });
+  const stream = await interceptor.intercept(task.session_id,
+    { tools: [offered(read, ['messageId'])] },
+    () => { throw new Error('model should be bypassed'); });
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  const call = chunks.find((chunk) => chunk.type === 'tool-call-delta');
+  assert.equal(call.name, read);
+  assert.deepEqual(JSON.parse(call.argumentsDelta), { messageId: id });
+  interceptor.observe(task.session_id, { name: read, callId: call.id,
+    arguments: { messageId: id } },
+  { structuredContent: { source_version: id } });
+  assert.equal(audit.filter((event) => event.kind === 'model_request_skipped_verified').length, 1);
+  const drift = [];
+  const driftInterceptor = createOnlineInterceptor({ manifest, task,
+    similarity: args.similarity, mode: 'execute', audit: (event) => drift.push(event) });
+  driftInterceptor.observe(task.session_id, { name: search, callId: 'model-search',
+    arguments: { query: 'subject:SSS' } }, { structuredContent: selected });
+  const driftChunks = [];
+  for await (const chunk of await driftInterceptor.intercept(task.session_id,
+    { tools: [offered(read, ['messageId'])] }, () => { throw new Error('no model'); })) {
+    driftChunks.push(chunk);
+  }
+  const driftCall = driftChunks.find((chunk) => chunk.type === 'tool-call-delta');
+  driftInterceptor.observe(task.session_id, { name: read, callId: driftCall.id,
+    arguments: { messageId: id } },
+  { structuredContent: { source_version: 'b'.repeat(16) } });
+  assert.equal(drift.filter((event) => event.kind === 'bypass_result_unverified').length, 1);
 });
 
 function fixture() {

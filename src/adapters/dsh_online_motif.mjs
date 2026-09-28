@@ -15,8 +15,15 @@ function outputField(output, path) {
     value && typeof value === 'object' ? value[key] : undefined, output);
 }
 
-function versionWithinTask(task, tool, value) {
+function versionWithinTask(task, manifest, tool, value, pending) {
   const allowed = task.source_versions[tool];
+  if (allowed === '@observed' &&
+      manifest.contracts[tool]?.observed_anchor === true) {
+    return typeof value === 'string' && value.length > 0;
+  }
+  if (allowed === '@from_anchor' && pending?.tool === tool) {
+    return value === pending.expected_version;
+  }
   return typeof value === 'string' &&
     (Array.isArray(allowed) ? allowed.includes(value) : allowed === value);
 }
@@ -85,15 +92,15 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     const current = state(sessionId);
     const output = observation(result, exec.name);
     const version = outputField(output, manifest.version_fields[exec.name]);
+    const pending = current.pending.get(exec.callId);
     const ok = result?.isError !== true && output !== null;
     const barrier = !ok || manifest.contracts[exec.name]?.read_only !== true ||
       (!!manifest.version_fields[exec.name] &&
-       !versionWithinTask(parsedTask, exec.name, version));
+       !versionWithinTask(parsedTask, manifest, exec.name, version, pending));
     current.history.push({ name: exec.name, callId: exec.callId, ok,
       barrier, arguments: exec.arguments, output, sourceVersion: version,
       inputVersion: parsedTask.input_version });
     current.history.splice(0, Math.max(0, current.history.length - 12));
-    const pending = current.pending.get(exec.callId);
     if (pending) {
       const verified = ok && exec.name === pending.tool &&
         exec.arguments && typeof exec.arguments === 'object' &&

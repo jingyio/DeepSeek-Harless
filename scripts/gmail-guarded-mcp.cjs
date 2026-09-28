@@ -37,6 +37,7 @@ const reviewWeb = require('./gmail-review-web.cjs');
 const { searchMetadata, readMetadata, attachMetadata } = require('./gmail-structured-results.cjs');
 const reviewPages = new Map();
 const READ_TIMEOUT_MS = 25000;
+let uniqueSearchMessageId = null;
 
 async function openReview(id) {
   if (!reviewPages.has(id)) {
@@ -121,6 +122,11 @@ function scopeError(name, args) {
       args?.messageId !== process.env.SSS_GMAIL_ALLOWED_MESSAGE_ID) {
     return 'Gmail message is outside this task scope.';
   }
+  if (name === 'read_email' &&
+      process.env.SSS_GMAIL_REQUIRE_UNIQUE_SEARCH_READ === '1' &&
+      (!uniqueSearchMessageId || args?.messageId !== uniqueSearchMessageId)) {
+    return 'Gmail read must use the unique result from this task search.';
+  }
   if ((name === 'prepare_email' || name === 'send_email') &&
       process.env.SSS_GMAIL_ALLOWED_RECIPIENT &&
       (args?.to?.length !== 1 ||
@@ -180,6 +186,7 @@ async function main() {
     if (!allowed.has(name)) {
       return { isError: true, content: [{ type: 'text', text: 'This Gmail MCP cannot send or modify Gmail messages.' }] };
     }
+    if (name === 'search_emails') uniqueSearchMessageId = null;
     try {
       const result = await upstream.callTool(
         { name, arguments: args ?? {} }, undefined,
@@ -187,6 +194,10 @@ async function main() {
       );
       const metadata = name === 'search_emails' ? searchMetadata(result)
         : name === 'read_email' ? readMetadata(result, args) : null;
+      if (name === 'search_emails') {
+        uniqueSearchMessageId = metadata?.count === 1
+          ? metadata.selected_message_id : null;
+      }
       // DSH drops structuredContent and merges MCP text blocks in tool/result.
       // The helper prefixes verified fields with a protocol marker; the full
       // untrusted upstream text remains in the following block for the model.

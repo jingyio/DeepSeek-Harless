@@ -11,9 +11,11 @@ test('extracts only exact search IDs and a stable version digest', () => {
   const metadata = searchMetadata(result(`${email}\n\n${email.replace('abc_123', 'def_456')}`));
   assert.deepEqual(metadata.message_ids, ['abc_123', 'def_456']);
   assert.equal(metadata.count, 2);
+  assert.equal(metadata.selected_message_id, undefined);
   assert.match(metadata.result_digest, /^[a-f0-9]{64}$/);
   assert.deepEqual(searchMetadata(result('')), { message_ids: [], count: 0,
     result_digest: searchMetadata(result('')).result_digest });
+  assert.equal(searchMetadata(result(email)).selected_message_id, 'abc_123');
 });
 
 test('rejects malformed or injected search text', () => {

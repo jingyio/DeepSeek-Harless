@@ -29,12 +29,15 @@ def artifact_signature(artifact: dict[str, Any]) -> str:
 
 def contract_signature(tools: list[str], contracts: Mapping[str, Any]) -> str:
     rows = []
-    for name in tools:
+    for index, name in enumerate(tools):
         contract = contracts.get(name.rstrip("+"))
         if contract is None or not contract.read_only:
             raise ValueError(f"tool lacks a read-only contract: {name}")
-        if not contract.replay_stable:
+        if not contract.replay_stable and not (
+                index == 0 and contract.observed_anchor and len(tools) == 2):
             raise ValueError(f"tool lacks replay-stable observations: {name}")
+        if contract.observed_anchor and (index != 0 or contract.replay_stable):
+            raise ValueError(f"observed anchor must be an unstable first tool: {name}")
         fields = list(contract.output_fields)
         if any(not _FIELD.fullmatch(field) for field in fields):
             raise ValueError(f"invalid output field contract: {name}")
@@ -44,6 +47,8 @@ def contract_signature(tools: list[str], contracts: Mapping[str, Any]) -> str:
             raise ValueError(f"invalid collection parameter contract: {name}")
         row = {"tool": name, "required_params": list(contract.required_params),
                "read_only": True, "output_fields": fields}
+        if contract.observed_anchor:
+            row["observed_anchor"] = True
         if collections:
             row["collection_params"] = collections
         shapes = dict(contract.parameter_shapes)

@@ -93,6 +93,24 @@ export function validateOnlineManifest(manifest) {
       throw new TypeError('online Motif lacks independent read-only evidence');
     }
     ids.add(artifact.motif_id);
+    const anchor = manifest.contracts[artifact.tools[0]];
+    if (artifact.tools.some((tool, index) =>
+        manifest.contracts[tool]?.observed_anchor === true && index !== 0)) {
+      throw new TypeError('observed anchor must start the Motif');
+    }
+    if (anchor?.observed_anchor === true &&
+        (artifact.tools.length !== 2 ||
+         artifact.tools[0] !== 'mcp__scoped_gmail_request__search_emails' ||
+         artifact.tools[1] !== 'mcp__scoped_gmail_request__read_email' ||
+         !anchor.output_fields.includes('selected_message_id') ||
+         manifest.version_fields[artifact.tools[0]] !== 'selected_message_id' ||
+         manifest.version_fields[artifact.tools[1]] !== 'source_version' ||
+         manifest.contracts[artifact.tools[1]]?.required_params?.join(',') !== 'messageId' ||
+         artifact.transfer_evidence.length !== 1 ||
+         artifact.transfer_evidence[0].from_field !== 'selected_message_id' ||
+         artifact.transfer_evidence[0].to_param !== 'messageId')) {
+      throw new TypeError('dynamic Gmail anchor needs one unique read edge');
+    }
     for (const tool of artifact.tools) {
       const contract = manifest.contracts[tool];
       if (!contract || contract.read_only !== true ||
@@ -206,6 +224,15 @@ export function parseStructuredTask(raw, manifest) {
           version.length > 0 && version.length <= 32 &&
           version.every(scalar) && new Set(version).size === version.length))) {
       throw new TypeError('invalid source version scope');
+    }
+    if (version === '@observed' &&
+        manifest.contracts[tool].observed_anchor !== true) {
+      throw new TypeError('observed version needs an approved anchor');
+    }
+    if (version === '@from_anchor' && !manifest.artifacts.some((artifact) =>
+        artifact.tools[1] === tool &&
+        manifest.contracts[artifact.tools[0]]?.observed_anchor === true)) {
+      throw new TypeError('derived version needs an approved observed anchor');
     }
   }
   if (task.object_versions !== undefined &&
@@ -375,10 +402,23 @@ export async function proposeNext({ manifest, task, history, availableTools,
     similarity: best.similarity, prefix_length: best.length };
 }
 
-const versionAllowed = (task, tool, value) => scalar(value) &&
-  (Array.isArray(task.source_versions[tool])
-    ? task.source_versions[tool].includes(value)
-    : task.source_versions[tool] === value);
+const versionAllowed = (task, manifest, tool, value) => scalar(value) &&
+  (task.source_versions[tool] === '@observed' &&
+   manifest.contracts[tool]?.observed_anchor === true ? true :
+    Array.isArray(task.source_versions[tool])
+      ? task.source_versions[tool].includes(value)
+      : task.source_versions[tool] === value);
+
+function validObservedAnchor(row) {
+  const output = row.output;
+  const id = output?.selected_message_id;
+  return row.name === 'mcp__scoped_gmail_request__search_emails' &&
+    output?.count === 1 && Array.isArray(output.message_ids) &&
+    output.message_ids.length === 1 && output.message_ids[0] === id &&
+    typeof id === 'string' && /^[0-9a-f]{16,32}$/.test(id) &&
+    output.result_digest === createHash('sha256')
+      .update(JSON.stringify(output.message_ids)).digest('hex');
+}
 
 function matchingPrefixes(artifact, history, length, task, manifest) {
   let partial = [[]];
@@ -391,7 +431,9 @@ function matchingPrefixes(artifact, history, length, task, manifest) {
         if (row.name === tool && row.ok &&
             row.inputVersion === task.input_version &&
             manifest.version_fields[tool] &&
-            versionAllowed(task, tool, row.sourceVersion)) {
+            versionAllowed(task, manifest, tool, row.sourceVersion) &&
+            (manifest.contracts[tool].observed_anchor !== true ||
+             validObservedAnchor(row))) {
           next.push([...prefix, { ...row, historyIndex: index }]);
           if (next.length > 128) return [];
         }
@@ -450,6 +492,19 @@ function isClosedSourceRead(row, manifest) {
     /(?:^|__)read_pinned_[a-z0-9_]+$/.test(row.tool);
 }
 
+function isClosedUniqueMessageRead(row, manifest) {
+  const artifact = manifest.artifacts.find((item) => item.motif_id === row.motif_id);
+  return row.version_relation === 'same_source' &&
+    row.code_node_ids.length === 0 &&
+    manifest.contracts[artifact.tools[0]]?.observed_anchor === true &&
+    row.tool === 'mcp__scoped_gmail_request__read_email' &&
+    manifest.contracts[row.tool].required_params.join(',') === 'messageId' &&
+    Object.keys(manifest.contracts[row.tool].default_params).length === 0 &&
+    artifact.transfer_evidence.length === 1 &&
+    artifact.transfer_evidence[0].from_field === 'selected_message_id' &&
+    artifact.transfer_evidence[0].to_param === 'messageId';
+}
+
 /** Find independent, provenance-bound continuations in interleaved tool history. */
 export async function proposeReadyBatch({ manifest, task, history, availableTools,
                                          similarity, minSimilarity, minMargin,
@@ -486,7 +541,13 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
         ]);
         if (versions.size !== 1) continue;
         const expectedVersion = [...versions][0];
-        if (!versionAllowed(task, nextTool, expectedVersion)) continue;
+        if (task.source_versions[nextTool] === '@from_anchor') {
+          if (!(length === 1 &&
+              manifest.contracts[artifact.tools[0]].observed_anchor === true &&
+              edges.length === 1 &&
+              (edges[0].version_relation ?? 'same_source') === 'same_source' &&
+              expectedVersion === prefix[0].sourceVersion)) continue;
+        } else if (!versionAllowed(task, manifest, nextTool, expectedVersion)) continue;
         const lastIndex = prefix.at(-1).historyIndex;
         if (history.slice(lastIndex + 1).some((row) =>
           row.name === nextTool && digest(row.arguments) === digest(args))) continue;
@@ -518,7 +579,8 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
   const closedRoots = new Set([...roots.entries()]
     .filter(([, rows]) => new Set(rows.map((row) =>
       digest([row.tool, row.arguments]))).size === 1 &&
-      rows.every((row) => isClosedSourceRead(row, manifest)))
+      rows.every((row) => isClosedSourceRead(row, manifest) ||
+        isClosedUniqueMessageRead(row, manifest)))
     .map(([root]) => root));
   const query = `${task.intent}\nRecent tools: ${history.slice(-4)
     .map((row) => row.name).join(', ')}`;
@@ -532,7 +594,8 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     const closed = closedRoots.has(row.root_key);
     const similarityScore = closed ? null : scores[scoreIndex++];
     return { ...row, similarity: similarityScore,
-    selection_basis: closed ? 'closed_source_read' : 'semantic_score',
+    selection_basis: closed ? (isClosedUniqueMessageRead(row, manifest)
+      ? 'closed_unique_message_read' : 'closed_source_read') : 'semantic_score',
     score: (closed ? 0.8 : similarityScore * 0.8) +
       Math.min(row.supporting_task_count, 5) / 5 * 0.1 +
       row.prefix_length / manifest.artifacts.find((a) => a.motif_id === row.motif_id).tools.length * 0.1 };
@@ -553,7 +616,7 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     }
     const rows = [...alternatives.values()];
     if (rows.length === 1) {
-      if (rows[0].selection_basis === 'closed_source_read' ||
+      if (rows[0].selection_basis.startsWith('closed_') ||
           rows[0].similarity >= minSimilarity) selected.push(rows[0]);
       continue;
     }

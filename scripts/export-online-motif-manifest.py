@@ -42,9 +42,10 @@ def export_manifest(library: dict, contract_rows: dict,
             continue
         if len(tools) < 2:
             continue
-        for tool in tools:
+        for index, tool in enumerate(tools):
             contract = contracts[tool]
-            if not contract.read_only or not contract.replay_stable:
+            if not contract.read_only or not (contract.replay_stable or
+                    (index == 0 and len(tools) == 2 and contract.observed_anchor)):
                 raise ValueError("online Motif tool is not replay-stable read-only")
             if not contract.description or len(contract.description) > 160:
                 raise ValueError("online Motif tool needs bounded documentation")
@@ -80,7 +81,8 @@ def export_manifest(library: dict, contract_rows: dict,
                    for tool, field in versions.items())):
         raise ValueError("version fields must name approved tool outputs")
     approved_tools = {name for name, contract in contracts.items()
-                      if contract.read_only and contract.replay_stable}
+                      if contract.read_only and
+                      (contract.replay_stable or contract.observed_anchor)}
     manifest = {
         "schema_version": 1,
         "source_library_digest": library["library_digest"],
@@ -92,6 +94,7 @@ def export_manifest(library: dict, contract_rows: dict,
                 "default_params": dict(contracts[tool].default_params),
                 "description": contracts[tool].description,
                 "read_only": True,
+                **({"observed_anchor": True} if contracts[tool].observed_anchor else {}),
             } for tool in sorted(approved_tools)
         },
         "slot_rules": rules,

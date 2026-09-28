@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import inspect
+import hashlib
+import importlib.util
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -16,6 +18,8 @@ from tests.test_trace_compiled_read_motif import event_pair
 from src.adapters.tool_contract_loader import parse_tool_contracts
 from src.mcp import sss_runtime_server
 from src.motif_core.offline.trace_compiler import compile_read_motif, certify_read_motif
+from src.motif_core.offline.library_builder import build_read_motif_library
+from src.motif_core.read_executor import run_read_motif
 
 
 def call(index: int, name: str, *, arguments: dict | str | None = None,
@@ -42,6 +46,53 @@ CONTRACTS = {
 
 
 class DshTrajectoryTests(unittest.TestCase):
+    def test_observed_gmail_anchor_can_certify_without_replaying_search(self):
+        root = Path(__file__).resolve().parents[1]
+        contracts = parse_tool_contracts(json.loads((
+            root / "config/scoped-gmail-request-contracts.json").read_text()))
+        search_name = "mcp__scoped_gmail_request__search_emails"
+        read_name = "mcp__scoped_gmail_request__read_email"
+
+        def make_trace(label: str):
+            message_id = label * 16
+            query = f"subject:research-{label}"
+            metadata = {"message_ids": [message_id], "count": 1,
+                        "selected_message_id": message_id,
+                        "result_digest": hashlib.sha256(json.dumps(
+                            [message_id], separators=(",", ":")).encode()).hexdigest()}
+            events = (event_pair(1, search_name, {"query": query}, metadata)
+                      + event_pair(2, read_name, {"messageId": message_id},
+                                   {"message_id": message_id,
+                                    "source_version": message_id}))
+            return extract_dsh_trace(
+                events, contracts, trace_id=f"gmail-{label}",
+                task_fingerprint=f"independent-mail-{label}",
+                provenance_by_call_id=infer_dsh_provenance(events, contracts))
+
+        training = [make_trace("a"), make_trace("b")]
+        heldout = make_trace("c")
+        library = build_read_motif_library(training, [heldout], contracts)
+        self.assertEqual(len(library["artifacts"]), 1, library["rejected"])
+        artifact = library["artifacts"][0]
+        self.assertEqual(artifact["transfer_evidence"][0]["from_field"],
+                         "selected_message_id")
+        spec = importlib.util.spec_from_file_location(
+            "online_export_test", root / "scripts/export-online-motif-manifest.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        manifest = module.export_manifest(
+            library, json.loads((root / "config/scoped-gmail-request-contracts.json").read_text()),
+            {search_name: {"query": "subject:research-[abc]"}},
+            {search_name: "selected_message_id", read_name: "source_version"})
+        self.assertTrue(manifest["contracts"][search_name]["observed_anchor"])
+        with self.assertRaisesRegex(ValueError, "live online tool result"):
+            run_read_motif(artifact, contracts=contracts,
+                           bindings={search_name: {"query": "subject:research-a"}},
+                           input_version="snapshot-a",
+                           execute_tool=lambda *_: self.fail("must not replay search"),
+                           verify_current=lambda: None,
+                           is_read_only=lambda _: True)
+
     def test_scoped_gmail_search_to_read_has_witnessed_message_id(self):
         contracts = parse_tool_contracts(json.loads((
             Path(__file__).resolve().parents[1] /
@@ -52,6 +103,7 @@ class DshTrajectoryTests(unittest.TestCase):
         read = event_pair(2, "mcp__scoped_gmail_request__read_email",
                           {"messageId": message_id}, {"ignored": True})
         for pair, metadata in ((search, {"message_ids": [message_id],
+                                        "selected_message_id": message_id,
                                         "count": 1, "result_digest": "b" * 64}),
                                (read, {"message_id": message_id,
                                        "thread_id": "c" * 16,
@@ -62,7 +114,7 @@ class DshTrajectoryTests(unittest.TestCase):
         events = search + read
         provenance = infer_dsh_provenance(events, contracts)
         self.assertEqual(provenance["c2"]["messageId"],
-                         {"from_call_id": "c1", "from_field": "message_ids.0"})
+                         {"from_call_id": "c1", "from_field": "selected_message_id"})
         trace = extract_dsh_trace(events, contracts, trace_id="gmail-diagnostic",
                                   provenance_by_call_id=provenance)
         self.assertEqual(trace.segments, (("mcp__scoped_gmail_request__search_emails",

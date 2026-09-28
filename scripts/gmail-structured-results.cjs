@@ -35,6 +35,7 @@ function searchMetadata(result) {
   }
   if (new Set(ids).size !== ids.length) return null;
   return { message_ids: ids, count: ids.length,
+    ...(ids.length === 1 ? { selected_message_id: ids[0] } : {}),
     result_digest: createHash('sha256').update(JSON.stringify(ids)).digest('hex') };
 }
 

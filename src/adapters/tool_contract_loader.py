@@ -31,7 +31,9 @@ def parse_tool_contracts(rows: dict[str, Any]) -> dict[str, ToolContract]:
                 or not isinstance(spec.get("collection_params", []), list)
                 or not isinstance(spec.get("witness_default_only", []), list)
                 or not isinstance(spec.get("description", ""), str)
-                or type(spec.get("replay_stable")) is not bool):
+                or type(spec.get("replay_stable")) is not bool
+                or type(spec.get("observed_anchor", False)) is not bool
+                or (spec.get("observed_anchor", False) and spec["replay_stable"])):
             raise ValueError("invalid approved tool contract")
         shapes = _pairs(spec, "parameter_shapes")
         defaults = _pairs(spec, "default_params")
@@ -50,5 +52,6 @@ def parse_tool_contracts(rows: dict[str, Any]) -> dict[str, ToolContract]:
             tuple(spec.get("collection_params", [])),
             spec.get("description", ""),
             tuple(spec.get("provenance_params", [])), shapes, defaults,
-            tuple(default_only), spec["replay_stable"])
+            tuple(default_only), spec["replay_stable"],
+            spec.get("observed_anchor", False))
     return result

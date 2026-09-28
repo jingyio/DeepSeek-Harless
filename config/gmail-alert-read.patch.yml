@@ -1,0 +1,54 @@
+# One exact Google Scholar alert query per isolated read-only task.
+- id: plan-mode
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-web
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: session-title-llm
+  disabled: true
+- insert:
+    - id: sss-scoped-gmail-alert-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: scoped_gmail_request
+        transport: stdio
+        command: node
+        args: ['scripts/gmail-guarded-mcp.cjs']
+        cwd: !!js process.env.SSS_PROJECT_ROOT
+        env:
+          GMAIL_OAUTH_PATH: !!js process.env.SSS_GOOGLE_GMAIL_OAUTH
+          GMAIL_CREDENTIALS_PATH: !!js process.env.SSS_GOOGLE_GMAIL_TOKENS
+          GMAIL_MCP_STATE_DIR: !!js process.env.SSS_GOOGLE_GMAIL_STATE
+          GMAIL_MCP_DRY_RUN: 'true'
+          SSS_NO_OPEN: '1'
+          SSS_GMAIL_TOOL_ALLOWLIST: 'search_emails,read_email'
+          SSS_GMAIL_ALLOWED_QUERY: !!js process.env.SSS_GMAIL_ALLOWED_QUERY
+          SSS_GMAIL_REQUIRE_UNIQUE_SEARCH_READ: '1'
+        failOnStartupError: true

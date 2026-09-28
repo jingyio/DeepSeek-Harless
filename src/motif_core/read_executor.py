@@ -190,6 +190,8 @@ def run_read_motif(
 ) -> ReadMotifRun:
     """Advance verified graph nodes; return a typed handoff on a local gap."""
     tools = _validate_artifact(artifact, contracts)
+    if contracts[tools[0]].observed_anchor:
+        raise ValueError("observed-only Motif roots require a live online tool result")
     versions = (dict(node_versions) if node_versions is not None
                 else {tool: input_version for tool in tools})
     if (set(versions) != set(tools)

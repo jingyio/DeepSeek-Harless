@@ -31,6 +31,7 @@ class ToolContract:
     default_params: tuple[tuple[str, Any], ...] = ()
     witness_default_only: tuple[str, ...] = ()
     replay_stable: bool = True
+    observed_anchor: bool = False
 
 
 @dataclass(frozen=True)
@@ -129,8 +130,9 @@ def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
                 value = _field_value(observation, field)
                 if not isinstance(value, str) or not (
                     HANDLE_PATTERN.fullmatch(value) or OBJECT_ID_PATTERN.fullmatch(value) or
-                    (name == GMAIL_SEARCH and field == "message_ids.0" and
+                    (name == GMAIL_SEARCH and field == "selected_message_id" and
                      observation.get("count") == 1 and
+                     observation.get("message_ids") == [value] and
                      GMAIL_MESSAGE_ID_PATTERN.fullmatch(value))
                 ):
                     continue
