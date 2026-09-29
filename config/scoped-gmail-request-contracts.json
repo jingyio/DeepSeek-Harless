@@ -1,6 +1,7 @@
 {
   "mcp__scoped_gmail_request__search_emails": {
     "required_params": ["query"],
+    "default_params": [["maxResults", 10]],
     "read_only": true,
     "output_fields": ["selected_message_id", "result_digest"],
     "description": "Search one approved Gmail query and return verified message IDs.",
@@ -9,6 +10,7 @@
   },
   "mcp__scoped_gmail_request__read_email": {
     "required_params": ["messageId"],
+    "default_params": [["format", "full"], ["maxBodyLength", 104448], ["includeAttachments", true]],
     "read_only": true,
     "output_fields": ["message_id", "thread_id", "source_version"],
     "provenance_params": ["messageId"],

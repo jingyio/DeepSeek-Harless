@@ -37,7 +37,7 @@ def save(path: Path, value: str) -> None:
     path.chmod(0o600)
 
 
-def patch_text() -> str:
+def patch_text(*, include_zotero: bool = False) -> str:
     disabled = (
         "plan-mode", "tool-bash", "tool-pwsh", "tool-fs", "tool-fs-search",
         "tool-jobs", "tool-web", "tool-skill", "tool-subagent-control",
@@ -46,6 +46,18 @@ def patch_text() -> str:
         "session-title-llm",
     )
     prefix = "".join(f"- id: {name}\n  disabled: true\n" for name in disabled)
+    zotero = """    - id: sss-intake-zotero
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: zotero
+        transport: stdio
+        command: node
+        args: ['scripts/zotero-readonly-mcp.cjs']
+        cwd: !!js process.env.SSS_PROJECT_ROOT
+        env:
+          SSS_ZOTERO_UPSTREAM: !!js process.env.SSS_ZOTERO_UPSTREAM
+        failOnStartupError: true
+""" if include_zotero else ""
     return prefix + """- insert:
     - id: sss-intake-gmail
       name: '@deepseek-ai/dsh-mcp-client'
@@ -87,10 +99,25 @@ def patch_text() -> str:
           SSS_RESEARCH_SCOPE_FILE: !!js process.env.SSS_RESEARCH_SCOPE_FILE
           SSS_SCOPED_HANDLE_MODE: '1'
         failOnStartupError: true
-"""
+""" + zotero
 
 
-def prompt_for(case: dict) -> str:
+def prompt_for(case: dict, scenario: str = "original") -> str:
+    if scenario == "library-check":
+        return (
+            "请处理研究者实际收到的一封 Google Scholar 提醒，为本周阅读队列做一次核查。"
+            "研究问题：" + case["focus"] + "\n"
+            "本任务获准的 Gmail 查询：" + case["query"] + "。仅在唯一命中时读取。"
+            "从邮件中选至多一篇确实值得进一步核查的论文；用公开文献工具核对身份、版本，"
+            "并用只读 Zotero 工具查它是否已经收录、有无可用的既有笔记或批注。"
+            "再结合本任务已批准的 Obsidian 当前状态笔记，给出是否加入本周精读队列的待审决定。"
+            "每项结论说明来自邮件、公开题录、实际读到的正文、Zotero 或笔记中的哪一种；"
+            "没有找到 Zotero 条目时，不要声称全库不存在。"
+            "若没有合适候选，说明理由。交付中文短卡，包含候选、库内状态、与现有问题关系、"
+            "已核实证据、缺口、决定和下一步。只读，不写 Zotero/Obsidian、不发邮件或建日程。"
+        )
+    if scenario != "original":
+        raise ValueError("unknown scenario")
     return (
         "你在帮研究者处理一封实际收到的 Google Scholar 提醒，决定其中是否有一篇论文"
         "值得本周进一步阅读。当前研究问题：" + case["focus"] + "\n"
@@ -108,6 +135,8 @@ def prompt_for(case: dict) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", required=True)
+    parser.add_argument("--scenario", choices=("original", "library-check"),
+                        default="original")
     parser.add_argument("--attempt", default="primary")
     parser.add_argument("--call-model", action="store_true")
     args = parser.parse_args()
@@ -134,15 +163,25 @@ def main() -> int:
     tokens = ROOT / ".local/google-gmail/tokens.json"
     oauth.resolve(strict=True)
     tokens.resolve(strict=True)
-    patch = patch_text()
-    prompt = prompt_for(case)
-    output = BASE / args.case / ("baseline" if args.attempt == "primary"
-                                 else f"baseline-{args.attempt}")
+    include_zotero = args.scenario == "library-check"
+    cap_usd = 1.0 if include_zotero else CAP_USD
+    max_requests = 20 if include_zotero else MAX_REQUESTS
+    patch = patch_text(include_zotero=include_zotero)
+    prompt = prompt_for(case, args.scenario)
+    label = "baseline" if not include_zotero else "library-check-baseline"
+    output = BASE / args.case / (label if args.attempt == "primary"
+                                 else f"{label}-{args.attempt}")
     preview = {
-        "case": args.case, "model": "deepseek-flash", "reasoning_effort": "off",
-        "read_only": True, "max_model_requests": MAX_REQUESTS,
+        "case": args.case, "scenario": args.scenario,
+        "model": "deepseek-flash", "reasoning_effort": "off",
+        "read_only": True, "max_model_requests": max_requests,
         "max_output_tokens_per_request": MAX_OUTPUT,
-        "budget_cap_usd": CAP_USD,
+        "budget_cap_usd": cap_usd,
+        "mcp_services": ["Gmail", "literature_discovery", "scoped_research_read"]
+        + (["Zotero"] if include_zotero else []),
+        "projection_mode": "certified_latest_tool_batch"
+        if os.environ.get("SSS_PROJECTION_ARTIFACT_DIGEST") else "off",
+        "projection_artifact_digest": os.environ.get("SSS_PROJECTION_ARTIFACT_DIGEST"),
         "query_sha256": digest(case["query"].encode()),
         "message_id_sha256": digest(case["message_id"].encode()),
         "prompt_sha256": digest(prompt.encode()),
@@ -154,7 +193,7 @@ def main() -> int:
     if not args.call_model:
         return 0
     require_budget_gate()
-    if float(os.environ["SSS_BUDGET_CAP_USD"]) > CAP_USD:
+    if float(os.environ["SSS_BUDGET_CAP_USD"]) > cap_usd:
         parser.error("active cost gate exceeds frozen task cap")
     from deepseek_harness import DeepSeekHarness
 
@@ -177,8 +216,12 @@ def main() -> int:
         "SSS_GMAIL_ALLOWED_QUERY": case["query"],
         "SSS_GMAIL_ALLOWED_MESSAGE_ID": case["message_id"],
     })
+    if include_zotero:
+        upstream = ROOT / ".local/zotero-mcp-venv/bin/zotero-mcp"
+        upstream.resolve(strict=True)
+        os.environ["SSS_ZOTERO_UPSTREAM"] = str(upstream)
     events_path = output / "agent-events.jsonl"
-    guard = NativeBudgetGuard(max_model_requests=MAX_REQUESTS,
+    guard = NativeBudgetGuard(max_model_requests=max_requests,
                               max_observed_input_tokens=500_000)
 
     def observe(notification) -> None:
