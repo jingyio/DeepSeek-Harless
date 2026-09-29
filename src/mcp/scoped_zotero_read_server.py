@@ -28,9 +28,13 @@ _HANDLE_STORE = HandleStore(LOCAL / "scoped-research-handles" / "handles.sqlite3
 server = MCPServer(
     "sss-scoped-zotero-read",
     instructions="Only task-approved Zotero items and annotations are visible. "
-    "Pin a listed role before reading. A revision, content, permission or scope change "
-    "invalidates the handle. No Zotero search or write operation is available.",
+    "Pin a listed role or uniquely match an approved item by DOI/arXiv ID before reading. "
+    "A revision, content, permission or scope change invalidates the handle. "
+    "No unrestricted Zotero search or write operation is available.",
 )
+
+DOI = re.compile(r"10\.\d{4,9}/[^\s]+\Z", re.IGNORECASE)
+ARXIV_ID = re.compile(r"\d{4}\.\d{4,5}(?:v\d+)?\Z", re.IGNORECASE)
 
 
 def _scope_file() -> Path:
@@ -122,6 +126,70 @@ def pin_scoped_zotero_source(role: str) -> dict[str, Any]:
             "data_sha256": row["data_sha256"]}
 
 
+def _identifier(value: str) -> tuple[str, str]:
+    """Normalize an explicit identifier without guessing a paper from its title."""
+    if not isinstance(value, str):
+        raise ValueError("DOI or arXiv ID must be text")
+    token = urllib.parse.unquote(value.strip())
+    token = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", "", token,
+                   flags=re.IGNORECASE)
+    if DOI.fullmatch(token):
+        return "doi", token.casefold()
+    token = re.sub(r"^(?:https?://(?:www\.)?arxiv\.org/(?:abs|pdf)/|arxiv:\s*)",
+                   "", token, flags=re.IGNORECASE)
+    token = re.sub(r"\.pdf\Z", "", token, flags=re.IGNORECASE)
+    if ARXIV_ID.fullmatch(token):
+        return "arxiv", token.casefold()
+    raise ValueError("Expected an explicit DOI or arXiv ID")
+
+
+def _item_identifiers(data: dict[str, Any]) -> set[tuple[str, str]]:
+    found: set[tuple[str, str]] = set()
+    for field in ("DOI", "archiveID", "url"):
+        value = data.get(field)
+        if isinstance(value, str):
+            try:
+                found.add(_identifier(value))
+            except ValueError:
+                pass
+    extra = data.get("extra")
+    if isinstance(extra, str):
+        for line in extra.splitlines():
+            if re.match(r"^\s*arxiv\s*:", line, flags=re.IGNORECASE):
+                try:
+                    found.add(_identifier(line.strip()))
+                except ValueError:
+                    pass
+    return found
+
+
+def lookup_scoped_zotero_item(identifier: str) -> dict[str, Any]:
+    """Pin a unique DOI/arXiv match among task-approved, version-checked items only.
+
+    No library-wide search is performed. A missing or ambiguous match cannot
+    authorize reading any item; the caller must return to semantic handling.
+    """
+    wanted = _identifier(identifier)
+    matches: list[str] = []
+    for source in _scope()["zotero_sources"]:
+        if (not isinstance(source, dict) or source.get("kind") != "item"
+                or source.get("external_model_excerpt_allowed") is not True):
+            continue
+        row = _row(source.get("role"))
+        item = _verified(row)
+        if wanted in _item_identifiers(item["data"]):
+            matches.append(row["role"])
+    if len(matches) > 1:
+        raise ValueError("Identifier matches multiple approved Zotero items")
+    if not matches:
+        return {"status": "not_found", "identifier_type": wanted[0],
+                "identifier": wanted[1], "source_id": None,
+                "data_sha256": None}
+    pinned = pin_scoped_zotero_source(matches[0])
+    return {"status": "unique_match", "identifier_type": wanted[0],
+            "identifier": wanted[1], **pinned}
+
+
 def _pinned(source_id: str, kind: str) -> tuple[dict[str, Any], dict[str, Any]]:
     handle = _HANDLE_STORE.get(source_id, "source")
     scope_path = _scope_file()
@@ -210,6 +278,7 @@ def read_pinned_zotero_annotation(source_id: str) -> dict[str, Any]:
 
 
 for function in (list_scoped_zotero_sources, pin_scoped_zotero_source,
+                 lookup_scoped_zotero_item,
                  read_pinned_zotero_item, read_pinned_zotero_annotation):
     server.add_tool(function, annotations=ToolAnnotations(
         readOnlyHint=True, destructiveHint=False, openWorldHint=False))

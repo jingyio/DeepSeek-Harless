@@ -14,6 +14,13 @@
     "description": "Pin one approved Zotero item or annotation version to a handle.",
     "replay_stable": true
   },
+  "mcp__scoped_zotero_read__lookup_scoped_zotero_item": {
+    "required_params": ["identifier"],
+    "read_only": true,
+    "output_fields": ["status", "source_id", "data_sha256"],
+    "description": "Match an explicit DOI or arXiv ID against version-checked, task-approved Zotero items only; pin only a unique match.",
+    "replay_stable": true
+  },
   "mcp__scoped_zotero_read__read_pinned_zotero_item": {
     "required_params": [
       "source_id"

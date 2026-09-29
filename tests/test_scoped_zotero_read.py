@@ -77,6 +77,43 @@ class ScopedZoteroTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "version changed"):
             scoped.read_pinned_zotero_annotation(pinned["source_id"])
 
+    def test_identifier_lookup_is_scoped_unique_and_version_bound(self) -> None:
+        self.item["data"]["DOI"] = "10.1234/EXAMPLE"
+        self.item["data"]["extra"] = "arXiv: 2409.07429v2"
+        self.scope["zotero_sources"][0] = self._row("paper", "item", self.item)
+        self._write_scope()
+        found = scoped.lookup_scoped_zotero_item("https://doi.org/10.1234/example")
+        self.assertEqual(found["status"], "unique_match")
+        self.assertEqual(scoped.read_pinned_zotero_item(found["source_id"])["doi"],
+                         "10.1234/EXAMPLE")
+        self.assertEqual(scoped.lookup_scoped_zotero_item("arXiv:2409.07429v2")
+                         ["role"], "paper")
+        self.assertEqual(scoped.lookup_scoped_zotero_item("10.1234/absent")
+                         ["status"], "not_found")
+        self.assertEqual(scoped.lookup_scoped_zotero_item("2409.07429")
+                         ["status"], "not_found")
+        self.item["version"] += 1
+        with self.assertRaisesRegex(ValueError, "version changed"):
+            scoped.lookup_scoped_zotero_item("10.1234/example")
+
+    def test_identifier_lookup_rejects_unapproved_or_ambiguous_items(self) -> None:
+        self.item["data"]["DOI"] = "10.1234/example"
+        self.scope["zotero_sources"][0] = self._row("paper", "item", self.item)
+        self.scope["zotero_sources"][0]["external_model_excerpt_allowed"] = False
+        self._write_scope()
+        self.assertEqual(scoped.lookup_scoped_zotero_item("10.1234/example")
+                         ["status"], "not_found")
+        self.scope["zotero_sources"][0]["external_model_excerpt_allowed"] = True
+        duplicate = {"key": "WXYZ1234", "version": 1, "data": {
+            "itemType": "journalArticle", "DOI": "10.1234/example"}}
+        self.items[duplicate["key"]] = duplicate
+        self.scope["zotero_sources"].append(self._row("duplicate", "item", duplicate))
+        self._write_scope()
+        with self.assertRaisesRegex(ValueError, "multiple approved"):
+            scoped.lookup_scoped_zotero_item("10.1234/example")
+        with self.assertRaisesRegex(ValueError, "explicit DOI or arXiv"):
+            scoped.lookup_scoped_zotero_item("A study")
+
     def test_annotation_attachment_is_resolved_to_approved_paper(self) -> None:
         attachment = {"key": "PDFX1234", "version": 5, "data": {
             "itemType": "attachment", "parentItem": self.item["key"],
@@ -131,10 +168,11 @@ class ScopedZoteroTests(unittest.TestCase):
 
 
 class ScopedZoteroMCPTests(unittest.IsolatedAsyncioTestCase):
-    async def test_only_four_read_tools_are_exposed(self) -> None:
+    async def test_only_five_read_tools_are_exposed(self) -> None:
         async with Client(scoped.server) as client:
             names = {tool.name for tool in (await client.list_tools()).tools}
         self.assertEqual(names, {"list_scoped_zotero_sources", "pin_scoped_zotero_source",
+                                 "lookup_scoped_zotero_item",
                                  "read_pinned_zotero_item", "read_pinned_zotero_annotation"})
 
 
