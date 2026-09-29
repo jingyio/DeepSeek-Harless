@@ -37,20 +37,24 @@ def save(path: Path, value: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--comparison", choices=("motif", "projection",
-                                                 "baseline-projection"),
+                                                 "baseline-projection",
+                                                 "new-paired-projection"),
                         default="motif")
     args = parser.parse_args()
     out = BASE / {"motif": "blind-review-v2",
                   "projection": "blind-review-evidence-projection",
-                  "baseline-projection": "blind-review-baseline-projection"}[
+                  "baseline-projection": "blind-review-baseline-projection",
+                  "new-paired-projection": "blind-review-new-paired-projection"}[
                       args.comparison]
     mapping = {}
     index = ["# Gmail 论文提醒匿名 A/B 审阅", "",
-             "每题请分别检查：是否误把相邻工作列为直接相关；论文标题和线索是否出自邮件；阅读建议是否有用。",
+             "每题请分别检查：是否误把相邻工作列为直接相关；论文标题和线索是否出自邮件；阅读建议是否有用；是否符合 450 汉字上限。",
              "本组额外比较编译证据视图是否改变必要的研究判断。" if
              args.comparison != "motif" else "",
              "邮件只作为发现线索，勿把其中摘要当成论文原文。", ""]
-    for case in ("alert-g", "alert-h", "alert-i"):
+    cases = (("alert-j", "alert-k", "alert-l") if args.comparison == "new-paired-projection"
+             else ("alert-g", "alert-h", "alert-i"))
+    for case in cases:
         source_events = BASE / case / "baseline/agent-events.jsonl"
         events = [json.loads(line) for line in source_events.read_text().splitlines()]
         results = [row for row in events if row.get("type") == "tool/result"]
@@ -68,7 +72,8 @@ def main() -> None:
         choices = ({"motif": ("baseline", "motif"),
                     "projection": ("motif", "motif-retry-1" if case == "alert-i"
                                    else "motif-retry-2"),
-                    "baseline-projection": ("baseline", "baseline-retry-1")})[
+                    "baseline-projection": ("baseline", "baseline-retry-1"),
+                    "new-paired-projection": ("baseline-retry-1", "motif-retry-1")})[
                         args.comparison]
         order = choices if hashlib.sha256(case.encode()).digest()[0] % 2 else choices[::-1]
         mapping[case] = {"A": order[0], "B": order[1]}
