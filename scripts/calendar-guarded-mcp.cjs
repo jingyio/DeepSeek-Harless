@@ -8,6 +8,7 @@ const { ListToolsRequestSchema, CallToolRequestSchema } = require('@modelcontext
 const path = require('path');
 const outbox = require('./calendar-outbox.cjs');
 const reviewWeb = require('./calendar-review-web.cjs');
+const { availabilityTools, callAvailability } = require('./calendar-availability.cjs');
 
 const allowed = new Set([
   'list-calendars', 'list-events', 'search-events', 'get-event',
@@ -48,11 +49,16 @@ async function main() {
   const server = new Server({ name: 'sss-google-calendar-guarded', version: '1.0.0' }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const result = await upstream.listTools();
-    return { tools: [...result.tools.filter((tool) => allowed.has(tool.name)), ...localTools] };
+    return { tools: [...result.tools.filter((tool) => allowed.has(tool.name)),
+      ...availabilityTools, ...localTools] };
   });
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     try {
+      if (availabilityTools.some(tool => tool.name === name)) {
+        const data = await callAvailability(upstream, name, args);
+        return { content: [{ type: 'text', text: JSON.stringify(data) }] };
+      }
       if (name === 'prepare-event') {
         const record = outbox.prepare(args ?? {});
         return { content: [{ type: 'text', text: JSON.stringify({ id: record.id, status: record.status, event: record.event, sha256: record.sha256, created: false, nextTool: 'open-event-review' }) }] };

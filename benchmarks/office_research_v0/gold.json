@@ -1,0 +1,36 @@
+{
+  "A": {
+    "archive": {
+      "motif_2024.md": ["MF-24", "canonical"],
+      "motif_copy.md": ["MF-24", "duplicate"],
+      "graph_plan_2025.md": ["GP-25", "canonical"],
+      "tool_route_2025.md": ["TR-25", "canonical"],
+      "motif_notes.md": ["MF-24", "needs_review"]
+    },
+    "facts": {
+      "mf_success": ["32/40", "motif_2024.md", "32 of 40 tasks"],
+      "gp_success": ["30/40", "graph_plan_2025.md", "30 of 40 tasks"],
+      "tr_not_comparable": [true, "tool_route_2025.md", "not directly comparable"]
+    }
+  },
+  "B": {
+    "archive": {
+      "motif_2024.md": ["MF-24", "superseded"],
+      "motif_copy.md": ["MF-24", "duplicate"],
+      "graph_plan_2025.md": ["GP-25", "canonical"],
+      "tool_route_2025.md": ["TR-25", "canonical"],
+      "motif_notes.md": ["MF-24", "needs_review"],
+      "motif_2024_v2.md": ["MF-24", "canonical"],
+      "recovery_2026.md": ["RF-26", "canonical"]
+    },
+    "facts": {
+      "mf_success": ["28/40", "motif_2024_v2.md", "28 of 40 tasks"],
+      "mf_previous_invalid": [true, "motif_2024_v2.md", "not 32 of 40"],
+      "gp_success": ["30/40", "graph_plan_2025.md", "30 of 40 tasks"],
+      "rf_success": ["33/40", "recovery_2026.md", "33 of 40 tasks"],
+      "tr_not_comparable": [true, "tool_route_2025.md", "not directly comparable"]
+    },
+    "expected_reused_sources": ["graph_plan_2025.md", "tool_route_2025.md"],
+    "expected_invalidated_record": "MF-24"
+  }
+}

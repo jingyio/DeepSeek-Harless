@@ -1,0 +1,23 @@
+{
+  "fixture": "synthetic_wps_meeting_v1",
+  "question": "在这组合成测试记录中，候选方法的正确率相对基线如何？",
+  "metric": "每组总 correct / 总 test_cases；不外推至真实任务",
+  "approved_claim": "在这组合成记录中，候选方法正确率为 79.0%，基线为 71.0%，高 8.0 个百分点。这只是模拟的人工已审阅表述。",
+  "approved_dependency": [
+    ["base_s1", "baseline", 1, 100, 70, "synthetic://base/s1"],
+    ["base_s2", "baseline", 2, 100, 71, "synthetic://base/s2"],
+    ["base_s3", "baseline", 3, 100, 72, "synthetic://base/s3"],
+    ["cand_s1", "candidate", 1, 100, 78, "synthetic://candidate/s1"],
+    ["cand_s2", "candidate", 2, 100, 79, "synthetic://candidate/s2"],
+    ["cand_s3", "candidate", 3, 100, 80, "synthetic://candidate/s3"]
+  ],
+  "scenarios": {
+    "base": [],
+    "duration_update": [
+      {"run_id": "cand_s2", "field": "duration_s", "old": 103.8, "new": 97.8}
+    ],
+    "result_update": [
+      {"run_id": "cand_s3", "field": "correct", "old": 80, "new": 63}
+    ]
+  }
+}

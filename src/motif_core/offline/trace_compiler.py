@@ -54,7 +54,7 @@ def contract_signature(tools: list[str], contracts: Mapping[str, Any]) -> str:
         shapes = dict(contract.parameter_shapes)
         if shapes:
             if (set(shapes) - set(contract.required_params)
-                    or any(value not in {"string_list_allow_empty", "measure_list"}
+                    or any(value not in {"string_list_allow_empty", "measure_list", "time_window_list"}
                            for value in shapes.values())):
                 raise ValueError(f"invalid parameter shapes: {name}")
             row["parameter_shapes"] = shapes
@@ -106,6 +106,15 @@ def _field_value(observation: dict[str, Any] | None, path: str) -> Any:
 
 
 def _valid_param(value: Any, *, collection: bool, shape: str = "") -> bool:
+    if shape == "time_window_list":
+        return (isinstance(value, list) and 1 <= len(value) <= 8
+                and all(isinstance(item, dict)
+                        and set(item) == {"start", "end"}
+                        and all(isinstance(item[key], str) and
+                                20 <= len(item[key]) <= 35 and
+                                re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})", item[key])
+                                for key in ("start", "end"))
+                        for item in value))
     if shape == "string_list_allow_empty":
         return isinstance(value, list) and all(isinstance(item, str) and item
                                                for item in value)

@@ -89,6 +89,47 @@ class DiscoveryEntrypointTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "arXiv ID"):
             discovery._arxiv_pdf("../private-file")
 
+    def test_crossref_title_search_returns_bounded_doi_candidates(self) -> None:
+        response = {"message": {"total-results": 2, "items": [{
+            "DOI": "10.1234/example", "title": ["Example paper"],
+            "container-title": ["Example Journal"],
+            "author": [{"given": "Ada", "family": "Researcher"}],
+            "published": {"date-parts": [[2025, 8]]},
+            "indexed": {"date-time": "2026-09-01T00:00:00Z"},
+            "score": 42.0,
+        }]}}
+        with patch.object(discovery, "_request", return_value=(response, "https://api.crossref.org/works")) as request:
+            result = discovery.search_crossref_works("Example paper", limit=2)
+        self.assertEqual(request.call_args.args[:2], (discovery.CROSSREF, "/works"))
+        self.assertEqual(request.call_args.args[2], {"query.title": "Example paper", "rows": "2"})
+        self.assertEqual(result["works"][0]["doi"], "10.1234/example")
+        self.assertEqual(result["works"][0]["authors"], ["Ada Researcher"])
+        self.assertEqual(result["total_matches"], 2)
+        with self.assertRaisesRegex(ValueError, "Crossref field"):
+            discovery.search_crossref_works("Example paper", field="unknown")
+
+    def test_crossref_doi_lookup_preserves_preprint_relation_provenance(self) -> None:
+        response = {"message": {
+            "DOI": "10.1234/article", "title": ["Example article"],
+            "author": [], "relation": {"has-preprint": [{
+                "id-type": "doi", "id": "10.1234/preprint", "asserted-by": "object"}]},
+        }}
+        with patch.object(discovery, "_request", return_value=(response, "https://api.crossref.org/works/doi")):
+            result = discovery.verify_doi_metadata("10.1234/article")
+        self.assertEqual(result["relations"]["has-preprint"], [{
+            "id_type": "doi", "id": "10.1234/preprint", "asserted_by": "object",
+            "assertion_source_doi": "10.1234/preprint"}])
+        response["message"] = {
+            "DOI": "10.1234/preprint", "title": ["Example preprint"], "author": [],
+            "relation": {"is-preprint-of": [{
+                "id-type": "doi", "id": "10.1234/article", "asserted-by": "subject"}]},
+        }
+        with patch.object(discovery, "_request", return_value=(response, "https://api.crossref.org/works/doi")):
+            reverse = discovery.verify_doi_metadata("10.1234/preprint")
+        self.assertEqual(reverse["relations"]["is-preprint-of"][0]["assertion_source_doi"],
+                         result["relations"]["has-preprint"][0]["assertion_source_doi"])
+        self.assertIn("automatically mirrors", result["relation_provenance_note"])
+
     def test_scholar_requires_key_and_budget(self) -> None:
         with patch.dict(discovery.os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "SerpAPI key"):

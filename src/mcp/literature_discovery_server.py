@@ -456,17 +456,83 @@ def get_citing_works(work_id: str, limit: int = 10) -> dict[str, Any]:
             "works": [_work(item) for item in data.get("results", [])]}
 
 
+def search_crossref_works(query: str, field: str = "title",
+                          limit: int = 10) -> dict[str, Any]:
+    """Find DOI-bearing candidate records when other discovery APIs fail."""
+    query = query.strip()
+    if not 2 <= len(query) <= 300:
+        raise ValueError("Query must contain 2–300 characters")
+    fields = {"title": "query.title", "bibliographic": "query.bibliographic"}
+    if field not in fields or not 1 <= limit <= 20:
+        raise ValueError("Invalid Crossref field or limit (1–20)")
+    data, url = _request(CROSSREF, "/works", {fields[field]: query, "rows": str(limit)})
+    message = data.get("message")
+    if not isinstance(message, dict) or not isinstance(message.get("items"), list):
+        raise ValueError("Crossref returned an invalid works response")
+    works = []
+    for item in message["items"][:limit]:
+        if not isinstance(item, dict):
+            continue
+        titles = item.get("title") or []
+        venues = item.get("container-title") or []
+        authors = item.get("author") or []
+        if not isinstance(titles, list): titles = []
+        if not isinstance(venues, list): venues = []
+        if not isinstance(authors, list): authors = []
+        date_parts = (item.get("published") or {}).get("date-parts")
+        published = (date_parts[0][:3] if isinstance(date_parts, list) and date_parts
+                     and isinstance(date_parts[0], list) else None)
+        indexed_at = (item.get("indexed") or {}).get("date-time")
+        works.append({
+            "doi": str(item["DOI"])[:300] if item.get("DOI") else None,
+            "title": str(titles[0])[:1000] if titles else None,
+            "authors": [" ".join(str(author.get(key) or "") for key in ("given", "family")).strip()[:200]
+                        for author in authors[:12] if isinstance(author, dict)],
+            "publication_date_parts": published,
+            "type": str(item["type"])[:100] if item.get("type") else None,
+            "venue": str(venues[0])[:300] if venues else None,
+            "publisher": str(item["publisher"])[:300] if item.get("publisher") else None,
+            "score": item.get("score") if isinstance(item.get("score"), (int, float)) else None,
+            "source_updated_at": str(indexed_at)[:100] if indexed_at else None,
+            "landing_page_url": str(item["URL"])[:1000] if item.get("URL") else None,
+        })
+    return {"provider": "Crossref", "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            "query": query, "field": field, "query_url": url,
+            "total_matches": message.get("total-results"), "works": works,
+            "note": "Metadata search yields candidates; verify DOI and read the paper before a scientific claim."}
+
+
 def verify_doi_metadata(doi: str) -> dict[str, Any]:
-    """Fetch Crossref's publisher-deposited metadata for one DOI as an independent metadata check."""
+    """Fetch Crossref metadata and preserve who asserted each DOI relationship."""
     doi = _doi(doi)
     data, url = _request(CROSSREF, "/works/" + urllib.parse.quote(doi, safe=""))
     message = data.get("message", {})
+    raw_relations = message.get("relation") or {}
+    relations = {}
+    record_doi = str(message.get("DOI") or doi)
+    for kind in ("has-preprint", "is-preprint-of", "has-version", "is-version-of"):
+        entries = raw_relations.get(kind, []) if isinstance(raw_relations, dict) else []
+        if isinstance(entries, list):
+            relations[kind] = [{"id_type": entry.get("id-type"),
+                                "id": str(entry.get("id") or "")[:300],
+                                "asserted_by": entry.get("asserted-by"),
+                                "assertion_source_doi": (
+                                    record_doi if entry.get("asserted-by") == "subject" else
+                                    str(entry.get("id") or "")[:300]
+                                    if entry.get("asserted-by") == "object" and entry.get("id-type") == "doi"
+                                    else None)}
+                               for entry in entries[:10] if isinstance(entry, dict)]
     return {"provider": "Crossref", "retrieved_at": datetime.now(timezone.utc).isoformat(),
             "query_url": url, "doi": message.get("DOI"), "title": (message.get("title") or [None])[0],
             "type": message.get("type"), "publisher": message.get("publisher"),
             "published": message.get("published"), "container_title": (message.get("container-title") or [None])[0],
             "authors": [" ".join(filter(None, [entry.get("given"), entry.get("family")]))
-                        for entry in message.get("author", [])[:12]]}
+                        for entry in message.get("author", [])[:12]],
+            "relations": relations,
+            "relation_provenance_note": (
+                "Crossref automatically mirrors DOI relations. The same assertion may appear "
+                "on both records; compare assertion_source_doi before counting independent claims. "
+                "Relations establish publication linkage, not differences between full texts.")}
 
 
 def find_europe_pmc_fulltext(doi: str) -> dict[str, Any]:
@@ -624,7 +690,8 @@ def read_europe_pmc_section(pmcid: str, section_id: str, offset_chars: int = 0,
 
 
 for function in (search_arxiv, get_arxiv_paper, read_arxiv_pdf_pages,
-                 search_works, get_work, get_citing_works, verify_doi_metadata,
+                 search_works, get_work, get_citing_works, search_crossref_works,
+                 verify_doi_metadata,
                  find_europe_pmc_fulltext, list_europe_pmc_sections, read_europe_pmc_section):
     server.add_tool(function, name=function.__name__,
                     annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True))

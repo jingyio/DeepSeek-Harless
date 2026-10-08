@@ -366,18 +366,14 @@ export async function proposeNext({ manifest, task, history, availableTools,
       const nextTool = artifact.tools[length];
       const offered = availableTools.get(nextTool);
       const required = manifest.contracts[nextTool].required_params;
-      if (!offered || offered.parameters?.type !== 'object' ||
-          !Array.isArray(offered.parameters.required) ||
-          canonical([...offered.parameters.required].sort()) !==
-            canonical([...required].sort()) ||
-          [...required, ...Object.keys(manifest.contracts[nextTool].default_params)]
-            .some((param) => !Object.hasOwn(offered.parameters.properties ?? {}, param))) {
+      if (!offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool])) {
         continue;
       }
       const args = await bindNext(artifact, nextTool, prefix, task, manifest);
       if (!args) continue;
       candidates.push({ artifact, nextTool, args, length,
-        description: manifest.contracts[nextTool].description });
+        description: artifact.tools.slice(length)
+          .map((tool) => manifest.contracts[tool].description).join('\n') });
       break;
     }
   }
@@ -466,9 +462,12 @@ function offeredSchemaMatches(availableTools, tool, contract) {
   const offered = availableTools.get(tool);
   const required = contract.required_params;
   return offered?.parameters?.type === 'object' &&
-    Array.isArray(offered.parameters.required) &&
-    canonical([...offered.parameters.required].sort()) ===
-      canonical([...required].sort()) &&
+    Array.isArray(offered.parameters.required ?? []) &&
+    // A witnessed operator can require an explicit target even when the API
+    // permits an implicit front document. We always supply that bound target.
+    // Conversely, every API-required argument must be covered by the operator.
+    (offered.parameters.required ?? []).every((param) =>
+      required.includes(param) || Object.hasOwn(contract.default_params, param)) &&
     [...required, ...Object.keys(contract.default_params)]
       .every((param) => Object.hasOwn(offered.parameters.properties ?? {}, param));
 }
@@ -576,7 +575,10 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
           prefix_length: length, supporting_task_count: artifact.supporting_task_count,
           code_node_ids: codeNodes.map((node) => node.node_id),
           code_program_digests: codeNodes.map((node) => node.program_digest),
-          description: manifest.contracts[nextTool].description });
+          // Match the task against the certified remaining path. A navigation
+          // step alone may say little about the purpose of the read it enables.
+          description: artifact.tools.slice(length)
+            .map((tool) => manifest.contracts[tool].description).join('\n') });
       }
     }
   }

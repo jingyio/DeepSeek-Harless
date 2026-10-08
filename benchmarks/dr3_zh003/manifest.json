@@ -1,0 +1,21 @@
+{
+  "benchmark": "DR3-Eval",
+  "source_repository": "https://huggingface.co/datasets/NJU-LINK/DR3-Eval",
+  "revision": "4305f9129529d4510f485af6c997b69e1e85b88d",
+  "license": "apache-2.0",
+  "task": "zh/003",
+  "query": "参考我这篇3D高斯溅射重定位的论文，我想了解下这类方法的通用框架。请总结一下从粗定位到精优化的主流技术，并对比下近期的不同算法实现，看看思路有何异同。",
+  "files": [
+    {
+      "remote_path": "datasets_zh/003/long_context_sampled_32k.json",
+      "local_name": "long_context_sampled_32k.json",
+      "sha256": "c3b8e0078f7ae2e239e05ae805c2eb6617731f68e8123868adc26b981640d095"
+    },
+    {
+      "remote_path": "datasets_zh/003/基于3D高斯溅射的大规模场景重定位方法_张守建.pdf",
+      "local_name": "基于3D高斯溅射的大规模场景重定位方法_张守建.pdf",
+      "sha256": "5f30ff79924dfaf771fe723f25c1700dec609c21d1d8a948e66e4c5edbfaa299"
+    }
+  ],
+  "notes": "Text-only 32k corpus setting. Official DR3 evaluation and separate human review remain necessary; this is a frozen task input, not a result."
+}

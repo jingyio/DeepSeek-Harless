@@ -22,6 +22,13 @@
     "description": "Pin one approved source version to an unpredictable handle.",
     "replay_stable": true
   },
+  "mcp__scoped_research_read__pin_scoped_note": {
+    "required_params": ["role"],
+    "read_only": true,
+    "output_fields": ["source_id", "sha256"],
+    "description": "Pin one approved Obsidian note version; reject local text and PDF roles.",
+    "replay_stable": true
+  },
   "mcp__scoped_research_read__read_pinned_note": {
     "required_params": [
       "source_id"

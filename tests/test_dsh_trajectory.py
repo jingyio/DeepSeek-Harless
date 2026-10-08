@@ -328,6 +328,23 @@ class DshTrajectoryTests(unittest.TestCase):
         self.assertEqual(len(trace.records), 3)
         self.assertTrue(all(row.eligible for row in trace.records))
 
+    def test_approved_obsidian_excerpt_has_pinned_source_provenance(self):
+        root = Path(__file__).resolve().parents[1]
+        contracts = parse_tool_contracts(json.loads((
+            root / "config/scoped-research-handle-contracts.json").read_text()))
+        prefix = "mcp__scoped_research_read__"
+        source_id = "source-" + "c" * 32
+        events = (event_pair(1, prefix + "pin_scoped_note", {"role": "current_state"},
+                             {"source_id": source_id, "sha256": "a" * 64})
+                  + event_pair(2, prefix + "read_pinned_approved_note_excerpt",
+                               {"source_id": source_id}, {"sha256": "a" * 64}))
+        provenance = infer_dsh_provenance(events, contracts)
+        self.assertEqual(provenance["c2"]["source_id"],
+                         {"from_call_id": "c1", "from_field": "source_id"})
+        trace = extract_dsh_trace(events, contracts, trace_id="obsidian-excerpt",
+                                  provenance_by_call_id=provenance)
+        self.assertTrue(all(row.eligible for row in trace.records))
+
     def test_two_independent_traces_propose_but_do_not_authorize_motif(self):
         first = extract_dsh_trace(call(1, "search") + call(2, "read"),
                                   CONTRACTS, trace_id="task-a")

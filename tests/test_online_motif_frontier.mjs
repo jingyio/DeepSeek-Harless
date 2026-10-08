@@ -153,6 +153,54 @@ const offered = (name, required) => ({ name, parameters: { type: 'object',
   required, properties: Object.fromEntries(required.map((key) =>
     [key, { type: 'string' }])) } });
 
+test('certified explicit targets may bind optional API parameters without using defaults', async () => {
+  const { pin, read, manifest, task } = fixture();
+  const api = offered(read, ['source_id']);
+  api.parameters.required = [];
+  const input = { manifest, task, history: [{ name: pin, callId: 'selected', ok: true,
+    arguments: { path: 'source:PAPER_1' }, output: { source_id: 'bound-id', version: 'v1' },
+    sourceVersion: 'v1', inputVersion: task.input_version }],
+    availableTools: new Map([[read, api]]), similarity: async descriptions => [0.99],
+    minSimilarity: 0.8, minMargin: 0.1 };
+  assert.deepEqual((await proposeReadyBatch(input))[0].arguments, { source_id: 'bound-id' });
+  assert.deepEqual((await proposeNext(input)).arguments, { source_id: 'bound-id' });
+  api.parameters.required = ['source_id', 'new_required'];
+  api.parameters.properties.new_required = { type: 'string' };
+  assert.deepEqual(await proposeReadyBatch(input), []);
+  assert.equal(await proposeNext(input), null);
+  api.parameters.required = [];
+  delete api.parameters.properties.source_id;
+  assert.deepEqual(await proposeReadyBatch(input), []);
+});
+
+test('semantic match describes the certified continuation, while weak intent still defers', async () => {
+  const { pin, read, manifest, task } = fixture();
+  const final = 'mcp__research__check_source';
+  manifest.artifacts[0].tools.push(final);
+  manifest.artifacts[0].transfer_evidence.push({ from_tool: read,
+    from_field: 'version', to_tool: final, to_param: 'source_version' });
+  manifest.contracts[final] = { read_only: true, required_params: ['source_version'],
+    default_params: {}, output_fields: ['version'], description: 'Check research evidence' };
+  manifest.version_fields[final] = 'version';
+  task.source_versions[final] = 'v1';
+  sealManifest(manifest);
+  const history = [{ name: pin, callId: 'selected', ok: true,
+    arguments: { path: 'source:PAPER_1' }, output: { source_id: 'bound-id', version: 'v1' },
+    sourceVersion: 'v1', inputVersion: task.input_version }];
+  const common = { manifest, task, history,
+    availableTools: new Map([[read, offered(read, ['source_id'])]]),
+    minSimilarity: 0.8, minMargin: 0.1 };
+  let seen;
+  const selected = await proposeReadyBatch({ ...common, similarity: async (_query, descriptions) => {
+    seen = descriptions;
+    return [0.88];
+  } });
+  assert.equal(selected.length, 1);
+  assert.deepEqual(seen, ['Read a pinned research source\nCheck research evidence']);
+  assert.deepEqual(await proposeReadyBatch({ ...common,
+    similarity: async () => [0.79] }), []);
+});
+
 test('unique certified pinned-source read bypasses a broad-intent similarity gate', async () => {
   const { pin, read, manifest, task } = fixture();
   const pinnedRead = 'mcp__research__read_pinned_item';

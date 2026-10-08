@@ -38,7 +38,7 @@ def parse_tool_contracts(rows: dict[str, Any]) -> dict[str, ToolContract]:
         shapes = _pairs(spec, "parameter_shapes")
         defaults = _pairs(spec, "default_params")
         default_only = spec.get("witness_default_only", [])
-        if (any(value not in {"string_list_allow_empty", "measure_list"}
+        if (any(value not in {"string_list_allow_empty", "measure_list", "time_window_list"}
                 for _, value in shapes)
                 or not {key for key, _ in shapes} <= set(spec["required_params"])
                 or not {key for key, _ in defaults}.isdisjoint(spec["required_params"])

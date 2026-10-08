@@ -15,7 +15,8 @@ import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from src.adapters.motif_output_projection import LatestToolProjector, load_certified_projection
+from src.adapters.motif_output_projection import (CompactJsonProjector, LatestToolProjector,
+                                                  load_certified_projection)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,41 @@ def batch() -> tuple[dict, str, str]:
 
 
 class ProjectionTest(unittest.TestCase):
+    def test_compact_json_preserves_every_field_and_records_exact_original(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            projector = CompactJsonProjector(Path(temp))
+            source = '{\n  "source_version": "abc",\n  "native_result": {\n    "rows": [[1, "a b"], [2, "c"]],\n    "formula": "=SUM(A1:A2)"\n  }\n}'
+            body = {"messages": [
+                {"role": "assistant", "tool_calls": [
+                    {"id": "c1", "function": {"name": "read_numbers", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "c1", "content": source}]}
+            result = projector.project(body)
+            view = result["messages"][1]["content"]
+            self.assertLess(len(view), len(source))
+            self.assertEqual(json.loads(view), json.loads(source))
+            self.assertEqual(projector.project(body), result)
+            self.assertEqual(next((Path(temp) / "originals").glob("*.txt")).read_text(), source)
+            audit = json.loads(next((Path(temp) / "audit").glob("*.json")).read_text())
+            self.assertEqual(audit["original_bytes"] - audit["view_bytes"], len(source) - len(view))
+            body["messages"][1]["content"] = "tool failed: unavailable"
+            self.assertEqual(projector.project(body), body)
+
+    def test_compact_json_only_changes_newest_tool_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            projector = CompactJsonProjector(Path(temp))
+            old = '{\n  "payload": [1, 2, 3]\n}'
+            new = '{\n  "payload": [4, 5, 6]\n}'
+            body = {"messages": [
+                {"role": "assistant", "tool_calls": [{"id": "c1", "function": {"name": "first"}}]},
+                {"role": "tool", "tool_call_id": "c1", "content": old},
+                {"role": "assistant", "content": "intermediate reasoning"},
+                {"role": "assistant", "tool_calls": [{"id": "c2", "function": {"name": "second"}}]},
+                {"role": "tool", "tool_call_id": "c2", "content": new}]}
+            result = projector.project(body)
+            self.assertEqual(result["messages"][1]["content"], old)
+            self.assertNotEqual(result["messages"][4]["content"], new)
+            self.assertEqual(len(list((Path(temp) / "audit").glob("*.json"))), 1)
+
     def test_recent_batch_projects_only_certified_fields_and_recovers_original(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             projector = LatestToolProjector(ARTIFACT, Path(temp))
@@ -120,7 +156,102 @@ class RecoveringProvider(BaseHTTPRequestHandler):
         pass
 
 
+class CompactProvider(BaseHTTPRequestHandler):
+    requests: list[dict] = []
+
+    def do_POST(self) -> None:  # noqa: N802
+        self.requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+        payload = {"id": "mock", "created": 1, "model": "mock", "object": "chat.completion",
+                   "choices": [{"index": 0, "message": {"role": "assistant", "content": "OK"},
+                                "finish_reason": "stop"}],
+                   "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4}}
+        streaming = self.requests[-1].get("stream") is True
+        raw = (("data: " + json.dumps(payload) + "\n\ndata: [DONE]\n\n").encode()
+               if streaming else json.dumps(payload).encode())
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream" if streaming else "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def log_message(self, *_args) -> None:
+        pass
+
+
 class ProjectionWireTest(unittest.TestCase):
+    def test_compact_json_preserves_streaming_request_and_response(self) -> None:
+        CompactProvider.requests = []
+        with tempfile.TemporaryDirectory() as temp, ThreadingHTTPServer(
+                ("127.0.0.1", 0), CompactProvider) as provider:
+            thread = threading.Thread(target=provider.serve_forever, daemon=True)
+            thread.start()
+            with ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler) as slot:
+                port = slot.server_port
+            process = subprocess.Popen([sys.executable, "-m", "src.adapters.motif_output_projection",
+                                        "--upstream", f"http://127.0.0.1:{provider.server_port}",
+                                        "--compact-json-only", "--local-dir", temp, "--port", str(port)],
+                                       cwd=ROOT, stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.PIPE, text=True)
+            try:
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                for _ in range(100):
+                    if process.poll() is not None:
+                        self.fail(process.stderr.read())
+                    try:
+                        with opener.open(f"http://127.0.0.1:{port}/projection/health", timeout=.2):
+                            break
+                    except OSError:
+                        time.sleep(.03)
+                body = {"model": "mock", "stream": True, "messages": [
+                    {"role": "assistant", "tool_calls": [{"id": "c1", "function": {"name": "read"}}]},
+                    {"role": "tool", "tool_call_id": "c1", "content": '{\n "rows": [1, 2]\n}'}]}
+                request = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions",
+                                                 data=json.dumps(body).encode(),
+                                                 headers={"Content-Type": "application/json"})
+                with opener.open(request, timeout=5) as response:
+                    returned = response.read().decode()
+                    self.assertEqual(response.headers["Content-Type"], "text/event-stream")
+                self.assertIn("data: [DONE]", returned)
+                self.assertTrue(CompactProvider.requests[0]["stream"])
+                self.assertEqual(CompactProvider.requests[0]["messages"][-1]["content"],
+                                 '{"rows":[1,2]}')
+                self.assertNotIn("tools", CompactProvider.requests[0])
+            finally:
+                process.terminate()
+                process.wait(timeout=5)
+                process.stderr.close()
+                provider.shutdown()
+
+    def test_plain_launcher_compacts_json_without_adding_recovery_tool(self) -> None:
+        CompactProvider.requests = []
+        with ThreadingHTTPServer(("127.0.0.1", 0), CompactProvider) as provider:
+            thread = threading.Thread(target=provider.serve_forever, daemon=True)
+            thread.start()
+            child = (
+                "import json,os,urllib.request;"
+                "body={'model':'deepseek-flash','max_tokens':20,'stream':False,'messages':["
+                "{'role':'assistant','tool_calls':[{'id':'c1','function':{'name':'read','arguments':'{}'}}]},"
+                "{'role':'tool','tool_call_id':'c1','content':json.dumps({'data':[1,2,3]},indent=2)}]};"
+                "req=urllib.request.Request(os.environ['DEEPSEEK_BASE_URL']+'/chat/completions',"
+                "data=json.dumps(body).encode(),headers={'Content-Type':'application/json'});"
+                "print(json.load(urllib.request.urlopen(req,timeout=10))['choices'][0]['message']['content']);"
+                "print(os.environ['SSS_PROJECTION_HOME'])"
+            )
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "run-distil-dsh.py"),
+                 "--mode", "plain", "--budget-usd", "0.01",
+                 "--upstream", f"http://127.0.0.1:{provider.server_port}",
+                 "--tool-json-compact", "--", sys.executable, "-c", child],
+                cwd=ROOT, text=True, capture_output=True, timeout=30)
+            provider.shutdown()
+        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+        self.assertIn("OK", result.stdout)
+        self.assertEqual(len(CompactProvider.requests), 1)
+        message = CompactProvider.requests[0]["messages"][-1]
+        self.assertEqual(message["content"], '{"data":[1,2,3]}')
+        self.assertEqual(CompactProvider.requests[0].get("tools"), None)
+        self.assertEqual(len(list((Path(result.stdout.splitlines()[-1]) / "audit").glob("*.json"))), 1)
+
     def test_sss_expand_uses_local_original_and_returns_stream(self) -> None:
         RecoveringProvider.requests = []
         with tempfile.TemporaryDirectory() as temp, ThreadingHTTPServer(

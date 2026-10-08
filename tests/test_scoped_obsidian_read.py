@@ -121,6 +121,12 @@ class ScopedObsidianMCPTests(unittest.IsolatedAsyncioTestCase):
                                  "read_pinned_text", "read_pinned_pdf_pages",
                                  "locate_pinned_pdf_quote", "read_pinned_pdf_match"})
 
+    async def test_notes_only_mode_hides_local_file_tools(self) -> None:
+        async with Client(scoped.create_server(handle_mode=True, notes_only=True)) as client:
+            names = {item.name for item in (await client.list_tools()).tools}
+        self.assertEqual(names, {"list_scoped_notes", "pin_scoped_note",
+                                 "read_pinned_approved_note_excerpt"})
+
 
 class ScopedSourceHandleTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -159,6 +165,10 @@ class ScopedSourceHandleTests(unittest.TestCase):
         self.data.write_text("modified", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "version changed"):
             scoped.read_pinned_text(pinned["source_id"])
+
+    def test_note_only_pin_rejects_local_text_role(self) -> None:
+        with self.assertRaises(ValueError):
+            scoped.pin_scoped_note("data")
 
     def test_approved_note_overlong_request_is_clipped_without_exposure(self) -> None:
         self.assertEqual(scoped._approved_note_read_limit([[120, 175]], 120, 60),

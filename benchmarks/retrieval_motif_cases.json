@@ -1,0 +1,25 @@
+{
+  "train": [
+    {
+      "source_dir": "reference",
+      "point_id": "graph_agents",
+      "question": "How do graph methods support agent workflows?",
+      "terms": ["graph", "agent"],
+      "min_sources": 1
+    },
+    {
+      "source_dir": "benchmarks/office_research_v0/inputs/stage_a",
+      "point_id": "motif_results",
+      "question": "Which source reports Motif task results?",
+      "terms": ["Motif", "tasks"],
+      "min_sources": 1
+    }
+  ],
+  "heldout": {
+    "source_dir": ".local/benchmarks/dr3-zh003/sources",
+    "point_id": "gaussian_relocalization",
+    "question": "What supports Gaussian pose relocalization?",
+    "terms": ["Gaussian", "pose"],
+    "min_sources": 1
+  }
+}

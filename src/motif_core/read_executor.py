@@ -320,6 +320,9 @@ def resume_read_motif(
                                                         and item == chosen for chosen in value)]
                     == value)
         shape = dict(contracts[tool.rstrip("+")].parameter_shapes).get(param)
+        if shape == "time_window_list":
+            from src.motif_core.offline.trace_compiler import _valid_param
+            return _valid_param(value, collection=False, shape=shape)
         if shape == "string_list_allow_empty":
             return isinstance(value, list) and all(isinstance(item, str) and item
                                                    for item in value)

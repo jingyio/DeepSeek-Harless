@@ -1,0 +1,25 @@
+{
+  "repository_commit": "55bbec71f888b3573ec295a0256bde05daf665a9",
+  "sources": [
+    {
+      "role": "idea_current",
+      "relative_path": "research/idea/current.md",
+      "sha256": "4075f79b8c052d6b61d746990740ad5da000c7d6484b8da54439755200756b98"
+    },
+    {
+      "role": "idea_open_questions",
+      "relative_path": "research/idea/open_questions.md",
+      "sha256": "d6d68d4203d268a10495def7c4d90bb9aa566eaeb657d8aa0e0469fa7d6fdc85"
+    },
+    {
+      "role": "idea_rejected",
+      "relative_path": "research/idea/rejected.md",
+      "sha256": "3e7e14941953c6e7bd4ed54f668782333b0661e57933ad6bee5492eaf11be816"
+    },
+    {
+      "role": "idea_decisions",
+      "relative_path": "research/idea/decision_log.md",
+      "sha256": "45369662045eb11b3efdc75cba6bd1517eaadfe1245e864f8e38afee808361f7"
+    }
+  ]
+}

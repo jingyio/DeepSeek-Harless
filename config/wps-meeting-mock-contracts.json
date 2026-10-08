@@ -1,0 +1,32 @@
+{
+  "mcp__synthetic_meeting_apps__list_mock_sources": {
+    "required_params": [],
+    "read_only": true,
+    "output_fields": [],
+    "replay_stable": true,
+    "description": "List approved synthetic WPS, Obsidian, and Zotero objects."
+  },
+  "mcp__synthetic_meeting_apps__pin_mock_source": {
+    "required_params": ["object_id"],
+    "read_only": true,
+    "output_fields": ["source_id"],
+    "replay_stable": true,
+    "description": "Bind one synthetic application object to its current version."
+  },
+  "mcp__synthetic_meeting_apps__read_pinned_mock_source": {
+    "required_params": ["source_id"],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": ["source_id"],
+    "replay_stable": true,
+    "description": "Read a version-bound synthetic application object."
+  },
+  "mcp__synthetic_meeting_apps__calculate_pinned_wps_metrics": {
+    "required_params": ["source_id"],
+    "read_only": true,
+    "output_fields": [],
+    "provenance_params": ["source_id"],
+    "replay_stable": true,
+    "description": "Calculate fixed, disclosed statistics from pinned WPS source bytes."
+  }
+}

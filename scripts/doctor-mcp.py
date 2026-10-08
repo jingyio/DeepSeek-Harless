@@ -26,9 +26,9 @@ LOCAL = ROOT / ".local"
 CALENDAR_TOOLS = "list-calendars,list-events,search-events,get-event,list-colors,get-freebusy,get-current-time"
 EXPECTED = {
     "local_research_tools": 13,
-    "literature_discovery": 10,
+    "literature_discovery": 11,
     "zotero": 21,
-    "google_calendar": 11,
+    "google_calendar": 13,
     "google_gmail": 13,
     "obsidian": 19,
 }

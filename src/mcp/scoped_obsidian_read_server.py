@@ -251,6 +251,12 @@ def pin_scoped_source(role: str) -> dict[str, Any]:
             "sha256": verified["sha256"], "kind": kind}
 
 
+def pin_scoped_note(role: str) -> dict[str, Any]:
+    """Pin an approved Obsidian note; reject local text and PDF source roles."""
+    _approved_note(role)
+    return pin_scoped_source(role)
+
+
 def _resolve_pinned(source_id: str, expected_kind: str) -> str:
     entry = _HANDLE_STORE.get(source_id, "source")
     scope_path = _scope_file()
@@ -421,7 +427,7 @@ def read_pinned_pdf_match(match_id: str) -> dict[str, Any]:
             **read_pinned_pdf_pages(source_id, start_page=page, max_pages=1)}
 
 
-def create_server(*, handle_mode: bool) -> MCPServer:
+def create_server(*, handle_mode: bool, notes_only: bool = False) -> MCPServer:
     """Keep the earlier role-read pilot stable while enabling provenance trials."""
     instance = MCPServer(
         "sss-scoped-research-read",
@@ -429,10 +435,13 @@ def create_server(*, handle_mode: bool) -> MCPServer:
         "Read bounded lines or PDF pages. A changed source or missing external-model "
         "approval blocks reading. No vault search or write operation is available.",
     )
-    for function in (list_scoped_notes, list_scoped_local_sources):
+    listing = (list_scoped_notes,) if notes_only else (list_scoped_notes, list_scoped_local_sources)
+    for function in listing:
         instance.add_tool(function, annotations=ToolAnnotations(
             readOnlyHint=True, destructiveHint=False, openWorldHint=False))
-    if handle_mode:
+    if notes_only:
+        functions = (pin_scoped_note, read_pinned_approved_note_excerpt)
+    elif handle_mode:
         functions = (pin_scoped_source, read_pinned_note,
                      read_pinned_approved_note_excerpt, read_pinned_text,
                      read_pinned_pdf_pages, locate_pinned_pdf_quote,
@@ -445,7 +454,8 @@ def create_server(*, handle_mode: bool) -> MCPServer:
     return instance
 
 
-server = create_server(handle_mode=os.environ.get("SSS_SCOPED_HANDLE_MODE") == "1")
+server = create_server(handle_mode=os.environ.get("SSS_SCOPED_HANDLE_MODE") == "1",
+                       notes_only=os.environ.get("SSS_SCOPED_NOTES_ONLY") == "1")
 
 
 if __name__ == "__main__":

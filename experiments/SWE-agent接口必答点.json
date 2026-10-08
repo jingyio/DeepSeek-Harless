@@ -1,0 +1,10 @@
+[
+  {"id": "aci_scope", "requirement": "ACI 同时规定代理可用的命令与环境状态如何反馈给模型，并管理此前的命令和观测历史。"},
+  {"id": "search", "requirement": "find_file、search_file、search_dir 提供汇总式查找；搜索结果超过 50 项时要求代理缩小查询。"},
+  {"id": "viewer", "requirement": "文件查看器通过 open 展示最多 100 行窗口，可滚动或 goto 定位，并提供路径、总行数、行号及省略行数。"},
+  {"id": "edit", "requirement": "edit 用起止行与替换文本修改当前文件，修改后自动展示更新内容。"},
+  {"id": "lint", "requirement": "编辑器用代码检查器识别新错误，丢弃无效修改并反馈错误及相邻代码，让代理重试。"},
+  {"id": "context", "requirement": "上下文管理把最近 5 次以前的每条观测压缩为一行，以减少过时信息和上下文开销。"},
+  {"id": "search_ablation", "requirement": "SWE-bench Lite 搜索消融中，汇总式搜索解决率 18.0%，逐项搜索 12.0%，无搜索 15.7%。"},
+  {"id": "edit_ablation", "requirement": "SWE-bench Lite 编辑消融中，带检查的 edit 解决率 18.0%，不带检查 15.0%，无 edit 10.3%。"}
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "ATC-positive-validation",
+    "source": "Make_Graphs_Great_Again_ATC2026 (6).pdf",
+    "page": 6,
+    "anchors": ["demotes unsupported parameter-flow edges before runtime use"]
+  },
+  {
+    "id": "G-Agent-fragment-admission",
+    "source": "G-Agent.pdf",
+    "page": 5,
+    "anchors": ["Only frequent, closed, and executable fragments are materialized"]
+  }
+]

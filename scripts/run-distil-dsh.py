@@ -38,8 +38,11 @@ def main() -> int:
                         help="per-request output cap for the cost gate (1–8000)")
     parser.add_argument("--distil-home", type=Path,
                         help="explicit persistent Distil state; default isolates each trial")
-    parser.add_argument("--motif-output-projection", type=Path,
-                        help="certified compiled Motif; SSS projects the latest tool batch and owns restoration")
+    projection_options = parser.add_mutually_exclusive_group()
+    projection_options.add_argument("--motif-output-projection", type=Path,
+                                    help="certified compiled Motif; SSS projects the latest tool batch and owns restoration")
+    projection_options.add_argument("--tool-json-compact", action="store_true",
+                                    help="losslessly compact every JSON result in the latest tool batch")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.mode == "distil":
@@ -72,7 +75,7 @@ def main() -> int:
     gate_port = open_port() if args.budget_usd is not None else None
     while gate_port == port:
         gate_port = open_port()
-    projection_port = open_port() if args.motif_output_projection is not None else None
+    projection_port = open_port() if args.motif_output_projection is not None or args.tool_json_compact else None
     while projection_port is not None and projection_port in {port, gate_port}:
         projection_port = open_port()
     run_id = uuid4().hex
@@ -134,13 +137,16 @@ def main() -> int:
         if projection_port is not None:
             from src.adapters.motif_output_projection import load_certified_projection
 
-            artifact_path = args.motif_output_projection.resolve()
-            load_certified_projection(artifact_path)
+            artifact_path = args.motif_output_projection.resolve() if args.motif_output_projection else None
+            if artifact_path is not None:
+                load_certified_projection(artifact_path)
             projection_home = (base / "projections" / run_id).resolve()
             projection_upstream = f"http://127.0.0.1:{port if proxy is not None else gate_port}"
             projection_cmd = [sys.executable, "-m", "src.adapters.motif_output_projection",
                               "--port", str(projection_port), "--upstream", projection_upstream,
-                              "--artifact", str(artifact_path), "--local-dir", str(projection_home)]
+                              "--local-dir", str(projection_home)]
+            projection_cmd += (["--artifact", str(artifact_path)] if artifact_path is not None
+                               else ["--compact-json-only"])
             projection = subprocess.Popen(projection_cmd, env=env, cwd=ROOT,
                                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             healthy(projection, f"http://127.0.0.1:{projection_port}/projection/health")
@@ -154,7 +160,13 @@ def main() -> int:
         child_env["SSS_DISTIL_HOME"] = str(home) if args.mode == "distil" else ""
         if projection is not None:
             child_env["SSS_PROJECTION_HOME"] = str(projection_home)
-            child_env["SSS_PROJECTION_ARTIFACT_DIGEST"] = load_certified_projection(artifact_path)[0]
+            if artifact_path is not None:
+                child_env["SSS_PROJECTION_ARTIFACT_DIGEST"] = load_certified_projection(artifact_path)[0]
+                child_env["SSS_TOOL_COMPACTION_MODE"] = "motif_output_projection"
+            else:
+                child_env["SSS_TOOL_COMPACTION_MODE"] = "json_compact_v1"
+        else:
+            child_env["SSS_TOOL_COMPACTION_MODE"] = "off"
         if gate is not None:
             child_env["SSS_BUDGET_GATE_ACTIVE"] = "1"
             child_env["SSS_BUDGET_CAP_USD"] = str(args.budget_usd)

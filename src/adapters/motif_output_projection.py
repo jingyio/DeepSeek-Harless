@@ -276,6 +276,47 @@ class LatestToolProjector:
         return {**body, "messages": projected} if changed else body
 
 
+class CompactJsonProjector(LatestToolProjector):
+    """Losslessly compact the newest JSON tool results, preserving every value."""
+
+    def __init__(self, local_dir: Path) -> None:
+        self.local_dir = local_dir
+        self.local_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self._lock = threading.RLock()
+
+    def _project_tool(self, tool: str, call_id: str, raw: str, *, latest: bool) -> str:
+        if not latest:
+            return raw
+        try:
+            value = json.loads(raw)
+        except (ValueError, TypeError):
+            return raw
+        if not isinstance(value, (dict, list)):
+            return raw
+        view = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        original_bytes, view_bytes = len(raw.encode("utf-8")), len(view.encode("utf-8"))
+        if view_bytes >= original_bytes or json.loads(view) != value:
+            return raw
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        key = hashlib.sha256(f"json-compact-v1\0{tool}\0{call_id}\0{digest}".encode()).hexdigest()
+        original_path = self.local_dir / "originals" / f"{key}.txt"
+        view_path = self.local_dir / "views" / f"{key}.txt"
+        audit_path = self.local_dir / "audit" / f"{key}.json"
+        if not original_path.exists():
+            _write_private(original_path, raw.encode("utf-8"))
+            _write_private(view_path, view.encode("utf-8"))
+            _write_private(audit_path, json.dumps({
+                "tool": tool, "tool_call_id": call_id,
+                "original_sha256": digest,
+                "view_sha256": hashlib.sha256(view.encode("utf-8")).hexdigest(),
+                "original_bytes": original_bytes, "view_bytes": view_bytes,
+                "all_fields_preserved": True,
+            }, ensure_ascii=False).encode("utf-8"))
+        elif original_path.read_bytes() != raw.encode("utf-8") or view_path.read_bytes() != view.encode("utf-8"):
+            raise ValueError("JSON compaction changed for an existing tool result")
+        return view
+
+
 def with_expand_tool(body: dict[str, Any]) -> dict[str, Any]:
     tools = body.get("tools")
     if tools is None:
@@ -343,11 +384,14 @@ def _merge_usage(responses: list[dict[str, Any]]) -> dict[str, Any] | None:
     return result
 
 
-def serve(upstream: str, artifact: Path, local_dir: Path, port: int) -> None:
+def serve(upstream: str, artifact: Path | None, local_dir: Path, port: int,
+          *, compact_json_only: bool = False) -> None:
     target = urlsplit(upstream)
     if target.scheme != "http" or target.hostname not in {"127.0.0.1", "localhost"}:
         raise ValueError("projection proxy only forwards to a local HTTP proxy")
-    projector = LatestToolProjector(artifact, local_dir)
+    if compact_json_only == (artifact is not None):
+        raise ValueError("choose exactly one projection mode")
+    projector = CompactJsonProjector(local_dir) if compact_json_only else LatestToolProjector(artifact, local_dir)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
@@ -401,7 +445,13 @@ def serve(upstream: str, artifact: Path, local_dir: Path, port: int) -> None:
 
         def _chat(self, body: dict[str, Any]) -> None:
             client_stream = body.get("stream") is True
-            prepared = with_expand_tool(projector.project(body))
+            prepared = projector.project(body)
+            if compact_json_only:
+                status, raw, content_type = self._upstream(json.dumps(
+                    prepared, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+                self._send(status, raw, content_type)
+                return
+            prepared = with_expand_tool(prepared)
             prepared = {**prepared, "stream": False}
             prepared.pop("stream_options", None)
             responses: list[dict[str, Any]] = []
@@ -415,7 +465,7 @@ def serve(upstream: str, artifact: Path, local_dir: Path, port: int) -> None:
                 if not isinstance(response, dict):
                     raise ValueError("upstream response is not a JSON object")
                 responses.append(response)
-                continuation = resolve_sss_calls(prepared, response, projector)
+                continuation = None if compact_json_only else resolve_sss_calls(prepared, response, projector)
                 if continuation is None:
                     merged = _merge_usage(responses)
                     if merged is not None:
@@ -458,11 +508,13 @@ def serve(upstream: str, artifact: Path, local_dir: Path, port: int) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", required=True)
-    parser.add_argument("--artifact", type=Path, required=True)
+    parser.add_argument("--artifact", type=Path)
+    parser.add_argument("--compact-json-only", action="store_true")
     parser.add_argument("--local-dir", type=Path, required=True)
     parser.add_argument("--port", type=int, required=True)
     args = parser.parse_args()
-    serve(args.upstream, args.artifact, args.local_dir, args.port)
+    serve(args.upstream, args.artifact, args.local_dir, args.port,
+          compact_json_only=args.compact_json_only)
     return 0
 
 
