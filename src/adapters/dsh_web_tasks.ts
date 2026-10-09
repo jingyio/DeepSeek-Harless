@@ -27,7 +27,7 @@ type Task = {
   failure: string | null; fallback_reason: string | null; answer: string;
   output: string; stats: Record<string, any>; interceptor?: any;
   humans: Map<string, string>; sources: { resource_id: string; version: string; sha256: string }[];
-  closing?: Promise<void>;
+  closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
 };
 class TaskError extends Error {
   code: string; status: number;
@@ -77,14 +77,14 @@ export function apply(ctx: any) {
     const request = task.request;
     return { task_id: request.task_id, session_id: request.session_id, request_id: request.request_id,
       capability_profile: request.capability_profile, mode: request.mode, budget_usd: request.budget_usd,
-      status: task.status, failure: task.failure, fallback_reason: task.fallback_reason,
+      entrypoint: task.entrypoint, status: task.status, failure: task.failure, fallback_reason: task.fallback_reason,
       created_at: task.created_at, started_at: task.started_at, finished_at: task.finished_at,
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
       request_sha256: request.request_sha256, confirmation_digest: task.confirmation_digest,
       provider_mode: config.provider_mode, paid_calls_enabled: config.provider_mode === 'real',
       effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
       stats: task.stats, sources: task.sources,
-      ...(detail ? { answer: task.answer, artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
+      ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
         'ledger.jsonl', 'motif-audit.jsonl', ...(task.answer ? ['answer.md'] : [])] } : {}) };
   }
   function record(task: Task) { json(join(task.output, 'task-state.json'), view(task)); }
@@ -138,7 +138,7 @@ export function apply(ctx: any) {
     }
     return original.selectModel({ ...request, reasoningEffort: 'off' }, signal);
   };
-  async function preview(input: unknown, existingSession?: string): Promise<Task> {
+  async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
     const taskId = randomUUID().replaceAll('-', ''), tentativeSession = existingSession ?? 'pending';
     const request = normalizeWebTaskRequest(input, { task_id: taskId, session_id: tentativeSession,
       default_mode: config.mode, default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
@@ -164,7 +164,7 @@ export function apply(ctx: any) {
     if (sessions.has(request.session_id)) throw new TaskError('session_already_bound', 'This session already has a task; create a new task', 409);
     const output = join(config.output, 'tasks', taskId); mkdirSync(output, { recursive: true, mode: 0o700 });
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
-      created_at: utc(), failure: null, fallback_reason: null, answer: '', output, humans: new Map(), sources,
+      entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output, humans: new Map(), sources,
       stats: { tool_calls: 0, tool_errors: 0, llm_decisions: 0, motif_attempts: 0, shadow_candidates: 0, verified_skips: 0,
         upstream_requests: 0, model_requests: 0, actual_paid_usd: config.provider_mode === 'mock' ? 0 : null } };
     for (const filename of ['events.jsonl', 'motif-audit.jsonl']) writeFileSync(join(output, filename), '', { mode: 0o600 });
@@ -220,10 +220,12 @@ export function apply(ctx: any) {
   }
   controller.prompt = (request: any, signal: AbortSignal) => serialize(async () => {
     if (!ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
-    if (config.provider_mode !== 'mock') throw new TaskError('confirmation_required', 'Preview and confirm the budget in /tasks before paid execution', 409);
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
-    const task = await preview({ content: request.content, request_id: request.requestId }, request.sessionId);
-    await submit(task, task.confirmation_digest, signal); return { accepted: true };
+    const task = await preview({ content: request.content, request_id: request.requestId }, request.sessionId, 'native_chat');
+    // The official Web bridge displays the bound preview; paid admission stays closed
+    // until its explicit confirmation uses the same task API as the workbench.
+    if (config.provider_mode === 'mock') await submit(task, task.confirmation_digest, signal);
+    return { accepted: true };
   });
   controller.cancel = async (request: any) => {
     if (!ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
@@ -337,6 +339,7 @@ export function apply(ctx: any) {
   for (const path of ['/tasks', '/sss']) {
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path, handler: panelHandler }), 'harless-tasks-panel-' + path);
   }
+  const nativeBridge = config.provider_mode === 'real' ? '<script>' + readFileSync(fileURLToPath(new URL('./web_native_bridge.js', import.meta.url)), 'utf8') + '</script>' : '';
   ctx.effect(() => ctx.webServer.tapIndex((html: string) => html.replace('</body>',
-    '<a href="/tasks" style="position:fixed;right:18px;bottom:18px;z-index:9999;padding:10px 15px;border-radius:8px;background:#245cba;color:white;text-decoration:none">DeepSeek Harless 任务工作台</a></body>')), 'sss-web-tasks-link');
+    '<a href="/tasks" style="position:fixed;right:18px;bottom:18px;z-index:9999;padding:10px 15px;border-radius:8px;background:#245cba;color:white;text-decoration:none">DeepSeek Harless 任务工作台</a>' + nativeBridge + '</body>')), 'sss-web-tasks-link');
 }

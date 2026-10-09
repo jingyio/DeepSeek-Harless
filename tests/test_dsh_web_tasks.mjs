@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
@@ -233,10 +234,24 @@ test('Real-provider native prompt cannot bypass explicit task preview and budget
   const f = await fixture({ provider_mode: 'real' });
   try {
     const created = await f.ctx.sessionController.create({});
-    await assert.rejects(f.ctx.sessionController.prompt({ sessionId: created.sessionId,
-      requestId: 'unconfirmed-paid', mode: 'queue', content: [{ type: 'text', text: '未确认付费请求' }] },
-    new AbortController().signal), /Preview and confirm/);
-    assert.equal(f.promptCalls.length, 0); assert.equal(f.registrations.size, 0);
+    const request = { sessionId: created.sessionId, requestId: 'unconfirmed-paid', mode: 'queue',
+      content: [{ type: 'text', text: '未确认付费请求' }] };
+    assert.deepEqual(await f.ctx.sessionController.prompt(request, new AbortController().signal), { accepted: true });
+    await f.ctx.sessionController.prompt(request, new AbortController().signal);
+    const listing = await f.api(), task = listing.value.tasks[0];
+    assert.equal(listing.value.tasks.length, 1); assert.equal(task.entrypoint, 'native_chat');
+    assert.equal(task.session_id, created.sessionId); assert.equal(task.status, 'awaiting_confirmation');
+    assert.equal(task.input_preview, '未确认付费请求');
+    assert.equal(f.promptCalls.length, 0); assert.equal(f.registrations.size, 1);
+    assert.equal(f.controlCalls.some(call => call.path === '/tasks/activate'), false);
+    const denied = await f.api({ action: 'submit', task_id: task.task_id, confirmation_digest: 'wrong' });
+    assert.equal(denied.status, 409); assert.equal(f.promptCalls.length, 0);
+    const html = f.ctx.indexTransform('<body></body>');
+    assert.match(html, /harless-native-confirmation/); assert.match(html, /确认本次任务与预算/);
+    assert.equal((await f.submit(task)).status, 200);
+    assert.equal(f.promptCalls.length, 1); assert.deepEqual(f.promptCalls[0].content, request.content);
+    await f.submit(task); assert.equal(f.promptCalls.length, 1);
+    await f.complete(task);
   } finally { await f.close(); }
 });
 
@@ -252,5 +267,35 @@ test('Queued content cannot be edited or steered past an accepted confirmation',
     }
     assert.equal(f.queueMutations.length, 0);
     await f.complete(task);
+  } finally { await f.close(); }
+});
+
+
+test('Native confirmation UI displays the saved preview and executes only after an explicit click', options, async () => {
+  const f = await fixture({ provider_mode: 'real' });
+  try {
+    const created = await f.ctx.sessionController.create({});
+    await f.ctx.sessionController.prompt({ sessionId: created.sessionId, requestId: 'native-modal', mode: 'queue',
+      content: [{ type: 'text', text: '<script>not executable</script> 需要确认的题面' }] }, new AbortController().signal);
+    const node = tag => ({ tag, children: [], open: false, append(...rows) { this.children.push(...rows); },
+      setAttribute() {}, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, style: {} });
+    const body = node('body');
+    await runInNewContext(readFileSync(new URL('../src/adapters/web_native_bridge.js', import.meta.url), 'utf8'), {
+      document: { body, hidden: false, createElement: node, addEventListener() {} },
+      window: { addEventListener() {} }, setInterval() { return 1; }, clearInterval() {},
+      async fetch(url, options) {
+        assert.equal(options.credentials, 'same-origin');
+        const result = await f.api(options.body ? JSON.parse(options.body) : undefined);
+        return { status: result.status, ok: result.status === 200, async json() { return result.value; } };
+      },
+    });
+    const dialog = body.children[0];
+    assert.equal(dialog.open, true); assert.equal(f.promptCalls.length, 0);
+    assert.ok(dialog.children.some(child => child.tag === 'pre' && child.textContent.includes('<script>not executable</script>')));
+    assert.ok(dialog.children.some(child => child.textContent.includes('$0.25')));
+    const confirm = dialog.children.find(child => child.tag === 'button' && child.textContent === '确认并执行');
+    await Promise.all([confirm.onclick(), confirm.onclick()]);
+    assert.equal(f.promptCalls.length, 1); assert.equal(dialog.open, false);
+    const listing = await f.api(); await f.complete(listing.value.tasks[0]);
   } finally { await f.close(); }
 });

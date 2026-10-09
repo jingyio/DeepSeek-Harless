@@ -144,7 +144,7 @@ function showPreview(value) {
   updateProvider(value.provider_mode);
   $('preview-title').textContent=freeTask(value) ? '任务已准备，可继续免费联调':'确认本次任务';
   $('submit-button').textContent=freeTask(value) ? '继续免费联调':'确认并执行';
-  const rows = [['模式',value.mode],['能力配置',value.capability_profile],['模型通道',providerLabels[value.provider_mode] || '尚未确认'],...(freeTask(value)?[]:[['预算上限',value.budget_usd === undefined ? undefined : `$${money(value.budget_usd)}`]]),['实际付费',value.paid_calls_enabled ? '已启用，请核对授权':'未启用'],['输入',typeof value.input_summary==='string' ? value.input_summary:JSON.stringify(value.input_summary ?? {})],['任务标识',value.task_id],['会话标识',value.session_id]];
+  const rows = [['模式',value.mode],['能力配置',value.capability_profile],['模型通道',providerLabels[value.provider_mode] || '尚未确认'],...(freeTask(value)?[]:[['预算上限',value.budget_usd === undefined ? undefined : `$${money(value.budget_usd)}`]]),['实际付费',value.paid_calls_enabled ? '已启用，请核对授权':'未启用'],['输入',value.input_preview || (typeof value.input_summary==='string' ? value.input_summary:JSON.stringify(value.input_summary ?? {}))],['任务标识',value.task_id],['会话标识',value.session_id]];
   $('preview-summary').innerHTML='<dl>'+rows.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(fmt(value))}</dd>`).join('')+'</dl>';
   $('submit-button').disabled = pending || !value.task_id || !value.confirmation_digest || !!pendingFiles.length;
   $('upload-button').disabled = pending || !pendingFiles.length;
@@ -165,22 +165,24 @@ function taskCard(task) {
   const inputTokens=stats.input_tokens ?? stats.prompt_tokens ?? (cacheHit !== undefined && cacheMiss !== undefined ? cacheHit+cacheMiss:undefined);
   const values=[['模型请求',stats.model_requests ?? stats.upstream_requests ?? stats.gate_requests],['验证后跳过',stats.verified_skips],['工具调用',stats.tool_calls],['输入 token',inputTokens],['输出 token',stats.output_tokens ?? stats.completion_tokens],['费用估值（美元）',money(stats.estimated_cost_usd ?? stats.reserved_upper_usd)],['缓存命中 token',cacheHit],['缓存未命中 token',cacheMiss],['实际支出（美元）',money(stats.actual_paid_usd)]];
   const fallback=task.fallback_reason ? fallbackLabels[task.fallback_reason] || `已回退普通流程（${task.fallback_reason}）。`:'';
-  return `<article class="task"><div class="task-title"><span>${esc(task.title || task.instruction?.slice(0,60) || task.capability_profile || '任务')} · ${esc(task.mode || '')}</span><span class="badge">${esc(statuses[status] || status)}</span></div><small>${esc(providerLabels[task.provider_mode] || '模型通道待确认')}</small><div class="metric-grid">${values.map(([label,value])=>`<div><span>${esc(label)}</span><strong>${esc(fmt(value))}</strong></div>`).join('')}</div>${fallback?`<p class="notice">${esc(fallback)}</p>`:''}<small>${esc(timeOf(task))} · ${esc(id)}</small>${task.failure ? `<p class="error">${esc(task.failure)}</p>`:''}<div class="actions"><button type="button" data-detail="${esc(id)}">查看结果与来源</button>${!terminal.has(status)?`<button type="button" data-cancel="${esc(id)}">取消</button>`:''}<a href="/" target="_blank" rel="noopener">官方会话</a></div><small>会话：${esc(task.session_id || '未创建')}（在官方页面侧栏选择对应会话）</small></article>`;
+  return `<article class="task"><div class="task-title"><span>${esc(task.title || task.instruction?.slice(0,60) || task.capability_profile || '任务')} · ${esc(task.mode || '')}</span><span class="badge">${esc(statuses[status] || status)}</span></div><small>${esc(providerLabels[task.provider_mode] || '模型通道待确认')}</small><div class="metric-grid">${values.map(([label,value])=>`<div><span>${esc(label)}</span><strong>${esc(fmt(value))}</strong></div>`).join('')}</div>${fallback?`<p class="notice">${esc(fallback)}</p>`:''}<small>${esc(timeOf(task))} · ${esc(id)}</small>${task.failure ? `<p class="error">${esc(task.failure)}</p>`:''}<div class="actions"><button type="button" data-detail="${esc(id)}">查看结果与来源</button>${status==='awaiting_confirmation'?`<button type="button" data-preview="${esc(id)}">查看预览并确认</button>`:''}${!terminal.has(status)?`<button type="button" data-cancel="${esc(id)}">取消</button>`:''}<a href="/" target="_blank" rel="noopener">官方会话</a></div><small>会话：${esc(task.session_id || '未创建')}（在官方页面侧栏选择对应会话）</small></article>`;
 }
 async function detail(id) {
   const value=await api(null,'?task_id='+encodeURIComponent(id)); selectedTask=id; $('details').hidden=false;
   const answer=typeof value.answer==='string' ? value.answer : typeof value.answer_md==='string' ? value.answer_md : value.answer?.text;
   $('details').innerHTML=`<h2>任务详情</h2>${answer?`<pre>${esc(answer)}</pre>`:''}<details><summary>配置、统计与执行记录</summary><pre>${esc(JSON.stringify(value,null,2))}</pre></details>`;
 }
-let refreshing=false;
+async function resumeDraft(id) { const value=await api(null,'?task_id='+encodeURIComponent(id)); if(value.status!=='awaiting_confirmation')throw new Error('该任务已执行或取消，请查看任务记录。'); selectedFiles=[];pendingFiles=[];uploadedNames=[];$('files').value='';showFiles();showPreview(value);lock(false); }
+let refreshing=false, budgetInitialized=false;
 async function refresh() {
   if(refreshing)return; refreshing=true;
-  try { const response=await api(); const tasks=Array.isArray(response) ? response:response.tasks || response.items || []; updateProvider(response.provider_mode); if(response.capability_profile && !$('instruction').value && !$('json-request').value) $('profile').value=response.capability_profile; $('connection').textContent=`${providerLabels[providerMode] || '通道待确认'} · 已连接 · ${tasks.length} 项任务 · 每 2 秒更新`; $('tasks').innerHTML=tasks.length ? tasks.map(taskCard).join(''):`<p class="muted">尚未提交任务。${providerMode==='mock'?'填写要求后，即可开始免费联调。':'先生成预览，确认后执行。'}</p>`; if(selectedTask)await detail(selectedTask); }
+  try { const response=await api(); const tasks=Array.isArray(response) ? response:response.tasks || response.items || []; updateProvider(response.provider_mode); if(!budgetInitialized && response.budget_usd!==undefined){$('budget').value=response.budget_usd;$('budget').max=response.budget_usd;budgetInitialized=true;} if(response.capability_profile && !$('instruction').value && !$('json-request').value) $('profile').value=response.capability_profile; $('connection').textContent=`${providerLabels[providerMode] || '通道待确认'} · 已连接 · ${tasks.length} 项任务 · 每 2 秒更新`; $('tasks').innerHTML=tasks.length ? tasks.map(taskCard).join(''):`<p class="muted">尚未提交任务。${providerMode==='mock'?'填写要求后，即可开始免费联调。':'先生成预览，确认后执行。'}</p>`; if(selectedTask)await detail(selectedTask); }
   catch(error){$('connection').textContent=error.message;} finally{refreshing=false;}
 }
 $('refresh').onclick=refresh;
-$('tasks').onclick=async event=>{const button=event.target.closest('button');if(!button)return;clearError();try{if(button.dataset.detail)await detail(button.dataset.detail);if(button.dataset.cancel){await api({action:'cancel',task_id:button.dataset.cancel});await refresh();}}catch(error){showError(error);}};
-refresh(); pollTimer=setInterval(()=>{if(!document.hidden)refresh();},2000);
+$('tasks').onclick=async event=>{const button=event.target.closest('button');if(!button)return;clearError();try{if(button.dataset.detail)await detail(button.dataset.detail);if(button.dataset.preview)await resumeDraft(button.dataset.preview);if(button.dataset.cancel){await api({action:'cancel',task_id:button.dataset.cancel});await refresh();}}catch(error){showError(error);}};
+const resumeTaskId=new URLSearchParams(location.search).get('task_id');
+refresh().then(()=>{if(resumeTaskId)return resumeDraft(resumeTaskId);}).catch(showError); pollTimer=setInterval(()=>{if(!document.hidden)refresh();},2000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
 window.addEventListener('pagehide',()=>clearInterval(pollTimer),{once:true});
 </script>
