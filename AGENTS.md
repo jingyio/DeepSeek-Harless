@@ -19,6 +19,15 @@
 
 main 已收敛为可运行开发起点。历史需求、比较、实验和报告保存在 `archive` 与 `archive-pre-cleanup-20261009`；归档不代表实验失败或结论作废。具体恢复方式见 `docs/main-cleanup.md`。当前接口见 `docs/interfaces.md`，协作见 `docs/collaboration.md`。
 
+## 技术路线：Python 离线编译，TypeScript 在线执行
+
+- 用户已明确：离线 Motif 挖掘、编译、认证和科研实验继续使用 Python；新增 Harness 在线执行逻辑统一使用 TypeScript。现有 `.mjs` 插件先保持可运行，逐步迁移，不为统一语言大规模重写。
+- 产品的权威在线 Runtime 以 TypeScript 为目标，负责匹配、参数绑定、证据/版本守卫及语义回退，与 Harness 原生事件和工具生命周期协作。Python controller 可保留作参考实现和离线验证，不能让两套在线规则长期独立演进。此前提出的“在线核心统一为 Python、JS 仅桥接”不是本项目后续路线。
+- 跨语言共享版本化 Motif IR/library、JSON Schema、摘要、来源证据及兼容规则。TypeScript 类型不能替代运行时校验；变更协议必须验证 Python 编译输出与在线执行一致，保留原有回归。
+- 当前仓库通过 npm 依赖安装本地 Harness，由 Python SDK 启动 Node Runtime；没有复制或修改上游 Harness 核心。当前 SSS 同时包含原生插件实现、离线编译器与实验控制器，尚未完成独立插件产品打包。
+- 最终加载已有 library 的插件应不要求额外 Python 进程。当前 `run-scenario.py`、实验预算代理和在线纯代码节点执行仍依赖 Python，不能宣称已达成该目标。预算约束在产品路径中必须保留；纯代码节点应迁移为受限且可校验的执行协议，不能改成任意代码求值，也不能默默丢弃其能力。
+- 用户机器持续学习/编译可使用独立编译服务或可选 Python 环境；不为基础插件分发而仓促移植挖掘算法。外部 MCP/embedding 服务的自身依赖与插件本身的依赖分别记录。语言选择是工程分工，结构—语义分离依然由执行证据、守卫与有界交接保证。
+
 ## 实施原则
 
 1. 效果第一、机制第二。以真实交付质量、合格总成本、人工修订和端到端时间判断机制，不以 token 总量或内部复用次数代替产品收益。mu、Codex、WorkBuddy、KnoxChat 等是可选能力/产品基线；公平对照使用匹配版本与任务条件，接入 Laya 本身不称创新。
