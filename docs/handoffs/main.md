@@ -1,8 +1,18 @@
-# 主线当前交接
+# DeepSeek Harless 主线当前交接
 
 - **更新时间与交接人**：2026-10-09，Codex 根据项目负责人的要求整理；后续主线负责人由课题组确定。
-- **目标与本次范围**：提供三位同学可共同使用的 Motif / DeepSeek Harness / 自定义 MCP 底座。本次补齐随仓库分发的历史 Motif 库、公开证据、免费重编译及 Harness 验收入口，按用户要求提交和推送最新主线。
-- **分支与版本**：`main`，运行底座提交为 `9388ed0`；本次提交见 `git log -1`。远端为 `origin`（`jingyio/DeepSeek-Harless`），用户已授权推送当前最新 main；实际同步状态按 `git status -sb` 与远端提交核验。归档分支为本地 `archive`（`810edf4`）与 `archive-pre-cleanup-20261009`（`1d7ec26`），本次不单独推送归档分支。
+- **目标与本次范围**：提供四人共用的 Motif / DeepSeek Harness / 自定义 MCP 底座；用户兼任项目负责人及论文生成/投稿场景负责人。当前补齐前后端动态任务、三模式与独立统计，产品统一名为 DeepSeek Harless，保留已分发历史库和 SDK 入口；不替代论文场景开发。
+- **当前分支与版本**：公共改动整理在 `feature/web-task-api`，基于已合入冻结 Web 的 `origin/main`（`bdf934f`）；提交以该分支 Git 历史为准，作为 Draft PR 审阅，尚未合入 main。原本地与服务器的 `feature/paper-submission` 工作目录保留，论文场景与私有输入独立推进；实验发生时的旧 commit/dirty 配置仍以各实验快照为准。远端 `origin` 为 `jingyio/DeepSeek-Harless`。
+- **公共 Web 当前新增状态**：默认 `npm run web` 动态入口，`--frozen` 兼容旧固定题面回归；产品页面 `/tasks`、API `/api/harless/tasks`，旧地址兼容。后端接收文字、JSON instruction/content/user messages、图片、官方文件 receipt 和服务器 resource_id；三模式逐任务固定，无有效认证库或输入不适配时回到普通 Harness。一个启动连续多任务，一任务一 Session、单活跃，记录独立。免费一键代码完成，真实模式仍预算预览与确认；goal/队列编辑不能绕过任务绑定。详见 `docs/handoffs/harness-web.md` 与 `docs/interfaces.md`。
+- **公共 Web 最新验证与边界**：服务器 Node 22.23.3 / Python 3.10.8 通过 146 Python、44 Node、冻结 11 组、动态 HTTP/MCP 13 组、smoke 18 题/83 来源及 Motif 闭环，这些诊断无真实 API 费用。正式动态 3080 运行 `f91a53c78a524bbaa3fb935fd68c8b4f` 保持运行，浏览器认证进入 `/tasks`，产品标题/免费一键/三模式可见；同一运行无重启提交两项不同题面 `2057d2c5580d466d8efea9c385ad491a`、`ae83a4b3ad104fc7a4d0bf5760198de5`，各 completed/5 模拟请求/4 真实只读 MCP/实付 0、独立 Session、无额度表单或再次确认，刷新保留。私有截图 `.local/web-review/browser-live-multi-tasks.jpg`。同版本 3084 另已验证文字 baseline、JSON messages execute 缺库普通回退及另一聊天任务，截图 `.local/web-review/browser-free-one-click.jpg`；诊断 3084 与旧冻结 3080 均精确停止、资料保留。记录 `docs/experiments/dynamic-web-tasks-20261009-v1.md`；真实 Web、科研质量、费用收益、Windows Web 和多用户隔离未验证，预算/纯代码仍 Python。
+- **后续测试执行与权限**：用户现已持续授权测试目的真实 DeepSeek API；涉及模型行为的端到端、场景和效果/成本验收默认使用服务器 `npm run web:real` / `npm run scenario:real`，不再用固定回复替代。单元、错误注入和无模型 smoke 仍为确定性诊断。运行前说明有效预算，先沿用既有 0.25 美元任务/整启动限额及实际请求上限做最小测试；超额、外部写操作和投稿另确认，不通过重启循环绕过限额。私有密钥不展示。正式 3080 仍是 mock，真实 SDK 结果不能当作真实 Web 验收。
+- **真实 SDK/API/MCP 已验证**：`web:real` / `scenario:real` 显式入口已完成；服务器原变量为 `DEEPSEEK_APIKEY`，已在项目根私有 `.env` 补规范 `DEEPSEEK_API_KEY` 并设权限 `600`，未展示值。`scenario:real` 的 example/baseline、`reasoning_effort="off"`、0.25 美元上限、单请求输出 1000 token、8 步运行退出 0，耗时 9.729 秒；运行 `7929653e0d9d4828bf46e4ff49394abd`，Session `sss-105f45630d444789bccf467f3718006a`。3 次真实上游请求均 HTTP 200，4 次真实 MCP（2 pin/2 read）、0 工具错误；两个来源的 ID、SHA、读取正文和回答引用逐项一致。prompt 2712 token（缓存命中 1536/未命中 1176）、output 1043、total 3755，代理估费约 0.001614 美元，账单实付未核对。记录见 `docs/experiments/deepseek-real-api-smoke-20261009-v1.md`；原目录 `.local/runs/7929653e0d9d4828bf46e4ff49394abd/`，原始轨迹、答案与 `verification.json` 已同步两端 `.local/experiments/deepseek-real-api-smoke-20261009-v1/`。支持基本连通，任务仍用合成来源，质量未盲评，无收益结论；既有 3080 未重启。
+- **当前接手优先级**：1. 项目负责人审阅公共改动，按可验收范围提交/PR，不混入私人材料和他人工作，再让同学同步。2. 各场景在服务器用真实 API 联调入口接自己的 MCP、真实输入；论文场景在独立 PR 推进，其交接不纳入本公共 PR。3. 固定质量标准、任务与配置，在已授权预算内执行最小真实验收并记录用量/人工修订；预算扩展另确认。不要再把模拟结果作为新增模型行为验收。
+
+## 已有基础与历史验证
+
+以下保留主线整理、分发、平台与服务器安装的历史依据；其中旧分支、测试数量、未实现前端等描述按发生时记录，当前状态以上述新增状态及 Web/论文交接为准。
+
 - **已完成**：通用场景入口 `scripts/run-scenario.py`、场景配置适配 `src/adapters/scenario.py`、SDK 启动边界 `src/adapters/harness_runtime.py`、工具白名单与在线 Motif 插件；保留 Motif 核心及许可来源、18 项冻结科研夹具。入口见 `README.md`，协议见 `docs/interfaces.md`，合作方式见 `docs/collaboration.md`。
 - **已验证**：此前在 macOS 及不含历史 `.local` 数据的临时目录执行 `npm test`，通过 133 项 Python、24 项 Node 测试；`npm run smoke` 通过 18 题、读取 83 个来源对象。另有本机模拟 Provider 的真实 SDK/MCP/预算代理闭环。以上属于离线协议与回归检查。本次纯文档修改检查 diff 和路径一致性，未重复运行模型或整套测试。
 - **最近复核（2026-10-09）**：回答项目结构与连通性问题时，在当前本机重新执行 `npm test` 和 `npm run smoke`，仍通过 133 项 Python、24 项 Node 及全部 18 题工具检查；包含真实 Harness 对本机模拟 Provider 的三次请求、两次 MCP 调用。没有付费云调用或新的科研效果结论。当前在线路径为场景配置 → Python SDK → Node Harness → 可选 JS Motif 插件 → MCP；Python controller 为独立结构执行路径。新场景接入 Harness 后，要另行收集轨迹、编译认证 library 并配置任务/embedding 才能启用 Motif。现有 `docs/collaboration.md` 未提交修改属于用户工作，本次保留。
@@ -16,8 +26,12 @@
   2. 三位同学各开场景分支，复制 `scenarios/example/`，实现最小只读 MCP 链路；验收包括正常调用、版本/权限拒绝检查及各自场景交接记录。
   3. 选定真实独立研究决定，冻结任务、来源、基线、配置和质量标准；先预览预算，获得对应调用权限后再做付费对照。
 - **干净分发复核与提交范围**：在临时干净副本（没有旧 `.local`，复用已安装依赖）通过完整 `motif:check`；重编译和场景 shadow 预览均通过。此前未提交的三位同学姓名分工按用户的“推送当前最新代码”要求纳入；语义客户端待提交改动绕过跨平台适配，推送前修正回 `create_harness` 统一边界，`reasoning_effort="off"` 仍由该边界设置。没有修改 SDK 上游核心。
-- **权限与预算**：当前授权涵盖本地备份、主线整理、样例库开发及最新 main 提交和推送。此前整理和本次验收没有新增付费模型支出；团队后续总预算与剩余额度未知。没有授权本次发送邮件、写外部应用或开始新的付费实验。
+- **历史阶段权限与预算**：此前授权涵盖本地备份、主线整理、样例库开发及最新 main 提交和推送，整理与模拟验收无新增付费支出，当时没有新增真实实验授权。当前测试目的真实 API 持续授权以顶部新约定为准；发送邮件、外部写操作、实际投稿及超额支出仍需另确认。
 - **Windows CI 修复（2026-10-09）**：用户提供首次 Windows CI 的 8 个失败，已定位为 LF/CRLF 原始字节哈希、cp1252 解码中文和不适用的 Unix 模式位断言；前两份哈希差已由换行转换精确复现。新增 `.gitattributes`、入口 UTF-8 配置、显式文本读写及平台限定的模式位检查；保留冻结哈希与所有非模式位安全验收。本机仍通过 136 项 Python、29 项 Node。推送后以对应平台 CI 为准；细节见 `docs/experiments/windows-ci-compatibility.md`。未调用付费模型。
 - **回退与风险**：文档可按对应提交单独回退；完整历史可从两个归档分支查阅。不要直接把全部 archive 合回 main，也不要删除 `.local/`。通用入口的 `--call-model` 会启用付费调用；有副作用的 MCP 还需服务端权限、预览和确认。
 
 - **Windows CI 验证结果**：修复提交 `c05127f` 的 [运行 37888988141](https://github.com/jingyio/DeepSeek-Harless/actions/runs/37888988141) 中，Ubuntu 与 Windows 均完成并通过 `npm ci`、环境安装、`npm test`、`npm run smoke`、`npm run motif:check`。本地 `core.autocrlf=true` 干净检出额外验证了 79 个冻结文件的原始哈希。当前已验证离线及模拟闭环，不能扩大为所有真实应用/MCP 或付费云实验的支持结论。
+- **远程开发源码同步（2026-10-09）**：按用户授权，将 `main` 的 `2368235f274329be6227a8393b850633cb943da4` 及完整主线 Git 历史恢复到指定服务器 `/root/autodl-tmp/jjy`，`origin` 指向原 GitHub 仓库；本条交接更新尚未提交，也随源码同步。未传输本机 `.local/`、密钥、虚拟环境、`node_modules` 或缓存；归档分支未单独迁移。远端为 Linux x86_64，现有 Conda Python 为 3.10.8，未找到 Node.js；开发依赖尚未安装，未运行远端测试或付费任务。接手先准备 Node.js 20+ 与 Python 3.12，再按 `README.md` 执行 `npm ci`、`npm run setup` 和免费检查。此次只授权源码同步，没有新增模型支出；SSH 凭证不写入仓库。
+- **后续执行约定（2026-10-09，用户明确）**：用户负责论文生成与投稿场景，本地操作与审阅，后续 Agent 计算在服务器执行；运行前同步代码和输入，运行后同步交付与必要结果。已简短写入 `AGENTS.md`；本次仅更新文档，不安装环境或运行实验，文档改动未提交、未推送。
+- **环境要求修正（2026-10-09）**：Python 3.12 是已有 CI/本机验收版本，不能据此推断 3.10 不兼容。`src/`、`scripts/`、`tests/` 通过 3.10 语法解析；已安装固定直接依赖的元数据允许 3.10。远端 Ubuntu 22.04、x86_64、内核 5.4、glibc 2.35 满足 Node.js 22 官方 Linux 二进制平台条件；尚未安装 Node 或完成 Python 3.10 依赖安装及运行回归；远端依赖 dry-run 解析未完成后已停止，不构成不兼容证据。已修正 `README.md`，下一步优先核验现有 Python 3.10 与 Node 22 的免费闭环。最终展示采用本地浏览器访问服务器任务接口；该前端/API 尚未实现。本次没有付费调用。
+- **服务器免费闭环已完成（2026-10-09）**：更新上一条待验证状态。用户授权后在服务器安装项目隔离的 Node 22.23.3 / npm 10.9.9，沿用 Conda Python 3.10.8 创建 `.venv-sss`；依赖一致性检查、136 项 Python 与 29 项 Node 测试、18 题 / 83 对象 MCP smoke、4 个 Motif 重编译与 Harness baseline/shadow/execute/旧版本回退均通过，场景入口保持预览。没有为适配 3.10 修改源码；付费 API 请求为 0。记录见 `docs/experiments/server-python310-free-loop-20261009-v1.md`；配置与原始日志在两端 `.local/experiments/server-python310-free-loop-20261009-v1/`，启动先 `source .local/remote-env.sh`。安装中的慢速下载中止与缓存恢复已记录，不是功能失败。当前文档及验收记录未提交、未推送；用户 `reference/` 文件保留。下一步可在此环境接论文生成与投稿的最小 MCP 场景；尚未安装论文编译工具、联调真实论文或实现前端/API，付费任务及实际投稿仍需授权。
