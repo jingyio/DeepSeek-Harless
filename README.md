@@ -2,7 +2,7 @@
 
 DeepSeek Harless 是本项目统一的产品名称；当前仓库是供场景开发使用的最小主线。MotifAgent 的迁移内核负责有证据支持的结构执行；DeepSeek Harness（DSH）负责 Agent 循环、语义判断、工具派发和会话。场景通过 MCP 扩展。历史环境变量、协议标识和目录保持兼容，不因产品更名修改其含义。
 
-项目负责人已明确：后续模型联调、场景验收和质量/成本对照统一使用真实 DeepSeek API。服务器先加载 `.local/remote-env.sh`，在私有 `.env` 配置 `DEEPSEEK_API_KEY`；Web 用 `npm run web:real`，SDK 场景用 `npm run scenario:real -- --scenario scenarios/example/scenario.json --budget-usd 0.25`。Web 每任务与整次启动均默认上限 0.25 美元；SDK 每次运行默认上限 0.25 美元，运行前核对预览与有效配置，超出既有上限另行确认。已完成一次 SDK/Harness/MCP 的真实 API 闭环：3 次 HTTP 200、4 次工具、来源引用一致，见[最小真实调用记录](docs/experiments/deepseek-real-api-smoke-20261009-v1.md)。当前运行的 3080 服务仍是模拟模式，真实 Web 尚未验收。
+项目负责人已明确：后续模型联调、场景验收和质量/成本对照统一使用真实 DeepSeek API。服务器先加载 `.local/remote-env.sh`，在私有 `.env` 配置 `DEEPSEEK_API_KEY`；Web 用 `npm run web:real`，SDK 场景用 `npm run scenario:real -- --scenario scenarios/example/scenario.json --budget-usd 0.25`。Web 每任务与整次启动均默认上限 0.25 美元；SDK 每次运行默认上限 0.25 美元，运行前核对预览与有效配置，超出既有上限另行确认。已完成一次 SDK/Harness/MCP 的真实 API 闭环：3 次 HTTP 200、4 次工具、来源引用一致，见[最小真实调用记录](docs/experiments/deepseek-real-api-smoke-20261009-v1.md)。3080 的历史服务为模拟模式；3086 真实 Web 后端两项任务已通过，浏览器点击体验仍待确认，见[连接恢复与真实 Web 验收](docs/experiments/web-real-recovery-20261009-v1.md)。
 
 `npm test`、无模型 `smoke`、故障注入及旧模拟回归继续检查协议、权限和失败恢复。它们仅是开发诊断；不能作为模型回答、科研交付或真实降本的验收依据。真实 API 失败时记录失败，不切回固定模拟回复来报告通过。
 
@@ -76,7 +76,7 @@ npm run web -- --scenario portfolio-v1 --mode execute
 npm run web:real
 ```
 
-这个显式入口只开放真实连接，每次仍须在 `/tasks` 预览并确认预算。官方聊天不能绕过确认；SDK 的真实 API 基本连通已通过，真实 Web 和科研交付质量仍需分别验收。
+这个显式入口只开放真实连接，每次仍须在 `/tasks` 预览并确认预算。官方聊天不能绕过确认；SDK 的真实 API 基本连通已通过，真实 Web 后端最小闭环已通过；浏览器体验和科研交付质量仍需分别验收。
 
 免费复验、旧入口与停止：
 

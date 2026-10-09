@@ -1,5 +1,7 @@
 # DeepSeek Harless 主线当前交接
 
+- 2026-10-09 真实 Web 恢复与 API 验收：见 `docs/experiments/web-real-recovery-20261009-v1.md`。3086 运行 `9ea9d68a37a44627ad3ab1d545678c37` 已后台恢复，baseline/execute 两项真实任务各 3 请求/4 MCP/0 错误，来源核验通过、独立 Session，execute 无库回退；合计代理估费约 0.002485 美元（总上限 0.25，账单待核对）。旧运行零调用，记录保留。真实浏览器点击仍待负责人确认；认证 URL 换行修复避免复制进终端提示符。
+
 - **更新时间与交接人**：2026-10-09，Codex 根据项目负责人的要求整理；后续主线负责人由课题组确定。
 - **目标与本次范围**：提供四人共用的 Motif / DeepSeek Harness / 自定义 MCP 底座；用户兼任项目负责人及论文生成/投稿场景负责人。当前补齐前后端动态任务、三模式与独立统计，产品统一名为 DeepSeek Harless，保留已分发历史库和 SDK 入口；不替代论文场景开发。
 - **当前分支与版本**：公共改动位于 `feature/web-task-api`，基于已合入冻结 Web 的 `origin/main`（`bdf934f`）；代码提交 `dcdfdc9` 已推送，Draft [PR #2](https://github.com/jingyio/DeepSeek-Harless/pull/2) 已创建，尚未合入 main。后续交接提交以该分支 Git 历史为准。原本地与服务器的 `feature/paper-submission` 工作目录和未提交论文材料保留；实验发生时的旧 commit/dirty 配置仍以各实验快照为准。

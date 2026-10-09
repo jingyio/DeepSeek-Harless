@@ -277,7 +277,7 @@ def main():
             text = (output / 'startup.log').read_text()
             match = re.search(r'http://127\.0\.0\.1:' + str(args.port) + r'/\?token=[^\s]+', text)
             if match:
-                (output / 'access-url.txt').write_text(match.group(0)); (output / 'access-url.txt').chmod(0o600)
+                (output / 'access-url.txt').write_text(match.group(0) + '\n'); (output / 'access-url.txt').chmod(0o600)
                 print('官方 Web 已启动；认证地址仅保存在 access-url.txt。' + ('冻结题面见 prompt.md。' if args.frozen else '认证后访问 /tasks 提交动态任务。'), flush=True)
                 break
             time.sleep(0.1)

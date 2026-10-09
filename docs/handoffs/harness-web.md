@@ -1,5 +1,7 @@
 # DeepSeek Harless Web 当前交接
 
+- 2026-10-09 真实 Web 恢复与 API 验收：见 `docs/experiments/web-real-recovery-20261009-v1.md`。3086 运行 `9ea9d68a37a44627ad3ab1d545678c37` 已后台恢复，baseline/execute 两项真实任务各 3 请求/4 MCP/0 错误，来源核验通过、独立 Session，execute 无库回退；合计代理估费约 0.002485 美元（总上限 0.25，账单待核对）。旧运行零调用，记录保留。真实浏览器点击仍待负责人确认；认证 URL 换行修复避免复制进终端提示符。
+
 - 更新时间与交接人：2026-10-09，Codex。
 - 目标与本次范围：统一前端与后端的动态任务入口；同一个官方 Harness Web 进程接收文字、结构化请求、附件和来源引用，保持 baseline/shadow/execute 与逐任务追踪。产品统一名为 DeepSeek Harless；SDK 和旧冻结入口保留，没有开发论文工具。
 - 分支 / commit / 工作区未提交改动：公共实现位于 `feature/web-task-api`，基于 `origin/main` 的 `bdf934f`；代码提交 `dcdfdc9` 已推送，Draft [PR #2](https://github.com/jingyio/DeepSeek-Harless/pull/2) 已创建，尚未合入 main。后续交接提交以分支 Git 历史为准。原两端 `feature/paper-submission`、论文场景、参考材料及私有运行区保留，不在本 PR 中。
