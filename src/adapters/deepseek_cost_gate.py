@@ -115,7 +115,11 @@ def observed_peak_cost(model: str, usage: dict[str, int]) -> float:
 
 
 class State:
-    def __init__(self, *, cap_usd: float, output_cap: int, record: Path):
+    def __init__(self, *, cap_usd: float, output_cap: int, record: Path,
+                 request_limit: int | None = None):
+        if request_limit is not None and (type(request_limit) is not int or request_limit < 1):
+            raise ValueError('request_limit must be a positive integer')
+        self.request_limit = request_limit
         self.cap_usd = cap_usd
         self.output_cap = output_cap
         self.record = record
@@ -127,7 +131,8 @@ class State:
     def book(self, body: bytes) -> tuple[int, str, float, int] | None:
         model, dollars, ceiling = reservation(body, max_output=self.output_cap)
         with self.lock:
-            if self.reserved_usd + dollars > self.cap_usd:
+            if (self.reserved_usd + dollars > self.cap_usd or
+                    (self.request_limit is not None and self.request_count >= self.request_limit)):
                 return None
             self.reserved_usd += dollars
             self.request_count += 1
@@ -254,6 +259,7 @@ def create_server(host: str, port: int, upstream: str, state: State) -> Threadin
                 self._reply(400, "unpriced or unbounded model request refused")
                 return
             if booked is None:
+                state.log({'kind': 'budget_denied', 'reason': 'budget_or_request_limit'})
                 self._reply(429, "approved research budget exhausted")
                 return
             request_id, model, dollars, ceiling = booked

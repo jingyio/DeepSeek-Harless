@@ -21,11 +21,13 @@ if (action === 'setup') {
   run(join(root, '.venv-sss', suffix), ['-m', 'pip', 'install', '-r', 'requirements.txt']);
 } else if (action === 'test') {
   run(python, ['-m', 'pytest', 'tests', '-q']);
-  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs']);
+  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_dsh_web_policy.mjs']);
 } else if (action === 'scenario') {
   run(python, ['scripts/run-scenario.py', ...args]);
+} else if (action === 'web') {
+  run(python, ['scripts/harness-web.py', ...args]);
 } else if (action === 'smoke') {
   run(python, ['scripts/smoke.py', ...args]);
 } else if (action === 'python') {
   run(python, args);
-} else { console.error('Use setup, test, scenario, smoke or python'); process.exit(1); }
+} else { console.error('Use setup, test, scenario, web, smoke or python'); process.exit(1); }

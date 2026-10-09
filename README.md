@@ -29,6 +29,47 @@ npm run scenario -- --budget-usd 0.25 --max-steps 16 --call-model
 
 每次请求经过本机预算代理；模型输出、轨迹、预算账本与 Motif 审计只写入 `.local/`。费用表是仓库固定配置，运行付费实验前应核对；预算记账不等于真实账单。`--max-steps` 限制 Agent 步数，代理账本才记录实际上游请求。默认不开上下文压缩。
 
+## 新入口：官方 Harness Web 服务器联调
+
+SDK 的 `npm run scenario` 继续保留。新增入口使用官方 Web 和原生会话/preset，首版只开放模拟 Provider/embedding；不能从模型设置页面启用真实模型。已验证服务器 Node 22.23.3、Python 3.10.8；Web 的 TypeScript 插件需要支持原生类型剥离的 Node（推荐已验收版本），未验证其他平台的 Web。
+
+在服务器项目目录执行：
+
+```sh
+source .local/remote-env.sh
+npm run web
+```
+
+默认是 `scenarios/example/`、baseline、一个任务。监听 `127.0.0.1:3080`，每次启动创建独立的 `.local/web/runs/<RUN_ID>/`，其中 `dsh/` 是私有 `DSH_HOME`，`work/` 是任务工作目录。终端显示本次目录，不显示 token。另开本地终端建立转发：
+
+```sh
+ssh -N -L 3080:127.0.0.1:3080 -p SSH_PORT USER@SERVER
+```
+
+从服务器本次目录的 `access-url.txt` 复制官方认证地址到本地浏览器。地址与 token 只保留在私有记录中。本地地址的主机名和端口必须保持为 `127.0.0.1:3080`，与官方 cookie 的绑定一致。页面选择本次 `work/` 为工作区，保持 SSS 专用 preset，将本次 `prompt.md` 的完整题面粘贴到首页输入框并发送。示例会先固定再读取两条笔记，共四次真实只读 MCP 调用。
+
+新问题、新会话和 fork 会被服务端拒绝；换任务或模式要停止并重新启动。固定题面只规范化两端空白，内部字符必须一致；在首页文本框粘贴可保留内部换行。Motif 联调使用与历史库匹配的 portfolio 场景：
+
+```sh
+npm run web -- --scenario portfolio-v1 --mode shadow
+npm run web -- --scenario portfolio-v1 --mode execute
+```
+
+预算上限默认 0.25 美元、最多 24 次代理请求、每次输出上限 1000 token；这里的用量和美元估值来自模拟夹具，实际支出为零。服务端复用 SDK 的预算代理，固定 `reasoning_effort="off"`、关闭压缩、阻止辅助模型和其他 provider；浏览器模型菜单不能改变固定连接。`--request-limit 1` 或 `--budget-usd 0` 可验证拒绝后续请求。
+
+免费复验与停止：
+
+```sh
+npm run web:check
+npm test
+npm run smoke
+npm run motif:check
+# 前台运行用 Ctrl+C；后台只停止指定 RUN_ID，保留结果：
+node scripts/project.mjs python scripts/stop-harness-web.py RUN_ID
+```
+
+`web:check` 在服务器另用 3082 端口验证原生 HTTP 会话与 MCP，不代替浏览器验收。输出含有效配置、题面、工具 schema、会话事件、答案、预算账本、任务状态、指标与 Motif 审计；失败原因和取消也会保留。首版不支持真实模型确认流程、多账号隔离、论文工具或跨启动恢复旧任务。官方 Web 的文件浏览能力面向获授权的服务器操作人，不能作为多人隔离边界；其通用权限标签也不会增加 SSS Agent 的工具。官方“新建会话”被拒绝时目前只记浏览器警告，没有专用提示条。接口与已验证范围见[接口文档](docs/interfaces.md)、[Web 交接](docs/handoffs/harness-web.md)和[验收记录](docs/experiments/harness-web-v1-20261009.md)。
+
 ## 代码从哪里读
 
 | 目录 | 责任 |
