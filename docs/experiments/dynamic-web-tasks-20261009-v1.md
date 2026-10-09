@@ -64,3 +64,7 @@ npm run web:tasks:check
 ## 下一步与限制
 
 免费一键及正式入口切换已完成上述浏览器验收，真实模型仍预览确认。需要用户在服务器私有 `.env` 填密钥并明确授权真实任务，才能验证真实 API、答案质量及费用。当前一个启动注册一个能力配置、一次一个活动任务、一任务一 Session；没有多账号、跨启动恢复、任意大文件或论文生产工具闭环。后续场景需提供自己的 MCP 能力与认证 library。
+
+## 公共 PR 发布复核
+
+代码整理为 `feature/web-task-api` 的 `dcdfdc9`，基于已合入旧冻结入口的 `bdf934f`，已推送并创建 Draft [PR #2](https://github.com/jingyio/DeepSeek-Harless/pull/2)，尚未合入 main。原实验发生时的分支/dirty 快照保持原记录，不能追改为本次提交。服务器独立工作树再次通过 146 Python、44 Node、18 题/83 来源 smoke、动态 13 组及冻结 11 组；本次是提交完整性与协议诊断，没有新增真实模型请求或质量/降本证据。私有复核结果在 `.local/pr-validation/web-task-api-dcdfdc9/.local/validation/`；原论文工作区和 3080 服务保留。
