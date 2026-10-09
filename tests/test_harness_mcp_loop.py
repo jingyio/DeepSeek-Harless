@@ -74,7 +74,7 @@ def test_native_harness_loop_executes_only_demo_mcp_through_budget_proxy():
             assert kinds.count('tool/call') == 2
             assert kinds.count('tool/result') == 2
             assert state.request_count == 3
-            rows = [json.loads(line) for line in state.record.read_text().splitlines()]
+            rows = [json.loads(line) for line in state.record.read_text(encoding="utf-8").splitlines()]
             assert len(rows) == 3
             assert all(row['response_usage']['prompt_cache_hit_tokens'] == 50 for row in rows)
         finally:

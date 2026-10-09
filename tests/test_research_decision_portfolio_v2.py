@@ -26,7 +26,7 @@ class PortfolioV2Test(unittest.TestCase):
         apps._discovered.clear()
 
     def test_nine_frozen_independent_decisions_across_three_new_families(self):
-        lock = json.loads((ROOT / "fixtures.lock.json").read_text())
+        lock = json.loads((ROOT / "fixtures.lock.json").read_text(encoding="utf-8"))
         self.assertEqual({family: len(cases) for family, cases in
                           lock["families"].items()}, {
             "artifact_lineage_release": 3,
@@ -42,8 +42,8 @@ class PortfolioV2Test(unittest.TestCase):
             with self.subTest(case=case), patch.dict(os.environ,
                                                      {"SSS_PORTFOLIO_CASE": case}):
                 self.setUp()
-                sources = json.loads((ROOT / "cases" / case / "sources.json").read_text())
-                task = (ROOT / "cases" / case / "task.md").read_text()
+                sources = json.loads((ROOT / "cases" / case / "sources.json").read_text(encoding="utf-8"))
+                task = (ROOT / "cases" / case / "task.md").read_text(encoding="utf-8")
                 self.assertNotIn("fatal", task)
                 event = apps.read_event(f"event:{case}:01")
                 queue = deque(event["root_objects"])

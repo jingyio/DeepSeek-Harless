@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -163,14 +164,17 @@ class DynamicCodeNodeTests(unittest.TestCase):
                 **proposal()}, Path(temporary))
             path = Path(proposed["path"])
             self.assertTrue(path.is_file())
-            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(json.loads(path.read_text())["status"],
+            # Windows mode bits describe read-only state, not the user's ACL.
+            # Keep content/hash/non-promotion checks active on every platform.
+            if os.name != "nt":
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["status"],
                              "candidate_only")
             self.assertFalse(proposed["model_request_skipped"])
             with patch.object(COMPILER, "ROOT", Path(temporary)):
                 loaded = COMPILER._code_candidate_file(path)
                 self.assertEqual(loaded["expression"], "upper(strip(x))")
-                path.write_text(path.read_text().replace("strip", "lower"),
+                path.write_text(path.read_text(encoding="utf-8").replace("strip", "lower"),
                                 encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "hash changed"):
                     COMPILER._code_candidate_file(path)

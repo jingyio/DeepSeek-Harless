@@ -33,7 +33,7 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
         apps._discovered.clear()
 
     def test_nine_independent_decisions_in_three_distinct_families(self):
-        lock = json.loads((ROOT / "fixtures.lock.json").read_text())
+        lock = json.loads((ROOT / "fixtures.lock.json").read_text(encoding="utf-8"))
         self.assertEqual(set(lock["families"]), {
             "literature_claim_revision", "result_provenance_triage",
             "collaboration_decision_handoff"})
@@ -45,7 +45,7 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
     def test_motif_contracts_name_only_observable_fields(self):
         project = ROOT.parent.parent
         rows = json.loads((project / "config/research-portfolio-tool-contracts.json")
-                          .read_text())
+                          .read_text(encoding="utf-8"))
         contracts = parse_tool_contracts(rows)
         self.assertEqual(len(contracts), 8)
         self.assertTrue(all(contract.read_only and contract.replay_stable
@@ -57,9 +57,9 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
         for case_id, spec in fixtures.CASES.items():
             with self.subTest(case_id=case_id), patch.dict(os.environ,
                                                           {"SSS_PORTFOLIO_CASE": case_id}):
-                task = (ROOT / "cases" / case_id / "task.md").read_text()
-                hidden = json.loads((ROOT / "cases" / case_id / "review.json").read_text())
-                sources = json.loads((ROOT / "cases" / case_id / "sources.json").read_text())
+                task = (ROOT / "cases" / case_id / "task.md").read_text(encoding="utf-8")
+                hidden = json.loads((ROOT / "cases" / case_id / "review.json").read_text(encoding="utf-8"))
+                sources = json.loads((ROOT / "cases" / case_id / "sources.json").read_text(encoding="utf-8"))
                 event = apps.read_event(f"event:{case_id}:01")
                 self.assertEqual(event["root_objects"],
                                  [scoped(case_id, value) for value in spec["roots"]])
@@ -121,9 +121,9 @@ class ResearchDecisionPortfolioTest(unittest.TestCase):
                 annotation = apps.pin_resource(scoped("l_state_update", "zotero:a01"))["source_id"]
                 apps.read_pinned(annotation)
                 source_id = apps.pin_resource(scoped("l_state_update", "paper:p01"))["source_id"]
-                data = json.loads(path.read_text())
+                data = json.loads(path.read_text(encoding="utf-8"))
                 data["objects"][scoped("l_state_update", "paper:p01")]["text"] += " 新版本。"
-                path.write_text(json.dumps(data, ensure_ascii=False))
+                path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "changed since pin"):
                     apps.read_pinned(source_id)
 

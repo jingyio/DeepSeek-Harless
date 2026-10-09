@@ -81,8 +81,8 @@ class ProjectionTest(ProjectionArtifactCase):
             self.assertLess(len(view), len(source))
             self.assertEqual(json.loads(view), json.loads(source))
             self.assertEqual(projector.project(body), result)
-            self.assertEqual(next((Path(temp) / "originals").glob("*.txt")).read_text(), source)
-            audit = json.loads(next((Path(temp) / "audit").glob("*.json")).read_text())
+            self.assertEqual(next((Path(temp) / "originals").glob("*.txt")).read_text(encoding="utf-8"), source)
+            audit = json.loads(next((Path(temp) / "audit").glob("*.json")).read_text(encoding="utf-8"))
             self.assertEqual(audit["original_bytes"] - audit["view_bytes"], len(source) - len(view))
             body["messages"][1]["content"] = "tool failed: unavailable"
             self.assertEqual(projector.project(body), body)
@@ -144,7 +144,7 @@ class ProjectionTest(ProjectionArtifactCase):
     def test_uncertified_artifact_and_failed_results_are_not_projected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             copy = Path(temp) / "bad.json"
-            artifact = json.loads(self.artifact.read_text())
+            artifact = json.loads(self.artifact.read_text(encoding="utf-8"))
             artifact["tools"].append("unreviewed")
             copy.write_text(json.dumps(artifact))
             with self.assertRaises(ValueError):

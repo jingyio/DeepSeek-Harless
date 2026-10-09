@@ -1,0 +1,3 @@
+# Frozen fixture and trace hashes cover exact bytes on every platform.
+# Keep text as LF even when a Windows checkout has core.autocrlf=true.
+* text=auto eol=lf

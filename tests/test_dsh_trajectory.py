@@ -48,7 +48,7 @@ class DshTrajectoryTests(unittest.TestCase):
     def test_observed_gmail_anchor_can_certify_without_replaying_search(self):
         root = Path(__file__).resolve().parents[1]
         contracts = parse_tool_contracts(json.loads((
-            root / "tests/fixtures/contracts/scoped-gmail-request-contracts.json").read_text()))
+            root / "tests/fixtures/contracts/scoped-gmail-request-contracts.json").read_text(encoding="utf-8")))
         search_name = "mcp__scoped_gmail_request__search_emails"
         read_name = "mcp__scoped_gmail_request__read_email"
 
@@ -80,7 +80,7 @@ class DshTrajectoryTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         manifest = module.export_manifest(
-            library, json.loads((root / "tests/fixtures/contracts/scoped-gmail-request-contracts.json").read_text()),
+            library, json.loads((root / "tests/fixtures/contracts/scoped-gmail-request-contracts.json").read_text(encoding="utf-8")),
             {search_name: {"query": "subject:research-[abc]"}},
             {search_name: "selected_message_id", read_name: "source_version"})
         self.assertTrue(manifest["contracts"][search_name]["observed_anchor"])
@@ -95,7 +95,7 @@ class DshTrajectoryTests(unittest.TestCase):
     def test_scoped_gmail_search_to_read_has_witnessed_message_id(self):
         contracts = parse_tool_contracts(json.loads((
             Path(__file__).resolve().parents[1] /
-            "tests/fixtures/contracts/scoped-gmail-request-contracts.json").read_text()))
+            "tests/fixtures/contracts/scoped-gmail-request-contracts.json").read_text(encoding="utf-8")))
         message_id = "a" * 16
         search = event_pair(1, "mcp__scoped_gmail_request__search_emails",
                             {"query": "subject:SSS"}, {"ignored": True})
@@ -301,7 +301,7 @@ class DshTrajectoryTests(unittest.TestCase):
     def test_pdf_quote_match_handle_witnesses_locator_to_read_edge(self):
         root = Path(__file__).resolve().parents[1]
         contracts = parse_tool_contracts(json.loads((
-            root / "tests/fixtures/contracts/scoped-research-handle-contracts.json").read_text()))
+            root / "tests/fixtures/contracts/scoped-research-handle-contracts.json").read_text(encoding="utf-8")))
         prefix = "mcp__scoped_research_read__"
         source_id, match_id = "source-" + "a" * 32, "match-" + "b" * 32
         events = (event_pair(1, prefix + "pin_scoped_source", {"role": "paper"},
@@ -324,7 +324,7 @@ class DshTrajectoryTests(unittest.TestCase):
     def test_approved_obsidian_excerpt_has_pinned_source_provenance(self):
         root = Path(__file__).resolve().parents[1]
         contracts = parse_tool_contracts(json.loads((
-            root / "tests/fixtures/contracts/scoped-research-handle-contracts.json").read_text()))
+            root / "tests/fixtures/contracts/scoped-research-handle-contracts.json").read_text(encoding="utf-8")))
         prefix = "mcp__scoped_research_read__"
         source_id = "source-" + "c" * 32
         events = (event_pair(1, prefix + "pin_scoped_note", {"role": "current_state"},
