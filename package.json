@@ -8,6 +8,8 @@
     "test": "node scripts/project.mjs test",
     "smoke": "node scripts/project.mjs smoke",
     "scenario": "node scripts/project.mjs scenario",
+    "web": "node scripts/project.mjs web",
+    "web:check": "node scripts/project.mjs python scripts/check-harness-web.py",
     "motif:check": "node scripts/project.mjs python scripts/motif-example.py check",
     "motif:rebuild": "node scripts/project.mjs python scripts/motif-example.py rebuild"
   },

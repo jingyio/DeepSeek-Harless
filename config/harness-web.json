@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "host": "127.0.0.1",
+  "port": 3080,
+  "provider": "deepseek-official",
+  "model": "deepseek-flash",
+  "reasoning_effort": "off",
+  "compression": false,
+  "request_limit": 24,
+  "budget_usd": 0.25,
+  "max_output_tokens": 1000,
+  "real_models_enabled": false
+}

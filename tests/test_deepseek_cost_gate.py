@@ -9,6 +9,18 @@ from src.adapters.deepseek_cost_gate import State, observed_peak_cost, reservati
 
 
 class DeepSeekCostGateTests(unittest.TestCase):
+    def test_request_limit_survives_usage_settlement(self) -> None:
+        body = b'{"model":"deepseek-flash","max_tokens":100,"messages":[]}'
+        with tempfile.TemporaryDirectory() as temporary:
+            state = State(cap_usd=10, output_cap=100, request_limit=1,
+                          record=Path(temporary) / 'gate.jsonl')
+            first = state.book(body)
+            state.settle(first[0], first[1], 200, {'prompt_tokens': 1,
+                'prompt_cache_hit_tokens': 0, 'prompt_cache_miss_tokens': 1,
+                'completion_tokens': 1, 'total_tokens': 2})
+            self.assertIsNone(state.book(body))
+            self.assertEqual(state.request_count, 1)
+
     def test_peak_reservation_refuses_next_request_before_forwarding(self) -> None:
         body = json.dumps({"model": "deepseek-flash", "max_tokens": 3000,
                            "messages": [{"role": "user", "content": "x" * 20_000}]}).encode()

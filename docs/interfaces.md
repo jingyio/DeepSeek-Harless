@@ -1,5 +1,25 @@
 # 场景、Motif 和 Harness 的接口
 
+## 官方 Web 新入口（0.1.5-rc.3）
+
+`npm run web` → `scripts/harness-web.py` → 官方 `dsh --profile web --patch <私有 host overlay>`。执行、会话、队列、模型消息和工具调度仍归官方 Harness 所有；SDK 的 `run-scenario.py` 与 `harness_runtime.py` 继续保留。配置入口为 `config/harness-web.json`，适配策略为 TypeScript `src/adapters/dsh_web_policy.ts`。
+
+已核对安装包中 `dsh-web-app`、`dsh-client-connection`、`dsh-api-session-controller`、`dsh-agent-presets` 的 README、声明和实际实现。Web 以宿主层和会话 preset 组合，不能直接装 SDK patch 的模型工具层。`prepare_scenario()` 新增 `mcp_rows` 和 `environment_references` 描述供 Web 生成专用 preset，原 SDK patch 仍保持原语义。
+
+- 宿主：官方认证、Web、connection、Gateway、Controller；独立 `DSH_HOME`。仅配置一个系统信任根和 `sss-task` preset，关闭 shipped/user 根，用户不能复制或删除系统 preset。
+- preset：persona 与已有场景 MCP；示例两个带版本守卫的只读工具。portfolio 使用固定 `l_retrieval_persistence` 合成夹具和首发历史 library。
+- 策略：包装当前 Controller 实例的公开 `create/prompt/selectModel/fork/cancel` 方法，原参数及 prompt 的取消信号传给原方法。串行创建，首次创建绑定唯一 session；后续只允许采用相同 ID，整个启动周期最多接收一个固定题面。恢复、模型请求及实际工具调用仍受宿主 guard 限制。
+- 模型：取消可配置的 DeepSeek/pi-ai 注册，使用官方 `DeepSeekAdapter` 注册固定 loopback 预算连接，不注册可编辑 provider 配置。全局 `llm/stream` 拒绝其他 session、provider/model、非 Off、输出上限变化和辅助请求；关闭标题模型、retry 插件和压缩入口。计价与预算结算复用 `deepseek_cost_gate.State/create_server`；新增可选请求数上限不改变 SDK 默认行为。
+- Motif：首次接收题面时把真实 Web session 写入私有结构任务，以已冻结题面摘要、工具 schema、manifest 和来源版本为守卫。复用 `createOnlineInterceptor`、`loopbackSimilarity`；execute 返回标准工具 stream，官方执行后 `tools/result` 才验证批次。shadow 只记候选；任务变更、schema 漂移拒绝，旧来源版本与执行失败回退模型。失败批次与 verified skip 集合必须不相交。
+
+官方认证只通过根路径的 token 交换 HttpOnly/SameSite cookie；原生 RPC 不接受 URL/header token。已验证的 unary 路径来自安装接口：`POST /api/session/create`、`prompt`、`selectModel`、`fork`、`cancel`。请求为 `{type:"client-request",rpcId,method:"session/<method>",payload:{args:{request:<原生请求>}}}`；队列和会话流继续走原生 `/api/remote.mux`，SSS 没有自建状态机或替换事件。RPC 的错误仍使用官方 envelope。公共脚本 `web:check` 仅用于原生协议诊断；浏览器验收独立记录。
+
+输入框会裁剪两端空白，所以同时保存原始题面摘要和 `strip/trim` 后的传输摘要，不改内部字符。工具 schema 必须带 `scopeOf(agent.ctx)` 读取 preset 视图，并按官方 `dsh-system-prompt` 的默认代码点排序比较完整 schema；不能用空的全局工具表替代它，也不能取消 schema 检查。
+
+每次输出独占 `.local/web/runs/<RUN_ID>/`：`effective-config.json`（commit、dirty 文件、环境/来源摘要、实际配置）、`policy.json`、`host.patch.yml`、`presets/`、`prompt.md`、`tool-schemas.json`、`task-state.json`、`events.jsonl`、`answer.json`、`metrics.json`、`ledger.jsonl`、`motif-audit.jsonl`。Motif 模式另有 `task.json/bound-task.json`。`mock-requests.json` 在停止时保存；模拟用量不等于账单。状态有 ready/running/completed/failed/cancelled/budget_exhausted，失败原因保留。
+
+安全边界是首版单操作人联调：一个服务器进程接收一个任务，不能提供完整多人账号隔离；认证浏览器的官方文件能力也不是文件沙箱。真实模型与付费确认流程尚未开放，论文、真实应用质量及降本未验证。升级必须复核服务方法、Gateway 参数描述、事件和 preset 接缝；上游包只读。详见 [Web 交接](handoffs/harness-web.md)。
+
 ## 运行链路与边界
 
 ```mermaid
