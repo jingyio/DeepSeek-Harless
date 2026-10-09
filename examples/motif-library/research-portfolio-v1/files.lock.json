@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "sha256": {
+    "benchmarks/research_decision_portfolio_v1/cases/c_protocol_conflict/sources.json": "44ae97ff5fd21610d89cf542c29746b29d395dd06f96071d693285ef6d8526f5",
+    "benchmarks/research_decision_portfolio_v1/cases/c_protocol_conflict/task.md": "fa84c0262ab984d3c0d61b66a3019c77e3f12c3497d3ac53eb4815fb1c0b4928",
+    "benchmarks/research_decision_portfolio_v1/cases/l_retrieval_persistence/sources.json": "a0f4eefe8cb9115931e7a3626afbc2fd9112828044d1dd88080e5d6d6325673c",
+    "benchmarks/research_decision_portfolio_v1/cases/l_retrieval_persistence/task.md": "f79972570e414c12d3e4b1f518661f71afc3cbadfdc18caa89b8809d94c3c33a",
+    "benchmarks/research_decision_portfolio_v1/cases/l_state_update/sources.json": "19e4d0ed038bde8f71cc4e451baaa695fa3bfb17a75b9b6a243273e514705280",
+    "benchmarks/research_decision_portfolio_v1/cases/l_state_update/task.md": "1a408a38e133aa9332d6a87d4ae9b13339086b0c4ee9238a7c60bb1e3dccd5df",
+    "benchmarks/research_decision_portfolio_v1/cases/r_label_policy/sources.json": "4b81ec017671468d659c3ebc6cef98d652235e1fa3ad95df807c4c1e474efa3f",
+    "benchmarks/research_decision_portfolio_v1/cases/r_label_policy/task.md": "2d4595002e193f43982d26e1d7d8ebe1e2ed134c3530cfa237176c630cb06390",
+    "benchmarks/research_decision_portfolio_v1/mock_apps_server.py": "2da1899eb001c14082e68897d5c13b2a7365c35c03e4fcf6323459a81491f78a",
+    "config/research-portfolio-online-version-fields.json": "7493d6f91d6f11363ac2a47da5cc184f290b129a271f689805e7114801f92a55",
+    "config/research-portfolio-tool-contracts.json": "503a7c2b53ce37d9e20b6bc4127f88a144eacede902f3f26db65b9c87a6e2ce5",
+    "examples/motif-library/research-portfolio-v1/evidence/c_protocol_conflict/events.jsonl": "2f0c743a7102a51f59097d6ec212fdd8a013e7c46b18eeaeb74f2bdc8ecb0b93",
+    "examples/motif-library/research-portfolio-v1/evidence/c_protocol_conflict/manifest.json": "17ca41681dc1c7f6175955aafc0e43b9497cdc6b33f63548aabea48d5e506b1f",
+    "examples/motif-library/research-portfolio-v1/evidence/c_protocol_conflict/task-identity.json": "8cb150da0fe0d5aeda6eceedc13adcd3a36c484fe6ff4650c7f700053aa7ccce",
+    "examples/motif-library/research-portfolio-v1/evidence/l_state_update/events.jsonl": "e4554def5f98fc5dab1ac8b03efd7543d913938b7b419ccccb2605d7070ac20f",
+    "examples/motif-library/research-portfolio-v1/evidence/l_state_update/manifest.json": "eae321f0dcea1a679e34a1e5c34bf45529ffa304e72db0cbe9738cc2ced38ffd",
+    "examples/motif-library/research-portfolio-v1/evidence/l_state_update/task-identity.json": "e54b24f4341283d09f56d536e220a40d39c19a359ab2dde6a72debf1d275e613",
+    "examples/motif-library/research-portfolio-v1/evidence/r_label_policy/events.jsonl": "3227a6750632219181fcf0b7174af479ff49bbf11e1b81c230f17f59fbfa0f39",
+    "examples/motif-library/research-portfolio-v1/evidence/r_label_policy/manifest.json": "f87e40ba18f0fa806b8ca4e6adbd742fb9ef6cd876e7ab27b6b7ea78f3148a09",
+    "examples/motif-library/research-portfolio-v1/evidence/r_label_policy/task-identity.json": "9e8ee9ce4e9dd84b2f911f2e0da57d8438562150f8dbc7530afb612eea375882",
+    "examples/motif-library/research-portfolio-v1/library.json": "53dde97594068b211f124cc5b191d3fbb4bc7b321724d90a260286564c1e09b9",
+    "examples/motif-library/research-portfolio-v1/online-manifest.json": "e86b1d5b86d98e9b6eca5f3bb83a4bea8ba7aaf5f56bc9d0d6df1a14e60f5210",
+    "examples/motif-library/research-portfolio-v1/provenance.json": "40fe1bb2a329a6f52bf7ba1e54acfee37e553ed9a728f442543683675a65bcee",
+    "examples/motif-library/research-portfolio-v1/task.json": "e1a63a84447569e9b4e001c7bd441d329e7dae89221eb4f295431f0bf58002bb",
+    "scenarios/portfolio-v1/scenario.json": "dab0707874dc383e2165cd02e0d326f87f2c716971595c1361b3f03aa0ebd9d4"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "task_id": "public-history-l_retrieval_persistence",
+  "session_id": "sss-public-history-l-retrieval-preview",
+  "intent": "读取本题事件及关联资料，取得可定位、可核验版本的证据。科学含义和结论交回语义层。",
+  "input_version": "47f6dd241abcb5c4f4eaa392e70d94de62f3a7f1ece558aac906562561e88d00",
+  "bindings": {},
+  "source_versions": {
+    "mcp__research_portfolio_fixture__read_event": "8adb1e8d08080dbd3ce242757c1b8dd7c99a11edfb6421aba74558b32d0782e1",
+    "mcp__research_portfolio_fixture__pin_resource": [
+      "3c866e1d74b8c73104996df49bb88d42cc422ec6e34656b8837e6b2c8973aacd",
+      "ddecd85eda2898e63bcced282450b0147fa9cfb39b9958bd72a9193a47148b74",
+      "ef1a356b04f6a12015651bd0ffb4595074e33e1014de462481d03f4015627d99",
+      "fd79f4cbd4b5bb07dfbbfdc729dbe79660d9e4d973a8338e6284d0a19ca16b6d"
+    ],
+    "mcp__research_portfolio_fixture__read_pinned": [
+      "3c866e1d74b8c73104996df49bb88d42cc422ec6e34656b8837e6b2c8973aacd",
+      "ddecd85eda2898e63bcced282450b0147fa9cfb39b9958bd72a9193a47148b74",
+      "ef1a356b04f6a12015651bd0ffb4595074e33e1014de462481d03f4015627d99",
+      "fd79f4cbd4b5bb07dfbbfdc729dbe79660d9e4d973a8338e6284d0a19ca16b6d"
+    ]
+  },
+  "object_versions": {
+    "obsidian:l_retrieval_persistence:n01": "3c866e1d74b8c73104996df49bb88d42cc422ec6e34656b8837e6b2c8973aacd",
+    "paper:l_retrieval_persistence:p01": "ddecd85eda2898e63bcced282450b0147fa9cfb39b9958bd72a9193a47148b74",
+    "paper:l_retrieval_persistence:p02": "ef1a356b04f6a12015651bd0ffb4595074e33e1014de462481d03f4015627d99",
+    "zotero:l_retrieval_persistence:a01": "fd79f4cbd4b5bb07dfbbfdc729dbe79660d9e4d973a8338e6284d0a19ca16b6d"
+  }
+}

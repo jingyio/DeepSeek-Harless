@@ -1,0 +1,278 @@
+{
+  "schema_version": 1,
+  "source_library_digest": "c6c19281d9af63e798651c9cfb349875309f2357582b547fe3baca3c1ee9cc33",
+  "artifacts": [
+    {
+      "motif_id": "edge_motif_f34281780aec",
+      "certified_digest": "2dd2d0fc7f08240656381d17dc5f49fda59fa3d4ccc8f5d3182fdc6e90aae0c7",
+      "tools": [
+        "mcp__research_portfolio_fixture__pin_resource",
+        "mcp__research_portfolio_fixture__read_pinned"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__research_portfolio_fixture__read_pinned",
+          "supporting_trace_ids": [
+            "portfolio-v2-l_state_update",
+            "portfolio-v2-r_label_policy"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__research_portfolio_fixture__read_pinned": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__research_portfolio_fixture__read_pinned",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__research_portfolio_fixture__pin_resource",
+              "from_field": "source_id",
+              "to_param": "source_id"
+            }
+          ],
+          "program_digest": "842075df64e3a38305e8ca4ff60f9409d1d157c8061c0bee0444bfe26744ea4c"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "portfolio-v2-c_protocol_conflict"
+    },
+    {
+      "motif_id": "edge_motif_4050d9804b03",
+      "certified_digest": "76798179a3df00fa5f0da096de607e459caac5f4532fca73be843015a8022625",
+      "tools": [
+        "mcp__research_portfolio_fixture__read_event",
+        "mcp__research_portfolio_fixture__pin_resource"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__research_portfolio_fixture__read_event",
+          "from_field": "root_object_id",
+          "to_param": "object_id",
+          "version_relation": "object_lookup",
+          "to_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "supporting_trace_ids": [
+            "portfolio-v2-l_state_update",
+            "portfolio-v2-r_label_policy"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__research_portfolio_fixture__pin_resource": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__research_portfolio_fixture__read_event",
+              "from_field": "root_object_id",
+              "to_param": "object_id"
+            }
+          ],
+          "program_digest": "a3fbe5d1d92ae2be90c96570328ff9322938278e9c283b38cc8fd82285dfa548"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "portfolio-v2-c_protocol_conflict"
+    },
+    {
+      "motif_id": "edge_motif_2ae59e5055e0",
+      "certified_digest": "665c222e264ccfeda9d7cf0793c902ec34b5cd11e3c97f232729e18eae665f20",
+      "tools": [
+        "mcp__research_portfolio_fixture__read_pinned",
+        "mcp__research_portfolio_fixture__pin_resource"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__research_portfolio_fixture__read_pinned",
+          "from_field": "value.link_0_object_id",
+          "to_param": "object_id",
+          "version_relation": "object_lookup",
+          "to_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "supporting_trace_ids": [
+            "portfolio-v2-l_state_update",
+            "portfolio-v2-r_label_policy"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__research_portfolio_fixture__pin_resource": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__research_portfolio_fixture__read_pinned",
+              "from_field": "value.link_0_object_id",
+              "to_param": "object_id"
+            }
+          ],
+          "program_digest": "35319cdb5c670455e56c0ae9476a8b04fedc6413820ff3497c77e39d39f91954"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "portfolio-v2-c_protocol_conflict"
+    },
+    {
+      "motif_id": "edge_motif_219937bf0a51",
+      "certified_digest": "8d46b6e799884ae7d8c6e3be9fa5ce21623178e2093063ef54a045e52c15cf0e",
+      "tools": [
+        "mcp__research_portfolio_fixture__read_pinned",
+        "mcp__research_portfolio_fixture__pin_resource"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__research_portfolio_fixture__read_pinned",
+          "from_field": "value.link_1_object_id",
+          "to_param": "object_id",
+          "version_relation": "object_lookup",
+          "to_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "supporting_trace_ids": [
+            "portfolio-v2-l_state_update",
+            "portfolio-v2-r_label_policy"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__research_portfolio_fixture__pin_resource": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__research_portfolio_fixture__read_pinned",
+              "from_field": "value.link_1_object_id",
+              "to_param": "object_id"
+            }
+          ],
+          "program_digest": "cba09ee43ddc390d8f854acb6e7298970c2e828d275bec2b484a9122815a3259"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "portfolio-v2-c_protocol_conflict"
+    }
+  ],
+  "contracts": {
+    "mcp__research_portfolio_fixture__aggregate_rate": {
+      "required_params": [
+        "dataset_id",
+        "group_by"
+      ],
+      "output_fields": [
+        "version_sha256"
+      ],
+      "default_params": {},
+      "description": "用已读取表格的 dataset_id 和模型选定的分组字段计算分子分母。",
+      "read_only": true
+    },
+    "mcp__research_portfolio_fixture__compare_tables": {
+      "required_params": [
+        "previous_dataset_id",
+        "current_dataset_id"
+      ],
+      "output_fields": [
+        "previous_version_sha256",
+        "current_version_sha256"
+      ],
+      "default_params": {},
+      "description": "比较两版表格同键记录，报告变更及方案字段是否改变；不判断可比性。",
+      "read_only": true
+    },
+    "mcp__research_portfolio_fixture__find_dependents": {
+      "required_params": [
+        "object_id"
+      ],
+      "output_fields": [
+        "claim_object_id",
+        "index_version_sha256"
+      ],
+      "default_params": {},
+      "description": "查询已发现来源关联的旧研究主张；仅有唯一结果时返回 claim_object_id。",
+      "read_only": true
+    },
+    "mcp__research_portfolio_fixture__locate_excerpt": {
+      "required_params": [
+        "source_id",
+        "exact_text"
+      ],
+      "output_fields": [
+        "version_sha256"
+      ],
+      "default_params": {},
+      "description": "在已固定文本中精确定位模型给出的文字；歧义或无命中时不判断证据。",
+      "read_only": true
+    },
+    "mcp__research_portfolio_fixture__pin_resource": {
+      "required_params": [
+        "object_id"
+      ],
+      "output_fields": [
+        "source_id",
+        "version_sha256"
+      ],
+      "default_params": {},
+      "description": "固定已发现的应用对象及其内容版本，返回只可用于读取的 source_id。",
+      "read_only": true
+    },
+    "mcp__research_portfolio_fixture__read_event": {
+      "required_params": [
+        "event_id"
+      ],
+      "output_fields": [
+        "root_object_id",
+        "additional_object_id",
+        "version_sha256"
+      ],
+      "default_params": {},
+      "description": "读任务事件并取得本题初始对象 ID；其余对象从资料关联逐步发现。",
+      "read_only": true
+    },
+    "mcp__research_portfolio_fixture__read_pinned": {
+      "required_params": [
+        "source_id"
+      ],
+      "output_fields": [
+        "value.dataset_id",
+        "value.link_0_object_id",
+        "value.link_1_object_id",
+        "value.link_2_object_id",
+        "value.link_3_object_id",
+        "version_sha256"
+      ],
+      "default_params": {},
+      "description": "使用 pin_resource 返回的 source_id 读已固定版本；文档可返回关联对象，表格返回 dataset_id。",
+      "read_only": true
+    },
+    "mcp__research_portfolio_fixture__read_rows": {
+      "required_params": [
+        "dataset_id"
+      ],
+      "output_fields": [
+        "version_sha256"
+      ],
+      "default_params": {
+        "offset": 0,
+        "limit": 20
+      },
+      "description": "从 read_pinned 的 dataset_id 读取有限范围原始表格行；不解释统计意义。",
+      "read_only": true
+    }
+  },
+  "slot_rules": {},
+  "version_fields": {
+    "mcp__research_portfolio_fixture__read_event": "version_sha256",
+    "mcp__research_portfolio_fixture__pin_resource": "version_sha256",
+    "mcp__research_portfolio_fixture__read_pinned": "version_sha256"
+  },
+  "manifest_digest": "f288bdc543702cfc5d9c60f9c730efa7fb5a742b29cefe2ff91b5fcf9f05d7c6"
+}

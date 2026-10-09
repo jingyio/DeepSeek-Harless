@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "status": "certified_read_library",
+  "artifacts": [
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_f34281780aec",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__research_portfolio_fixture__pin_resource",
+        "mcp__research_portfolio_fixture__read_pinned"
+      ],
+      "source_trace_ids": [
+        "portfolio-v2-l_state_update",
+        "portfolio-v2-r_label_policy"
+      ],
+      "source_task_fingerprints": [
+        "portfolio-v2-l_state_update",
+        "portfolio-v2-r_label_policy"
+      ],
+      "contract_signature": "bf157fba8d3cc1488e7c87b3246e7c819a7e0bf173c2fc61297e8f7bd1629219",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__research_portfolio_fixture__pin_resource",
+          "mcp__research_portfolio_fixture__read_pinned"
+        ],
+        "operators": {
+          "mcp__research_portfolio_fixture__pin_resource": {
+            "tool": "mcp__research_portfolio_fixture__pin_resource",
+            "read_only": true,
+            "required_params": [
+              "object_id"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__research_portfolio_fixture__read_pinned": {
+            "tool": "mcp__research_portfolio_fixture__read_pinned",
+            "read_only": true,
+            "required_params": [
+              "source_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__research_portfolio_fixture__pin_resource",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__research_portfolio_fixture__pin_resource",
+                "from_field": "source_id",
+                "to_param": "source_id"
+              }
+            ]
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__research_portfolio_fixture__read_pinned",
+          "supporting_trace_ids": [
+            "portfolio-v2-l_state_update",
+            "portfolio-v2-r_label_policy"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "portfolio-v2-l_state_update": 4,
+        "portfolio-v2-r_label_policy": 4
+      },
+      "validation_trace_id": "portfolio-v2-c_protocol_conflict",
+      "validation_task_fingerprint": "portfolio-v2-c_protocol_conflict",
+      "certified_digest": "2dd2d0fc7f08240656381d17dc5f49fda59fa3d4ccc8f5d3182fdc6e90aae0c7"
+    },
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_4050d9804b03",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__research_portfolio_fixture__read_event",
+        "mcp__research_portfolio_fixture__pin_resource"
+      ],
+      "source_trace_ids": [
+        "portfolio-v2-l_state_update",
+        "portfolio-v2-r_label_policy"
+      ],
+      "source_task_fingerprints": [
+        "portfolio-v2-l_state_update",
+        "portfolio-v2-r_label_policy"
+      ],
+      "contract_signature": "687e1d34d1409787ae526c9fa0e76dd77a7a893e0e31c87d13b5cab0bda1adc6",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__research_portfolio_fixture__read_event",
+          "mcp__research_portfolio_fixture__pin_resource"
+        ],
+        "operators": {
+          "mcp__research_portfolio_fixture__read_event": {
+            "tool": "mcp__research_portfolio_fixture__read_event",
+            "read_only": true,
+            "required_params": [
+              "event_id"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__research_portfolio_fixture__pin_resource": {
+            "tool": "mcp__research_portfolio_fixture__pin_resource",
+            "read_only": true,
+            "required_params": [
+              "object_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__research_portfolio_fixture__read_event",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__research_portfolio_fixture__read_event",
+                "from_field": "root_object_id",
+                "to_param": "object_id",
+                "version_relation": "object_lookup"
+              }
+            ]
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__research_portfolio_fixture__read_event",
+          "from_field": "root_object_id",
+          "to_param": "object_id",
+          "version_relation": "object_lookup",
+          "to_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "supporting_trace_ids": [
+            "portfolio-v2-l_state_update",
+            "portfolio-v2-r_label_policy"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "portfolio-v2-l_state_update": 1,
+        "portfolio-v2-r_label_policy": 1
+      },
+      "validation_trace_id": "portfolio-v2-c_protocol_conflict",
+      "validation_task_fingerprint": "portfolio-v2-c_protocol_conflict",
+      "certified_digest": "76798179a3df00fa5f0da096de607e459caac5f4532fca73be843015a8022625"
+    },
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_2ae59e5055e0",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__research_portfolio_fixture__read_pinned",
+        "mcp__research_portfolio_fixture__pin_resource"
+      ],
+      "source_trace_ids": [
+        "portfolio-v2-l_state_update",
+        "portfolio-v2-r_label_policy"
+      ],
+      "source_task_fingerprints": [
+        "portfolio-v2-l_state_update",
+        "portfolio-v2-r_label_policy"
+      ],
+      "contract_signature": "b67093e62a06a1eefe1edcd7a79b83505e0da4e271b65bf64682562fddcdadba",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__research_portfolio_fixture__read_pinned",
+          "mcp__research_portfolio_fixture__pin_resource"
+        ],
+        "operators": {
+          "mcp__research_portfolio_fixture__read_pinned": {
+            "tool": "mcp__research_portfolio_fixture__read_pinned",
+            "read_only": true,
+            "required_params": [
+              "source_id"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__research_portfolio_fixture__pin_resource": {
+            "tool": "mcp__research_portfolio_fixture__pin_resource",
+            "read_only": true,
+            "required_params": [
+              "object_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__research_portfolio_fixture__read_pinned",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__research_portfolio_fixture__read_pinned",
+                "from_field": "value.link_0_object_id",
+                "to_param": "object_id",
+                "version_relation": "object_lookup"
+              }
+            ]
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__research_portfolio_fixture__read_pinned",
+          "from_field": "value.link_0_object_id",
+          "to_param": "object_id",
+          "version_relation": "object_lookup",
+          "to_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "supporting_trace_ids": [
+            "portfolio-v2-l_state_update",
+            "portfolio-v2-r_label_policy"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "portfolio-v2-l_state_update": 1,
+        "portfolio-v2-r_label_policy": 1
+      },
+      "validation_trace_id": "portfolio-v2-c_protocol_conflict",
+      "validation_task_fingerprint": "portfolio-v2-c_protocol_conflict",
+      "certified_digest": "665c222e264ccfeda9d7cf0793c902ec34b5cd11e3c97f232729e18eae665f20"
+    },
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_219937bf0a51",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__research_portfolio_fixture__read_pinned",
+        "mcp__research_portfolio_fixture__pin_resource"
+      ],
+      "source_trace_ids": [
+        "portfolio-v2-l_state_update",
+        "portfolio-v2-r_label_policy"
+      ],
+      "source_task_fingerprints": [
+        "portfolio-v2-l_state_update",
+        "portfolio-v2-r_label_policy"
+      ],
+      "contract_signature": "b67093e62a06a1eefe1edcd7a79b83505e0da4e271b65bf64682562fddcdadba",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__research_portfolio_fixture__read_pinned",
+          "mcp__research_portfolio_fixture__pin_resource"
+        ],
+        "operators": {
+          "mcp__research_portfolio_fixture__read_pinned": {
+            "tool": "mcp__research_portfolio_fixture__read_pinned",
+            "read_only": true,
+            "required_params": [
+              "source_id"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__research_portfolio_fixture__pin_resource": {
+            "tool": "mcp__research_portfolio_fixture__pin_resource",
+            "read_only": true,
+            "required_params": [
+              "object_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__research_portfolio_fixture__read_pinned",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__research_portfolio_fixture__read_pinned",
+                "from_field": "value.link_1_object_id",
+                "to_param": "object_id",
+                "version_relation": "object_lookup"
+              }
+            ]
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__research_portfolio_fixture__read_pinned",
+          "from_field": "value.link_1_object_id",
+          "to_param": "object_id",
+          "version_relation": "object_lookup",
+          "to_tool": "mcp__research_portfolio_fixture__pin_resource",
+          "supporting_trace_ids": [
+            "portfolio-v2-l_state_update",
+            "portfolio-v2-r_label_policy"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "portfolio-v2-l_state_update": 1,
+        "portfolio-v2-r_label_policy": 1
+      },
+      "validation_trace_id": "portfolio-v2-c_protocol_conflict",
+      "validation_task_fingerprint": "portfolio-v2-c_protocol_conflict",
+      "certified_digest": "8d46b6e799884ae7d8c6e3be9fa5ce21623178e2093063ef54a045e52c15cf0e"
+    }
+  ],
+  "connectors": {},
+  "links": [],
+  "rejected": [],
+  "training_trace_ids": [
+    "portfolio-v2-l_state_update",
+    "portfolio-v2-r_label_policy"
+  ],
+  "heldout_trace_ids": [
+    "portfolio-v2-c_protocol_conflict"
+  ],
+  "library_digest": "c6c19281d9af63e798651c9cfb349875309f2357582b547fe3baca3c1ee9cc33"
+}

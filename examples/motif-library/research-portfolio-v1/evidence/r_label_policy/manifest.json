@@ -1,0 +1,6 @@
+{
+  "task_id": "research-portfolio-r_label_policy",
+  "question": "图像分割候选方法的接受率下降，是模型退化还是标注政策变化；组会主张怎样改？",
+  "task_sha256": "2d4595002e193f43982d26e1d7d8ebe1e2ed134c3530cfa237176c630cb06390",
+  "scope": "curated_public_synthetic_fixture"
+}

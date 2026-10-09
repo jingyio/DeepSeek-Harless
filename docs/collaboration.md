@@ -5,9 +5,9 @@
 | 人员 | 主要负责 | 变更边界 |
 | --- | --- | --- |
 | 你 | Motif / Harness 公共接口、集成、合并与演示 | `src/`、通用脚本和配置 |
-| 同学 A | 场景 A 的 MCP、任务、契约与测试 | `scenarios/scene_a/`、自己的测试 |
-| 同学 B | 场景 B 的 MCP、任务、契约与测试 | `scenarios/scene_b/`、自己的测试 |
-| 同学 C | 场景 C 的 MCP、任务、契约与测试 | `scenarios/scene_c/`、自己的测试 |
+| 同学 刘沛林 | 场景 A 的 MCP、任务、契约与测试 | `scenarios/scene_a/`、自己的测试 |
+| 同学 杨夏泽 | 场景 B 的 MCP、任务、契约与测试 | `scenarios/scene_b/`、自己的测试 |
+| 同学 夏俊杰 | 场景 C 的 MCP、任务、契约与测试 | `scenarios/scene_c/`、自己的测试 |
 
 第一天开头，大家先 `npm test` 和 `npm run smoke` 跑通底座，再各复制 example。第一天中午前，每个场景至少提交一个 MCP 可调用的最小链路。第一天结束前集成一次；第二天优先修复联调和真实任务问题，下午冻结演示版本。小步合并比等完整场景做完才同步更适合两天工期。
 

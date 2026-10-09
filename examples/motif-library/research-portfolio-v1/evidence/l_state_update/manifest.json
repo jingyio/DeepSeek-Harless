@@ -1,0 +1,6 @@
+{
+  "task_id": "research-portfolio-l_state_update",
+  "question": "Model RSI 的内部能力状态设想，是否已有直接证据支持；下周先验证什么？",
+  "task_sha256": "1a408a38e133aa9332d6a87d4ae9b13339086b0c4ee9238a7c60bb1e3dccd5df",
+  "scope": "curated_public_synthetic_fixture"
+}

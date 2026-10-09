@@ -7,7 +7,9 @@
     "setup": "node scripts/project.mjs setup",
     "test": "node scripts/project.mjs test",
     "smoke": "node scripts/project.mjs smoke",
-    "scenario": "node scripts/project.mjs scenario"
+    "scenario": "node scripts/project.mjs scenario",
+    "motif:check": "node scripts/project.mjs python scripts/motif-example.py check",
+    "motif:rebuild": "node scripts/project.mjs python scripts/motif-example.py rebuild"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.5-rc.3",
