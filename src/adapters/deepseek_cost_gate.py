@@ -20,6 +20,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 PEAK_USD_PER_MILLION = {
@@ -161,7 +162,12 @@ class State:
             os.chmod(self.record, 0o600)
 
 
-def serve(host: str, port: int, upstream: str, state: State) -> None:
+def create_server(host: str, port: int, upstream: str, state: State) -> ThreadingHTTPServer:
+    # macOS can supply system proxies even with no *_PROXY environment variables.
+    # Never send a local mock/loopback upstream through an external proxy.
+    opener = (urllib.request.build_opener(urllib.request.ProxyHandler({}))
+              if urlparse(upstream).hostname in {"127.0.0.1", "localhost", "::1"}
+              else urllib.request.build_opener())
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -196,7 +202,7 @@ def serve(host: str, port: int, upstream: str, state: State) -> None:
             request = urllib.request.Request(upstream + self.path, data=body,
                                              headers=headers, method=method)
             try:
-                with urllib.request.urlopen(request, timeout=900) as response:
+                with opener.open(request, timeout=900) as response:
                     return (response.status,
                             response.headers.get("Content-Type", "application/json"),
                             response.read())
@@ -266,7 +272,11 @@ def serve(host: str, port: int, upstream: str, state: State) -> None:
                        "elapsed_seconds": round(time.monotonic() - started, 3)})
             self._send_upstream(status, content_type, answer)
 
-    server = ThreadingHTTPServer((host, port), Handler)
+    return ThreadingHTTPServer((host, port), Handler)
+
+
+def serve(host: str, port: int, upstream: str, state: State) -> None:
+    server = create_server(host, port, upstream, state)
     try:
         server.serve_forever()
     finally:

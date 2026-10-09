@@ -1,8 +1,0 @@
-[
-  {"id": "low_confidence", "requirement": "CIPS 未过阈值时返回标准 LLM 决策。"},
-  {"id": "execution_cap", "requirement": "惯性调用比例上限为总操作的百分之三十。"},
-  {"id": "no_consecutive", "requirement": "禁止连续两次惯性调用。"},
-  {"id": "error_recovery", "requirement": "两次连续工具错误时触发有效动作检查操作。"},
-  {"id": "edge_feedback", "requirement": "惯性调用成功或失败分别增加或减少序列边权重。"},
-  {"id": "negative_path", "requirement": "错误调用链以负频次加入 ToolPath 且须长于惯性窗口。"}
-]

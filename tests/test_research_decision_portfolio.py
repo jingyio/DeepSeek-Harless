@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -149,7 +150,7 @@ class ResearchDecisionPortfolioMcpTest(unittest.IsolatedAsyncioTestCase):
             with self.subTest(case_id=case_id):
                 object_id = scoped(case_id, short_id)
                 params = StdioServerParameters(
-                    command=str(project / ".venv312/bin/python"),
+                    command=sys.executable,
                     args=[str(ROOT / "mock_apps_server.py")], cwd=project,
                     env={"SSS_PORTFOLIO_CASE": case_id, "PYTHONPATH": str(project)},
                 )

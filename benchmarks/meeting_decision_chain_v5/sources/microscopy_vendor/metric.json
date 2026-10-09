@@ -1,9 +1,0 @@
-{
-  "id": "segmentation_acceptance",
-  "numerator": "accepted_masks",
-  "denominator": "reviewed_masks",
-  "allowed_groups": [
-    "variant",
-    "microscope"
-  ]
-}

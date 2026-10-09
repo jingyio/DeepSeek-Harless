@@ -1,9 +1,0 @@
-[
-  {"id": "experience", "requirement": "经验由任务指令和解决该任务的动作轨迹构成。"},
-  {"id": "workflow_form", "requirement": "工作流由文字描述和可执行步骤序列表示。"},
-  {"id": "abstraction", "requirement": "诱导模块抽取可复用的细粒度子任务，并把实例值抽象为占位符。"},
-  {"id": "offline", "requirement": "离线版从训练经验预先诱导工作流，测试时对各任务使用同一份工作流记忆。"},
-  {"id": "online_gate", "requirement": "在线版使用成功判别器，只从判为成功的测试轨迹诱导工作流。"},
-  {"id": "online_update", "requirement": "在线版在任务后把新工作流加入记忆，供后续流式任务使用。"},
-  {"id": "agent_use", "requirement": "诱导的工作流作为辅助记忆加入代理，使代理在后续任务中据此生成动作。"}
-]

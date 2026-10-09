@@ -28,7 +28,7 @@ def load_cli(path=SCRIPT):
 class ContractLoadingTests(unittest.TestCase):
     def test_real_structured_mcp_contract_keeps_shapes_and_defaults(self):
         cli = load_cli()
-        rows = json.loads((ROOT / "config/structured-research-tool-contracts.json")
+        rows = json.loads((ROOT / "tests/fixtures/contracts/structured-research-tool-contracts.json")
                           .read_text(encoding="utf-8"))
         contracts = cli._contracts(rows)
         aggregate = contracts["mcp__local_research_tools__aggregate_records"]
@@ -58,8 +58,8 @@ class ContractLoadingTests(unittest.TestCase):
     def test_witnessed_compiler_combines_real_application_contracts(self):
         cli = load_cli(CHAIN_SCRIPT)
         contracts = cli._contracts([
-            ROOT / "config/scoped-research-handle-contracts.json",
-            ROOT / "config/scoped-zotero-handle-contracts.json",
+            ROOT / "tests/fixtures/contracts/scoped-research-handle-contracts.json",
+            ROOT / "tests/fixtures/contracts/scoped-zotero-handle-contracts.json",
         ])
         read_pdf = contracts["mcp__scoped_research_read__read_pinned_pdf_pages"]
         self.assertEqual(dict(read_pdf.default_params),
@@ -68,7 +68,7 @@ class ContractLoadingTests(unittest.TestCase):
                          ("start_page", "max_pages"))
         self.assertEqual(read_pdf.provenance_params, ("source_id",))
         with self.assertRaisesRegex(ValueError, "duplicate tool names"):
-            cli._contracts([ROOT / "config/scoped-research-handle-contracts.json"] * 2)
+            cli._contracts([ROOT / "tests/fixtures/contracts/scoped-research-handle-contracts.json"] * 2)
 
     def test_real_jsonl_events_load_but_external_paths_do_not(self):
         cli = load_cli()

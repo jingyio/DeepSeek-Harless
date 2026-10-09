@@ -13,9 +13,9 @@ v2 是独立冻结的**合成开发任务**；不修改 v1 已付费实验的任
 运行前先验证：
 
 ```sh
-.venv312/bin/python -m benchmarks.research_decision_portfolio_v2.build_fixtures
-.venv312/bin/python -m unittest tests.test_research_decision_portfolio_v2
-SSS_PORTFOLIO_CASE=a_model_rsi_figure .venv312/bin/python benchmarks/research_decision_portfolio_v2/mock_apps_server.py
+npm test
+npm run smoke
+npm run scenario -- --scenario scenarios/portfolio-v2/scenario.json --case a_model_rsi_figure
 ```
 
-MCP 仍提供八个通用只读工具；DSH 配置在 `config/research-decision-portfolio-v2.patch.yml`。普通 Harness 和 Motif 应使用相同工具集合、提示和 Flash 非思考模式。每题先核交付质量，再比较真实请求、缓存计价费用、端到端时间和人工修订；这些合成题的成绩不能充当真实课题组收益。临时编写的穷尽式收集脚本不列为主对照，因为开发与维护成本没有计入。
+MCP 仍提供八个通用只读工具；DSH 配置由 `scenarios/portfolio-v2/scenario.json` 生成。普通 Harness 和 Motif 应使用相同工具集合、提示和 Flash 非思考模式。每题先核交付质量，再比较真实请求、缓存计价费用、端到端时间和人工修订；这些合成题的成绩不能充当真实课题组收益。临时编写的穷尽式收集脚本不列为主对照，因为开发与维护成本没有计入。

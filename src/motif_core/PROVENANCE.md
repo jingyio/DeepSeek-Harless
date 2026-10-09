@@ -1,5 +1,13 @@
 # MotifAgent runtime subset
 
+Main cleanup on 2026-10-09 retained this runtime subset and its license/source
+provenance. Application-specific office/research integrations mentioned below
+are historical migration records, now available on `archive` and
+`archive-pre-cleanup-20261009`. Current interfaces are documented in
+`docs/interfaces.md`; the online adapter uses the JavaScript subset rather than
+calling the Python controller through RPC. The original frozen artifact remains
+unchanged.
+
 Adapted from the frozen `MotifAgent-ATC26-Artifact` source snapshot.
 Its `SOURCE_LOCK.json` pins the upstream development source at commit
 `c73849cfe8d27e3bb3b932dbc70c84fa34c980e6` (tag

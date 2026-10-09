@@ -1,0 +1,29 @@
+{
+  "mcp__demo__pin_note": {
+    "required_params": [
+      "object_id"
+    ],
+    "read_only": true,
+    "output_fields": [
+      "source_id",
+      "version_sha256"
+    ],
+    "replay_stable": true,
+    "description": "Bind one public demo note to its content version. Accept note:alpha or note:beta."
+  },
+  "mcp__demo__read_pinned_note": {
+    "required_params": [
+      "source_id"
+    ],
+    "provenance_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "output_fields": [
+      "text",
+      "version_sha256"
+    ],
+    "replay_stable": true,
+    "description": "Read a note using only the source_id returned by pin_note; reject changed versions."
+  }
+}

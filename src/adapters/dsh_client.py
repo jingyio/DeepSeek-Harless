@@ -54,22 +54,19 @@ def call_bounded_prompt(prompt: str, *, root: Path, model: str = "deepseek-flash
     require_budget_gate()
     if len(prompt) > max_prompt_characters or max_output_tokens < 1:
         raise ValueError("semantic request exceeds its configured budget")
-    from deepseek_harness import DeepSeekHarness
+    from src.adapters.harness_runtime import create_harness
 
     workspace = root / ".local" / "semantic-workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    with DeepSeekHarness(
+    with create_harness(
+        root=root,
         provider="deepseek-official",
         model=model,
-        reasoning_effort="off",
         max_tokens=max_output_tokens,
         cwd=str(workspace),
         runtime_cwd=str(workspace),
-        dsh_bin=str(root / "node_modules" / ".bin" / "dsh"),
-        profile="sdk",
         patches=(str(root / "config" / "semantic-sdk.patch.yml"),),
-        dsh_home=str(root / ".local" / "dsh"),
         request_timeout_seconds=120,
     ) as harness:
         result = harness.run(prompt, session_id=f"sss-semantic-{uuid4().hex}")

@@ -1,6 +1,0 @@
-{
-  "mcp__meeting_decision_fixture__read_change": "event_version",
-  "mcp__meeting_decision_fixture__pin_object": "version_sha256",
-  "mcp__meeting_decision_fixture__read_pinned_object": "version_sha256",
-  "mcp__meeting_decision_fixture__find_dependent_claims": "index_version_sha256"
-}

@@ -1,9 +1,0 @@
-{
-  "id": "correct_rate",
-  "numerator": "correct",
-  "denominator": "cases",
-  "allowed_groups": [
-    "variant",
-    "label_status"
-  ]
-}

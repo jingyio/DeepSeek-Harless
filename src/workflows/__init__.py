@@ -1,1 +1,0 @@
-"""Task-specific executable motifs."""

@@ -8,7 +8,6 @@ from pathlib import Path
 
 from src.motif_core.dependencies import resolve_dependencies
 from src.motif_core.evidence import BoundEvidence
-from src.workflows.motif_research_sources import SourceReadBlocked, collect
 
 
 class MotifFailureFeedbackTests(unittest.TestCase):
@@ -65,20 +64,6 @@ class MotifFailureFeedbackTests(unittest.TestCase):
         self.assertEqual(evidence.lookup("child", {"id": "answer"})["value"],
                          {"value": "new"})
 
-    def test_source_failure_retains_hashes_without_source_text(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "damaged.txt").write_bytes(b"private\xffpayload")
-            with self.assertRaises(SourceReadBlocked) as caught:
-                collect(root)
-            witness = caught.exception.witness
-            self.assertEqual(witness["motif_id"], "research_sources")
-            self.assertEqual(witness["operator"], "read_source")
-            self.assertEqual(witness["reason"], "dependency_tool_error")
-            self.assertEqual(witness["error_class"], "UnicodeDecodeError")
-            self.assertEqual(witness["disposition"], "quarantined_candidate_evidence")
-            self.assertNotIn("private", str(witness))
-            self.assertEqual(len(witness["input_version"]), 64)
 
 
 if __name__ == "__main__":

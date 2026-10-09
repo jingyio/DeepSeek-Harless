@@ -1,9 +1,0 @@
-[
-  {"id": "phases", "requirement": "Agentless 的主流程依次是定位、修复和补丁验证，按固定步骤处理仓库问题。"},
-  {"id": "files", "requirement": "文件定位结合仓库树与问题描述让模型排序可疑文件，并用代码片段嵌入检索补充候选文件。"},
-  {"id": "elements", "requirement": "元素定位先用只含声明和签名的 skeleton 缩小到类/函数，再提供相关完整代码定位最终编辑位置。"},
-  {"id": "repair", "requirement": "修复阶段围绕编辑位置提供少量上下文，生成多个 Search/Replace 差异补丁，而非重写整段代码。"},
-  {"id": "reproduction", "requirement": "验证阶段生成多个复现测试，在原仓库执行，只保留能输出 Issue reproduced 的测试并选择规范化后出现最多的测试。"},
-  {"id": "regression", "requirement": "补丁筛选以原仓库通过的测试为起点，排除不适合作回归测试的项目后，优先保留回归失败数最少的补丁。"},
-  {"id": "final_patch", "requirement": "剩余补丁须让选中的复现测试输出 Issue resolved；若无补丁通过则回退到回归测试结果，最后对规范化补丁做多数投票。"}
-]

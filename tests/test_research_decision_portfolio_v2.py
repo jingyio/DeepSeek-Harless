@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import unittest
 from collections import deque
 from pathlib import Path
@@ -69,7 +70,7 @@ class PortfolioV2McpTest(unittest.IsolatedAsyncioTestCase):
         project = ROOT.parent.parent
         case = "a_model_rsi_figure"
         params = StdioServerParameters(
-            command=str(project / ".venv312/bin/python"),
+            command=sys.executable,
             args=[str(ROOT / "mock_apps_server.py")], cwd=project,
             env={"SSS_PORTFOLIO_CASE": case, "PYTHONPATH": str(project)})
         async with Client(params, read_timeout_seconds=20) as client:

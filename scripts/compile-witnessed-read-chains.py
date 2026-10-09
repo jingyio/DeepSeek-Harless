@@ -53,7 +53,7 @@ def main() -> int:
     parser.add_argument("--heldout", nargs=3, required=True,
                         metavar=("TRACE_ID", "IDENTITY_LOCK", "EVENTS_JSONL"))
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--contracts", type=Path, action="append",
+    parser.add_argument("--contracts", type=Path, action="append", required=True,
                         help="approved tool contract JSON; repeat to combine connectors")
     args = parser.parse_args()
     if len(args.train) < 2:
@@ -62,8 +62,7 @@ def main() -> int:
     if (len({row[0] for row in specs}) != len(specs)
             or any(not row[0].strip() for row in specs)):
         parser.error("trace IDs must be distinct and nonempty")
-    contracts = _contracts(args.contracts or [
-        ROOT / "config/structured-research-focused-contracts.json"])
+    contracts = _contracts(args.contracts)
     traces = []
     inputs = []
     identities = []

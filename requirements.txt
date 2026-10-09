@@ -1,0 +1,4 @@
+deepseek-harness-sdk==0.1.5rc1
+mcp==2.2.0
+pydantic==2.13.5
+pytest==8.4.2

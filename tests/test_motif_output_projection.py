@@ -20,7 +20,36 @@ from src.adapters.motif_output_projection import (CompactJsonProjector, LatestTo
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ARTIFACT = ROOT / ".local" / "motifs" / "research-retrieval.json"
+class ProjectionArtifactCase(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from src.adapters.dsh_trajectory import ToolContract, extract_dsh_trace
+        from src.motif_core.offline.library_builder import build_read_motif_library
+        from tests.test_trace_compiled_read_motif import event_pair
+        contracts = {
+            "snapshot_sources": ToolContract(("root",), True, ("sha256",), replay_stable=True),
+            "retrieve_point": ToolContract(("source_sha",), True, (),
+                                          provenance_params=("source_sha",), replay_stable=True),
+        }
+        traces = []
+        for index, label in enumerate(["alpha", "beta", "gamma"]):
+            events = (event_pair(1, "snapshot_sources", {"root": label}, {"sha256": "sha-"+label})
+                      + event_pair(2, "retrieve_point", {"source_sha": "sha-"+label},
+                                   {"evidence": "Synthetic evidence " + label}))
+            traces.append(extract_dsh_trace(events, contracts, trace_id="projection-"+label,
+                task_fingerprint="synthetic-decision-"+label,
+                provenance_by_call_id={"c2": {"source_sha": {
+                    "from_call_id": "c1", "from_field": "sha256"}}}))
+        library = build_read_motif_library(traces[:2], traces[2:], contracts)
+        assert len(library["artifacts"]) == 1
+        cls.fixture_directory = tempfile.TemporaryDirectory()
+        cls.artifact = Path(cls.fixture_directory.name) / "artifact.json"
+        cls.artifact.write_text(json.dumps(library["artifacts"][0]), encoding="utf-8")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.fixture_directory.cleanup()
+
 
 
 def batch() -> tuple[dict, str, str]:
@@ -38,7 +67,7 @@ def batch() -> tuple[dict, str, str]:
     return body, source, point
 
 
-class ProjectionTest(unittest.TestCase):
+class ProjectionTest(ProjectionArtifactCase):
     def test_compact_json_preserves_every_field_and_records_exact_original(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             projector = CompactJsonProjector(Path(temp))
@@ -76,7 +105,7 @@ class ProjectionTest(unittest.TestCase):
 
     def test_recent_batch_projects_only_certified_fields_and_recovers_original(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
-            projector = LatestToolProjector(ARTIFACT, Path(temp))
+            projector = LatestToolProjector(self.artifact, Path(temp))
             request, source, point = batch()
             projected = projector.project(request)
             self.assertEqual(request["messages"][2]["content"], source)
@@ -87,7 +116,7 @@ class ProjectionTest(unittest.TestCase):
                              ["sss_projection"]["kept"], {"sha256": "sha-a"})
             self.assertEqual(projected["messages"][3]["content"], point)
             self.assertEqual(projector.project(request), projected)
-            self.assertEqual(LatestToolProjector(ARTIFACT, Path(temp)).project(request), projected)
+            self.assertEqual(LatestToolProjector(self.artifact, Path(temp)).project(request), projected)
             self.assertEqual(len(list((Path(temp) / "originals").iterdir())), 2)
             (Path(temp) / "restore" / handle).write_text("tampered")
             with self.assertRaises(ValueError):
@@ -95,7 +124,7 @@ class ProjectionTest(unittest.TestCase):
 
     def test_old_batch_is_replayed_without_new_projection(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
-            projector = LatestToolProjector(ARTIFACT, Path(temp))
+            projector = LatestToolProjector(self.artifact, Path(temp))
             old, _, _ = batch()
             prior_view = projector.project(old)
             later = json.loads(json.dumps(old))
@@ -109,18 +138,18 @@ class ProjectionTest(unittest.TestCase):
             result = projector.project(later)
             self.assertEqual(result["messages"][2:4], prior_view["messages"][2:4])
             self.assertIn("sss_projection", result["messages"][-1]["content"])
-            fresh = LatestToolProjector(ARTIFACT, Path(temp) / "fresh").project(later)
+            fresh = LatestToolProjector(self.artifact, Path(temp) / "fresh").project(later)
             self.assertEqual(fresh["messages"][2:4], old["messages"][2:4])
 
     def test_uncertified_artifact_and_failed_results_are_not_projected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             copy = Path(temp) / "bad.json"
-            artifact = json.loads(ARTIFACT.read_text())
+            artifact = json.loads(self.artifact.read_text())
             artifact["tools"].append("unreviewed")
             copy.write_text(json.dumps(artifact))
             with self.assertRaises(ValueError):
                 load_certified_projection(copy)
-            projector = LatestToolProjector(ARTIFACT, Path(temp) / "state")
+            projector = LatestToolProjector(self.artifact, Path(temp) / "state")
             request, _, _ = batch()
             request["messages"][2]["content"] = json.dumps({"status": "error", "notes": "x" * 500})
             result = projector.project(request)
@@ -178,7 +207,7 @@ class CompactProvider(BaseHTTPRequestHandler):
         pass
 
 
-class ProjectionWireTest(unittest.TestCase):
+class ProjectionWireTest(ProjectionArtifactCase):
     def test_compact_json_preserves_streaming_request_and_response(self) -> None:
         CompactProvider.requests = []
         with tempfile.TemporaryDirectory() as temp, ThreadingHTTPServer(
@@ -222,35 +251,6 @@ class ProjectionWireTest(unittest.TestCase):
                 process.stderr.close()
                 provider.shutdown()
 
-    def test_plain_launcher_compacts_json_without_adding_recovery_tool(self) -> None:
-        CompactProvider.requests = []
-        with ThreadingHTTPServer(("127.0.0.1", 0), CompactProvider) as provider:
-            thread = threading.Thread(target=provider.serve_forever, daemon=True)
-            thread.start()
-            child = (
-                "import json,os,urllib.request;"
-                "body={'model':'deepseek-flash','max_tokens':20,'stream':False,'messages':["
-                "{'role':'assistant','tool_calls':[{'id':'c1','function':{'name':'read','arguments':'{}'}}]},"
-                "{'role':'tool','tool_call_id':'c1','content':json.dumps({'data':[1,2,3]},indent=2)}]};"
-                "req=urllib.request.Request(os.environ['DEEPSEEK_BASE_URL']+'/chat/completions',"
-                "data=json.dumps(body).encode(),headers={'Content-Type':'application/json'});"
-                "print(json.load(urllib.request.urlopen(req,timeout=10))['choices'][0]['message']['content']);"
-                "print(os.environ['SSS_PROJECTION_HOME'])"
-            )
-            result = subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / "run-distil-dsh.py"),
-                 "--mode", "plain", "--budget-usd", "0.01",
-                 "--upstream", f"http://127.0.0.1:{provider.server_port}",
-                 "--tool-json-compact", "--", sys.executable, "-c", child],
-                cwd=ROOT, text=True, capture_output=True, timeout=30)
-            provider.shutdown()
-        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
-        self.assertIn("OK", result.stdout)
-        self.assertEqual(len(CompactProvider.requests), 1)
-        message = CompactProvider.requests[0]["messages"][-1]
-        self.assertEqual(message["content"], '{"data":[1,2,3]}')
-        self.assertEqual(CompactProvider.requests[0].get("tools"), None)
-        self.assertEqual(len(list((Path(result.stdout.splitlines()[-1]) / "audit").glob("*.json"))), 1)
 
     def test_sss_expand_uses_local_original_and_returns_stream(self) -> None:
         RecoveringProvider.requests = []
@@ -262,7 +262,7 @@ class ProjectionWireTest(unittest.TestCase):
                 port = slot.server_port
             process = subprocess.Popen([sys.executable, "-m", "src.adapters.motif_output_projection",
                                         "--upstream", f"http://127.0.0.1:{provider.server_port}",
-                                        "--artifact", str(ARTIFACT), "--local-dir", temp,
+                                        "--artifact", str(self.artifact), "--local-dir", temp,
                                         "--port", str(port)], cwd=ROOT,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             try:
@@ -302,67 +302,7 @@ class ProjectionWireTest(unittest.TestCase):
                 process.stderr.close()
                 provider.shutdown()
 
-    def test_launcher_can_place_sss_before_unchanged_distil(self) -> None:
-        RecoveringProvider.requests = []
-        with ThreadingHTTPServer(("127.0.0.1", 0), RecoveringProvider) as provider:
-            thread = threading.Thread(target=provider.serve_forever, daemon=True)
-            thread.start()
-            child = (
-                "import json,os,urllib.request;"
-                "body={'model':'mock','stream':False,'messages':["
-                "{'role':'user','content':'check'},"
-                "{'role':'assistant','tool_calls':["
-                "{'id':'c1','type':'function','function':{'name':'snapshot_sources','arguments':'{}'}},"
-                "{'id':'c2','type':'function','function':{'name':'retrieve_point','arguments':'{}'}}]},"
-                "{'role':'tool','tool_call_id':'c1','content':json.dumps({'sha256':'sha-a','notes':'x'*500})},"
-                "{'role':'tool','tool_call_id':'c2','content':json.dumps({'evidence':'y'*500})}]};"
-                "req=urllib.request.Request(os.environ['DEEPSEEK_BASE_URL']+'/chat/completions',"
-                "data=json.dumps(body).encode(),headers={'Content-Type':'application/json'});"
-                "print(json.load(urllib.request.urlopen(req,timeout=10))['choices'][0]['message']['content']);"
-                "print(os.environ['SSS_PROJECTION_HOME'])"
-            )
-            result = subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / "run-distil-dsh.py"),
-                 "--upstream", f"http://127.0.0.1:{provider.server_port}",
-                 "--distil-profile", "context-only",
-                 "--motif-output-projection", str(ARTIFACT), "--",
-                 sys.executable, "-c", child], cwd=ROOT, text=True,
-                capture_output=True, timeout=30)
-            provider.shutdown()
-        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
-        self.assertIn("RECOVERED", result.stdout)
-        self.assertGreaterEqual(len(RecoveringProvider.requests), 2)
-        self.assertIn("sss_expand", json.dumps(RecoveringProvider.requests[0].get("tools", [])))
-        self.assertTrue(list((Path(result.stdout.splitlines()[-1]) / "originals").glob("*.json")))
 
-    def test_plain_sss_route_meters_recovery_without_distil(self) -> None:
-        RecoveringProvider.requests = []
-        with ThreadingHTTPServer(("127.0.0.1", 0), RecoveringProvider) as provider:
-            thread = threading.Thread(target=provider.serve_forever, daemon=True)
-            thread.start()
-            child = (
-                "import json,os,urllib.request;"
-                "body={'model':'deepseek-flash','max_tokens':20,'stream':False,'messages':["
-                "{'role':'assistant','tool_calls':[{'id':'c1','type':'function','function':"
-                "{'name':'snapshot_sources','arguments':'{}'}}]},"
-                "{'role':'tool','tool_call_id':'c1','content':json.dumps({'sha256':'a','notes':'x'*500})}]};"
-                "req=urllib.request.Request(os.environ['DEEPSEEK_BASE_URL']+'/chat/completions',"
-                "data=json.dumps(body).encode(),headers={'Content-Type':'application/json'});"
-                "print(json.load(urllib.request.urlopen(req,timeout=10))['choices'][0]['message']['content']);"
-                "print(os.environ['SSS_BUDGET_LEDGER'])"
-            )
-            result = subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / "run-distil-dsh.py"),
-                 "--mode", "plain", "--budget-usd", "0.01",
-                 "--upstream", f"http://127.0.0.1:{provider.server_port}",
-                 "--motif-output-projection", str(ARTIFACT), "--",
-                 sys.executable, "-c", child], cwd=ROOT, text=True,
-                capture_output=True, timeout=30)
-            provider.shutdown()
-        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
-        self.assertIn("RECOVERED", result.stdout)
-        self.assertEqual(len(RecoveringProvider.requests), 2)
-        self.assertEqual(len(Path(result.stdout.splitlines()[-1]).read_text().splitlines()), 2)
 
 
 if __name__ == "__main__":

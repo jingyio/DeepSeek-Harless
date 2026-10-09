@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "portfolio_v2",
+  "prompt": "${PROJECT_ROOT}/benchmarks/research_decision_portfolio_v2/cases/${CASE}/task.md",
+  "servers": [
+    {
+      "server_name": "research_portfolio_fixture",
+      "transport": "stdio",
+      "command": "${PYTHON}",
+      "args": [
+        "${PROJECT_ROOT}/benchmarks/research_decision_portfolio_v2/mock_apps_server.py"
+      ],
+      "cwd": "${PROJECT_ROOT}",
+      "env": {
+        "PYTHONPATH": "${PROJECT_ROOT}",
+        "SSS_PORTFOLIO_CASE": "${CASE}"
+      }
+    }
+  ],
+  "allowed_tools": [
+    "mcp__research_portfolio_fixture__read_event",
+    "mcp__research_portfolio_fixture__pin_resource",
+    "mcp__research_portfolio_fixture__read_pinned",
+    "mcp__research_portfolio_fixture__read_rows",
+    "mcp__research_portfolio_fixture__aggregate_rate",
+    "mcp__research_portfolio_fixture__compare_tables",
+    "mcp__research_portfolio_fixture__find_dependents",
+    "mcp__research_portfolio_fixture__locate_excerpt"
+  ]
+}

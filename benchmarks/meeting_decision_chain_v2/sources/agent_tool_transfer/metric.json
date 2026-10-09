@@ -1,9 +1,0 @@
-{
-  "id": "task_success_rate",
-  "numerator": "successful_tasks",
-  "denominator": "attempted_tasks",
-  "allowed_groups": [
-    "variant",
-    "tool_chain"
-  ]
-}

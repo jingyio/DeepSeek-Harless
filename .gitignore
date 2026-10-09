@@ -1,6 +1,9 @@
 node_modules/
+node_modules
 .venv/
 .venv312/
+.venv-sss/
+.pytest_cache/
 __pycache__/
 *.pyc
 .local/
@@ -11,6 +14,8 @@ __pycache__/
 .DS_Store
 dist/
 coverage/
+outputs/
+# Keep old ignored private data ignored after retiring its application modules.
 experiments/results/
 office/papers/inbox/
 office/papers/archive/

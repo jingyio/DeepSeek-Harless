@@ -16,7 +16,6 @@ from src.adapters.dsh_trajectory import (
 )
 from tests.test_trace_compiled_read_motif import event_pair
 from src.adapters.tool_contract_loader import parse_tool_contracts
-from src.mcp import sss_runtime_server
 from src.motif_core.offline.trace_compiler import compile_read_motif, certify_read_motif
 from src.motif_core.offline.library_builder import build_read_motif_library
 from src.motif_core.read_executor import run_read_motif
@@ -49,7 +48,7 @@ class DshTrajectoryTests(unittest.TestCase):
     def test_observed_gmail_anchor_can_certify_without_replaying_search(self):
         root = Path(__file__).resolve().parents[1]
         contracts = parse_tool_contracts(json.loads((
-            root / "config/scoped-gmail-request-contracts.json").read_text()))
+            root / "tests/fixtures/contracts/scoped-gmail-request-contracts.json").read_text()))
         search_name = "mcp__scoped_gmail_request__search_emails"
         read_name = "mcp__scoped_gmail_request__read_email"
 
@@ -81,7 +80,7 @@ class DshTrajectoryTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         manifest = module.export_manifest(
-            library, json.loads((root / "config/scoped-gmail-request-contracts.json").read_text()),
+            library, json.loads((root / "tests/fixtures/contracts/scoped-gmail-request-contracts.json").read_text()),
             {search_name: {"query": "subject:research-[abc]"}},
             {search_name: "selected_message_id", read_name: "source_version"})
         self.assertTrue(manifest["contracts"][search_name]["observed_anchor"])
@@ -96,7 +95,7 @@ class DshTrajectoryTests(unittest.TestCase):
     def test_scoped_gmail_search_to_read_has_witnessed_message_id(self):
         contracts = parse_tool_contracts(json.loads((
             Path(__file__).resolve().parents[1] /
-            "config/scoped-gmail-request-contracts.json").read_text()))
+            "tests/fixtures/contracts/scoped-gmail-request-contracts.json").read_text()))
         message_id = "a" * 16
         search = event_pair(1, "mcp__scoped_gmail_request__search_emails",
                             {"query": "subject:SSS"}, {"ignored": True})
@@ -131,13 +130,7 @@ class DshTrajectoryTests(unittest.TestCase):
     def test_native_sss_frontier_provenance_can_be_compiled_only_when_witnessed(self):
         contracts = parse_tool_contracts(json.loads((
             Path(__file__).resolve().parents[1] /
-            "config/sss-runtime-tool-contracts.json").read_text(encoding="utf-8")))
-        for name, contract in contracts.items():
-            function = getattr(sss_runtime_server, name.removeprefix("mcp__sss_runtime__"))
-            required = {key for key, param in inspect.signature(function).parameters.items()
-                        if param.default is inspect.Parameter.empty}
-            self.assertEqual(set(contract.required_params), required)
-
+            "tests/fixtures/contracts/sss-runtime-tool-contracts.json").read_text(encoding="utf-8")))
         prefix = "mcp__sss_runtime__"
         run_id, frontier_id = "a" * 32, "b" * 32
         question = "Which evidence supports this claim?"
@@ -308,7 +301,7 @@ class DshTrajectoryTests(unittest.TestCase):
     def test_pdf_quote_match_handle_witnesses_locator_to_read_edge(self):
         root = Path(__file__).resolve().parents[1]
         contracts = parse_tool_contracts(json.loads((
-            root / "config/scoped-research-handle-contracts.json").read_text()))
+            root / "tests/fixtures/contracts/scoped-research-handle-contracts.json").read_text()))
         prefix = "mcp__scoped_research_read__"
         source_id, match_id = "source-" + "a" * 32, "match-" + "b" * 32
         events = (event_pair(1, prefix + "pin_scoped_source", {"role": "paper"},
@@ -331,7 +324,7 @@ class DshTrajectoryTests(unittest.TestCase):
     def test_approved_obsidian_excerpt_has_pinned_source_provenance(self):
         root = Path(__file__).resolve().parents[1]
         contracts = parse_tool_contracts(json.loads((
-            root / "config/scoped-research-handle-contracts.json").read_text()))
+            root / "tests/fixtures/contracts/scoped-research-handle-contracts.json").read_text()))
         prefix = "mcp__scoped_research_read__"
         source_id = "source-" + "c" * 32
         events = (event_pair(1, prefix + "pin_scoped_note", {"role": "current_state"},

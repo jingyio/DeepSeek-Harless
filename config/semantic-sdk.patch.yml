@@ -2,6 +2,10 @@
 # Keep the credential provider and DeepSeek adapter from the standard SDK profile.
 - id: tool-bash
   disabled: true
+- id: tool-bash-persistent
+  disabled: true
+- id: tool-read
+  disabled: true
 - id: tool-pwsh
   disabled: true
 - id: tool-jobs

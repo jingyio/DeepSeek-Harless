@@ -15,12 +15,12 @@
 ## 运行方式与权限
 
 ```sh
-.venv312/bin/python -m benchmarks.research_decision_portfolio_v1.build_fixtures
-.venv312/bin/python -m unittest tests.test_research_decision_portfolio
-SSS_PORTFOLIO_CASE=l_state_update .venv312/bin/python benchmarks/research_decision_portfolio_v1/mock_apps_server.py
+npm test
+npm run smoke
+npm run scenario -- --scenario scenarios/portfolio-v1/scenario.json --case l_state_update
 ```
 
-第三条启动 stdio MCP 服务，会等待客户端。DeepSeek Harness 可用 `config/research-decision-portfolio.patch.yml` 挂载；需设置 `SSS_PROJECT_ROOT`、`SSS_MCP_PYTHON` 和 `SSS_PORTFOLIO_CASE`。Agent 工作目录放 `.local`，禁用读取仓库和执行 shell 的工具，避免它绕过 MCP 直接看到 `sources.json` 或 `review.json`。来源 ID 仅在当前 case 有效，`pin_resource` 返回的句柄绑定内容哈希；内容改变后旧句柄失效。服务器不读取隐藏评审文件。
+第三条只输出任务预览。自定义 MCP 通过通用场景入口挂载，须显式加 `--call-model` 与预算才调用模型；Agent 工作区放 `.local`，禁用读取仓库和执行 shell 的工具。来源 ID 仅在当前 case 有效，`pin_resource` 返回的句柄绑定内容哈希；内容改变后旧句柄失效。服务器不读取隐藏评审文件。
 
 八个只读工具：`read_event`、`pin_resource`、`read_pinned`、`read_rows`、`aggregate_rate`、`compare_tables`、`find_dependents`、`locate_excerpt`。`compare_tables` 返回数据变化与 `protocol_changed`，不自行宣称新旧结果可比；`locate_excerpt` 只定位精确文字，不判断其是否支持主张。实际发送邮件、创建日历事件和写应用均没有工具入口。
 
