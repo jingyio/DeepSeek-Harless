@@ -9,3 +9,5 @@
 - 不变的验收约束：未修改冻结数据、题目或 library/manifest 摘要，未重新计算锁来掩盖失败，未删除整个测试或跳过 Windows CI；不改 Harness 核心。
 - 本地验证：macOS 的 136 项 Python、29 项 Node 回归通过。后续以修复提交对应的 GitHub Actions Ubuntu/Windows 结果为准；本机回归不能代替 Windows 原生结论。没有新增付费 API 调用。
 - 已有 Windows 副本：保留自己的未提交工作后，重新克隆最新 main 并执行 `npm ci`、`npm run setup`、`npm test`、`npm run smoke`、`npm run motif:check`；不要强制清理带有个人工作或私有运行数据的目录。
+
+- 远端验证结果：修复提交 `c05127f` 的 [GitHub Actions 37888988141](https://github.com/jingyio/DeepSeek-Harless/actions/runs/37888988141) 已完成；Windows/Ubuntu 两组均通过依赖安装、Python/Node 全套测试、18 题 MCP smoke 和 Motif 样例闭环。按 `core.autocrlf=true` 本地干净检出的 79 个冻结文件也保留原哈希。支持范围是当前离线/模拟协议；真实云 API 与自定义应用权限仍需场景联调。
