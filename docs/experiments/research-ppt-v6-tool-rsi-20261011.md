@@ -97,3 +97,9 @@ generated→generated_motif 观察到请求23→18（−21.74%）、总token719,
 - 清单SHA256：`5b0c7b834a38ce78d95c7446df734bd604b3b023d3d15954b0c16ca9e9b53321`；生成日志 `test-logs/research-ppt-v6-deliverables-report-reviewed-20261011.log`。
 
 此前23页版本因零请求失败行token汇总显示未知、空介绍页和边界说明不完整而另存后修订报告；不改实验运行、账本或PPT原稿，新增模型请求为0。最终报告明确学习3请求/39,152token、同会话状态限制、开发端固定目录能力边界与真实1请求旁路。
+
+### 提交与同步状态
+
+用户已明确授权中文commit/push至 `feature/research-ppt-agent`、不PR，提交前已告知范围。服务器中文功能提交 `3e29f8ed46043a1b5f2393da53d3425f0db44487` 已完成，树 `794b1f998a8e83d9e8049489ef690314217a4447`，以GitHub当前目标头 `2368235f274329be6227a8393b850633cb943da4` 为parent，吸收旧未推送PPT实验seed的场景与必要兼容补丁；不含他人主线交接改动、私有材料或原日志。旧seed及所有运行配置保留，不追改历史实验版本。
+
+GitHub尚未同步、未创建PR：现有连接器写Git树返回403（Resource not accessible by integration）；本机12000代理未监听，直接HTTPS Git读取重置，服务器HTTP/1.1读取超时，本机SSH无可用公钥，Git凭证helper无现成认证。推送授权有效，需要恢复可写认证与网络后普通快进推送；不能把本地commit写成团队已收到。提交状态凭据及可推送Git包留在私有 `submission/`，不是实验产物质量认证。
