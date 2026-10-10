@@ -1,0 +1,18 @@
+{
+  "pack_id": "research-daily-brief-task-review-20261010-v1",
+  "algorithm": "sha256",
+  "files": {
+    "README.md": "e8e06f99fcd201138b48bf28540add4212c5522dcc0c252b851769e0d6576902",
+    "review/criteria.json": "30200705f6e5ab4887cea2ca5a9ba0e56eba834f6ed5f6d3224342e92cbf8167",
+    "review/fixtures.json": "0ed3b388fac92f9afa0759644e15a7f233d9768095c93e8c07cc030f56d2f139",
+    "review/protocol.md": "488af880b4afa8462500e8e60bdda78b81e78e031e1e4498f875a56b077b53b7",
+    "review/tasks.md": "5490518d7d6f7459ecb90d148549ee255ca4026afe91c9b2681baed87ac125f6",
+    "task-index.json": "37de83efaa42a3950bc9409c42159aa8a6417c9740064cbd6945c28a56301849",
+    "tasks/S01.md": "ecd73eb994e3d061fb7b436e711ce5faa07480f4b9231d3369d50344dec658a2",
+    "tasks/S02.md": "4e18e1d099274dc558e50221bb3142282894bd29e61b0d02e19ac0172b6ef82f",
+    "tasks/S03.md": "841b0170d11a8ef982300a1abaf7b9ddaa87dd29ad5930cdd8c64f3d2124b328",
+    "tasks/S04.md": "31a370f0070ee8373b6813867e636f2c0ab0cb972ec80e7a5113e43371e68dcb",
+    "tasks/S05.md": "8483af255a8dacbbf958190a532b7ed11fd9dcb9ed31899a9a8570ab7efef0bd",
+    "tasks/S06.md": "a0262ce14663e73eaabed61f8ae8ad99308e187fa2424610866de1044ec70086"
+  }
+}

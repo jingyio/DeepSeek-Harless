@@ -1,0 +1,29 @@
+{
+  "pack_id": "email-calendar-agent-task-review-20261010-v3",
+  "algorithm": "sha256",
+  "files": {
+    "README.md": "a5f7d9c128c1ade89f4a44a116c76d72b91dd1a9cb34ab39d67554e8a0ecf1fb",
+    "review/criteria.json": "fa9aa5377db338cbedf15b50d5464a13c951650f0f3ec99c179111bab79f2e6d",
+    "review/fixtures.json": "fb6ec9f54940a3eabde10f11cb9906549c2ae5503d8f8a686bb209eb090f1dc5",
+    "review/protocol.md": "2b4e9bd924bbda82598f04d693b58a082a1bf64495b2313cc3229326813a12fc",
+    "review/tasks.md": "978772a851248992511a7fbd69280b091de2a518f1828d87178a48f189e9f7fa",
+    "review/workflow-comparison.md": "83b56b5a954819ba91a8fbb9f93ee343e17b0e46dcb07a4f534ac834f1d9b074",
+    "task-index.json": "c1d4e37d1c1e415b1dc24870e39cf79be4829e65be03cde4a1e007dfa9d19373",
+    "tasks/A01.md": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+    "tasks/A02.md": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+    "tasks/A03.md": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+    "tasks/B01.md": "b76b1c697a11c98aabf4d379dbd0f97ee2a4474c3f4dc3c662a01ec88d131879",
+    "tasks/B02.md": "a22d144bed774ff15d029bb7b0de0b95c049e288782bc4aeaf26be9ae1fac61c",
+    "tasks/B03.md": "cd567794f1bd560844b9f8d95cca2ec1be1981a1dcfce470e49f0c0c876e0a43",
+    "tasks/C01.md": "8978ac60a89fef6f903ce5f8a32e59d397c2cd9edb8b9e0e47a5a2dacc3b1af3",
+    "tasks/C02.md": "401c824bdf3b9fb5c55b82ad2d3cfe77af8d67dd89263b28c5410d6191d7f2a2",
+    "tasks/C03.md": "7237334351aa73a5556220d9f82a3bf4e7a4f6a4242cca5cbd34515e40726089",
+    "tasks/D01.md": "b76b1c697a11c98aabf4d379dbd0f97ee2a4474c3f4dc3c662a01ec88d131879",
+    "tasks/D02.md": "a22d144bed774ff15d029bb7b0de0b95c049e288782bc4aeaf26be9ae1fac61c",
+    "tasks/D03.md": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+    "tasks/R01.md": "8978ac60a89fef6f903ce5f8a32e59d397c2cd9edb8b9e0e47a5a2dacc3b1af3",
+    "tasks/R02.md": "a22d144bed774ff15d029bb7b0de0b95c049e288782bc4aeaf26be9ae1fac61c",
+    "tasks/R03.md": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+    "tool-readiness.md": "72c1f5d5fc5665d22be1b0cd1a595e031522f734853f1a6aa44e3614d2eac6fc"
+  }
+}

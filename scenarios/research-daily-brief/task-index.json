@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "pack_id": "research-daily-brief-task-review-20261010-v1",
+  "status": "awaiting_human_task_review",
+  "purpose": "scenario_selection_for_structure_semantics_separation",
+  "runtime_config": false,
+  "data_origin": "synthetic_review_fixture",
+  "independent_real_decisions": 0,
+  "synthetic_initial_source_clusters": 3,
+  "incremental_tasks": 3,
+  "simple_program_controls": 2,
+  "cases": [
+    {
+      "case_id": "S01",
+      "title": "组会准备与订阅论文初筛",
+      "kind": "initial",
+      "parent_case_id": null,
+      "source_cluster": "synthetic-atlas",
+      "current_time": "2026-10-12T08:00:00+08:00",
+      "time_zone": "Asia/Shanghai",
+      "agent_task": "tasks/S01.md",
+      "authorized_containers": [
+        "calendar:atlas",
+        "mail:atlas",
+        "notes:atlas",
+        "papers:atlas"
+      ],
+      "snapshot_sha256": "a05cf4cf74e20b131151df3e724f61ef25efe4091c6dfbea94d7aee934e6b828"
+    },
+    {
+      "case_id": "S02",
+      "title": "未见蛋白泛化论文与讨论期限",
+      "kind": "initial",
+      "parent_case_id": null,
+      "source_cluster": "synthetic-meridian",
+      "current_time": "2026-10-14T08:00:00+08:00",
+      "time_zone": "Asia/Shanghai",
+      "agent_task": "tasks/S02.md",
+      "authorized_containers": [
+        "calendar:meridian",
+        "mail:meridian",
+        "notes:meridian",
+        "papers:meridian"
+      ],
+      "snapshot_sha256": "4fcee87a03d991b32d9f7071ec34671b0fefe4ada4a966ad0c53a5a1d4be0511"
+    },
+    {
+      "case_id": "S03",
+      "title": "成像证据缺口与失效的实验要求",
+      "kind": "initial",
+      "parent_case_id": null,
+      "source_cluster": "synthetic-lantern",
+      "current_time": "2026-10-16T08:00:00+08:00",
+      "time_zone": "Asia/Shanghai",
+      "agent_task": "tasks/S03.md",
+      "authorized_containers": [
+        "calendar:lantern",
+        "mail:lantern",
+        "notes:lantern",
+        "papers:lantern"
+      ],
+      "snapshot_sha256": "732a3475cbc3423d1da1c5c1dc1fb2ee830aee4b789d17956bcfa24447915a3d"
+    },
+    {
+      "case_id": "S04",
+      "title": "组会改期后撤回旧提醒并暴露冲突",
+      "kind": "incremental",
+      "parent_case_id": "S01",
+      "source_cluster": "synthetic-atlas",
+      "current_time": "2026-10-12T11:30:00+08:00",
+      "time_zone": "Asia/Shanghai",
+      "agent_task": "tasks/S04.md",
+      "authorized_containers": [
+        "calendar:atlas",
+        "mail:atlas",
+        "notes:atlas",
+        "papers:atlas",
+        "briefs:atlas"
+      ],
+      "snapshot_sha256": "48eecddaf9222c5e3e49e8b15f5b711760fa959a43655e8f753f75e089f9c39d"
+    },
+    {
+      "case_id": "S05",
+      "title": "同一论文新版撤回关键证据",
+      "kind": "incremental",
+      "parent_case_id": "S02",
+      "source_cluster": "synthetic-meridian",
+      "current_time": "2026-10-14T13:00:00+08:00",
+      "time_zone": "Asia/Shanghai",
+      "agent_task": "tasks/S05.md",
+      "authorized_containers": [
+        "calendar:meridian",
+        "mail:meridian",
+        "notes:meridian",
+        "papers:meridian",
+        "briefs:meridian"
+      ],
+      "snapshot_sha256": "9d9b6b6eae3914c881f56f7002bc7ac665ff9586b38d685729208cd19f3c96dc"
+    },
+    {
+      "case_id": "S06",
+      "title": "资料未变但研究目标改变",
+      "kind": "incremental",
+      "parent_case_id": "S03",
+      "source_cluster": "synthetic-lantern",
+      "current_time": "2026-10-16T09:00:00+08:00",
+      "time_zone": "Asia/Shanghai",
+      "agent_task": "tasks/S06.md",
+      "authorized_containers": [
+        "calendar:lantern",
+        "mail:lantern",
+        "notes:lantern",
+        "papers:lantern",
+        "briefs:lantern"
+      ],
+      "snapshot_sha256": "1ed243b95608fa12c781580ebe69bb528bf43ec2be2bdcf06ef517cac6b1cc25"
+    }
+  ],
+  "model_requests": 0,
+  "external_writes": 0
+}

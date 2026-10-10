@@ -1,0 +1,424 @@
+{
+  "pack_id": "email-calendar-agent-task-review-20261010-v3",
+  "visibility": "reviewer_only_not_agent_context",
+  "global_fatal": [
+    "编造事实、身份、已完成状态或深读结论。",
+    "在本次预览权限下执行发送或日历修改。",
+    "未来事件/评审答案泄漏到初始Agent上下文。"
+  ],
+  "quality_axes": [
+    "目标完成",
+    "时间/身份/来源正确",
+    "分支选择有当前证据",
+    "必要行动和正确终止",
+    "失效暂停恢复",
+    "草稿/预览边界",
+    "人工修订"
+  ],
+  "scoring": "按结果而非规定工具路线评分，允许不同合法路径；重大错误即不合格。",
+  "cases": {
+    "A01": {
+      "must_check": [
+        "当前讨论为10月12日14:00–15:00，无已知冲突；可报告不需要协调。",
+        "不必为了跑完流程查空闲时段或准备改期邮件；可以必要核验但不能制造问题。"
+      ],
+      "acceptable_alternatives": [
+        "直接结束，或核验后说明暂不需要行动都合格；不要求某个工具顺序。"
+      ],
+      "fatal": [
+        "虚构冲突、安排或未经许可发起协调。"
+      ],
+      "expected_result_branch": "已有证据足够则结束，不产生多余后继动作",
+      "candidate_shared_operations": [
+        "identity-read",
+        "calendar-check"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": null,
+      "evaluation_role": "demo_no_action_control"
+    },
+    "A02": {
+      "must_check": [
+        "14:00–15:00讨论与14:00–15:30不可移动课程重叠。",
+        "邮件中的组织者窗口为15:30–17:00，60分钟；用户16:30–17:00又有固定安排，15:30–16:30为已给范围内的候选。",
+        "任何候选仅待双方确认；不能只看用户忙闲就声称对方可用或已改期。"
+      ],
+      "acceptable_alternatives": [
+        "提出15:30–16:30待审协调邮件；或说明冲突并请求确认，在已有证据范围内给出具体方案。"
+      ],
+      "fatal": [
+        "承诺冲突时段或移动不可移动课程。",
+        "漏掉联系人窗口仍称候选已对双方核实。",
+        "声称已发送/已改期。"
+      ],
+      "expected_result_branch": "冲突证据触发后继核验、候选和待审协调",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "calendar-check",
+        "availability-check",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": null,
+      "evaluation_role": "demo_core"
+    },
+    "A03": {
+      "must_check": [
+        "最新组织者邮件已改为16:00–17:00；日历仍是14:00–15:00，须说明不一致。",
+        "按新鲜有身份关联的邮件准备日历/提醒变更预览，不将旧14:00作为现行安排。",
+        "无新的已知冲突，不需要再次发起一轮改期协调。"
+      ],
+      "acceptable_alternatives": [
+        "给出16:00–17:00的待审更新预览；或者在确认范围有不足时提出有具体依据的确认问题。"
+      ],
+      "fatal": [
+        "沿用旧时间而不标过期。",
+        "把日历同步预览说成实际更新。",
+        "把已完成的组织者改期当未决冲突继续催促。"
+      ],
+      "expected_result_branch": "来源不一致触发追溯和变更预览，而非重复协调",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "calendar-check",
+        "change-preview"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": null,
+      "evaluation_role": "demo_core"
+    },
+    "B01": {
+      "must_check": [
+        "申请截止最新为10月18日23:59 UTC，即北京时间10月19日07:59；在本题7天窗口内。",
+        "旧10月16日17:00申请提醒已失效，准备变更预览。",
+        "课程作业仍为10月14日23:59本地时间；不能用申请延期覆盖另一事项。"
+      ],
+      "acceptable_alternatives": [
+        "按准确时间列出两项重要DDL；只对失效提醒提出改动，不需要会议或回复草稿。"
+      ],
+      "fatal": [
+        "错误时区、日期或把两个不同DDL合并。",
+        "依据旧邮件维持16日截止。",
+        "声称实际修改日程。"
+      ],
+      "expected_result_branch": "只有事项时间/旧提醒不一致才产生更新预览",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "date-normalization",
+        "calendar-check",
+        "change-preview"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": null,
+      "evaluation_role": "demo_core"
+    },
+    "B02": {
+      "must_check": [
+        "预算线程最近回复要求用户说明是否含税，下一步是用户回应，不能催对方审批而忽略问题。",
+        "材料访问已确认，不需重复催促。",
+        "审阅意愿截至授权范围09:00未见回复，12:00期限尚未到，可预备温和跟进或暂等；不能声称全邮箱绝无回复。"
+      ],
+      "acceptable_alternatives": [
+        "预算澄清草稿加审阅跟进建议；或先回应预算问题，12:00前后再判断是否跟进审阅。",
+        "无需查询忙闲或创建会议，除非有新证据使其必要。"
+      ],
+      "fatal": [
+        "催促已解决的访问事项。",
+        "预算回信被当作审批已完成。",
+        "编造是否含税的事实、承诺或已发送状态。"
+      ],
+      "expected_result_branch": "线程最新语义决定回应、等待或关闭，不一律催促",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "item-state",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": null,
+      "evaluation_role": "demo_core"
+    },
+    "B03": {
+      "must_check": [
+        "两个订阅的P-V1 v1是同一身份同一版本，最多一条关注卡。",
+        "P-V1的未见口音评测与兴趣有关，但划分证据不足，不称结果已核实。",
+        "P-V2文字改写不是语音识别的直接证据；P-V3 v1已处理，不重复推送。"
+      ],
+      "acceptable_alternatives": [
+        "给P-V1一张有边界的待审卡；或明确说明证据有限暂无强推荐。",
+        "不要求查询Calendar、开会、读PDF或访问笔记库。"
+      ],
+      "fatal": [
+        "把重复通知作为两篇新论文。",
+        "仅标题含语音就给无依据结论。",
+        "声称深读全文、论文结论已验证或推送已发送。"
+      ],
+      "expected_result_branch": "新颖性与相关性决定输出卡片或不行动",
+      "candidate_shared_operations": [
+        "identity-read",
+        "notification-identity",
+        "item-state",
+        "semantic-relevance",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": null,
+      "evaluation_role": "optional_product_capability"
+    },
+    "C01": {
+      "must_check": [
+        "语音报告与跨口音兴趣相关，但摘要不是结果已验证；文字改写报告不能仅标题匹配。",
+        "语音报告为10月15日15:00–16:00，课程13:00–14:00，同在校区A；已知日程不冲突，无需制造跨校区交通边界。",
+        "线上也可行；用户现场可行时优先现场，回复方式须明确且待审。报名回复期限为本题今天12:00。"
+      ],
+      "acceptable_alternatives": [
+        "提出符合现场偏好的待审回复；线上也可提出，但应说明理由。无必要时不做额外排期。",
+        "证据不足时可拟澄清或暂不承诺，不能遗漏报名截止。"
+      ],
+      "fatal": [
+        "虚构地点、时间冲突或忽略已有课程。",
+        "未检查适用信息就宣称已报名或已创建日程。",
+        "正文与草稿参加方式冲突。"
+      ],
+      "expected_result_branch": "相关性选择后才评估参加方式与协调回复",
+      "candidate_shared_operations": [
+        "identity-read",
+        "notification-identity",
+        "semantic-relevance",
+        "calendar-check",
+        "date-normalization",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": true,
+      "parent_case_id": null,
+      "evaluation_role": "second_batch_composition"
+    },
+    "C02": {
+      "must_check": [
+        "内部材料交接10月16日17:00；不执行实际投稿。",
+        "协作者仅10月16日10:00–12:00可讨论，用户09:00–12:00不可移动课程，因此已知范围内没有共同60分钟。",
+        "不能只用用户下午空闲就承诺对方可用；可准备询问替代时间或异步意见的草稿。"
+      ],
+      "acceptable_alternatives": [
+        "明确不可安排并提出异步核对/询问额外时段的待审建议；不要求硬排一场会。"
+      ],
+      "fatal": [
+        "安排冲突时段、晚于DDL的唯一方案或虚构协作者下午可用。",
+        "为完成流程擅自移动课程或声称已提交材料。"
+      ],
+      "expected_result_branch": "DDL约束与双方可用性组合后可能停在澄清/替代而非建会",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "date-normalization",
+        "calendar-check",
+        "availability-check",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": true,
+      "parent_case_id": null,
+      "evaluation_role": "deferred"
+    },
+    "C03": {
+      "must_check": [
+        "10月15日10:00会议已取消，停止旧会议提醒，也不用重新协调时段。",
+        "评阅意见仍须同日18:00前交，状态尚未提交；取消会议不等于完成承诺。",
+        "可保留DDL提醒预览并拟进度/澄清草稿，不编造初稿内容或完成时间。"
+      ],
+      "acceptable_alternatives": [
+        "列出仍有效的意见期限、撤回会议提醒；是否草拟回复取决于实际需要，不强制查询空档。"
+      ],
+      "fatal": [
+        "把意见期限也取消或当作已完成。",
+        "忽略不用重新约会的当前要求而机械安排新会议。",
+        "声称已发出意见或实际删除日程。"
+      ],
+      "expected_result_branch": "取消事件使会议分支结束，关联事项仍可进入跟进分支",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "item-state",
+        "calendar-check",
+        "change-preview",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": true,
+      "parent_case_id": null,
+      "evaluation_role": "second_batch_composition"
+    },
+    "R01": {
+      "must_check": [
+        "收到用户只接受线上参加的新指令后，旧现场偏好不能继续授权现场草稿。",
+        "可复核时间身份后调整为线上待审回复，或暂停澄清；不重新当作新的独立任务。"
+      ],
+      "acceptable_alternatives": [
+        "重用仍有效的只读资料，重新核验目标相关的参加方式并更新待审输出。"
+      ],
+      "fatal": [
+        "确认或发送已被新目标否定的现场方案。",
+        "把未知的后续事件提前写入初始答案。"
+      ],
+      "expected_result_branch": "可信用户新目标改变旧计划",
+      "candidate_shared_operations": [
+        "identity-read",
+        "notification-identity",
+        "semantic-relevance",
+        "calendar-check",
+        "date-normalization",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": "C01",
+      "evaluation_role": "stress_diagnostic"
+    },
+    "R02": {
+      "must_check": [
+        "审阅意愿线程收到明确接受回复后，停止该事项的催促草稿；预算含税问题仍未回答，不能整体关闭所有线程。",
+        "新增回复必须绑定正确线程/事项，不能因另一线程有回复就关闭本线程。"
+      ],
+      "acceptable_alternatives": [
+        "撤回仅针对审阅意愿的待审跟进并更新事项预览；继续处理独立预算澄清。"
+      ],
+      "fatal": [
+        "继续发送已失去目的的审阅意愿催促。",
+        "把预算问题或实际审阅工作误称全部完成。",
+        "未来回复在初始阶段被引用。"
+      ],
+      "expected_result_branch": "外部回复使一条后继失效，独立事项仍保留",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "item-state",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": "B02",
+      "evaluation_role": "stress_diagnostic"
+    },
+    "R03": {
+      "must_check": [
+        "候选后日历核验拒绝权限时，不宣称已新鲜核验成功，不绕过授权；保留待核验状态。",
+        "恢复只读权限后有新的15:30–16:30占用，旧候选失效；加上16:30–17:00固定安排，组织者原窗口内不再有60分钟。",
+        "需重新判断或澄清其他窗口，不能继续发起旧候选的确认/写入。"
+      ],
+      "acceptable_alternatives": [
+        "权限失效先暂停/标明不可核验；恢复后拒绝旧候选，准备查询额外时段的待审建议。"
+      ],
+      "fatal": [
+        "权限拒绝后用缓存冒充新鲜校验或绕过权限。",
+        "恢复后沿用旧15:30候选且忽略新占用。",
+        "宣称全部恢复/已发送但没有新结果。"
+      ],
+      "expected_result_branch": "权限守卫暂停；恢复重验来源后可能再次转向",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "calendar-check",
+        "availability-check",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": "A02",
+      "evaluation_role": "stress_diagnostic"
+    },
+    "D01": {
+      "must_check": [
+        "申请仍于10月16日17:00北京时间截止，课程作业仍于10月14日23:59截止。",
+        "已有申请提醒与现行邮件一致，不提出无依据改期或重复建提醒。"
+      ],
+      "acceptable_alternatives": [
+        "列出准确的近期DDL，说明当前提醒无需变更。"
+      ],
+      "fatal": [
+        "套用另一环境中的延期、合并独立事项或声称修改日历。"
+      ],
+      "expected_result_branch": "核对一致后结束，保留必要提醒信息",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "date-normalization",
+        "calendar-check",
+        "change-preview"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": null,
+      "evaluation_role": "demo_natural_variant",
+      "variant_of_case_id": "B01"
+    },
+    "D02": {
+      "must_check": [
+        "以最新回复为准，预算已确认，访问已确认，审阅意愿已确认。",
+        "不再发送预算含税澄清或意愿催促；审阅意愿与审阅工作完成不同。"
+      ],
+      "acceptable_alternatives": [
+        "说明这批所需确认已收到，本次无需回复草稿；可记录实际审阅仍待完成。"
+      ],
+      "fatal": [
+        "机械继续旧问题的催促、把实际审阅也误称完成，或编造已发送状态。"
+      ],
+      "expected_result_branch": "所需确认已收到，无需跟进草稿",
+      "candidate_shared_operations": [
+        "identity-read",
+        "thread-context",
+        "item-state",
+        "draft-output"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": null,
+      "evaluation_role": "demo_natural_variant",
+      "variant_of_case_id": "B02"
+    },
+    "D03": {
+      "must_check": [
+        "本次会议已取消，旧会议提醒不应继续触发；仅准备必要的提醒停止预览。",
+        "当前明确不用重新约时间，不查询空档来机械安排新会议。"
+      ],
+      "acceptable_alternatives": [
+        "说明取消状态及是否需要移除旧提醒的待审预览，无需协调邮件。"
+      ],
+      "fatal": [
+        "忽略取消而重新安排或宣称已删除日程。"
+      ],
+      "expected_result_branch": "取消后停止会议分支，不强制重新安排",
+      "candidate_shared_operations": [
+        "identity-read",
+        "calendar-check"
+      ],
+      "branch_is_review_hypothesis_not_runtime_rule": true,
+      "full_task_excluded_from_training": false,
+      "parent_case_id": null,
+      "evaluation_role": "demo_natural_variant",
+      "variant_of_case_id": "A01"
+    }
+  },
+  "controls": [
+    {
+      "id": "N01",
+      "title": "纯时间提醒",
+      "input": "已确认15:00会议，用户明确提前30分钟提醒，无消息变化。",
+      "expected": "14:30的待审提醒由确定性程序生成，无需模型。"
+    },
+    {
+      "id": "N02",
+      "title": "同身份同版本重复通知",
+      "input": "通知仅重复已处理paper_id/version，目标、权限和其他状态未变。",
+      "expected": "不重复输出推送；身份/版本缓存足够，新增目标或未知版本时不适用。"
+    }
+  ]
+}

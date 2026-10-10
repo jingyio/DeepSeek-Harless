@@ -1,0 +1,902 @@
+{
+  "pack_id": "research-daily-brief-task-review-20261010-v1",
+  "data_origin": "synthetic_review_fixture",
+  "runtime_config": false,
+  "not_a_motif_library": true,
+  "no_live_api_identifiers": true,
+  "cases": {
+    "S01": {
+      "current_time": "2026-10-12T08:00:00+08:00",
+      "parent_case_id": null,
+      "snapshot_sha256": "a05cf4cf74e20b131151df3e724f61ef25efe4091c6dfbea94d7aee934e6b828",
+      "sources": [
+        {
+          "source_id": "note:a:goal",
+          "kind": "research_note",
+          "container_id": "notes:atlas",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "当前研究问题：能否从正常工具轨迹学习可执行参数关系，让不同后续任务少调用模型且保持质量。暂不把固定手写流程或关键词筛选作为机制证据。周会只需说明结构与语义边界，不要求完成新实验。",
+          "title": "Atlas 研究目标",
+          "research_cluster": "synthetic-atlas",
+          "version_sha256": "7808766fdc7c58143e93bc05474e3d30ac9f4760c137746240c20fe2f5051246"
+        },
+        {
+          "source_id": "calendar:a:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:atlas",
+          "updated_at": "2026-10-11T17:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "组会：讨论结构执行与语义判断的边界。",
+          "title": "Atlas 组会",
+          "event_uid": "fixture-atlas-weekly",
+          "status": "confirmed",
+          "start": "2026-10-12T15:00:00+08:00",
+          "end": "2026-10-12T16:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "88224e31d886461be7ceb4fe7d3a3651c2754524991df9da5c68ad6bbbbb7d87"
+        },
+        {
+          "source_id": "calendar:a:training",
+          "kind": "calendar_event",
+          "container_id": "calendar:atlas",
+          "updated_at": "2026-10-11T17:10:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "实验室安全培训，必须参加。",
+          "title": "安全培训",
+          "event_uid": "fixture-atlas-safety",
+          "status": "confirmed",
+          "start": "2026-10-12T16:30:00+08:00",
+          "end": "2026-10-12T18:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "d7034a19df6f88ac86463ee78f5c5fee91041aee60447114d484ac2d11e9e821"
+        },
+        {
+          "source_id": "mail:a:request-old",
+          "kind": "email",
+          "container_id": "mail:atlas",
+          "updated_at": "2026-10-10T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "下次组会请准备五页实验汇报。",
+          "title": "组会准备",
+          "thread_id": "thread:atlas-prep",
+          "sender_role": "组会组织者",
+          "event_uid": "fixture-atlas-weekly",
+          "version_sha256": "8b5cb85b847ee12283d93b19a11dee2c01897374bda8911165cef4c338b2425a"
+        },
+        {
+          "source_id": "mail:a:request-current",
+          "kind": "email",
+          "container_id": "mail:atlas",
+          "updated_at": "2026-10-11T19:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "更新上一封要求：周一组会只要两分钟边界说明，列出一个可以程序接管的操作和一个必须保留模型判断的例子。请周一14:30前给我待审提纲，不需要五页幻灯片，也不用新跑实验。",
+          "title": "组会准备要求更新",
+          "thread_id": "thread:atlas-prep",
+          "sender_role": "组会组织者",
+          "event_uid": "fixture-atlas-weekly",
+          "version_sha256": "deb32cc52bcc1ead9ef830d74a995548056b2bdacb11efcb628fdc8b3e419065"
+        },
+        {
+          "source_id": "mail:a:alert",
+          "kind": "email",
+          "container_id": "mail:atlas",
+          "updated_at": "2026-10-12T06:30:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "论文订阅：P-A1 FlowHints；P-A2 StickyChat；P-A3 LongRun。邮件只提供题录摘要，不代表论文结论已经核实。",
+          "title": "今日论文订阅",
+          "thread_id": "thread:atlas-alert",
+          "sender_role": "订阅服务",
+          "paper_ids": [
+            "P-A1",
+            "P-A2",
+            "P-A3"
+          ],
+          "version_sha256": "35b1448c17a7d5ed0a5d1bb3c6c7d14f8f8be15ee8651e69df2025e68761b03b"
+        },
+        {
+          "source_id": "paper:a:flow",
+          "kind": "paper_metadata",
+          "container_id": "papers:atlas",
+          "updated_at": "2026-10-11T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：从工具执行记录归纳参数关系，按来源身份验证后执行后继读取。实验只有同一任务的重复运行，没有独立后续任务质量或净成本评估。",
+          "title": "FlowHints 合成论文",
+          "paper_id": "P-A1",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "d6a09bbf63325dcc27ef820bf65e0dcb84d386e751d5bfd42891f45678697cb0"
+        },
+        {
+          "source_id": "paper:a:sticky",
+          "kind": "paper_metadata",
+          "container_id": "papers:atlas",
+          "updated_at": "2026-10-11T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：保留旧聊天上下文，减少重新输入。没有工具参数编译、执行依赖或跨任务状态更新。",
+          "title": "StickyChat 合成论文",
+          "paper_id": "P-A2",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "c1cbf438508ba09c05efd3428e88fbbdde8142350d9b8caafd90a0d39a7cf1c7"
+        },
+        {
+          "source_id": "paper:a:longrun",
+          "kind": "paper_metadata",
+          "container_id": "papers:atlas",
+          "updated_at": "2026-10-11T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：Agent 在同一道问题上反复修订计划，报告40轮迭代后分数提高。没有说明不同任务划分、学习开销与人工修订。",
+          "title": "LongRun 合成论文",
+          "paper_id": "P-A3",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "87203cdb5ca8113a42bbb5b5794c9fe8cdbc61d2f839b86a96bb35ac89cf7a93"
+        },
+        {
+          "source_id": "note:a:reading",
+          "kind": "reading_state",
+          "container_id": "notes:atlas",
+          "updated_at": "2026-10-11T20:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "StickyChat 已读，不是当前可执行结构研究的主要依据。LongRun 未读；不要因标题含学习就直接称它证明跨任务改进。FlowHints 尚未读。",
+          "title": "Atlas 阅读状态",
+          "version_sha256": "f2f7621e1d147a8e1b78b573d9e3bea3cb8c716c68c7608e5f5d31c85bbc682d"
+        }
+      ]
+    },
+    "S02": {
+      "current_time": "2026-10-14T08:00:00+08:00",
+      "parent_case_id": null,
+      "snapshot_sha256": "4fcee87a03d991b32d9f7071ec34671b0fefe4ada4a966ad0c53a5a1d4be0511",
+      "sources": [
+        {
+          "source_id": "note:b:goal",
+          "kind": "research_note",
+          "container_id": "notes:meridian",
+          "updated_at": "2026-10-13T17:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "当前目标是判断蛋白—配体亲和力方法是否能泛化到未见蛋白家族。只随机划分配对样本不够，不能把训练测试同源性问题当作已解决。组内讨论允许暂不采用新方法。",
+          "title": "Meridian 研究目标",
+          "research_cluster": "synthetic-meridian",
+          "version_sha256": "2c38b85e87fbcbd03b81e07cd127c068ad3b86f7c39b396f1ed223bf66eb03b2"
+        },
+        {
+          "source_id": "calendar:b:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:meridian",
+          "updated_at": "2026-10-13T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "线上讨论：新方法的未见蛋白家族泛化证据。",
+          "title": "Meridian 文献讨论",
+          "event_uid": "fixture-meridian-discussion",
+          "status": "confirmed",
+          "start": "2026-10-15T01:00:00Z",
+          "end": "2026-10-15T02:00:00Z",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "8b2499a4d0a8023772806478dd1a79e9254575392a16b88acbb9e10b15a971a0"
+        },
+        {
+          "source_id": "mail:b:request",
+          "kind": "email",
+          "container_id": "mail:meridian",
+          "updated_at": "2026-10-13T19:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "周四讨论前请判断订阅里的方法是否值得深入核查。周三18:00前交三条带来源的疑问即可，不要承诺复现实验或新数字。",
+          "title": "文献讨论准备",
+          "thread_id": "thread:meridian-prep",
+          "sender_role": "讨论组织者",
+          "event_uid": "fixture-meridian-discussion",
+          "version_sha256": "16d4ddf3eff68b24eb26bf36b089672010f669a3075eedac05b2b06876502936"
+        },
+        {
+          "source_id": "mail:b:alert-1",
+          "kind": "email",
+          "container_id": "mail:meridian",
+          "updated_at": "2026-10-14T06:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "订阅条目：P-B1 PocketShift v1，P-B2 AffinityRank v1。",
+          "title": "方法订阅第一批",
+          "thread_id": "thread:meridian-alert-1",
+          "sender_role": "订阅服务",
+          "paper_ids": [
+            "P-B1",
+            "P-B2"
+          ],
+          "version_sha256": "dcf9b867ff6312f6b621654531407be84bc603b68966eb926fbc1f96a6e12c7d"
+        },
+        {
+          "source_id": "mail:b:alert-2",
+          "kind": "email",
+          "container_id": "mail:meridian",
+          "updated_at": "2026-10-14T07:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "另一订阅也出现 P-B1 PocketShift v1；这与上一封是同一论文同一版本。另附 P-B3 DockFast。",
+          "title": "方法订阅第二批",
+          "thread_id": "thread:meridian-alert-2",
+          "sender_role": "另一订阅服务",
+          "paper_ids": [
+            "P-B1",
+            "P-B3"
+          ],
+          "version_sha256": "b553ef46674ddb466ae9599e86f1845f3cda392beb9d5aa84e2a9fdb08d04bd0"
+        },
+        {
+          "source_id": "paper:b:pocket",
+          "kind": "paper_metadata",
+          "container_id": "papers:meridian",
+          "updated_at": "2026-10-13T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：报告按蛋白家族划分的亲和力评测，并称未见家族性能改善；摘要未提供划分清单或同源性检查，全文及原始数据未提供。",
+          "title": "PocketShift 合成论文",
+          "paper_id": "P-B1",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "a9a5acacf4a9953acff5c8802ff1467d33cdf81a0f9606d107ca51e51b6dbd3f"
+        },
+        {
+          "source_id": "paper:b:rank",
+          "kind": "paper_metadata",
+          "container_id": "papers:meridian",
+          "updated_at": "2026-10-13T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：在随机配对样本划分上提高排序相关系数；训练和测试含同一蛋白。没有未见家族评测。",
+          "title": "AffinityRank 合成论文",
+          "paper_id": "P-B2",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "ad25c3c7df6ca7f9f45a3299be503dd237289009f553dc46afd079c78333edca"
+        },
+        {
+          "source_id": "paper:b:dock",
+          "kind": "paper_metadata",
+          "container_id": "papers:meridian",
+          "updated_at": "2026-10-13T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：加速对接计算，报告计算时间降低；未评估亲和力预测或未见蛋白泛化。",
+          "title": "DockFast 合成论文",
+          "paper_id": "P-B3",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "5e036f85dc0092c85204968df24dc372f7b45baeccd388351ab7fa3ff687f669"
+        },
+        {
+          "source_id": "note:b:reading",
+          "kind": "reading_state",
+          "container_id": "notes:meridian",
+          "updated_at": "2026-10-13T20:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "AffinityRank 已读，随机划分不足以回答当前问题。PocketShift 仅看过题目，尚未完成全文核查。DockFast 未读。",
+          "title": "Meridian 阅读状态",
+          "version_sha256": "23594808d083997caa995e0d5c08636e09601480a04b1af7ee7c58eb1e680601"
+        }
+      ]
+    },
+    "S03": {
+      "current_time": "2026-10-16T08:00:00+08:00",
+      "parent_case_id": null,
+      "snapshot_sha256": "732a3475cbc3423d1da1c5c1dc1fb2ee830aee4b789d17956bcfa24447915a3d",
+      "sources": [
+        {
+          "source_id": "note:c:goal",
+          "kind": "research_note",
+          "container_id": "notes:lantern",
+          "updated_at": "2026-10-15T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "本周研究重点：细胞荧光测量的跨板漂移与阴性对照。细胞周期分割暂不优先。不要把无对照的亮度变化称为药物效果。",
+          "title": "Lantern 研究目标",
+          "research_cluster": "synthetic-lantern",
+          "version_sha256": "90dbeefb1f83ef50938fa4703d50262aca4fd20b167781f0ee4b5774a97f5638"
+        },
+        {
+          "source_id": "calendar:c:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:lantern",
+          "updated_at": "2026-10-15T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "汇报现有成像结果的可靠性和下一步核查。",
+          "title": "Lantern 成像例会",
+          "event_uid": "fixture-lantern-meeting",
+          "status": "confirmed",
+          "start": "2026-10-16T10:00:00+08:00",
+          "end": "2026-10-16T10:30:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "7cc8306baecefa1cb25228b2a82fa05dd6c8d38bc57e09852d98b80dd55019bd"
+        },
+        {
+          "source_id": "calendar:c:seminar",
+          "kind": "calendar_event",
+          "container_id": "calendar:lantern",
+          "updated_at": "2026-10-15T18:10:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "艺术摄影中的光影表现，与本周科研目标没有材料关联。",
+          "title": "荧光与光影讲座",
+          "event_uid": "fixture-lantern-seminar",
+          "status": "confirmed",
+          "start": "2026-10-16T16:00:00+08:00",
+          "end": "2026-10-16T17:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "589a56f054449c6ede3e8967569dbcff9b4d67462ff540b15200dd0b4a15780d"
+        },
+        {
+          "source_id": "mail:c:request-old",
+          "kind": "email",
+          "container_id": "mail:lantern",
+          "updated_at": "2026-10-14T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "请周五12:00前补做阴性对照并汇报。",
+          "title": "成像准备",
+          "thread_id": "thread:lantern-prep",
+          "sender_role": "项目负责人",
+          "event_uid": "fixture-lantern-meeting",
+          "version_sha256": "f14b5fb2d81533e3a780a039ac4706219ea16607b3c43134a527be0760300277"
+        },
+        {
+          "source_id": "mail:c:request-current",
+          "kind": "email",
+          "container_id": "mail:lantern",
+          "updated_at": "2026-10-15T19:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "更新要求：周五10:00例会只讨论已取得的材料，先列跨板漂移与阴性对照的证据缺口。本轮不要求新实验。旧邮件的12:00补实验截止已取消。",
+          "title": "成像准备要求更新",
+          "thread_id": "thread:lantern-prep",
+          "sender_role": "项目负责人",
+          "event_uid": "fixture-lantern-meeting",
+          "version_sha256": "ae700d5130add85bc6c79dbb40c83767ed41c961037853da6034ebbf649a0e9e"
+        },
+        {
+          "source_id": "mail:c:alert",
+          "kind": "email",
+          "container_id": "mail:lantern",
+          "updated_at": "2026-10-16T06:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "论文订阅：P-C1 ControlMix；P-C2 CycleSeg；P-C3 PlateDrift。",
+          "title": "今日成像论文",
+          "thread_id": "thread:lantern-alert",
+          "sender_role": "订阅服务",
+          "paper_ids": [
+            "P-C1",
+            "P-C2",
+            "P-C3"
+          ],
+          "version_sha256": "b5030358a3987bf1d4c86c4f2a4b981f4692d034b86281b8467f2908c46cca74"
+        },
+        {
+          "source_id": "paper:c:control",
+          "kind": "paper_metadata",
+          "container_id": "papers:lantern",
+          "updated_at": "2026-10-15T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：使用阴性对照校正荧光测量；只在同一块板内验证，未提供跨板结果。",
+          "title": "ControlMix 合成论文",
+          "paper_id": "P-C1",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "e5eb4ce1915c8ae6eda7e300a8e7ff1cbe4a522989349d8039f29a091291a956"
+        },
+        {
+          "source_id": "paper:c:cycle",
+          "kind": "paper_metadata",
+          "container_id": "papers:lantern",
+          "updated_at": "2026-10-15T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：从显微图像推断细胞周期阶段的分割方法；关注分割质量，不讨论荧光测量漂移或阴性对照。",
+          "title": "CycleSeg 合成论文",
+          "paper_id": "P-C2",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "617c2e2fd72905309bc92ea15281413f078d9244a2842e23660600edb7a6c936"
+        },
+        {
+          "source_id": "paper:c:drift",
+          "kind": "paper_metadata",
+          "container_id": "papers:lantern",
+          "updated_at": "2026-10-15T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：按成像批次分组评估板间漂移，并比较校正前后差异。未提供原始图像和数值表，不能据此计算本项目的效果。",
+          "title": "PlateDrift 合成论文",
+          "paper_id": "P-C3",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "3e6e4c3675d5e3d1f1cc2499349d22afba528f51bd8246abe62c60c0c611d015"
+        },
+        {
+          "source_id": "note:c:reading",
+          "kind": "reading_state",
+          "container_id": "notes:lantern",
+          "updated_at": "2026-10-15T20:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "ControlMix 已读，已记录其只有板内验证的限制。PlateDrift 和 CycleSeg 尚未读。",
+          "title": "Lantern 阅读状态",
+          "version_sha256": "531e4f83cd284b5d5a5fdfc28f23da7ae221a9e1f28567dcdb4d58502cd9aee3"
+        }
+      ]
+    },
+    "S04": {
+      "current_time": "2026-10-12T11:30:00+08:00",
+      "parent_case_id": "S01",
+      "snapshot_sha256": "48eecddaf9222c5e3e49e8b15f5b711760fa959a43655e8f753f75e089f9c39d",
+      "sources": [
+        {
+          "source_id": "note:a:goal",
+          "kind": "research_note",
+          "container_id": "notes:atlas",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "当前研究问题：能否从正常工具轨迹学习可执行参数关系，让不同后续任务少调用模型且保持质量。暂不把固定手写流程或关键词筛选作为机制证据。周会只需说明结构与语义边界，不要求完成新实验。",
+          "title": "Atlas 研究目标",
+          "research_cluster": "synthetic-atlas",
+          "version_sha256": "7808766fdc7c58143e93bc05474e3d30ac9f4760c137746240c20fe2f5051246"
+        },
+        {
+          "source_id": "calendar:a:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:atlas",
+          "updated_at": "2026-10-12T11:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "组会：讨论结构执行与语义判断的边界。",
+          "title": "Atlas 组会",
+          "event_uid": "fixture-atlas-weekly",
+          "status": "confirmed",
+          "start": "2026-10-12T17:00:00+08:00",
+          "end": "2026-10-12T18:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "3349e19fac8de822673cc486446ba9d81015798cb15acb1570eac231a86f088b"
+        },
+        {
+          "source_id": "calendar:a:training",
+          "kind": "calendar_event",
+          "container_id": "calendar:atlas",
+          "updated_at": "2026-10-11T17:10:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "实验室安全培训，必须参加。",
+          "title": "安全培训",
+          "event_uid": "fixture-atlas-safety",
+          "status": "confirmed",
+          "start": "2026-10-12T16:30:00+08:00",
+          "end": "2026-10-12T18:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "d7034a19df6f88ac86463ee78f5c5fee91041aee60447114d484ac2d11e9e821"
+        },
+        {
+          "source_id": "mail:a:request-old",
+          "kind": "email",
+          "container_id": "mail:atlas",
+          "updated_at": "2026-10-10T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "下次组会请准备五页实验汇报。",
+          "title": "组会准备",
+          "thread_id": "thread:atlas-prep",
+          "sender_role": "组会组织者",
+          "event_uid": "fixture-atlas-weekly",
+          "version_sha256": "8b5cb85b847ee12283d93b19a11dee2c01897374bda8911165cef4c338b2425a"
+        },
+        {
+          "source_id": "mail:a:request-current",
+          "kind": "email",
+          "container_id": "mail:atlas",
+          "updated_at": "2026-10-11T19:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "更新上一封要求：周一组会只要两分钟边界说明，列出一个可以程序接管的操作和一个必须保留模型判断的例子。请周一14:30前给我待审提纲，不需要五页幻灯片，也不用新跑实验。",
+          "title": "组会准备要求更新",
+          "thread_id": "thread:atlas-prep",
+          "sender_role": "组会组织者",
+          "event_uid": "fixture-atlas-weekly",
+          "version_sha256": "deb32cc52bcc1ead9ef830d74a995548056b2bdacb11efcb628fdc8b3e419065"
+        },
+        {
+          "source_id": "mail:a:alert",
+          "kind": "email",
+          "container_id": "mail:atlas",
+          "updated_at": "2026-10-12T06:30:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "论文订阅：P-A1 FlowHints；P-A2 StickyChat；P-A3 LongRun。邮件只提供题录摘要，不代表论文结论已经核实。",
+          "title": "今日论文订阅",
+          "thread_id": "thread:atlas-alert",
+          "sender_role": "订阅服务",
+          "paper_ids": [
+            "P-A1",
+            "P-A2",
+            "P-A3"
+          ],
+          "version_sha256": "35b1448c17a7d5ed0a5d1bb3c6c7d14f8f8be15ee8651e69df2025e68761b03b"
+        },
+        {
+          "source_id": "paper:a:flow",
+          "kind": "paper_metadata",
+          "container_id": "papers:atlas",
+          "updated_at": "2026-10-11T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：从工具执行记录归纳参数关系，按来源身份验证后执行后继读取。实验只有同一任务的重复运行，没有独立后续任务质量或净成本评估。",
+          "title": "FlowHints 合成论文",
+          "paper_id": "P-A1",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "d6a09bbf63325dcc27ef820bf65e0dcb84d386e751d5bfd42891f45678697cb0"
+        },
+        {
+          "source_id": "paper:a:sticky",
+          "kind": "paper_metadata",
+          "container_id": "papers:atlas",
+          "updated_at": "2026-10-11T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：保留旧聊天上下文，减少重新输入。没有工具参数编译、执行依赖或跨任务状态更新。",
+          "title": "StickyChat 合成论文",
+          "paper_id": "P-A2",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "c1cbf438508ba09c05efd3428e88fbbdde8142350d9b8caafd90a0d39a7cf1c7"
+        },
+        {
+          "source_id": "paper:a:longrun",
+          "kind": "paper_metadata",
+          "container_id": "papers:atlas",
+          "updated_at": "2026-10-11T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：Agent 在同一道问题上反复修订计划，报告40轮迭代后分数提高。没有说明不同任务划分、学习开销与人工修订。",
+          "title": "LongRun 合成论文",
+          "paper_id": "P-A3",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "87203cdb5ca8113a42bbb5b5794c9fe8cdbc61d2f839b86a96bb35ac89cf7a93"
+        },
+        {
+          "source_id": "note:a:reading",
+          "kind": "reading_state",
+          "container_id": "notes:atlas",
+          "updated_at": "2026-10-11T20:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "StickyChat 已读，不是当前可执行结构研究的主要依据。LongRun 未读；不要因标题含学习就直接称它证明跨任务改进。FlowHints 尚未读。",
+          "title": "Atlas 阅读状态",
+          "version_sha256": "f2f7621e1d147a8e1b78b573d9e3bea3cb8c716c68c7608e5f5d31c85bbc682d"
+        },
+        {
+          "source_id": "mail:a:change",
+          "kind": "email",
+          "container_id": "mail:atlas",
+          "updated_at": "2026-10-12T11:05:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "组会改到今天17:00，边界说明仍需准备。取消14:30交提纲的要求，到会时带简短提纲即可。",
+          "title": "组会改期",
+          "thread_id": "thread:atlas-prep",
+          "sender_role": "组会组织者",
+          "event_uid": "fixture-atlas-weekly",
+          "version_sha256": "acad8b569025761d7fddb1989c88893e0e3cb126d5bae10bb00b110a38216ba4"
+        },
+        {
+          "source_id": "brief:a:previous",
+          "kind": "previous_brief",
+          "container_id": "briefs:atlas",
+          "updated_at": "2026-10-12T08:05:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "待审简报：今天15:00组会，14:30前交两分钟边界提纲；16:30安全培训。FlowHints 可优先核查，但摘要没有独立后续任务证据。此记录为合成前态，不是真实 Agent 输出或训练轨迹。",
+          "title": "Atlas 上次待审简报",
+          "author": "synthetic_fixture",
+          "version_sha256": "9e227bccbbee84173667975838eab5a486fd5add1a9104127e3508a3f6510cfd"
+        }
+      ]
+    },
+    "S05": {
+      "current_time": "2026-10-14T13:00:00+08:00",
+      "parent_case_id": "S02",
+      "snapshot_sha256": "9d9b6b6eae3914c881f56f7002bc7ac665ff9586b38d685729208cd19f3c96dc",
+      "sources": [
+        {
+          "source_id": "note:b:goal",
+          "kind": "research_note",
+          "container_id": "notes:meridian",
+          "updated_at": "2026-10-13T17:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "当前目标是判断蛋白—配体亲和力方法是否能泛化到未见蛋白家族。只随机划分配对样本不够，不能把训练测试同源性问题当作已解决。组内讨论允许暂不采用新方法。",
+          "title": "Meridian 研究目标",
+          "research_cluster": "synthetic-meridian",
+          "version_sha256": "2c38b85e87fbcbd03b81e07cd127c068ad3b86f7c39b396f1ed223bf66eb03b2"
+        },
+        {
+          "source_id": "calendar:b:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:meridian",
+          "updated_at": "2026-10-13T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "线上讨论：新方法的未见蛋白家族泛化证据。",
+          "title": "Meridian 文献讨论",
+          "event_uid": "fixture-meridian-discussion",
+          "status": "confirmed",
+          "start": "2026-10-15T01:00:00Z",
+          "end": "2026-10-15T02:00:00Z",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "8b2499a4d0a8023772806478dd1a79e9254575392a16b88acbb9e10b15a971a0"
+        },
+        {
+          "source_id": "mail:b:request",
+          "kind": "email",
+          "container_id": "mail:meridian",
+          "updated_at": "2026-10-13T19:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "周四讨论前请判断订阅里的方法是否值得深入核查。周三18:00前交三条带来源的疑问即可，不要承诺复现实验或新数字。",
+          "title": "文献讨论准备",
+          "thread_id": "thread:meridian-prep",
+          "sender_role": "讨论组织者",
+          "event_uid": "fixture-meridian-discussion",
+          "version_sha256": "16d4ddf3eff68b24eb26bf36b089672010f669a3075eedac05b2b06876502936"
+        },
+        {
+          "source_id": "mail:b:alert-1",
+          "kind": "email",
+          "container_id": "mail:meridian",
+          "updated_at": "2026-10-14T06:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "订阅条目：P-B1 PocketShift v1，P-B2 AffinityRank v1。",
+          "title": "方法订阅第一批",
+          "thread_id": "thread:meridian-alert-1",
+          "sender_role": "订阅服务",
+          "paper_ids": [
+            "P-B1",
+            "P-B2"
+          ],
+          "version_sha256": "dcf9b867ff6312f6b621654531407be84bc603b68966eb926fbc1f96a6e12c7d"
+        },
+        {
+          "source_id": "mail:b:alert-2",
+          "kind": "email",
+          "container_id": "mail:meridian",
+          "updated_at": "2026-10-14T07:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "另一订阅也出现 P-B1 PocketShift v1；这与上一封是同一论文同一版本。另附 P-B3 DockFast。",
+          "title": "方法订阅第二批",
+          "thread_id": "thread:meridian-alert-2",
+          "sender_role": "另一订阅服务",
+          "paper_ids": [
+            "P-B1",
+            "P-B3"
+          ],
+          "version_sha256": "b553ef46674ddb466ae9599e86f1845f3cda392beb9d5aa84e2a9fdb08d04bd0"
+        },
+        {
+          "source_id": "paper:b:pocket",
+          "kind": "paper_metadata",
+          "container_id": "papers:meridian",
+          "updated_at": "2026-10-14T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成v2更新说明：作者发现所谓家族划分中仍存在同源训练测试重叠，撤回“未见家族泛化已验证”的表述，准备重做评测。新版摘要不再包含该性能主张，原始划分数据仍未提供。",
+          "title": "PocketShift 合成论文",
+          "paper_id": "P-B1",
+          "paper_version": "v2",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "d9239cd2e521fce7c84e622dda554a87ec28f74526ad932c9811b574462c2fdb"
+        },
+        {
+          "source_id": "paper:b:rank",
+          "kind": "paper_metadata",
+          "container_id": "papers:meridian",
+          "updated_at": "2026-10-13T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：在随机配对样本划分上提高排序相关系数；训练和测试含同一蛋白。没有未见家族评测。",
+          "title": "AffinityRank 合成论文",
+          "paper_id": "P-B2",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "ad25c3c7df6ca7f9f45a3299be503dd237289009f553dc46afd079c78333edca"
+        },
+        {
+          "source_id": "paper:b:dock",
+          "kind": "paper_metadata",
+          "container_id": "papers:meridian",
+          "updated_at": "2026-10-13T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：加速对接计算，报告计算时间降低；未评估亲和力预测或未见蛋白泛化。",
+          "title": "DockFast 合成论文",
+          "paper_id": "P-B3",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "5e036f85dc0092c85204968df24dc372f7b45baeccd388351ab7fa3ff687f669"
+        },
+        {
+          "source_id": "note:b:reading",
+          "kind": "reading_state",
+          "container_id": "notes:meridian",
+          "updated_at": "2026-10-13T20:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "AffinityRank 已读，随机划分不足以回答当前问题。PocketShift 仅看过题目，尚未完成全文核查。DockFast 未读。",
+          "title": "Meridian 阅读状态",
+          "version_sha256": "23594808d083997caa995e0d5c08636e09601480a04b1af7ee7c58eb1e680601"
+        },
+        {
+          "source_id": "mail:b:update",
+          "kind": "email",
+          "container_id": "mail:meridian",
+          "updated_at": "2026-10-14T12:05:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "订阅更新：同一论文 P-B1 PocketShift 已到v2，作者修正评测表述；不是新的独立论文。",
+          "title": "论文版本更新",
+          "thread_id": "thread:meridian-alert-1",
+          "sender_role": "订阅服务",
+          "paper_ids": [
+            "P-B1"
+          ],
+          "version_sha256": "949626b82cfb4ea678fb699f9fcc1b3e92f91ab2897066d8f7915d7bc186f8bd"
+        },
+        {
+          "source_id": "brief:b:previous",
+          "kind": "previous_brief",
+          "container_id": "briefs:meridian",
+          "updated_at": "2026-10-14T08:05:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "待审简报：周三18:00前准备疑问，周四北京时间09:00讨论。PocketShift v1值得核查其家族划分，但尚不能证明泛化有效；两封订阅只对应一篇同版论文。此记录为合成前态，不是真实 Agent 输出或训练轨迹。",
+          "title": "Meridian 上次待审简报",
+          "author": "synthetic_fixture",
+          "version_sha256": "7b2c278424e7b3e23752bcb996fc9ef6b7c330401b43cf57ab55ec55446584ad"
+        }
+      ]
+    },
+    "S06": {
+      "current_time": "2026-10-16T09:00:00+08:00",
+      "parent_case_id": "S03",
+      "snapshot_sha256": "1ed243b95608fa12c781580ebe69bb528bf43ec2be2bdcf06ef517cac6b1cc25",
+      "sources": [
+        {
+          "source_id": "note:c:goal",
+          "kind": "research_note",
+          "container_id": "notes:lantern",
+          "updated_at": "2026-10-16T08:50:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "研究者新的决定：暂停本周跨板漂移比较，今天例会转为讨论细胞周期分割的适用条件和核查计划。仍不要求新实验。未读论文、邮件和日程正文尚未修改；请按这一新的研究目标重新排序。",
+          "title": "Lantern 研究目标",
+          "research_cluster": "synthetic-lantern",
+          "version_sha256": "3e1258f191059f7b922215eb8ef37f2e37053a7d55604897cb0e11f89b2ab7ba"
+        },
+        {
+          "source_id": "calendar:c:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:lantern",
+          "updated_at": "2026-10-15T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "汇报现有成像结果的可靠性和下一步核查。",
+          "title": "Lantern 成像例会",
+          "event_uid": "fixture-lantern-meeting",
+          "status": "confirmed",
+          "start": "2026-10-16T10:00:00+08:00",
+          "end": "2026-10-16T10:30:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "7cc8306baecefa1cb25228b2a82fa05dd6c8d38bc57e09852d98b80dd55019bd"
+        },
+        {
+          "source_id": "calendar:c:seminar",
+          "kind": "calendar_event",
+          "container_id": "calendar:lantern",
+          "updated_at": "2026-10-15T18:10:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "艺术摄影中的光影表现，与本周科研目标没有材料关联。",
+          "title": "荧光与光影讲座",
+          "event_uid": "fixture-lantern-seminar",
+          "status": "confirmed",
+          "start": "2026-10-16T16:00:00+08:00",
+          "end": "2026-10-16T17:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "version_sha256": "589a56f054449c6ede3e8967569dbcff9b4d67462ff540b15200dd0b4a15780d"
+        },
+        {
+          "source_id": "mail:c:request-old",
+          "kind": "email",
+          "container_id": "mail:lantern",
+          "updated_at": "2026-10-14T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "请周五12:00前补做阴性对照并汇报。",
+          "title": "成像准备",
+          "thread_id": "thread:lantern-prep",
+          "sender_role": "项目负责人",
+          "event_uid": "fixture-lantern-meeting",
+          "version_sha256": "f14b5fb2d81533e3a780a039ac4706219ea16607b3c43134a527be0760300277"
+        },
+        {
+          "source_id": "mail:c:request-current",
+          "kind": "email",
+          "container_id": "mail:lantern",
+          "updated_at": "2026-10-15T19:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "更新要求：周五10:00例会只讨论已取得的材料，先列跨板漂移与阴性对照的证据缺口。本轮不要求新实验。旧邮件的12:00补实验截止已取消。",
+          "title": "成像准备要求更新",
+          "thread_id": "thread:lantern-prep",
+          "sender_role": "项目负责人",
+          "event_uid": "fixture-lantern-meeting",
+          "version_sha256": "ae700d5130add85bc6c79dbb40c83767ed41c961037853da6034ebbf649a0e9e"
+        },
+        {
+          "source_id": "mail:c:alert",
+          "kind": "email",
+          "container_id": "mail:lantern",
+          "updated_at": "2026-10-16T06:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "论文订阅：P-C1 ControlMix；P-C2 CycleSeg；P-C3 PlateDrift。",
+          "title": "今日成像论文",
+          "thread_id": "thread:lantern-alert",
+          "sender_role": "订阅服务",
+          "paper_ids": [
+            "P-C1",
+            "P-C2",
+            "P-C3"
+          ],
+          "version_sha256": "b5030358a3987bf1d4c86c4f2a4b981f4692d034b86281b8467f2908c46cca74"
+        },
+        {
+          "source_id": "paper:c:control",
+          "kind": "paper_metadata",
+          "container_id": "papers:lantern",
+          "updated_at": "2026-10-15T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：使用阴性对照校正荧光测量；只在同一块板内验证，未提供跨板结果。",
+          "title": "ControlMix 合成论文",
+          "paper_id": "P-C1",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "e5eb4ce1915c8ae6eda7e300a8e7ff1cbe4a522989349d8039f29a091291a956"
+        },
+        {
+          "source_id": "paper:c:cycle",
+          "kind": "paper_metadata",
+          "container_id": "papers:lantern",
+          "updated_at": "2026-10-15T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：从显微图像推断细胞周期阶段的分割方法；关注分割质量，不讨论荧光测量漂移或阴性对照。",
+          "title": "CycleSeg 合成论文",
+          "paper_id": "P-C2",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "617c2e2fd72905309bc92ea15281413f078d9244a2842e23660600edb7a6c936"
+        },
+        {
+          "source_id": "paper:c:drift",
+          "kind": "paper_metadata",
+          "container_id": "papers:lantern",
+          "updated_at": "2026-10-15T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成摘要：按成像批次分组评估板间漂移，并比较校正前后差异。未提供原始图像和数值表，不能据此计算本项目的效果。",
+          "title": "PlateDrift 合成论文",
+          "paper_id": "P-C3",
+          "paper_version": "v1",
+          "evidence_level": "abstract_and_metadata",
+          "version_sha256": "3e6e4c3675d5e3d1f1cc2499349d22afba528f51bd8246abe62c60c0c611d015"
+        },
+        {
+          "source_id": "note:c:reading",
+          "kind": "reading_state",
+          "container_id": "notes:lantern",
+          "updated_at": "2026-10-15T20:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "ControlMix 已读，已记录其只有板内验证的限制。PlateDrift 和 CycleSeg 尚未读。",
+          "title": "Lantern 阅读状态",
+          "version_sha256": "531e4f83cd284b5d5a5fdfc28f23da7ae221a9e1f28567dcdb4d58502cd9aee3"
+        },
+        {
+          "source_id": "brief:c:previous",
+          "kind": "previous_brief",
+          "container_id": "briefs:lantern",
+          "updated_at": "2026-10-16T08:05:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "待审简报：10:00例会讨论现有成像可靠性，旧12:00补实验要求已取消。PlateDrift优先核查；CycleSeg暂不优先；光影讲座不列为重要科研提醒。此记录为合成前态，不是真实 Agent 输出或训练轨迹。",
+          "title": "Lantern 上次待审简报",
+          "author": "synthetic_fixture",
+          "version_sha256": "3f86d2f7017af806e55b700ebcd9705a46c3ef4d4902ef792aa331959cc21367"
+        }
+      ]
+    }
+  },
+  "controls": [
+    {
+      "id": "N01",
+      "title": "纯时间提醒",
+      "data_origin": "synthetic_review_fixture",
+      "input": "已确认日程今天15:00开始，用户明确设定提前30分钟提醒；无相关邮件、论文或变化。",
+      "expected": "14:30生成预定提醒；时间运算和已有文案可由程序完成，无需模型。仅待审预览，不发送。",
+      "role": "简单规则强对照；不能计作架构语义能力或科研效果样本。"
+    },
+    {
+      "id": "N02",
+      "title": "重复订阅且没有新决定",
+      "data_origin": "synthetic_review_fixture",
+      "input": "本次邮件只重复研究者已标记处理的同一paper_id、同一版本；研究目标、权限、日程和提醒状态均未变。",
+      "expected": "不重复推送，不必让模型重新做阅读决定；若存在新目标或未知版本则不适用。",
+      "role": "身份/版本缓存强对照；不能把缓存收益独占归因于Motif。"
+    }
+  ]
+}

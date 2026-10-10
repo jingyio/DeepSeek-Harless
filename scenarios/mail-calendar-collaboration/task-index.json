@@ -1,0 +1,489 @@
+{
+  "schema_version": 1,
+  "pack_id": "email-calendar-agent-task-review-20261010-v3",
+  "status": "phase1_demo_design_accepted_tooling_pending",
+  "scenario_name": "邮件与日程管理 Agent",
+  "english_name": "Email & Calendar Agent",
+  "purpose": "useful_daily_information_and_transaction_handling_with_mgga_evaluation",
+  "supersedes": "mail-calendar-coordination-task-review-20261010-v2",
+  "runtime_config": false,
+  "data_origin": "synthetic_review_fixture",
+  "independent_real_decisions": 0,
+  "runtime_change_diagnostics": 3,
+  "simple_program_controls": 2,
+  "initial_goal_groups": 7,
+  "cases": [
+    {
+      "case_id": "A01",
+      "title": "同一会议请求 无冲突",
+      "group": "A",
+      "goal_group_id": "meeting-check",
+      "parent_case_id": null,
+      "environment_variant": "clear",
+      "partition_role": "development_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/A01.md",
+      "prompt_sha256": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+      "snapshot_sha256": "9bdb752290eeb4f2edb7b1d2e9048ce2bd1b93686a5beb8e75e25783ec8f75dd",
+      "initial_source_ids": [
+        "prefs:user",
+        "calendar:meeting",
+        "mail:meeting:original",
+        "mail:meeting:latest"
+      ],
+      "evaluation_role": "demo_no_action_control",
+      "request_family": "meeting-management"
+    },
+    {
+      "case_id": "A02",
+      "title": "同一会议请求 存在冲突",
+      "group": "A",
+      "goal_group_id": "meeting-check",
+      "parent_case_id": null,
+      "environment_variant": "conflict",
+      "partition_role": "development_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/A02.md",
+      "prompt_sha256": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+      "snapshot_sha256": "4f57531967c2ffe75d0e44a32018bcaec7909aed587c0bf7544dfe2e15a9462f",
+      "initial_source_ids": [
+        "prefs:user",
+        "calendar:meeting",
+        "mail:meeting:original",
+        "mail:meeting:latest",
+        "calendar:class",
+        "calendar:fixed"
+      ],
+      "evaluation_role": "demo_core",
+      "request_family": "meeting-management"
+    },
+    {
+      "case_id": "A03",
+      "title": "同一会议请求 邮件已改期",
+      "group": "A",
+      "goal_group_id": "meeting-check",
+      "parent_case_id": null,
+      "environment_variant": "rescheduled",
+      "partition_role": "development_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/A03.md",
+      "prompt_sha256": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+      "snapshot_sha256": "8f7501edf3f2d27b9530ee7f0a96a67ae14a295d921550593ec5277828f90001",
+      "initial_source_ids": [
+        "prefs:user",
+        "calendar:meeting",
+        "mail:meeting:original",
+        "mail:meeting:latest"
+      ],
+      "evaluation_role": "demo_core",
+      "request_family": "meeting-management"
+    },
+    {
+      "case_id": "B01",
+      "title": "近期 DDL 核对",
+      "group": "B",
+      "goal_group_id": "deadline-check",
+      "parent_case_id": null,
+      "environment_variant": null,
+      "partition_role": "development_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/B01.md",
+      "prompt_sha256": "b76b1c697a11c98aabf4d379dbd0f97ee2a4474c3f4dc3c662a01ec88d131879",
+      "snapshot_sha256": "e3158e94f4249c8bc2063d26d338aacfb287dedb4e681eba84b0bce5eabd72cf",
+      "initial_source_ids": [
+        "prefs:user",
+        "mail:ddl:old",
+        "mail:ddl:extension",
+        "calendar:ddl:old",
+        "mail:ddl:course"
+      ],
+      "evaluation_role": "demo_core",
+      "request_family": "important-items"
+    },
+    {
+      "case_id": "B02",
+      "title": "重要邮件回复跟进",
+      "group": "B",
+      "goal_group_id": "reply-followup",
+      "parent_case_id": null,
+      "environment_variant": null,
+      "partition_role": "development_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/B02.md",
+      "prompt_sha256": "a22d144bed774ff15d029bb7b0de0b95c049e288782bc4aeaf26be9ae1fac61c",
+      "snapshot_sha256": "0a3ec184245f627b8c781a7b7b08618de0688602aa561f78f60d5484f84fd08f",
+      "initial_source_ids": [
+        "prefs:user",
+        "mail:follow:budget-request",
+        "mail:follow:budget-reply",
+        "mail:follow:access-request",
+        "mail:follow:access-done",
+        "mail:follow:review-request",
+        "state:follow"
+      ],
+      "evaluation_role": "demo_core",
+      "request_family": "email-followup"
+    },
+    {
+      "case_id": "B03",
+      "title": "论文订阅通知筛选",
+      "group": "B",
+      "goal_group_id": "notification-filter",
+      "parent_case_id": null,
+      "environment_variant": null,
+      "partition_role": "development_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/B03.md",
+      "prompt_sha256": "cd567794f1bd560844b9f8d95cca2ec1be1981a1dcfce470e49f0c0c876e0a43",
+      "snapshot_sha256": "6afa964841b7eaac2459ff1ba43f466b7a1879530997463d6c065c0b5d13c6e0",
+      "initial_source_ids": [
+        "prefs:user",
+        "mail:papers:batch1",
+        "mail:papers:batch2",
+        "state:papers"
+      ],
+      "evaluation_role": "optional_product_capability",
+      "request_family": "subscription-filter"
+    },
+    {
+      "case_id": "C01",
+      "title": "选择学术报告并准备参加回复",
+      "group": "C",
+      "goal_group_id": "seminar-participation",
+      "parent_case_id": null,
+      "environment_variant": null,
+      "partition_role": "composition_holdout_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/C01.md",
+      "prompt_sha256": "8978ac60a89fef6f903ce5f8a32e59d397c2cd9edb8b9e0e47a5a2dacc3b1af3",
+      "snapshot_sha256": "807c8fe8ddf1443785fdc90e272f95755fdaf0bc81e5f0ee182ebd62e734a456",
+      "initial_source_ids": [
+        "prefs:user",
+        "mail:seminar:invite",
+        "mail:seminar:other",
+        "calendar:seminar:class"
+      ],
+      "evaluation_role": "second_batch_composition",
+      "request_family": "subscription-filter"
+    },
+    {
+      "case_id": "C02",
+      "title": "截止前讨论的可行性",
+      "group": "C",
+      "goal_group_id": "discussion-before-deadline",
+      "parent_case_id": null,
+      "environment_variant": null,
+      "partition_role": "composition_holdout_candidate",
+      "current_time": "2026-10-14T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/C02.md",
+      "prompt_sha256": "401c824bdf3b9fb5c55b82ad2d3cfe77af8d67dd89263b28c5410d6191d7f2a2",
+      "snapshot_sha256": "3d432957d8413df5ef252d1d11092110ef2f3f4458173624c8ea3d4ea8767993",
+      "initial_source_ids": [
+        "prefs:user",
+        "mail:coord:deadline",
+        "mail:coord:request",
+        "mail:coord:availability",
+        "calendar:coord:class",
+        "calendar:coord:reminder"
+      ],
+      "evaluation_role": "deferred",
+      "request_family": "meeting-management"
+    },
+    {
+      "case_id": "C03",
+      "title": "会议取消后仍有效的承诺",
+      "group": "C",
+      "goal_group_id": "cancelled-meeting-obligations",
+      "parent_case_id": null,
+      "environment_variant": null,
+      "partition_role": "composition_holdout_candidate",
+      "current_time": "2026-10-14T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/C03.md",
+      "prompt_sha256": "7237334351aa73a5556220d9f82a3bf4e7a4f6a4242cca5cbd34515e40726089",
+      "snapshot_sha256": "21c01a0c47bb2b349382d3444f980f844e44e999e2b50d2bc97435c644b2df40",
+      "initial_source_ids": [
+        "prefs:user",
+        "calendar:cancel:meeting",
+        "mail:cancel:old",
+        "mail:cancel:current",
+        "state:cancel"
+      ],
+      "evaluation_role": "second_batch_composition",
+      "request_family": "important-items"
+    },
+    {
+      "case_id": "R01",
+      "title": "待审参加方案后用户改变目标",
+      "group": "R",
+      "goal_group_id": "seminar-participation",
+      "parent_case_id": "C01",
+      "environment_variant": null,
+      "partition_role": "runtime_diagnostic",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/R01.md",
+      "prompt_sha256": "8978ac60a89fef6f903ce5f8a32e59d397c2cd9edb8b9e0e47a5a2dacc3b1af3",
+      "snapshot_sha256": "807c8fe8ddf1443785fdc90e272f95755fdaf0bc81e5f0ee182ebd62e734a456",
+      "initial_source_ids": [
+        "prefs:user",
+        "mail:seminar:invite",
+        "mail:seminar:other",
+        "calendar:seminar:class"
+      ],
+      "evaluation_role": "stress_diagnostic",
+      "request_family": "subscription-filter"
+    },
+    {
+      "case_id": "R02",
+      "title": "跟进待审时收到有效回复",
+      "group": "R",
+      "goal_group_id": "reply-followup",
+      "parent_case_id": "B02",
+      "environment_variant": null,
+      "partition_role": "runtime_diagnostic",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/R02.md",
+      "prompt_sha256": "a22d144bed774ff15d029bb7b0de0b95c049e288782bc4aeaf26be9ae1fac61c",
+      "snapshot_sha256": "0a3ec184245f627b8c781a7b7b08618de0688602aa561f78f60d5484f84fd08f",
+      "initial_source_ids": [
+        "prefs:user",
+        "mail:follow:budget-request",
+        "mail:follow:budget-reply",
+        "mail:follow:access-request",
+        "mail:follow:access-done",
+        "mail:follow:review-request",
+        "state:follow"
+      ],
+      "evaluation_role": "stress_diagnostic",
+      "request_family": "email-followup"
+    },
+    {
+      "case_id": "R03",
+      "title": "日历权限失效后的暂停与恢复",
+      "group": "R",
+      "goal_group_id": "meeting-check",
+      "parent_case_id": "A02",
+      "environment_variant": "conflict",
+      "partition_role": "runtime_diagnostic",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/R03.md",
+      "prompt_sha256": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+      "snapshot_sha256": "4f57531967c2ffe75d0e44a32018bcaec7909aed587c0bf7544dfe2e15a9462f",
+      "initial_source_ids": [
+        "prefs:user",
+        "calendar:meeting",
+        "mail:meeting:original",
+        "mail:meeting:latest",
+        "calendar:class",
+        "calendar:fixed"
+      ],
+      "evaluation_role": "stress_diagnostic",
+      "request_family": "meeting-management"
+    },
+    {
+      "case_id": "D01",
+      "title": "DDL 未变且提醒正确",
+      "group": "D",
+      "goal_group_id": "deadline-check",
+      "parent_case_id": null,
+      "environment_variant": "unchanged",
+      "partition_role": "development_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/D01.md",
+      "prompt_sha256": "b76b1c697a11c98aabf4d379dbd0f97ee2a4474c3f4dc3c662a01ec88d131879",
+      "snapshot_sha256": "6b699d937056970cc0268bfbce057c2f64d119b42cb0fe655127c6df37359253",
+      "initial_source_ids": [
+        "prefs:user",
+        "mail:ddl:old",
+        "calendar:ddl:old",
+        "mail:ddl:course"
+      ],
+      "evaluation_role": "demo_natural_variant",
+      "request_family": "important-items",
+      "variant_of_case_id": "B01"
+    },
+    {
+      "case_id": "D02",
+      "title": "重要邮件已得到所需回复",
+      "group": "D",
+      "goal_group_id": "reply-followup",
+      "parent_case_id": null,
+      "environment_variant": "resolved",
+      "partition_role": "development_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/D02.md",
+      "prompt_sha256": "a22d144bed774ff15d029bb7b0de0b95c049e288782bc4aeaf26be9ae1fac61c",
+      "snapshot_sha256": "b3185d2072f8d141912891745e1848123facf299d3803992810eb35da5545d3f",
+      "initial_source_ids": [
+        "prefs:user",
+        "mail:follow:budget-request",
+        "mail:follow:budget-reply",
+        "mail:follow:access-request",
+        "mail:follow:access-done",
+        "mail:follow:review-request",
+        "state:follow",
+        "mail:follow:budget-approved",
+        "mail:follow:review-accepted"
+      ],
+      "evaluation_role": "demo_natural_variant",
+      "request_family": "email-followup",
+      "variant_of_case_id": "B02"
+    },
+    {
+      "case_id": "D03",
+      "title": "会议取消且无需重新安排",
+      "group": "D",
+      "goal_group_id": "meeting-check",
+      "parent_case_id": null,
+      "environment_variant": "cancelled",
+      "partition_role": "development_candidate",
+      "current_time": "2026-10-12T09:00:00+08:00",
+      "authorized_containers": [
+        "mail:coordination",
+        "calendar:coordination",
+        "preferences:coordination",
+        "state:coordination"
+      ],
+      "agent_task": "tasks/D03.md",
+      "prompt_sha256": "656b05e8ca839f223d200ef4786790b4f2543f0fd71715d7a166af78c4336124",
+      "snapshot_sha256": "d13a0102326ccd3070ef8dda808601d5d81d97c8740791ce387fa9ab94385545",
+      "initial_source_ids": [
+        "prefs:user",
+        "calendar:meeting",
+        "mail:meeting:original",
+        "mail:meeting:latest"
+      ],
+      "evaluation_role": "demo_natural_variant",
+      "request_family": "meeting-management",
+      "variant_of_case_id": "A01"
+    }
+  ],
+  "model_requests": 0,
+  "external_writes": 0,
+  "demo_core_cases": [
+    "A02",
+    "A03",
+    "B01",
+    "B02"
+  ],
+  "demo_no_action_cases": [
+    "A01"
+  ],
+  "demo_natural_variants": [
+    "D01",
+    "D02",
+    "D03"
+  ],
+  "first_demo_task_versions": 8,
+  "optional_product_cases": [
+    "B03"
+  ],
+  "second_batch_cases": [
+    "C01",
+    "C03"
+  ],
+  "deferred_cases": [
+    "C02"
+  ],
+  "stress_cases": [
+    "R01",
+    "R02",
+    "R03"
+  ],
+  "review_task_versions": 15,
+  "non_stress_task_versions": 12,
+  "phase1_accepted_case_ids": [
+    "A02",
+    "A03",
+    "B01",
+    "B02",
+    "A01",
+    "D01",
+    "D02",
+    "D03"
+  ],
+  "tooling_ready": false
+}

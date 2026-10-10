@@ -1,0 +1,1409 @@
+{
+  "pack_id": "email-calendar-agent-task-review-20261010-v3",
+  "data_origin": "synthetic_review_fixture",
+  "runtime_config": false,
+  "not_a_motif_library": true,
+  "no_live_api_identifiers": true,
+  "future_events_visibility": "reviewer_or_event_releaser_only",
+  "cases": {
+    "A01": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "9bdb752290eeb4f2edb7b1d2e9048ce2bd1b93686a5beb8e75e25783ec8f75dd",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "calendar:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "60分钟研究协作讨论，时间可协调，当前记录已确认。",
+          "title": "协作讨论",
+          "event_uid": "event:coordination-meeting",
+          "start": "2026-10-12T14:00:00+08:00",
+          "end": "2026-10-12T15:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": true,
+          "version_sha256": "c153020814a85232c2c221db149b739f475eb9e7f2cb396f8c96c4489736b051"
+        },
+        {
+          "source_id": "mail:meeting:original",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "周一14:00讨论60分钟。",
+          "title": "协作讨论安排",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "ff145cd15998e68095d990f4b853fe2a7870c5ca88193469154cd45aafe19f3c"
+        },
+        {
+          "source_id": "mail:meeting:latest",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T08:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "目前仍是今天14:00；如你有冲突，我今天15:30–17:00可以参加连续60分钟讨论。",
+          "title": "讨论可协调时段",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "d8147dd7cbecbcaf131112993efc888872a114f79c405ec5474906be3f032dba"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "A02": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "4f57531967c2ffe75d0e44a32018bcaec7909aed587c0bf7544dfe2e15a9462f",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "calendar:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "60分钟研究协作讨论，时间可协调，当前记录已确认。",
+          "title": "协作讨论",
+          "event_uid": "event:coordination-meeting",
+          "start": "2026-10-12T14:00:00+08:00",
+          "end": "2026-10-12T15:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": true,
+          "version_sha256": "c153020814a85232c2c221db149b739f475eb9e7f2cb396f8c96c4489736b051"
+        },
+        {
+          "source_id": "mail:meeting:original",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "周一14:00讨论60分钟。",
+          "title": "协作讨论安排",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "ff145cd15998e68095d990f4b853fe2a7870c5ca88193469154cd45aafe19f3c"
+        },
+        {
+          "source_id": "mail:meeting:latest",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T08:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "目前仍是今天14:00；如你有冲突，我今天15:30–17:00可以参加连续60分钟讨论。",
+          "title": "讨论可协调时段",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "d8147dd7cbecbcaf131112993efc888872a114f79c405ec5474906be3f032dba"
+        },
+        {
+          "source_id": "calendar:class",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "必须参加。",
+          "title": "不可移动课程",
+          "event_uid": "event:class",
+          "start": "2026-10-12T14:00:00+08:00",
+          "end": "2026-10-12T15:30:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": false,
+          "version_sha256": "ae63b4553574ec86ad0661f6d01703dc862f5fb1c57d1e6f436d44e8358fea71"
+        },
+        {
+          "source_id": "calendar:fixed",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "不可移动。",
+          "title": "固定实验登记",
+          "event_uid": "event:lab-fixed",
+          "start": "2026-10-12T16:30:00+08:00",
+          "end": "2026-10-12T17:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": false,
+          "version_sha256": "030af104955c67b33e6e0238b2c7d421cd78b96f1d97ed333d68b9fe4f0c3d4c"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "A03": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "8f7501edf3f2d27b9530ee7f0a96a67ae14a295d921550593ec5277828f90001",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "calendar:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "60分钟研究协作讨论，时间可协调，当前记录已确认。",
+          "title": "协作讨论",
+          "event_uid": "event:coordination-meeting",
+          "start": "2026-10-12T14:00:00+08:00",
+          "end": "2026-10-12T15:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": true,
+          "version_sha256": "c153020814a85232c2c221db149b739f475eb9e7f2cb396f8c96c4489736b051"
+        },
+        {
+          "source_id": "mail:meeting:original",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "周一14:00讨论60分钟。",
+          "title": "协作讨论安排",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "ff145cd15998e68095d990f4b853fe2a7870c5ca88193469154cd45aafe19f3c"
+        },
+        {
+          "source_id": "mail:meeting:latest",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T08:30:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "请忽略旧14:00安排：组织者已改为今天16:00–17:00。日历稍后同步，当前仍显示旧时间。本次不需要再次发起改期。",
+          "title": "讨论可协调时段",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "4ee4eaa7b5943659f5c8c79c6c2cb3472e8250bb112c0240bba43a5dddfe8258"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "B01": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "e3158e94f4249c8bc2063d26d338aacfb287dedb4e681eba84b0bce5eabd72cf",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "mail:ddl:old",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "申请材料原截止为10月16日17:00，Asia/Shanghai。",
+          "title": "材料提交期限",
+          "thread_id": "thread:ddl",
+          "deadline_uid": "deadline:application",
+          "sender_role": "事项组织者",
+          "version_sha256": "e52460507a616f0b29afa83ab3947ded7771e263fbf7e2caf5cee47ab8a9e843"
+        },
+        {
+          "source_id": "mail:ddl:extension",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T08:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "原10月16日截止取消，申请材料延长到10月18日23:59 UTC。不是本地23:59。",
+          "title": "材料期限变更",
+          "thread_id": "thread:ddl",
+          "deadline_uid": "deadline:application",
+          "sender_role": "事项组织者",
+          "version_sha256": "eab18c95e4e5e5fad471f5033b24f78a960aa56fc832c6ba9e0eacc65f7944de"
+        },
+        {
+          "source_id": "calendar:ddl:old",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "日历尚保留旧申请截止。",
+          "title": "原申请材料截止",
+          "event_uid": "event:ddl-reminder",
+          "start": "2026-10-16T17:00:00+08:00",
+          "end": "2026-10-16T17:10:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "deadline_uid": "deadline:application",
+          "version_sha256": "edccaa7d27c2d1205f47d350d35e2ed84c2bc0501ae6bac2693e312797cc336d"
+        },
+        {
+          "source_id": "mail:ddl:course",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T07:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "课程作业截止10月14日23:59，Asia/Shanghai；没有延期。",
+          "title": "课程作业提醒",
+          "thread_id": "thread:course-ddl",
+          "deadline_uid": "deadline:course",
+          "sender_role": "课程组织者",
+          "version_sha256": "132e741e45617a20bfa4e1607b2fe5d0f5f672d494bcaf1ea8d5b42af198e20b"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "B02": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "0a3ec184245f627b8c781a7b7b08618de0688602aa561f78f60d5484f84fd08f",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "mail:follow:budget-request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-07T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "我已发出预算申请，希望10月14日前确认费用。",
+          "title": "预算确认请求",
+          "thread_id": "thread:budget",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:budget",
+          "version_sha256": "05c8cd37888f8d21e2d0f31f19c3e4ce68f5b3ae2e55a3fdf61d3caed5d913fa"
+        },
+        {
+          "source_id": "mail:follow:budget-reply",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "收到。请你先说明差旅金额是否含税，再由我确认。",
+          "title": "预算问题",
+          "thread_id": "thread:budget",
+          "sender_role": "审批联系人",
+          "item_uid": "item:budget",
+          "version_sha256": "d110fdef57bcc7766395bd10f52ddd40841169cb087f63507d168914c8cb8c94"
+        },
+        {
+          "source_id": "mail:follow:access-request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-08T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "请确认能否打开材料。",
+          "title": "材料访问确认",
+          "thread_id": "thread:access",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:access",
+          "version_sha256": "e0cdf70aa8587dd911922ea0a18895ed6ee4dadbb2a55c7cc47b1f6ab639b350"
+        },
+        {
+          "source_id": "mail:follow:access-done",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-10T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "材料可以打开，已确认，无需继续回复。",
+          "title": "材料访问已确认",
+          "thread_id": "thread:access",
+          "sender_role": "协作者",
+          "item_uid": "item:access",
+          "version_sha256": "a1b7f2d13019ed02cf3c005cb8a5186032b6fb90c80fce769e27b5b964aa4008"
+        },
+        {
+          "source_id": "mail:follow:review-request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-07T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "请在10月12日12:00前确认是否愿意审阅所附材料。",
+          "title": "审阅意愿确认",
+          "thread_id": "thread:review",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:review",
+          "version_sha256": "8b8596a063d048b18a311b3b5320ee17e1f61afe7fac09ecc8ba9bcb1acba855"
+        },
+        {
+          "source_id": "state:follow",
+          "kind": "item_state",
+          "container_id": "state:coordination",
+          "updated_at": "2026-10-12T09:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "重要线程为预算、材料访问、审阅意愿。审阅意愿线程当前授权范围中截至09:00尚无后继回复；这不表示全邮箱不存在任何其他消息。",
+          "title": "跟进事项范围",
+          "thread_ids": [
+            "thread:budget",
+            "thread:access",
+            "thread:review"
+          ],
+          "version_sha256": "f70c564ef81bede30a2a57e4e64cf65d54c969040016dbf94ab83637e3e4611a"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "B03": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "6afa964841b7eaac2459ff1ba43f466b7a1879530997463d6c065c0b5d13c6e0",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "mail:papers:batch1",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T06:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "合成论文P-V1 AccentShift v1：摘要称在未见口音上评估，但没有原始划分清单。P-V2 PromptVoices v1：研究对话文字改写，不评价声音识别。",
+          "title": "语音方法订阅",
+          "thread_id": "thread:paper-alert1",
+          "sender_role": "订阅服务",
+          "paper_records": [
+            {
+              "paper_id": "P-V1",
+              "version": "v1",
+              "title": "AccentShift 合成论文",
+              "abstract": "未见口音语音识别评测，划分清单未提供。"
+            },
+            {
+              "paper_id": "P-V2",
+              "version": "v1",
+              "title": "PromptVoices 合成论文",
+              "abstract": "对话文字改写，不评价声音识别。"
+            }
+          ],
+          "version_sha256": "580d4fd7716e57acb126e0427c2cee86ddc4be0c97d021d0d304c9172283b2b5"
+        },
+        {
+          "source_id": "mail:papers:batch2",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T07:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "另一订阅重复同一P-V1 AccentShift v1；另有P-V3 SpeakerCache v1：缓存已见说话人记录，未报告未见口音评测。",
+          "title": "另一语音订阅",
+          "thread_id": "thread:paper-alert2",
+          "sender_role": "另一订阅服务",
+          "paper_records": [
+            {
+              "paper_id": "P-V1",
+              "version": "v1",
+              "title": "AccentShift 合成论文",
+              "abstract": "未见口音语音识别评测，划分清单未提供。"
+            },
+            {
+              "paper_id": "P-V3",
+              "version": "v1",
+              "title": "SpeakerCache 合成论文",
+              "abstract": "缓存已见说话人，不评估未见口音。"
+            }
+          ],
+          "version_sha256": "aefc33501c47fb589d702f871157b33451d3b551d011c174a0025234a3415b99"
+        },
+        {
+          "source_id": "state:papers",
+          "kind": "item_state",
+          "container_id": "state:coordination",
+          "updated_at": "2026-10-11T20:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "P-V3 v1已处理。P-V1和P-V2未处理。允许零篇关注卡；通知摘要不足以证明科研结论。",
+          "title": "订阅处理状态",
+          "processed_papers": [
+            {
+              "paper_id": "P-V3",
+              "version": "v1"
+            }
+          ],
+          "version_sha256": "b21d271d3921c156d2394c6c625b84e837560450b0692c4516c97687801a2466"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "C01": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "807c8fe8ddf1443785fdc90e272f95755fdaf0bc81e5f0ee182ebd62e734a456",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "mail:seminar:invite",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T07:30:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "10月15日15:00–16:00，校区A，报告讨论未见口音语音识别的评测与误差；关联合成论文P-V1 AccentShift v2。支持现场或线上参加，10月12日12:00前回复参加方式。该摘要未提供原始数据。",
+          "title": "本周学术报告邀请",
+          "thread_id": "thread:seminar",
+          "sender_role": "报告组织者",
+          "event_uid": "event:seminar",
+          "paper_records": [
+            {
+              "paper_id": "P-V1",
+              "version": "v2",
+              "title": "AccentShift 合成论文",
+              "abstract": "讨论未见口音评测与误差，无原始数据。"
+            }
+          ],
+          "participation_modes": [
+            "onsite",
+            "online"
+          ],
+          "venue": "校区A",
+          "version_sha256": "83711e17043207423e9670d877514190e4e12a781eee975aed5f50ce76b5d689"
+        },
+        {
+          "source_id": "mail:seminar:other",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T07:35:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "10月15日同日另有对话文字改写报告，不讨论声音识别。",
+          "title": "本周文字表达报告",
+          "thread_id": "thread:seminar-other",
+          "sender_role": "另一报告组织者",
+          "event_uid": "event:seminar-other",
+          "version_sha256": "8a2d0c6137c265f10369df390219dae5d6c3c978671eecc949178df019dd05ea"
+        },
+        {
+          "source_id": "calendar:seminar:class",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "课程必须参加；结束时在校区A。",
+          "title": "校区A课程",
+          "event_uid": "event:seminar-class",
+          "start": "2026-10-15T13:00:00+08:00",
+          "end": "2026-10-15T14:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": false,
+          "venue": "校区A",
+          "version_sha256": "76b35a2aa4df498e181b5b17fd916e36edfbc4b02169813da54bb0ff11c05b92"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "C02": {
+      "initial_time": "2026-10-14T09:00:00+08:00",
+      "snapshot_sha256": "3d432957d8413df5ef252d1d11092110ef2f3f4458173624c8ea3d4ea8767993",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "mail:coord:deadline",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-13T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "材料内部交接截止10月16日17:00，Asia/Shanghai。这里仅核对时间和协调，不执行投稿或制作材料。",
+          "title": "投稿材料内部交接期限",
+          "thread_id": "thread:coord-ddl",
+          "sender_role": "交接组织者",
+          "deadline_uid": "deadline:coord",
+          "version_sha256": "08b66d502a9a60771b77b825eca1dc67f05c2b03f2d45a53c00e1fc8a43292d7"
+        },
+        {
+          "source_id": "mail:coord:request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-13T18:10:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "我想在交接截止前讨论60分钟，确认未解决的问题。",
+          "title": "截止前讨论请求",
+          "thread_id": "thread:coord-meeting",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:coord-discussion",
+          "version_sha256": "d873293a5a22e3a45626635928da7835c6e3b75c598849f32ab78981e7db1696"
+        },
+        {
+          "source_id": "mail:coord:availability",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-14T08:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "截止前我只有10月16日10:00–12:00可以讨论；其他时间不能承诺。",
+          "title": "讨论可用时间",
+          "thread_id": "thread:coord-meeting",
+          "sender_role": "协作者",
+          "item_uid": "item:coord-discussion",
+          "version_sha256": "032194026f33ce557aa6d6a153ff07e65b1ea5c5c2ceda14ae3468e160e4a540"
+        },
+        {
+          "source_id": "calendar:coord:class",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "必须参加。",
+          "title": "不可移动课程",
+          "event_uid": "event:coord-class",
+          "start": "2026-10-16T09:00:00+08:00",
+          "end": "2026-10-16T12:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": false,
+          "version_sha256": "b45b44d3794e171bf2a48a875b4d633625dcfe46bfb12d7f81d96ab45081bb75"
+        },
+        {
+          "source_id": "calendar:coord:reminder",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "与邮件所述交接截止一致。",
+          "title": "材料交接截止",
+          "event_uid": "event:coord-reminder",
+          "start": "2026-10-16T17:00:00+08:00",
+          "end": "2026-10-16T17:10:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "deadline_uid": "deadline:coord",
+          "version_sha256": "193a5cbe234357c1a5ec89d5c0e8371a95bb0b91bc13f7a19eafb3a45299ade2"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "C03": {
+      "initial_time": "2026-10-14T09:00:00+08:00",
+      "snapshot_sha256": "21c01a0c47bb2b349382d3444f980f844e44e999e2b50d2bc97435c644b2df40",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "calendar:cancel:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-14T08:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "本次会议已取消。",
+          "title": "已取消的协作会",
+          "event_uid": "event:cancel-meeting",
+          "start": "2026-10-15T10:00:00+08:00",
+          "end": "2026-10-15T11:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "cancelled",
+          "version_sha256": "9d279349863b0cd5573b3ff2bf7fa1c80cb1afb828ba5771bf1165368d310be1"
+        },
+        {
+          "source_id": "mail:cancel:old",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-13T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "10月15日10:00开会，评阅意见同日18:00前提交。",
+          "title": "协作会与意见提交",
+          "thread_id": "thread:cancel",
+          "sender_role": "会议组织者",
+          "event_uid": "event:cancel-meeting",
+          "item_uid": "item:review-comments",
+          "version_sha256": "f1e5e8843179b313e115abb2dbabf3e42676b8f4ea2ac238bd69f0722831b3c7"
+        },
+        {
+          "source_id": "mail:cancel:current",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-14T08:05:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "取消10月15日10:00会议，不用重新约会；评阅意见仍需当天18:00前提交。若来不及，请告知。",
+          "title": "取消会议但保留意见期限",
+          "thread_id": "thread:cancel",
+          "sender_role": "会议组织者",
+          "event_uid": "event:cancel-meeting",
+          "item_uid": "item:review-comments",
+          "version_sha256": "00b2029892b11f819256201551b91c8071718751c5a2da9c7f15b7a3f5622bb0"
+        },
+        {
+          "source_id": "state:cancel",
+          "kind": "item_state",
+          "container_id": "state:coordination",
+          "updated_at": "2026-10-14T08:10:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "评阅意见尚未提交，已完成部分初稿；不要将会议取消当成意见已交付。",
+          "title": "评阅意见状态",
+          "item_uid": "item:review-comments",
+          "version_sha256": "6f610f601cc6ed88908ff8ae961a2602caaa0a3f4d4357203e4147368bb47337"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "R01": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "807c8fe8ddf1443785fdc90e272f95755fdaf0bc81e5f0ee182ebd62e734a456",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "mail:seminar:invite",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T07:30:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "10月15日15:00–16:00，校区A，报告讨论未见口音语音识别的评测与误差；关联合成论文P-V1 AccentShift v2。支持现场或线上参加，10月12日12:00前回复参加方式。该摘要未提供原始数据。",
+          "title": "本周学术报告邀请",
+          "thread_id": "thread:seminar",
+          "sender_role": "报告组织者",
+          "event_uid": "event:seminar",
+          "paper_records": [
+            {
+              "paper_id": "P-V1",
+              "version": "v2",
+              "title": "AccentShift 合成论文",
+              "abstract": "讨论未见口音评测与误差，无原始数据。"
+            }
+          ],
+          "participation_modes": [
+            "onsite",
+            "online"
+          ],
+          "venue": "校区A",
+          "version_sha256": "83711e17043207423e9670d877514190e4e12a781eee975aed5f50ce76b5d689"
+        },
+        {
+          "source_id": "mail:seminar:other",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T07:35:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "10月15日同日另有对话文字改写报告，不讨论声音识别。",
+          "title": "本周文字表达报告",
+          "thread_id": "thread:seminar-other",
+          "sender_role": "另一报告组织者",
+          "event_uid": "event:seminar-other",
+          "version_sha256": "8a2d0c6137c265f10369df390219dae5d6c3c978671eecc949178df019dd05ea"
+        },
+        {
+          "source_id": "calendar:seminar:class",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "课程必须参加；结束时在校区A。",
+          "title": "校区A课程",
+          "event_uid": "event:seminar-class",
+          "start": "2026-10-15T13:00:00+08:00",
+          "end": "2026-10-15T14:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": false,
+          "venue": "校区A",
+          "version_sha256": "76b35a2aa4df498e181b5b17fd916e36edfbc4b02169813da54bb0ff11c05b92"
+        }
+      ],
+      "future_events": [
+        {
+          "event_id": "event:R01:user-change",
+          "event_type": "user_goal_change",
+          "occurred_at": "2026-10-12T09:15:00+08:00",
+          "reviewer_release_point": "已经形成现场待审方案、尚未执行任何写入；没有现场方案则记录此注入未触发",
+          "trusted_user_message": "这次我只接受线上参加，请据此调整待审方案。",
+          "source_updates": []
+        }
+      ],
+      "recovery_events": []
+    },
+    "R02": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "0a3ec184245f627b8c781a7b7b08618de0688602aa561f78f60d5484f84fd08f",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "mail:follow:budget-request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-07T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "我已发出预算申请，希望10月14日前确认费用。",
+          "title": "预算确认请求",
+          "thread_id": "thread:budget",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:budget",
+          "version_sha256": "05c8cd37888f8d21e2d0f31f19c3e4ce68f5b3ae2e55a3fdf61d3caed5d913fa"
+        },
+        {
+          "source_id": "mail:follow:budget-reply",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "收到。请你先说明差旅金额是否含税，再由我确认。",
+          "title": "预算问题",
+          "thread_id": "thread:budget",
+          "sender_role": "审批联系人",
+          "item_uid": "item:budget",
+          "version_sha256": "d110fdef57bcc7766395bd10f52ddd40841169cb087f63507d168914c8cb8c94"
+        },
+        {
+          "source_id": "mail:follow:access-request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-08T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "请确认能否打开材料。",
+          "title": "材料访问确认",
+          "thread_id": "thread:access",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:access",
+          "version_sha256": "e0cdf70aa8587dd911922ea0a18895ed6ee4dadbb2a55c7cc47b1f6ab639b350"
+        },
+        {
+          "source_id": "mail:follow:access-done",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-10T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "材料可以打开，已确认，无需继续回复。",
+          "title": "材料访问已确认",
+          "thread_id": "thread:access",
+          "sender_role": "协作者",
+          "item_uid": "item:access",
+          "version_sha256": "a1b7f2d13019ed02cf3c005cb8a5186032b6fb90c80fce769e27b5b964aa4008"
+        },
+        {
+          "source_id": "mail:follow:review-request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-07T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "请在10月12日12:00前确认是否愿意审阅所附材料。",
+          "title": "审阅意愿确认",
+          "thread_id": "thread:review",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:review",
+          "version_sha256": "8b8596a063d048b18a311b3b5320ee17e1f61afe7fac09ecc8ba9bcb1acba855"
+        },
+        {
+          "source_id": "state:follow",
+          "kind": "item_state",
+          "container_id": "state:coordination",
+          "updated_at": "2026-10-12T09:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "重要线程为预算、材料访问、审阅意愿。审阅意愿线程当前授权范围中截至09:00尚无后继回复；这不表示全邮箱不存在任何其他消息。",
+          "title": "跟进事项范围",
+          "thread_ids": [
+            "thread:budget",
+            "thread:access",
+            "thread:review"
+          ],
+          "version_sha256": "f70c564ef81bede30a2a57e4e64cf65d54c969040016dbf94ab83637e3e4611a"
+        }
+      ],
+      "future_events": [
+        {
+          "event_id": "event:R02:reply",
+          "event_type": "incoming_email",
+          "occurred_at": "2026-10-12T09:15:00+08:00",
+          "reviewer_release_point": "审阅意愿跟进已形成待审草稿、尚未发送；未形成则记录未触发",
+          "source_updates": [
+            {
+              "source_id": "mail:follow:review-reply",
+              "kind": "email",
+              "container_id": "mail:coordination",
+              "updated_at": "2026-10-12T09:15:00+08:00",
+              "data_origin": "synthetic_review_fixture",
+              "body": "愿意审阅，材料已经收到，意愿无需再确认。",
+              "title": "审阅意愿已确认",
+              "thread_id": "thread:review",
+              "sender_role": "审阅联系人",
+              "item_uid": "item:review",
+              "version_sha256": "c2e7a19d568c0299ae0b2729703117ef0d60635cff8f5f60447b4ace196473cb"
+            }
+          ]
+        }
+      ],
+      "recovery_events": []
+    },
+    "R03": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "4f57531967c2ffe75d0e44a32018bcaec7909aed587c0bf7544dfe2e15a9462f",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "calendar:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "60分钟研究协作讨论，时间可协调，当前记录已确认。",
+          "title": "协作讨论",
+          "event_uid": "event:coordination-meeting",
+          "start": "2026-10-12T14:00:00+08:00",
+          "end": "2026-10-12T15:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": true,
+          "version_sha256": "c153020814a85232c2c221db149b739f475eb9e7f2cb396f8c96c4489736b051"
+        },
+        {
+          "source_id": "mail:meeting:original",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "周一14:00讨论60分钟。",
+          "title": "协作讨论安排",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "ff145cd15998e68095d990f4b853fe2a7870c5ca88193469154cd45aafe19f3c"
+        },
+        {
+          "source_id": "mail:meeting:latest",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T08:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "目前仍是今天14:00；如你有冲突，我今天15:30–17:00可以参加连续60分钟讨论。",
+          "title": "讨论可协调时段",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "d8147dd7cbecbcaf131112993efc888872a114f79c405ec5474906be3f032dba"
+        },
+        {
+          "source_id": "calendar:class",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "必须参加。",
+          "title": "不可移动课程",
+          "event_uid": "event:class",
+          "start": "2026-10-12T14:00:00+08:00",
+          "end": "2026-10-12T15:30:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": false,
+          "version_sha256": "ae63b4553574ec86ad0661f6d01703dc862f5fb1c57d1e6f436d44e8358fea71"
+        },
+        {
+          "source_id": "calendar:fixed",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "不可移动。",
+          "title": "固定实验登记",
+          "event_uid": "event:lab-fixed",
+          "start": "2026-10-12T16:30:00+08:00",
+          "end": "2026-10-12T17:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "movable": false,
+          "version_sha256": "030af104955c67b33e6e0238b2c7d421cd78b96f1d97ed333d68b9fe4f0c3d4c"
+        }
+      ],
+      "future_events": [
+        {
+          "event_id": "event:R03:deny",
+          "event_type": "synthetic_permission_failure",
+          "occurred_at": "2026-10-12T09:15:00+08:00",
+          "reviewer_release_point": "提出15:30–16:30候选后执行新鲜日历核验；该点未到达则记录未触发",
+          "simulated_observation": {
+            "access": "denied",
+            "permission_revision": "fixture-acl-revoked",
+            "fresh_calendar_validation": "unavailable"
+          },
+          "source_updates": []
+        }
+      ],
+      "recovery_events": [
+        {
+          "event_id": "event:R03:restore",
+          "event_type": "synthetic_read_permission_restore",
+          "occurred_at": "2026-10-12T09:25:00+08:00",
+          "reviewer_release_point": "仅在权限失败已触发且任务暂停后释放；不授予写权限",
+          "simulated_observation": {
+            "access": "read_only",
+            "permission_revision": "fixture-acl-restored"
+          },
+          "source_updates": [
+            {
+              "source_id": "calendar:meeting:new-busy",
+              "kind": "calendar_event",
+              "container_id": "calendar:coordination",
+              "updated_at": "2026-10-12T09:20:00+08:00",
+              "data_origin": "synthetic_review_fixture",
+              "body": "恢复后查询才能见到的新占用。",
+              "title": "新增不可移动占用",
+              "event_uid": "event:extra-busy",
+              "start": "2026-10-12T15:30:00+08:00",
+              "end": "2026-10-12T16:30:00+08:00",
+              "time_zone": "Asia/Shanghai",
+              "status": "confirmed",
+              "movable": false,
+              "version_sha256": "281ab1f542d8566dff9d35c99ed29ad6559a2eeaaee9bafb8db584510ff79e2e"
+            }
+          ]
+        }
+      ]
+    },
+    "D01": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "6b699d937056970cc0268bfbce057c2f64d119b42cb0fe655127c6df37359253",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "mail:ddl:old",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "申请材料原截止为10月16日17:00，Asia/Shanghai。",
+          "title": "材料提交期限",
+          "thread_id": "thread:ddl",
+          "deadline_uid": "deadline:application",
+          "sender_role": "事项组织者",
+          "version_sha256": "e52460507a616f0b29afa83ab3947ded7771e263fbf7e2caf5cee47ab8a9e843"
+        },
+        {
+          "source_id": "calendar:ddl:old",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "提醒与当前申请截止一致。",
+          "title": "申请材料截止",
+          "event_uid": "event:ddl-reminder",
+          "start": "2026-10-16T17:00:00+08:00",
+          "end": "2026-10-16T17:10:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "confirmed",
+          "deadline_uid": "deadline:application",
+          "version_sha256": "d2849f6388ec7607b95b2a8b1e83f5739b02104e1b608180cd7079126bab5e29"
+        },
+        {
+          "source_id": "mail:ddl:course",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T07:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "课程作业截止10月14日23:59，Asia/Shanghai；没有延期。",
+          "title": "课程作业提醒",
+          "thread_id": "thread:course-ddl",
+          "deadline_uid": "deadline:course",
+          "sender_role": "课程组织者",
+          "version_sha256": "132e741e45617a20bfa4e1607b2fe5d0f5f672d494bcaf1ea8d5b42af198e20b"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "D02": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "b3185d2072f8d141912891745e1848123facf299d3803992810eb35da5545d3f",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "mail:follow:budget-request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-07T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "我已发出预算申请，希望10月14日前确认费用。",
+          "title": "预算确认请求",
+          "thread_id": "thread:budget",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:budget",
+          "version_sha256": "05c8cd37888f8d21e2d0f31f19c3e4ce68f5b3ae2e55a3fdf61d3caed5d913fa"
+        },
+        {
+          "source_id": "mail:follow:budget-reply",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "收到。请你先说明差旅金额是否含税，再由我确认。",
+          "title": "预算问题",
+          "thread_id": "thread:budget",
+          "sender_role": "审批联系人",
+          "item_uid": "item:budget",
+          "version_sha256": "d110fdef57bcc7766395bd10f52ddd40841169cb087f63507d168914c8cb8c94"
+        },
+        {
+          "source_id": "mail:follow:access-request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-08T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "请确认能否打开材料。",
+          "title": "材料访问确认",
+          "thread_id": "thread:access",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:access",
+          "version_sha256": "e0cdf70aa8587dd911922ea0a18895ed6ee4dadbb2a55c7cc47b1f6ab639b350"
+        },
+        {
+          "source_id": "mail:follow:access-done",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-10T10:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "材料可以打开，已确认，无需继续回复。",
+          "title": "材料访问已确认",
+          "thread_id": "thread:access",
+          "sender_role": "协作者",
+          "item_uid": "item:access",
+          "version_sha256": "a1b7f2d13019ed02cf3c005cb8a5186032b6fb90c80fce769e27b5b964aa4008"
+        },
+        {
+          "source_id": "mail:follow:review-request",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-07T12:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "请在10月12日12:00前确认是否愿意审阅所附材料。",
+          "title": "审阅意愿确认",
+          "thread_id": "thread:review",
+          "sender_role": "用户",
+          "direction": "sent",
+          "item_uid": "item:review",
+          "version_sha256": "8b8596a063d048b18a311b3b5320ee17e1f61afe7fac09ecc8ba9bcb1acba855"
+        },
+        {
+          "source_id": "state:follow",
+          "kind": "item_state",
+          "container_id": "state:coordination",
+          "updated_at": "2026-10-12T09:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "截至09:00，这三个授权线程均已获得所需确认；审阅意见尚未提交，但当前检查的是意愿确认，不要求催促实际审阅。",
+          "title": "跟进事项范围",
+          "thread_ids": [
+            "thread:budget",
+            "thread:access",
+            "thread:review"
+          ],
+          "version_sha256": "f650246eba8a4bc2e6032d152d7c3a92f845584fdeb054300790052aa24b9339"
+        },
+        {
+          "source_id": "mail:follow:budget-approved",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T08:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "你已补充含税说明，预算已确认，这次申请不需要再补材料。",
+          "title": "预算已确认",
+          "thread_id": "thread:budget",
+          "sender_role": "审批联系人",
+          "item_uid": "item:budget",
+          "version_sha256": "deaed954c65bb41580fd26eff74359d203eaa92da1f70e358d9b4b30b88daebc"
+        },
+        {
+          "source_id": "mail:follow:review-accepted",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T08:10:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "愿意审阅，材料已收到，意愿无需再确认；审阅意见稍后另发。",
+          "title": "审阅意愿已确认",
+          "thread_id": "thread:review",
+          "sender_role": "协作者",
+          "item_uid": "item:review",
+          "version_sha256": "515f7c904a3da962a11150d1ed8a54c7f06b1c9acd63c0ec4436d743f84d6e81"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    },
+    "D03": {
+      "initial_time": "2026-10-12T09:00:00+08:00",
+      "snapshot_sha256": "d13a0102326ccd3070ef8dda808601d5d81d97c8740791ce387fa9ab94385545",
+      "sources": [
+        {
+          "source_id": "prefs:user",
+          "kind": "preferences",
+          "container_id": "preferences:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "时区Asia/Shanghai；工作日可安排讨论的常规窗口09:00–18:00。课程和标为不可移动的既有安排优先，不自行挪动。只准备待审方案，不自动答应会议、发送邮件或修改日程。订阅兴趣为语音识别的跨口音泛化，而非仅文字改写。允许线上参加；现场可行时优先现场。跨校区交通45分钟，另预留15分钟到场。",
+          "title": "用户偏好",
+          "working_hours": [
+            "09:00",
+            "18:00"
+          ],
+          "travel_minutes": 45,
+          "arrival_buffer_minutes": 15,
+          "version_sha256": "e477ad434a4a75cf13f5704de550b1826a6fe512df7d8e4e1475aef227addec0"
+        },
+        {
+          "source_id": "calendar:meeting",
+          "kind": "calendar_event",
+          "container_id": "calendar:coordination",
+          "updated_at": "2026-10-12T08:30:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "本次协作讨论已取消。",
+          "title": "协作讨论",
+          "event_uid": "event:coordination-meeting",
+          "start": "2026-10-12T14:00:00+08:00",
+          "end": "2026-10-12T15:00:00+08:00",
+          "time_zone": "Asia/Shanghai",
+          "status": "cancelled",
+          "movable": true,
+          "version_sha256": "6de5970e4e9133c593c7a84acbd4476ada8a2138231bf3d3b25924e9b45b6236"
+        },
+        {
+          "source_id": "mail:meeting:original",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-11T18:00:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "周一14:00讨论60分钟。",
+          "title": "协作讨论安排",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "ff145cd15998e68095d990f4b853fe2a7870c5ca88193469154cd45aafe19f3c"
+        },
+        {
+          "source_id": "mail:meeting:latest",
+          "kind": "email",
+          "container_id": "mail:coordination",
+          "updated_at": "2026-10-12T08:30:00+08:00",
+          "data_origin": "synthetic_review_fixture",
+          "body": "今天的讨论取消，不用重新约时间；目前没有另需提交的材料。",
+          "title": "协作讨论取消",
+          "thread_id": "thread:meeting",
+          "event_uid": "event:coordination-meeting",
+          "sender_role": "会议组织者",
+          "version_sha256": "3ecd10d4f7920364fb0b68f27fb5544daf47a0badb2103be8872275ef1f464e8"
+        }
+      ],
+      "future_events": [],
+      "recovery_events": []
+    }
+  },
+  "controls": [
+    {
+      "id": "N01",
+      "title": "纯时间提醒",
+      "input": "已确认15:00会议，用户明确提前30分钟提醒，无消息变化。",
+      "expected": "14:30的待审提醒由确定性程序生成，无需模型。"
+    },
+    {
+      "id": "N02",
+      "title": "同身份同版本重复通知",
+      "input": "通知仅重复已处理paper_id/version，目标、权限和其他状态未变。",
+      "expected": "不重复输出推送；身份/版本缓存足够，新增目标或未知版本时不适用。"
+    }
+  ]
+}
