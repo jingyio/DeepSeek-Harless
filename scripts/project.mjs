@@ -4,6 +4,12 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+// Node's dotenv parser never executes shell expressions and preserves existing env.
+const dotenv = join(root, '.env');
+if (existsSync(dotenv)) {
+  if (!process.loadEnvFile) throw new Error('读取 .env 需要 Node.js 20.12+；推荐项目已验收的 Node 22。');
+  process.loadEnvFile(dotenv);
+}
 const suffix = process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python';
 const python = process.env.SSS_PYTHON ?? ['.venv-sss', '.venv312', '.venv']
   .map(dir => join(root, dir, suffix)).find(existsSync) ?? (process.platform === 'win32' ? 'python' : 'python3');
@@ -21,7 +27,7 @@ if (action === 'setup') {
   run(join(root, '.venv-sss', suffix), ['-m', 'pip', 'install', '-r', 'requirements.txt']);
 } else if (action === 'test') {
   run(python, ['-m', 'pytest', 'tests', '-q']);
-  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_dsh_web_policy.mjs']);
+  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_dsh_web_policy.mjs', 'tests/test_web_task_request.mjs', 'tests/test_dsh_web_tasks.mjs']);
 } else if (action === 'scenario') {
   run(python, ['scripts/run-scenario.py', ...args]);
 } else if (action === 'web') {

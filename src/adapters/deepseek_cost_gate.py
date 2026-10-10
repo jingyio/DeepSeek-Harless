@@ -167,7 +167,8 @@ class State:
             os.chmod(self.record, 0o600)
 
 
-def create_server(host: str, port: int, upstream: str, state: State) -> ThreadingHTTPServer:
+def create_server(host: str, port: int, upstream: str, state: State, *,
+                  state_selector=None) -> ThreadingHTTPServer:
     # macOS can supply system proxies even with no *_PROXY environment variables.
     # Never send a local mock/loopback upstream through an external proxy.
     opener = (urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -178,6 +179,11 @@ def create_server(host: str, port: int, upstream: str, state: State) -> Threadin
 
         def log_message(self, *_args: Any) -> None:
             pass
+
+        def _state(self):
+            # Dynamic Web tasks route by the adapter's server-owned session header.
+            # Legacy SDK/frozen callers keep their original single State.
+            return state_selector(self.headers) if state_selector else state
 
         def _reply(self, code: int, message: str) -> None:
             raw = json.dumps({"error": message}).encode()
@@ -227,9 +233,14 @@ def create_server(host: str, port: int, upstream: str, state: State) -> Threadin
         def _forward_file(self, body: bytes | None, method: str) -> None:
             # DeepSeek's Files API is free; image tokens are reserved when the
             # resulting file_id is used in a model request.
+            try:
+                request_state = self._state()
+            except (ValueError, PermissionError):
+                self._reply(403, "model session is not approved")
+                return
             started = time.monotonic()
             status, content_type, answer = self._call_upstream(body, method)
-            state.log({"kind": "files_api", "method": method, "path": self.path,
+            request_state.log({"kind": "files_api", "method": method, "path": self.path,
                        "request_bytes": len(body or b""), "response_status": status,
                        "response_bytes": len(answer),
                        "elapsed_seconds": round(time.monotonic() - started, 3)})
@@ -254,20 +265,25 @@ def create_server(host: str, port: int, upstream: str, state: State) -> Threadin
                 self._forward_file(body, "POST")
                 return
             try:
-                booked = state.book(body)
+                request_state = self._state()
+            except (ValueError, PermissionError):
+                self._reply(403, "model session is not approved")
+                return
+            try:
+                booked = request_state.book(body)
             except (ValueError, TypeError, json.JSONDecodeError):
                 self._reply(400, "unpriced or unbounded model request refused")
                 return
             if booked is None:
-                state.log({'kind': 'budget_denied', 'reason': 'budget_or_request_limit'})
+                request_state.log({'kind': 'budget_denied', 'reason': 'budget_or_request_limit'})
                 self._reply(429, "approved research budget exhausted")
                 return
             request_id, model, dollars, ceiling = booked
             started = time.monotonic()
             status, content_type, answer = self._call_upstream(body, "POST")
             usage = response_usage(content_type, answer)
-            observed, released = state.settle(request_id, model, status, usage)
-            state.log({"request_id": request_id, "model": model,
+            observed, released = request_state.settle(request_id, model, status, usage)
+            request_state.log({"request_id": request_id, "model": model,
                        "reserved_upper_usd": round(dollars, 8),
                        "observed_peak_usd": round(observed, 8) if observed is not None else None,
                        "reservation_released_usd": round(released, 8),

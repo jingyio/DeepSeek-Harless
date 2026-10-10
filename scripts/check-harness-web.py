@@ -31,7 +31,7 @@ def run(scenario, mode, *, limit=24, budget=0.25, fixture='normal'):
     logpath = ROOT / '.local/web/check-startup.log'
     with logpath.open('w') as log:
         child = subprocess.Popen([sys.executable, str(ROOT / 'scripts/harness-web.py'),
-            '--scenario', scenario, '--mode', mode, '--port', '3082',
+            '--frozen', '--scenario', scenario, '--mode', mode, '--port', '3082',
             '--run-id', run_id,
             '--fixture', fixture,
             '--request-limit', str(limit), '--budget-usd', str(budget)],

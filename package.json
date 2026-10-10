@@ -1,5 +1,5 @@
 {
-  "name": "sss-agent-research",
+  "name": "deepseek-harless",
   "version": "0.1.0",
   "private": true,
   "description": "Motif runtime with DeepSeek Harness and configurable MCP scenarios",
@@ -8,8 +8,11 @@
     "test": "node scripts/project.mjs test",
     "smoke": "node scripts/project.mjs smoke",
     "scenario": "node scripts/project.mjs scenario",
+    "scenario:real": "node scripts/project.mjs scenario --call-model",
     "web": "node scripts/project.mjs web",
+    "web:real": "node scripts/project.mjs web --real-model",
     "web:check": "node scripts/project.mjs python scripts/check-harness-web.py",
+    "web:tasks:check": "node scripts/project.mjs python scripts/check-web-tasks.py",
     "motif:check": "node scripts/project.mjs python scripts/motif-example.py check",
     "motif:rebuild": "node scripts/project.mjs python scripts/motif-example.py rebuild"
   },
