@@ -1,0 +1,1253 @@
+{
+  "version": 1,
+  "experiment_id": "research-report-agent-v31-20261010",
+  "published_date": "2026-10-10",
+  "scope": "本次3次准备运行（2次正常DSH轨迹学习+1次独立认证）及16次正式运行的原始最终PDF；另含3份汇总报告。历史开发运行与排版内部候选不纳入此交付集。",
+  "data_origin": "由仓库脚本生成的合成科研数据，不是真实领域观测；真实调用DeepSeek Flash、DSH Harness、stdio MCP与统计/绘图/排版工具。",
+  "review_method": "独立AI评审读取全部原始报告页、研究与请求材料、统计结果和选图；非盲评，不是人工领域专家认证。原始PDF未作事后修订。",
+  "evidence_hashes": {
+    "private_audit_final_sha256": "c9e8a68c05c3744f340a62758e7caad5154b36cdc8a5c228f00e01b0d7d0023f",
+    "private_scientific_reviews_final_sha256": "e56b52ddab2480e176499ff9a3fd71235821c2f1dfa2f22c9a0e06f9c8baeba1"
+  },
+  "summary_reports": [
+    {
+      "path": "reports/comprehensive_experiment_report.pdf",
+      "page_count": 20,
+      "sha256": "51a3c1172a4044878dbf4a53e5d4001931a1a6d05673e75e33a05045b3974d2e",
+      "bytes": 4863246,
+      "copy_verified_byte_identical": true,
+      "title": "综合实验报告",
+      "kind": "summary_report"
+    },
+    {
+      "path": "reports/actual-execution-flows.pdf",
+      "page_count": 4,
+      "sha256": "e66d5df280f10b9ff70ed212278e440bd648c19cbeae1a11033acc352840c2f4",
+      "bytes": 202148,
+      "copy_verified_byte_identical": true,
+      "title": "16次正式运行的真实工具流程附录",
+      "kind": "summary_report"
+    },
+    {
+      "path": "reports/complete_report_examples.pdf",
+      "page_count": 10,
+      "sha256": "709f0296b287ed284b6dc97b8511c52f209814e0baace8b5ab23b7b975f1b345",
+      "bytes": 1934076,
+      "copy_verified_byte_identical": true,
+      "title": "四种任务首次Motif运行的完整样例合辑",
+      "kind": "summary_report"
+    }
+  ],
+  "runs": [
+    {
+      "path": "runs/evaluation/v31_eval_auto_r1_baseline.pdf",
+      "page_count": 3,
+      "sha256": "97c0d997b517cfbcff9c75d8552f26b94124bc7705ad2dc42dd08d9c7920a314",
+      "bytes": 468267,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_auto_r1_baseline",
+      "recorded_run_id": "v31_eval_auto_r1_baseline-fe5e0ed0",
+      "phase": "evaluation",
+      "mode": "baseline",
+      "case_id": "v3_eval_auto",
+      "repeat_id": 1,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": false,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "fail",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "fail",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3
+      ],
+      "issues": [
+        {
+          "severity": "major",
+          "page": 3,
+          "category": "unsupported_power_and_meaningful_effect",
+          "observation": "没有定义实际重要性阈值或功效目标，就将当前可检出效应与实意义效应排序；正确的CI和非显著声明不支持该排序。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "uncertainty_range_wording",
+          "observation": "置信区间上限为1.2934g，“几克量级”容易使读者把数克差异也视为本区间支持；应直接描述实际区间。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 16,
+        "tool_calls": 15,
+        "tool_failure_count": 1,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.07000752,
+        "offpeak_estimate_cny": 0.03500376,
+        "elapsed_seconds": 50.68549592792988,
+        "usage": {
+          "prompt_tokens": 191910,
+          "prompt_cache_hit_tokens": 178688,
+          "prompt_cache_miss_tokens": 13222,
+          "completion_tokens": 4552,
+          "total_tokens": 196462
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_auto_r1_execute.pdf",
+      "page_count": 2,
+      "sha256": "ab77a4faaf218d4382096750d2b0db019dcd972513712af13db7841d9533dc9b",
+      "bytes": 461582,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_auto_r1_execute",
+      "recorded_run_id": "v31_eval_auto_r1_execute-88bc3669",
+      "phase": "evaluation",
+      "mode": "execute",
+      "case_id": "v3_eval_auto",
+      "repeat_id": 1,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2
+      ],
+      "issues": [],
+      "metrics": {
+        "upstream_requests": 5,
+        "tool_calls": 14,
+        "tool_failure_count": 0,
+        "verified_motif_bypasses": 10,
+        "peak_estimate_cny": 0.05070792,
+        "offpeak_estimate_cny": 0.02535396,
+        "elapsed_seconds": 35.52913699299097,
+        "usage": {
+          "prompt_tokens": 49837,
+          "prompt_cache_hit_tokens": 37248,
+          "prompt_cache_miss_tokens": 12589,
+          "completion_tokens": 3005,
+          "total_tokens": 52842
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_outline_r1_execute.pdf",
+      "page_count": 3,
+      "sha256": "e9db0c5b51954b863099553e24bb193ef3db71bc054705f4be8908cac3a89a0f",
+      "bytes": 604028,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_outline_r1_execute",
+      "recorded_run_id": "v31_eval_outline_r1_execute-db3ed682",
+      "phase": "evaluation",
+      "mode": "execute",
+      "case_id": "v3_eval_outline",
+      "repeat_id": 1,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 2,
+          "category": "marginal_sd_vs_change_variation",
+          "observation": "前后各自的边际SD不等于差值SD，不能凭此推导个体变化离散度；后文图1/图3确有直接变化证据，因此不把个体变化异质性这一观察判为虚构。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "effect_interval_referent",
+          "observation": "1.1524为标准化dz，报告中已有区间是原始分数均差的CI，不能让读者误以为也提供dz区间。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "removed_pairs_wording",
+          "observation": "应明确删除的是2个不完整配对对应的4行，而不是相应数量的完整配对；实际保留30配对与计算方法正确。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 8,
+        "tool_calls": 17,
+        "tool_failure_count": 3,
+        "verified_motif_bypasses": 10,
+        "peak_estimate_cny": 0.0808652,
+        "offpeak_estimate_cny": 0.0404326,
+        "elapsed_seconds": 48.618763227015734,
+        "usage": {
+          "prompt_tokens": 95443,
+          "prompt_cache_hit_tokens": 81280,
+          "prompt_cache_miss_tokens": 14163,
+          "completion_tokens": 6161,
+          "total_tokens": 101604
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_outline_r1_baseline.pdf",
+      "page_count": 3,
+      "sha256": "99857878eb2fcfd989a2a163177a8a22582aef5d9a0d275c0fb8b0af9e5cc59d",
+      "bytes": 596523,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_outline_r1_baseline",
+      "recorded_run_id": "v31_eval_outline_r1_baseline-b23b37f5",
+      "phase": "evaluation",
+      "mode": "baseline",
+      "case_id": "v3_eval_outline",
+      "repeat_id": 1,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "unspecified_randomization",
+          "observation": "数据可证明没有同期独立对照分析，但未给随机化信息不等于证明没有随机化；应写未提供随机分配信息。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "irrelevant_dimensional_advice",
+          "observation": "这是配对研究，未拟合回归；且截距和残差SD同属结局单位，只有斜率通常不同。泛化提醒可能误导，应针对真实配对问题。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 17,
+        "tool_calls": 16,
+        "tool_failure_count": 2,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.09412656,
+        "offpeak_estimate_cny": 0.04706328,
+        "elapsed_seconds": 58.81553204357624,
+        "usage": {
+          "prompt_tokens": 231646,
+          "prompt_cache_hit_tokens": 216064,
+          "prompt_cache_miss_tokens": 15582,
+          "completion_tokens": 6790,
+          "total_tokens": 238436
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_brief_r1_baseline.pdf",
+      "page_count": 1,
+      "sha256": "065edf02082cc4cd6ddc61e27c413ed7d3cb2fcdd4bd2e96fd961bb6d0d0ea75",
+      "bytes": 264890,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_brief_r1_baseline",
+      "recorded_run_id": "v31_eval_brief_r1_baseline-135603d0",
+      "phase": "evaluation",
+      "mode": "baseline",
+      "case_id": "v3_eval_brief",
+      "repeat_id": 1,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "percentage_point_unit",
+          "observation": "当Load本身以百分数数值记录时，原始单位增量1是1个百分点，不是负载相对增加1%；本文kWh/%仍给出了正确模型单位，但自然语言可消除歧义。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 21,
+        "tool_calls": 20,
+        "tool_failure_count": 6,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.10242488,
+        "offpeak_estimate_cny": 0.05121244,
+        "elapsed_seconds": 53.02980348095298,
+        "usage": {
+          "prompt_tokens": 302547,
+          "prompt_cache_hit_tokens": 284672,
+          "prompt_cache_miss_tokens": 17875,
+          "completion_tokens": 6911,
+          "total_tokens": 309458
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_brief_r1_execute.pdf",
+      "page_count": 1,
+      "sha256": "3809541fd096e72eb6b617ecd10f2bbbb84c36181aa30b2f9c58bb10b09dc40a",
+      "bytes": 270305,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_brief_r1_execute",
+      "recorded_run_id": "v31_eval_brief_r1_execute-f991c68a",
+      "phase": "evaluation",
+      "mode": "execute",
+      "case_id": "v3_eval_brief",
+      "repeat_id": 1,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "unsupported_residual_structure",
+          "observation": "当前只呈现散点拟合图和Shapiro正态性检验，没有残差图或结构检验来支持“显著”结构判断；可谨慎说需进一步检查结构。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "percentage_point_unit",
+          "observation": "原始负载单位增量应明确1个百分点，避免与相对1%混淆。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 8,
+        "tool_calls": 17,
+        "tool_failure_count": 3,
+        "verified_motif_bypasses": 10,
+        "peak_estimate_cny": 0.0649496,
+        "offpeak_estimate_cny": 0.0324748,
+        "elapsed_seconds": 35.92806204780936,
+        "usage": {
+          "prompt_tokens": 94646,
+          "prompt_cache_hit_tokens": 80640,
+          "prompt_cache_miss_tokens": 14006,
+          "completion_tokens": 4214,
+          "total_tokens": 98860
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_technical_r1_execute.pdf",
+      "page_count": 3,
+      "sha256": "cd73cdcf3b011709ae747f664925f4d2ccb568dec0013503a2757f034cb9cb4f",
+      "bytes": 543313,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_technical_r1_execute",
+      "recorded_run_id": "v31_eval_technical_r1_execute-8d72cb32",
+      "phase": "evaluation",
+      "mode": "execute",
+      "case_id": "v3_eval_technical",
+      "repeat_id": 1,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": false,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "fail",
+        "unsupported_claims": "fail",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "fail",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3
+      ],
+      "issues": [
+        {
+          "severity": "major",
+          "page": 2,
+          "category": "cross_dimensional_precision_bottleneck",
+          "observation": "斜率置信区间单位mg/L/deg C与残差SD单位mg/L不能直接比较；未选温差换算，也无目标精度/样本量分析，就断言样本量非瓶颈并支撑研究优先级。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "unsupported_sampling_source",
+          "observation": "研究说明只给合成独立观测，未声明单水体/单站点或单一来源，不能将缺少层信息等同已知单来源。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 2,
+          "category": "automatic_dependence_from_stratification",
+          "observation": "跨水体/季节采样本身不必然使观测相关；是否有同站点重复、聚类或时间相关决定模型需求，不能无条件要求混合效应。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 8,
+        "tool_calls": 17,
+        "tool_failure_count": 3,
+        "verified_motif_bypasses": 10,
+        "peak_estimate_cny": 0.09361464,
+        "offpeak_estimate_cny": 0.04680732,
+        "elapsed_seconds": 57.08265785500407,
+        "usage": {
+          "prompt_tokens": 94351,
+          "prompt_cache_hit_tokens": 79616,
+          "prompt_cache_miss_tokens": 14735,
+          "completion_tokens": 7620,
+          "total_tokens": 101971
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_technical_r1_baseline.pdf",
+      "page_count": 3,
+      "sha256": "22d4477f919833b13b0bf4652da9fabe9b3cf252de0f3a9ec7f0f37f1bb507ce",
+      "bytes": 544489,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_technical_r1_baseline",
+      "recorded_run_id": "v31_eval_technical_r1_baseline-7963bdac",
+      "phase": "evaluation",
+      "mode": "baseline",
+      "case_id": "v3_eval_technical",
+      "repeat_id": 1,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "overstrong_conditional_design_priority",
+          "observation": "未量化候选方案精度或成本，当前措辞把启发式优先级写得过强；应作为取决于目标/资源/模型形式的待验选择。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "converted_effect_unit_clarity",
+          "observation": "应显式写1°C变化对应-0.16976mg/L，再与SD比较，避免继续保留斜率单位形成跨量纲印象。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 17,
+        "tool_calls": 16,
+        "tool_failure_count": 2,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.11003167999999999,
+        "offpeak_estimate_cny": 0.055015839999999996,
+        "elapsed_seconds": 69.2977172806859,
+        "usage": {
+          "prompt_tokens": 246060,
+          "prompt_cache_hit_tokens": 232192,
+          "prompt_cache_miss_tokens": 13868,
+          "completion_tokens": 9126,
+          "total_tokens": 255186
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_auto_r2_execute.pdf",
+      "page_count": 3,
+      "sha256": "60d0173c9d7037c8486d1dbb1c8c6b4b9cf577d9fd72e30e16b07306e6909dfd",
+      "bytes": 423442,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_auto_r2_execute",
+      "recorded_run_id": "v31_eval_auto_r2_execute-02b51d74",
+      "phase": "evaluation",
+      "mode": "execute",
+      "case_id": "v3_eval_auto",
+      "repeat_id": 2,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "unspecified_randomization",
+          "observation": "研究未提供分配过程，不能证明未随机化；应写未提供随机化/混杂控制资料。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "missingness_sufficient_vs_necessary",
+          "observation": "将一种足够的缺失假设写成唯一必要条件过强；组内结局独立等条件应具体说明，无法从当前数据确认机制。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "heading_orphan_and_whitespace",
+          "observation": "标题最后单字另起一行，第三页下部留白较多，影响观感但未丢失内容。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 7,
+        "tool_calls": 16,
+        "tool_failure_count": 2,
+        "verified_motif_bypasses": 10,
+        "peak_estimate_cny": 0.0747712,
+        "offpeak_estimate_cny": 0.0373856,
+        "elapsed_seconds": 46.0555386506021,
+        "usage": {
+          "prompt_tokens": 84972,
+          "prompt_cache_hit_tokens": 71680,
+          "prompt_cache_miss_tokens": 13292,
+          "completion_tokens": 5665,
+          "total_tokens": 90637
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_auto_r2_baseline.pdf",
+      "page_count": 2,
+      "sha256": "77ab3985420fb2c4334d007215244576e978fcd5df144dbd3377d5afab849360",
+      "bytes": 423129,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_auto_r2_baseline",
+      "recorded_run_id": "v31_eval_auto_r2_baseline-1a827657",
+      "phase": "evaluation",
+      "mode": "baseline",
+      "case_id": "v3_eval_auto",
+      "repeat_id": 2,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "unquantified_power_wording",
+          "observation": "未作功效计算、未定义小幅效应，应改为估计不确定性较大，需预设目标效应后评估检验效能。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 2,
+          "category": "unspecified_observational_design",
+          "observation": "分配信息未给，不能由两组独立样本直接定性为观察研究；保守不作因果解释合理。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 18,
+        "tool_calls": 17,
+        "tool_failure_count": 3,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.09593904,
+        "offpeak_estimate_cny": 0.04796952,
+        "elapsed_seconds": 61.75567566603422,
+        "usage": {
+          "prompt_tokens": 243898,
+          "prompt_cache_hit_tokens": 229376,
+          "prompt_cache_miss_tokens": 14522,
+          "completion_tokens": 7215,
+          "total_tokens": 251113
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_outline_r2_baseline.pdf",
+      "page_count": 3,
+      "sha256": "3a1e82b6aef23e11ff26ea2b3e5dd35e6436e731e13f49e2b77d74d4578ed7e2",
+      "bytes": 591673,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_outline_r2_baseline",
+      "recorded_run_id": "v31_eval_outline_r2_baseline-effa7395",
+      "phase": "evaluation",
+      "mode": "baseline",
+      "case_id": "v3_eval_outline",
+      "repeat_id": 2,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "long_vs_wide_table",
+          "observation": "CSV为每人每条件一行的长表，非宽表；后文按两行配对正确，故是术语错误。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "missingness_method_assumptions",
+          "observation": "MI/IPW依赖缺失/模型/概率假设，不能笼统称缺失不敏感；需按机制选择与验证。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 20,
+        "tool_calls": 19,
+        "tool_failure_count": 5,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.09478856,
+        "offpeak_estimate_cny": 0.04739428,
+        "elapsed_seconds": 63.3408351354301,
+        "usage": {
+          "prompt_tokens": 262929,
+          "prompt_cache_hit_tokens": 248064,
+          "prompt_cache_miss_tokens": 14865,
+          "completion_tokens": 6892,
+          "total_tokens": 269821
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_outline_r2_execute.pdf",
+      "page_count": 3,
+      "sha256": "d12b3a2a5afae4adfcc53f53a390c01e313ec3eb76fa329ab009caf947045ddd",
+      "bytes": 596854,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_outline_r2_execute",
+      "recorded_run_id": "v31_eval_outline_r2_execute-5ec1499d",
+      "phase": "evaluation",
+      "mode": "execute",
+      "case_id": "v3_eval_outline",
+      "repeat_id": 2,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "universal_standard_error_direction",
+          "observation": "忽略正相关配对时，若做独立两组均差检验通常会高估而不是低估均差SE；不能把所有错误分析方式归成单一偏差方向。实际配对方法及结果正确。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "unspecified_randomization",
+          "observation": "没有同期独立对照/时间字段可据数据说明，但随机化信息未提供不等于确定未包含。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 10,
+        "tool_calls": 19,
+        "tool_failure_count": 5,
+        "verified_motif_bypasses": 10,
+        "peak_estimate_cny": 0.08166592,
+        "offpeak_estimate_cny": 0.04083296,
+        "elapsed_seconds": 55.493919022381306,
+        "usage": {
+          "prompt_tokens": 102924,
+          "prompt_cache_hit_tokens": 88448,
+          "prompt_cache_miss_tokens": 14476,
+          "completion_tokens": 6147,
+          "total_tokens": 109071
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_brief_r2_execute.pdf",
+      "page_count": 1,
+      "sha256": "b7aed94c7136261235838ac7aea33aa95259a94e3dc05cd25533ec9984632460",
+      "bytes": 268081,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_brief_r2_execute",
+      "recorded_run_id": "v31_eval_brief_r2_execute-83f7a37f",
+      "phase": "evaluation",
+      "mode": "execute",
+      "case_id": "v3_eval_brief",
+      "repeat_id": 2,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "unspecified_randomization",
+          "observation": "题面未提供随机分配/干预信息，应写信息不足而非确定无随机化；非因果解释合理。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "unqualified_sample_size_label",
+          "observation": "样本量是否不足依目标精度/效应与设计而定，不能仅凭50判断；建议直接说仅50个观测、外推需验证。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 8,
+        "tool_calls": 17,
+        "tool_failure_count": 3,
+        "verified_motif_bypasses": 10,
+        "peak_estimate_cny": 0.06458095999999999,
+        "offpeak_estimate_cny": 0.032290479999999996,
+        "elapsed_seconds": 36.00374682247639,
+        "usage": {
+          "prompt_tokens": 88830,
+          "prompt_cache_hit_tokens": 74624,
+          "prompt_cache_miss_tokens": 14206,
+          "completion_tokens": 4148,
+          "total_tokens": 92978
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_brief_r2_baseline.pdf",
+      "page_count": 1,
+      "sha256": "e60425c4a45fd0ebd18a67755055fbd9fa7c1a3758c33e5e1e0193af8f29de6e",
+      "bytes": 268258,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_brief_r2_baseline",
+      "recorded_run_id": "v31_eval_brief_r2_baseline-dfb2b67c",
+      "phase": "evaluation",
+      "mode": "baseline",
+      "case_id": "v3_eval_brief",
+      "repeat_id": 2,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "percentage_point_and_response_units",
+          "observation": "原始负载数值增加1为1个百分点，其拟合能耗变化单位应是kWh；kWh/%应保留为斜率单位。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 17,
+        "tool_calls": 16,
+        "tool_failure_count": 2,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.06536512,
+        "offpeak_estimate_cny": 0.03268256,
+        "elapsed_seconds": 42.41911181434989,
+        "usage": {
+          "prompt_tokens": 198720,
+          "prompt_cache_hit_tokens": 185728,
+          "prompt_cache_miss_tokens": 12992,
+          "completion_tokens": 3994,
+          "total_tokens": 202714
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_technical_r2_baseline.pdf",
+      "page_count": 4,
+      "sha256": "1927c483ca4db90c8b5383d927f3848ee7f1470b2d65bfcdb97461804cf01938",
+      "bytes": 548594,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_technical_r2_baseline",
+      "recorded_run_id": "v31_eval_technical_r2_baseline-06db81da",
+      "phase": "evaluation",
+      "mode": "baseline",
+      "case_id": "v3_eval_technical",
+      "repeat_id": 2,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "available_predictor_range_overlooked",
+          "observation": "研究说明未直接给范围，但CSV和实际散点图可直接看到解释变量覆盖，不能说只能依区间宽度间接判断。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "conditional_priority_wording",
+          "observation": "没有目标精度或采样收益计算，第一处措辞宜更弱。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 17,
+        "tool_calls": 16,
+        "tool_failure_count": 2,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.08748224,
+        "offpeak_estimate_cny": 0.04374112,
+        "elapsed_seconds": 62.704225189983845,
+        "usage": {
+          "prompt_tokens": 218360,
+          "prompt_cache_hit_tokens": 205056,
+          "prompt_cache_miss_tokens": 13304,
+          "completion_tokens": 6584,
+          "total_tokens": 224944
+        }
+      }
+    },
+    {
+      "path": "runs/evaluation/v31_eval_technical_r2_execute.pdf",
+      "page_count": 4,
+      "sha256": "f5a124d8e7170ef3c1c81abf22d28ca0e0cf9e41481d6b7251d479f50e0c2933",
+      "bytes": 543130,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_eval_technical_r2_execute",
+      "recorded_run_id": "v31_eval_technical_r2_execute-fb6a7363",
+      "phase": "evaluation",
+      "mode": "execute",
+      "case_id": "v3_eval_technical",
+      "repeat_id": 2,
+      "formal_denominator_member": true,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": false,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "fail",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "fail",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "issues": [
+        {
+          "severity": "major",
+          "page": 3,
+          "category": "unsupported_direct_scientific_benefit_claim",
+          "observation": "本次没有定义科学收益、目标精度或决策损失，不能仅凭当前CI和p断言精度再提升科学价值有限。此句明确声称直接支持，不能用后段一般待验声明当作撤回。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 2,
+          "category": "wrong_figure_reference",
+          "observation": "残差图是实际图2，图1是散点拟合；应改正文图号。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "negative_change_wording",
+          "observation": "下降和负号叠用语义不顺，应写下降约0.16976mg/L或变化-0.16976mg/L；整篇方向明确负向，数字未错。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 3,
+          "category": "converted_response_unit",
+          "observation": "若已给1°C变化，其对应结局变化应写mg/L；前文已正确示范换算，后文单位沿用宜修正。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 8,
+        "tool_calls": 17,
+        "tool_failure_count": 3,
+        "verified_motif_bypasses": 10,
+        "peak_estimate_cny": 0.10101856,
+        "offpeak_estimate_cny": 0.05050928,
+        "elapsed_seconds": 63.29076100885868,
+        "usage": {
+          "prompt_tokens": 98364,
+          "prompt_cache_hit_tokens": 84864,
+          "prompt_cache_miss_tokens": 13500,
+          "completion_tokens": 8828,
+          "total_tokens": 107192
+        }
+      }
+    },
+    {
+      "path": "runs/preparation/v31_train_materials_baseline.pdf",
+      "page_count": 2,
+      "sha256": "ceb44a1849c0589d76d45f732adf5e84c7df738de2129bca2b38cf4edec7a5fa",
+      "bytes": 436870,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_train_materials_baseline",
+      "recorded_run_id": "v31_train_materials_baseline-1910f1f2",
+      "phase": "training",
+      "mode": "baseline",
+      "case_id": "v3_train_materials",
+      "repeat_id": 1,
+      "formal_denominator_member": false,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 2,
+          "category": "unsupported_source_description",
+          "observation": "报告误称缺失行组别未知。原始CSV中的缺失结局仍有group值。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 2,
+          "category": "unsupplied_design_label",
+          "observation": "资料没有说明随机化/分配方式，直接把设计定为观察性超出已提供事实。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 2,
+          "category": "conditional_advice_clarity",
+          "observation": "条件性后续建议中保留了单位回退文字，读者不清楚拟测协变量的实际单位。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 15,
+        "tool_calls": 14,
+        "tool_failure_count": 0,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.06244032,
+        "offpeak_estimate_cny": 0.03122016,
+        "elapsed_seconds": 45.40048574283719,
+        "usage": {
+          "prompt_tokens": 174792,
+          "prompt_cache_hit_tokens": 161408,
+          "prompt_cache_miss_tokens": 13384,
+          "completion_tokens": 3652,
+          "total_tokens": 178444
+        }
+      }
+    },
+    {
+      "path": "runs/preparation/v31_train_ml_baseline.pdf",
+      "page_count": 3,
+      "sha256": "d8cb4bbb7844d308e77d1492ff3667a6b8c4f66849f979e52b3c3fcc255c2e96",
+      "bytes": 615631,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_train_ml_baseline",
+      "recorded_run_id": "v31_train_ml_baseline-39d038fe",
+      "phase": "training",
+      "mode": "baseline",
+      "case_id": "v3_train_ml",
+      "repeat_id": 1,
+      "formal_denominator_member": false,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2,
+        3
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "method_provenance",
+          "observation": "报告将方案描述为读数据前即确定，超出实际inspect_study后approve_analysis的执行记录。",
+          "resolved": false
+        },
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "unsupplied_design_detail",
+          "observation": "同划分比较来自题面，但具体训练/验证/测试三段组成未在元数据中逐项提供。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 20,
+        "tool_calls": 19,
+        "tool_failure_count": 5,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.11223936,
+        "offpeak_estimate_cny": 0.05611968,
+        "elapsed_seconds": 70.33201586827636,
+        "usage": {
+          "prompt_tokens": 283712,
+          "prompt_cache_hit_tokens": 269184,
+          "prompt_cache_miss_tokens": 14528,
+          "completion_tokens": 9052,
+          "total_tokens": 292764
+        }
+      }
+    },
+    {
+      "path": "runs/preparation/v31_cert_environment_baseline.pdf",
+      "page_count": 2,
+      "sha256": "4b85663bebf053e7091efe3e49da3158d17eea9c3620c02b5897a7c4d7688e50",
+      "bytes": 498588,
+      "copy_verified_byte_identical": true,
+      "kind": "original_run_report",
+      "run_id": "v31_cert_environment_baseline",
+      "recorded_run_id": "v31_cert_environment_baseline-43200d17",
+      "phase": "certification",
+      "mode": "baseline",
+      "case_id": "v3_cert_environment",
+      "repeat_id": 1,
+      "formal_denominator_member": false,
+      "automatic_delivery_passed": true,
+      "automatic_layout_passed": true,
+      "scientific_qualified": true,
+      "scientific_checks": {
+        "design_and_method": "pass",
+        "numeric_and_uncertainty_meaning": "pass",
+        "unsupported_claims": "pass",
+        "figure_choice_and_consistency": "pass",
+        "discussion_and_tradeoffs": "pass",
+        "visual_readability": "pass"
+      },
+      "reviewed_pages": [
+        1,
+        2
+      ],
+      "issues": [
+        {
+          "severity": "minor",
+          "page": 1,
+          "category": "figure_reference",
+          "observation": "正文把图2/图3的作用对调：真实图3是斜率区间，真实图2是残差图。",
+          "resolved": false
+        }
+      ],
+      "metrics": {
+        "upstream_requests": 15,
+        "tool_calls": 14,
+        "tool_failure_count": 0,
+        "verified_motif_bypasses": 0,
+        "peak_estimate_cny": 0.059853760000000006,
+        "offpeak_estimate_cny": 0.029926880000000003,
+        "elapsed_seconds": 44.15550300478935,
+        "usage": {
+          "prompt_tokens": 169708,
+          "prompt_cache_hit_tokens": 156544,
+          "prompt_cache_miss_tokens": 13164,
+          "completion_tokens": 3408,
+          "total_tokens": 173116
+        }
+      }
+    }
+  ],
+  "counts": {
+    "summary_pdfs": 3,
+    "original_run_pdfs": 19,
+    "formal_run_pdfs": 16,
+    "preparation_run_pdfs": 3,
+    "original_run_pages": 47,
+    "formal_run_pages": 40,
+    "preparation_run_pages": 7
+  },
+  "publication_verification": {
+    "all_pdf_bytes_match_originals": true,
+    "all_original_pdfs_match_review_sha256": true,
+    "all_original_page_counts_match_full_reviews": true,
+    "all_pdf_pages_have_extractable_text": true,
+    "raw_logs_included": false,
+    "credentials_included": false
+  }
+}

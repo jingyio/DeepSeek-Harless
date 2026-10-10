@@ -1,0 +1,2 @@
+# ReportLab PDFs can have long text-like prefixes. Never normalize their bytes.
+*.pdf binary

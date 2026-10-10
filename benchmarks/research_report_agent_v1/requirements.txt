@@ -1,0 +1,10 @@
+# Benchmark-only dependencies verified on Linux Python 3.12.15.
+# Existing DSH / MCP versions remain in the repository setup.
+numpy==2.5.3
+pandas==3.0.6
+scipy==1.18.1
+statsmodels==0.15.0
+matplotlib==3.11.2
+reportlab==5.0.1
+PyMuPDF==1.28.2
+Pillow==12.3.0

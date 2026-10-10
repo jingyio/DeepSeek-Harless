@@ -1,0 +1,16 @@
+{
+  "mcp__research_report__inspect_study": {"required_params": [], "output_fields": [], "execution": "semantic"},
+  "mcp__research_report__approve_analysis": {"required_params": ["study_id", "plan"], "output_fields": ["plan_id"], "execution": "semantic"},
+  "mcp__research_report__run_analysis": {"required_params": ["plan_id"], "output_fields": ["analysis_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__verify_analysis": {"required_params": ["analysis_id"], "output_fields": ["verified_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__build_evidence": {"required_params": ["verified_id"], "output_fields": ["evidence_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__approve_presentation": {"required_params": ["evidence_id", "presentation"], "output_fields": ["presentation_id"], "execution": "semantic"},
+  "mcp__research_report__render_figures": {"required_params": ["presentation_id"], "output_fields": ["figure_bundle_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__verify_figures": {"required_params": ["figure_bundle_id"], "output_fields": ["packet_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__submit_report_text": {"required_params": ["packet_id", "report_text"], "output_fields": ["text_id"], "execution": "semantic"},
+  "mcp__research_report__compose_report": {"required_params": ["text_id"], "output_fields": ["draft_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__layout_report": {"required_params": ["draft_id"], "output_fields": ["layout_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__audit_layout": {"required_params": ["layout_id"], "output_fields": ["report_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__verify_report": {"required_params": ["report_id"], "output_fields": ["verification_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__deliver_report": {"required_params": ["verification_id"], "output_fields": ["delivery_id"], "execution": "workspace_idempotent"}
+}

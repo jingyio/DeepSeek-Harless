@@ -1,0 +1,1632 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-10-09T18:34:13.813946+00:00",
+  "source": "observed run files; no model calls made by summarizer",
+  "library_digest": "b90b1debfdc27f19102b1fc91467228e9c66184f37044a3571fcdf98a51954d9",
+  "training_cases": [
+    "train_materials",
+    "train_ml"
+  ],
+  "certification_case": "cert_environment",
+  "selected_training_run_ids": [
+    "train_materials_final-9dfda9ad",
+    "train_ml_final-365010e0"
+  ],
+  "selected_certification_run_ids": [
+    "cert_environment_final-b67e2489"
+  ],
+  "certified_motif_count": 4,
+  "runs": [
+    {
+      "run_id": "cert_environment-b9465c47",
+      "directory": ".local/research-report-agent/runs/cert_environment",
+      "case_id": "cert_environment",
+      "phase": "development_pilot",
+      "mode": "baseline",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/cert_environment/workspace/artifacts/rra-report_plan-a36753d8194bb1655b405c3e889f95c9/research_report.pdf",
+        "sha256": "f2f7f0029577581c3e2d9cd00e3f412e6b2e69d40f4be43d03d33a13797529a9",
+        "hash_matches": true,
+        "target_pages": 3,
+        "metadata": {
+          "figure_count": 2,
+          "font": "ReportCJK",
+          "planned_pages": 3
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 853,
+          "embedded_images": 0
+        },
+        {
+          "page": 2,
+          "characters": 176,
+          "embedded_images": 2
+        },
+        {
+          "page": 3,
+          "characters": 900,
+          "embedded_images": 0
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 1,
+        "report_verification": 1
+      },
+      "requests": 11,
+      "successful_requests": 11,
+      "cost_rows": 11,
+      "unique_cost_request_ids": 11,
+      "tool_calls": 10,
+      "observed_tool_calls": 10,
+      "tool_error_results": 0,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 28.507843162864447,
+      "known_usage": {
+        "prompt_tokens": 72735,
+        "prompt_cache_hit_tokens": 64896,
+        "prompt_cache_miss_tokens": 7839,
+        "completion_tokens": 2469,
+        "total_tokens": 75204
+      },
+      "complete_usage_requests": 11,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.03802584,
+      "confirmed_offpeak_estimate_cny": 0.01901292,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.03802584,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 11,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "cert_environment_final-b67e2489",
+      "directory": ".local/research-report-agent/runs/cert_environment_final",
+      "case_id": "cert_environment",
+      "phase": "certification",
+      "mode": "baseline",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/cert_environment_final/workspace/artifacts/rra-report_plan-7a1dd5713b719e9fa82da449ee034182/research_report.pdf",
+        "sha256": "c01460f32fe324c6b08a5d4f0409f9f222d0e78292200c40e4c153afe7300aef",
+        "hash_matches": true,
+        "target_pages": 3,
+        "metadata": {
+          "figure_count": 2,
+          "font": "ReportCJK",
+          "planned_pages": 3
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 891,
+          "embedded_images": 0
+        },
+        {
+          "page": 2,
+          "characters": 176,
+          "embedded_images": 2
+        },
+        {
+          "page": 3,
+          "characters": 787,
+          "embedded_images": 0
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 1,
+        "report_verification": 1
+      },
+      "requests": 12,
+      "successful_requests": 12,
+      "cost_rows": 12,
+      "unique_cost_request_ids": 12,
+      "tool_calls": 11,
+      "observed_tool_calls": 11,
+      "tool_error_results": 1,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 31.454307850450277,
+      "known_usage": {
+        "prompt_tokens": 85439,
+        "prompt_cache_hit_tokens": 76800,
+        "prompt_cache_miss_tokens": 8639,
+        "completion_tokens": 3082,
+        "total_tokens": 88521
+      },
+      "complete_usage_requests": 12,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.045006000000000004,
+      "confirmed_offpeak_estimate_cny": 0.022503000000000002,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.045006000000000004,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 12,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "eval_biology_baseline-d5007f18",
+      "directory": ".local/research-report-agent/runs/eval_biology_baseline",
+      "case_id": "eval_biology",
+      "phase": "heldout",
+      "mode": "baseline",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/eval_biology_baseline/workspace/artifacts/rra-report_plan-392b7f9f529ed6130e760cca263e08b1/research_report.pdf",
+        "sha256": "f9d1decd8750b6777aa5027971f466751cb4a30ed6d7b0c11d900df887b287c5",
+        "hash_matches": true,
+        "target_pages": 4,
+        "metadata": {
+          "figure_count": 3,
+          "font": "ReportCJK",
+          "planned_pages": 4
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 949,
+          "embedded_images": 0
+        },
+        {
+          "page": 2,
+          "characters": 314,
+          "embedded_images": 1
+        },
+        {
+          "page": 3,
+          "characters": 207,
+          "embedded_images": 2
+        },
+        {
+          "page": 4,
+          "characters": 1099,
+          "embedded_images": 0
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 1,
+        "report_verification": 1
+      },
+      "requests": 11,
+      "successful_requests": 11,
+      "cost_rows": 11,
+      "unique_cost_request_ids": 11,
+      "tool_calls": 10,
+      "observed_tool_calls": 10,
+      "tool_error_results": 0,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 30.18048795312643,
+      "known_usage": {
+        "prompt_tokens": 77371,
+        "prompt_cache_hit_tokens": 68352,
+        "prompt_cache_miss_tokens": 9019,
+        "completion_tokens": 2501,
+        "total_tokens": 79872
+      },
+      "complete_usage_requests": 11,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.04078008,
+      "confirmed_offpeak_estimate_cny": 0.02039004,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.04078008,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 11,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "eval_biology_execute-e61edfbb",
+      "directory": ".local/research-report-agent/runs/eval_biology_execute",
+      "case_id": "eval_biology",
+      "phase": "heldout",
+      "mode": "execute",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/eval_biology_execute/workspace/artifacts/rra-report_plan-53f81222342e940075dfe0225e8e2484/research_report.pdf",
+        "sha256": "e6d4a16910bdd4bc4fbb0421a53010f64fd9458b3d1e79a8d5164e36e5ea24aa",
+        "hash_matches": true,
+        "target_pages": 4,
+        "metadata": {
+          "figure_count": 3,
+          "font": "ReportCJK",
+          "planned_pages": 4
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 1053,
+          "embedded_images": 0
+        },
+        {
+          "page": 2,
+          "characters": 314,
+          "embedded_images": 1
+        },
+        {
+          "page": 3,
+          "characters": 207,
+          "embedded_images": 2
+        },
+        {
+          "page": 4,
+          "characters": 1047,
+          "embedded_images": 0
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 1,
+        "report_verification": 1
+      },
+      "requests": 10,
+      "successful_requests": 10,
+      "cost_rows": 10,
+      "unique_cost_request_ids": 10,
+      "tool_calls": 13,
+      "observed_tool_calls": 13,
+      "tool_error_results": 3,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 39.167756382375956,
+      "known_usage": {
+        "prompt_tokens": 95720,
+        "prompt_cache_hit_tokens": 86272,
+        "prompt_cache_miss_tokens": 9448,
+        "completion_tokens": 5323,
+        "total_tokens": 101043
+      },
+      "complete_usage_requests": 10,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.06493088,
+      "confirmed_offpeak_estimate_cny": 0.03246544,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.06493088,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {
+        "plugin_loaded": 1,
+        "motif_fallback": 9,
+        "motif_bypass_attempt": 4,
+        "model_request_skipped_verified": 4
+      },
+      "verified_motif_bypasses": 4,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 10,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "eval_education_baseline-16e3223e",
+      "directory": ".local/research-report-agent/runs/eval_education_baseline",
+      "case_id": "eval_education",
+      "phase": "heldout",
+      "mode": "baseline",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/eval_education_baseline/workspace/artifacts/rra-report_plan-1da92b65bb7ab9a8886d5ec442efcbe1/research_report.pdf",
+        "sha256": "f937cdda87ae8bda6c002013ab8d729fdd027dfb9e809c9e581b5950fc952b48",
+        "hash_matches": true,
+        "target_pages": 2,
+        "metadata": {
+          "figure_count": 2,
+          "font": "ReportCJK",
+          "planned_pages": 2
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 643,
+          "embedded_images": 1
+        },
+        {
+          "page": 2,
+          "characters": 1251,
+          "embedded_images": 1
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 1,
+        "report_verification": 1
+      },
+      "requests": 13,
+      "successful_requests": 13,
+      "cost_rows": 13,
+      "unique_cost_request_ids": 13,
+      "tool_calls": 12,
+      "observed_tool_calls": 12,
+      "tool_error_results": 2,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 34.6321210116148,
+      "known_usage": {
+        "prompt_tokens": 97733,
+        "prompt_cache_hit_tokens": 89600,
+        "prompt_cache_miss_tokens": 8133,
+        "completion_tokens": 4293,
+        "total_tokens": 102026
+      },
+      "complete_usage_requests": 13,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.054194,
+      "confirmed_offpeak_estimate_cny": 0.027097,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.054194,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 13,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "eval_education_execute-3c748472",
+      "directory": ".local/research-report-agent/runs/eval_education_execute",
+      "case_id": "eval_education",
+      "phase": "heldout",
+      "mode": "execute",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/eval_education_execute/workspace/artifacts/rra-report_plan-98c054f4c5468ee9a48243950ef790b7/research_report.pdf",
+        "sha256": "552d0d1ddf66fd052a51912d6507db0c1dbcbd490d6ab60f2a184242a1cb9084",
+        "hash_matches": true,
+        "target_pages": 2,
+        "metadata": {
+          "figure_count": 2,
+          "font": "ReportCJK",
+          "planned_pages": 2
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 657,
+          "embedded_images": 1
+        },
+        {
+          "page": 2,
+          "characters": 1243,
+          "embedded_images": 1
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 1,
+        "report_verification": 1
+      },
+      "requests": 8,
+      "successful_requests": 8,
+      "cost_rows": 8,
+      "unique_cost_request_ids": 8,
+      "tool_calls": 11,
+      "observed_tool_calls": 11,
+      "tool_error_results": 1,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 29.525696579366922,
+      "known_usage": {
+        "prompt_tokens": 63709,
+        "prompt_cache_hit_tokens": 55168,
+        "prompt_cache_miss_tokens": 8541,
+        "completion_tokens": 3420,
+        "total_tokens": 67129
+      },
+      "complete_usage_requests": 8,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.04664872,
+      "confirmed_offpeak_estimate_cny": 0.02332436,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.04664872,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {
+        "plugin_loaded": 1,
+        "motif_fallback": 7,
+        "motif_bypass_attempt": 4,
+        "model_request_skipped_verified": 4
+      },
+      "verified_motif_bypasses": 4,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 8,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "eval_energy_baseline-681c67ef",
+      "directory": ".local/research-report-agent/runs/eval_energy_baseline",
+      "case_id": "eval_energy",
+      "phase": "heldout",
+      "mode": "baseline",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/eval_energy_baseline/workspace/artifacts/rra-report_plan-9efca02e807f9159b728c5455453b7e0/research_report.pdf",
+        "sha256": "84477531404b6565e2f356b2d14f6c2d0803263d629fd06ed45b0852e56eac82",
+        "hash_matches": true,
+        "target_pages": 4,
+        "metadata": {
+          "figure_count": 3,
+          "font": "ReportCJK",
+          "planned_pages": 4
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 998,
+          "embedded_images": 0
+        },
+        {
+          "page": 2,
+          "characters": 351,
+          "embedded_images": 1
+        },
+        {
+          "page": 3,
+          "characters": 212,
+          "embedded_images": 2
+        },
+        {
+          "page": 4,
+          "characters": 1100,
+          "embedded_images": 0
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 1,
+        "report_verification": 1
+      },
+      "requests": 12,
+      "successful_requests": 12,
+      "cost_rows": 12,
+      "unique_cost_request_ids": 12,
+      "tool_calls": 11,
+      "observed_tool_calls": 11,
+      "tool_error_results": 1,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 32.989376936107874,
+      "known_usage": {
+        "prompt_tokens": 88791,
+        "prompt_cache_hit_tokens": 79488,
+        "prompt_cache_miss_tokens": 9303,
+        "completion_tokens": 3350,
+        "total_tokens": 92141
+      },
+      "complete_usage_requests": 12,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.04858552,
+      "confirmed_offpeak_estimate_cny": 0.02429276,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.04858552,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 12,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "eval_energy_execute-c996164d",
+      "directory": ".local/research-report-agent/runs/eval_energy_execute",
+      "case_id": "eval_energy",
+      "phase": "heldout",
+      "mode": "execute",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/eval_energy_execute/workspace/artifacts/rra-report_plan-3eab7b4edd6ae5bfe700bd9fc59592ac/research_report.pdf",
+        "sha256": "7c03778fc50f2f9e8ae69ff133010e608df8f7c7ec9f9d875684ca47fa466607",
+        "hash_matches": true,
+        "target_pages": 4,
+        "metadata": {
+          "figure_count": 3,
+          "font": "ReportCJK",
+          "planned_pages": 4
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 832,
+          "embedded_images": 0
+        },
+        {
+          "page": 2,
+          "characters": 351,
+          "embedded_images": 1
+        },
+        {
+          "page": 3,
+          "characters": 212,
+          "embedded_images": 2
+        },
+        {
+          "page": 4,
+          "characters": 989,
+          "embedded_images": 0
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 1,
+        "report_verification": 1
+      },
+      "requests": 7,
+      "successful_requests": 7,
+      "cost_rows": 7,
+      "unique_cost_request_ids": 7,
+      "tool_calls": 10,
+      "observed_tool_calls": 10,
+      "tool_error_results": 0,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 24.745057072490454,
+      "known_usage": {
+        "prompt_tokens": 52170,
+        "prompt_cache_hit_tokens": 43392,
+        "prompt_cache_miss_tokens": 8778,
+        "completion_tokens": 2064,
+        "total_tokens": 54234
+      },
+      "complete_usage_requests": 7,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.03580368,
+      "confirmed_offpeak_estimate_cny": 0.01790184,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.03580368,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {
+        "plugin_loaded": 1,
+        "motif_fallback": 6,
+        "motif_bypass_attempt": 4,
+        "model_request_skipped_verified": 4
+      },
+      "verified_motif_bypasses": 4,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 7,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "train_materials-26e407b7",
+      "directory": ".local/research-report-agent/runs/train_materials",
+      "case_id": "train_materials",
+      "phase": "development_pilot",
+      "mode": "baseline",
+      "status": "error",
+      "finish_reason": null,
+      "error_type": "TransportClosedError",
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": false,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": false,
+      "report_quality_from_final_tool_event": false,
+      "report_verification_attempts": 0,
+      "report_artifact": {
+        "available": false,
+        "reason": "final_report_record_missing"
+      },
+      "final_report_checks": {},
+      "final_report_pages": [],
+      "invalid_record_files": [],
+      "record_counts": {},
+      "requests": 0,
+      "successful_requests": 0,
+      "cost_rows": 0,
+      "unique_cost_request_ids": 0,
+      "tool_calls": 0,
+      "observed_tool_calls": 0,
+      "tool_error_results": 0,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 7.008097421377897,
+      "known_usage": {
+        "prompt_tokens": 0,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      "complete_usage_requests": 0,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0,
+      "confirmed_offpeak_estimate_cny": 0,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0,
+      "usage_complete_for_all_attempts": false,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 0,
+        "stable": false,
+        "schema_digests": []
+      }
+    },
+    {
+      "run_id": "train_materials_02-49a63d53",
+      "directory": ".local/research-report-agent/runs/train_materials_02",
+      "case_id": "train_materials",
+      "phase": "development_pilot",
+      "mode": "baseline",
+      "status": "error",
+      "finish_reason": null,
+      "error_type": "TransportClosedError",
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": false,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": false,
+      "report_quality_from_final_tool_event": false,
+      "report_verification_attempts": 0,
+      "report_artifact": {
+        "available": false,
+        "reason": "final_report_record_missing"
+      },
+      "final_report_checks": {},
+      "final_report_pages": [],
+      "invalid_record_files": [],
+      "record_counts": {},
+      "requests": 0,
+      "successful_requests": 0,
+      "cost_rows": 0,
+      "unique_cost_request_ids": 0,
+      "tool_calls": 0,
+      "observed_tool_calls": 0,
+      "tool_error_results": 0,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 5.0054920837283134,
+      "known_usage": {
+        "prompt_tokens": 0,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      "complete_usage_requests": 0,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0,
+      "confirmed_offpeak_estimate_cny": 0,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0,
+      "usage_complete_for_all_attempts": false,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 0,
+        "stable": false,
+        "schema_digests": []
+      }
+    },
+    {
+      "run_id": "train_materials_03-ef595f5d",
+      "directory": ".local/research-report-agent/runs/train_materials_03",
+      "case_id": "train_materials",
+      "phase": "development_pilot",
+      "mode": "baseline",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": false,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": false,
+      "report_quality_from_final_tool_event": false,
+      "report_verification_attempts": 0,
+      "report_artifact": {
+        "available": false,
+        "reason": "final_report_record_missing"
+      },
+      "final_report_checks": {},
+      "final_report_pages": [],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1
+      },
+      "requests": 14,
+      "successful_requests": 14,
+      "cost_rows": 14,
+      "unique_cost_request_ids": 14,
+      "tool_calls": 13,
+      "observed_tool_calls": 13,
+      "tool_error_results": 6,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 43.83634255453944,
+      "known_usage": {
+        "prompt_tokens": 110536,
+        "prompt_cache_hit_tokens": 100608,
+        "prompt_cache_miss_tokens": 9928,
+        "completion_tokens": 6641,
+        "total_tokens": 117177
+      },
+      "complete_usage_requests": 14,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.07700832,
+      "confirmed_offpeak_estimate_cny": 0.03850416,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.07700832,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 14,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "train_materials_final-9dfda9ad",
+      "directory": ".local/research-report-agent/runs/train_materials_final",
+      "case_id": "train_materials",
+      "phase": "training",
+      "mode": "baseline",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/train_materials_final/workspace/artifacts/rra-report_plan-ab79eccc1a4b410b2dc11768369e4743/research_report.pdf",
+        "sha256": "f524a01490f5a6fd0457677ba0fe69f0feddaba5c37d7056cea8cbd4a9c8dc99",
+        "hash_matches": true,
+        "target_pages": 2,
+        "metadata": {
+          "figure_count": 2,
+          "font": "ReportCJK",
+          "planned_pages": 2
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 607,
+          "embedded_images": 1
+        },
+        {
+          "page": 2,
+          "characters": 1136,
+          "embedded_images": 1
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 1,
+        "report_verification": 1
+      },
+      "requests": 12,
+      "successful_requests": 12,
+      "cost_rows": 12,
+      "unique_cost_request_ids": 12,
+      "tool_calls": 11,
+      "observed_tool_calls": 11,
+      "tool_error_results": 1,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 30.31805619969964,
+      "known_usage": {
+        "prompt_tokens": 84686,
+        "prompt_cache_hit_tokens": 75520,
+        "prompt_cache_miss_tokens": 9166,
+        "completion_tokens": 3373,
+        "total_tokens": 88059
+      },
+      "complete_usage_requests": 12,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.0483368,
+      "confirmed_offpeak_estimate_cny": 0.0241684,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.0483368,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 12,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "train_ml-566b1611",
+      "directory": ".local/research-report-agent/runs/train_ml",
+      "case_id": "train_ml",
+      "phase": "development_pilot",
+      "mode": "baseline",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": false,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": false,
+      "report_quality_from_final_tool_event": false,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": false,
+        "reason": "final_report_record_missing"
+      },
+      "final_report_checks": {},
+      "final_report_pages": [],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1
+      },
+      "requests": 14,
+      "successful_requests": 14,
+      "cost_rows": 14,
+      "unique_cost_request_ids": 14,
+      "tool_calls": 13,
+      "observed_tool_calls": 13,
+      "tool_error_results": 5,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 39.16554683446884,
+      "known_usage": {
+        "prompt_tokens": 111793,
+        "prompt_cache_hit_tokens": 103168,
+        "prompt_cache_miss_tokens": 8625,
+        "completion_tokens": 5273,
+        "total_tokens": 117066
+      },
+      "complete_usage_requests": 14,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.06356072,
+      "confirmed_offpeak_estimate_cny": 0.03178036,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.06356072,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 14,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    },
+    {
+      "run_id": "train_ml_final-365010e0",
+      "directory": ".local/research-report-agent/runs/train_ml_final",
+      "case_id": "train_ml",
+      "phase": "training",
+      "mode": "baseline",
+      "status": "done",
+      "finish_reason": "completed",
+      "error_type": null,
+      "has_metrics": true,
+      "real_upstream_declared": true,
+      "automated_quality_eligible": true,
+      "human_scientific_review": "not assessed by this script",
+      "report_quality_from_metrics": true,
+      "report_quality_from_final_tool_event": true,
+      "report_verification_attempts": 1,
+      "report_artifact": {
+        "available": true,
+        "path": ".local/research-report-agent/runs/train_ml_final/workspace/artifacts/rra-report_plan-f14e2263934288dd45d2817350aa1acd/research_report.pdf",
+        "sha256": "31524776de5013eca3f90746b006bcc9447e52e7a4d2efd678c7e84919c6d6e4",
+        "hash_matches": true,
+        "target_pages": 3,
+        "metadata": {
+          "figure_count": 3,
+          "font": "ReportCJK",
+          "planned_pages": 3
+        }
+      },
+      "final_report_checks": {
+        "file_hash_matches": true,
+        "page_count_matches": true,
+        "all_pages_have_text": true,
+        "figure_count_matches": true,
+        "no_page_boundary_overflow": true,
+        "synthetic_label_present": true,
+        "all_metric_references_present": true,
+        "all_narrative_fields_present": true,
+        "no_unresolved_placeholders": true,
+        "no_replacement_glyphs": true
+      },
+      "final_report_pages": [
+        {
+          "page": 1,
+          "characters": 834,
+          "embedded_images": 0
+        },
+        {
+          "page": 2,
+          "characters": 157,
+          "embedded_images": 2
+        },
+        {
+          "page": 3,
+          "characters": 972,
+          "embedded_images": 1
+        }
+      ],
+      "invalid_record_files": [],
+      "record_counts": {
+        "analysis": 1,
+        "analysis_plan": 1,
+        "analysis_verification": 1,
+        "figure_bundle": 1,
+        "figure_plan": 1,
+        "figure_verification": 1,
+        "inspection": 1,
+        "report": 1,
+        "report_plan": 2,
+        "report_verification": 1
+      },
+      "requests": 13,
+      "successful_requests": 13,
+      "cost_rows": 13,
+      "unique_cost_request_ids": 13,
+      "tool_calls": 12,
+      "observed_tool_calls": 12,
+      "tool_error_results": 1,
+      "logical_failed_results": 0,
+      "elapsed_seconds": 35.06655601412058,
+      "known_usage": {
+        "prompt_tokens": 99874,
+        "prompt_cache_hit_tokens": 89600,
+        "prompt_cache_miss_tokens": 10274,
+        "completion_tokens": 3167,
+        "total_tokens": 103041
+      },
+      "complete_usage_requests": 13,
+      "unknown_cost_requests": 0,
+      "confirmed_peak_estimate_cny": 0.049468,
+      "confirmed_offpeak_estimate_cny": 0.024734,
+      "unknown_reserved_upper_cny": 0,
+      "runner_conservative_peak_cny": 0.049468,
+      "usage_complete_for_all_attempts": true,
+      "audit_counts": {},
+      "verified_motif_bypasses": 0,
+      "consistency_checks": {
+        "request_count_matches_cost_rows": true,
+        "tool_count_matches_events": true,
+        "bypass_count_matches_audit": true,
+        "quality_metric_matches_final_event": true,
+        "settled_usage_is_consistent": true
+      },
+      "schema_snapshot": {
+        "request_files": 13,
+        "stable": true,
+        "schema_digests": [
+          "7079a3f8496de7f9c76ef756f1cd5bd19ee26ba0b584c09de908b1e161ef5912"
+        ]
+      }
+    }
+  ],
+  "phase_totals_including_failed_attempts": [
+    {
+      "phase": "certification",
+      "mode": "baseline",
+      "attempts": 1,
+      "automatically_qualified": 1,
+      "unsuccessful_or_unqualified": 0,
+      "observed_requests": 12,
+      "request_count_complete": true,
+      "confirmed_peak_estimate_cny": 0.045006000000000004,
+      "unknown_reserved_upper_cny": 0,
+      "unknown_cost_requests": 0,
+      "known_usage": {
+        "prompt_tokens": 85439,
+        "prompt_cache_hit_tokens": 76800,
+        "prompt_cache_miss_tokens": 8639,
+        "completion_tokens": 3082,
+        "total_tokens": 88521
+      }
+    },
+    {
+      "phase": "development_pilot",
+      "mode": "baseline",
+      "attempts": 5,
+      "automatically_qualified": 1,
+      "unsuccessful_or_unqualified": 4,
+      "observed_requests": 39,
+      "request_count_complete": true,
+      "confirmed_peak_estimate_cny": 0.17859488,
+      "unknown_reserved_upper_cny": 0,
+      "unknown_cost_requests": 0,
+      "known_usage": {
+        "prompt_tokens": 295064,
+        "prompt_cache_hit_tokens": 268672,
+        "prompt_cache_miss_tokens": 26392,
+        "completion_tokens": 14383,
+        "total_tokens": 309447
+      }
+    },
+    {
+      "phase": "heldout",
+      "mode": "baseline",
+      "attempts": 3,
+      "automatically_qualified": 3,
+      "unsuccessful_or_unqualified": 0,
+      "observed_requests": 36,
+      "request_count_complete": true,
+      "confirmed_peak_estimate_cny": 0.1435596,
+      "unknown_reserved_upper_cny": 0,
+      "unknown_cost_requests": 0,
+      "known_usage": {
+        "prompt_tokens": 263895,
+        "prompt_cache_hit_tokens": 237440,
+        "prompt_cache_miss_tokens": 26455,
+        "completion_tokens": 10144,
+        "total_tokens": 274039
+      }
+    },
+    {
+      "phase": "heldout",
+      "mode": "execute",
+      "attempts": 3,
+      "automatically_qualified": 3,
+      "unsuccessful_or_unqualified": 0,
+      "observed_requests": 25,
+      "request_count_complete": true,
+      "confirmed_peak_estimate_cny": 0.14738328,
+      "unknown_reserved_upper_cny": 0,
+      "unknown_cost_requests": 0,
+      "known_usage": {
+        "prompt_tokens": 211599,
+        "prompt_cache_hit_tokens": 184832,
+        "prompt_cache_miss_tokens": 26767,
+        "completion_tokens": 10807,
+        "total_tokens": 222406
+      }
+    },
+    {
+      "phase": "training",
+      "mode": "baseline",
+      "attempts": 2,
+      "automatically_qualified": 2,
+      "unsuccessful_or_unqualified": 0,
+      "observed_requests": 25,
+      "request_count_complete": true,
+      "confirmed_peak_estimate_cny": 0.0978048,
+      "unknown_reserved_upper_cny": 0,
+      "unknown_cost_requests": 0,
+      "known_usage": {
+        "prompt_tokens": 184560,
+        "prompt_cache_hit_tokens": 165120,
+        "prompt_cache_miss_tokens": 19440,
+        "completion_tokens": 6540,
+        "total_tokens": 191100
+      }
+    }
+  ],
+  "paired_comparisons": [
+    {
+      "case_id": "eval_biology",
+      "baseline_run_id": "eval_biology_baseline-d5007f18",
+      "execute_run_id": "eval_biology_execute-e61edfbb",
+      "eligible_for_automatic_paired_comparison": true,
+      "checks": {
+        "same_prompt": true,
+        "same_source_bytes": true,
+        "same_critical_execution_code": true,
+        "same_model_and_runtime_settings": true,
+        "stable_matching_actual_tool_schemas": true,
+        "schemas_match_certified_library": true,
+        "execute_uses_selected_library": true,
+        "both_reports_automatically_qualified": true,
+        "both_logs_consistent": true,
+        "both_usage_complete": true
+      },
+      "critical_code_differences": {},
+      "all_code_differences": {},
+      "runtime_setting_differences": {},
+      "baseline_requests": 11,
+      "execute_requests": 10,
+      "baseline_confirmed_peak_cny": 0.04078008,
+      "execute_confirmed_peak_cny": 0.06493088,
+      "baseline_elapsed_seconds": 30.18048795312643,
+      "execute_elapsed_seconds": 39.167756382375956,
+      "human_review_required": true,
+      "request_reduction": 1,
+      "request_reduction_fraction": 0.09090909090909091,
+      "confirmed_peak_cost_difference_cny": -0.024150799999999993,
+      "confirmed_peak_cost_reduction_fraction": -0.5922205155065903
+    },
+    {
+      "case_id": "eval_education",
+      "baseline_run_id": "eval_education_baseline-16e3223e",
+      "execute_run_id": "eval_education_execute-3c748472",
+      "eligible_for_automatic_paired_comparison": true,
+      "checks": {
+        "same_prompt": true,
+        "same_source_bytes": true,
+        "same_critical_execution_code": true,
+        "same_model_and_runtime_settings": true,
+        "stable_matching_actual_tool_schemas": true,
+        "schemas_match_certified_library": true,
+        "execute_uses_selected_library": true,
+        "both_reports_automatically_qualified": true,
+        "both_logs_consistent": true,
+        "both_usage_complete": true
+      },
+      "critical_code_differences": {},
+      "all_code_differences": {},
+      "runtime_setting_differences": {},
+      "baseline_requests": 13,
+      "execute_requests": 8,
+      "baseline_confirmed_peak_cny": 0.054194,
+      "execute_confirmed_peak_cny": 0.04664872,
+      "baseline_elapsed_seconds": 34.6321210116148,
+      "execute_elapsed_seconds": 29.525696579366922,
+      "human_review_required": true,
+      "request_reduction": 5,
+      "request_reduction_fraction": 0.38461538461538464,
+      "confirmed_peak_cost_difference_cny": 0.007545280000000001,
+      "confirmed_peak_cost_reduction_fraction": 0.1392272207255416
+    },
+    {
+      "case_id": "eval_energy",
+      "baseline_run_id": "eval_energy_baseline-681c67ef",
+      "execute_run_id": "eval_energy_execute-c996164d",
+      "eligible_for_automatic_paired_comparison": true,
+      "checks": {
+        "same_prompt": true,
+        "same_source_bytes": true,
+        "same_critical_execution_code": true,
+        "same_model_and_runtime_settings": true,
+        "stable_matching_actual_tool_schemas": true,
+        "schemas_match_certified_library": true,
+        "execute_uses_selected_library": true,
+        "both_reports_automatically_qualified": true,
+        "both_logs_consistent": true,
+        "both_usage_complete": true
+      },
+      "critical_code_differences": {},
+      "all_code_differences": {},
+      "runtime_setting_differences": {},
+      "baseline_requests": 12,
+      "execute_requests": 7,
+      "baseline_confirmed_peak_cny": 0.04858552,
+      "execute_confirmed_peak_cny": 0.03580368,
+      "baseline_elapsed_seconds": 32.989376936107874,
+      "execute_elapsed_seconds": 24.745057072490454,
+      "human_review_required": true,
+      "request_reduction": 5,
+      "request_reduction_fraction": 0.4166666666666667,
+      "confirmed_peak_cost_difference_cny": 0.012781840000000003,
+      "confirmed_peak_cost_reduction_fraction": 0.2630792054916774
+    }
+  ],
+  "unpaired_or_ambiguous_cases": [],
+  "shared_budget_ledgers": [
+    {
+      "path": ".local/research-report-agent/global-ledger.jsonl",
+      "available": true,
+      "budget_accounted_cny": 0.61234856,
+      "reserved_requests": 137,
+      "settled_requests": 137,
+      "unsettled_reservation_cny": 0,
+      "not_a_provider_invoice": true
+    }
+  ],
+  "limitations": [
+    "Synthetic observations, real runtime/tools/cloud model.",
+    "Automated qualification is not independent scientific/visual review.",
+    "No uncertainty intervals for single-run runtime/cost comparisons; no repeat variance estimate.",
+    "Cache hit/miss and run order can affect token costs.",
+    "Training/certification/failures are reported separately, not free savings.",
+    "No generic scripted-pipeline baseline has been compared.",
+    "Cost values are tariff estimates or conservative reservations, not provider invoices."
+  ],
+  "comparison_figures": [
+    ".local/research-report-agent/comparison_figures/heldout_comparison.png",
+    ".local/research-report-agent/comparison_figures/heldout_comparison.pdf",
+    ".local/research-report-agent/comparison_figures/cost_by_phase.png",
+    ".local/research-report-agent/comparison_figures/cost_by_phase.pdf"
+  ],
+  "publication_note": "公开副本仅移除原服务器仓库绝对路径前缀；路径相对仓库根目录。数值、运行 ID、失败记录及产物哈希均保留。原始证据位于本机忽略的 .local/，不随 Git 分发。"
+}

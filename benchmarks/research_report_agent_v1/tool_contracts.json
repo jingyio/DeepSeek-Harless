@@ -1,0 +1,12 @@
+{
+  "mcp__research_report__inspect_study": {"required_params": ["study_id"], "output_fields": [], "execution": "semantic"},
+  "mcp__research_report__plan_analysis": {"required_params": ["study_id", "plan"], "output_fields": ["plan_id"], "execution": "semantic"},
+  "mcp__research_report__run_analysis": {"required_params": ["plan_id"], "output_fields": ["analysis_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__verify_analysis": {"required_params": ["analysis_id"], "output_fields": [], "execution": "workspace_idempotent"},
+  "mcp__research_report__plan_figures": {"required_params": ["analysis_id", "spec"], "output_fields": ["figure_plan_id"], "execution": "semantic"},
+  "mcp__research_report__render_figures": {"required_params": ["figure_plan_id"], "output_fields": ["figure_bundle_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__verify_figures": {"required_params": ["figure_bundle_id"], "output_fields": [], "execution": "workspace_idempotent"},
+  "mcp__research_report__plan_report": {"required_params": ["analysis_id", "figure_bundle_id", "narrative", "format", "target_pages"], "output_fields": ["report_plan_id"], "execution": "semantic"},
+  "mcp__research_report__export_report": {"required_params": ["report_plan_id"], "output_fields": ["report_id"], "execution": "workspace_idempotent"},
+  "mcp__research_report__verify_report": {"required_params": ["report_id"], "output_fields": [], "execution": "workspace_idempotent"}
+}

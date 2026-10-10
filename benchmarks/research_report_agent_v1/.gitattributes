@@ -1,0 +1,2 @@
+# Preserve the exact bytes recorded by the historical experiment manifests.
+build_trace_viewer.py -text
