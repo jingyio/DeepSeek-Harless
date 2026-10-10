@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "skill_id": "research-ppt-design",
+  "skill_version": "research-design-v1",
+  "reviewed_on": "2026-10-10",
+  "implementation": "本场景独立编写的科研设计指导；由运行入口加载固定文本并记录实际 SHA256。不是 Motif、RSI 晋级规则或质量证据。",
+  "references": [
+    {
+      "repository": "yb2460/harness-anything",
+      "repository_url": "https://github.com/yb2460/harness-anything",
+      "ref": "e1924f8499ad6aaa11c579d5492205cfaa89c5d6",
+      "archive_sha256": "059c2d1461b8e149c3a9a3e32b933d6d5da56e8888ebf4e162f17568fc448b7a",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 cli-anything-wps contributors",
+      "files": [
+        {
+          "path": "cli_anything/wps/skills/SKILL.md",
+          "sha256": "a63054f7a66dee88e78f465575536765328ea3ed76a6e2037562c7b1827646c8",
+          "url": "https://github.com/yb2460/harness-anything/blob/e1924f8499ad6aaa11c579d5492205cfaa89c5d6/cli_anything/wps/skills/SKILL.md"
+        },
+        {
+          "path": "WPS/ppt-engine/README.md",
+          "sha256": "cdf8746d8bcbaae7d222a303397df2917efbbdb1aeada894dfec5a6734e51fac",
+          "url": "https://github.com/yb2460/harness-anything/blob/e1924f8499ad6aaa11c579d5492205cfaa89c5d6/WPS/ppt-engine/README.md"
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "1d88972b5024296ac0deee986af4883ecc9d448bdcc97d42d3a9f1eb3a70ad8e",
+          "url": "https://github.com/yb2460/harness-anything/blob/e1924f8499ad6aaa11c579d5492205cfaa89c5d6/LICENSE"
+        }
+      ],
+      "adopted_ideas": [
+        "JSON 内容与渲染执行分离",
+        "统一模板预设与信息层级",
+        "图像等比放置与画布边界检查",
+        "真实 PPTX/PDF 和逐页预览核验",
+        "视觉、叙事、校对、一致性与内容来源分项检查"
+      ],
+      "not_adopted": [
+        "固定论文数或 12–15 页与标准页序",
+        "四字标题及特定字体/坐标",
+        "Windows WPS COM 后端及进程清理命令",
+        "学校背景、校徽和其他品牌资产",
+        "未经校准的质量分数或效果主张"
+      ],
+      "copying": "没有复制上游脚本或资产；对通用工作方式作中文独立重述。为随仓库分发的来源说明保留原版权与完整许可。",
+      "license_text": "MIT License\n\nCopyright (c) 2026 cli-anything-wps contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
+    }
+  ],
+  "excluded": [
+    {
+      "repository": "anthropics/skills",
+      "path": "skills/pptx",
+      "reason": "此前已按专有许可排除；本轮没有读取、复制或改编。"
+    },
+    {
+      "source": "本机 bundled presentations 专用代码与私有执行器",
+      "reason": "不作为可分发来源；本轮没有读取、复制或改编。"
+    }
+  ],
+  "effect_status": "待真实任务与统一质量门槛验证；Skill 本身不授权旁路、写操作或 RSI 晋级。"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "sss-research-ppt",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {"build": "tsc", "test": "npm run build && node --test tests/*.test.mjs"},
+  "dependencies": {"pptxgenjs": "4.0.1"},
+  "devDependencies": {"@types/node": "22.20.5", "typescript": "7.0.2"}
+}

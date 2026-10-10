@@ -23,9 +23,10 @@ def prepare(manifest: Path, task: Path) -> dict:
             or structured.get("schema_version") != 1
             or not structured.get("session_id")):
         raise ValueError("manifest and task must be frozen versioned JSON")
+    runtime_uri = (ROOT / "src/motif_core/online_skill_runtime.mjs").resolve(strict=True).as_uri()
     verifier = ("import fs from 'node:fs'; "
                 "import {validateOnlineManifest, parseStructuredTask} "
-                "from './src/motif_core/online_skill_runtime.mjs'; "
+                f"from {json.dumps(runtime_uri)}; "
                 "const manifest=JSON.parse(fs.readFileSync(process.argv[1])); "
                 "const task=JSON.parse(fs.readFileSync(process.argv[2])); "
                 "validateOnlineManifest(manifest); parseStructuredTask(task,manifest);")

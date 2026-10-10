@@ -11,6 +11,7 @@ __pycache__/
 .env.*
 !.env.example
 *.log
+test-logs/
 .DS_Store
 dist/
 coverage/
