@@ -102,4 +102,6 @@ generated→generated_motif 观察到请求23→18（−21.74%）、总token719,
 
 用户已明确授权中文commit/push至 `feature/research-ppt-agent`、不PR，提交前已告知范围。服务器中文功能提交 `3e29f8ed46043a1b5f2393da53d3425f0db44487` 已完成，树 `794b1f998a8e83d9e8049489ef690314217a4447`，以GitHub当前目标头 `2368235f274329be6227a8393b850633cb943da4` 为parent，吸收旧未推送PPT实验seed的场景与必要兼容补丁；不含他人主线交接改动、私有材料或原日志。旧seed及所有运行配置保留，不追改历史实验版本。
 
-GitHub尚未同步、未创建PR：现有连接器写Git树返回403（Resource not accessible by integration）；本机12000代理未监听，直接HTTPS Git读取重置，服务器HTTP/1.1读取超时，本机SSH无可用公钥，Git凭证helper无现成认证。推送授权有效，需要恢复可写认证与网络后普通快进推送；不能把本地commit写成团队已收到。提交状态凭据及可推送Git包留在私有 `submission/`，不是实验产物质量认证。
+2026-10-11已完成GitHub同步、未创建PR：用户开启本机7890代理后，已有Git凭证可用；从任务私有bare副本普通快进推送 `2368235f274329be6227a8393b850633cb943da4 → ea1d9c3ddd164802cfd3970dce285c9147b4862b`，包含功能提交 `3e29f8ed46043a1b5f2393da53d3425f0db44487` 与中文记录提交，随后通过 `ls-remote` 核验远端HEAD。未force、未改共享本机检出的Git状态，未修改全局代理配置。另补中文文档提交记录同步成功；最终HEAD见Git历史及私有 `submission/final-receipt.json`。
+
+先前连接失败保留：连接器写Git树返回403（Resource not accessible by integration）；本机12000代理未监听，直接HTTPS Git读取重置，服务器HTTP/1.1读取超时，本机SSH无可用公钥，当时Git凭证helper无现成认证。该限制已通过7890代理和已有Git凭证解决，不是缺少用户授权或自动审批拒绝。提交状态凭据及可推送Git包留在私有 `submission/`，不是实验产物质量认证。
