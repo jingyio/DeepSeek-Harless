@@ -1,0 +1,76 @@
+{
+  "archive_commit": "810edf46872e190019667239cb4e5b6b85df8f99",
+  "recovery_date": "2026-10-11",
+  "files": [
+    {
+      "path": "scripts/gmail-guarded-mcp.cjs",
+      "archive_sha256": "92a59d90fd06a6f68a1c2ae33d7060a14b742405a1138cab55fcb967a0bcfc57"
+    },
+    {
+      "path": "scripts/gmail-outbox.cjs",
+      "archive_sha256": "2ae5a5e49ff0bbb5041f39150b3a68f49c7f7fc14ec379cc06ebce84ba2427e5"
+    },
+    {
+      "path": "scripts/gmail-review.cjs",
+      "archive_sha256": "6e6c6ffd12c0ad9a4cffd869b9c0de1fef1251ce5ca0055fba6b031b01a9c0ad"
+    },
+    {
+      "path": "scripts/gmail-review-web.cjs",
+      "archive_sha256": "ca381378d7765840daa6d7629a69a166cd24383e97775484f8a235237f32f258"
+    },
+    {
+      "path": "scripts/gmail-structured-results.cjs",
+      "archive_sha256": "1f12d8d9714289995848fc6d8c3f2a514b52a9d6f234a80c0c05d37424baee9a"
+    },
+    {
+      "path": "scripts/calendar-guarded-mcp.cjs",
+      "archive_sha256": "2da16ed42a795d641609291450899ac6f202ade37fed208cfc83fd2e8ea11291"
+    },
+    {
+      "path": "scripts/calendar-readonly-mcp.cjs",
+      "archive_sha256": "bd4ea0b680ec835d3ed34f4265527970da4c5b064d802b13451a8b6e2dff3b1b"
+    },
+    {
+      "path": "scripts/calendar-availability.cjs",
+      "archive_sha256": "c6efde9140e2276c7d0a3e07707fdd92396d1f1bb6b388f828ddd3d5ff28c7b8"
+    },
+    {
+      "path": "scripts/calendar-outbox.cjs",
+      "archive_sha256": "f4d4326a396e6f99b39723883bdd81858b5fbab27b2886297f4ded8df0ea60f8"
+    },
+    {
+      "path": "scripts/calendar-review.cjs",
+      "archive_sha256": "edbe83341b4acd9de9d367a3bfb7334f6b285d066bf14594ad5ecb97f263bc9d"
+    },
+    {
+      "path": "scripts/calendar-review-web.cjs",
+      "archive_sha256": "132a2fc5ef1076ff45bb783dc7f6feb1336dcb09b5c796ec762fefb18e382dc7"
+    },
+    {
+      "path": "scripts/authorize-google-gmail.sh",
+      "archive_sha256": "89c65796012b2a984fb3136096ab1503eb9b1837d74e5b922bbd99f5ea837061"
+    },
+    {
+      "path": "scripts/authorize-google-calendar.sh",
+      "archive_sha256": "f98555b204e0a967483ef2e23e008c7dea39b616da0e14d14a91183b5cbbe102"
+    },
+    {
+      "path": "tests/test_gmail_outbox.cjs",
+      "archive_sha256": "2db9207a84d125d85d7dd1240d756da73f85438189aa65243f57243f6e00502b"
+    },
+    {
+      "path": "tests/test_gmail_structured_results.cjs",
+      "archive_sha256": "bb65b1b3ec42c157f56b55781937bfbb3e3b78e1724f2046827cd312a85d8802"
+    },
+    {
+      "path": "tests/test_calendar_outbox.cjs",
+      "archive_sha256": "1d929660d4d3771d32b75cbf24cf5c867c5e61ff83e48c7a009bf6756a763a33"
+    },
+    {
+      "path": "tests/test_calendar_availability.cjs",
+      "archive_sha256": "70ea4edf1a8c2fa82b410a7fb976e3bad5b2b7a7f764ffeb321299ad44f1a633"
+    }
+  ],
+  "private_files_recovered": false,
+  "note": "记录原始归档摘要；恢复后的兼容修订以Git diff和交接说明为准。"
+}

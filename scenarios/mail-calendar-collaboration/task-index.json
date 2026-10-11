@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pack_id": "email-calendar-agent-task-review-20261010-v3",
-  "status": "phase1_demo_design_accepted_tooling_pending",
+  "status": "phase1_demo_design_accepted_archive_tools_restored_live_pending",
   "scenario_name": "邮件与日程管理 Agent",
   "english_name": "Email & Calendar Agent",
   "purpose": "useful_daily_information_and_transaction_handling_with_mgga_evaluation",
@@ -485,5 +485,8 @@
     "D02",
     "D03"
   ],
-  "tooling_ready": false
+  "tooling_ready": false,
+  "archive_tools_restored": true,
+  "runtime_scenario": "scenario.json",
+  "tooling_status": "restored_offline_verified_live_acceptance_pending"
 }

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "name": "email_calendar",
+  "prompt": "prompt.md",
+  "servers": [
+    {
+      "server_name": "scoped_gmail_request",
+      "transport": "stdio",
+      "command": "node",
+      "args": [
+        "${PROJECT_ROOT}/scripts/gmail-guarded-mcp.cjs"
+      ],
+      "cwd": "${PROJECT_ROOT}",
+      "env": {
+        "GMAIL_OAUTH_PATH": {
+          "from_env": "GMAIL_OAUTH_PATH"
+        },
+        "GMAIL_CREDENTIALS_PATH": {
+          "from_env": "GMAIL_CREDENTIALS_PATH"
+        },
+        "GMAIL_MCP_STATE_DIR": "${PROJECT_ROOT}/.local/google-gmail",
+        "GMAIL_MCP_DRY_RUN": "true",
+        "SSS_NO_OPEN": "1",
+        "SSS_GMAIL_TOOL_ALLOWLIST": "search_emails,read_email,get_thread,list_inbox_threads,get_inbox_with_threads,prepare_email,list_prepared_emails,get_prepared_email"
+      }
+    },
+    {
+      "server_name": "calendar",
+      "transport": "stdio",
+      "command": "node",
+      "args": [
+        "${PROJECT_ROOT}/scripts/calendar-guarded-mcp.cjs"
+      ],
+      "cwd": "${PROJECT_ROOT}",
+      "env": {
+        "GOOGLE_OAUTH_CREDENTIALS": {
+          "from_env": "GOOGLE_OAUTH_CREDENTIALS"
+        },
+        "GOOGLE_CALENDAR_MCP_TOKEN_PATH": {
+          "from_env": "GOOGLE_CALENDAR_MCP_TOKEN_PATH"
+        },
+        "SSS_GOOGLE_CALENDAR_STATE": "${PROJECT_ROOT}/.local/google-calendar",
+        "SSS_NO_OPEN": "1",
+        "SSS_CALENDAR_TOOL_ALLOWLIST": "list-calendars,list-events,search-events,get-event,get-freebusy,get-current-time,find-available-slots,validate-slot,prepare-event,list-prepared-events"
+      }
+    }
+  ],
+  "allowed_tools": [
+    "mcp__scoped_gmail_request__search_emails",
+    "mcp__scoped_gmail_request__read_email",
+    "mcp__scoped_gmail_request__get_thread",
+    "mcp__scoped_gmail_request__list_inbox_threads",
+    "mcp__scoped_gmail_request__get_inbox_with_threads",
+    "mcp__scoped_gmail_request__prepare_email",
+    "mcp__scoped_gmail_request__list_prepared_emails",
+    "mcp__scoped_gmail_request__get_prepared_email",
+    "mcp__calendar__list_calendars",
+    "mcp__calendar__list_events",
+    "mcp__calendar__search_events",
+    "mcp__calendar__get_event",
+    "mcp__calendar__get_freebusy",
+    "mcp__calendar__get_current_time",
+    "mcp__calendar__find_available_slots",
+    "mcp__calendar__validate_slot",
+    "mcp__calendar__prepare_event",
+    "mcp__calendar__list_prepared_events"
+  ]
+}

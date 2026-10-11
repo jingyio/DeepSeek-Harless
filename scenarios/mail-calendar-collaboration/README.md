@@ -39,6 +39,6 @@ Email & Calendar Agent。场景围绕日常信息与事务处理：重要事项�
 
 `tasks/*.md` 为 Agent 题面；`review/tasks.md` 与 `review/criteria.json` 为人审资料；`review/fixtures.json` 分离初始来源和未来诊断事件；`task-index.json` 与 `review/checksums.json` 为版本索引。它们不是运行时配置或 Motif 库。
 
-当前没有真实 MCP 或 `scenario.json`，不能直接执行；旧邮件/日历连接器位于本地 archive，尚未迁移，缺口和完成标准见[工具就绪情况](tool-readiness.md)。后续复用现有 Harness、Python 离线编译和 TS 在线插件，不另建 Agent 循环。发送邮件/推送、修改日历与事项仍需权限、预览和确认，本包只产出待审方案。
+2026-10-11 已恢复归档邮件/日历MCP、固定依赖、授权脚本和测试，并新增`scenario.json`与真实账户只读`prompt.md`；配置预览和离线诊断可运行。账户授权、真实Demo验收及剩余缺口见[工具就绪情况](tool-readiness.md)。后续复用现有 Harness、Python 离线编译和 TS 在线插件，不另建 Agent 循环。发送邮件/推送、修改日历与事项仍需权限、预览和确认，本包只产出待审方案。
 
-技术目录保留 `mail-calendar-collaboration`，避免名称调整破坏路径。v2 修改前副本在本地 `.local/task-review-history/mail-calendar-coordination-task-review-20261010-v2/`，不作为真实实验。旧[每日简报 v1](../research-daily-brief/README.md)文件和摘要原样保留；当前[场景交接](../../docs/handoffs/mail-calendar-collaboration.md)记录接手顺序。
+恢复模块来源与原始摘要见[归档来源](archive-source.json)。技术目录保留 `mail-calendar-collaboration`，避免名称调整破坏路径。v2 修改前副本在本地 `.local/task-review-history/mail-calendar-coordination-task-review-20261010-v2/`，不作为真实实验。旧[每日简报 v1](../research-daily-brief/README.md)文件和摘要原样保留；当前[场景交接](../../docs/handoffs/mail-calendar-collaboration.md)记录接手顺序。

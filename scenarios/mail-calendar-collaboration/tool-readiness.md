@@ -1,33 +1,50 @@
-# 第一阶段 Demo 工具就绪情况
+# 归档工具恢复与第一阶段就绪情况
 
-2026-10-10 核对结论：用户已接受第一阶段验收集，但本场景的工具尚未完善。当前只有任务、合成来源与评审规则，没有 `scenario.json`、场景 MCP 或真实账户联调，不能直接运行 Demo。已完成的静态检查不代表工具或模型验收通过。
+2026-10-11：已从本地 archive选择性恢复邮件/日历工具、授权入口及回归测试，固定依赖并新增`scenario.json`。工具恢复与无模型诊断完成；真实账户连接、首批Demo质量和MGGA收益尚未验收。
 
-## 首批任务与缺口
+## 已恢复
 
-| 能力 | 首批用途 | 现有依据 | 当前缺口 |
-| --- | --- | --- | --- |
-| 邮件搜索、正文和完整线程读取 | B01/B02、A02/A03及其自然变体 | 本地 `archive` 的 `scripts/gmail-guarded-mcp.cjs` 提供 `search_emails`、`read_email`、`get_thread` 等白名单 | 未迁移、未注册到新场景；账户权限、范围限制、分页及最新线程完整性待验证 |
-| 日历事件查询与忙闲读取 | 会议冲突、改期和DDL核对 | `scripts/calendar-readonly-mcp.cjs`、`calendar-guarded-mcp.cjs` 有 `list-events`、`get-event`、`get-freebusy` 等 | 未迁移；日历身份、权限、时区、取消事件和新鲜性待验证 |
-| 时段计算与候选复核 | A02协调方案 | `scripts/calendar-availability.cjs` 有确定性空档计算与重新查询核验 | 未接新场景；复用前核对契约、范围守卫与失败处理，不强制无冲突任务调用 |
-| 本地回复草稿 | B02及A02 | `scripts/gmail-outbox.cjs` 与守卫桥提供本地 `prepare_email` | 未迁移；需关联原线程/消息和依赖版本，准备不能称发送 |
-| 提醒/事件更新与取消预览 | B01、A03、D03 | 旧 Calendar outbox以新建事件预览为主 | 缺少针对既有对象的更新/停止提醒预览；需保留目标ID、变更前后值、理由及依赖版本 |
-| 用户偏好与事项状态 | 是否应催促、是否重复提醒 | 新任务夹具中有合成偏好与状态对象 | 缺少授权真实来源、读取与状态关联接口；不能只凭旧状态忽略新回复 |
-| 统一来源/版本核验 | 防旧DDL、旧回复、旧时间误沿用 | 原内核有版本/权限守卫；旧Gmail元数据可提取消息和线程ID | 不能用消息ID代替完整线程的新鲜性；需明确各对象版本、查询时点和重新核验规则 |
+- Gmail：搜索、正文/完整线程读取、收件箱线程批量读取、本地邮件草稿及读取；不强制逐封串行。
+- Calendar：日历/事件查询、搜索、单事件读取、忙闲、当前时间、空档计算及候选重新核验、本地新建事件预览。
+- 原人工发送/建会确认代码保留，场景工具白名单不暴露`send_email`、`create-event`或打开确认页面的工具；Calendar新增服务端白名单，直接调用未允许工具也拒绝。
+- 源码与原始摘要见[来源清单](archive-source.json)，固定来源commit `810edf46872e190019667239cb4e5b6b85df8f99`。现在无需取得archive即可安装这些已恢复模块；没有推送整个archive、私人资料或原始轨迹。
 
-上表是代码静态审计，不是现行 MCP 工具列表，也不是手写 Motif 或执行路线。没有恢复旧依赖、连接账户、读取私人内容或启动后台任务。
+复用旧`.cjs`实现，仅抽出测试入口、用当前Node解释器启动依赖包并补Calendar白名单，不另建Agent循环。新场景Gmail使用`scoped_gmail_request`命名，保留原轨迹解析器对结构化元数据的识别；Calendar工具中的连字符由现有Harness规范成下划线。
 
-## 可恢复的历史模块
+## 安装、授权与入口
 
-本地 `archive` 固定来源为 `810edf46872e190019667239cb4e5b6b85df8f99`。上述脚本依赖旧 `@klodr/gmail-mcp`、`@cocal/google-calendar-mcp` 和相关 outbox/review模块；这些连接器及依赖已在 main 清理中移出。查看方式为 `git show archive:<路径>`，依赖恢复前应逐项核对，不能整仓合回。
+在分支的项目根目录安装：
 
-`archive` 和本地 v2 备份未随本场景分支推送；新克隆的同学不能假定这些引用已可取。后续迁移仅提取审查后的公共模块与必要测试，不上传历史私人文件、凭证和原始日志。此分支保留代码定位与来源 commit，未分发旧工具代码。
+```sh
+npm ci
+npm run setup
+npm run mail-calendar:check
+npm run scenario -- --scenario scenarios/mail-calendar-collaboration/scenario.json --budget-usd 1
+```
 
-## 最小完成顺序与验收
+最后一行只生成配置预览，不连接Google或调用模型。`mail-calendar:check`使用合成输入与工具替身，验证真实MCP协议、权限拒绝、本地预览和确定性时段计算，不能当成真实账户/模型验收。
 
-1. 复用现有 Harness/MCP 入口接邮件搜索/读取/线程与日历事件/忙闲查询，使用服务器私有认证、限定实际来源范围；正常路径、拒绝权限、分页与错误返回通过无模型连通检查。偏好/事项从授权来源读取。
-2. 增加仅本地输出的回复草稿、提醒更新/取消预览，绑定明确对象与来源版本。不得自动发送、建会、修改用户日历；无需行动时允许不生成预览。
-3. 在服务器让真实 DeepSeek Harness 自然完成首批8个版本的真实对应实例，先人工评质量，再审计正常轨迹和 shadow整次请求机会。不限制最低轮数，不注入额外步骤；当前暂停新的自动execute测试，后续接管另行明确。
+Google OAuth客户端和token留在服务器私有`.local/google-gmail/`、`.local/google-calendar/`。服务器操作需先加载`.local/remote-env.sh`；从Google Cloud取得客户端并启用对应API、登记测试用户，然后分别执行`npm run gmail:auth`（只申请gmail.readonly）与`npm run calendar:auth`。这是后续操作者授权入口，本次未执行。Calendar上游的OAuth权限与本场景工具白名单分别核对；有OAuth写权限不代表Agent获准写入。
 
-新在线逻辑使用 TypeScript；可复用旧 `.cjs` 确定性实现而不大规模重写。Python保留离线编译。账户范围和有效预算在运行前固定；远端 main 的实际预算默认可能与本地论文工作树不同，应记录入口实际值，不把另一分支的费用配置当成已同步。
+授权脚本不会修改父进程环境，启动前仍须在项目根目录设置以下私有文件路径；不打印文件内容：
 
-目前可交付的是第一阶段验收设计，尚无真实工具、模型质量或节省结论。每日自动检查、真实推送与后续压力诊断不在首批工具完成标准中。
+```sh
+export GMAIL_OAUTH_PATH="$PWD/.local/google-gmail/oauth-client.json"
+export GMAIL_CREDENTIALS_PATH="$PWD/.local/google-gmail/tokens.json"
+export GOOGLE_OAUTH_CREDENTIALS="$PWD/.local/google-calendar/oauth-client.json"
+export GOOGLE_CALENDAR_MCP_TOKEN_PATH="$PWD/.local/google-calendar/tokens.json"
+```
+
+若Gmail授权复用了Calendar客户端，`GMAIL_OAUTH_PATH`改指该客户端路径。缺失或过期时如实失败，不切回模拟Provider声称真实通过。密钥/账号授权不在Git中；Windows授权入口未验证，当前shell授权脚本面向Linux/macOS。
+
+真实模型运行在服务器，使用`npm run scenario:real -- --scenario scenarios/mail-calendar-collaboration/scenario.json --budget-usd 1`或同场景的Web入口。运行前登记实际模型（此分支SDK默认deepseek-flash）、baseline/shadow模式、reasoning_effort=off、累计预算及输出/步数上限；默认不压缩，不新开任务规避累计额度。此分支SDK原默认预算仍为0.25美元，示例显式指定1美元，不改公共默认。本次没有调用真实模型。新的自动execute测试保持暂停。
+
+`prompt.md`是授权真实账户的只读需求；不会把合成review资料整体塞给模型。正式首批逐题验收需先把已接受题面实例化到对应真实来信/日程和访问范围，不能拿虚构ID查询真实账户。
+
+## 尚未完成
+
+1. 旧`prepare-event`仅预览新建事件。B01/A03/D03的既有提醒更新/取消目前只能输出可审阅差异，尚无专用更新/取消预览工具，也不实际修改日历。
+2. 真实偏好/事项状态、账户内访问范围、分页/线程完整性和新鲜性合同仍需验收。消息ID不代表整个线程没有新回复；历史读取边不是当前有效授权。
+3. 尚无本场景正常真实轨迹、独立认证库、通用Motif组合或真实跳过/省费证据。每日调度与真实推送不在本次恢复范围。
+
+先在上述边界内跑通原生任务并人工评质量，再审计可替代的完整模型请求；压力测试后置，不能为展示机制添加步骤。

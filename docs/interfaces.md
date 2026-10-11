@@ -242,3 +242,11 @@ npm run scenario -- --scenario scenarios/my_scene/scenario.json --mode shadow --
 Python 语义端口在 `motif_read_semantic.py`：接收明确的结构缺口，调用受预算代理保护的 `dsh_client.call_bounded_prompt`，校验输出，交回 `SemanticResolution` 恢复。`harness_runtime.py` 将 SDK 私有 `_launch_args` 接缝限制在一个文件；升级固定的 DSH/SDK 版本时必须重新验证。
 
 `motif_output_projection.py` 与编译器的 evidence projection 只保留为可选机制及回归测试，不挂在新入口默认链路。旧 Distil/压缩启动器已归档。
+
+## 邮件与日程场景（2026-10-11归档恢复）
+
+配置`scenarios/mail-calendar-collaboration/scenario.json`继续使用schema_version=1：两个stdio服务、18个白名单工具、4个from_env私有OAuth文件路径。Gmail命名空间`mcp__scoped_gmail_request__`含搜索/消息/线程/批量收件箱读取和本地草稿；Calendar命名空间`mcp__calendar__`含查询、忙闲、确定性空档/复核及本地新建预览。原Calendar工具名中的连字符按Harness规则变成下划线，不修改上游。
+
+两个服务均拒绝不在场景白名单的直接调用；确认页面/发送/建会工具不向模型提供。`prepare_email`返回sent=false，`prepare_event`返回created=false，仅写私有本地outbox。原人工review入口仍需独立人工确认，本次未执行外部写入。更新/取消现有提醒只能交付差异说明，尚无该工具契约。
+
+Gmail结构元数据保留历史读取边识别，但单消息ID不证明线程新鲜；忙闲结果携查询时间/摘要，不替代后续版本核验。真实偏好/状态、来源范围、分页及完整线程认证待验收。归档原始摘要、依赖、入口和测试边界见场景archive-source.json及tool-readiness.md。没有新Motif库，当前保持原生执行与后续shadow审计，暂停新execute。

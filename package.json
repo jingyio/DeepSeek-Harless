@@ -14,11 +14,20 @@
     "web:check": "node scripts/project.mjs python scripts/check-harness-web.py",
     "web:tasks:check": "node scripts/project.mjs python scripts/check-web-tasks.py",
     "motif:check": "node scripts/project.mjs python scripts/motif-example.py check",
-    "motif:rebuild": "node scripts/project.mjs python scripts/motif-example.py rebuild"
+    "motif:rebuild": "node scripts/project.mjs python scripts/motif-example.py rebuild",
+    "gmail:auth": "bash scripts/authorize-google-gmail.sh read",
+    "calendar:auth": "bash scripts/authorize-google-calendar.sh",
+    "gmail:review-web": "node scripts/gmail-review-web.cjs",
+    "calendar:review-web": "node scripts/calendar-review-web.cjs",
+    "mail-calendar:check": "node --test tests/test_gmail_outbox.cjs tests/test_gmail_structured_results.cjs tests/test_calendar_outbox.cjs tests/test_calendar_availability.cjs tests/test_mail_calendar_mcp.cjs"
   },
   "dependencies": {
+    "@cocal/google-calendar-mcp": "2.6.3",
     "@deepseek-ai/dsh": "0.1.5-rc.3",
-    "@deepseek-ai/dsh-llm": "0.1.5-rc.3"
+    "@deepseek-ai/dsh-llm": "0.1.5-rc.3",
+    "@klodr/gmail-mcp": "1.2.0",
+    "@modelcontextprotocol/sdk": "1.30.1",
+    "googleapis": "171.4.0"
   },
   "engines": {
     "node": ">=20"

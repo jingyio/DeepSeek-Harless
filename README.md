@@ -134,3 +134,7 @@ Motif 模式的入口与普通组相同，增加 `--mode shadow` 或 `--mode exe
 ## 两天协作约定
 
 每人一个场景分支，例如 `codex/scene-literature`、`codex/scene-results`、`codex/scene-collaboration`，主要改自己的 `scenarios/<name>/` 和对应测试。你负责公共接口和合并；核心变更先协调。每个小改动提交一次，通过 `npm test` 后发 PR，尽早合回 main。合入别人的工作后，各自同步最新 main。具体操作见 [协作说明](docs/collaboration.md)。
+
+## 邮件与日程管理场景
+
+`codex/email-calendar-demo`恢复了归档Gmail/Google Calendar连接器、固定依赖与授权入口；场景[安装和边界说明](scenarios/mail-calendar-collaboration/tool-readiness.md)。先用`npm run mail-calendar:check`跑无模型诊断，`npm run scenario -- --scenario scenarios/mail-calendar-collaboration/scenario.json --budget-usd 1`只预览；真实运行仍在服务器完成。默认只允许读取与本地草稿/新建事件预览，不开放发送或日历写入。工具恢复不代表首批真实任务质量或MGGA收益已验收。
