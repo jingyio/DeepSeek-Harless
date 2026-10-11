@@ -100,4 +100,5 @@ def prepare_scenario(path: Path, *, case: str = '') -> dict:
             'config_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
             'prompt': prompt, 'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest(),
             'server_names': [client['config']['serverName'] for client in clients], 'allowed_tools': allowed,
+            'mcp_rows': clients, 'environment_references': references,
             'required_env': sorted(set(required_env)), 'case': case}
