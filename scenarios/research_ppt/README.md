@@ -214,3 +214,9 @@ python -m scenarios.research_ppt.tool_learning \
 本机私有下载目录为 `.local/research-ppt/v2-deliverables/`；两套 15 页最终辅助修订 PPT 为 `final-decks/academic/research-ppt-15slides-academic.pptx` 与 `final-decks/lab/research-ppt-15slides-lab.pptx`，包含各自 PDF/逐页 PNG。真实 MCP 交付后的每页 PNG SHA 与已审候选一致，辅助修订不计原模型自动成功或三组收益。报告 v1 已生成并辅助目检全部 30 页；v2 `research-ppt-experiment-report-v2.pdf` 已生成、下载，共 31 页，逐页辅助目检未发现阻断问题。报告定位与 SHA 以 [结果记录](../../docs/experiments/research-ppt-v2-20261010-results.md) 为准。
 
 `research-ppt-deliverables-final.zip` 已下载，SHA `c6f81d7efac92b9228e3407b933ba74e710859d540014a5818aaded7f3c756cf`，含新版报告、目视记录和 41 份核验 PPT，包括训练、重试和修订，不是 41 个独立任务。全部论文、产物与原始证据继续留在忽略的私有目录，不随仓库提交。
+
+## V7/V8 恢复交付入口与完整报告
+
+当前新增的可维护能力包括同一 job 的 MCP 重启恢复、TypeScript 有限交付组合和指定页固定读取。它与上方 V6 入口并存，安装及真实回归见 [delivery.md](delivery.md)。未认证成功的 V7/V8 生成工具候选不注册；历史冻结实验与本次发布移植分别记录。
+
+全部可共享历史 PDF 与版本说明见 [报告索引](../../docs/experiments/research-ppt-reports/README.md)。V7、V8 局部 verified 旁路已经观察到，但计入失败恢复后未降低整任务成本；科学质量未独立人工盲评。V6 的工具生成成功记录与 V7/V8 的失败记录分别保留，不能互相覆盖。

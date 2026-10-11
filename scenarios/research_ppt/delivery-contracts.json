@@ -1,0 +1,31 @@
+{
+  "mcp__ppt__render_delivery": {
+    "required_params": ["plan"],
+    "read_only": false,
+    "replay_stable": false,
+    "output_fields": ["delivered", "deck_id", "validation_id", "input_version", "file_sha256", "path", "artifacts", "editable", "origin", "mechanism", "scientific_quality"],
+    "description": "Ordinary bounded render-inspect-validate-deliver script. Writes only an approved new copy; not a learned Motif. Output fields describe successful delivery, not validation failure."
+  },
+  "mcp__ppt__revise_delivery": {
+    "required_params": ["deck_id", "updates"],
+    "read_only": false,
+    "replay_stable": false,
+    "output_fields": ["delivered", "deck_id", "validation_id", "input_version", "file_sha256", "path", "artifacts", "editable", "parent_deck_id", "revision_audit", "origin", "mechanism", "scientific_quality"],
+    "description": "Ordinary bounded explicit-page revision and delivery script. Rejects changed non-target OOXML; original deck is retained. Not a learned Motif."
+  },
+  "mcp__ppt__pin_deck_pages": {
+    "required_params": ["deck_id", "pages_csv"],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": ["source_id", "deck_id", "version_sha256", "file_sha256", "pages_csv", "scope"],
+    "description": "Pin explicit page numbers of a persisted current deck without choosing or modifying content."
+  },
+  "mcp__ppt__read_pinned_deck_pages": {
+    "required_params": ["source_id"],
+    "read_only": true,
+    "replay_stable": true,
+    "provenance_params": ["source_id"],
+    "output_fields": ["source_id", "deck_id", "version_sha256", "file_sha256", "total_slides", "slides", "scope"],
+    "description": "Read the current persisted plans of explicitly pinned pages without semantic selection or edits."
+  }
+}

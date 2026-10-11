@@ -1,5 +1,23 @@
 # research_ppt 当前交接
 
+## V7/V8 发布整理（2026-10-11，Codex）
+
+- 目标与本次范围：将同任务重启恢复、有限 TypeScript MCP 交付接口整理为可维护场景代码，并提交 V2–V8 全部可共享报告及历史修订；科研 PPT 仍是 pilot，不代表跨应用主线已完成。
+- 分支 / commit / 工作区：`feature/research-ppt-agent`，本次发布基线 `a4a866dfd20aa93e5271a3cb86eb6804c3b4a187`。本节所在提交以 Git 历史为准；用户已明确要求提交并同步该分支，中文 commit、不创建 PR。服务器 `docs/handoffs/main.md` 他人既有改动不纳入，旧本机工作区保留。
+- 已完成：`recovery.py`、`delivery_server.py`、`ts/delivery-adapter.ts`、`ts/mcp-adapter.ts` 及版本化工具契约；普通 render/revise 有限交付组合与只读指定页 pin/read。同 job 的权限、来源、代码、产物守卫和 MCP 重启恢复。旧入口保持；没有发布失败的证据工具候选，没有改上游 Harness 或公共在线规则。
+- 已验证：服务器场景 npm ci 可复现安装，69 项 Python / 17 项 Node 通过；根 npm test（136 项 Python / 29 项 Node）与 npm run smoke 通过。最终真实 MCP 回归 48 项检查通过、0 模型请求，包含真实 PDF/PPTX/PNG、图件持久化、两次进程重启、来源/权限/产物变化拒绝和旧协议拒绝；日志 research-ppt-publish-*20261011.log。MCP SDK 新入口固定 1.32.1、恢复 schema 2，区别历史 1.30.1/schema 1。历史 V7/V8 工程检查和当前发布移植分开记录；全部实验/测试在服务器激活环境执行，日志保留 `test-logs/`；Windows 仅编辑、打包及传输校验。
+- 实验结论：[V7](../experiments/research-ppt-v7-delivery-rsi-20261011.md)、[V8](../experiments/research-ppt-v8-cost-quality-rsi-20261011.md)。V7 9 个和 V8 6 个证据工具候选全部未晋级。V8 正常轨迹新 `pin_deck_pages → read_pinned_deck_pages` Motif 认证后，在 E2 修订真实跳过 2 整请求；两题 A/C 汇总请求 44/50、token 888355/1151375、代理估费 $0.066312456/$0.078623688，不支持整任务降本。V7 同样未降低整任务成本。
+- 质量与成本边界：V8 六份最终稿均需修订，图片截断、数值归属与比较条件缺失等反例保留；没有统一合格或独立人工盲评证据。V7 全成本 221 请求/$0.368849352，V8 276 请求/$0.452579904，均为代理估费；账单、人工修订分钟、开发维护和服务器成本未知。结构通过不是科学质量通过。
+- 配置与数据：公共部署及契约见 [场景说明](../../scenarios/research_ppt/delivery.md)；共享历史报告见 [报告索引](../experiments/research-ppt-reports/README.md)。私有来源、原始账本、轨迹、备份与证书仍在 `.local/`，日志在 `test-logs/`；凭证变量 `DEEPSEEK_API_KEY`，不记录值。历史模型 DeepSeek-flash、reasoning off、压缩 off，完整历史配置定位见各实验记录；不把当前移植版本冒称原实验有效配置。
+- 依赖审计：本次新入口 SDK 升级到 1.32.1，消除其 OAuth 已知告警；既有 pptxgenjs→image-size 仍有 2 条高危审计记录，未强制降级或更改原渲染器，部署维护须另行处理。详见私有 test-logs/research-ppt-publish-npm-audit-20261011.json；此记录发生于 SDK 升级前，当前安装只保留图像依赖两项。
+- 未完成与阻塞：科学事实/图意/审美须人评和修订；新证据工具未晋级、同质量总成本优势未证实。任意外部 PPT 内容修改、跨 job 恢复、无 Python 插件和真实 Windows 场景未验证。
+- 接手下一步：1）研究同学依据原论文核实审查意见并盲评、记录修订分钟，另存修订不覆盖旧稿；2）在固定工具/模型/质量门槛的新材料上比较普通脚本和 Motif，把学习、认证、失败恢复计入成本；3）证据工具收窄任务另立 ID/留出认证，不泄漏认证材料或放宽 oracle。
+- 权限与预算：真实服务器实验不限预算授权仍有效，每任务防失控上限保留。本次整理/无模型回归无新增付费模型调用；用户已要求中文提交到当前分支，不创建 PR。
+- 回退与风险：发布基线 `a4a866d`；旧实验冻结文件不改、负面报告不删除；不要批量清理 `.local/`。新恢复入口不重签旧私有 checkpoint；原输入只读，所有修改落授权副本。报告公开源文件保留原 SHA，报告内历史私有路径只用于原作者定位，不是新克隆可用数据。
+
+以下为历史交接，旧授权/提交状态是当时状态。本轮用户要求提交完整报告，取代此前“报告不提交”的限定；历史记录本身保留。
+
+
 ## V6 当前状态（2026-10-11，Codex）
 
 - 目标与本次范围：可靠局部修订、真实模型生成一个可调用工具、独立功能认证及新任务使用，从完整正常轨迹学习新Motif；[本轮实验记录](../experiments/research-ppt-v6-tool-rsi-20261011.md) 为 `research-ppt-v6-tool-rsi-20261011`。下方V5/V4为历史，不覆盖原账本和错误稿。
