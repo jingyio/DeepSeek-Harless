@@ -49,7 +49,9 @@ function prepare(input) {
 function read(id) {
   const file = fileFor(id);
   const stat = fs.lstatSync(file);
-  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077)) throw new Error('Unsafe event review file');
+  // Windows mode bits do not represent ACLs; private-directory ACLs remain the operator's responsibility.
+  const unsafePosixPermissions = process.platform !== 'win32' && (stat.mode & 0o077);
+  if (!stat.isFile() || stat.isSymbolicLink() || unsafePosixPermissions) throw new Error('Unsafe event review file');
   const record = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (record.version !== 1 || record.id !== id || record.sha256 !== digest(payload(record.event))) throw new Error('Event review has changed or is invalid');
   return record;

@@ -18,7 +18,10 @@ test('prepare and review data are exact and private', () => {
   const record = outbox.prepare(email);
   assert.equal(record.status, 'prepared');
   assert.equal(outbox.read(record.id).email.body, email.body);
-  assert.equal(fs.statSync(outbox.fileFor(record.id)).mode & 0o077, 0);
+  // POSIX permission bits do not establish Windows ACL privacy.
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(outbox.fileFor(record.id)).mode & 0o077, 0);
+  }
   assert.equal(outbox.list().find((item) => item.id === record.id).subject, email.subject);
   const raw = Buffer.from(review.rawMessage(record.email), 'base64url').toString('utf8');
   assert.match(raw, /^To: colleague@example.org\r\n/);
@@ -91,4 +94,11 @@ test('browser review escapes mail content and rejects cross-origin submission', 
   } finally {
     server.close();
   }
+});
+
+// Retain the actual POSIX rejection guard, rather than only checking creation mode.
+test('POSIX group-readable drafts are rejected', { skip: process.platform === 'win32' }, () => {
+  const record = outbox.prepare({ to: ['a@example.org'], subject: 'x', body: 'y' });
+  fs.chmodSync(outbox.fileFor(record.id), 0o640);
+  assert.throws(() => outbox.read(record.id), /Unsafe draft file/);
 });

@@ -63,3 +63,18 @@ test('browser review keeps same-origin form submission and rejects cross-origin 
 });
 
 test.after(() => fs.rmSync(state, { recursive: true, force: true }));
+
+test('changed prepared event content is rejected on every platform', () => {
+  const record = outbox.prepare(event);
+  const file = outbox.fileFor(record.id);
+  const changed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  changed.event.summary = 'tampered';
+  fs.writeFileSync(file, JSON.stringify(changed), { mode: 0o600 });
+  assert.throws(() => outbox.read(record.id), /changed/);
+});
+
+test('POSIX group-readable event previews are rejected', { skip: process.platform === 'win32' }, () => {
+  const record = outbox.prepare(event);
+  fs.chmodSync(outbox.fileFor(record.id), 0o640);
+  assert.throws(() => outbox.read(record.id), /Unsafe event review file/);
+});

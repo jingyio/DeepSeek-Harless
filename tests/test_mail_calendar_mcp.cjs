@@ -87,7 +87,10 @@ test('read calls preserve runtime arguments; local email preview never calls Goo
     assert.equal(preview.status, 'prepared');
     assert.equal(preview.email.replyToMessageId, 'abcdef1234567890');
     assert.equal(connection.provider.calls.length, 1);
-    assert.equal(fs.statSync(path.join(state, 'mail/outbox', preview.id + '.json')).mode & 0o077, 0);
+    // POSIX permission bits do not establish Windows ACL privacy.
+    if (process.platform !== 'win32') {
+      assert.equal(fs.statSync(path.join(state, 'mail/outbox', preview.id + '.json')).mode & 0o077, 0);
+    }
   } finally { await connection.close(); }
 });
 
