@@ -1,13 +1,13 @@
 # 邮件与日程管理 Agent 当前交接
 
-- 更新时间与交接人：2026-10-10，Codex。
-- 目标与本次范围：用户已接受首批8个版本作为第一阶段Demo验收集，并授权独立分支推送；本次发布设计、静态工具审计与交接，不实现或声称完成真实工具联调。先展示重要事项、邮件跟进、会议安排的实际用途，再判断MGGA机会。
-- 分支 / commit / 工作区未提交改动：交付分支 `codex/email-calendar-demo`，基于远端main `bc1ecd5ba17fa4f12b2d2eaa780d72b5076b79cc`；验收集提交`964d244`已推送，当前交接发布状态随后续提交同步。独立临时检出只包含本场景、相应交接及链接依赖的旧v1审阅包。原 `feature/paper-submission`/`2368235` 工作区保持，论文/Web改动不纳入。未创建PR、未合并main；完整版本用`git log -1 codex/email-calendar-demo`核对。
-- 已完成：v3首批8个合成版本（A02/A03/B01/B02核心、A01简单对照、新D01/D02/D03自然变化）；第二批C01/C03，C01报告与课程改同校区；B03可选，C02暂缓；R01/R02/R03仅压力测试，另2个程序对照。题面、来源、人审评分和强Workflow对照分离。旧每日简报文件原样保留。
-- 已验证：v3本地复核及独立分支静态检查通过：15份题面/索引/评分一致，首批8个版本已接受，79次初始来源引用和版本摘要有效，R初始资料匹配父任务。发布范围39个公共文件、35个摘要及40个本地链接有效，UTF-8/LF/行尾与`git diff --cached --check`通过；只包含合成资料与文档。归档工具仅源码审计，未恢复依赖、运行MCP或调用模型，未跑全量测试，不能当工具/效果验收。
-- 实验结论：暂无。当前全部合成；A/D环境变体与R续段不计独立真实决定。未启动运行或编译。订阅任务若一轮完成仍可有产品价值，但不声称有多轮接管收益；未证明真实结构组合、分支学习或净省费。
-- 配置与数据：入口 `scenarios/mail-calendar-collaboration/README.md`；人审 `review/tasks.md`，协议 `review/protocol.md`，竞争规则 `review/workflow-comparison.md`，工具审计 `tool-readiness.md`，摘要 `review/checksums.json`。版本ID `email-calendar-agent-task-review-20261010-v3`；v2改前副本仅本地 `.local/task-review-history/mail-calendar-coordination-task-review-20261010-v2/`。无私人来源、连接器配置或`scenario.json`，分层索引不是运行时配置。
-- 未完成与阻塞：验收设计已接受，真实来源范围仍待圈定。archive静态核对有邮件/线程读取、日历/忙闲与本地草稿底座，但依赖和连接器未迁移，提醒更新/取消预览、真实事项状态及线程新鲜性合同待补。旧archive未推远端，新克隆不能假定可获取；尚无本场景真实轨迹或认证库、通用组合、持久恢复与每日调度。
-- 接手下一步：①按`tool-readiness.md`圈定真实邮件/日历范围，选择性迁移公共模块并补只读/预览MCP及无模型检查；②服务器原生Harness自然执行，人工验收交付、审计完整请求，允许一轮结束；③有认证机会再做学习/shadow及后续C01/C03强对照，R单列压力诊断。当前暂停新的自动execute测试，接管另行明确。
-- 权限与预算：本次Git分支推送已获用户授权；模型API费用0、邮件/日历应用写入0。未来模型测试沿用服务器持续授权和实际累计限额；新场景总预算未冻结，不清零/挪用论文预算，记录分支实际入口配置。邮件发送/建会/提醒推送/事项修改未授权；新的自动execute测试当前暂停。
-- 回退与风险：旧 `scenarios/research-daily-brief/` 的v1包和摘要原样保留，v2完整副本仅本地保存，尚未团队同步。可从v2副本恢复设计；不改上游、不重启Web、不清理`.local`。不得把人审分支合同写成MGGA库或让未来事件/答案进入Agent上下文；不能把Workflow限制为单业务线性脚本，也不能把压力条件当高频用户需求。
+- 更新时间与交接人：2026-10-11，Codex。
+- 目标与本次范围：首批8个任务版本验收设计已接受。本次按用户授权选择性恢复archive工具、固定依赖、接只读/本地预览场景并推送，不替代真实Demo或MGGA效果验收。
+- 分支 / commit / 工作区未提交改动：`codex/email-calendar-demo`，基于远端main `bc1ecd5`；验收集`964d244`、工具恢复`bb1720d`均已推送，当前交接随后续提交同步。未创建PR、未合并main。实现位于此分支独立检出，原`feature/paper-submission`/`2368235`工作区未切换，其论文/Web改动不纳入。
+- 已完成：从archive `810edf46872e190019667239cb4e5b6b85df8f99`恢复13个公共工具/授权脚本及4个旧测试，新增4项MCP合同诊断。Gmail搜索/消息/线程/批量读取、本地草稿；Calendar查询/忙闲/空档与候选复核、本地新建预览。新增`scenario.json`、真实账户只读`prompt.md`、来源清单与安装说明；18个工具不含发送/建会/打开确认页面。
+- 已验证：macOS、Node22.22.3/npm10.9.8、Python3.12.14；`npm test`通过146项Python+67项Node，`npm run mail-calendar:check`通过22项（包含在67项内，不另加），`npm run smoke`通过18题/83来源且SDK初始化成功。场景预览通过，依赖/锁文件、来源摘要、工具名、链接、格式和提交差异检查通过。MCP合同诊断使用InMemoryTransport与固定工具替身，未验证真实Google账户或模型行为；Windows授权未验证。
+- 实验结论：无新增真实效果结论。恢复后工具在诊断边界可调用，不等于第一批任务质量合格、可组合Motif已认证或真实请求/费用下降。测试不运行付费模型，未用模拟Provider替代行为验收；自动execute测试仍暂停。
+- 配置与数据：入口`scenarios/mail-calendar-collaboration/scenario.json`，SHA-256 `efed3b755e2ec0c0612ffbe46f5f34109c16cf11f2d8b249fd483ece1868498f`；工具/依赖/授权说明`tool-readiness.md`，原始来源摘要`archive-source.json`，任务摘要`review/checksums.json`。私有诊断快照`.local/mail-calendar-tool-recovery-20261011-v1/config-snapshot.json`与预览，不推送。OAuth路径变量为GMAIL_OAUTH_PATH、GMAIL_CREDENTIALS_PATH、GOOGLE_OAUTH_CREDENTIALS、GOOGLE_CALENDAR_MCP_TOKEN_PATH；授权/token留在操作者服务器私有目录。
+- 未完成与阻塞：本次未连接账户或圈定访问范围，不能直接宣称真实Demo通过。旧prepare-event只支持新建预览，既有提醒更新/取消仍需待审差异说明或补专用工具；真实偏好/事项状态、分页、线程完整性与新鲜性合同待验证。原人工发送/建会代码保留但默认场景不开放。每日调度、真实推送、独立认证库和通用组合未完成。
+- 接手下一步：①协作者拉取分支后npm ci、npm run setup、npm run mail-calendar:check，再用npm run scenario -- --scenario scenarios/mail-calendar-collaboration/scenario.json --budget-usd 1仅预览；②服务器加载.local/remote-env.sh，按tool-readiness.md放私有客户端、授权并设置4个路径变量，圈定真实来源，首批题面实例化后用原生Harness验收质量；③正常轨迹有可认证结构再编译并冻结shadow评测，C01/C03后置组合，R组只压力诊断，不增加步骤凑比例。
+- 权限与预算：用户授权本次工具恢复与Git推送；新增模型费用0、Google请求0、外部邮件/日历写入0。真实模型测试持续授权但运行前固定有效累计预算与输出/步数限制；此分支SDK默认0.25美元，文档显式示例1美元，未更改公共默认，不挪用论文8美元额度。账户内容范围、发送/建会/修改/推送未在本次执行。
+- 回退与风险：恢复前分支`c9b84d3`，可按Git选择回退工具提交。完整archive与本地v2备份未上传；公开仅恢复审查后的工具/合成测试，凭证和原始日志不进入Git。Gmail保留scoped_gmail_request命名与历史元数据，但消息ID不能证明线程无新回复；旧成功轨迹不授权新任务接管或外部写入。
