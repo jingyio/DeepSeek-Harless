@@ -25,7 +25,10 @@ def save(path: Path, value):
 
 def prepare(inputs: list[Path], instruction: str, slides: int, allow_output=False, allow_rsi=False,
             template='academic', operation='generate', design_skill=True, layout_policy: Path | None = None,
-            layout_suite: Path | None = None, generated_tool_certificate: Path | None = None) -> Path:
+            layout_suite: Path | None = None, generated_tool_certificate: Path | None = None,
+            document_cache: bool = False, layout_baseline_mode: str = 'fixed-policy') -> Path:
+    from .layout_learning import baseline_mode
+    baseline_mode({'layout_baseline_mode': layout_baseline_mode})
     if not 1 <= slides <= 30 or not 1 <= len(inputs) <= 8 or not instruction.strip() or len(instruction) > 10000:
         raise ValueError('需要 1–8 个输入、1–30 页，以及最多 10000 字符的任务说明')
     if template not in {'academic','lab'} or operation not in {'generate','restyle'}:
@@ -41,6 +44,10 @@ def prepare(inputs: list[Path], instruction: str, slides: int, allow_output=Fals
     data = {'schema_version': 1, 'job_id': job_id, 'inputs': rows, 'instruction': instruction,
                     'slides': slides, 'allow_output': bool(allow_output), 'allow_rsi': bool(allow_rsi),
                     'template':template,'operation':operation,'design_skill':bool(design_skill)}
+    if type(document_cache) is not bool:
+        raise ValueError('document_cache 需要布尔值')
+    if document_cache:
+        data['document_cache'] = True
     if layout_policy is not None:
         from .layout_learning import validate_certificate
         policy_path = private_path(layout_policy.resolve(strict=True))
@@ -53,7 +60,10 @@ def prepare(inputs: list[Path], instruction: str, slides: int, allow_output=Fals
                     layout_policy_certificate=str(policy_path),layout_policy_certificate_sha256=file_hash(policy_path))
     if layout_suite is not None:
         suite_path = private_path(layout_suite.resolve(strict=True))
-        data.update(layout_suite=str(suite_path), layout_suite_sha256=file_hash(suite_path))
+        data.update(layout_suite=str(suite_path), layout_suite_sha256=file_hash(suite_path),
+                    layout_baseline_mode=layout_baseline_mode)
+    elif layout_baseline_mode != 'fixed-policy':
+        raise ValueError('renderer-default 学习基线需同时指定 layout_suite')
     if generated_tool_certificate is not None:
         from .generated_tools import load_certified_tool
         tool = load_certified_tool(generated_tool_certificate)
@@ -64,9 +74,21 @@ def prepare(inputs: list[Path], instruction: str, slides: int, allow_output=Fals
     return job_path
 
 
-def scenario_for(job: Path, improve: bool) -> Path:
-    spec = json.loads((SCENE / 'scenario.json').read_text(encoding='utf-8'))
+def scenario_for(job: Path, improve: bool, runtime: str = 'reliable') -> Path:
+    if runtime not in {'reliable', 'legacy'}:
+        raise ValueError('runtime 只能是 reliable 或 legacy')
     data = json.loads(job.read_text(encoding='utf-8'))
+    if not improve and runtime == 'reliable' and data.get('generated_tool_certificate'):
+        raise ValueError('可靠入口不加载动态候选工具；已认证旧目录工具需显式 --runtime legacy')
+    # RSI提案仍由原服务负责；正常交付默认经过已发布的TS/重启恢复入口。
+    spec_name = 'delivery-scenario.json' if runtime == 'reliable' and not improve else 'scenario.json'
+    spec = json.loads((SCENE / spec_name).read_text(encoding='utf-8'))
+    # 两层 stdio MCP 均按白名单继承环境；项目私有字体配置不能只留在启动 shell。
+    # 不复制全部环境，避免将 API 凭证等传给文档工具后端。
+    for server in spec['servers']:
+        for name in ('FONTCONFIG_FILE', 'FONTCONFIG_PATH'):
+            if os.environ.get(name):
+                server.setdefault('env', {})[name] = {'from_env': name}
     layout_improve = improve and bool(data.get('layout_suite'))
     prompt_name = 'layout-rsi-prompt.md' if layout_improve else ('rsi-prompt.md' if improve else 'prompt.md')
     prompt = (SCENE / prompt_name).read_text(encoding='utf-8')
@@ -118,14 +140,16 @@ def structural_only_endpoint():
 
 
 def run(job: Path, *, call_model=False, budget=0.25, max_steps=16, improve=False,
-        mode='baseline', manifest: Path | None = None, execution='steps') -> int:
+        mode='baseline', manifest: Path | None = None, execution='steps', runtime='reliable') -> int:
     job = private_path(job)
     data = json.loads(job.read_text(encoding='utf-8'))
+    from .layout_learning import baseline_mode
+    learning_baseline_mode = baseline_mode(data)
     if improve and not data.get('allow_rsi'):
         raise ValueError('准备任务时需要 --allow-rsi')
     if improve and mode != 'baseline':
         raise ValueError('RSI 提案由普通 Harness 执行')
-    scenario = scenario_for(job, improve)
+    scenario = scenario_for(job, improve, runtime)
     if execution not in {'steps','composed'}:
         raise ValueError('execution 只能是 steps 或 composed')
     if not improve:
@@ -136,7 +160,8 @@ def run(job: Path, *, call_model=False, budget=0.25, max_steps=16, improve=False
                       if execution == 'composed' else
                       '\n本次执行方式：分别调用 restyle_deck、inspect_deck、validate_deck、deliver_deck，保持全部内容及真实核验。')
         else:
-            suffix = ('\n本次执行方式：计划确定后使用 build_delivery 一次调用完成生成、检查、预览和交付。'
+            composed_tool = 'render_delivery' if runtime == 'reliable' else 'build_delivery'
+            suffix = ('\n本次执行方式：计划确定后使用 ' + composed_tool + ' 一次调用完成生成、检查、预览和交付。'
                       if execution == 'composed' else
                       '\n本次执行方式：分别调用 render_deck、inspect_deck、validate_deck、deliver_deck，保持真实核验。')
         prompt_path.write_text(prompt_path.read_text(encoding='utf-8')+suffix,encoding='utf-8')
@@ -147,6 +172,9 @@ def run(job: Path, *, call_model=False, budget=0.25, max_steps=16, improve=False
     env = dict(os.environ, SSS_PPT_JOB=str(job), PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
     effective = {'job_id': data['job_id'], 'requested_mode': mode, 'improve': improve, 'budget_cap_usd': budget,
                  'model_call_enabled': call_model, 'output_enabled': data['allow_output'], 'execution':execution,
+                 'runtime': 'legacy' if improve else runtime,
+                 'document_cache': data.get('document_cache', False),
+                 'runtime_scope': 'rsi_proposal' if improve else ('same_job_checkpoint_and_ts_delivery' if runtime == 'reliable' else 'in_memory_original_service'),
                  'reasoning_effort':'off',
                  'input_versions': [row['version_sha256'] for row in data['inputs']],
                  'output_directory': str(job.parent / 'outputs'), 'semantic_matching': 'disabled'}
@@ -154,7 +182,8 @@ def run(job: Path, *, call_model=False, budget=0.25, max_steps=16, improve=False
     effective.update(design_skill_loaded=not improve and data.get('design_skill', True),
                      design_skill_sha256=file_hash(skill) if not improve and data.get('design_skill', True) else None,
                      layout_policy_digest=data.get('layout_policy_digest'),
-                     layout_suite_sha256=data.get('layout_suite_sha256'))
+                     layout_suite_sha256=data.get('layout_suite_sha256'),
+                     layout_baseline_mode=learning_baseline_mode if data.get('layout_suite') else None)
     if data.get('generated_tool_certificate'):
         effective.update(generated_tool_name=data['generated_tool_name'],
                          generated_tool_code_sha256=data['generated_tool_code_sha256'],
@@ -253,7 +282,10 @@ def main():
     prep.add_argument('--no-design-skill',action='store_true')
     prep.add_argument('--layout-policy',type=Path)
     prep.add_argument('--layout-suite',type=Path)
+    prep.add_argument('--layout-baseline-mode',choices=['fixed-policy','renderer-default'],default='fixed-policy',
+                      help='布局学习比较基线；产品新增实验用renderer-default，旧suite默认fixed-policy')
     prep.add_argument('--generated-tool-certificate',type=Path)
+    prep.add_argument('--document-cache',action='store_true',help='普通B1内容缓存；新任务仍独立授权并读取')
     for name in ('run','improve','cycle'):
         p = commands.add_parser(name)
         p.add_argument('--job',type=Path,required=True)
@@ -263,12 +295,15 @@ def main():
         p.add_argument('--mode',choices=['baseline','shadow','execute'],default='baseline')
         p.add_argument('--manifest',type=Path)
         p.add_argument('--execution',choices=['steps','composed'],default='steps')
+        p.add_argument('--runtime',choices=['reliable','legacy'],default='reliable',
+                       help='正常交付默认同job恢复/TS入口；旧动态目录工具需legacy；RSI提案沿用原服务')
     p = commands.add_parser('learn')
     p.add_argument('--dataset',type=Path,required=True)
     args = parser.parse_args()
     if args.command == 'prepare':
         print(prepare(args.input,args.instruction,args.slides,args.allow_output,args.allow_rsi,args.template,args.operation,
-                      not args.no_design_skill,args.layout_policy,args.layout_suite,args.generated_tool_certificate))
+                      not args.no_design_skill,args.layout_policy,args.layout_suite,args.generated_tool_certificate,args.document_cache,
+                      args.layout_baseline_mode))
         return 0
     if args.command == 'learn':
         print(learn(args.dataset))
@@ -276,7 +311,7 @@ def main():
     if not 0 < args.budget_usd <= 10 or not 1 <= args.max_steps <= 40:
         parser.error('场景预算应在 (0, 10] 美元、步数在 [1, 40]')
     common = dict(call_model=args.call_model,budget=args.budget_usd,max_steps=args.max_steps,
-                  mode=args.mode,manifest=args.manifest,execution=args.execution)
+                  mode=args.mode,manifest=args.manifest,execution=args.execution,runtime=args.runtime)
     if args.command == 'cycle':
         # 两段请求共享显式总上限，各自仍经过公共预算代理。
         common['budget'] *= 0.7

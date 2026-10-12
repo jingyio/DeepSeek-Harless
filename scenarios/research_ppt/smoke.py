@@ -92,7 +92,8 @@ def fixture_provider(improve=False):
 
 def acceptance(workspace:Path, job:Path, *, mode='baseline', manifest=None, stale=False, improve=False):
     out=workspace/('run-'+uuid4().hex); out.mkdir()
-    prepared=prepare_scenario(scenario_for(job,improve))
+    # 此历史诊断仍核原工具集合；可靠TS入口由delivery_smoke独立核验。
+    prepared=prepare_scenario(scenario_for(job,improve,'legacy'))
     handler=fixture_provider(improve)
     session='ppt-fixture-'+uuid4().hex
     save(out/'manifest.json',{'task_id':session,'question':prepared['prompt'],'fixture':True})

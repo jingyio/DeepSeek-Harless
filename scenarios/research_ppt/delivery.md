@@ -30,6 +30,12 @@ node scenarios/research_ppt/dist/mcp-adapter.js --job .local/research-ppt/jobs/<
 
 ## 四个新增工具的责任
 
+V9 `python -m scenarios.research_ppt.cli run --job ...` 默认启动本入口；无 `--call-model` 仍只预览。正常生成的 `--execution composed` 使用 `render_delivery`，局部修订由模型按实际任务选择 `revise_delivery` 或逐步工具。`--runtime legacy` 显式恢复旧内存入口；RSI提案使用原服务，旧动态目录工具不在本入口加载。
+
+`prepare --document-cache` 开启普通B1内容缓存，默认关闭。键包含来源SHA、解析/几何schema及实现、Python/相关库版本；读取时核payload/版本，损坏重算。每个job仍独立批准输入并创建未读句柄，缓存不授权调用、不恢复科研结论。cache命中不计模型请求旁路。
+
+科学直接结果可用 `python -m scenarios.research_ppt.evidence_audit --job ... --sidecar ... --out ...` 独立审计，侧表协议见 `evidence.schema.json`。没有独立人审事实时返回unknown；与来源摘录一致也不能自证科学正确。当前侧表未绑定PPT可见内容、未接入交付质量gate，报告显式记录这些限制。
+
 | 工具 | 输入 | 执行与边界 |
 | --- | --- | --- |
 | `render_delivery` | `plan` | 固定页数与机械容量预检，实际 render→inspect→validate→deliver。普通有限组合脚本；不自动删内容、补页或重试。 |

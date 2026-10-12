@@ -27,6 +27,10 @@ _SAFE_ERRORS = {
     '每页必须声明 sources: [{source_id, page}]': ('invalid_plan', '为每页补充真实来源与页码，保留用户要求的完整页数。'),
     '计划需要 title 和 slides': ('invalid_plan', '提交包含 title 与完整 slides 的计划，只使用支持字段。'),
     '幻灯片包含不支持的字段': ('invalid_plan', '使用规定的页面字段，修正完整计划后重试。'),
+    '科研页型与主体内容类型不一致': ('invalid_plan', 'evidence-focus 使用 image；result-summary 使用 table 或 chart；method-map 使用 process。'),
+    'evidence_notes 仅允许用于科研页型': ('invalid_plan', '为证据说明设置合法 archetype，或显式移除 evidence_notes；不要自动丢弃科学说明。'),
+    'evidence_notes 的 source_index 超出原 sources 范围': ('invalid_plan', 'source_index 使用原 sources 数组的 1-based 整数索引，不引用后端追加图件来源。'),
+    '修改 sources 必须显式更新或移除 evidence_notes': ('invalid_plan', '来源改变时显式重新核对并更新 evidence_notes 的 source_index，或用 null 明确移除说明。'),
     '图片必须引用 source_id 和 image_id，不接受路径或 URL': ('invalid_image', '引用 read_source 或 extract_figure 返回的真实 source_id/image_id。'),
     '图片来源尚未读取': ('invalid_image', '先读取或提取来源中的真实图件，再生成计划。'),
     '图片标识不存在': ('invalid_image', '重新查看 read_source 的 images 或调用 extract_figure，使用真实返回的 image_id；不要编造标识。'),
@@ -67,6 +71,11 @@ _SAFE_ERRORS = {
     '幻灯片必须包含 title/bullets/sources，且不能有未知字段': ('invalid_plan', '保留完整 title、bullets 和 sources，使用已支持的页面字段。'),
 }
 _RENDER_ERRORS = {
+    '不支持的科研 archetype',
+    'evidence_notes 仅用于科研 archetype，最多3项 label/text 说明，source_index 必须指向本页来源',
+    'visible_sources 必须与原引用逐项对应，且仅由服务生成',
+    'process 需要 layout=process、2–5 个短 label/detail 步骤；只有 method-map 可带页级说明',
+    '科研 archetype 必须对应原图、结果表/图或方法流程主体',
     '需要标题、1–30 页幻灯片及可选 academic/lab 模板',
     '超出文本容量或缺少合法来源，请修改计划', '不支持的 layout',
     '每页只能选择图片、表格、数据图或双栏比较之一', '图片格式或尺寸无效',
@@ -108,7 +117,7 @@ def _safe_failure(exc: ValueError) -> dict:
     if message in _SAFE_ERRORS:
         code, action = _SAFE_ERRORS[message]
         return {'error': code, 'message': message, 'next_action': action}
-    if re.fullmatch(r'修订字段 (?:title|bullets|sources|notes|image|table|chart|layout|comparison|process|takeaway) 的类型或结构无效', message):
+    if re.fullmatch(r'修订字段 (?:title|bullets|sources|notes|image|table|chart|layout|comparison|process|takeaway|archetype|evidence_notes) 的类型或结构无效', message):
         return {'error': 'invalid_plan', 'message': message,
                 'next_action': '使用 read_deck_plan 查看原字段格式，只修改明确要求的页和字段后重试。'}
     if re.fullmatch(r'任务要求总共 (?:[1-9]|[12][0-9]|30) 页', message):

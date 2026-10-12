@@ -40,8 +40,36 @@ export async function privateFile(root: string, path: string): Promise<string> {
 
 type Job = Obj & { slides: number; allow_output: boolean; inputs: Obj[] };
 type Pinned = { deck_id: string; file_sha256: string; pages: number[]; result_sha256: string; version_sha256: string };
-const SLIDE_KEYS = ['title','bullets','sources','notes','image','table','chart','layout','comparison','process','takeaway'];
+const SLIDE_KEYS = ['title','bullets','sources','notes','image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes'];
+const ARCHETYPES = ['evidence-focus','result-summary','method-map'];
 const LAYOUTS = ['title','content','image','table','chart','section','comparison','process'];
+
+/** 新页型跨字段守卫；只读调用者的原 sources，不把视觉样式当作事实认证。 */
+export function preflightArchetype(slide: Obj, page: number): void {
+  if (slide.archetype !== undefined && (typeof slide.archetype !== 'string' || !ARCHETYPES.includes(slide.archetype)))
+    fail('invalid_plan','archetype 必须是 evidence-focus、result-summary 或 method-map。',{page});
+  const media: Record<string,string[]> = {'evidence-focus':['image'],'result-summary':['table','chart'],'method-map':['process']};
+  if (typeof slide.archetype === 'string' && !media[slide.archetype].some(key=>slide[key]!==undefined && slide[key]!==null))
+    fail('invalid_plan','科研页型与主体内容类型不一致。',{page});
+  if (slide.evidence_notes !== undefined) {
+    const notes=slide.evidence_notes;
+    if (slide.archetype===undefined || !Array.isArray(notes) || notes.length>3)
+      fail('invalid_plan','evidence_notes 最多3项且仅用于科研页型。',{page});
+    for (const note of notes) {
+      if (!object(note)) fail('invalid_plan','evidence_notes 每项必须是对象。',{page});
+      keys(note,['label','text','source_index']);
+      if (!text(note.label,24) || !text(note.text,110) || !Number.isSafeInteger(note.source_index) || Number(note.source_index)<1
+        || !Array.isArray(slide.sources) || Number(note.source_index)>slide.sources.length)
+        fail('invalid_plan','证据说明需要短 label/text 和原 sources 的合法1-based索引。',{page});
+    }
+  }
+}
+
+export function validateEvidenceRebind(before: Obj, after: Obj, changes: Obj, page: number): void {
+  if (Array.isArray(before.evidence_notes) && before.evidence_notes.length && canonical(before.sources)!==canonical(after.sources)
+    && !Object.hasOwn(changes,'evidence_notes'))
+    fail('invalid_revision','修改 sources 必须显式更新或移除 evidence_notes。',{page});
+}
 
 /** 仅检查可执行计划形状与容量；不补页、不删页、不改科学内容。后端仍执行独立全部守卫。 */
 export function preflightPlan(plan: unknown, expectedSlides: number): Obj {
@@ -63,6 +91,7 @@ export function preflightPlan(plan: unknown, expectedSlides: number): Obj {
       if (!text(cite.source_id) || !Number.isSafeInteger(cite.page) || Number(cite.page) < 1)
         return fail('invalid_plan', '来源句柄和页号不合法。', { page });
     }
+    preflightArchetype(slide,page);
     const bullets = slide.bullets ?? [];
     if (!Array.isArray(bullets) || bullets.length > 5 || bullets.some(x => !text(x, 150)))
       return fail('invalid_plan', '每页 bullets 最多5条，每条最多150字符。', { page });
@@ -103,7 +132,7 @@ export function preflightPlan(plan: unknown, expectedSlides: number): Obj {
       const p = slide.process;
       if (!object(p) || Object.keys(p).some(key => key !== 'steps') || !Array.isArray(p.steps) || p.steps.length < 2 || p.steps.length > 5
         || p.steps.some(step => !object(step) || Object.keys(step).some(k => !['label','detail'].includes(k)) || !text(step.label,28) || !text(step.detail,90))
-        || slide.layout !== 'process' || bullets.length > 0) return fail('invalid_plan', 'process 必须2–5个短步骤，layout=process且bullets为空。', { page });
+        || slide.layout !== 'process' || (slide.archetype!=='method-map' && bullets.length > 0)) return fail('invalid_plan', 'process 必须2–5个短步骤，layout=process；只有method-map允许页级bullets。', { page });
     }
     if (slide.comparison !== undefined) {
       const c = slide.comparison;
@@ -226,6 +255,24 @@ export class DeliveryAdapter {
         fail('invalid_revision', '修订页号必须唯一合法，changes仅允许页面字段。');
       pages.add(Number(update.page));
     }
+    if (updates.some(update=>object(update.changes) && ['sources','archetype','evidence_notes'].some(key=>Object.hasOwn(update.changes as Obj,key)))) {
+      // 新字段需要完整旧计划才能检查索引重绑；普通标题等修订仍不增加读取。
+      const current=await this.call('read_deck_plan',{deck_id:deckId});
+      if (current.deck_id!==deckId || current.input_version!==this.inputVersion || !hash(current.file_sha256)
+        || !object(current.plan) || !Array.isArray(current.plan.slides) || current.plan.slides.length!==this.job.slides)
+        fail('deck_contract_rejected','当前修订计划缺少完整版本证据。');
+      preflightPlan(current.plan,this.job.slides);
+      const merged=structuredClone(current.plan), slides=merged.slides as Obj[];
+      for (const update of updates) {
+        const page=Number(update.page), changes=update.changes as Obj, before=structuredClone(slides[page-1]);
+        for (const [key,value] of Object.entries(changes)) {
+          if (value===null && ['image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes'].includes(key)) delete slides[page-1][key];
+          else slides[page-1][key]=structuredClone(value);
+        }
+        validateEvidenceRebind(before,slides[page-1],changes,page);
+      }
+      preflightPlan(merged,this.job.slides);
+    }
     const result = await this.call('revise_deck', {deck_id:deckId, updates}); await this.checkedDeck(result);
     if (result.parent_deck_id !== deckId || !object(result.revision_audit) || result.revision_audit.passed !== true
       || result.revision_audit.non_target_slides_preserved !== true || result.revision_audit.shared_styles_preserved !== true
@@ -271,7 +318,7 @@ export class DeliveryAdapter {
 export async function dependencyFiles(root: string, backendServer: string, adapterDirectory: string): Promise<string[]> {
   const scene=resolve(root,'scenarios/research_ppt');
   const runtimeFiles=['service.py','server.py','delivery_server.py','recovery.py','documents.py','revision.py',
-    'validation.py','restyle.py','generated_tools.py','figure_catalog.py','layout_learning.py',
+    'validation.py','restyle.py','generated_tools.py','figure_catalog.py','document_cache.py','layout_learning.py',
     'contracts.json','version-fields.json','delivery-contracts.json','delivery-version-fields.json','package-lock.json',
     'dist/render.js','dist/layout-policy.js','dist/layout-policy-cli.js',
     'ts/render.ts','ts/layout-policy.ts','ts/layout-policy-cli.ts','ts/guard.ts','ts/guard-cli.ts',

@@ -2,6 +2,12 @@
 
 接收 1–8 份 PDF/PPTX、1–30 页要求与用户说明，目标是生成可编辑 PPTX，或将现有 PPTX 改为学术/组会风格，并提供真实 PDF 预览、来源与交付验收。
 
+V9 普通 `cli run` 默认使用 [可靠交付入口](delivery.md)，提供同一任务重启恢复和固定19工具；`--runtime legacy` 保留原内存服务，旧动态目录工具仅在此入口加载。`prepare --document-cache` 可开启普通内容寻址缓存（默认关闭），缓存不保存授权、读取状态或科学结论。计划正文、结论、表格、流程和图表数据独立核对实际OOXML/PDF；PPT页序依据presentation关系，复合图不确定时拒绝猜测。进度、失败和限制见 [V9记录](../../docs/experiments/research-ppt-v9-quality-20261012.md)。新增条件续执行协议默认关闭，尚不代表模型学得、独立认证或真实降本。
+
+V10 增加 [明确页修改的零模型入口](direct-edit.md)，并改善默认渲染：在保留全部正文的左右/上下候选中选择图件面积或表格宽度更合适的版式，表格按内容分配列宽，方法流程使用可编辑的编号与箭头。默认图页优先 22pt，只有原图面积明显改善（至少 25%）或原版无法容纳时，逐页尝试 20pt 的紧凑正文；不联动缩小其他页面。未提供显式 `layout_policy` 时才使用自动选择；这些是普通工程能力，不是新 Motif 或 RSI。V10 历史渲染版本为 `research-ppt-layout-v10.1`，当前为下述 V11.2；旧 checkpoint/布局证书不得重签复用。
+
+V11 吸收固定 MIT Academic PPT Master/PPTMaster 的设计指导，独立实现下述三种科研页型、绑定来源的说明和真实来源栏检查。PiSSA/LoftQ/DoRA 同内容重排与 VeRA 六页真实新稿均已交付；原模型稿及辅助来源修订分开保存。结果、成本与非目标页字体漂移见 [V11 记录](../../docs/experiments/research-ppt-v11-scientific-design-20261012.md)。这是工程质量改进，未生成或晋级新 RSI；独立科学/审美人评和完整生成降本仍未证明。
+
 V6 已完成同一 MCP 会话中的可靠局部修订、真实 DeepSeek 生成图件目录工具及独立功能认证，并从正常工具轨迹认证新目录读取 Motif。新任务中一个 batch 实际执行两个读取工具，核验跳过一次完整模型请求。四组真实交付均有需修订的科研表述；尚不能计作统一质量合格或宣称稳定降本。结果、失败及成本见 [V6 实验记录](../../docs/experiments/research-ppt-v6-tool-rsi-20261011.md)，当前状态见 [交接](../../docs/handoffs/research_ppt.md)。
 
 V4 的图像提取、受限样式修改、真实渲染核验与交付链已实现；两轮 5 题×三组共 30 个真实 DeepSeek 对照及逐页辅助审查已完成。历史来源读取 Motif、两套 15 页辅助修订稿及限制见 [V2–V4 实验记录](../../docs/experiments/research-ppt-v2-20261010-results.md)。生成/验收段仍是普通代码。
@@ -10,10 +16,10 @@ V5 已接入固定科研设计 Skill、原生可编辑方法流程与短结论�
 
 ## 部署与权限
 
-全部实验和测试在服务器执行，所有测试日志保存到 `/root/autodl-tmp/xjj/test-logs/`。项目已有环境入口：
+原AutoDL路径属于历史环境。2026-10-12用户已授权本地开发/测试；新服务器部署在用户存储目录，日志保留于项目 `test-logs/`，再同步本机。每台机器使用本项目实际目录：
 
 ```sh
-cd /root/autodl-tmp/xjj
+cd <项目目录>
 source .local/activate.sh
 mkdir -p test-logs
 set -o pipefail
@@ -30,6 +36,10 @@ npm run build --prefix scenarios/research_ppt
 ```
 
 系统另需 `libreoffice-impress` 与 `fonts-noto-cjk`（Ubuntu/Debian 软件包名）；在部署机确认转换工具与字体可用。已有服务器环境不需要每次重装依赖。
+
+固定DSH入口使用 `import.meta.main`，实际需要Node **22.18+**（本轮使用22.23.2）；旧安装清单的 `>=20` 不能保证此入口可启动。Ubuntu18.04的glibc2.27还不兼容某些Node/PyMuPDF/SDK runtime-bin或node-pty预编译包。本轮采用用户目录兼容Node、conda PyMuPDF及固定SDK→npm运行时接缝；SDK runtime-bin未安装，因此不能宣称标准pip部署或 `pip check` 全部通过。原生PTY依赖须实际加载及底座smoke验证；具体安装及失败记录见[部署记录](deploy-ubuntu18.md)，不改系统库或上游Harness。
+
+私有字体配置的 `FONTCONFIG_FILE/PATH` 由场景入口与内层MCP适配器显式传递；仅在shell里字体可见不代表渲染后端可见。验收还检查实际PDF的CJK字形覆盖和可见缺字；当前不能自动确认Type3路径化文字，需使用可验证的静态字体或独立人工核验，不能把文本可提取当作可读证明。
 
 `DEEPSEEK_API_KEY` 保存在项目受保护环境或 Harness 凭证存储，`DEEPSEEK_BASE_URL` 配置 API 地址，不在公共文件或日志写入值。默认 `reasoning_effort="off"`、关闭上下文压缩，付费前核对有效上游请求确实关闭 DeepSeek 思考模式。
 
@@ -66,6 +76,21 @@ python -m scenarios.research_ppt.cli run \
 
 此命令无 `--call-model`，只产生配置预览。`1` 是每次运行的防失控上限，不是预计费用。预算代理按请求上界预留，过小的上限可能在实际费用较低时就拒绝下一请求；本轮第二轮对照采用 `$1` / 40 步。日志与产物需为每个运行使用新名称/目录，保留旧结果。模型运行在该预览基础上显式增加 `--call-model`，仅在预算确认后执行。
 
+## 明确页面修改：零模型入口
+
+知道确切页号、字段和新值时，先将修改保存为本仓库 `.local/` 中的 `updates.json`，例如 `[{"page":2,"changes":{"title":"核心机制与实验条件"}}]`。入口仅支持同 job、当前实现版本生成且保留完整计划的稿，`deck-id` 使用实际交付返回值；任意外部 PPTX、只有重风格结果而没有计划的稿及自由自然语言要求仍需其他入口。
+
+```sh
+python -m scenarios.research_ppt.direct_edit \
+  --job .local/research-ppt/jobs/JOB_ID/job.json --deck-id ACTUAL_DECK_ID \
+  --updates .local/research-ppt/edits/updates.json \
+  --out .local/research-ppt/edits/NEW_PREVIEW_ID
+```
+
+默认仅预览目标页、字段差异和原稿 `original_sha256`，不生成新 PPT；私有审计记录仍可能写入。确认预览后，在同一命令中增加 `--apply --expect-sha256 PREVIEW_ORIGINAL_SHA256`，并把 `--out` 改为另一个新目录。原 job 必须已授权 `allow_output=true`；执行不会提高权限，来源、稿件、checkpoint 或实现版本变化会拒绝操作。
+
+执行复用真实 `revise_delivery`，保留原稿和未指定字段，核验明确的新计划、非目标页 OOXML/notes/媒体/共享样式及真实 PDF/逐页 PNG 后，导出 `revised.pptx`、`revised.pdf`、`slide-XX.png` 与收据。容量或类型不合格时拒绝，不自动改写科研内容。该入口不启动模型，记录依据为代码路径没有 Provider；它是普通确定性操作，不能作为 RSI 学习或固定请求节省的证据。完整字段、失败记录与平台限制见 [direct-edit.md](direct-edit.md)。
+
 ## 工具与执行方式
 
 | MCP 工具 | 功能与边界 |
@@ -88,6 +113,24 @@ python -m scenarios.research_ppt.cli run \
 V5 普通生成会话默认将 [research-ppt-design](skills/research-design/SKILL.md) 全文追加到稳定提示前缀，记录 Skill SHA；`prepare --no-design-skill` 可显式关闭，不用于本轮三组对照。它吸收固定 MIT harness-anything 的通用工程思路并独立编写科研设计规则，许可及来源见 [provenance.json](skills/research-design/provenance.json)，不是学得的 Motif。
 
 页面可选 `takeaway`（最多 90 字符）及 `layout="process"`、`process.steps`（2–5 项 `label/detail`，页级 `bullets=[]`）；流程文字、框和箭头保持原生可编辑。字段上限不保证排版容量：短标题、短结论优先，五步流程优先不用结论框，或保持每步解释约 20 中文字符。溢出明确拒绝，不自动删科研内容；实际限制见 [prompt](prompt.md)。
+
+### 可选科研页型与证据说明
+
+在 `render_deck(plan)` / `render_delivery(plan)` 的页面上显式添加 `archetype` 可选择科研页型；未添加的页面继续使用原布局。三种页型沿用单主体约束，不把整页转换为图片：
+
+| `archetype` | 必需主体 | 用法 |
+| --- | --- | --- |
+| `evidence-focus` | `image` | 放置真实提取的原图/页面证据，配有限解释与出处 |
+| `result-summary` | `table` 或 `chart` | 显示明确提交的结果与实验条件，原生表格/图表仍可编辑 |
+| `method-map` | `process`，且 `layout="process"` | 放置可编辑方法步骤；该页型可带页级 `bullets`，普通 process 页仍要求 `[]` |
+
+仅这些页型支持可选 `evidence_notes`，最多 3 项，格式为 `{"label":"实验条件","text":"由来源核对后的完整条件","source_index":1}`；`label` 最多 24 字符、`text` 最多 110 字符，均非空。`source_index` 是本页原始 `sources:[{source_id,page},...]` 的 **1-based 索引**，不是文档编号或论文页码，也不能指向服务后来追加的图件备注。说明由调用者核对；接口校验不会认证其科学含义。
+
+`visible_sources` 是服务核验句柄、来源版本和页码后生成的内部字段，调用者不能输入或修订它。每页首次及来源切换时显示实际文件名，只有连续同一 `source_id` 的后续引用省略文件名，例如 `[1] paper-a.pdf · p.1`、`[2] p.4`、`[3] paper-b.pdf · p.2`、`[4] paper-a.pdf · p.5`；A→B→A 时再次显示 A，避免页码归属歧义。引用不合并、不重排，原逐项索引与页码保持，长文件名稳定缩短；完整逐项文件名和 SHA256 仍保留在讲者备注中。若显示图号，只标记实际图注定位的候选，不猜作者、年份或宣称图意已认证。TS 在线预检和 Python 服务独立检查字段与索引，真实渲染再检查完整文字、说明、来源备注及容量；这些是普通交付能力，视觉改善和成本收益仍须另做真实对照。
+
+当前 renderer 为 `research-ppt-layout-v11.2`。`evidence-focus` 原图面积须至少为 `min(10平方英寸, 满正文区等比容纳原图的面积×0.5)`；文字完整但图被挤成缩略图时返回 `text_overflow`、`role=image`，需重新组织说明或拆页，不静默删除内容。窄长图按自身比例适配；该阈值不证明图内文字可读。实际 PDF 字形检查还要求大于 12pt 的正文距新页型来源栏至少 3pt，并检查可见说明索引；它只防来源栏侵入，不能代替完整视觉/科学审阅。未 opt-in 的旧计划不应用这些新增布局规则。代码摘要改变后使用新 job，不重签历史 checkpoint。
+
+局部修订和明确页修改入口支持 `changes.archetype/evidence_notes`，两字段均可用显式 `null` 移除。改变或重排 `sources` 时，若原页有证据说明，必须在同一 `changes` 中显式重新核对并更新 `evidence_notes` 或用 `null` 移除，不能让旧索引静默指向新来源；明确更换说明和合法索引可以接受。删除 `archetype` 时须同时移除仍存在的 `evidence_notes`。同 job、权限、版本、新副本与非目标页保持守卫仍适用，不自动删改科学内容。
 
 PDF 的嵌入图片可能只是阴影或遮罩，并不等于完整论文图。`read_page` 返回真实图注及几何候选，优先将 `candidate_id` 交给 `extract_figure`；包含矢量内容的完整图走页区域渲染。图片透明度合成到白底，明显空白和遮罩片段拒绝或过滤。图注定位只提供可追溯素材，不自动证明模型解释正确；复杂跨页图和 OCR 尚未验证。
 
@@ -125,6 +168,8 @@ python -m scenarios.research_ppt.cli learn \
 ### V5 布局策略学习与复现
 
 先在 `.local/` 冻结历史真实计划资料集：`{"schema_version":1,"cases":[...]}`，每项为 `id/split/plan/sha256/run_id`；`split` 分为 `train` 与 `heldout`，`plan` 是历史 PPTX 同目录的绝对 `plan.json` 路径，须包含真实运行 ID 和对应 SHA。按本轮方案至少两个训练任务、一个独立认证任务；同一运行不能跨划分，留出不反馈给模型。准备任务时增加 `--allow-output --allow-rsi --layout-suite .local/research-ppt/v5/layout-suite.json`，后续 `JOB_ID` 替换为实际返回路径。
+
+V10 的新产品比较在上述 `prepare` 参数中同时增加 `--layout-baseline-mode renderer-default`：基线回放移除显式 `layout_policy`，运行当前自动排版，再与候选七参数策略比较。该选项必须与 `--layout-suite` 一起使用；不改变普通生成入口的布局选择。CLI 默认及缺少 `layout_baseline_mode` 的旧 job/记录仍为 `fixed-policy`，保留 V5 固定七参数基线。模式绑定任务、基线缓存、提案、认证和实际回放计划，不能混用两种基线或将仅胜过旧固定规则的候选当作对当前产品的改进。
 
 ```sh
 python -m scenarios.research_ppt.layout_learning \
@@ -186,7 +231,7 @@ V2 真实 RSI 最终返回基础准入程序，未观察到新规则收益；首
 
 ## V6 可靠局部修订与真实工具学习
 
-`read_deck_plan(deck_id)` 读取本任务生成并保留的完整计划；`revise_deck(deck_id, updates)` 接受 `[{"page":6,"changes":{"takeaway":"新结论","notes":"修订说明与来源依据"}}]`，在新目录生成副本。未指定字段保留；只有可选媒体/布局字段显式 `null` 才移除。非目标页通过实际 OOXML、notes、媒体、表格、图表、关联资源及共享主题/尺寸核验，否则拒绝候选并保留原稿和失败文件。修订稿须重新 `inspect_deck → validate_deck → deliver_deck`；旧 validation 只对应原稿。计划和 deck 句柄目前存于服务进程内存，仅支持同一 MCP 会话；重启恢复、任意外部 PPTX 的局部内容修改尚不支持。
+`read_deck_plan(deck_id)` 读取本任务生成并保留的完整计划；`revise_deck(deck_id, updates)` 接受 `[{"page":6,"changes":{"takeaway":"新结论","notes":"修订说明与来源依据"}}]`，在新目录生成副本。未指定字段保留；只有可选媒体/布局字段显式 `null` 才移除。非目标页通过实际 OOXML、notes、媒体、表格、图表、关联资源及共享主题/尺寸核验，否则拒绝候选并保留原稿和失败文件。修订稿须重新 `inspect_deck → validate_deck → deliver_deck`；旧 validation 只对应原稿。V6 当时计划和 deck 句柄仅存于服务进程内存；当前可靠入口已支持同 job 的重启恢复，任意外部 PPTX 的局部内容修改仍不支持。
 
 离线工具学习入口默认预览：
 

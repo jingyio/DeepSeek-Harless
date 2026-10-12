@@ -6,15 +6,23 @@ from pathlib import Path
 from .documents import file_hash, parse_document, pdf_page_geometry
 
 
-def catalog_input(path: Path, source_id: str, expected_sha256: str) -> dict:
+def catalog_input(path: Path, source_id: str, expected_sha256: str, *, cache_dir=None, audit=None) -> dict:
     if file_hash(path) != expected_sha256:
         raise ValueError('输入版本已变化，请重新准备任务')
-    parsed = parse_document(path)
+    if cache_dir is None:
+        parsed = parse_document(path)
+    else:
+        from .document_cache import cached_parse_document
+        parsed = cached_parse_document(path, cache_dir, expected_sha256=expected_sha256, audit=audit)
     if parsed['format'] != 'pdf':
         raise ValueError('图件目录仅支持真实 PDF')
     pages = []
     for page in range(1, parsed['page_count'] + 1):
-        geometry = pdf_page_geometry(path, page, expected_sha256)
+        if cache_dir is None:
+            geometry = pdf_page_geometry(path, page, expected_sha256)
+        else:
+            from .document_cache import cached_pdf_page_geometry
+            geometry = cached_pdf_page_geometry(path, page, expected_sha256, cache_dir, audit=audit)
         pages.append({'page': page, 'figure_candidates': [
             {key: copy.deepcopy(row[key]) for key in ('candidate_id', 'caption', 'bbox')}
             for row in geometry['figure_candidates']]})

@@ -4,13 +4,18 @@ import base64
 import hashlib
 import io
 import math
+import posixpath
 import re
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
 from defusedxml import ElementTree as ET
 
 MAX_BYTES = 30 * 1024 * 1024
 NS = {'a': 'http://schemas.openxmlformats.org/drawingml/2006/main'}
+P = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+PACKAGE_R = 'http://schemas.openxmlformats.org/package/2006/relationships'
 
 
 def file_hash(path: Path) -> str:
@@ -26,6 +31,64 @@ def safe_zip(path: Path):
         archive.close()
         raise ValueError('PPTX 展开大小超出限制')
     return archive
+
+
+def pptx_slide_paths(archive: zipfile.ZipFile) -> list[str]:
+    """Return slides in presentation order, including hidden slides.
+
+    Slide part numbers are package identities, not page numbers. Unreferenced
+    slide parts are not pages; ambiguous or unsafe presentation relationships
+    are rejected instead of falling back to filename order.
+    """
+    names = archive.namelist()
+    if len(names) != len(set(names)):
+        raise ValueError('PPTX 包含重复路径')
+    for name in names:
+        member = PurePosixPath(name)
+        if member.is_absolute() or '..' in member.parts or '\\' in name or ':' in name:
+            raise ValueError('PPTX 包含不安全的包路径')
+    try:
+        presentation = ET.fromstring(archive.read('ppt/presentation.xml'))
+        relations = ET.fromstring(archive.read('ppt/_rels/presentation.xml.rels'))
+    except (KeyError, ET.ParseError) as error:
+        raise ValueError('PPTX 缺少合法的幻灯片顺序或关联') from error
+    items = presentation.find('{' + P + '}sldIdLst')
+    if (presentation.tag != '{' + P + '}presentation' or items is None or
+            relations.tag != '{' + PACKAGE_R + '}Relationships'):
+        raise ValueError('PPTX 缺少合法的幻灯片顺序或关联')
+    by_id = {}
+    for relation in relations:
+        identifier = relation.get('Id')
+        if (relation.tag != '{' + PACKAGE_R + '}Relationship' or not identifier or
+                identifier in by_id):
+            raise ValueError('PPTX 幻灯片关联无效或不唯一')
+        by_id[identifier] = relation
+    slides, identifiers, relationship_ids = [], set(), set()
+    for item in items:
+        identifier = item.get('id')
+        relationship_id = item.get('{' + R + '}id')
+        relation = by_id.get(relationship_id)
+        if (item.tag != '{' + P + '}sldId' or not identifier or not identifier.isdecimal() or
+                identifier in identifiers or relationship_id in relationship_ids or relation is None or
+                not relation.get('Type', '').endswith('/slide') or
+                relation.get('TargetMode', 'Internal').lower() != 'internal'):
+            raise ValueError('PPTX 幻灯片关联无效或不唯一')
+        target = unquote(relation.get('Target', ''))
+        if (not target or target.startswith('//') or any(value in target for value in ('\\', ':', '?', '#')) or
+                re.search(r'[\x00-\x1f]', target)):
+            raise ValueError('PPTX 幻灯片关联路径不安全')
+        target = posixpath.normpath(target.lstrip('/') if target.startswith('/')
+                                   else posixpath.join('ppt', target))
+        member = PurePosixPath(target)
+        if (member.parent != PurePosixPath('ppt/slides') or member.suffix != '.xml' or
+                target not in names):
+            raise ValueError('PPTX 幻灯片关联路径不支持或文件缺失')
+        identifiers.add(identifier)
+        relationship_ids.add(relationship_id)
+        slides.append(target)
+    if not 1 <= len(slides) <= 200 or len(slides) != len(set(slides)):
+        raise ValueError('PPTX 幻灯片顺序重复或页数超出 1–200 页')
+    return slides
 
 
 def clean_text(text: str) -> str:
@@ -75,7 +138,11 @@ def pdf_page_geometry(path: Path, page_number: int, version_sha256: str) -> dict
     geometry above it is considered; prose crossing a crop causes abstention.
     """
     import fitz
+    if file_hash(path) != version_sha256:
+        raise ValueError('输入版本已变化，请重新准备任务')
     with fitz.open(path) as pdf:
+        if type(page_number) is not int or not 1 <= page_number <= len(pdf):
+            raise ValueError('论文页码越界')
         sheet = pdf[page_number - 1]
         bounds = sheet.rect
         width, height = bounds.width, bounds.height
@@ -88,16 +155,18 @@ def pdf_page_geometry(path: Path, page_number: int, version_sha256: str) -> dict
             r'^\s*(?:Figure|Fig\.?|图)\s*\d+[A-Za-z]?\s*[:：.]', block['text'], re.I)]
         drawings = sheet.get_drawings()
         if len(drawings) > 5000 or len(captions) > 30:
-            return {'geometry_version': 1, 'figure_candidates': [], 'figure_localization': 'abstained',
+            return {'geometry_version': 2, 'figure_candidates': [], 'figure_localization': 'abstained',
                     'geometry_warnings': ['页面图形数量超出受限定位范围；请核对原页。']}
-        visuals = []
+        visuals, oversized = [], []
         for kind, rect in [('embedded_image', fitz.Rect(row['bbox'])) for row in sheet.get_image_info()] + [
                 ('vector_graphic', fitz.Rect(row['rect'])) for row in drawings]:
             # Out-of-page paths may be clipped or invisible; including them can
             # swallow unrelated prose. Reject rather than assume their visibility.
             if (not all(math.isfinite(x) for x in rect) or not bounds.contains(rect)
-                    or rect.width < 3 or rect.height < 3
-                    or rect.get_area() > width * height * 0.30):
+                    or rect.width < 3 or rect.height < 3):
+                continue
+            if rect.get_area() > width * height * 0.30:
+                oversized.append(rect)
                 continue
             visuals.append((kind, rect))
 
@@ -108,7 +177,18 @@ def pdf_page_geometry(path: Path, page_number: int, version_sha256: str) -> dict
         candidates, rejected = [], []
         for cap in captions:
             caption = cap['rect']
-            # Limit to the caption column and stop at preceding body prose.
+            # PDF text extraction may join two side-by-side captions into one
+            # block. Such a block is not evidence that both panels share one
+            # figure identity; do not silently merge independent figures.
+            if len(re.findall(r'(?<![\w])(?:Figure|Fig\.?|图)\s*\d+[A-Za-z]?\s*[:：.]',
+                              cap['text'], re.I | re.M)) > 1:
+                rejected.append({'caption': cap['text'][:600], 'caption_bbox': normalized(caption),
+                                 'reason': '同一文本块包含多个独立图注，无法确认图件归属'})
+                continue
+            # Caption text is an anchor, not the horizontal extent of a figure.
+            # First find reliable graphics in its column, then include aligned
+            # neighboring panels. A short caption must never cut off the right
+            # column of a composite figure.
             left, right = max(0, caption.x0 - 18), min(width, caption.x1 + 18)
             top = max(0, caption.y0 - height * 0.50)
             for block in texts:
@@ -117,9 +197,16 @@ def pdf_page_geometry(path: Path, page_number: int, version_sha256: str) -> dict
                 if (block is not cap and len(block['text']) > 120 and rect.y1 <= caption.y0
                         and overlap > min(rect.width, right - left) * 0.5):
                     top = max(top, rect.y1 + 2)
+            for previous in captions:
+                rect = previous['rect']
+                overlap = max(0, min(rect.x1, right) - max(rect.x0, left))
+                if (previous is not cap and rect.y1 <= caption.y0 and
+                        overlap > min(rect.width, right - left) * 0.5):
+                    top = max(top, rect.y1 + 2)
             nearby = [(kind, rect) for kind, rect in visuals
                       if rect.y0 >= top and rect.y1 <= caption.y0 + 2
-                      and max(0, min(rect.x1, right) - max(rect.x0, left)) >= rect.width * 0.6]
+                      and max(0, min(rect.x1, right) - max(rect.x0, left)) >=
+                      min(rect.width, right - left) * 0.6]
             if not nearby or caption.y0 - max(rect.y1 for _, rect in nearby) > 65:
                 rejected.append({'caption': cap['text'][:600], 'caption_bbox': normalized(caption),
                                  'reason': '未找到紧邻图注的可靠图形或嵌入图片边界'})
@@ -127,18 +214,54 @@ def pdf_page_geometry(path: Path, page_number: int, version_sha256: str) -> dict
             visual = fitz.Rect(nearby[0][1])
             for _, rect in nearby[1:]:
                 visual |= rect
+            # Expand only across aligned graphic panels, with bounded gaps.
+            # Distinct captions and prose are checked below before any crop is
+            # exposed. Unrelated/ambiguous diagrams therefore remain abstentions.
+            selected_rects = {id(rect) for _, rect in nearby}
+            for _ in range(8):
+                added = []
+                for item in visuals:
+                    _, rect = item
+                    if id(rect) in selected_rects or rect.y0 < top or rect.y1 > caption.y0 + 2:
+                        continue
+                    vertical = max(0, min(rect.y1, visual.y1) - max(rect.y0, visual.y0))
+                    gap = max(0, rect.x0 - visual.x1, visual.x0 - rect.x1)
+                    if vertical >= min(rect.height, visual.height) * 0.5 and gap <= width * 0.10:
+                        added.append(item)
+                if not added:
+                    break
+                nearby.extend(added)
+                for _, rect in added:
+                    selected_rects.add(id(rect))
+                    visual |= rect
+            unresolved_panel = any(
+                id(rect) not in selected_rects and rect.y0 >= top and rect.y1 <= caption.y0 + 2 and
+                max(0, min(rect.y1, visual.y1) - max(rect.y0, visual.y0)) >=
+                min(rect.height, visual.height) * 0.5 and
+                max(0, rect.x0 - visual.x1, visual.x0 - rect.x1) <= width * 0.30
+                for _, rect in visuals)
+            competing = [other for other in captions if other is not cap and
+                         other['rect'].y0 >= visual.y0 and other['rect'].y0 <= caption.y0 + 65 and
+                         max(0, min(other['rect'].x1, visual.x1) -
+                             max(other['rect'].x0, visual.x0)) >
+                         min(other['rect'].width, visual.width) * 0.5]
+            if (unresolved_panel or competing or
+                    any((rect & visual).get_area() > 0 for rect in oversized)):
+                rejected.append({'caption': cap['text'][:600], 'caption_bbox': normalized(caption),
+                                 'reason': '存在相邻独立图注或超范围图形，无法确认完整图件归属'})
+                continue
             if visual.width < 40 or visual.height < 40:
                 rejected.append({'caption': cap['text'][:600], 'caption_bbox': normalized(caption),
                                  'reason': '可见图形范围过小，可能只是文字下划线或公式'})
                 continue
             crop = visual | caption
+            label_left, label_right = max(0, visual.x0 - 24), min(width, visual.x1 + 24)
             # Short diagram labels and headings may lie just outside image paths.
             for block in texts:
                 rect = block['rect']
                 if (block is not cap and len(block['text']) <= 120
                         and rect.y0 >= visual.y0 - 24 and rect.y1 <= caption.y0
-                        and rect.x0 >= left and rect.x1 <= right
-                        and rect.x1 > visual.x0 and rect.x0 < visual.x1):
+                        and rect.x0 >= label_left and rect.x1 <= label_right):
                     crop |= rect
             crop = (crop + (-4, -4, 4, 4)) & bounds
             if any(block is not cap and len(block['text']) > 120
@@ -154,7 +277,9 @@ def pdf_page_geometry(path: Path, page_number: int, version_sha256: str) -> dict
                 'bbox': bbox, 'visual_bbox': normalized(visual),
                 'evidence_types': sorted({kind for kind, _ in nearby}),
                 'status': 'geometry_candidate', 'semantic_verified': False})
-        return {'geometry_version': 1, 'page_size_points': [width, height],
+        if file_hash(path) != version_sha256:
+            raise ValueError('输入版本已变化，请重新准备任务')
+        return {'geometry_version': 2, 'page_size_points': [width, height],
                 'figure_candidates': candidates, 'unresolved_captions': rejected,
                 'figure_localization': 'candidates_available' if candidates else 'abstained',
                 'geometry_warnings': ['图注和图形几何仅用于定位候选；多栏、跨页、无图注或裁剪图件可能漏检，科研含义仍需核对。']}
@@ -194,10 +319,7 @@ def parse_document(path: Path) -> dict:
         warnings.append('仅提取可解码的嵌入图片；矢量图和完整公式布局可能需要原文核对')
     elif kind == 'pptx':
         with safe_zip(path) as z:
-            names = sorted((n for n in z.namelist() if re.fullmatch(r'ppt/slides/slide\d+\.xml', n)),
-                           key=lambda n: int(re.search(r'(\d+)\.xml', n).group(1)))
-            if not 1 <= len(names) <= 200:
-                raise ValueError('首版限制 1–200 页')
+            names = pptx_slide_paths(z)
             for index, name in enumerate(names, 1):
                 root = ET.fromstring(z.read(name))
                 text = clean_text('\n'.join(t.text or '' for t in root.findall('.//a:t', NS)))
@@ -232,7 +354,7 @@ def parse_document(path: Path) -> dict:
 
 def inspect_pptx(path: Path) -> dict:
     with safe_zip(path) as z:
-        slides = sorted(n for n in z.namelist() if re.fullmatch(r'ppt/slides/slide\d+\.xml', n))
+        slides = pptx_slide_paths(z)
         text_counts = [len(ET.fromstring(z.read(n)).findall('.//a:t', NS)) for n in slides]
         notes = [n for n in z.namelist() if re.fullmatch(r'ppt/notesSlides/notesSlide\d+\.xml', n)]
         return {'slide_count': len(slides), 'editable_text_runs': sum(text_counts),

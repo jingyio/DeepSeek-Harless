@@ -16,23 +16,32 @@ const strings = {type:'string',minLength:1,maxLength:500};
 const input = (properties: Record<string, object>, required: string[]): Tool['inputSchema'] => ({type:'object',properties,required,additionalProperties:false});
 const annotated = (name: string, description: string, properties: Record<string, object>, required: string[], readOnly: boolean): Tool => ({name,description,
   inputSchema:input(properties,required),annotations:{readOnlyHint:readOnly,destructiveHint:false,openWorldHint:false}});
+const ARCHETYPE_SCHEMA = {type:'string',enum:['evidence-focus','result-summary','method-map']};
+const EVIDENCE_NOTES_SCHEMA = {type:'array',maxItems:3,items:{type:'object',required:['label','text','source_index'],additionalProperties:false,
+  properties:{label:{type:'string',minLength:1,maxLength:24},text:{type:'string',minLength:1,maxLength:110},source_index:{type:'integer',minimum:1,maximum:20}}}};
+const SLIDE_PROPERTIES = {
+  title:{type:'string',minLength:1,maxLength:70},bullets:{type:'array',maxItems:5,items:{type:'string',minLength:1,maxLength:150}},
+  sources:{type:'array',minItems:1,maxItems:20,items:{type:'object',required:['source_id','page'],additionalProperties:false,
+    properties:{source_id:strings,page:{type:'integer',minimum:1,maximum:200}}}},
+  notes:{type:'string',maxLength:6000},layout:{type:'string',enum:['title','content','image','table','chart','section','comparison','process']},
+  image:{type:'object',required:['source_id','image_id'],additionalProperties:false,properties:{source_id:strings,image_id:strings}},
+  table:{type:'array',minItems:2,maxItems:6,items:{type:'array',minItems:1,maxItems:4,items:{type:'string',minLength:1,maxLength:45}}},
+  chart:{type:'object'},comparison:{type:'object'},process:{type:'object'},takeaway:{type:'string',minLength:1,maxLength:90},
+  archetype:ARCHETYPE_SCHEMA,evidence_notes:EVIDENCE_NOTES_SCHEMA,
+};
+const REMOVABLE_FIELDS = new Set(['image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes']);
+const CHANGES_SCHEMA = {type:'object',minProperties:1,additionalProperties:false,
+  properties:Object.fromEntries(Object.entries(SLIDE_PROPERTIES).map(([field,schema])=>[field,
+    REMOVABLE_FIELDS.has(field)?{anyOf:[schema,{type:'null'}]}:schema]))};
 const PLAN_SCHEMA = {type:'object',required:['title','slides'],additionalProperties:false,properties:{
   title:{type:'string',minLength:1,maxLength:100},template:{type:'string',enum:['academic','lab']},
-  slides:{type:'array',minItems:1,maxItems:30,items:{type:'object',required:['title','sources'],additionalProperties:false,properties:{
-    title:{type:'string',minLength:1,maxLength:70},bullets:{type:'array',maxItems:5,items:{type:'string',minLength:1,maxLength:150}},
-    sources:{type:'array',minItems:1,maxItems:20,items:{type:'object',required:['source_id','page'],additionalProperties:false,
-      properties:{source_id:strings,page:{type:'integer',minimum:1,maximum:200}}}},
-    notes:{type:'string',maxLength:6000},layout:{type:'string',enum:['title','content','image','table','chart','section','comparison','process']},
-    image:{type:'object',required:['source_id','image_id'],additionalProperties:false,properties:{source_id:strings,image_id:strings}},
-    table:{type:'array',minItems:2,maxItems:6,items:{type:'array',minItems:1,maxItems:4,items:{type:'string',minLength:1,maxLength:45}}},
-    chart:{type:'object'},comparison:{type:'object'},process:{type:'object'},takeaway:{type:'string',minLength:1,maxLength:90}
-  }}}}};
+  slides:{type:'array',minItems:1,maxItems:30,items:{type:'object',required:['title','sources'],additionalProperties:false,properties:SLIDE_PROPERTIES}}}};
 export const ADAPTER_TOOLS: Tool[] = [
   annotated('render_delivery','Ordinary bounded script: preflight then real render-inspect-validate-deliver; never invent or change content; not a learned Motif.',
     {plan:PLAN_SCHEMA},['plan'],false),
   annotated('revise_delivery','Ordinary bounded script: revise explicit pages in a new copy, verify all non-target pages, real inspect-validate-deliver; not a learned Motif.',
     {deck_id:strings,updates:{type:'array',minItems:1,maxItems:30,items:{type:'object',required:['page','changes'],additionalProperties:false,
-      properties:{page:{type:'integer',minimum:1,maximum:30},changes:{type:'object'}}}}},['deck_id','updates'],false),
+      properties:{page:{type:'integer',minimum:1,maximum:30},changes:CHANGES_SCHEMA}}}},['deck_id','updates'],false),
   annotated('pin_deck_pages','Pin explicitly selected pages of a persisted deck. pages_csv contains exact page numbers such as 2,5; no automatic semantic selection.',
     {deck_id:strings,pages_csv:{type:'string',minLength:1,maxLength:89,pattern:'^[1-9][0-9]?(?:,[1-9][0-9]?){0,29}$'}},['deck_id','pages_csv'],true),
   annotated('read_pinned_deck_pages','Read only the explicitly pinned page plans of the current persisted PPT. Recheck source and deck versions; no content changes.',
@@ -85,8 +94,12 @@ async function main(): Promise<void> {
   if (!object(jobData)) throw new AdapterRejected('invalid_job','任务必须是JSON对象。');
   const client=new Client({name:'sss-ppt-delivery-backend-client',version:'0.1.0'},{capabilities:{}});
   liveClient=client;
+  const renderEnvironment: Record<string,string> = {};
+  for (const name of ['FONTCONFIG_FILE','FONTCONFIG_PATH']) {
+    if (process.env[name]) renderEnvironment[name] = process.env[name]!;
+  }
   const transport=new StdioClientTransport({command:process.env.SSS_PPT_DELIVERY_PYTHON??process.env.SSS_PYTHON??'python',args:[backendPath],cwd:root,
-    env:{...getDefaultEnvironment(),PYTHONPATH:root,PYTHONUTF8:'1',SSS_PPT_JOB:job},stderr:'pipe',maxBufferSize:20_000_000});
+    env:{...getDefaultEnvironment(),...renderEnvironment,PYTHONPATH:root,PYTHONUTF8:'1',SSS_PPT_JOB:job},stderr:'pipe',maxBufferSize:20_000_000});
   transport.stderr?.on('data',chunk=>{ void appendFile(resolve(dirname(job),'delivery-backend.stderr.log'),chunk,{mode:0o600}); });
   await client.connect(transport);
   const listing=await client.listTools();
@@ -145,7 +158,7 @@ async function main(): Promise<void> {
   await server.connect(stdio);
 }
 
-main().catch(async error=>{process.stderr.write(JSON.stringify({ok:false,code:error instanceof AdapterRejected?error.code:'adapter_start_failed',
+if (process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) main().catch(async error=>{process.stderr.write(JSON.stringify({ok:false,code:error instanceof AdapterRejected?error.code:'adapter_start_failed',
   error_type:error instanceof Error?error.name:typeof error})+'\n');
   try { await liveClient?.close(); } finally { process.exit(1); }
 });

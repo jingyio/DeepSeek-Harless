@@ -102,6 +102,130 @@ test('双栏保留全部正文顺序，过密布局按可枚举错误拒绝而�
   assert.equal(dense.slides[0].bullets[0].length,95,'失败不能改动原计划');
 });
 
+test('默认按证据内容选版式；宽原图更大且不裁切，表格列宽保护完整术语',()=>{
+  const figure=slide({bullets:['原图全部面板和标签必须保留。'],image:{
+    data:'image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=',
+    width:1800,height:630}});
+  const data=slide({table:[['策略','GSM8K','MATH','HumanEval'],
+    ['LLaMA2-7B LoRA(高斯)','42.85','5.50','18.35'],
+    ['LLaMA2-7B PiSSA','53.22','7.47','21.92']],bullets:['三次运行均值，单位 %；全部方法与指标必须原样保留。']});
+  const deck={title:'内容适配版式',slides:[figure,data]};
+  const original=JSON.stringify(deck), adaptive=buildLayout(deck);
+  const fixed=buildLayout({...deck,layout_policy:defaultPolicy});
+  const image=adaptive.slides[0].elements.find(e=>e.role==='image');
+  const oldImage=fixed.slides[0].elements.find(e=>e.role==='image');
+  assert.ok(image.w*image.h>oldImage.w*oldImage.h*1.3,'宽横比原图应获得更大完整可见面积');
+  assert.ok(Math.abs(image.w/image.h-1800/630)<1e-8,'保持原图宽高比，不能裁剪科研证据');
+  const table=adaptive.slides[1].elements.find(e=>e.role==='table');
+  assert.ok(table.w>fixed.slides[1].elements.find(e=>e.role==='table').w);
+  assert.ok(table.column_widths[0]>table.column_widths[1],'长方法名列需要更宽空间');
+  assert.ok((table.column_widths[3]-0.28)*72/table.font_size*0.88>=9*0.56,
+    'HumanEval 需要完整英文术语宽度');
+  assert.ok(Math.abs(table.column_widths.reduce((a,b)=>a+b,0)-table.w)<1e-8);
+  assert.deepEqual(table.table,data.table,'版式不得改写、重排或补造数据');
+  assert.equal(adaptive.semantic_content_sha256,fixed.semantic_content_sha256);
+  assert.equal(adaptive.renderer_version,'research-ppt-layout-v11.2');
+  assert.equal(JSON.stringify(deck),original,'普通版式适配也不能修改调用者计划');
+});
+
+test('密集图注逐页用20pt完整保留条件，证据面积明显改善；稀疏图页仍优先22pt',()=>{
+  const image={data:'image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=',
+    width:1800,height:630};
+  // 来自实际产品遇到的密度形态；数值/名称仅作排版夹具，测试不认证科学结论。
+  const dense=slide({title:'原图证据：最佳交替步数随任务变化',layout:'image',image,
+    notes:'这是完整条件的排版工程夹具，保留原来源及备注。',
+    takeaway:'已测试三类语言模型架构；论文测试外的架构与领域仍需验证',
+    bullets:['T=0：QLoRA；T=1/5/10：LoftQ（Algorithm 1）',
+      'MNLI：Uniform 2-bit DeBERTaV3-base',
+      'GSM8K：LLAMA-2-13b，原图注写“NF4 2-bit”（命名待核）',
+      'XSum：NF4 BART-large；最高值分别在 T=5/10/1']});
+  const plain=slide({bullets:['非图页全部内容和字号保持。','不能因另一页拥挤改变全稿策略。']});
+  const sparse=slide({image,bullets:['原图全部面板保留。']});
+  const deck={title:'逐页图注适配',slides:[plain,dense,sparse]}, original=JSON.stringify(deck);
+  const adaptive=buildLayout(deck);
+  const actual=adaptive.slides[1], body=actual.elements.filter(e=>e.role.startsWith('body_'));
+  assert.deepEqual(body.map(e=>e.text),dense.bullets,'全部原图条件必须保留，不能静默删图注');
+  assert.ok(body.every(e=>e.font_size===20&&e.body_gap===0.08),'manifest必须反映实际图注字号与间距');
+  const figure=actual.elements.find(e=>e.role==='image');
+  assert.ok(figure.w*figure.h>=19,'密集图注不能把原图压缩成不可读的小缩略图');
+  assert.ok(Math.abs(figure.w/figure.h-1800/630)<1e-8,'原证据不裁剪、不拉伸');
+  const explicit=buildLayout({...deck,layout_policy:{...defaultPolicy,body_font_size:20,body_gap:0.08,media_fraction:0.64}});
+  const explicitFigure=explicit.slides[1].elements.find(e=>e.role==='image');
+  assert.ok(figure.w*figure.h>=explicitFigure.w*explicitFigure.h-1e-8,
+    '逐页规则应保留可用紧凑左右布局的图件面积');
+  assert.deepEqual(adaptive.slides[0].elements,buildLayout({title:deck.title,slides:[plain,sparse,dense]}).slides[0].elements,
+    '非图页不受其他图页候选影响');
+  assert.ok(adaptive.slides[0].elements.filter(e=>e.role.startsWith('body_')).every(e=>e.font_size===22));
+  assert.ok(adaptive.slides[2].elements.filter(e=>e.role.startsWith('body_')).every(e=>e.font_size===22&&e.body_gap===0.18),
+    '图面积增益不足25%时优先22pt正文');
+  assert.ok(explicit.slides[0].elements.filter(e=>e.role.startsWith('body_')).every(e=>e.font_size===20),
+    '显式已认证策略不能被逐页默认规则覆盖');
+  assert.equal(adaptive.semantic_content_sha256,explicit.semantic_content_sha256);
+  assert.equal(JSON.stringify(deck),original);
+  const expanded=structuredClone(dense);
+  expanded.bullets[3]='XSum：NF4 BART-large；MNLI/GSM8K/XSum 最佳 T=5/10/1';
+  const expandedPage=buildLayout({title:deck.title,slides:[expanded]}).slides[0];
+  assert.deepEqual(expandedPage.elements.filter(e=>e.role.startsWith('body_')).map(e=>e.text),expanded.bullets,
+    '反馈增加条件后仍须完整保留全部图注');
+  const expandedFigure=expandedPage.elements.find(e=>e.role==='image');
+  assert.ok(expandedFigure.w*expandedFigure.h>=15,'更长条件仍须选择可用左右布局，不能回退为极小缩略图');
+  assert.ok(expandedPage.elements.filter(e=>e.role.startsWith('body_')).every(e=>e.font_size===20&&e.body_gap===0.08));
+});
+
+test('密集图注实际写入20pt原生文本，全部来源/notes/原图仍在真实PPTX',async()=>{
+  const area=fileURLToPath(new URL('../../../.local/research-ppt/node-render-tests/',import.meta.url));
+  await mkdir(area,{recursive:true});
+  const temporary=await mkdtemp(join(area,'dense-caption-'));
+  try {
+    const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
+    const deck={title:'密集图注原生文本验收',slides:[slide({title:'完整图注与条件',
+      takeaway:'已测试三类语言模型架构；论文测试外的架构与领域仍需验证',
+      notes:'完整备注仍需审阅来源，不能用几何判断科学内容。',
+      image:{data:`image/png;base64,${image}`,width:1800,height:630},
+      bullets:['T=0：QLoRA；T=1/5/10：LoftQ（Algorithm 1）',
+        'MNLI：Uniform 2-bit DeBERTaV3-base',
+        'GSM8K：LLAMA-2-13b，原图注写“NF4 2-bit”（命名待核）',
+        'XSum：NF4 BART-large；MNLI/GSM8K/XSum 最佳 T=5/10/1']})]};
+    const output=join(temporary,'captions.pptx'), result=await render(deck,output);
+    const files=unzip(await readFile(output)), xml=files.get('ppt/slides/slide1.xml').toString('utf8');
+    for(const text of deck.slides[0].bullets) {
+      const paragraph=[...xml.matchAll(/<a:p>([\s\S]*?)<\/a:p>/g)].find(m=>m[1].includes(`<a:t>${text}</a:t>`));
+      assert.ok(paragraph,'条件应为完整可编辑原生文本');
+      assert.ok(paragraph[1].includes('sz="2000"'),'实际PPTX图注必须是20pt，不能仅manifest声称');
+    }
+    const notes=files.get('ppt/notesSlides/notesSlide1.xml').toString('utf8');
+    assert.ok(notes.includes(source)&&notes.includes(deck.slides[0].notes));
+    assert.ok([...files.entries()].some(([path,data])=>/^ppt\/media\//.test(path)&&data.equals(Buffer.from(image,'base64'))));
+    assert.ok(result.layout_manifest.slides[0].elements.filter(e=>e.role.startsWith('body_'))
+      .every(e=>e.font_size===20&&e.body_gap===0.08));
+  } finally {await rm(temporary,{recursive:true,force:true});}
+});
+
+test('适配列宽真正进入可编辑表格；原文字/行列/notes与原图字节保持',async()=>{
+  const area=fileURLToPath(new URL('../../../.local/research-ppt/node-render-tests/',import.meta.url));
+  await mkdir(area,{recursive:true});
+  const temporary=await mkdtemp(join(area,'adaptive-'));
+  try {
+    const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
+    const deck={title:'原生适配验收',slides:[slide({notes:'保留全部表格条件与来源。',bullets:[],
+      table:[['方法','HumanEval','数值'],['LLaMA2-7B LoRA','完整指标','18.35'],['PiSSA','完整指标','21.92']]}),
+      slide({image:{data:`image/png;base64,${image}`,width:1,height:1}})]};
+    const output=join(temporary,'adaptive.pptx'), result=await render(deck,output);
+    const files=unzip(await readFile(output)), table=result.layout_manifest.slides[0].elements.find(e=>e.role==='table');
+    const xml=files.get('ppt/slides/slide1.xml').toString('utf8');
+    const widths=[...xml.matchAll(/<a:gridCol w="(\d+)"\/>/g)].map(m=>Number(m[1]));
+    assert.equal(widths.length,3,'必须生成原生可编辑表格列');
+    table.column_widths.forEach((width,i)=>assert.ok(Math.abs(width*914400-widths[i])<=1));
+    const rows=[...xml.matchAll(/<a:tr\b[^>]*>([\s\S]*?)<\/a:tr>/g)].map(row=>
+      [...row[1].matchAll(/<a:tc>([\s\S]*?)<\/a:tc>/g)].map(cell=>
+        [...cell[1].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map(m=>m[1]).join('')));
+    assert.deepEqual(rows,deck.slides[0].table,'必须保留实际行列内容和顺序');
+    assert.ok(files.get('ppt/notesSlides/notesSlide1.xml').toString('utf8').includes(deck.slides[0].notes));
+    assert.ok([...files.entries()].some(([path,data])=>/^ppt\/media\//.test(path)&&data.equals(Buffer.from(image,'base64'))),
+      '科研原图应以原字节进入PPTX，不能重绘或裁剪');
+  } finally {await rm(temporary,{recursive:true,force:true});}
+});
+
 test('真实生成2/3/4/5步原生流程与结论框；全部内容、来源及原始notes保留',async()=>{
   const area=fileURLToPath(new URL('../../../.local/research-ppt/node-render-tests/',import.meta.url));
   await mkdir(area,{recursive:true});
@@ -248,6 +372,41 @@ test('真实生成15页：可编辑文字、表格和原生数据图保留数据
     assert.ok(dataXml.includes('-1.25'));
     assert.ok(dataXml.includes('3.75'));
     assert.ok([...files.keys()].some(k=>/^ppt\/embeddings\/.*\.xlsx$/.test(k)),'图表应携带可编辑数据工作簿');
+  } finally {
+    await rm(temporary,{recursive:true,force:true});
+  }
+});
+
+test('真实图表显式写入轴变量与单位；不添加缺省的虚构轴标题，数值缓存保持',async()=>{
+  const area=fileURLToPath(new URL('../../../.local/research-ppt/node-render-tests/',import.meta.url));
+  await mkdir(area,{recursive:true});
+  const temporary=await mkdtemp(join(area,'axis-titles-'));
+  try {
+    const labeled={...chart,x_label:'Method',y_label:'Measured latency',unit:'ms'};
+    const deck={title:'轴标题保留回归',slides:[
+      slide({chart:labeled,bullets:[]}),
+      slide({chart:{...labeled,type:'line'},bullets:[]}),
+      slide({chart:{type:'bar',categories:chart.categories,series:chart.series},bullets:[]}),
+    ]};
+    const output=join(temporary,'axes.pptx');
+    await render(deck,output);
+    const files=unzip(await readFile(output));
+    const parts=[...files.keys()].filter(k=>/^ppt\/charts\/chart\d+\.xml$/.test(k));
+    assert.equal(parts.length,3);
+    for(const [index,part] of parts.entries()) {
+      const xml=files.get(part).toString('utf8');
+      assert.ok(xml.includes('<c:v>-1.25</c:v>'));
+      assert.ok(xml.includes('<c:v>3.75</c:v>'));
+      const category=xml.match(/<c:catAx>[\s\S]*?<\/c:catAx>/)?.[0];
+      const value=xml.match(/<c:valAx>[\s\S]*?<\/c:valAx>/)?.[0];
+      assert.ok(category&&value,'两条轴应保持为原生图表');
+      if(index<2) {
+        assert.ok(category.includes('<a:t>Method</a:t>'),'必须真正生成分类轴标题');
+        assert.ok(value.includes('<a:t>Measured latency / ms</a:t>'),'指标与单位必须真正进入值轴标题');
+      } else {
+        assert.ok(!category.includes('<c:title>')&&!value.includes('<c:title>'),'无标注时不能凭空添加 Axis Title');
+      }
+    }
   } finally {
     await rm(temporary,{recursive:true,force:true});
   }

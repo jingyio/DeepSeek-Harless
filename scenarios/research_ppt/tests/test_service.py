@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import zipfile
 from pypdf import PdfWriter
 from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
 from scenarios.research_ppt.cli import prepare
@@ -80,6 +81,33 @@ class ServiceTests(unittest.TestCase):
         explicit_invalid['slides'][0]['bullets'] = None
         with self.assertRaises(ValueError):
             self.service.render_deck(explicit_invalid)
+
+    def test_validation_uses_original_plan_to_reject_generated_text_omission(self):
+        plan = self.plan()
+        rendered = self.service.render_deck(plan)
+        target = Path(rendered['path'])
+        needle = ('<a:t>' + plan['slides'][0]['bullets'][0] + '</a:t>').encode('utf-8')
+        temporary = target.with_suffix('.changed.pptx')
+        changed = False
+        with zipfile.ZipFile(target) as original, zipfile.ZipFile(temporary, 'w') as rewritten:
+            for member in original.infolist():
+                raw = original.read(member.filename)
+                if member.filename == 'ppt/slides/slide1.xml':
+                    revised = raw.replace(needle, b'<a:t></a:t>')
+                    changed = revised != raw
+                    raw = revised
+                rewritten.writestr(member, raw)
+        self.assertTrue(changed, '反例必须从真实PPTX删除计划中的正文')
+        temporary.replace(target)
+        # 构造渲染阶段已把有缺字的产物登记为当前版本的反例，而不是复用旧hash。
+        # 下游验收必须独立依照完整计划，不能用该产物自身正文证明完整。
+        self.service.deck_records[rendered['deck_id']]['sha256'] = file_hash(target)
+        report = self.service.validate_deck(rendered['deck_id'])
+        self.assertFalse(report['passed'])
+        self.assertEqual(report['text_retention']['mode'], 'submitted_plan')
+        self.assertIn('submitted_text_missing_in_pptx', {item['code'] for item in report['errors']})
+        with self.assertRaisesRegex(ValueError, '未通过真实渲染'):
+            self.service.deliver_deck(report['validation_id'])
 
     def test_real_preview_changes_block_cached_validation_and_delivery(self):
         source_sha = file_hash(self.source)

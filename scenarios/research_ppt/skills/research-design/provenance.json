@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "skill_id": "research-ppt-design",
-  "skill_version": "research-design-v1",
-  "reviewed_on": "2026-10-10",
-  "implementation": "本场景独立编写的科研设计指导；由运行入口加载固定文本并记录实际 SHA256。不是 Motif、RSI 晋级规则或质量证据。",
+  "skill_version": "research-design-v2",
+  "reviewed_on": "2026-10-12",
+  "implementation": "本场景独立编写的科研设计指导；v2支持受限科研archetype与有来源索引的说明槽。不是Motif或RSI晋级。",
   "references": [
     {
       "repository": "yb2460/harness-anything",
@@ -45,6 +45,83 @@
       ],
       "copying": "没有复制上游脚本或资产；对通用工作方式作中文独立重述。为随仓库分发的来源说明保留原版权与完整许可。",
       "license_text": "MIT License\n\nCopyright (c) 2026 cli-anything-wps contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
+    },
+    {
+      "repository": "M1n-n9/academic-ppt-master",
+      "repository_url": "https://github.com/M1n-n9/academic-ppt-master",
+      "ref": "6825d33f2931b8894435b9bd25c08cfce3476ff0",
+      "license": "MIT",
+      "reviewed_on": "2026-10-12",
+      "files": [
+        {
+          "path": "LICENSE",
+          "sha256": "f05b395a7bf20fd267822c8e02086eb5dff9ee3b285bc1c9e87a4de40a3a8768",
+          "url": "https://github.com/M1n-n9/academic-ppt-master/blob/6825d33f2931b8894435b9bd25c08cfce3476ff0/LICENSE"
+        },
+        {
+          "path": "ATTRIBUTION.md",
+          "sha256": "5c2ad43a1c50f4c313fbffdb77c34a5c3b5a80d23a845d69472dcd77d58c5877",
+          "url": "https://github.com/M1n-n9/academic-ppt-master/blob/6825d33f2931b8894435b9bd25c08cfce3476ff0/ATTRIBUTION.md"
+        },
+        {
+          "path": "references/visual-styles/academic-clean.md",
+          "sha256": "e4776f90b67d4768e7a9c91a9347b439cd2fd05e9270f4224715bdd052b3ed10",
+          "url": "https://github.com/M1n-n9/academic-ppt-master/blob/6825d33f2931b8894435b9bd25c08cfce3476ff0/references/visual-styles/academic-clean.md"
+        },
+        {
+          "path": "references/visual-styles/academic-defense.md",
+          "sha256": "49a5bc18760bdcf60f04fab805dbdfb74ab992be3ae8654174f204bbf5370627",
+          "url": "https://github.com/M1n-n9/academic-ppt-master/blob/6825d33f2931b8894435b9bd25c08cfce3476ff0/references/visual-styles/academic-defense.md"
+        }
+      ],
+      "adopted_ideas": [
+        "科研原图与结果作为页面主体",
+        "方法模块、证据说明、实验条件与可见出处",
+        "克制配色、层级与信息分组"
+      ],
+      "not_adopted": [
+        "固定五模块、页数与侧栏",
+        "细小字号与密度下限",
+        "自由SVG执行器、公式PNG、模板与图标资产"
+      ],
+      "copying": "独立重述设计指导并独立实现当前受限TypeScript版式，没有复制上游执行器或视觉资产。",
+      "license_text": "MIT License\n\nCopyright (c) 2026 M1n-n9 and contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
+    },
+    {
+      "repository": "hugohe3/ppt-master",
+      "repository_url": "https://github.com/hugohe3/ppt-master",
+      "ref": "ca04346de145ed6462ddf34682848e71df5e20a2",
+      "license": "MIT",
+      "reviewed_on": "2026-10-12",
+      "files": [
+        {
+          "path": "LICENSE",
+          "sha256": "80cefc234c1ec12a8cece4344f16300c634fa03df7891686fcf979e3828f0921",
+          "url": "https://github.com/hugohe3/ppt-master/blob/ca04346de145ed6462ddf34682848e71df5e20a2/LICENSE"
+        },
+        {
+          "path": "skills/ppt-master/templates/styles/technical-deepdive/templates/design_spec.md",
+          "sha256": "8b56f50c9424c6b758b48798df4ff6fd642dd8d80ac0c2d3b716a64c761e90bc",
+          "url": "https://github.com/hugohe3/ppt-master/blob/ca04346de145ed6462ddf34682848e71df5e20a2/skills/ppt-master/templates/styles/technical-deepdive/templates/design_spec.md"
+        },
+        {
+          "path": "skills/ppt-master/templates/layouts/presentation_core/templates/design_spec.md",
+          "sha256": "14c54063ed5ad3c8aff164bf0c58e76ef1a70743e247dec5d5b1fef8e8915512",
+          "url": "https://github.com/hugohe3/ppt-master/blob/ca04346de145ed6462ddf34682848e71df5e20a2/skills/ppt-master/templates/layouts/presentation_core/templates/design_spec.md"
+        }
+      ],
+      "adopted_ideas": [
+        "页面角色与内容槽位分离",
+        "结果、条件与来源紧邻",
+        "保持原生图表、表格与方法形状的编辑性"
+      ],
+      "not_adopted": [
+        "整套Agent和SVG转换引擎",
+        "动画、音频与品牌资产",
+        "任意模板无损导入承诺"
+      ],
+      "copying": "独立重述设计指导并独立实现当前受限TypeScript版式，没有复制上游执行器或视觉资产。",
+      "license_text": "MIT License\n\nCopyright (c) 2025-2026 Hugo He\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
     }
   ],
   "excluded": [
@@ -58,5 +135,5 @@
       "reason": "不作为可分发来源；本轮没有读取、复制或改编。"
     }
   ],
-  "effect_status": "待真实任务与统一质量门槛验证；Skill 本身不授权旁路、写操作或 RSI 晋级。"
+  "effect_status": "V11三份同内容稿及VeRA六页新稿已真实渲染；原图、原生表格/流程、可见出处和机械内容验收有证据。VeRA初稿经Codex来源/视觉辅助修订，DoRA非目标页有199像素字体分片漂移。独立科学/审美人评、完整生成降本及新增RSI收益未验证；来源示例不等于本Agent质量或成本证明。"
 }

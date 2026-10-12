@@ -24,7 +24,7 @@ def write(path: Path, value):
 
 async def actual_schema(job: Path) -> dict:
     from mcp import Client, StdioServerParameters
-    spec = json.loads(scenario_for(job, False).read_text(encoding='utf-8'))
+    spec = json.loads(scenario_for(job, False, 'legacy').read_text(encoding='utf-8'))
     params = StdioServerParameters(command=sys.executable, args=[str(SCENE/'server.py')],
         cwd=ROOT, env={'PYTHONPATH':str(ROOT), 'SSS_PPT_JOB':str(job)})
     async with Client(params, read_timeout_seconds=60) as client:
@@ -86,7 +86,7 @@ def execute(*, area: Path, task_id: str, inputs: list[Path], instruction: str, s
     write(area/'config.json',config)
     mode = 'execute' if group=='generated_motif' else 'baseline'
     command = [sys.executable,'-u','-m','scenarios.research_ppt.cli','run','--job',str(job),
-        '--mode',mode,'--execution','steps','--budget-usd','1','--max-steps','40']
+        '--mode',mode,'--execution','steps','--runtime','legacy','--budget-usd','1','--max-steps','40']
     if manifest and mode=='execute':
         command += ['--manifest',str(manifest)]
     if call_model:

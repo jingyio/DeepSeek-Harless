@@ -20,9 +20,11 @@ from .documents import safe_zip
 
 
 SLIDE_FIELDS = frozenset({'title', 'bullets', 'sources', 'notes', 'image', 'table',
-                         'chart', 'layout', 'comparison', 'process', 'takeaway'})
+                         'chart', 'layout', 'comparison', 'process', 'takeaway',
+                         'archetype', 'evidence_notes'})
 REMOVABLE_FIELDS = frozenset({'image', 'table', 'chart', 'layout', 'comparison',
-                             'process', 'takeaway'})
+                             'process', 'takeaway', 'archetype', 'evidence_notes'})
+ARCHETYPES = frozenset({'evidence-focus', 'result-summary', 'method-map'})
 LAYOUTS = frozenset({'title', 'content', 'image', 'table', 'chart', 'section',
                      'comparison', 'process'})
 R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -97,6 +99,15 @@ def _validate_field(key, value):
                  2 <= len(value['steps']) <= 5 and all(
                      _object(step, {'label', 'detail'}) and _text(step['label']) and _text(step['detail'])
                      for step in value['steps']))
+    elif key == 'archetype':
+        valid = isinstance(value, str) and value in ARCHETYPES
+    elif key == 'evidence_notes':
+        valid = (isinstance(value, list) and len(value) <= 3 and all(
+            _object(note, {'label', 'text', 'source_index'}) and
+            _text(note['label']) and len(note['label']) <= 24 and
+            _text(note['text']) and len(note['text']) <= 110 and
+            type(note['source_index']) is int and note['source_index'] >= 1
+            for note in value))
     if not valid:
         raise ValueError(f'修订字段 {key} 的类型或结构无效')
 
@@ -106,6 +117,35 @@ def _validate_slide(slide):
         raise ValueError('幻灯片必须包含 title/bullets/sources，且不能有未知字段')
     for key, value in slide.items():
         _validate_field(key, value)
+    validate_scientific_archetype(slide)
+
+
+def validate_scientific_archetype(slide: dict):
+    """新页型的跨字段运行时守卫；索引只针对原请求的 sources。
+
+    该字段表达调用者给出的科学说明，不构成事实认证。旧页无这些字段时保持旧行为。
+    """
+    if 'archetype' in slide:
+        _validate_field('archetype', slide['archetype'])
+        required = {'evidence-focus': ('image',), 'result-summary': ('table', 'chart'),
+                    'method-map': ('process',)}[slide['archetype']]
+        if not any(slide.get(key) is not None for key in required):
+            raise ValueError('科研页型与主体内容类型不一致')
+    if 'evidence_notes' in slide:
+        _validate_field('evidence_notes', slide['evidence_notes'])
+        if 'archetype' not in slide:
+            raise ValueError('evidence_notes 仅允许用于科研页型')
+        sources = slide.get('sources')
+        if not isinstance(sources, list) or any(note['source_index'] > len(sources)
+                                               for note in slide['evidence_notes']):
+            raise ValueError('evidence_notes 的 source_index 超出原 sources 范围')
+
+
+def validate_evidence_rebind(before: dict, after: dict, changes: dict):
+    """来源变更必须显式重绑/移除已有说明，不让旧索引静默指向不同来源。"""
+    if (before.get('evidence_notes') and before.get('sources') != after.get('sources')
+            and 'evidence_notes' not in changes):
+        raise ValueError('修改 sources 必须显式更新或移除 evidence_notes')
 
 
 def merge_slide_updates(plan: dict, updates: list[dict]) -> dict:
@@ -145,6 +185,7 @@ def merge_slide_updates(plan: dict, updates: list[dict]) -> dict:
             else:
                 _validate_field(key, value)
                 revised['slides'][page - 1][key] = copy.deepcopy(value)
+        validate_evidence_rebind(plan['slides'][page - 1], revised['slides'][page - 1], changes)
         _validate_slide(revised['slides'][page - 1])
     return revised
 

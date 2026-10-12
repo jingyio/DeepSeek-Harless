@@ -11,12 +11,21 @@ import re
 from uuid import uuid4
 
 from .documents import file_hash, inspect_pptx
-from .validation import validate_delivery, _read_package
+from .validation import validate_delivery, _read_package, plan_expectations
 
 SCENE = Path(__file__).resolve().parent
 LIMIT = 3
 DEFAULT = {'schema_version': 1, 'media_position': 'right', 'media_fraction': 0.58,
            'body_columns': 1, 'body_font_size': 22, 'table_font_size': 18, 'body_gap': 0.18}
+BASELINE_MODES = {'fixed-policy', 'renderer-default'}
+
+
+def baseline_mode(value: dict) -> str:
+    # 旧 suite/job/证书不追改：缺失字段继续代表原显式七参数基线。
+    mode = value.get('layout_baseline_mode', 'fixed-policy')
+    if not isinstance(mode, str) or mode not in BASELINE_MODES:
+        raise ValueError('layout_baseline_mode 只能是 fixed-policy 或 renderer-default')
+    return mode
 
 
 def _private(path: Path) -> Path:
@@ -65,9 +74,12 @@ def _frozen(path: Path) -> dict:
 def _job(job_path: Path, supplied: dict | None = None, *, write=False) -> tuple[dict, Path]:
     path = _private(job_path)
     job = _read(path)
+    mode = baseline_mode(job)
     if supplied is not None and any(supplied.get(key) != job.get(key) for key in
             ('job_id', 'allow_rsi', 'allow_output', 'layout_suite', 'layout_suite_sha256')):
         raise ValueError('任务配置已变化，请重新加载任务')
+    if supplied is not None and baseline_mode(supplied) != mode:
+        raise ValueError('任务布局基线模式已变化，请重新加载任务')
     if write and (job.get('allow_rsi') is not True or job.get('allow_output') is not True):
         raise ValueError('布局学习需要任务明确允许 RSI 和私有产物输出')
     return job, _private(path.parent / 'layout-rsi')
@@ -178,16 +190,24 @@ def _evidence(row: dict):
         raise ValueError('布局回放缺少真实渲染证据')
 
 
-def _replay(case: dict, policy: dict, area: Path, version: dict) -> dict:
+def _replay(case: dict, policy: dict | None, area: Path, version: dict, *,
+            layout_baseline_mode: str = 'fixed-policy') -> dict:
+    mode = baseline_mode({'layout_baseline_mode': layout_baseline_mode})
+    if policy is None and mode != 'renderer-default':
+        raise ValueError('只有 renderer-default 基线允许不注入 layout_policy')
     plan = _plan(case)
     directory = _private(area / (case['id'] + '-' + uuid4().hex))
     directory.mkdir(parents=True, exist_ok=False)
     record = {'id': case['id'], 'origin_run_id': case['run_id'], 'source_plan_sha256': case['sha256'],
-              'policy_digest': _policy(policy)['policy_digest'], 'renderer_version': version,
+              'policy_digest': _policy(DEFAULT if policy is None else policy)['policy_digest'], 'renderer_version': version,
+              'layout_baseline_mode': mode, 'layout_policy_applied': policy is not None,
               'passed': False, 'diagnostics': [], 'files': [], 'mean_image_area': 0.0,
               'content_sha256': _content_hash(plan), 'record_path': str(directory / 'replay.json')}
     candidate = copy.deepcopy(plan)
-    candidate['layout_policy'] = policy
+    if policy is None:
+        candidate.pop('layout_policy', None)
+    else:
+        candidate['layout_policy'] = policy
     plan_path = _private(directory / 'plan.json')
     _write(plan_path, candidate, exclusive=True)
     pptx = _private(directory / 'presentation.pptx')
@@ -208,7 +228,10 @@ def _replay(case: dict, policy: dict, area: Path, version: dict) -> dict:
         inspection = inspect_pptx(pptx)
         if inspection['slide_count'] != len(plan['slides']) or not inspection['each_slide_has_editable_text']:
             raise ValueError('PPTX 页数或可编辑文字回归')
-        checked = validate_delivery(pptx, len(plan['slides']), expected_texts=[_texts(s) for s in plan['slides']],
+        expected = plan_expectations(plan)
+        checked = validate_delivery(pptx, len(plan['slides']), expected_texts=expected['texts'],
+                                    expected_charts=expected['charts'], expected_tables=expected['tables'],
+                                    expected_images=expected['images'],
                                     expected_sources=[s['sources'] for s in plan['slides']])
         # 额外检查原 notes；validate_delivery 原有来源检查仍保留。
         native_report = {'errors': [], 'warnings': []}
@@ -275,8 +298,11 @@ def _baseline(job: dict, area: Path, suite: dict, digest: str, version: dict, sp
     if not path.is_file():
         return None
     record = _read(path)
-    if record.get('suite_sha256') != digest or record.get('renderer_version') != version:
+    mode = baseline_mode(job)
+    if (record.get('suite_sha256') != digest or record.get('renderer_version') != version or
+            baseline_mode(record) != mode):
         return None
+    _check_replay_modes(record['rows'], mode, baseline=True)
     for row in record['rows']:
         _evidence(row)
     if [row['id'] for row in record['rows']] != [case['id'] for case in suite['cases'] if case['split'] == split]:
@@ -284,18 +310,40 @@ def _baseline(job: dict, area: Path, suite: dict, digest: str, version: dict, sp
     return record
 
 
+def _check_replay_modes(rows: list[dict], mode: str, *, baseline=False):
+    for row in rows:
+        if baseline_mode(row) != mode:
+            raise ValueError('布局回放与认证基线模式不一致')
+        applied = row.get('layout_policy_applied', True)
+        expected = mode == 'fixed-policy' if baseline else True
+        if type(applied) is not bool or applied != expected:
+            raise ValueError('布局回放未按声明模式执行默认规则或显式策略')
+        plans = [item for item in row.get('files', []) if item['kind'] == 'plan']
+        if len(plans) != 1:
+            raise ValueError('布局回放缺少唯一实际执行计划')
+        replay_plan = _read(Path(plans[0]['path']))
+        if ('layout_policy' in replay_plan) != applied:
+            raise ValueError('布局回放实际计划与声明的基线模式不一致')
+        if baseline and applied and replay_plan['layout_policy'] != DEFAULT:
+            raise ValueError('fixed-policy 基线必须实际执行固定七参数默认策略')
+
+
 def prepare_training(job_path: Path) -> dict:
     job, area = _job(job_path, write=True)
     suite, digest = _suite(job); version = _version()
     area.mkdir(parents=True, exist_ok=True)
-    checked = _policy(DEFAULT)
+    checked = _policy(DEFAULT); mode = baseline_mode(job)
     cached = _baseline(job, area, suite, digest, version, 'train')
     if cached is None:
-        rows = [_replay(case, checked['policy'], area, version) for case in suite['cases'] if case['split'] == 'train']
+        policy = checked['policy'] if mode == 'fixed-policy' else None
+        rows = [_replay(case, policy, area, version, layout_baseline_mode=mode)
+                for case in suite['cases'] if case['split'] == 'train']
         cached = {'schema_version': 1, 'suite_sha256': digest, 'renderer_version': version,
-                  'policy': checked['policy'], 'policy_digest': checked['policy_digest'], 'schema': checked['schema'], 'rows': rows}
+                  'layout_baseline_mode': mode, 'policy': policy, 'policy_digest': checked['policy_digest'],
+                  'schema': checked['schema'], 'rows': rows}
         _write(area / 'train-baseline.json', cached)
-    return {'prepared': True, 'training': _summary(cached['rows']), 'baseline_path': str(area / 'train-baseline.json')}
+    return {'prepared': True, 'layout_baseline_mode': mode, 'training': _summary(cached['rows']),
+            'baseline_path': str(area / 'train-baseline.json')}
 
 
 def status(job: dict, job_path: Path) -> dict:
@@ -311,6 +359,7 @@ def status(job: dict, job_path: Path) -> dict:
                          'diagnostics': record.get('diagnostics', [])})
     # 不读取/返回 active 或 heldout 认证文件，避免反向泄露认证反馈。
     return {'scope': 'training_layout_geometry_only', 'candidate_schema': schema,
+            'layout_baseline_mode': baseline_mode(job),
             'attempt_limit': LIMIT, 'attempts_used': _used(area), 'attempts_remaining': max(0, LIMIT - _used(area)),
             'training_prepared': cached is not None, 'training': _summary(cached['rows']) if cached else None,
             'training_diagnostics': [{'id': row['id'], 'origin_run_id': row['origin_run_id'],
@@ -325,6 +374,7 @@ def propose(job: dict, job_path: Path, policy: dict) -> dict:
     attempt = _reserve(area, job)
     path = _private(area / ('proposal-' + uuid4().hex + '.json'))
     record = {'schema_version': 1, 'job_id': job.get('job_id'), 'attempt': attempt,
+              'layout_baseline_mode': baseline_mode(job),
               'training_passed': False, 'mechanical_certified': False, 'visual_quality_certified': False,
               'diagnostics': [], 'proposal_path': str(path)}
     try:
@@ -334,7 +384,8 @@ def propose(job: dict, job_path: Path, policy: dict) -> dict:
         baseline = _baseline(job, area, suite, digest, version, 'train')
         if baseline is None:
             raise ValueError('请先显式 prepare_training 生成当前版本训练基线')
-        rows = [_replay(case, checked['policy'], area, version) for case in suite['cases'] if case['split'] == 'train']
+        rows = [_replay(case, checked['policy'], area, version, layout_baseline_mode=baseline_mode(job))
+                for case in suite['cases'] if case['split'] == 'train']
         gate = _gate(baseline['rows'], rows, improvement=True)
         record.update(suite_sha256=digest, renderer_version=version, baseline=baseline['rows'], candidate=rows,
                       training=gate, training_passed=gate['passed'],
@@ -347,6 +398,7 @@ def propose(job: dict, job_path: Path, policy: dict) -> dict:
         record['diagnostics'].append({'code': 'proposal_failed', 'message': str(exc)[:1800]})
     _freeze(path, record)
     return {'proposal_path': str(path), 'training_passed': record['training_passed'],
+            'layout_baseline_mode': baseline_mode(job),
             'policy_digest': record.get('policy_digest'), 'diagnostics': record['diagnostics'],
             'training': record.get('training'), 'attempt': attempt, 'attempts_remaining': LIMIT - _used(area),
             'mechanical_certified': False, 'visual_quality_certified': False}
@@ -354,23 +406,28 @@ def propose(job: dict, job_path: Path, policy: dict) -> dict:
 
 def certify(job_path: Path, proposal_path: Path) -> dict:
     job, area = _job(job_path, write=True)
+    mode = baseline_mode(job)
     proposal_path = _private(proposal_path)
     if proposal_path.parent != area or not proposal_path.name.startswith('proposal-'):
         raise ValueError('只能认证本任务冻结的布局提案')
     record = _frozen(proposal_path)
     suite, digest = _suite(job); version = _version()
     if (record.get('job_id') != job.get('job_id') or record.get('training_passed') is not True or
-            record.get('suite_sha256') != digest or record.get('renderer_version') != version):
+            record.get('suite_sha256') != digest or record.get('renderer_version') != version or
+            baseline_mode(record) != mode):
         raise ValueError('提案未通过冻结训练或代码/资料版本已变化')
     checked = _policy(record['policy'])
     if checked['policy_digest'] != record['policy_digest']:
         raise ValueError('提案策略摘要变化')
     for row in [*record['baseline'], *record['candidate']]:
         _evidence(row)
+    _check_replay_modes(record['baseline'], mode, baseline=True)
+    _check_replay_modes(record['candidate'], mode)
     if not _gate(record['baseline'], record['candidate'], improvement=True)['passed']:
         raise ValueError('训练证据不再满足固定晋级目标')
     reservation = _private(area / 'heldout-reservation.json')
-    binding = {'proposal_sha256': file_hash(proposal_path), 'suite_sha256': digest, 'renderer_version': version}
+    binding = {'proposal_sha256': file_hash(proposal_path), 'suite_sha256': digest, 'renderer_version': version,
+               'layout_baseline_mode': mode}
     try:
         _write(reservation, binding, exclusive=True)
     except FileExistsError:
@@ -378,12 +435,17 @@ def certify(job_path: Path, proposal_path: Path) -> dict:
             raise ValueError('本任务认证集已用于其他候选，不能反馈后继续调参') from None
     baseline = _baseline(job, area, suite, digest, version, 'heldout')
     if baseline is None:
-        rows = [_replay(case, DEFAULT, area, version) for case in suite['cases'] if case['split'] == 'heldout']
-        baseline = {'schema_version': 1, 'suite_sha256': digest, 'renderer_version': version, 'rows': rows}
+        policy = DEFAULT if mode == 'fixed-policy' else None
+        rows = [_replay(case, policy, area, version, layout_baseline_mode=mode)
+                for case in suite['cases'] if case['split'] == 'heldout']
+        baseline = {'schema_version': 1, 'suite_sha256': digest, 'renderer_version': version,
+                    'layout_baseline_mode': mode, 'rows': rows}
         _write(area / 'heldout-baseline.json', baseline)
-    rows = [_replay(case, checked['policy'], area, version) for case in suite['cases'] if case['split'] == 'heldout']
+    rows = [_replay(case, checked['policy'], area, version, layout_baseline_mode=mode)
+            for case in suite['cases'] if case['split'] == 'heldout']
     gate = _gate(baseline['rows'], rows, improvement=False)
     output = {'schema_version': 1, 'job_id': job.get('job_id'), 'policy': checked['policy'],
+              'layout_baseline_mode': mode,
               'policy_digest': checked['policy_digest'], 'mechanical_certified': gate['passed'],
               'visual_quality_certified': False, 'scientific_quality_certified': False,
               'suite_path': job['layout_suite'], 'suite_sha256': digest, 'renderer_version': version,
@@ -402,11 +464,12 @@ def certify(job_path: Path, proposal_path: Path) -> dict:
         _private(active.with_name(active.name + '.sha256')).write_text(file_hash(active), encoding='ascii')
     return {'certificate_path': str(certificate_path), 'active_policy_path': str(area / 'active-policy.json')
             if output['mechanical_certified'] else None, 'mechanical_certified': output['mechanical_certified'],
-            'visual_quality_certified': False, 'heldout': gate}
+            'layout_baseline_mode': mode, 'visual_quality_certified': False, 'heldout': gate}
 
 
 def validate_certificate(path: Path) -> dict:
     certificate = _frozen(_private(path))
+    mode = baseline_mode(certificate)
     if certificate.get('mechanical_certified') is not True or certificate.get('visual_quality_certified') is not False:
         raise ValueError('布局证书未通过机械认证或夸大视觉认证')
     if certificate.get('renderer_version') != _version():
@@ -416,11 +479,17 @@ def validate_certificate(path: Path) -> dict:
     if file_hash(proposal_path) != certificate['proposal_sha256']:
         raise ValueError('布局认证引用的提案已变化')
     proposal = _frozen(proposal_path)
+    if baseline_mode(proposal) != mode:
+        raise ValueError('布局证书与提案基线模式不一致')
     checked = _policy(certificate['policy'])
     if checked['policy_digest'] != certificate.get('policy_digest') or checked['policy_digest'] != proposal.get('policy_digest'):
         raise ValueError('布局证书与提案策略摘要不一致')
     for row in [*proposal['baseline'], *proposal['candidate'], *certificate['heldout_baseline'], *certificate['heldout_candidate']]:
         _evidence(row)
+    _check_replay_modes(proposal['baseline'], mode, baseline=True)
+    _check_replay_modes(proposal['candidate'], mode)
+    _check_replay_modes(certificate['heldout_baseline'], mode, baseline=True)
+    _check_replay_modes(certificate['heldout_candidate'], mode)
     if not _gate(proposal['baseline'], proposal['candidate'], improvement=True)['passed'] or not _gate(
             certificate['heldout_baseline'], certificate['heldout_candidate'], improvement=False)['passed']:
         raise ValueError('布局真实证据未满足固定认证目标')

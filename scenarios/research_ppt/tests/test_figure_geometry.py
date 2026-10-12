@@ -63,6 +63,65 @@ class FigureGeometryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '版本已变化'):
             self.service.read_page(self.source, 1)
 
+    def diagnostic_page(self, name, *, independent_caption=False, body_between=False):
+        path = Path(self.temp.name) / name
+        with fitz.open() as pdf:
+            page = pdf.new_page(width=600, height=800)
+            page.draw_rect(fitz.Rect(65, 150, 280, 300), color=(0, 0, 0))
+            page.draw_line((65, 150), (280, 300), color=(0, 0, 0))
+            page.draw_rect(fitz.Rect(320, 150, 550, 300), color=(0, 0, 0))
+            page.draw_line((320, 300), (550, 150), color=(0, 0, 0))
+            page.insert_text((70, 138), '(a) left panel')
+            page.insert_text((325, 138), '(b) right panel')
+            page.insert_text((65, 325), 'Figure 3: Two panels.')
+            if independent_caption:
+                page.insert_text((320, 325), 'Figure 4: An independent panel.')
+            if body_between:
+                page.insert_textbox(fitz.Rect(285, 150, 317, 310),
+                                    'This is unrelated body prose between figures. ' * 5, fontsize=4)
+            pdf.save(path)
+        return path
+
+    def test_short_caption_does_not_truncate_composite_right_panel_or_labels(self):
+        path = self.diagnostic_page('composite.pdf')
+        result = pdf_page_geometry(path, 1, file_hash(path))
+        self.assertEqual(result['geometry_version'], 2)
+        self.assertEqual(len(result['figure_candidates']), 1)
+        candidate = result['figure_candidates'][0]
+        self.assertGreater(candidate['bbox'][2], 550 / 600)
+        self.assertLess(candidate['bbox'][1], 138 / 800)
+        self.assertFalse(candidate['semantic_verified'])
+
+    def test_aligned_independent_figures_are_not_silently_merged(self):
+        path = self.diagnostic_page('independent.pdf', independent_caption=True)
+        result = pdf_page_geometry(path, 1, file_hash(path))
+        self.assertEqual(result['figure_candidates'], [])
+        self.assertEqual(result['figure_localization'], 'abstained')
+        self.assertTrue(result['unresolved_captions'])
+
+    def test_composite_expansion_cannot_swallow_unrelated_prose(self):
+        path = self.diagnostic_page('prose.pdf', body_between=True)
+        result = pdf_page_geometry(path, 1, file_hash(path))
+        self.assertEqual(result['figure_candidates'], [])
+        self.assertTrue(result['unresolved_captions'])
+
+    def test_same_line_independent_captions_abstain(self):
+        path = Path(self.temp.name) / 'same-line-captions.pdf'
+        with fitz.open() as pdf:
+            page = pdf.new_page(width=600, height=800)
+            page.draw_rect(fitz.Rect(65, 150, 550, 300))
+            page.insert_text((65, 325), 'Figure 3: Left. Figure 4: Right.')
+            pdf.save(path)
+        result = pdf_page_geometry(path, 1, file_hash(path))
+        self.assertEqual(result['figure_candidates'], [])
+        self.assertTrue(result['unresolved_captions'])
+
+    def test_direct_geometry_reader_rejects_invalid_page_and_stale_version(self):
+        with self.assertRaisesRegex(ValueError, '页码越界'):
+            pdf_page_geometry(self.path, 0, file_hash(self.path))
+        with self.assertRaisesRegex(ValueError, '版本已变化'):
+            pdf_page_geometry(self.path, 1, '0' * 64)
+
 
 if __name__ == '__main__':
     unittest.main()

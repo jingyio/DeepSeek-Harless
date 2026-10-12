@@ -93,8 +93,9 @@ def params(job):
     adapter = ROOT / 'scenarios/research_ppt/dist/mcp-adapter.js'
     if not node or not adapter.is_file():
         raise ValueError('需先安装场景依赖并build真实TS适配器')
+    font_environment = {name: os.environ[name] for name in ('FONTCONFIG_FILE', 'FONTCONFIG_PATH') if os.environ.get(name)}
     return StdioServerParameters(command=node, args=[str(adapter), '--job', str(job)], cwd=ROOT,
-        env={'SSS_PPT_DELIVERY_PYTHON': sys.executable, 'PYTHONPATH': str(ROOT), 'PYTHONUTF8': '1'})
+        env={**font_environment, 'SSS_PPT_DELIVERY_PYTHON': sys.executable, 'PYTHONPATH': str(ROOT), 'PYTHONUTF8': '1'})
 
 
 def verify_artifacts(delivery, slides):
@@ -129,7 +130,7 @@ async def exercise(job, denied_job, diag):
         source = await diag.call(client, 'read_source', {'source_id': pin['source_id']})
         citation = [{'source_id': pin['source_id'], 'page': 1}]
         plan = {'title': 'Real delivery engineering check', 'template': 'academic', 'slides': [
-            {'title': 'Engineering page ' + str(i), 'bullets': ['Synthetic source; no scientific claim'],
+            {'title': '中文渲染验收 Engineering page ' + str(i), 'bullets': ['Synthetic source; no scientific claim'],
              'sources': citation, 'notes': source['pages'][0]['text'][:150]}
             for i in range(1, data['slides'] + 1)]}
         if data['slides'] >= 3:

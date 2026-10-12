@@ -1,7 +1,7 @@
 ---
 name: research-ppt-design
 description: 为科研 PDF/PPTX 任务选择叙事、证据和可编辑页面结构，并依据真实渲染结果修正交付。
-version: research-design-v1
+version: research-design-v2
 ---
 
 # 科研 PPT 设计
@@ -37,6 +37,18 @@ version: research-design-v1
 
 ## 信息层级与可读性
 
+### 科研证据页型
+
+在已有主体上选择可选 `archetype`，由渲染器安排几何；它是普通设计能力，不是学得的Motif。
+
+- `evidence-focus` 只用于原图页：图件成为视觉中心，短解释引导听众看证据，完整实验条件在底部/侧边分组，不把长条件列表与小原图并排。
+- `result-summary` 只用于 `table` / `chart`：原生数值结果成为主体，条件和局限紧邻证据。标题须与比较口径一致，不用全表最高数值替代匹配条件的比较。
+- `method-map` 只用于 `process`：可编辑模块/连接解释实际机制，允许短页级 `bullets` 补充输入/输出/边界；无顺序事实不能靠箭头制造因果。
+
+这些页可使用最多3项 `evidence_notes: [{label, text, source_index}]`。label最多24字符、text最多110字符；source_index为本页sources的1-based索引，说明必须受该来源支持。采用“证据＋条件＋出处”的层级，避免把同一结论在标题、takeaway、bullets、说明槽重复四遍。所有原文字、图件和来源仍须真实验收。
+
+可见出处由服务根据实际文件名/页码生成，模型不能提交 `visible_sources`，不得补造作者年份。当前公式、多幅原图和自由画布尚未提供；不要提交未支持字段，也不要把整页图片称作可编辑的科学图表。
+
 - 沿用 `academic` / `lab` 的字体、配色、边距和对齐；模型提交内容及支持的结构，确定性渲染器安排几何。不能向 plan 添加未支持的坐标、字体、颜色、动画或母版字段。
 - 标题、主体证据、短结论与来源形成清楚层级；强调一个主要证据，不依靠全页加粗或大量颜色制造重点。相同方法与指标在各页使用一致名称和单位。
 - 留白用于分组，相关元素靠近；图片不拉伸，复杂图不要与过多正文争夺空间。表格或图件加短解读，不能只放一张读不清的图让听众自行猜测。
@@ -65,3 +77,5 @@ version: research-design-v1
 ## 来源与复用范围
 
 参考 MIT 许可的 [harness-anything](https://github.com/yb2460/harness-anything/tree/e1924f8499ad6aaa11c579d5492205cfaa89c5d6)：吸收 JSON 驱动页面、统一设计预设、等比图像、真实 PDF/逐页预览和多维验收的通用思路。科研叙事、证据条件、当前 JSON 字段与过程页规则由本场景独立编写；没有复制上游代码、学校背景或标识，没有接入 WPS COM。固定 ref、参考文件哈希、版权和完整 MIT 许可见 [provenance.json](provenance.json)。
+
+v2另参考MIT许可的[Academic PPT Master学术设计层](https://github.com/M1n-n9/academic-ppt-master/tree/6825d33f2931b8894435b9bd25c08cfce3476ff0)与其[PPT Master来源](https://github.com/hugohe3/ppt-master/tree/ca04346de145ed6462ddf34682848e71df5e20a2)：吸收原图优先、科研证据分组、克制配色、方法模块及可见引用思路，独立实现当前受限协议和TypeScript版式；不复制自由SVG执行器、模板/图标资产、固定五模块/侧栏或细小字号。PPTAgent参考稿继承仅为下一步参考，当前未接入其引擎。公开来源的渲染诊断与边界见仓库设计来源核验记录，不把来源示例当作本Agent质量证明。
