@@ -2,7 +2,6 @@
 from __future__ import annotations
 import argparse
 from collections import Counter
-import fcntl
 import importlib.util
 import json
 import os
@@ -18,6 +17,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.parameter_motif_compiler import compile_parameter_library
 from src.adapters.native_motif_compiler import digest
 from src.adapters.deepseek_cost_gate import State, create_server
@@ -212,8 +212,7 @@ def main():
                           'cases': ['read', 'query'], 'modes': ['baseline', 'shadow', 'execute'],
                           'model': 'deepseek-flash', 'reasoning_effort': 'off', 'output_cap': OUTPUT_CAP, 'request_limit': None})); return
     if not args.call_model or not os.environ.get('DEEPSEEK_API_KEY'): raise ValueError('explicit server API authorization/config required')
-    with (ROOT / '.local/paper-motif/.budget.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock((ROOT / '.local/paper-motif/.budget.lock')) as lock:
         library = json.loads((exp / 'library.json').read_text()); contracts = json.loads((exp / 'contracts.json').read_text())
         frozen_budget = exp / 'effective-budget.json'
         if frozen_budget.exists():

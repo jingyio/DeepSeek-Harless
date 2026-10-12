@@ -5,7 +5,6 @@ share the complete historical budget. This controller has no execute phase.
 """
 from __future__ import annotations
 import argparse
-import fcntl
 import hashlib
 import importlib.util
 import json
@@ -16,6 +15,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.revision_tool_evidence import (build_revision_packets, revision_facts,
     revision_counterfactuals, strict_revision_pointer, project_generated_outputs,
     compose_generated_candidates, rebind_generated_input)
@@ -389,7 +389,7 @@ def main():
             'request_limit':None,'cumulative_cap_usd':legacy.rsi.load_budget_record(legacy.AUTH)['cap_usd'],
             'cumulative_estimated_usd':prior,'remaining_upper_bound_usd':8-prior,'execute':False}));return
     if not args.call_model:raise ValueError('explicit_call_model_required')
-    with (ROOT/'.local/paper-motif/.budget.lock').open('a') as stream:
-        fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB);learn(exp,args.label)
+    with exclusive_lock((ROOT/'.local/paper-motif/.budget.lock')) as stream:
+        learn(exp,args.label)
 
 if __name__=='__main__':main()

@@ -5,7 +5,6 @@ this does not claim full bibliography or PDF quality.
 """
 import argparse
 import copy
-import fcntl
 import importlib.util
 import json
 from pathlib import Path
@@ -13,6 +12,7 @@ import shutil
 import sys
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 def module(name,path):
     spec=importlib.util.spec_from_file_location(name,ROOT/path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
 revision=module('patch_task_revision','scripts/paper-rsi-revision-task.py')
@@ -149,6 +149,6 @@ def main():
     if a.phase=='compile':compile_library(a.training);return
     if not a.label:parser.error('--label required')
     if a.phase in ['verify','score']:(verify if a.phase=='verify' else batch.score)(EXP/'runs'/a.label);return
-    with (ROOT/'.local/paper-motif/.budget.lock').open('a') as stream:
-        fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB);task(a.case,a.phase,a.label)
+    with exclusive_lock((ROOT/'.local/paper-motif/.budget.lock')) as stream:
+        task(a.case,a.phase,a.label)
 if __name__=='__main__':main()

@@ -3,7 +3,6 @@
 No execute mode, no new training payments, no changes to the tool or prompt.
 """
 import argparse
-import fcntl
 import importlib.util
 import json
 from pathlib import Path
@@ -11,6 +10,7 @@ import shutil
 import sys
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.trace_rsi_state_compiler import ADDITIONS,compile_stateful_trace_motifs
 from src.adapters.trace_rsi_motif_compiler import CONFIG_FIELDS
 spec=importlib.util.spec_from_file_location('state_task_base',ROOT/'scripts/paper-rsi-generated-task.py')
@@ -57,6 +57,6 @@ def main():
     if not args.label:parser.error('--label required')
     if args.phase in ['verify','score']:(base.verify if args.phase=='verify' else base.score)(EXP/'runs'/args.label);return
     lock=ROOT/'.local/paper-motif/.budget.lock';lock.parent.mkdir(parents=True,exist_ok=True)
-    with lock.open('a') as stream:
-        fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB);shadow(args.case,args.label)
+    with exclusive_lock(lock) as stream:
+        shadow(args.case,args.label)
 if __name__=='__main__':main()

@@ -6,7 +6,6 @@ remain untouched. This stage validates structure, not bibliography truth.
 from __future__ import annotations
 import argparse
 import copy
-import fcntl
 import hashlib
 import json
 from pathlib import Path
@@ -15,6 +14,7 @@ import shutil
 import sys
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.trace_rsi_motif_compiler import compile_trace_rsi_motifs, CONFIG_FIELDS
 from src.adapters.trace_tool_evidence import digest
 import importlib.util
@@ -23,7 +23,7 @@ parent=importlib.util.module_from_spec(spec);spec.loader.exec_module(parent)
 EXP=ROOT/'.local/paper-reference/paper-rsi-generated-task-shadow-20261011-v3'
 ORIGIN=ROOT/'.local/paper-reference/paper-rsi-overnight-20261011-v2'
 FROZEN=ROOT/'.local/paper-reference/paper-rsi-trace-tools-20261011-v3/frozen-tool.json'
-FILES=['scripts/paper-rsi-generated-task.py','scripts/check-trace-rsi-task.mjs',
+FILES=['src/adapters/file_lock.py','scripts/paper-rsi-generated-task.py','scripts/check-trace-rsi-task.mjs',
  'scripts/paper-rsi-tool-learning.py','src/adapters/dsh_trace_rsi_shadow.ts',
  'src/adapters/trace_rsi_motif_compiler.py','scenarios/paper-submission/trace-rsi-task-server.ts',
  'src/adapters/trace_rsi_program.ts','src/adapters/paper_rsi_program.ts',
@@ -152,6 +152,6 @@ def main():
         (verify if args.phase=='verify' else score)(EXP/'runs'/args.label);return
     if not args.label:parser.error('--label required')
     lock=ROOT/'.local/paper-motif/.budget.lock';lock.parent.mkdir(parents=True,exist_ok=True)
-    with lock.open('a') as stream:
-        fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB);task(args.case,args.phase,args.label)
+    with exclusive_lock(lock) as stream:
+        task(args.case,args.phase,args.label)
 if __name__=='__main__':main()

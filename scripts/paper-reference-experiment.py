@@ -6,7 +6,6 @@ in .local. Repeated sessions on one paper do not certify cross-task transfer.
 from __future__ import annotations
 import argparse
 from collections import Counter
-import fcntl
 import hashlib
 import importlib.util
 import json
@@ -23,6 +22,7 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.harness_runtime import create_harness
 from src.adapters.deepseek_cost_gate import State, create_server
 from src.adapters.native_budget import NativeBudgetGuard
@@ -215,8 +215,7 @@ def main():
                           'cap_usd':args.budget_usd,'prior_usd':cost,'prior_requests':len(rows),'input_sha256':sha(source),
                           'prompt_sha256':sha(PROMPT),'paid_enabled':False,'scope':'same_paper_repeated_runs'}));return
     lockdir=ROOT/'.local/paper-motif';lockdir.mkdir(exist_ok=True)
-    with (lockdir/'.budget.lock').open('a') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    with exclusive_lock((lockdir/'.budget.lock')) as lock:
         if args.phase=='compile':
             from src.adapters.native_motif_compiler import compile_native_runs
             save(exp/'native-motifs.json',compile_native_runs(exp,sha(PROMPT),sha(source)));return

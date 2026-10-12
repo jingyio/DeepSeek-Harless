@@ -3,13 +3,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timezone
-import fcntl
 import hashlib
 import json
 from pathlib import Path
 import shutil
 from uuid import uuid4
 
+from .file_lock import exclusive_lock
 from .native_motif_compiler import digest, root_events
 from .parameter_motif_compiler import compile_parameter_runs
 
@@ -90,8 +90,7 @@ def latest_round(store):
 @contextmanager
 def locked(store):
     store = Path(store).resolve(); store.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with (store / '.lock').open('a') as file:
-        fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock((store / '.lock')) as file:
         yield store
 
 

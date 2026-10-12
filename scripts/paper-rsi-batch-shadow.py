@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import importlib.util
 import json
 from pathlib import Path
@@ -15,6 +14,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.trace_rsi_motif_compiler import CONFIG_FIELDS
 
 spec = importlib.util.spec_from_file_location('batch_task_base', ROOT / 'scripts/paper-rsi-generated-task.py')
@@ -204,8 +204,7 @@ def main():
         return
     lock = ROOT / '.local/paper-motif/.budget.lock'
     lock.parent.mkdir(parents=True, exist_ok=True)
-    with lock.open('a') as stream:
-        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(lock) as stream:
         task(args.case, args.phase, args.label)
 
 

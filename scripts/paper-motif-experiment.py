@@ -6,7 +6,6 @@ quality or independent human research decisions. All data remains in .local.
 from __future__ import annotations
 import argparse
 from collections import Counter
-import fcntl
 import hashlib
 import importlib.util
 import json
@@ -22,6 +21,7 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.harness_runtime import create_harness
 from src.adapters.deepseek_cost_gate import State, create_server, reservation
 from src.adapters.native_budget import NativeBudgetGuard
@@ -346,8 +346,7 @@ def main():
         print(json.dumps({'experiment_id':args.experiment_id,'scope':'protocol_diagnostic','model':'deepseek-flash',
                           'reasoning_effort':'off','cap_usd':1,'request_limit':None,'output_cap':3000,
                           'phases':['prepare','collect','compile','compare'],'paid_enabled':False}));return 0
-    with (exp.parent/'.budget.lock').open('a') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    with exclusive_lock((exp.parent/'.budget.lock')) as lock:
         if args.phase=='prepare':prepare(exp,args.private_case);return 0
         inputs=load(exp/'inputs.json')
         if args.phase=='compile':compile_library(exp);return 0

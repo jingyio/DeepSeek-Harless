@@ -3,12 +3,12 @@
 Same ten paper variants, not ten new independent tasks. Shadow only, no execute.
 """
 import argparse
-import fcntl
 import importlib.util
 import json
 import sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 spec=importlib.util.spec_from_file_location('recovery_night',ROOT/'scripts/paper-rsi-overnight.py')
 n=importlib.util.module_from_spec(spec);spec.loader.exec_module(n)
 from src.adapters.paper_query_recovery import compile_recovery_queries,validate_queries
@@ -39,8 +39,7 @@ def run(case,mode,lib=None):
     inputs,budget,query=setup();r.DELIVERY_CHECK='off' if mode=='baseline' else 'shadow';r.FLOW_SHADOW_LIBRARY=lib
     if mode=='shadow' and lib is None:raise ValueError('frozen flow library required')
     if ROOT!=Path('/root/autodl-tmp/jjy') or not r.os.environ.get('DEEPSEEK_API_KEY'):raise ValueError('real server API required')
-    with (ROOT/'.local/paper-motif/.budget.lock').open('a') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    with exclusive_lock((ROOT/'.local/paper-motif/.budget.lock')) as lock:
         m=r.run(EXP,inputs,case,mode,budget,mode+'-'+case)
     if m['status']!='completed' or not m['delivery_check_passed']:raise ValueError('preserve failed run for diagnosis')
     if mode=='shadow':n.score(EXP/'runs'/('shadow-'+case))

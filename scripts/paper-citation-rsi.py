@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
-import fcntl
 import hashlib
 import importlib.util
 import json
@@ -24,6 +23,7 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.harness_runtime import create_harness
 from src.adapters.deepseek_cost_gate import State, create_server
 from src.adapters.dsh_trajectory import extract_dsh_trace, infer_dsh_provenance, mine_witnessed_parameter_edges
@@ -438,8 +438,7 @@ def main():
     if COMPOSITE_EVIDENCE:
         expected_mode='off' if args.phase=='collect' else 'shadow' if args.mode=='shadow' else 'enforce'
         if DELIVERY_CHECK!=expected_mode: raise ValueError('composite arm and delivery-check mode must agree')
-    with (ROOT/'.local/paper-motif/.budget.lock').open('a') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    with exclusive_lock((ROOT/'.local/paper-motif/.budget.lock')) as lock:
         inputs=prepare(exp)
         if args.phase=='evaluate' and args.mode=='execute':
             shadow=json.loads((exp/'runs'/('evaluate-'+args.case+'-shadow'+args.suffix)/'metrics.json').read_text())

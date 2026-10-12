@@ -5,7 +5,6 @@ Historical shell is never executed. Independent fixtures are not sent to LLM.
 """
 from __future__ import annotations
 import argparse
-import fcntl
 import hashlib
 import importlib.util
 import json
@@ -17,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.trace_tool_evidence import (SourceReplay, bounded_read, digest, trace_run,
     counterfactuals, project_inputs, project_outputs)
 
@@ -288,8 +288,7 @@ def main():
             'cumulative_estimated_usd':prior})); return
     if not args.call_model: raise ValueError('paid_phase_requires_call_model')
     lock = ROOT/'.local/paper-motif/.budget.lock'; lock.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
-    with lock.open('a') as stream:
-        fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    with exclusive_lock(lock) as stream:
         learn(exp,args.label)
 
 if __name__=='__main__': main()

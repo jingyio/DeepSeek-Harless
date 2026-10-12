@@ -5,7 +5,6 @@ not a mined selection policy. No complete-reference-report quality claim.
 """
 from __future__ import annotations
 import argparse
-import fcntl
 import hashlib
 import importlib.util
 import json
@@ -19,6 +18,7 @@ from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.parameter_learning import advance_round, latest_round
 from src.adapters.paper_bibliography import bib_records, title_query
 def load(name, path):
@@ -154,8 +154,7 @@ def main():
               'output_cap': 8192, 'request_limit': None, 'evaluation_primary_mode': 'shadow', 'selected_mode': args.mode, 'paid_enabled': False})); return
     if not os.environ.get('DEEPSEEK_API_KEY') or not args.mode: raise ValueError('explicit mode/server API required')
     if ROOT != Path('/root/autodl-tmp/jjy'): raise ValueError('real experiment must run on the authorized server')
-    with (ROOT / '.local/paper-motif/.budget.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock((ROOT / '.local/paper-motif/.budget.lock')) as lock:
         if args.mode == 'execute':
             prior_shadow = exp / 'runs' / ('continuation-shadow' + args.suffix) / 'metrics.json'
             m = json.loads(prior_shadow.read_text())

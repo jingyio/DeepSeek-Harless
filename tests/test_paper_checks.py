@@ -72,9 +72,8 @@ def test_acm_bibitem_comment_does_not_hide_rendered_key(tmp_path):
 
 
 def test_new_experiment_id_does_not_reset_cumulative_paper_budget(tmp_path, monkeypatch):
-    # The server-only controller uses fcntl. Its accounting must include older
+    # The controller accounting must include older
     # Motif runs even when the newly selected experiment has no runs yet.
-    pytest.importorskip('fcntl')
     spec = importlib.util.spec_from_file_location('paper_budget_diagnostic',
                 Path(__file__).parents[1]/'scripts/paper-motif-experiment.py')
     experiment = importlib.util.module_from_spec(spec); spec.loader.exec_module(experiment)
@@ -96,7 +95,6 @@ def test_new_experiment_id_does_not_reset_cumulative_paper_budget(tmp_path, monk
 
 def test_booked_request_keeps_reservation_until_terminal_usage(tmp_path, monkeypatch):
     import json
-    pytest.importorskip('fcntl')
     spec = importlib.util.spec_from_file_location('pending_paper_budget',
                 Path(__file__).parents[1]/'scripts/paper-motif-experiment.py')
     experiment = importlib.util.module_from_spec(spec); spec.loader.exec_module(experiment)

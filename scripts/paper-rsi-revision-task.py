@@ -4,12 +4,14 @@ Reuses the unchanged MCP/observer/compiler. Only current data binding and
 independent acceptance differ from the preceding catalog-coverage experiment.
 """
 import argparse
-import fcntl
+import sys
 import importlib.util
 import json
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 spec=importlib.util.spec_from_file_location('revision_batch_base',ROOT/'scripts/paper-rsi-batch-shadow.py')
 batch=importlib.util.module_from_spec(spec);spec.loader.exec_module(batch)
 base=batch.base
@@ -103,7 +105,7 @@ def main():
     if args.phase=='compile':batch.compile_library(args.training);return
     if not args.label:parser.error('--label required')
     if args.phase in ('verify','score'):(verify if args.phase=='verify' else batch.score)(EXP/'runs'/args.label);return
-    with (ROOT/'.local/paper-motif/.budget.lock').open('a') as stream:
-        fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB);batch.task(args.case,args.phase,args.label)
+    with exclusive_lock((ROOT/'.local/paper-motif/.budget.lock')) as stream:
+        batch.task(args.case,args.phase,args.label)
 
 if __name__=='__main__':main()

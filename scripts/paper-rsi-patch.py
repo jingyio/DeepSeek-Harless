@@ -4,13 +4,13 @@ No online execute; no request-count limit; all fees use the cumulative ledger.
 import argparse
 import importlib.util
 import json
-import fcntl
 import hashlib
 import shutil
 from pathlib import Path
 import sys
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.revision_tool_evidence import build_revision_packets
 from src.adapters.report_patch_evidence import patch_cases
 from src.adapters.trace_tool_evidence import digest
@@ -116,6 +116,6 @@ def main():
           'request_limit':None,'cap_usd':legacy.rsi.load_budget_record(legacy.AUTH)['cap_usd'],'cumulative_estimated_usd':prior,'mode':'generation_then_frozen_shadow_and_execute'}));return
     if args.phase=='prepare':prepare();print('prepared from two normal sessions; no model calls');return
     if args.phase=='certify':certify(args.label);return
-    with (ROOT/'.local/paper-motif/.budget.lock').open('a') as f:
-        fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB);learn(args.label,args.repair_from)
+    with exclusive_lock((ROOT/'.local/paper-motif/.budget.lock')) as f:
+        learn(args.label,args.repair_from)
 if __name__=='__main__':main()

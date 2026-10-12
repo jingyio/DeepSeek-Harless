@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import copy
-import fcntl
 import hashlib
 import importlib.util
 import json
@@ -21,6 +20,7 @@ import threading
 import time
 from uuid import uuid4
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 from src.adapters.harness_runtime import create_harness
 from src.adapters.deepseek_cost_gate import State,create_server
 def module(name,path):
@@ -228,8 +228,7 @@ def main():
     if a.phase=='compile':compile_shadow();return
     if not a.call_model:raise ValueError('paid phase requires --call-model')
     lock=ROOT/'.local/paper-motif/.budget.lock';lock.parent.mkdir(parents=True,exist_ok=True)
-    with lock.open('a') as f:
-        fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    with exclusive_lock(lock) as f:
         if a.phase=='learn':learn(a.label)
         else:task(a.case,a.phase,a.label)
 if __name__=='__main__':main()

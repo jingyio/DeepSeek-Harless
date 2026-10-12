@@ -4,7 +4,6 @@ Ten tasks are variants of ONE private paper. No execution arm. Defaults preview.
 Baselines alone train the frozen library; new tasks are scored before inclusion.
 """
 import argparse
-import fcntl
 import json
 import re
 import shutil
@@ -12,6 +11,7 @@ import sys
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+from src.adapters.file_lock import exclusive_lock
 import importlib.util
 spec=importlib.util.spec_from_file_location('overnight_citation',ROOT/'scripts/paper-citation-rsi.py')
 rsi=importlib.util.module_from_spec(spec);spec.loader.exec_module(rsi)
@@ -126,8 +126,7 @@ def main():
     if a.phase=='shadow':
         if not a.library or not a.library.resolve().is_relative_to((EXP/'libraries').resolve()):raise ValueError('frozen private library required')
         rsi.FLOW_SHADOW_LIBRARY=a.library
-    with (ROOT/'.local/paper-motif/.budget.lock').open('a') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    with exclusive_lock((ROOT/'.local/paper-motif/.budget.lock')) as lock:
         result=rsi.run(EXP,inputs,a.case,'baseline' if a.phase=='baseline' else 'shadow',budget,a.phase+'-'+a.case)
     if result['status']!='completed' or not result['delivery_check_passed']:raise ValueError('preserve failed run; diagnose before proceeding')
     if a.phase=='shadow':print(json.dumps(score(EXP/'runs'/('shadow-'+a.case))))
