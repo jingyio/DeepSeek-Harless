@@ -17,9 +17,10 @@ def test_junit_errors_are_readable_and_cannot_inject_workflow_commands(tmp_path,
     </testsuite></testsuites>''', encoding='utf-8')
     module.annotate(path)
     lines = capsys.readouterr().out.splitlines()
-    assert len(lines) == 2
-    assert 'controller.fails%0AAssertionError%0A::warning::100%25 diagnostic' in lines[0]
-    assert 'module.imports%0AImportError' in lines[1]
+    assert len(lines) == 3
+    assert '2 failed tests' in lines[0] and 'controller.fails' in lines[0] and 'module.imports' in lines[0]
+    assert 'controller.fails%0AAssertionError%0A::warning::100%25 diagnostic' in lines[1]
+    assert 'module.imports%0AImportError' in lines[2]
 
 
 def test_missing_python_report_does_not_hide_a_node_failure(tmp_path, capsys):

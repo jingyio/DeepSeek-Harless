@@ -16,10 +16,21 @@ def annotate(path):
     if path.stat().st_size > 32_000_000:
         raise ValueError('CI result file exceeds diagnostic bound')
     root = ET.fromstring(path.read_bytes())
+    entries = []
     for case in root.iter('testcase'):
         for error in list(case.findall('error')) + list(case.findall('failure')):
             identity = case.get('classname', '') + '.' + case.get('name', '')
-            text = identity + '\n' + (error.text or error.get('message', ''))
+            body = error.text or error.get('message', '')
+            entries.append((identity, body))
+    if entries:
+        # A single index exposes all failures even when individual annotations
+        # are capped by the provider. Detailed diagnostics remain in the log.
+        index = '\n'.join(identity + ': ' + next((s.strip() for s in body.splitlines() if s.strip()), '')[:200]
+                          for identity, body in entries)
+        index = index.encode('utf-8')[:40000].decode('utf-8', errors='ignore')
+        print('::error title=Offline failures index::' + escape(str(len(entries)) + ' failed tests\n' + index))
+    for identity, body in entries[:9]:
+            text = identity + '\n' + body
             if len(text) > 6000:
                 text = text[:3000] + '\n[exception summary truncated]\n' + text[-3000:]
             print('::error title=Offline test failed::' + escape(text))

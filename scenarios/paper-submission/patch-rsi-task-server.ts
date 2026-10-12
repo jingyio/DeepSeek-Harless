@@ -1,5 +1,6 @@
 /** Opt-in compact write interface; original report-write MCP stays unchanged. */
-import {appendFileSync,constants,closeSync,openSync,writeFileSync,fstatSync,ftruncateSync} from 'node:fs';
+import {appendFileSync,constants,closeSync,openSync,writeFileSync,fstatSync,lstatSync,renameSync,rmSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createInterface} from 'node:readline';
@@ -35,13 +36,24 @@ export function createPatchRsiTaskTools(config:any) {
     const checked=original.call(config.check_name,{input_id:state.input_id});
     const markdown=renderRevisionMarkdown(state.input.before_report,state.report,checked.output);
     const path=join(config.work,'revision-report.md');
-    const fd=openSync(path,constants.O_WRONLY|constants.O_CREAT|(constants.O_NOFOLLOW??0),0o600);
     try {
-      const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1)throw Error('export_must_be_private_regular_file');
-      writeFileSync(fd,markdown);ftruncateSync(fd,Buffer.byteLength(markdown));
-    }finally{closeSync(fd);}
-    const after=original.call('read_task_state',{});
-    if(after.report_sha256!==state.report_sha256)throw Error('report_changed_during_export');
+      const stat=lstatSync(path);
+      if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)throw Error('export_must_be_private_regular_file');
+    } catch(error:any) {if(error.code!=='ENOENT')throw error;}
+    const temp=join(config.work,'.revision-report-'+randomUUID()+'.tmp');
+    let created=false;
+    try {
+      const fd=openSync(temp,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL,0o600);created=true;
+      try {
+        const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1)throw Error('export_must_be_private_regular_file');
+        writeFileSync(fd,markdown);
+      }finally{closeSync(fd);}
+      const after=original.call('read_task_state',{});
+      if(after.report_sha256!==state.report_sha256)throw Error('report_changed_during_export');
+      // Rename replaces a destination link itself; it never writes its target,
+      // including platforms without O_NOFOLLOW and a link introduced mid-write.
+      renameSync(temp,path);
+    }finally{if(created)rmSync(temp,{force:true});}
     const {report,input,...receipt}=state;
     return {...receipt,artifact_name:'revision-report.md',artifact_sha256:sha256(Buffer.from(markdown)),
       scope:'structural_revision_not_full_bibliography_verification',output:revisionExportOutput(checked.output,config.export_result_protocol)};

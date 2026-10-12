@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,writeFileSync,symlinkSync,linkSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,writeFileSync,symlinkSync,linkSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
@@ -73,6 +73,12 @@ test('compact MCP preserves fields, checks current receipts and exports complete
  assert.throws(()=>f.tools.call('export_revision_report',{input_id:read.input_id}),/stale_export/);
  const artifact=f.tools.call('export_revision_report',{input_id:written.input_id});
  assert.equal(artifact.artifact_sha256,sha256(readFileSync(join(f.work,artifact.artifact_name))));
+ const text=readFileSync(join(f.work,artifact.artifact_name),'utf8');
+ writeFileSync(join(f.work,artifact.artifact_name),'old content that must be completely replaced');
+ const reexport=f.tools.call('export_revision_report',{input_id:written.input_id});
+ assert.equal(readFileSync(join(f.work,reexport.artifact_name),'utf8'),text);
+ assert.equal(reexport.artifact_sha256,artifact.artifact_sha256);
+ assert.ok(!readdirSync(f.work).some(n=>n.endsWith('.tmp')));
  const after=JSON.parse(readFileSync(join(f.work,'triage.json')));assert.deepEqual(after,{...f.report,references:[{...f.report.references[0],arxiv_id:'new'}]});
  assert.ok(readFileSync(join(f.work,'revision-report.md'),'utf8').includes(JSON.stringify(after,null,2)));
  assert.throws(()=>f.tools.call('write_report',{report_sha256:written.report_sha256,report:after}),/not_enabled/);

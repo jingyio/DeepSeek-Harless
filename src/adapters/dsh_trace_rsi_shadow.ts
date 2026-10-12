@@ -1,6 +1,6 @@
 /** Trace-compiled local continuation prediction. No tool execution or LLM edits. */
 import { closeSync, constants, existsSync, lstatSync, openSync, realpathSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attachMotifInterceptor } from './dsh_online_motif.mjs';
 import { canonical, digest } from './paper_rsi_program.ts';
@@ -82,7 +82,7 @@ function validateConfig(config:any):void {
   for(const suffix of ['scenarios/paper-submission/trace-rsi-task-server.ts','src/adapters/trace_rsi_program.ts','src/adapters/paper_rsi_program.ts'])
     if(!Object.keys(config.code_files).some(path=>path.replace(/\\/g,'/').endsWith(suffix)))throw Error('trace_shadow_code_bindings_required');
   const catalog=resolve(config.catalog_path);
-  if(!catalog.endsWith('/catalog.json')||config.source_files[catalog]!==config.catalog_sha256)throw Error('trace_shadow_catalog_binding_required');
+  if(basename(catalog)!=='catalog.json'||config.source_files[catalog]!==config.catalog_sha256)throw Error('trace_shadow_catalog_binding_required');
 }
 function filesCurrent(config:any):boolean {
   try {
