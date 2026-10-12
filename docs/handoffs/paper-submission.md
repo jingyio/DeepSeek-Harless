@@ -1,6 +1,7 @@
 # 论文生成与投稿场景当前交接
 
 - 2026-10-12阶段保存：`52cb0f4`已推送origin/feature/paper-submission，当前V6及此前论文/公共适配代码已保存；其他同学场景/参考PDF未纳入。该快照Ubuntu CI通过、Windows收集因fcntl失败。新增统一跨平台锁与控制器导入/竞争测试，本地385 Python/213 Node通过；远端新CI待确认，见[修复记录](../experiments/windows-rsi-lock-20261012-v1.md)。完整论文优先：私有副本已免费编译成功，参考文献表34条、Bib315条；有重复标签与未解析nocite placeholder，尚无新付费调用，累计7.96362748/10美元不变。
+- 最新Windows修复：`a18660a`已推送，fcntl收集问题消除，远端Ubuntu通过、Windows5项路径断言失败；当前又修复native/parameter轨迹的Windows/POSIX词法路径绑定和预算path序列化。本地400 Python/213 Node通过，新增外部路径拒绝及CI失败摘要注释，不降低原断言；新CI确认前不宣布Windows验收、不开始付费长流程。锁/路径代码新增版本注册，旧库按各自归档复核。
 
 ## 当前：V6导出收据与费用优化完成（2026-10-12 08:48，Codex）
 

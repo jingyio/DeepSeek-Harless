@@ -120,7 +120,7 @@ def load_budget_record(path):
     cap = record.get('cap_usd') if isinstance(record, dict) else None
     if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not math.isfinite(cap) or cap <= 0:
         raise ValueError('budget cap must be finite and positive')
-    return {'path':str(path.resolve().relative_to(ROOT.resolve())),
+    return {'path':path.resolve().relative_to(ROOT.resolve()).as_posix(),
             'sha256':hashlib.sha256(content).hexdigest(), 'record':record, 'cap_usd':cap}
 
 

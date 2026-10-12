@@ -10,6 +10,7 @@ import re
 from urllib.parse import urlsplit, parse_qsl
 
 from .native_motif_compiler import digest, jsonl, root_events
+from .trace_paths import relative_trace_path
 
 
 def compile_parameter_library(exp: Path):
@@ -92,13 +93,12 @@ def compile_parameter_runs(runs, *, source_experiment, legacy_root=None):
                 dependency = None
                 if call['name'] == 'read' and set(args) == {'file_path'}:
                     path = args['file_path']
-                    prefix = ('/root/autodl-tmp/jjy/' + str(run.relative_to(legacy_root.parents[2])) + '/work/'
-                              if legacy_root is not None else str(run / 'work') + '/')
-                    # Permit copied server evidence without changing the old compiler.
-                    if path.startswith(prefix):
-                        path = path[len(prefix):]
-                    elif path.startswith(str(run / 'work') + '/'):
-                        path = path[len(str(run / 'work')) + 1:]
+                    roots = [(run / 'work').as_posix()]
+                    if legacy_root is not None:
+                        roots.append('/root/autodl-tmp/jjy/' + run.relative_to(legacy_root.parents[2]).as_posix() + '/work')
+                    # A copied POSIX trace and a native Windows trace keep their
+                    # own path flavor. Only in-root paths become dependency keys.
+                    path = relative_trace_path(path, roots, allow_relative=True)
                     snap = versions.get((cfg['session_id'], call['callId']))
                     if snap and snap.get('complete') and path in snap['files']:
                         dependency = {'path': path, 'sha256': snap['files'][path]}

@@ -138,7 +138,7 @@ def run(exp, source, index, mode, cap_usd=1):
             'dsh_version':json.loads((ROOT/'node_modules/@deepseek-ai/dsh/package.json').read_text())['version'],
             'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             'dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True)),
-            'code_sha256':{str(p.relative_to(ROOT)):sha(p) for p in [Path(__file__),ROOT/'scripts/paper-motif-experiment.py',ROOT/'src/adapters/harness_runtime.py',ROOT/'src/adapters/deepseek_cost_gate.py',ROOT/'src/adapters/native_motif_compiler.py',ROOT/'src/adapters/dsh_native_motif.ts',ROOT/'src/adapters/dsh_online_motif.mjs',ROOT/'src/motif_core/online_skill_runtime.mjs',ROOT/'package-lock.json']},
+            'code_sha256':{str(p.relative_to(ROOT)):sha(p) for p in [Path(__file__),ROOT/'scripts/paper-motif-experiment.py',ROOT/'src/adapters/file_lock.py',ROOT/'src/adapters/trace_paths.py',ROOT/'src/adapters/harness_runtime.py',ROOT/'src/adapters/deepseek_cost_gate.py',ROOT/'src/adapters/native_motif_compiler.py',ROOT/'src/adapters/dsh_native_motif.ts',ROOT/'src/adapters/dsh_online_motif.mjs',ROOT/'src/motif_core/online_skill_runtime.mjs',ROOT/'package-lock.json']},
             'native_manifest_sha256':sha(exp/'native-motifs.json') if mode=='execute' else None}
     save(out/'manifest.json',config)
     class RecordedState(State):

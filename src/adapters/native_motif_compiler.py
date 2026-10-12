@@ -7,23 +7,36 @@ from __future__ import annotations
 from collections import defaultdict
 import hashlib
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import shlex
+from .trace_paths import relative_trace_path
 
 def digest(value):
     return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
 
 def normal(value, work):
-    if isinstance(value,str):return value.replace(str(work),'${WORK}')
+    roots = [str(work), work.as_posix()]
+    if isinstance(value,str):
+        for root in dict.fromkeys(roots):
+            value=value.replace(root,'${WORK}')
+        return value
     if isinstance(value,list):return [normal(x,work) for x in value]
-    if isinstance(value,dict):return {k:normal(v,work) for k,v in value.items() if k!='description'}
+    if isinstance(value,dict):
+        result={}
+        for k,v in value.items():
+            if k=='description':continue
+            if k in {'file_path','workdir'} and isinstance(v,str):
+                relative=relative_trace_path(v,roots)
+                result[k]=('${WORK}' if relative=='.' else '${WORK}/'+relative) if relative is not None else v
+            else:result[k]=normal(v,work)
+        return result
     return value
 
 def local_path(value,cwd='.'):
     if value.startswith('${WORK}'):cwd='.'
     value=value.replace('${WORK}/','').replace('${WORK}','.')
-    if value.startswith('/') or '..' in PurePosixPath(value).parts or any(c in value for c in '*?[]$`\n\x00'):
+    if PureWindowsPath(value).anchor or '\\' in value or value.startswith('/') or '..' in PurePosixPath(value).parts or any(c in value for c in '*?[]$`\n\x00'):
         raise ValueError('unbounded or external native path')
     return str(PurePosixPath(cwd)/value)
 
