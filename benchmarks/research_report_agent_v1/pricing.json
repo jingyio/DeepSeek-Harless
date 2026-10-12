@@ -1,0 +1,11 @@
+{
+  "model": "deepseek-flash",
+  "currency": "CNY",
+  "unit": "per_million_tokens",
+  "peak": {"input_miss": 2.0, "input_hit": 0.04, "output": 8.0},
+  "offpeak": {"input_miss": 1.0, "input_hit": 0.02, "output": 4.0},
+  "budget_policy": "Reserve and settle against peak upper bound; offpeak estimate is supplemental, not a provider invoice.",
+  "peak_schedule": "Asia/Shanghai non-holiday Monday-Friday 09:00-12:00 and 14:00-18:00",
+  "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/?helper=penn",
+  "retrieved_date": "2026-10-10"
+}

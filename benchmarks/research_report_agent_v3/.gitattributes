@@ -1,0 +1,8 @@
+# Preserve frozen experiment bytes, including original mixed line endings.
+compile_motifs.py -text
+intake.py -text
+motif_plugin.mjs -text
+motif_plugin.ts -text
+review/evidence_io.py -text
+review/library_witnesses.py -text
+runner.py -text
