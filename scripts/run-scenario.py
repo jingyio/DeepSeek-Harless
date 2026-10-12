@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--embedding-endpoint')
     parser.add_argument('--embedding-model')
     parser.add_argument('--model', choices=['deepseek-flash', 'deepseek-pro'], default='deepseek-flash')
-    parser.add_argument('--budget-usd', type=float, default=0.25)
+    parser.add_argument('--budget-usd', type=float, default=1.0)
     parser.add_argument('--max-output', type=int, default=3000)
     parser.add_argument('--max-steps', type=int, default=16)
     parser.add_argument('--call-model', action='store_true')

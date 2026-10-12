@@ -159,7 +159,7 @@ def next_fixture_action(values, event_id):
                   'source_versions': {key: reads[key]['version_sha256'] for key in sorted(reads)}}
 
 
-def provider_handler(event_id):
+def provider_handler(event_id, *, with_usage=False, request_limit=24):
     class LocalFixtureProvider(BaseHTTPRequestHandler):
         calls = []
         embedding_calls = 0
@@ -184,7 +184,7 @@ def provider_handler(event_id):
                 answer = json.dumps(data).encode()
                 self.send_response(200); self.send_header('Content-Type', 'application/json')
             elif self.path == '/v1/chat/completions':
-                if len(self.calls) >= 24:
+                if len(self.calls) >= request_limit:
                     raise ValueError('local fixture request limit reached')
                 self.calls.append(body)
                 tool, args = next_fixture_action(tool_observations(body['messages']), event_id)
@@ -197,6 +197,10 @@ def provider_handler(event_id):
                 base = {'id': 'fixture', 'created': 1, 'model': body['model'], 'object': 'chat.completion.chunk'}
                 chunks = [{**base, 'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}]},
                           {**base, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls' if tool else 'stop'}]}]
+                if with_usage:
+                    chunks.append({**base, 'choices': [], 'usage': {'prompt_tokens': 100,
+                        'prompt_cache_hit_tokens': 0, 'prompt_cache_miss_tokens': 100,
+                        'completion_tokens': 20, 'total_tokens': 120}})
                 answer = (''.join('data: ' + json.dumps(chunk) + '\n\n' for chunk in chunks) + 'data: [DONE]\n\n').encode()
                 self.send_response(200); self.send_header('Content-Type', 'text/event-stream')
             else:

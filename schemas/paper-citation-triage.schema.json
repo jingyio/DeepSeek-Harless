@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["scope", "citation_issues", "references"],
+  "properties": {
+    "scope": {"type": "string", "enum": ["cited_arxiv_version_triage"]},
+    "citation_issues": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["kind", "keys", "explanation"],
+        "properties": {
+          "kind": {"type": "string"},
+          "keys": {"type": "array", "items": {"type": "string"}},
+          "explanation": {"type": "string"}
+        }
+      }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "arxiv_id", "source_urls", "evidence_status", "status", "priority", "differences", "formal_version", "next_action"],
+        "properties": {
+          "key": {"type": "string"}, "arxiv_id": {"type": "string"},
+          "source_urls": {"type": "array", "items": {"type": "string"}},
+          "evidence_status": {"type": "string", "enum": ["已获取", "获取失败"]},
+          "status": {"type": "string", "enum": ["已确认", "已确认但需修正", "存疑", "待进一步核验"]},
+          "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3", "—"]},
+          "differences": {"type": "array", "items": {"type": "string"}},
+          "formal_version": {"type": "string", "enum": ["权威已核对", "发现线索待核对", "未发现线索", "来源获取失败"]},
+          "next_action": {"type": "string"}
+        }
+      }
+    }
+  }
+}

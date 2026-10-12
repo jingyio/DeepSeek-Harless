@@ -1,0 +1,585 @@
+{
+  "schema_version": 1,
+  "name": "build_revision_patch",
+  "description": "由正常修订轨迹生成的局部计划转换：ID替换、等价重复去除、指定key移除与最小占位追加。",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "plan": {
+        "type": "object",
+        "properties": {
+          "add_records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "arxiv_id": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "arxiv_id",
+                "key",
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          },
+          "keep_once_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2000
+          },
+          "remove_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2000
+          },
+          "set_ids": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "arxiv_id": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "arxiv_id",
+                "key"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          }
+        },
+        "required": [
+          "add_records",
+          "keep_once_keys",
+          "remove_keys",
+          "set_ids"
+        ],
+        "additionalProperties": false
+      },
+      "rows": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id_path": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id_path",
+            "key",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 2000
+      },
+      "rows_reverse": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id_path": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id_path",
+            "key",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 2000
+      }
+    },
+    "required": [
+      "plan",
+      "rows",
+      "rows_reverse"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "additions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "arxiv_id": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "arxiv_id",
+            "key",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 2000
+      },
+      "removals": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 2000
+      },
+      "replacements": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 2000
+      }
+    },
+    "required": [
+      "additions",
+      "removals",
+      "replacements"
+    ],
+    "additionalProperties": false
+  },
+  "program": [
+    "let",
+    "plan",
+    [
+      "get",
+      [
+        "var",
+        "input"
+      ],
+      [
+        "lit",
+        "plan"
+      ]
+    ],
+    [
+      "let",
+      "rows",
+      [
+        "get",
+        [
+          "var",
+          "input"
+        ],
+        [
+          "lit",
+          "rows"
+        ]
+      ],
+      [
+        "let",
+        "rowsRev",
+        [
+          "get",
+          [
+            "var",
+            "input"
+          ],
+          [
+            "lit",
+            "rows_reverse"
+          ]
+        ],
+        [
+          "let",
+          "setIds",
+          [
+            "get",
+            [
+              "var",
+              "plan"
+            ],
+            [
+              "lit",
+              "set_ids"
+            ]
+          ],
+          [
+            "let",
+            "keepOnce",
+            [
+              "get",
+              [
+                "var",
+                "plan"
+              ],
+              [
+                "lit",
+                "keep_once_keys"
+              ]
+            ],
+            [
+              "let",
+              "removeKeys",
+              [
+                "get",
+                [
+                  "var",
+                  "plan"
+                ],
+                [
+                  "lit",
+                  "remove_keys"
+                ]
+              ],
+              [
+                "object",
+                {
+                  "additions": [
+                    "get",
+                    [
+                      "var",
+                      "plan"
+                    ],
+                    [
+                      "lit",
+                      "add_records"
+                    ]
+                  ],
+                  "replacements": [
+                    "map",
+                    [
+                      "filter",
+                      [
+                        "var",
+                        "rows"
+                      ],
+                      "r",
+                      [
+                        "gt",
+                        [
+                          "count",
+                          [
+                            "filter",
+                            [
+                              "var",
+                              "setIds"
+                            ],
+                            "s",
+                            [
+                              "eq",
+                              [
+                                "get",
+                                [
+                                  "var",
+                                  "s"
+                                ],
+                                [
+                                  "lit",
+                                  "key"
+                                ]
+                              ],
+                              [
+                                "get",
+                                [
+                                  "var",
+                                  "r"
+                                ],
+                                [
+                                  "lit",
+                                  "key"
+                                ]
+                              ]
+                            ]
+                          ]
+                        ],
+                        [
+                          "lit",
+                          0
+                        ]
+                      ]
+                    ],
+                    "r",
+                    [
+                      "object",
+                      {
+                        "path": [
+                          "get",
+                          [
+                            "var",
+                            "r"
+                          ],
+                          [
+                            "lit",
+                            "id_path"
+                          ]
+                        ],
+                        "value": [
+                          "get",
+                          [
+                            "at",
+                            [
+                              "filter",
+                              [
+                                "var",
+                                "setIds"
+                              ],
+                              "s2",
+                              [
+                                "eq",
+                                [
+                                  "get",
+                                  [
+                                    "var",
+                                    "s2"
+                                  ],
+                                  [
+                                    "lit",
+                                    "key"
+                                  ]
+                                ],
+                                [
+                                  "get",
+                                  [
+                                    "var",
+                                    "r"
+                                  ],
+                                  [
+                                    "lit",
+                                    "key"
+                                  ]
+                                ]
+                              ]
+                            ],
+                            [
+                              "lit",
+                              0
+                            ]
+                          ],
+                          [
+                            "lit",
+                            "arxiv_id"
+                          ]
+                        ]
+                      }
+                    ]
+                  ],
+                  "removals": [
+                    "map",
+                    [
+                      "filter",
+                      [
+                        "var",
+                        "rowsRev"
+                      ],
+                      "rr",
+                      [
+                        "or",
+                        [
+                          "gt",
+                          [
+                            "count",
+                            [
+                              "filter",
+                              [
+                                "var",
+                                "removeKeys"
+                              ],
+                              "rk",
+                              [
+                                "eq",
+                                [
+                                  "var",
+                                  "rk"
+                                ],
+                                [
+                                  "get",
+                                  [
+                                    "var",
+                                    "rr"
+                                  ],
+                                  [
+                                    "lit",
+                                    "key"
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ],
+                          [
+                            "lit",
+                            0
+                          ]
+                        ],
+                        [
+                          "and",
+                          [
+                            "gt",
+                            [
+                              "count",
+                              [
+                                "filter",
+                                [
+                                  "var",
+                                  "keepOnce"
+                                ],
+                                "kk",
+                                [
+                                  "eq",
+                                  [
+                                    "var",
+                                    "kk"
+                                  ],
+                                  [
+                                    "get",
+                                    [
+                                      "var",
+                                      "rr"
+                                    ],
+                                    [
+                                      "lit",
+                                      "key"
+                                    ]
+                                  ]
+                                ]
+                              ]
+                            ],
+                            [
+                              "lit",
+                              0
+                            ]
+                          ],
+                          [
+                            "not",
+                            [
+                              "eq",
+                              [
+                                "get",
+                                [
+                                  "var",
+                                  "rr"
+                                ],
+                                [
+                                  "lit",
+                                  "path"
+                                ]
+                              ],
+                              [
+                                "get",
+                                [
+                                  "at",
+                                  [
+                                    "filter",
+                                    [
+                                      "var",
+                                      "rows"
+                                    ],
+                                    "r2",
+                                    [
+                                      "eq",
+                                      [
+                                        "get",
+                                        [
+                                          "var",
+                                          "r2"
+                                        ],
+                                        [
+                                          "lit",
+                                          "key"
+                                        ]
+                                      ],
+                                      [
+                                        "get",
+                                        [
+                                          "var",
+                                          "rr"
+                                        ],
+                                        [
+                                          "lit",
+                                          "key"
+                                        ]
+                                      ]
+                                    ]
+                                  ],
+                                  [
+                                    "lit",
+                                    0
+                                  ]
+                                ],
+                                [
+                                  "lit",
+                                  "path"
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ],
+                    "x",
+                    [
+                      "get",
+                      [
+                        "var",
+                        "x"
+                      ],
+                      [
+                        "lit",
+                        "path"
+                      ]
+                    ]
+                  ]
+                }
+              ]
+            ]
+          ]
+        ]
+      ]
+    ]
+  ]
+}

@@ -1,0 +1,645 @@
+{
+  "schema_version": 1,
+  "description": "模型生成代码的独立计数分支：修订前后对象数、重复key种类数及新增/移除唯一key数。",
+  "name": "revision_counts",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "before_report": {
+        "type": "object",
+        "properties": {
+          "citation_issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "explanation": {
+                  "type": "string"
+                },
+                "keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "explanation",
+                "keys",
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "arxiv_id": {
+                  "type": "string"
+                },
+                "differences": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "evidence_status": {
+                  "type": "string"
+                },
+                "formal_version": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "next_action": {
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "string"
+                },
+                "source_urls": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "status": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "arxiv_id",
+                "differences",
+                "evidence_status",
+                "formal_version",
+                "key",
+                "next_action",
+                "priority",
+                "source_urls",
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_issues",
+          "references",
+          "scope"
+        ],
+        "additionalProperties": false
+      },
+      "after_report": {
+        "type": "object",
+        "properties": {
+          "citation_issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "explanation": {
+                  "type": "string"
+                },
+                "keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "explanation",
+                "keys",
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          },
+          "diagnostic_note": {
+            "type": "string"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "arxiv_id": {
+                  "type": "string"
+                },
+                "differences": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "evidence_status": {
+                  "type": "string"
+                },
+                "formal_version": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "next_action": {
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "string"
+                },
+                "source_urls": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "status": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "arxiv_id",
+                "key",
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_issues",
+          "references",
+          "scope"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "after_report",
+      "before_report"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "before_count": {
+        "type": "integer"
+      },
+      "after_count": {
+        "type": "integer"
+      },
+      "before_duplicate_key_count": {
+        "type": "integer"
+      },
+      "added_key_count": {
+        "type": "integer"
+      },
+      "removed_key_count": {
+        "type": "integer"
+      },
+      "after_duplicate_key_count": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "added_key_count",
+      "after_count",
+      "before_count",
+      "before_duplicate_key_count",
+      "removed_key_count",
+      "after_duplicate_key_count"
+    ],
+    "additionalProperties": false
+  },
+  "program": [
+    "object",
+    {
+      "before_count": [
+        "count",
+        [
+          "get",
+          [
+            "get",
+            [
+              "var",
+              "input"
+            ],
+            [
+              "lit",
+              "before_report"
+            ]
+          ],
+          [
+            "lit",
+            "references"
+          ]
+        ]
+      ],
+      "after_count": [
+        "count",
+        [
+          "get",
+          [
+            "get",
+            [
+              "var",
+              "input"
+            ],
+            [
+              "lit",
+              "after_report"
+            ]
+          ],
+          [
+            "lit",
+            "references"
+          ]
+        ]
+      ],
+      "before_duplicate_key_count": [
+        "count",
+        [
+          "filter",
+          [
+            "unique",
+            [
+              "map",
+              [
+                "get",
+                [
+                  "get",
+                  [
+                    "var",
+                    "input"
+                  ],
+                  [
+                    "lit",
+                    "before_report"
+                  ]
+                ],
+                [
+                  "lit",
+                  "references"
+                ]
+              ],
+              "r",
+              [
+                "get",
+                [
+                  "var",
+                  "r"
+                ],
+                [
+                  "lit",
+                  "key"
+                ]
+              ]
+            ]
+          ],
+          "k",
+          [
+            "gt",
+            [
+              "count",
+              [
+                "filter",
+                [
+                  "map",
+                  [
+                    "get",
+                    [
+                      "get",
+                      [
+                        "var",
+                        "input"
+                      ],
+                      [
+                        "lit",
+                        "before_report"
+                      ]
+                    ],
+                    [
+                      "lit",
+                      "references"
+                    ]
+                  ],
+                  "r",
+                  [
+                    "get",
+                    [
+                      "var",
+                      "r"
+                    ],
+                    [
+                      "lit",
+                      "key"
+                    ]
+                  ]
+                ],
+                "x",
+                [
+                  "eq",
+                  [
+                    "var",
+                    "x"
+                  ],
+                  [
+                    "var",
+                    "k"
+                  ]
+                ]
+              ]
+            ],
+            [
+              "lit",
+              1
+            ]
+          ]
+        ]
+      ],
+      "added_key_count": [
+        "count",
+        [
+          "difference",
+          [
+            "unique",
+            [
+              "map",
+              [
+                "get",
+                [
+                  "get",
+                  [
+                    "var",
+                    "input"
+                  ],
+                  [
+                    "lit",
+                    "after_report"
+                  ]
+                ],
+                [
+                  "lit",
+                  "references"
+                ]
+              ],
+              "r",
+              [
+                "get",
+                [
+                  "var",
+                  "r"
+                ],
+                [
+                  "lit",
+                  "key"
+                ]
+              ]
+            ]
+          ],
+          [
+            "unique",
+            [
+              "map",
+              [
+                "get",
+                [
+                  "get",
+                  [
+                    "var",
+                    "input"
+                  ],
+                  [
+                    "lit",
+                    "before_report"
+                  ]
+                ],
+                [
+                  "lit",
+                  "references"
+                ]
+              ],
+              "r",
+              [
+                "get",
+                [
+                  "var",
+                  "r"
+                ],
+                [
+                  "lit",
+                  "key"
+                ]
+              ]
+            ]
+          ]
+        ]
+      ],
+      "removed_key_count": [
+        "count",
+        [
+          "difference",
+          [
+            "unique",
+            [
+              "map",
+              [
+                "get",
+                [
+                  "get",
+                  [
+                    "var",
+                    "input"
+                  ],
+                  [
+                    "lit",
+                    "before_report"
+                  ]
+                ],
+                [
+                  "lit",
+                  "references"
+                ]
+              ],
+              "r",
+              [
+                "get",
+                [
+                  "var",
+                  "r"
+                ],
+                [
+                  "lit",
+                  "key"
+                ]
+              ]
+            ]
+          ],
+          [
+            "unique",
+            [
+              "map",
+              [
+                "get",
+                [
+                  "get",
+                  [
+                    "var",
+                    "input"
+                  ],
+                  [
+                    "lit",
+                    "after_report"
+                  ]
+                ],
+                [
+                  "lit",
+                  "references"
+                ]
+              ],
+              "r",
+              [
+                "get",
+                [
+                  "var",
+                  "r"
+                ],
+                [
+                  "lit",
+                  "key"
+                ]
+              ]
+            ]
+          ]
+        ]
+      ],
+      "after_duplicate_key_count": [
+        "count",
+        [
+          "filter",
+          [
+            "unique",
+            [
+              "map",
+              [
+                "get",
+                [
+                  "get",
+                  [
+                    "var",
+                    "input"
+                  ],
+                  [
+                    "lit",
+                    "after_report"
+                  ]
+                ],
+                [
+                  "lit",
+                  "references"
+                ]
+              ],
+              "r",
+              [
+                "get",
+                [
+                  "var",
+                  "r"
+                ],
+                [
+                  "lit",
+                  "key"
+                ]
+              ]
+            ]
+          ],
+          "k",
+          [
+            "gt",
+            [
+              "count",
+              [
+                "filter",
+                [
+                  "map",
+                  [
+                    "get",
+                    [
+                      "get",
+                      [
+                        "var",
+                        "input"
+                      ],
+                      [
+                        "lit",
+                        "after_report"
+                      ]
+                    ],
+                    [
+                      "lit",
+                      "references"
+                    ]
+                  ],
+                  "r",
+                  [
+                    "get",
+                    [
+                      "var",
+                      "r"
+                    ],
+                    [
+                      "lit",
+                      "key"
+                    ]
+                  ]
+                ],
+                "x",
+                [
+                  "eq",
+                  [
+                    "var",
+                    "x"
+                  ],
+                  [
+                    "var",
+                    "k"
+                  ]
+                ]
+              ]
+            ],
+            [
+              "lit",
+              1
+            ]
+          ]
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "kind": "readable_summary_no_execution",
+  "experiment_id": "paper-rsi-generated-task-shadow-20261011-v3",
+  "generated_tool": "triage_catalog_coverage",
+  "scope": "同论文正常修订及故障注入，不是跨论文认证",
+  "graphs": [
+    {
+      "anchor": "mcp__paper_trace_rsi__read_task_state",
+      "next": "mcp__paper_trace_rsi__triage_catalog_coverage",
+      "parameter_binding": {
+        "input_id": "/input_id"
+      },
+      "training_session_count": 2,
+      "witness_count": 2
+    },
+    {
+      "anchor": "mcp__paper_trace_rsi__write_report",
+      "next": "mcp__paper_trace_rsi__triage_catalog_coverage",
+      "parameter_binding": {
+        "input_id": "/input_id"
+      },
+      "training_session_count": 2,
+      "witness_count": 2
+    }
+  ],
+  "evaluation": {
+    "actual_requests": 12,
+    "matching_local_operation": 4,
+    "strict_whole_request": 0,
+    "incorrect_predictions": 2,
+    "actual_model_skips": 0
+  },
+  "limitations": [
+    "私有来源、Session、请求、见证和契约已移除，本文件不可加载为执行库。",
+    "算法由模型生成，适配器、收据、守卫和编译器属于工程基础设施。",
+    "结束状态反例仍未解决，暂停自动execute。"
+  ]
+}

@@ -20,3 +20,5 @@ experiments/results/
 office/papers/inbox/
 office/papers/archive/
 office/papers/notes/
+# Private manuscript archives stay at their original input location.
+/benchmarks/paper check/*.zip
