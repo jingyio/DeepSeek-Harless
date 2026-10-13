@@ -86,6 +86,7 @@ export function apply(ctx: any) {
   function executeUnavailable(scene: Scene): string | null {
     if (scene.unavailable_reason) return scene.unavailable_reason;
     if (!scene.manifest || !scene.task) return 'no_certified_library';
+    if (!scene.diagnostic && !scene.certified_tool_schemas) return 'no_certified_tool_schemas';
     if (!scene.embedding_endpoint) return 'no_embedding_service';
     if (!/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
     try {
@@ -316,6 +317,8 @@ export function apply(ctx: any) {
     if (tools.length !== scene.allowed_tools.length || tools.some((tool: any) => !scene.allowed_tools.includes(tool.name)))
       throw new TaskError('scene_tools_unavailable', 'Configured MCP tool surface did not load', 409);
     if (request.mode === 'execute') {
+      if (scene.certified_tool_schemas && digest(tools) !== digest(scene.certified_tool_schemas))
+        throw new TaskError('execute_unavailable', 'certified_tool_schema_mismatch', 409);
       const manifest = JSON.parse(readFileSync(scene.manifest!, 'utf8'));
       const offered = new Map(tools.map((tool: any) => [tool.name, tool]));
       if (Object.entries(manifest.contracts).some(([name, contract]) => !offeredSchemaMatches(offered, name, contract)))
@@ -348,6 +351,7 @@ export function apply(ctx: any) {
       delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
       scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
+      certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256,
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, scope_sha256: task.scope_sha256, user_id: principal,
       provider_mode: config.provider_mode, max_output_tokens: config.max_output_tokens });
     task.confirmation_digest = digest({ confirmation: task.confirmation_digest,
@@ -356,6 +360,7 @@ export function apply(ctx: any) {
     json(join(task.output, 'effective-config.json'), { ...view(task), selection: task.selection, tools: task.tools,
       scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
       instructions: task.scene.instructions, instructions_sha256: task.scene.instructions_sha256,
+      certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256, diagnostic: task.scene.diagnostic ?? false,
       allowed_tools: task.scene.allowed_tools, workspace: task.workspace, scope_sha256: task.scope_sha256,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
       budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit,
@@ -369,6 +374,8 @@ export function apply(ctx: any) {
     const availableTools = new Map(task.tools.map(tool => [tool.name, tool]));
     const pinned = (path: string, expected: string | null) => { const bytes = readFileSync(path); if (sha(bytes) !== expected) throw Error('Motif binding version changed'); return JSON.parse(bytes.toString('utf8')); };
     if (!scene.manifest || !scene.task) task.fallback_reason = 'no_certified_library';
+    else if (!scene.diagnostic && !scene.certified_tool_schemas) task.fallback_reason = 'no_certified_tool_schemas';
+    else if (scene.certified_tool_schemas && digest(task.tools) !== digest(scene.certified_tool_schemas)) task.fallback_reason = 'certified_tool_schema_mismatch';
     else if (!scene.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
     else if (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
         sha(parts[0].text.trim()) !== scene.certified_input_sha256) task.fallback_reason = 'input_not_certified_for_library';
@@ -393,6 +400,7 @@ export function apply(ctx: any) {
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
         scopeDigest(task.workspace, task.scene) !== task.scope_sha256 ||
+        (task.scene.tool_schemas && fileSha(task.scene.tool_schemas) !== task.scene.certified_tool_schemas_sha256) ||
         fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256) {
       throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
     }

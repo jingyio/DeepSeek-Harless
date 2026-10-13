@@ -5,6 +5,7 @@ export type Scene = {
   config_sha256?: string; instructions?: string;
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string;
+  diagnostic?: boolean; tool_schemas?: string; certified_tool_schemas?: any[]; certified_tool_schemas_sha256?: string;
   scenario?: string; scenario_version?: number; instructions_sha256?: string;
   unavailable_reason?: string; adapter?: 'ppt' | 'workspace';
   mcp_rows?: any[]; environment_references?: Record<string, string>;

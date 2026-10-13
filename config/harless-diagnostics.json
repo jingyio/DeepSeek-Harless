@@ -4,7 +4,8 @@
     {
       "id": "example",
       "label": "示例资料核验",
-      "scenario": "scenarios/example/scenario.json"
+      "scenario": "scenarios/example/scenario.json",
+      "diagnostic": true
     },
     {
       "id": "portfolio-v1",
@@ -14,13 +15,15 @@
       "rsi": {
         "manifest": "examples/motif-library/research-portfolio-v1/online-manifest.json",
         "task": "examples/motif-library/research-portfolio-v1/task.json"
-      }
+      },
+      "diagnostic": true
     },
     {
       "id": "portfolio-v2",
       "label": "科研决定样例 v2",
       "scenario": "scenarios/portfolio-v2/scenario.json",
-      "case": "e_state_vs_retrieval"
+      "case": "e_state_vs_retrieval",
+      "diagnostic": true
     }
   ]
 }

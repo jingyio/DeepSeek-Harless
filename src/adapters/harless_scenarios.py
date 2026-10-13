@@ -22,7 +22,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
     seen = set()
     scenes = []
     for row in definitions:
-        if (not isinstance(row, dict) or set(row) - {'id', 'label', 'scenario', 'case', 'instructions', 'rsi', 'adapter', 'unavailable_reason'} or
+        if (not isinstance(row, dict) or set(row) - {'id', 'label', 'scenario', 'case', 'instructions', 'rsi', 'adapter', 'unavailable_reason', 'diagnostic'} or
             not IDENTITY.fullmatch(row.get('id', '')) or row['id'] in seen or
             not isinstance(row.get('label'), str) or not 1 <= len(row['label']) <= 128):
             raise ValueError('invalid or duplicate scene identity')
@@ -33,6 +33,8 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 raise ValueError('unavailable scene cannot bind a substitute scenario')
             scenes.append({**scene, 'allowed_tools': [], 'unavailable_reason': row['unavailable_reason']})
             continue
+        if type(row.get('diagnostic', False)) is not bool: raise ValueError('diagnostic must be boolean')
+        scene['diagnostic'] = row.get('diagnostic', False)
         if row.get('adapter') not in (None, 'ppt', 'workspace'): raise ValueError('unsupported scene adapter')
         path = (root / row['scenario']).resolve(strict=True)
         prepared = (prepared_default if row['id'] == default_id else
@@ -53,7 +55,13 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             scene.update(instructions=instructions, instructions_sha256=hashlib.sha256(instructions.encode()).hexdigest())
         if row.get('rsi'):
             rsi = row['rsi']
-            if not isinstance(rsi, dict) or set(rsi) != {'manifest', 'task'}: raise ValueError('rsi requires manifest and task')
+            if not isinstance(rsi, dict) or not {'manifest', 'task'} <= set(rsi) or set(rsi) - {'manifest', 'task', 'tool_schemas'}: raise ValueError('rsi requires manifest and task')
+            if rsi.get('tool_schemas'):
+                schema_path = (root / rsi['tool_schemas']).resolve(strict=True)
+                tool_schemas = json.loads(schema_path.read_text(encoding='utf-8'))
+                if not isinstance(tool_schemas, list) or not tool_schemas: raise ValueError('empty certified tool schemas')
+                scene.update(tool_schemas=str(schema_path), certified_tool_schemas=tool_schemas,
+                             certified_tool_schemas_sha256=hashlib.sha256(schema_path.read_bytes()).hexdigest())
             scene.update(manifest=str((root / rsi['manifest']).resolve(strict=True)),
                          task=str((root / rsi['task']).resolve(strict=True)),
                          certified_input_sha256=hashlib.sha256(prepared['prompt'].strip().encode()).hexdigest())

@@ -11,6 +11,7 @@ const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versio
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
 async function fixture(overrides = {}) {
+  const fixtureSchemas = overrides.fixture_schemas ?? toolSchemas;
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
   const token = 'fixture-control-authority';
@@ -70,7 +71,7 @@ async function fixture(overrides = {}) {
           const guardFns = [];
           const agent = { preset: request.agentPreset, session: { id }, guards: guardFns, events: [], ctx: {
             tools: { restrict(value) { agent.allow = value; return () => {}; }, guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
-              schemas() { return structuredClone(toolSchemas.map(row => ({ ...row, name: agent.allow.allow[0] }))); } },
+              schemas() { return structuredClone(fixtureSchemas.map(row => ({ ...row, name: fixtureSchemas.length === 1 ? agent.allow.allow[0] : row.name })));  } },
             systemPrompt: { section(row) { agent.instruction = row.text; return () => {}; } },
             on() {},
           } };
@@ -466,4 +467,30 @@ test('Changed uploaded bytes invalidate the frozen task before budget activation
     assert.equal(f.controlCalls.filter(call => call.path === '/tasks/activate').length, 0);
     assert.equal(f.promptCalls.length, 0);
   } finally { await f.close(); }
+});
+
+
+test('Production Execute requires a certified whole-schema snapshot and rejects descriptor/type drift', options, async () => {
+  const manifest = new URL('../examples/motif-library/research-portfolio-v1/online-manifest.json', import.meta.url).pathname;
+  const task = new URL('../examples/motif-library/research-portfolio-v1/task.json', import.meta.url).pathname;
+  const library = JSON.parse(readFileSync(manifest));
+  const rows = Object.entries(library.contracts).map(([name, contract]) => ({ name, description: contract.description,
+    parameters: { type: 'object', properties: Object.fromEntries(contract.required_params.map(param => [param, { type: 'string' }])), required: contract.required_params } }))
+    .sort((a, b) => a.name < b.name ? -1 : 1);
+  const scene = { ...multiScenes[0], allowed_tools: rows.map(row => row.name), manifest, task,
+    embedding_endpoint: 'http://127.0.0.1:1/v1/embeddings', embedding_model: 'fixture', certified_input_sha256: 'a'.repeat(64) };
+  const f = await fixture({ scenes: [scene], fixture_schemas: rows });
+  try {
+    const missing = await f.api({ action: 'preview', request: { instruction: 'No certified full schema', mode: 'execute' } });
+    assert.equal(missing.value.error.code, 'execute_unavailable');
+    assert.match(missing.value.error.message, /no_certified_tool_schemas/);
+    assert.equal(f.registrations.size, 0);
+  } finally { await f.close(); }
+  const changed = structuredClone(rows); changed[0].description = 'Changed after certification';
+  const g = await fixture({ scenes: [{ ...scene, certified_tool_schemas: changed }], fixture_schemas: rows });
+  try {
+    const denied = await g.api({ action: 'preview', request: { instruction: 'Schema mismatch', mode: 'execute' } });
+    assert.equal(denied.value.error.code, 'execute_unavailable'); assert.match(denied.value.error.message, /certified_tool_schema_mismatch/);
+    assert.equal(g.registrations.size, 0); assert.equal(g.promptCalls.length, 0);
+  } finally { await g.close(); }
 });
