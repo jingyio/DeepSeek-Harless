@@ -62,6 +62,9 @@ def main():
                 'upstreamBrokerPort':int(policy['control_endpoint'].rsplit(':',1)[1]),
                 'adminToken':uuid4().hex}
         config_path=area/'gateway.json';config_path.write_text(json.dumps(config))
+        if os.environ.get('HARLESS_PPT_RUNTIME_BUNDLE'):
+            config['memberSceneDeployment']['libraryRoot']=os.environ['HARLESS_PPT_RUNTIME_BUNDLE']
+            config_path.write_text(json.dumps(config))
         log=(area/'gateway.log').open('w')
         child=subprocess.Popen(['node',str(ROOT/'scripts/harless_gateway.mjs'),str(config_path)],
             cwd=ROOT,env={**os.environ,'DEEPSEEK_API_KEY':'no-model-diagnostic-delegate'},stdout=log,stderr=subprocess.STDOUT)
