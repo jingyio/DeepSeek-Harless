@@ -453,3 +453,17 @@ test('Session adapter binds private presets and rejects foreign file receipts be
     assert.equal(readFileSync(join(snapshot.workspace, 'inputs', 'doc_1-alice.txt'), 'utf8'), 'AAA');
   } finally { await f.close(); }
 });
+
+test('Changed uploaded bytes invalidate the frozen task before budget activation', options, async () => {
+  const scene = { ...multiScenes[0], adapter: 'workspace', mcp_rows: [] };
+  const f = await fixture({ scenes: [scene] });
+  try {
+    const draft = await f.preview('Freeze session input');
+    const snapshot = JSON.parse(readFileSync(join(f.directory, 'tasks', draft.task_id, 'effective-config.json')));
+    writeFileSync(join(snapshot.workspace, 'inputs', 'injected.txt'), 'Unconfirmed evidence');
+    const denied = await f.submit(draft);
+    assert.equal(denied.value.error.code, 'confirmation_changed');
+    assert.equal(f.controlCalls.filter(call => call.path === '/tasks/activate').length, 0);
+    assert.equal(f.promptCalls.length, 0);
+  } finally { await f.close(); }
+});
