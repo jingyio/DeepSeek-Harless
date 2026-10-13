@@ -3,12 +3,12 @@
 ## 2026-10-13 `/harless` 场景选择首版（Codex）
 
 - 目标与范围：按已审阅计划实现原生命令和可选界面、场景/模式/RSI联动、逐任务冻结。当前一个Session绑定一个Task；下一任务新建Session并继承选择。
-- 分支/commit/工作区：独立 `codex/harless-controls`，基于远端main `b143bcc`；提交见Git历史，已推送；[PR #4](https://github.com/jingyio/DeepSeek-Harless/pull/4) 待审，尚未合并。原 `feature/paper-submission` 及全部未提交工作保留。V100只使用 `.local/validation/harless-controls-20261013-v1/` 代码快照，没有覆盖共享论文目录。
+- 分支/commit/工作区：独立 `codex/harless-controls`，基于远端main `b143bcc`；提交见Git历史，已推送；[PR #4](https://github.com/jingyio/DeepSeek-Harless/pull/4) 为本次合入main的交付记录，负责人于2026-10-13明确授权合并；最终合并状态和提交以该PR为准。原 `feature/paper-submission` 及全部未提交工作保留。V100只使用 `.local/validation/harless-controls-20261013-v1/` 代码快照，没有覆盖共享论文目录。
 - 已完成：`harless_settings.ts`、`harless_scenarios.py`、原生 `dsh_web_tasks.ts`、`harless_panel.html`/浏览器bridge；登记example/portfolio-v1/portfolio-v2，各自MCP preset。`/harless`、场景、list/status、mode、rsi on/off；无库/匹配服务时Execute不可选，Shadow记录普通回退。任务预览绑定场景、schema、指令、library/版本及确认摘要，不改上游核心。接口见 `docs/harless-controls.md`。
-- 已验证：本机与V100 `npm test` 151 Python/51 Node、smoke18题/83对象；GitHub首轮Linux CI通过，Windows在新增测试的POSIX权限位断言处失败，现改为只在POSIX检查权限位、Windows保留其余登记检查；复验结果以PR当前提交的CI为准。原有动态任务协议包含Baseline/Shadow/Execute及输入变化回退、上传/预算拒绝。原生Remote命令、场景切换后的工具快照、下一任务继承0模型调用。浏览器实测下拉框/RSI模式恢复/Execute禁用/新建任务和原生slash发现；命令提交时测试隧道断开，最终点击因预览重启需重新登录且Chrome返回ERR_BLOCKED_BY_CLIENT尚待复核（API已通过），未伪称完整浏览器命令闭环。
+- 已验证：本机与V100 `npm test` 151 Python/51 Node、smoke18题/83对象；GitHub首轮Linux CI通过，Windows在新增测试的POSIX权限位断言处失败，现改为只在POSIX检查权限位、Windows保留其余登记检查；修复提交 `e5cb56f` 的Linux/Windows共4项CI均通过（push运行38380070197、PR运行38380075943）；后续纯交接提交的检查以PR为准。原有动态任务协议包含Baseline/Shadow/Execute及输入变化回退、上传/预算拒绝。原生Remote命令、场景切换后的工具快照、下一任务继承0模型调用。浏览器实测下拉框/RSI模式恢复/Execute禁用/新建任务和原生slash发现；命令提交时测试隧道断开，最终点击因预览重启需重新登录且Chrome返回ERR_BLOCKED_BY_CLIENT尚待复核（API已通过），未伪称完整浏览器命令闭环。
 - 实验结论：`harless-controls-20261013-v1`，`docs/experiments/harless-controls-20261013-v1.md`。V100真实example/portfolio-v1均完成，15请求/20工具/0工具错误，估费0.005733756美元、账单未知；质量未盲评，真实verified skip0。没有效益结论。
 - 配置与数据：公共 `config/harless-scenes.json` 和既有场景配置；记录有效schema/输入/library摘要。私有有效配置和日志在独立验证目录的 `.local/`；本机同步 `.local/validation/controls-real.json`。没有复制密钥，服务器仅使用已有私有.env；登录URL不写公共文档。
-- 未完成与下一步：1. 私有预览登录后复核原生`/harless`弹面板，再由负责人审阅差异并决定合入main；2. 场景负责人登记自己的真实MCP/指令，独立认证适用library；3. PPT工具、自动持续学习发布、多人账号/资料隔离另做，不能把Session当作身份隔离。跨启动设置恢复、Windows尚未验。
+- 未完成与下一步：1. 私有预览登录后复核原生`/harless`弹面板；部署时在独立目录同步已合并main，核对版本后再使用统一Web入口；2. 场景负责人登记自己的真实MCP/指令，独立认证适用library；3. PPT工具、自动持续学习发布、多人账号/资料隔离另做，不能把Session当作身份隔离。跨启动设置恢复、Windows Web尚未验。
 - 权限与预算：本次测试目的真实累计上限0.06美元，已观察估费0.005733756（剩余估费上界0.054266244）；公共产品额度仍由既有启动配置提供。后续新运行必须累计旧请求/失败，不通过重启清零。免费预览及所有诊断0新增实付，没有execute真实接管或外部应用写入。
 - 回退与风险：独立分支可撤回；保留 `.local` 和旧服务。免费浏览器预览在V100专用tmux `harless-controls-preview`、3094、本机专用SSH转发；不是原私人3080正式服务。停止仅终止该会话及专用隧道，不清空数据。不提供跨用户隔离。
 
