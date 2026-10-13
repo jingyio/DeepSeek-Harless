@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import pytest
 from src.adapters.scenario import prepare_scenario, ROOT
@@ -21,7 +22,9 @@ def test_registry_builds_separate_presets_without_using_task_prompt_as_instructi
     assert scenes[1]['certified_input_sha256'] == hashlib.sha256((ROOT / 'benchmarks/research_decision_portfolio_v1/cases/l_retrieval_persistence/task.md').read_text().strip().encode()).hexdigest()
     preset = tmp_path / 'run/presets/sss-scene-portfolio-v1/agent.cordis.yml'
     assert 'research_portfolio_fixture' in preset.read_text()
-    assert (preset.stat().st_mode & 0o777) == 0o600
+    # POSIX mode bits do not describe Windows ACLs; retain the security check on POSIX.
+    if os.name == 'posix':
+        assert (preset.stat().st_mode & 0o777) == 0o600
 
 
 @pytest.mark.parametrize('change', ['version', 'duplicate', 'unsupported', 'rsi'])

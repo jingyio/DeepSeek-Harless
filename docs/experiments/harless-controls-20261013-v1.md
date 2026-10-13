@@ -17,3 +17,5 @@
 - 失败及修复：初次启动器插入配置快照时产生缩进错误，编译诊断后修复；跨场景新 Agent 创建时误先施加默认场景工具限制，原生接口报 unknown tools，改为公开 create 完成后按所选 preset 绑定，重验通过。旧无库 Execute 回归预期与新明确拒绝规则冲突，保留拒绝及 Shadow 回退两类检查。一次浏览器验收 SSH 转发断开导致 Failed to fetch；服务器仍在，专用保活隧道恢复，不能把它当作模型或场景失败。
 - 浏览器：已实际验证场景菜单、RSI Off→Baseline、On恢复Execute、Execute禁用条件和“使用此配置新建任务”；原生输入框识别 `/harless`。原生命令弹面板的最终点击尚未验收：预览重启后需要新登录，自动审批禁止打印token，已只同步私有登录文件并尝试内置浏览器安全登录（排队）；当前Chrome刷新返回ERR_BLOCKED_BY_CLIENT，没有绕过浏览器屏蔽。浏览器预览为显式免费模拟，不替代上述真实 API 记录。
 - 结论：在已测环境支持命令/面板、每会话场景选择与逐任务冻结；不支持泛化认证库、自动持续学习发布、多用户文件隔离或效益结论。下一步先让场景负责人登记真实 MCP 和工具契约，再独立认证适用库；PPT 尚无 MCP。
+
+- PR发布后的CI修订：`https://github.com/jingyio/DeepSeek-Harless/pull/4` 已创建、未合并。首次push/PR检查的Linux通过；Windows检查在 `test_harless_scenarios.py` 将POSIX `0600`权限位用于Windows上失败（150通过/1失败；push run38379055023）。Windows chmod/stat不能证明ACL隔离，现仅在POSIX保留原权限位断言，其余场景登记、preset和认证输入检查继续在两平台运行；没有删去Linux权限检查，也不宣称Windows Web/ACL已经验收。后续CI结果以PR当前提交为准。

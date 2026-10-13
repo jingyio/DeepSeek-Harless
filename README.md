@@ -66,7 +66,7 @@ npm run web -- --scenario portfolio-v1 --mode execute
 
 `text_file` 相对登记文件，启动时读取 UTF-8 内容并冻结字节 SHA-256；前端用 `inputs: [{"resource_id":"paper-notes"}]` 引用，后端核验可选期望版本后将带来源标识的文本追加给模型。修改原文件不会自动刷新本轮快照。当前登记器处理文本快照，不代表已接通 Zotero 等真实应用。
 
-三种模式由后端保存和执行。example 没有认证库，shadow/execute 会记录原因并回到正常 Harness；portfolio 的精确冻结样例可使用首发库。新题面、附件或资料版本不能沿用旧任务的认证绑定。模拟诊断中的 execute 已观察到 7 次请求、5 个结果验证通过的接管批次，不能当成真实质量或费用收益。
+三种模式由后端保存和执行。example 没有认证库，shadow 会记录原因并回到正常 Harness，execute 不可选；portfolio 的精确冻结样例可使用首发库。新题面、附件或资料版本不能沿用旧任务的认证绑定。模拟诊断中的 execute 已观察到 7 次请求、5 个结果验证通过的接管批次，不能当成真实质量或费用收益。
 
 在官方聊天输入 `/harless`，或点击右下角“场景 · 模式 · RSI”，即可打开选择面板；`/tasks` 也有场景、模式与 RSI 下拉框。支持：
 
