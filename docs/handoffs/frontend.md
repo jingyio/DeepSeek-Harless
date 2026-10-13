@@ -1,6 +1,6 @@
 # 前端接入当前科研Agent分支
 
-2026-10-13。代码分支：`feature/rsi-research-agent`，仓库 `jingyio/DeepSeek-Harless`。这是开发联调版本；提交/推送结果以分支Git记录为准。
+2026-10-13。代码分支：`feature/rsi-research-agent`，仓库 `jingyio/DeepSeek-Harless`。这是开发联调版本；源码提交 `47d9218` 已于北京时间19:46推送，下面安装命令从当前分支取得它。
 
 ## 安装与免费联调
 
@@ -9,6 +9,7 @@
 ```sh
 git fetch origin
 git switch feature/rsi-research-agent
+git pull --ff-only origin feature/rsi-research-agent
 npm ci
 npm run setup
 npm run smoke
