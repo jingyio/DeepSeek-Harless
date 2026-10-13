@@ -1,58 +1,59 @@
 # Harless 场景、模式与 RSI
 
-登录 Harness Web，在 `/harless` 原生菜单选择 Scene、Mode、RSI。菜单使用服务端目录，不再维护另一套预览场景。选择只用于后续任务；已预览、确认或运行的任务保持原配置。菜单不注册任务、不触发 LLM。原生聊天保持当前直接发送行为，任务 API 保留 preview / submit。
+在原生 `/harless` 菜单选择 Scene、Mode、RSI。选择只影响后续任务；已预览、确认、运行的任务保持冻结配置。菜单不调用模型。前端只传登记 ID 和配置值，不传服务器路径、启动命令或工具调用。
 
-| Scene ID | 实际绑定 | 当前能力 |
+| Scene ID | 后端配置 | 能力与边界 |
 | --- | --- | --- |
-| `ppt` | `scenarios/research_ppt/web-scenario.json` | 现有 TS 交付 Adapter + Python PPTService，19 个 MCP 工具；独立 Session job、批准 PDF/PPTX 来源、读取/生成/修订/验收/交付 |
-| `paper-proofreading` | 未绑定替代实现 | main 尚无论文正式后端；任务返回 `scene_not_connected` / `paper_backend_not_published_on_main` |
-| `research-data-analysis` | 未绑定替代实现 | main 尚无数据分析后端；任务返回 `scene_not_connected` / `data_analysis_backend_not_implemented` |
-| `new-scene` | `scenarios/general/scenario.json` | 普通 Harness Agent Loop，受限通用 `list_files/read_file`；只访问所属 Session 已上传文件，无样例资料、shell 或任意服务器路径 |
+| `ppt` | `scenarios/research_ppt/web-scenario.json` | 既有 19 工具 TS Adapter/Python 后端，批准 PDF/PPTX、读取、生成新副本、修订、实际渲染验收与交付 |
+| `paper-proofreading` | `scenarios/paper_proofreading/scenario.json` | 5 只读工具：PDF/文本读取与模型校对，复用论文分支 LaTeX 字面引用/标签/浮动体/已有日志检查；不编译、不查外网、不修改原稿 |
+| `research-data-analysis` | `scenarios/data_analysis/scenario.json` | 4 只读工具：真实 UTF-8 CSV/TSV 的列类型、空白缺失、描述统计、完整样本 Pearson 相关；不执行任意代码、插补、显著性或因果推断 |
+| `new-scene` | `scenarios/general/scenario.json` | 普通 Harness + `list_files/read_file`，读取本 Session 已上传的 UTF-8 文本；没有样例数据、shell 或任意主机文件能力 |
 
-PPT 未构建或缺 Python 依赖时目录返回 `ppt_adapter_not_built` / `ppt_python_dependencies_missing`。安装复用 [PPT README](../scenarios/research_ppt/README.md)。空 Session 只读初始化，不能借空来源开启输出。三个正式场景目前均没有随 main 分发的生产认证 Library；已有 PPT 私有实验库不会自动装进 Web，也不会套用 portfolio 库。
+论文平铺源码保留原文件名，最多 8 个文件；嵌套目录/动态 TeX/宏展开不作为完整校验。数据最多 100,000 行/128 列、拒绝重复列名、参差行和非有限相关输入；只把空白视为缺失。所有文件读取复核任务准入 SHA，不能通过重新 pin 接受确认后漂移的资料。
 
-| 所选 Mode | RSI | 当前任务实际策略 |
+## 模式与库
+
+| 选择 | RSI | 实际策略 |
 | --- | --- | --- |
-| Origin (`baseline`) | On / Off | 普通 Harness，不创建 Motif interceptor |
-| Shadow | On | 认证绑定适用时匹配/审计，LLM 继续执行；否则记录回退 |
-| Execute | On | 启动缺 Library、完整认证 Schema 或匹配服务时拒绝；局部输入、参数来源、版本、执行/结果守卫不合格时回退并记录 |
-| Shadow / Execute | Off | 保留选择，实际 `baseline`；再次 On 重新核验 Execute 准入 |
+| Origin (`baseline`) | On/Off | 原生 Harness；不创建 Motif interceptor |
+| Shadow | On | 合格库进行匹配审计，继续 LLM；未认证的部分记录回退 |
+| Execute | On | 启动核验库、完整有序 Schema、代码/证据绑定；结构提案须通过参数来源和版本守卫，实际工具结果通过后才计 Verified Skip |
+| Shadow/Execute | Off | 保留选择，当前任务实际 `baseline`；再次 On 重新检查准入 |
 
-`selected_mode` 是选择，响应中的 `mode` 是实际模式；RSI 是独立布尔值。生产 Execute 必须有完整的认证工具 Schema 快照；文件更改或实际 schema（含描述、参数类型）不一致会拒绝。匹配服务在 Execute 任务准入时实际探测，不用固定向量冒充生产服务。只有实际工具结果通过共享 Runtime 的验证才增加 `verified_skips`。
+PPT 通过服务器 `HARLESS_PPT_RUNTIME_BUNDLE` 加载 `online-manifest.json/library.json/tool-schemas.json/task.json/certification.json`。认证包只允许 `independent_trace_structure / structural_only / ppt_uploaded_sources_v1`。每次预览把批准输入的 SHA 与当前 Task/Session 绑定到 `bound-motif-task.json`，冻结摘要；不复用历史题面或历史 source_id。`source_id` 只能从本任务真实成功 pin 的结果绑定。
 
-## 服务端登记与配置冻结
+结构认证仅覆盖唯一闭合的 `pin_source → read_source` 读链；需要语义排名时明确交回 LLM，不提供固定向量伪装匹配服务。一般需语义匹配的历史入口仍要求实际 loopback 服务。只有整个执行批次的真实结果验证通过才增加 `verified_skips`。PPT 库尚未质量/费用晋级，机制通过不代表科研质量或稳定净降本。论文、数据分析和通用场景当前无生产认证库，Execute 明确拒绝。
 
-`config/harless-scenes.json` 是生产目录；`config/harless-diagnostics.json` 独立保存历史 example/portfolio 诊断，不出现在默认产品菜单。后者 `diagnostic:true` 保留旧契约校验及旧模拟闭环，不能当作生产认证或真实收益证据。
+管理员可用 `scripts/publish-ppt-runtime.py --dataset ... --schemas ... --output ...` 从两个独立正常轨迹及一份留出重新编译；或用 `--compiled-manifest` 对未变化且全部证据锁仍有效的认证 IR 更新部署绑定，不重新运行留出、也不改旧证书。完整实际 Harness Schema 为认证输入，不从当前任务临时凑出认证。历史 `example/portfolio` 只在 `config/harless-diagnostics.json`，不出现在产品映射。
 
-登记表顶层是 `schema_version:1`、`scenes`。可运行项包含 `id/label/scenario`，可选 `case/instructions/adapter/rsi`；缺失项只包含 `id/label/unavailable_reason`，不能同时登记替代 Scenario。Adapter 仅支持已实现的 `ppt/workspace`。`rsi` 是 `{manifest, task, tool_schemas?}`，路径由服务器管理员维护。生产 Execute 的 `tool_schemas` 必须来自独立认证时记录的完整、有序 Harness schema；不能从当前任务临时生成来补认证。历史 Library 仅有有限契约时，使用 Shadow 回退或显式历史诊断目录。
+## PPT 输出与私有依赖
 
-场景沿用 `prepare_scenario` 严格 MCP 校验、`from_env` 引用和白名单；PPT/通用模板的 `${SESSION_WORKSPACE}` 仅由服务端替换。任务复用 `dsh_web_tasks.ts` 和同一个 `createOnlineInterceptor` / `online_skill_runtime.mjs`，没有另一套 Agent 或 RSI。MCP 工具真实执行仍归 Harness。
+PPT 的原生菜单增加下一任务页数、模板、输出权限。默认 6 页、academic、只读；明确选择“允许生成 PPT 新副本”后，下一次发送仍须附批准 PDF/PPTX。发送确认只授权所属任务的新产物，不授权修改原稿。任务 API 的显式 `scene_options` 覆盖菜单值；改变菜单不改变已预览任务。`set_scene_options` 和继承 Session 均复用现有认证及隔离设置。
 
-每项任务冻结 Scene/Scenario SHA/版本、所选和实际模式、RSI、指令及摘要、实际完整有序工具 Schema、权限、Library/Manifest/任务绑定摘要、Provider/模型/输出 cap、任务及启动预算、用户/Session/Task、上传文件与 job 摘要。确认后文件/库/Schema 更改拒绝；切菜单不修改任务。预算代理沿用原有累计结算和错误恢复。
+服务器设置 `HARLESS_PPT_RENDERER_ROOT` 为固定 LibreOffice 安装根，`HARLESS_PPT_FONT_ROOT` 为固定静态字体配置目录。只在对应 MCP 子进程传递 PATH 与 Fontconfig；不改变全局 cwd/env。缺依赖时 PPT 仍能只读，输出任务明确返回 `scene_output_unavailable`。转换使用独立任务 profile 和 CPU/无界面设置，PDF/PNG/验收报告归所属任务。渲染、文字、字形、来源或产物哈希失败不标记已交付。
 
-## API 与上传
+## 用户、Session 与任务冻结
 
-`GET/POST /api/harless/settings` 仍由 Harness Connection 认证，`selection:{scene,mode,rsi}` 仅接受登记 ID 和协议值。GET 返回 `available/unavailable_reason/execute_available/execute_unavailable_reason`，不返回 MCP 命令、凭证或服务器路径。旧 `select_preview_scene` / `clear_preview_scene` 作为真实选择的兼容别名，不保存独立预览状态。
+沿用已完成的账号网关和 bwrap 隔离。管理员在私有网关配置增加 `memberSceneDeployment:{projectRoot,pythonExecutable,pythonRoots,libraryRoot?,rendererRoot?,fontRoot?}`。它只挂载只读公共代码/安装依赖和纯 Runtime 库；拒绝整个用户目录、继承凭证、原始轨迹、私人输入和任意启动命令。每名成员的输入、设置、Session、输出和预算路由仍属自己的环境；没有该部署字段的旧配置继续明确使用 chat-only 策略，不继承所有者资料。
 
-`new_session` 可继承已绑定 Session 的下一任务设置；不能改变现有任务。浏览器 `cwd/workspaceId` 被拒绝，服务器分配独立 cwd 与 preset。独立启动模式每 Session 绑定一项任务；网关的无工具通用对话保留同 Session 连续轮次与逐轮预算。切换场景或重新绑定文件/PPT任务要求新 Session，不修改历史任务。
+任务冻结 Scene/配置版本、选择与实际模式、RSI、Prompt、完整工具 Schema/权限、库/Manifest/认证及动态绑定摘要、软件文件摘要、Provider/输出 cap、任务及启动预算、用户/Session/Task、上传/job 摘要。确认后变化拒绝。库、配置切换不修改运行中的任务；费用、请求上限和错误恢复沿用原代理。旧会话迁移由另一协作者处理，本次不改归属校验。
 
-任务 API 新增可选 `request.scene_options`，只接受 PPT `{slides:1..30, template:"academic"|"lab", allow_output:boolean}`；默认 6 页、academic、只读。输出开启须先有已批准 PDF/PPTX，通过预览后明确 submit。原生聊天当前未提供页数、模板和输出权限编辑界面；需要生成交付的用户先用任务 API 设置这些字段，不能通过自然语言默提高 job 权限。
+附件复用官方 `fileUploads.resolve` 和所属 Agent；最多 8 文件、每文件 20 MiB，简易任务上传 API 仍限 256 KiB。两个账号不能读取对方 Task、Session、receipt、输入或轨迹。四场景可以依次创建新任务；重绑定文件/PPT使用新 Session，普通 workspace 连续纯文字对话保留主线行为。
 
-附件继续通过官方 `fileUploads.resolve(agent, receipt)` 与 `attachments.readFileStream` 核验所属 Session，再复制到私有 inputs。最多 8 个文件、每文件 20 MiB；任务 API 简易上传入口沿用 256 KiB 限制。PPT 仅 PDF/PPTX；通用读取 UTF-8 文本最多 256 KiB，拒绝路径穿越、符号链接和版本变化。上传改变预览摘要，需要新确认。
-
-## 用户隔离与验证
-
-2026-10-14 main 已合入 PR #7 多用户网关。每个 Harness Connection 仍是单登录实例，网关为成员隔离启动、DSH Home和工作区，预算 broker 沿用主线。`--user-id` 是可信服务器启动参数，不是浏览器自报身份；认证负责人应为每个用户分配独立启动/DSH_HOME/预算实例并传入该 ID。两个独立用户进程已验证配置、cwd、Session、任务、收据和轨迹隔离；本次没有修改认证/账户模块，也未宣称单进程多账号已实现。本轮合并保留其会话恢复与连续对话测试。成员现有零工具沙箱策略派生为 New Scene 普通对话；PPT等场景返回 `scene_not_deployed_in_member_sandbox`，不会继承所有者 MCP/库/输入。网关账号、密码和认证模块未改动；扩大沙箱挂载仍需负责人另行部署验收。
+## 验证入口
 
 ```sh
 npm test
 npm run smoke
 npm run web:controls:check
 npm run web:scenes:check
-npm run web:tasks:check
-npm run web:check
-# V100 隔离目录；先加载项目环境。按持续测试授权，真实费用封顶0.06美元：
-npm run web:scenes:check -- --real-model
+node scripts/project.mjs python scripts/check-harless-members.py
+node scripts/project.mjs python scripts/check-harless-members.py --render-ppt
+# 真模型必须在累计授权内明确启用，记录原失败/重试：
+npm run web:scenes:check -- --real-model --scenes paper-proofreading research-data-analysis
+npm run web:scenes:check -- --real-model --scenes ppt --mode execute
+# 实际工具/渲染与 Runtime 协议诊断，不调用云模型：
+node scripts/check-ppt-runtime.mjs <所属私有任务/job.json>
 ```
 
-真实结果与负例见 [场景集成验收](experiments/harless-scenes-runtime-20261013-v1.md)。科研质量、PPT生成交付和浏览器点击未在本轮验收；真实 Execute 降本也未验证。
+本轮结果见 [上线准备记录](experiments/harless-launch-readiness-20261014-v1.md)，历史桥接见 [桥接记录](experiments/harless-scenes-runtime-20261013-v1.md)，库取回见 [迁移记录](experiments/ppt-library-transfer-20261014-v1.md)。科研质量、模型自主完整 PPT 生成及稳定费用收益需要独立后续验收，不能用固定计划的机械交付代替。

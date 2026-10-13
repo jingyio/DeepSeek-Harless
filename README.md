@@ -49,7 +49,9 @@ npm run web
 ssh -N -L 3080:127.0.0.1:3080 -p SSH_PORT USER@SERVER
 ```
 
-默认运行时仍使用 `scenarios/example/`，免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。原生 `/harless` 菜单分为 Scenes、Mode、RSI 二级选择，输入框显示当前 Harless 状态。Scenes 包含英文的 PPT、Paper Proofreading、Research Data Analysis 和 New Scene。前三项当前只完成界面选择，选中后发送任务会明确拒绝且不会误用 `example` 工具；New Scene 使用服务器当前运行时探索，尚无独立的新场景工具。免费和真实模式的已接通任务都直接提交，真实模式会调用所选模型的 API，服务端仍执行任务与全局预算限制。任务 API 仍支持结构化输入、来源和附件；旧 `/tasks`、`/sss`、`/harless` 页面地址跳回聊天首页，`/api/sss/tasks` 兼容 API 保留。
+默认动态运行时使用 `scenarios/general/`（New Scene），免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据。原生 `/harless` 菜单的 PPT、Paper Proofreading、Research Data Analysis 和 New Scene 分别加载服务器登记的 MCP、白名单与 Prompt：PPT 使用既有19工具；论文提供PDF/文本与静态LaTeX检查；数据提供CSV/TSV描述统计与Pearson相关；New Scene读取本Session上传文本。模式和RSI独立，菜单不调用模型，选择影响下一任务。PPT菜单可设置页数、模板及生成新副本权限。免费和真实任务从聊天直接发送，服务端保留费用、请求上限与工具权限；旧页面跳回聊天，任务 API 保留。
+
+PPT先安装 `scenarios/research_ppt/requirements.txt`，在该目录 `npm ci && npm run build`；需要兼容的LibreOffice、中文字体与静态Fontconfig才能输出。管理员在私有环境设置 `HARLESS_PPT_RENDERER_ROOT/HARLESS_PPT_FONT_ROOT`，缺失时只读可用、输出明确拒绝。`HARLESS_PPT_RUNTIME_BUNDLE` 指向已认证且代码锁有效的五文件包，当前仅接管闭合pin/read；没有库的场景可用Origin/Shadow，Execute On拒绝。部署成员能力只增加网关 `memberSceneDeployment` 只读挂载，输入、Session、产物和预算继续隔离。完整配置、范围与诊断见 [控制协议](docs/harless-controls.md)、[账号网关](docs/harless-account-gateway.md) 和 [上线准备记录](docs/experiments/harless-launch-readiness-20261014-v1.md)。V100 Ubuntu18/Node22.23.3/Python3.10.21已验证；完整模型自主PPT生成与科研质量未在本轮验收。
 
 原生模型选择可切换服务器已启用的 DeepSeek Flash 与 GLM；默认免费模拟仍使用 DeepSeek。真实 Web 可在服务器私有 `.env` 配置 GLM 模型、密钥和价格。选定模型会绑定任务和预算账本；GLM 当前只接文字输入，真实 GLM 请求仍待验收。Codex 登录入口已撤销，当前不提供 GPT 登录。
 

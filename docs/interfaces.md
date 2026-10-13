@@ -248,9 +248,9 @@ Python 语义端口在 `motif_read_semantic.py`：接收明确的结构缺口，
 
 ## `/harless` 场景与模式控制（2026-10-13）
 
-动态 Web 用 Harness `commandUi.decorate({kind:'popupSelect'})` 为裸 `/harless` 打开原生选择菜单，再在同一原生弹层内进入 Scenes、Mode、RSI 二级菜单；参数命令仍由 `ctx.commands.register` 处理。`GET/POST /api/harless/settings` 管理协议 `baseline`/`shadow`/`execute` 与 RSI On/Off，前端显示 Origin/Shadow/Execute，RSI 默认 On 且独立切换；RSI Off 时新任务按 `baseline` 执行。选择不调用模型。菜单中的 PPT、Paper Proofreading、Research Data Analysis 是界面预览场景，`select_preview_scene` 保存 Session 的选择；选中后提交任务以 `scene_not_connected` 拒绝，不能运行旧样例工具。New Scene 使用当前服务器运行时探索，不创建独立 MCP 场景。已接通的服务器场景仍登记在 `config/harless-scenes.json`，MCP preset 各自独立，配置不得由浏览器覆盖。每 Task 冻结实际场景、工具、库摘要与确认 digest；Session 绑定任务后，修改只对新 Session 的下一任务生效。旧单场景 policy 仍兼容，冻结 Web/SDK 保留。
+动态 Web 用 Harness `commandUi.decorate({kind:'popupSelect'})` 打开 `/harless` 原生菜单。`GET/POST /api/harless/settings` 的 `selection:{scene,mode,rsi}` 选择服务器 Registry 中的实际配置；四场景均有独立 MCP preset 与 Prompt。模式协议为 `baseline/shadow/execute`，Origin 显示对应 baseline，RSI Off 保留选择但本任务实际 baseline。菜单不调用模型，配置和工具不得由浏览器覆盖。已预览/确认任务冻结，之后选择只影响下一任务。旧单场景 policy、冻结 Web/SDK 继续保留。
 
-字段、边界与复现见 [Harless 控制接口](harless-controls.md)。当前登记的三个场景是合成资料样例，不表示 PPT 或多人隔离已经完成。
+字段、能力范围与复现见 [Harless 控制接口](harless-controls.md)。正式映射不使用 example/portfolio；四场景的成员部署沿用已有账号隔离，通过受控代码与依赖挂载补齐能力。
 ## 5. 科研 PPT 场景（V5 / V6）
 
 入口是 `python -m scenarios.research_ppt.cli prepare/run/learn/improve`，配置与安装要求见 [场景 README](../scenarios/research_ppt/README.md)。当前接收 1–8 份 PDF/PPTX 和 1–30 页要求；生成可编辑文字、表格与原生 bar/line 图表，使用 `academic` / `lab` 两套内置风格。任意用户母版、OCR、动画保真未实现。
@@ -337,4 +337,12 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 
 新增 `harless_task_scope.ts` 仅负责服务器分配的 Session cwd、私有 preset、批准上传文件和 PPT job；共享匹配/执行仍由现有在线 Runtime 提供。PPT `{slides,template,allow_output}` 经任务 API `request.scene_options` 设置并冻结，默认6页/academic/只读；Web空 Session 只能只读初始化。任务响应含 `user_id/selected_mode/scene_options/scene_inputs`；完整有效配置与 scope/library/schema 摘要保存于私有任务目录。
 
-当前用户边界是一个可信 principal 一个独立 Harness 启动；启动器接受 `--user-id`，客户端不能指定 cwd/工作区、库或命令。上传收据通过官方 Agent scope 解析后复制，重新确认时验证字节摘要。多账号 gateway 仍需账户负责人接入并联合验收。场景安装、登记字段、限额、拒绝原因与已验证边界见 [Harless 控制协议](harless-controls.md)；本节更新旧“仅前端预览”描述，不改写旧实验结论。
+用户边界沿用账号网关的独立 Harness/bwrap 与预算代理；启动器接受可信 `--user-id`，客户端不能指定 cwd/工作区、库或命令。上传收据经官方 Agent scope 解析，确认时检查字节摘要；任务 `approved-inputs.json` 同时约束后端 pin/read，不允许重新 pin 接受确认后漂移的文件。两成员真实环境部署诊断见 [上线准备记录](experiments/harless-launch-readiness-20261014-v1.md)。
+
+### 2026-10-14 场景选项、认证与成员部署
+
+`POST /api/harless/settings` 可传 `action:"set_scene_options",scene:"ppt",scene_options:{slides,template,allow_output}`，与可选 `session_id` 一起按用户/Session/场景保存。响应 `scene_option_fields` 来自服务器；原生菜单页数为 1/6/8/10/12，任务 API 保留 1–30 页。显式任务 `request.scene_options` 覆盖菜单值。默认6页、academic、只读，允许新副本仍需本任务批准来源。预览摘要冻结选项，改变菜单不能改变旧任务。
+
+PPT Registry 的 `rsi.bundle_from_env` 只引用管理员 `HARLESS_PPT_RUNTIME_BUNDLE`。包格式为五文件 `online-manifest.json/library.json/tool-schemas.json/task.json/certification.json`，认证绑定完整有序19工具 Schema、代码/证据哈希、`independent_trace_structure` 范围、`ppt_uploaded_sources_v1` 参数绑定和 `structural_only` 匹配策略。预览生成 `bound-motif-task.json`，绑定当前用户资料 SHA 与 Task/Session；执行再次核对摘要。闭合 pin/read 无需 embedding；有语义歧义时交回 LLM，不能用固定向量伪造匹配。只有真实工具结果通过才计 Verified Skip；其他三场景没有生产认证库，Execute On 明确拒绝。
+
+私有网关 `memberSceneDeployment:{projectRoot,pythonExecutable,pythonRoots,libraryRoot?,rendererRoot?,fontRoot?}` 通过 `scripts/harless_member_scenes.mjs` 挂载只读代码、安装目录、纯 Runtime 文件、LibreOffice 与静态字体。拒绝原始轨迹、用户目录、API凭证和任意 MCP 命令。PPT 输出在每成员自己的 `/app/.local/web` 持久映射内；PDF/PNG/report 放在 job 内，checkpoint 拒绝其他任务或软链接越界，保留旧 CLI 全局目录兼容。未部署渲染依赖返回 `scene_output_unavailable`；来源、版本或验收失败不标记成功。账号/密码、Session归属和预算broker协议不变。

@@ -1,6 +1,19 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-14：多场景前后端桥接
+## 2026-10-14：四场景上线准备（当前）
+
+- 更新时间与交接人：2026-10-14，Codex。
+- 目标与本次范围：下一任务实际加载四场景MCP/Prompt/权限与统一RSI；补齐成员公共能力部署、PPT认证读链和机械交付，不处理另一协作者负责的旧Session bug。
+- 分支 / commit：`codex/harless-launch-readiness-20261014`，整合main `6ade286`；功能验证版本 `396e2cf`，文档提交见本分支最新历史。桥接PR #8及迁移文档PR #10已合并，本轮分支待PR审阅，公网未切换。协作者论文工作区及V100原检出保留。
+- 已完成：Registry四真实后端（PPT19/论文5/数据4/通用2工具）；`session_files.py`共用准入版本守卫；PPT下一任务菜单选项；`harless_rsi_bundle.py/harless_rsi_binding.ts`可信五文件包、完整Schema/代码锁/当前上传绑定；`harless_member_scenes.mjs`只读代码/依赖/纯Runtime挂载；CPU渲染及任务内PDF/PNG/report/checkpoint。共用既有online Runtime/Agent循环，不改上游。
+- 已验证：本机/V100根183Python/79Node；smoke18/83来源、controls通过；24组合中21实际冻结草稿/3无库Execute拒绝，四实际MCP/Prompt及两principal跨Task/Session/receipt拒绝。PPT53Node/212Python通过、1静态字体正例先跳过，显式指定字体后该5项组全通过。两个临时成员/8草稿四场景实际MCP及跨账号拒绝、两个成员各一份真实机械PPT/PDF/PNG通过，0模型。真实论文/数据各4HTTP，PPT成功2HTTP/1实际skip，另一次PPT预算失败1HTTP/1局部skip分列。详情 [上线记录](../experiments/harless-launch-readiness-20261014-v1.md)。
+- 配置与数据：公共`config/harless-scenes.json`与四Scenario；私有`HARLESS_PPT_RUNTIME_BUNDLE/HARLESS_PPT_RENDERER_ROOT/HARLESS_PPT_FONT_ROOT`；V100独立检出`.local/integration/harless-launch-20261014`、认证部署`deployment-v3/runtime`、旧库备份`.local/imports/ppt-library-transfer-20261014`。成员配置增加`memberSceneDeployment`，账号/预算/Session接口不变。原轨迹/密钥/产物不进Git，必要私有诊断产物已同步本机。
+- 未完成：公网网关切换和浏览器点击、旧Session恢复（另一协作者）、两真实成员模型并发、完整自主PPT科学/视觉质量及净降本；论文编译/外网参考真实性，数据高级推断。论文/数据/通用无生产认证库，Execute On拒绝，Origin/Shadow实际可用，不误映射样例。
+- 接手下一步：1）审阅PR并在固定检出重建policy/host patch，添加私有成员部署字段，保留现有账号目录/累计账本；2）联合Session修复负责人验收两测试账号连续对话/刷新/场景切换后再切公网；3）真实研究任务独立人评与完整成本对照后决定扩库，不把机械诊断或局部skip当稳定科研收益。
+- 权限与预算：先前桥接14HTTP加本轮11HTTP，累计25HTTP/代理估费0.014689896美元，实付未知；累计0.06美元限制未扩大，自设诊断次数24→25已告知。停止新增付费测试；模型质量/费用后续实验继续核对已有授权，不改公共默认额度。
+- 回退与风险：现有公网进程未改；可撤新成员部署字段、RSI Off或回main `6ade286`，不删除用户文件/Session/账本。PPT工具/代码变更需新部署绑定，旧证据不改；部署共享只读能力不共享私人资料。
+
+## 2026-10-14：多场景前后端桥接（历史）
 
 - 更新时间与交接人：2026-10-14，Codex。
 - 目标与范围：原生 `/harless` 实际选择 Scene/Mode/RSI，统一已有 Runtime；未开发缺失的论文/数据业务后端。

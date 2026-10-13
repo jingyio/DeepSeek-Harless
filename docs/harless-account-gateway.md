@@ -8,4 +8,8 @@
 
 通过 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json` 启动网关，它只监听 `127.0.0.1`。使用反向代理或 Cloudflare Tunnel 将 HTTPS 公网地址指向网关端口；在反向代理中转发 WebSocket，并限制只有网关可访问内部预算和控制端口。网关初次部署用 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json claim` 生成一次性所有者激活码；所有者登录后从账户页生成成员邀请码。不要在日志、PR 或聊天记录中公开激活码、邀请码、DSH token 或私有配置。临时 `trycloudflare.com` 隧道和手工 `tmux` 进程可能中断、重启或换地址；生产用途应由持久化服务管理器监控入口与后端。
 
+四场景部署在同一私有配置增加 `memberSceneDeployment`。`projectRoot` 是本次代码检出，`pythonExecutable` 是场景依赖解释器，`pythonRoots` 只列解释器/venv的安装根（include-system-site-packages也列实际base及继承环境），不能填写用户家目录或整个项目。可选 `libraryRoot` 只包含认证Runtime五文件，`rendererRoot` 是含program/share的LibreOffice安装，`fontRoot` 只含固定中文字体、字体配置及许可证。只读挂载服务代码和依赖不共享用户资料；输出映射到每成员自己的tasks目录。未配置时保留旧chat-only部署。每次代码或渲染版本更新必须重建同检出host patch/policy及有效库部署绑定；不要复制旧证书哈希绕过守卫。安装示例与边界见 [控制协议](harless-controls.md)。
+
+在隔离检出运行 `node scripts/project.mjs python scripts/check-harless-members.py --render-ppt` 可生成两个临时诊断账号，实际启动bwrap/MCP、检查四场景与跨账号拒绝，再在各自实际挂载内生成一页合成PPT/PDF/PNG。需先配置上述库/渲染依赖；不调用云模型，不证明浏览器、公网或模型自主生成质量，不使用生产账户数据库。
+
 回归检查运行 `npm test`，其中包含账号并发注册、登录持久化、跨账号预算拒绝、Web 连续对话及预算路由测试。部署后还需用两个**测试账号**验证：同时登录、各自创建工作区和会话、互相不能访问文件、连续发送两轮、刷新与关闭浏览器后的登录行为，并确认真实 API 成本落在服务器预算内。单元测试不证明公网隧道、服务器资源或真实模型质量可用。
