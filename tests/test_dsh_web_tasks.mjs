@@ -400,8 +400,8 @@ test('Owned empty sessions survive restart while bound task identities cannot ge
 test('Real native chat keeps one DSH session across confirmed turns with distinct budget routes', options, async () => {
   const f = await fixture({ broker: true, provider_mode: 'real' });
   try {
-    const id = 'session-11111111-1111-4111-8111-111111111111';
-    await f.ctx.sessionController.create({ sessionId: id });
+    const { sessionId: id } = await f.ctx.sessionController.create({});
+    assert.match(id, /^session-[a-f0-9-]{36}$/);
     const prompt = (requestId, text) => f.ctx.sessionController.prompt({ sessionId: id,
       requestId, mode: 'queue', content: [{ type: 'text', text }] }, new AbortController().signal);
     await prompt('first-turn', '你好');
@@ -627,6 +627,31 @@ test('Session adapter binds private presets and rejects foreign file receipts be
     const snapshot = JSON.parse(readFileSync(join(f.directory, 'tasks', accepted.value.task_id, 'effective-config.json')));
     assert.ok(snapshot.workspace.includes(a.sessionId)); assert.ok(!snapshot.workspace.includes(b.sessionId));
     assert.equal(readFileSync(join(snapshot.workspace, 'inputs', 'doc_1-alice.txt'), 'utf8'), 'AAA');
+  } finally { await f.close(); }
+});
+
+test('Workspace scene keeps one budgeted chat across text turns and requires a new session for new files', options, async () => {
+  const scene = { ...multiScenes[0], id: 'new-scene', adapter: 'workspace', mcp_rows: [] };
+  const f = await fixture({ broker: true, scenes: [scene], capability_profile: 'new-scene' });
+  try {
+    const { sessionId } = await f.ctx.sessionController.create({});
+    await f.ctx.sessionController.prompt({ sessionId, requestId: 'first', mode: 'queue',
+      content: [{ type: 'text', text: 'First turn' }] }, new AbortController().signal);
+    const first = (await f.api()).value.tasks[0];
+    await f.complete(first);
+    await f.ctx.sessionController.prompt({ sessionId, requestId: 'second', mode: 'queue',
+      content: [{ type: 'text', text: 'Second turn' }] }, new AbortController().signal);
+    const second = (await f.api()).value.tasks.find(row => row.task_id !== first.task_id);
+    assert.equal(second.session_id, sessionId);
+    assert.equal(second.status, 'running');
+    assert.equal(f.promptCalls.length, 2);
+    await f.complete(second);
+    const uploaded = await f.ctx.fileUploads.uploadStream({ sessionId, name: 'new.txt',
+      data: (async function* () { yield Buffer.from('new evidence'); })() });
+    const denied = await f.api({ action: 'preview', session_id: sessionId,
+      request: { content: [{ type: 'file', receiptId: uploaded.receiptId }] } });
+    assert.equal(denied.status, 409);
+    assert.equal(denied.value.error.code, 'new_session_required');
   } finally { await f.close(); }
 });
 

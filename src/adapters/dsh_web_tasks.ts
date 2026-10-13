@@ -401,7 +401,7 @@ export function apply(ctx: any) {
       if (chosen.unavailable_reason) throw new TaskError('scene_not_connected', chosen.unavailable_reason, 409);
       if (!brokerMode && (request.cwd !== undefined || request.workspaceId !== undefined))
         throw new TaskError('workspace_not_allowed', 'The server allocates a private Session workspace');
-      const id = request.sessionId ?? 'sss-' + randomUUID().replaceAll('-', '');
+      const id = request.sessionId ?? (brokerMode ? 'session-' + randomUUID() : 'sss-' + randomUUID().replaceAll('-', ''));
       const workspace = workspaceFor(id);
       const priorPreset = ownedSessions.has(id) ? (await controller.inspect(id)).meta.agentPreset : undefined;
       const created = await original.create({ ...request, sessionId: id, ...(priorPreset ? { agentPreset: priorPreset } : {}),
@@ -499,12 +499,14 @@ export function apply(ctx: any) {
       sessionId: request.session_id, provider: chosenModel.provider, model: chosenModel.model,
       ...(chosenModel.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' })
     }, new AbortController().signal);
-    if (previousTask && (scene.adapter || previousTask.scene.id !== scene.id))
+    const newFileInput = request.content.some(part => part.type === 'file');
+    if (previousTask && (previousTask.scene.id !== scene.id || (scene.adapter && (scene.adapter !== 'workspace' || newFileInput))))
       throw new TaskError('new_session_required', 'Create a new Session to bind a scene or new file task', 409);
     const workspace = workspaceFor(request.session_id);
-    const sceneInputs = scene.adapter ? await bindSceneInputs(ctx, agents.get(request.session_id), workspace, scene,
+    const reuseWorkspace = previousTask && scene.adapter === 'workspace';
+    const sceneInputs = reuseWorkspace ? previousTask.scene_inputs : scene.adapter ? await bindSceneInputs(ctx, agents.get(request.session_id), workspace, scene,
       request.content, options, delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), taskId) : [];
-    if (scene.adapter) {
+    if (scene.adapter && !reuseWorkspace) {
       await selectPreset!(agents.get(request.session_id), sessionPreset(config.output, workspace, scene));
       bindScene(agents.get(request.session_id), scene);
     }
