@@ -49,11 +49,11 @@ npm run web
 ssh -N -L 3080:127.0.0.1:3080 -p SSH_PORT USER@SERVER
 ```
 
-默认加载 `scenarios/example/`，使用免费模拟模型、baseline，监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，再打开同源的 `/tasks` 工作台。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。填写要求或 JSON、选择模式与附件后，点击“开始免费联调”即可执行，无需填写额度或再次确认；界面在后台完成规范化、预览、上传和提交。结束后可直接创建下一个任务，不需要重启。官方聊天在模拟模式也能接收新会话的任务，真实模式的官方聊天会弹出题面与预算确认框，确认前不调用模型；任务工作台也保留预览与确认。旧 `/sss` 保留为兼容别名。
+默认选择 `scenarios/example/`，使用免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，再打开同源的 `/tasks` 工作台。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。填写要求或 JSON、选择模式与附件后，点击“开始免费联调”即可执行，无需填写额度或再次确认；界面在后台完成规范化、预览、上传和提交。结束后可直接创建下一个任务，不需要重启。官方聊天在模拟模式也能接收新会话的任务，真实模式的官方聊天会弹出题面与预算确认框，确认前不调用模型；任务工作台也保留预览与确认。旧 `/sss` 保留为兼容别名。
 
 文字字符串、`instruction`、`content`、仅含 user 的 `messages` 统一规范化为一次任务输入；结构化对象中的后三项必须三选一。`mode` 支持 baseline/shadow/execute。可在 `content` 中附带官方格式的图片 base64 或同 Session 已上传文件的 receipt。工作台文件上传上限为 256 KiB；模型不支持图片时任务明确失败且不发起模型请求，不能据此宣称已支持图片理解。资料引用使用已由服务器登记的 `resource_id`，不接受浏览器本地路径。请求和响应详见[接口文档](docs/interfaces.md)。
 
-`--scenario` 接受场景名或场景配置路径，每次启动只注册一个能力配置；动态题面不再固定在场景文件中。资料登记为服务器私有 JSON，例如 `.local/inputs/resources.json`：
+`--scenario` 接受场景名或场景配置路径，用来选择初始场景；`config/harless-scenes.json` 登记可选择的场景，每个场景使用独立的 MCP preset。动态题面不再固定在场景文件中。资料登记为服务器私有 JSON，例如 `.local/inputs/resources.json`：
 
 ```json
 {"paper-notes": {"text_file": "notes.md"}}
@@ -67,6 +67,22 @@ npm run web -- --scenario portfolio-v1 --mode execute
 `text_file` 相对登记文件，启动时读取 UTF-8 内容并冻结字节 SHA-256；前端用 `inputs: [{"resource_id":"paper-notes"}]` 引用，后端核验可选期望版本后将带来源标识的文本追加给模型。修改原文件不会自动刷新本轮快照。当前登记器处理文本快照，不代表已接通 Zotero 等真实应用。
 
 三种模式由后端保存和执行。example 没有认证库，shadow/execute 会记录原因并回到正常 Harness；portfolio 的精确冻结样例可使用首发库。新题面、附件或资料版本不能沿用旧任务的认证绑定。模拟诊断中的 execute 已观察到 7 次请求、5 个结果验证通过的接管批次，不能当成真实质量或费用收益。
+
+在官方聊天输入 `/harless`，或点击右下角“场景 · 模式 · RSI”，即可打开选择面板；`/tasks` 也有场景、模式与 RSI 下拉框。支持：
+
+```text
+/harless list
+/harless example
+/harless mode
+/harless mode shadow
+/harless rsi
+/harless rsi off
+/harless status
+```
+
+Baseline 对应 RSI Off；Shadow/Execute 对应 On。Off 保留上次 RSI 模式，On 恢复它（首次默认 Shadow）。没有认证库或本地匹配服务时 Execute 不可选；Shadow 可以运行并明确记录普通 Harness 回退。选择本身不调用模型。空会话的场景立即切换；任务预览之后的修改只对下一任务生效，选择面板的“使用此配置新建任务”保留下一任务的选择并创建独立会话。一个 Session 仍只绑定一个 Task，不复用旧预算或证据。
+
+目前登记 `example`、`portfolio-v1`、`portfolio-v2` 三个合成资料场景；新增场景由服务器维护登记表和 MCP 配置。PPT MCP、自动持续学习发布、多用户账号和文件隔离尚未实现。详细配置与 API 见 [Harless 控制接口](docs/harless-controls.md)。
 
 后台保留双层预算：每任务默认 0.25 美元/24 次，全启动默认 0.25 美元/256 次，每请求最多 1000 输出 token；新任务不重置全局限制。任务上限用 `--budget-usd/--request-limit` 配置，全启动用 `--run-budget-usd/--run-request-limit` 配置。固定 `reasoning_effort="off"`，默认关闭压缩；请求、缓存输入/输出 token、费用和 verified skips 仍完整记录，代理估值需与账单核对。免费模拟不展示额度表单，实际支出为零。
 
@@ -82,6 +98,7 @@ npm run web:real
 
 ```sh
 npm run web:tasks:check
+npm run web:controls:check # 免费原生命令与多场景协议诊断（真实验收加 --real-model）
 npm run web:check
 npm test
 npm run smoke

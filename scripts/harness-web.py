@@ -22,6 +22,7 @@ from secrets import token_hex
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.adapters.scenario import prepare_scenario
+from src.adapters.harless_scenarios import prepare_scene_registry
 from src.adapters.deepseek_cost_gate import State, create_server
 from src.adapters.web_task_budget import TaskBudgetRegistry, create_control_server
 
@@ -105,6 +106,17 @@ def prepare(args, output, endpoint):
             control_endpoint=args.control_endpoint, control_token=args.control_token,
             certified_input_sha256=canonical_prompt_sha, resources=resources,
             embedding_model=args.embedding_model)
+    if not args.frozen:
+        registry = Path(args.scene_registry)
+        if not registry.is_absolute(): registry = ROOT / registry
+        scenes = prepare_scene_registry(ROOT, registry, default_id=policy['capability_profile'],
+            prepared_default=prepared, output=output, embedding_endpoint=args.embedding_endpoint,
+            embedding_model=args.embedding_model)
+        selected = next(scene for scene in scenes if scene['id'] == policy['capability_profile'])
+        # Explicit CLI bindings belong only to the initial scene.
+        if policy.get('manifest'):
+            selected.update({key: policy[key] for key in ('manifest', 'task', 'certified_input_sha256')})
+        policy.update(scenes=scenes, scene_registry_sha256=hashlib.sha256(registry.read_bytes()).hexdigest())
     save(output / 'policy.json', policy)
     disabled = ['llm-deepseek', 'llm-pi-ai', 'session-title-llm', 'llm-retry',
                 'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']
@@ -141,10 +153,15 @@ def prepare(args, output, endpoint):
                      ROOT / 'src/adapters/deepseek_cost_gate.py', ROOT / 'scripts/harness-web.py',
                      ROOT / 'scripts/motif-example.py', ROOT / 'package-lock.json',
                      *([] if args.frozen else [ROOT / 'src/adapters/web_task_request.ts',
-                       ROOT / 'src/adapters/web_task_budget.py', ROOT / 'src/adapters/web_task_panel.html'])]}
+                       ROOT / 'src/adapters/web_task_budget.py', ROOT / 'src/adapters/web_task_panel.html',
+                       ROOT / 'src/adapters/harless_settings.ts', ROOT / 'src/adapters/harless_scenarios.py',
+                       ROOT / 'src/adapters/harless_panel.html', ROOT / 'src/adapters/harless_native_bridge.js', registry])]}
     if policy.get('manifest'):
         snapshot['manifest_sha256'] = hashlib.sha256(Path(policy['manifest']).read_bytes()).hexdigest()
         snapshot['task_sha256'] = hashlib.sha256(Path(policy['task']).read_bytes()).hexdigest()
+    if not args.frozen:
+        snapshot.update(scene_registry_sha256=policy['scene_registry_sha256'], scenes=[
+            {key: scene.get(key) for key in ('id', 'preset', 'config_sha256', 'instructions_sha256', 'case', 'allowed_tools')} for scene in policy['scenes']])
     save(output / 'effective-config.json', snapshot)
     return public
 
@@ -154,6 +171,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scenario', default='example', help='scenario name or path to scenario.json (server configuration)')
     parser.add_argument('--case', default='')
+    parser.add_argument('--scene-registry', default='config/harless-scenes.json', help='server-owned versioned scene registry')
     parser.add_argument('--frozen', action='store_true', help='legacy single-task mock regression entry')
     parser.add_argument('--real-model', action='store_true', help='enable real DeepSeek connection; each task still requires preview confirmation')
     parser.add_argument('--manifest', help='certified online manifest for this capability profile')
@@ -161,7 +179,7 @@ def main():
     parser.add_argument('--resources', help='private server-owned resource registry JSON: ID -> {text_file}')
     parser.add_argument('--embedding-endpoint', default='')
     parser.add_argument('--embedding-model', default='fixture-vectors-not-a-semantic-model')
-    parser.add_argument('--mode', choices=['baseline', 'shadow', 'execute'], default='baseline')
+    parser.add_argument('--mode', choices=['baseline', 'shadow', 'execute'], default=None)
     parser.add_argument('--port', type=int, default=defaults['port'])
     parser.add_argument('--run-id', help='optional unique 32-character hexadecimal output identity')
     parser.add_argument('--budget-usd', type=float, default=defaults['budget_usd'])
@@ -171,6 +189,7 @@ def main():
     parser.add_argument('--fixture', choices=['normal', 'stale', 'tool-failure', 'provider-failure', 'outside-tool', 'delay'],
                         default='normal', help='mock-only failure injection for diagnostics')
     args = parser.parse_args()
+    args.mode = args.mode or ('baseline' if args.frozen else 'shadow')
     if args.frozen and args.mode != 'baseline' and args.scenario != 'portfolio-v1':
         parser.error('Motif modes require the portfolio-v1 historical library scenario')
     if args.fixture in ('stale', 'tool-failure') and (args.mode != 'execute' or args.scenario != 'portfolio-v1'):
@@ -194,10 +213,15 @@ def main():
     for name in ('events.jsonl', 'motif-audit.jsonl', 'ledger.jsonl'):
         (output / name).touch(mode=0o600)
     module = fixture_module()
-    if args.scenario == 'example':
-        module.next_fixture_action = demo_action
+    def scene_fixture_action(values, event, body):
+        # Synthetic transport diagnostic only; real models never use this selector.
+        if any(tool.get('function', {}).get('name', '').startswith('mcp__demo__') for tool in body.get('tools', [])):
+            return demo_action(values, event)
+        texts = [message.get('content', '') for message in body.get('messages', []) if message.get('role') == 'user' and isinstance(message.get('content'), str)]
+        match = re.search(r'event:[a-z0-9_]+:[0-9]+', '\n'.join(texts))
+        return module.next_fixture_action(values, match.group() if match else event)
     handler = module.provider_handler('event:l_retrieval_persistence:01', with_usage=True,
-                                     request_limit=24 if args.frozen else args.run_request_limit)
+        request_limit=24 if args.frozen else args.run_request_limit, action_selector=scene_fixture_action)
     if args.fixture == 'outside-tool':
         original_action = module.next_fixture_action
         def outside_action(values, event):

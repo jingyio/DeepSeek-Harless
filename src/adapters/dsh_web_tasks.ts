@@ -9,16 +9,19 @@ import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
 import { digest } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
+import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, SettingsError } from './harless_settings.ts';
+import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
 
 export const name = 'sss-web-tasks';
-export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads'];
+export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets'];
 type Policy = {
   output: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number;
   mode: ExecutionMode; budget_usd: number; capability_profile: string;
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
+  scenes?: Scene[]; scene_registry_sha256?: string;
   resources?: Record<string, { version: string; text: string }>;
 };
 type Task = {
@@ -27,6 +30,7 @@ type Task = {
   failure: string | null; fallback_reason: string | null; answer: string;
   output: string; stats: Record<string, any>; interceptor?: any;
   humans: Map<string, string>; sources: { resource_id: string; version: string; sha256: string }[];
+  scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
 };
 class TaskError extends Error {
@@ -51,7 +55,66 @@ export function apply(ctx: any) {
       !['mock', 'real'].includes(config.provider_mode)) throw Error('Invalid dynamic Web policy');
   const tasks = new Map<string, Task>(), sessions = new Map<string, string>();
   const schemas = new Map<string, any[]>(), requests = new Map<string, string>();
-  const ownedSessions = new Set<string>(), allowed = new Set(config.allowed_tools);
+  const ownedSessions = new Set<string>();
+  const scenes = sceneCatalog(config.scenes ?? [{ ...config, id: config.capability_profile, label: config.capability_profile, preset: 'sss-task' }]);
+  if (!scenes.some(scene => scene.id === config.capability_profile)) throw Error('Default scene is not registered');
+  let defaults = initialSelection(config.capability_profile, config.mode);
+  const selections = new Map<string, Selection>(), agents = new Map<string, any>();
+  const guards = new Map<string, (() => void)[]>(), panels = new Map<string, { revision: string; section: string }>();
+  const sceneFor = (id: string) => {
+    const scene = scenes.find(scene => scene.id === id);
+    if (!scene) throw new SettingsError('scene_not_found', '场景未登记');
+    return scene;
+  };
+  function executeUnavailable(scene: Scene): string | null {
+    if (!scene.manifest || !scene.task) return 'no_certified_library';
+    if (!scene.embedding_endpoint) return 'no_embedding_service';
+    if (!/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
+    try {
+      loopbackSimilarity(scene.embedding_endpoint, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model');
+      const manifest = JSON.parse(readFileSync(scene.manifest, 'utf8'));
+      if (Object.keys(manifest.contracts ?? {}).some(tool => !scene.allowed_tools.includes(tool))) return 'library_tools_outside_scene';
+      createOnlineInterceptor({ manifest, task: JSON.parse(readFileSync(scene.task, 'utf8')), mode: 'execute',
+        similarity: async () => [], audit: () => {} });
+    } catch { return 'no_valid_certified_library'; }
+    return null;
+  }
+  function bindScene(agent: any, scene: Scene) {
+    for (const dispose of guards.get(agent.session.id) ?? []) dispose();
+    const allowed = new Set(scene.allowed_tools);
+    const disposers = [agent.ctx.tools.restrict({ allow: scene.allowed_tools }),
+      agent.ctx.tools.guard((call: any) => allowed.has(call.name) ? undefined : 'Tool is outside the configured capability profile')];
+    if (scene.instructions) disposers.push(agent.ctx.systemPrompt.section({ name: 'harless-scene', order: 10210, text: scene.instructions }));
+    if (config.fixture === 'tool-failure') disposers.push(agent.ctx.tools.guard((call: any) => call.name.endsWith('__read_pinned') ? 'injected mock tool failure' : undefined));
+    guards.set(agent.session.id, disposers.filter(dispose => typeof dispose === 'function'));
+    schemas.set(agent.session.id, agent.ctx.tools.schemas(scopeOf(agent.ctx)).sort((a: any, b: any) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  }
+  function settingsView(sessionId?: string) {
+    if (sessionId && !ownedSessions.has(sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run', 404);
+    const selected = sessionId ? selections.get(sessionId)! : defaults;
+    const task = sessionId ? forSession(sessionId) : undefined;
+    return { selection: selected, applies_to: task ? 'next_task' : 'next_prompt',
+      current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status } : null,
+      scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, config_sha256: scene.config_sha256,
+        execute_available: !executeUnavailable(scene), execute_unavailable_reason: executeUnavailable(scene) })),
+      session_id: sessionId ?? null, model_calls: 0 };
+  }
+  async function setSelection(sessionId: string | undefined, patch: unknown) {
+    settingsView(sessionId); // ownership before mutation
+    const current = sessionId ? selections.get(sessionId)! : defaults;
+    const next = changeSelection(current, patch, scenes, executeUnavailable);
+    if (sessionId) {
+      const agent = agents.get(sessionId);
+      if (!forSession(sessionId) && next.scene !== current.scene) {
+        await selectPreset!(agent, sceneFor(next.scene).preset);
+        bindScene(agent, sceneFor(next.scene));
+      }
+      selections.set(sessionId, next);
+    } else defaults = next;
+    json(join(config.output, 'harless-settings.json'), { defaults, sessions: Object.fromEntries(selections) });
+    return settingsView(sessionId);
+  }
+  const selectPreset = ctx.agentPresets?.select.bind(ctx.agentPresets);
   let active: string | null = null;
   // Serial admission prevents two preview/submit retries from creating duplicate work.
   let admission: Promise<unknown> = Promise.resolve();
@@ -76,7 +139,8 @@ export function apply(ctx: any) {
   function view(task: Task, detail = false) {
     const request = task.request;
     return { task_id: request.task_id, session_id: request.session_id, request_id: request.request_id,
-      capability_profile: request.capability_profile, mode: request.mode, budget_usd: request.budget_usd,
+      capability_profile: request.capability_profile, scene: task.scene.id, scene_sha256: task.scene.config_sha256,
+      rsi: task.selection.rsi, mode: request.mode, budget_usd: request.budget_usd,
       entrypoint: task.entrypoint, status: task.status, failure: task.failure, fallback_reason: task.fallback_reason,
       created_at: task.created_at, started_at: task.started_at, finished_at: task.finished_at,
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
@@ -122,10 +186,16 @@ export function apply(ctx: any) {
   const original = { create: controller.create.bind(controller), prompt: controller.prompt.bind(controller),
     cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller) };
   controller.create = async (request: any) => {
-    if (request.agentPreset && request.agentPreset !== 'sss-task') throw new TaskError('profile_not_allowed', 'Use the server-configured DeepSeek Harless preset');
+    if (request.agentPreset && !scenes.some(scene => scene.preset === request.agentPreset)) throw new TaskError('profile_not_allowed', 'Use the server-configured DeepSeek Harless preset');
     if (request.sessionId && !ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
-    const created = await original.create({ ...request, agentPreset: 'sss-task' });
-    ownedSessions.add(created.sessionId); return created;
+    const chosen = request.agentPreset ? scenes.find(scene => scene.preset === request.agentPreset)! : sceneFor(defaults.scene);
+    const created = await original.create({ ...request, agentPreset: chosen.preset });
+    ownedSessions.add(created.sessionId);
+    if (!selections.has(created.sessionId)) {
+      selections.set(created.sessionId, { ...defaults, scene: chosen.id });
+      bindScene(agents.get(created.sessionId), chosen);
+    }
+    return created;
   };
   controller.fork = () => { throw new TaskError('fork_not_supported', 'Create a new task to preserve its input, budget and trace binding'); };
   // Native queue editing would change the approved content after its digest was
@@ -138,11 +208,19 @@ export function apply(ctx: any) {
     }
     return original.selectModel({ ...request, reasoningEffort: 'off' }, signal);
   };
+  if (ctx.agentPresets) ctx.agentPresets.select = (agent: any, preset: string) => serialize(async () => {
+    const scene = scenes.find(scene => scene.preset === preset);
+    if (!scene) throw new SettingsError('scene_not_found', '只能选择服务器登记的场景');
+    if (forSession(agent.session.id)) throw new TaskError('session_already_bound', 'Use /harless to set the next task', 409);
+    await setSelection(agent.session.id, { scene: scene.id }); return preset;
+  });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
     const taskId = randomUUID().replaceAll('-', ''), tentativeSession = existingSession ?? 'pending';
+    const selected = existingSession ? selections.get(existingSession)! : defaults;
+    if (existingSession && !selected) throw new TaskError('session_not_owned', 'Session is outside this Web run');
     const request = normalizeWebTaskRequest(input, { task_id: taskId, session_id: tentativeSession,
-      default_mode: config.mode, default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
-      default_profile: config.capability_profile, allowed_profiles: [config.capability_profile],
+      default_mode: selected.mode, default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
+      default_profile: selected.scene, allowed_profiles: scenes.map(scene => scene.id),
       max_content_bytes: 768 * 1024, max_parts: 32 });
     const previous = requests.get(request.request_id);
     if (previous) {
@@ -160,10 +238,16 @@ export function apply(ctx: any) {
       delivery.push({ type: 'text', text: `\n\n[来源 ${reference.resource_id}；版本 ${resource.version}]\n${resource.text}` });
     }
     if (Buffer.byteLength(JSON.stringify(delivery)) > 768 * 1024) throw new TaskError('request_too_large', 'Resolved input exceeds byte limit', 413);
-    request.session_id = existingSession ?? (await controller.create({})).sessionId;
+    const scene = sceneFor(request.capability_profile);
+    const selection = config.scenes ? changeSelection(selected, { scene: scene.id, mode: request.mode }, scenes, executeUnavailable) : initialSelection(scene.id, request.mode);
+    request.session_id = existingSession ?? (await controller.create({ agentPreset: scene.preset })).sessionId;
+    if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', 'Use /harless to choose a scene before preview', 409);
     if (sessions.has(request.session_id)) throw new TaskError('session_already_bound', 'This session already has a task; create a new task', 409);
+    selections.set(request.session_id, selection);
     const output = join(config.output, 'tasks', taskId); mkdirSync(output, { recursive: true, mode: 0o700 });
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
+      scene, selection: { ...selection }, tools: structuredClone(schemas.get(request.session_id) ?? []),
+      manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output, humans: new Map(), sources,
       stats: { tool_calls: 0, tool_errors: 0, llm_decisions: 0, motif_attempts: 0, shadow_candidates: 0, verified_skips: 0,
         upstream_requests: 0, model_requests: 0, actual_paid_usd: config.provider_mode === 'mock' ? 0 : null } };
@@ -177,28 +261,31 @@ export function apply(ctx: any) {
   }
   function updateDraft(task: Task) {
     task.confirmation_digest = digest({ task_id: task.request.task_id, request: task.request.request_sha256,
-      delivery: task.delivery, sources: task.sources, schemas: schemas.get(task.request.session_id),
+      delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
+      scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
+      manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
       provider_mode: config.provider_mode, max_output_tokens: config.max_output_tokens });
     json(join(task.output, 'task.json'), task.request);
-    json(join(task.output, 'effective-config.json'), { ...view(task), tools: schemas.get(task.request.session_id),
-      tool_schemas_sha256: digest(schemas.get(task.request.session_id)), reasoning_effort: 'off', compression: false,
-      run_config: '../../effective-config.json', manifest_sha256: fileSha(config.manifest) });
+    json(join(task.output, 'effective-config.json'), { ...view(task), selection: task.selection, tools: task.tools,
+      tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
+      run_config: '../../effective-config.json', manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256, scene_registry_sha256: config.scene_registry_sha256 });
     record(task);
   }
   function configureMotif(task: Task) {
     if (task.request.mode === 'baseline') return;
-    const parts = task.request.content;
-    if (!config.manifest || !config.task) task.fallback_reason = 'no_certified_library';
-    else if (!config.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
+    const parts = task.request.content, scene = task.scene;
+    const pinned = (path: string, expected: string | null) => { const bytes = readFileSync(path); if (sha(bytes) !== expected) throw Error('Motif binding version changed'); return JSON.parse(bytes.toString('utf8')); };
+    if (!scene.manifest || !scene.task) task.fallback_reason = 'no_certified_library';
+    else if (!scene.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
     else if (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
-        sha(parts[0].text.trim()) !== config.certified_input_sha256) task.fallback_reason = 'input_not_certified_for_library';
+        sha(parts[0].text.trim()) !== scene.certified_input_sha256) task.fallback_reason = 'input_not_certified_for_library';
     else try {
-      const binding = JSON.parse(readFileSync(config.task, 'utf8'));
+      const binding = pinned(scene.task, task.binding_sha256);
       binding.session_id = task.request.session_id; binding.task_id = task.request.task_id;
       json(join(task.output, 'bound-motif-task.json'), binding);
-      task.interceptor = createOnlineInterceptor({ manifest: JSON.parse(readFileSync(config.manifest, 'utf8')),
+      task.interceptor = createOnlineInterceptor({ manifest: pinned(scene.manifest, task.manifest_sha256),
         task: binding, mode: task.request.mode, minSimilarity: 0.8, minMargin: 0.1,
-        similarity: loopbackSimilarity(config.embedding_endpoint, config.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
+        similarity: loopbackSimilarity(scene.embedding_endpoint, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
         audit: (row: unknown) => audit(task, row) });
     } catch (error) {
       task.interceptor = undefined; task.fallback_reason = 'no_valid_certified_library';
@@ -209,6 +296,10 @@ export function apply(ctx: any) {
   async function submit(task: Task, confirmation: unknown, signal: AbortSignal) {
     if (confirmation !== task.confirmation_digest) throw new TaskError('confirmation_changed', 'Input/configuration changed; preview and confirm again', 409);
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
+    if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
+        fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256) {
+      throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
+    }
     requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
     try {
       configureMotif(task);
@@ -238,12 +329,9 @@ export function apply(ctx: any) {
     resolveUserId: () => 'sss-web-operator', prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
   })), 'sss-web-task-provider');
   ctx.on('agent/created', ({ agent }: any) => {
-    agent.ctx.tools.restrict({ allow: config.allowed_tools });
-    agent.ctx.tools.guard((call: any) => allowed.has(call.name) ? undefined : 'Tool is outside the configured capability profile');
-    if (config.fixture === 'tool-failure') agent.ctx.tools.guard((call: any) => call.name.endsWith('__read_pinned') ? 'injected mock tool failure' : undefined);
-    schemas.set(agent.session.id, agent.ctx.tools.schemas(scopeOf(agent.ctx)).sort((a: any, b: any) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    agents.set(agent.session.id, agent);
     agent.ctx.on('tools/result', (execution: any, result: any) => forSession(agent.session.id)?.interceptor?.observe(agent.session.id, execution, result));
-  });
+  }, { global: true });
   ctx.on('session/event', (session: any, event: any) => {
     const task = forSession(session.id); if (!task) return;
     appendFileSync(join(task.output, 'events.jsonl'), JSON.stringify(event) + '\n', { mode: 0o600 });
@@ -274,7 +362,7 @@ export function apply(ctx: any) {
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
     if (!humans.length || humans.some((message: any) => task.humans.get(message.id) !== digest(message.content))) throw Error('Task user envelope changed');
-    if (digest(request.tools) !== digest(schemas.get(request.sessionId))) throw Error('Tool schema version changed');
+    if (digest(request.tools) !== digest(task.tools)) throw Error('Tool schema version changed');
     json(join(task.output, 'model-request-config.json'), { provider: request.provider, model: request.model,
       reasoning_effort: request.reasoningEffort, max_output_tokens: request.maxTokens,
       tools_order: request.tools.map((tool: any) => tool.name), tools_sha256: digest(request.tools),
@@ -293,11 +381,14 @@ export function apply(ctx: any) {
           for (const row of rows) { aggregate[row.status] = (aggregate[row.status] ?? 0) + 1;
             for (const field of ['upstream_requests', 'verified_skips', 'tool_calls', 'prompt_tokens', 'completion_tokens']) aggregate[field] = (aggregate[field] ?? 0) + Number(row.stats[field] ?? 0); }
           return Response.json({ tasks: rows, aggregate, capability_profile: config.capability_profile,
-            provider_mode: config.provider_mode, default_mode: config.mode, budget_usd: config.budget_usd });
+            provider_mode: config.provider_mode, default_mode: defaults.mode, budget_usd: config.budget_usd, settings: settingsView() });
         }
         const body: any = await request.json();
         const result = await serialize(async () => {
-          if (body.action === 'preview') return view(await preview(body.request), true);
+          if (body.action === 'preview') {
+            if (body.session_id && !ownedSessions.has(body.session_id)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
+            return view(await preview(body.request, body.session_id), true);
+          }
           const task = get(body.task_id);
           if (body.action === 'submit') return submit(task, body.confirmation_digest, request.signal);
           if (body.action === 'cancel') { await controller.cancel({ sessionId: task.request.session_id }); return view(task, true); }
@@ -314,7 +405,7 @@ export function apply(ctx: any) {
               request_id: task.request.request_id, capability_profile: task.request.capability_profile }, {
               task_id: task.request.task_id, session_id: task.request.session_id, default_mode: config.mode,
               default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
-              default_profile: config.capability_profile, allowed_profiles: [config.capability_profile], max_parts: 32, max_content_bytes: 768 * 1024 });
+              default_profile: task.scene.id, allowed_profiles: [task.scene.id], max_parts: 32, max_content_bytes: 768 * 1024 });
             task.request = changed; task.delivery.push({ type: 'file', receiptId: uploaded.receiptId });
             updateDraft(task); return view(task, true);
           }
@@ -322,7 +413,7 @@ export function apply(ctx: any) {
         });
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error) {
-        const known = error instanceof TaskError || error instanceof WebTaskRequestError;
+        const known = error instanceof TaskError || error instanceof WebTaskRequestError || error instanceof SettingsError;
         return Response.json({ error: { code: known ? error.code : 'task_request_failed', message: String((error as Error).message ?? error) } },
           { status: error instanceof TaskError ? error.status : 400 });
       }
@@ -330,6 +421,59 @@ export function apply(ctx: any) {
   for (const path of ['/api/harless/tasks', '/api/sss/tasks']) {
     ctx.effect(() => ctx.connection.fetch.register({ ...taskRoute, path }), 'harless-tasks-api-' + path);
   }
+  const settingsRoute = { methods: ['GET', 'POST'] as const, requestBody: 'buffered' as const,
+    fetch: async (request: Request) => {
+      try {
+        const url = new URL(request.url), sessionId = url.searchParams.get('session_id') ?? undefined;
+        if (request.method === 'GET') {
+          if (url.searchParams.has('panels')) return Response.json({ panels: [...panels].map(([session_id, panel]) => ({ session_id, ...panel })) }, { headers: { 'Cache-Control': 'no-store' } });
+          return Response.json({ ...settingsView(sessionId), sessions: [...ownedSessions].map(session_id => ({ session_id, ...settingsView(session_id) })) }, { headers: { 'Cache-Control': 'no-store' } });
+        }
+        const body: any = await request.json();
+        const result = await serialize(async () => {
+          if (body.action === 'select') return setSelection(body.session_id, body.selection);
+          if (body.action === 'dismiss_panel') {
+            settingsView(body.session_id);
+            if (panels.get(body.session_id)?.revision === body.revision) panels.delete(body.session_id);
+            return { dismissed: true };
+          }
+          if (body.action === 'new_session') {
+            const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
+            const created = await controller.create({ agentPreset: sceneFor(chosen.scene).preset });
+            selections.set(created.sessionId, { ...chosen });
+            return { session_id: created.sessionId, ...settingsView(created.sessionId) };
+          }
+          throw new SettingsError('unknown_action', '只支持 select、new_session 和 dismiss_panel');
+        });
+        return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
+      } catch (error) {
+        return Response.json({ error: { code: (error as any).code ?? 'settings_failed', message: String((error as Error).message) } },
+          { status: error instanceof TaskError ? error.status : 400 });
+      }
+    } };
+  ctx.effect(() => ctx.connection.fetch.register({ ...settingsRoute, path: '/api/harless/settings' }), 'harless-settings-api');
+  if (ctx.commands) ctx.effect(() => ctx.commands.register({ name: 'harless', description: '选择场景、运行模式与 RSI 开关（不调用模型）',
+    input: { hint: '<场景> | mode [baseline|shadow|execute] | rsi [on|off] | list | status' },
+    handler: ({ agent, rawInput }: any) => serialize(async () => {
+      try {
+        const id = agent.session.id, command = parseHarlessCommand(rawInput);
+        settingsView(id);
+        if (command.kind === 'panel') {
+          panels.set(id, { revision: randomUUID(), section: command.section });
+          return { kind: 'success', text: `已打开 Harless 选择面板：/harless?session_id=${encodeURIComponent(id)}` };
+        }
+        if (command.kind === 'list') return { kind: 'success', text: scenes.map(scene => `${scene.id} · ${scene.label}`).join('\n') };
+        const value = command.kind === 'change' ? await setSelection(id, command.patch) : settingsView(id);
+        const current = value.current_task;
+        return { kind: 'success', text: `${value.applies_to === 'next_task' ? '下一任务生效' : '下一次输入生效'}：${value.selection.scene} / ${value.selection.mode} / RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? `；当前任务：${current.scene} / ${current.mode} / ${current.status}` : ''}` };
+      } catch (error) { return { kind: 'error', text: String((error as Error).message) }; }
+    }) }), 'harless-command');
+  const settingsPanel = readFileSync(fileURLToPath(new URL('./harless_panel.html', import.meta.url)), 'utf8');
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/harless', handler: (request: any, response: any) => {
+    const rejected = ctx.connection.requestRejection(request);
+    response.writeHead(rejected ?? 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    response.end(rejected ? '请先登录 Harness。' : settingsPanel);
+  } }), 'harless-settings-panel');
   const panel = readFileSync(fileURLToPath(new URL('./web_task_panel.html', import.meta.url)), 'utf8');
   const panelHandler = (request: any, response: any) => {
     const rejected = ctx.connection.requestRejection(request);
@@ -341,5 +485,5 @@ export function apply(ctx: any) {
   }
   const nativeBridge = config.provider_mode === 'real' ? '<script>' + readFileSync(fileURLToPath(new URL('./web_native_bridge.js', import.meta.url)), 'utf8') + '</script>' : '';
   ctx.effect(() => ctx.webServer.tapIndex((html: string) => html.replace('</body>',
-    '<a href="/tasks" style="position:fixed;right:18px;bottom:18px;z-index:9999;padding:10px 15px;border-radius:8px;background:#245cba;color:white;text-decoration:none">DeepSeek Harless 任务工作台</a>' + nativeBridge + '</body>')), 'sss-web-tasks-link');
+    '<a href="/tasks" style="position:fixed;right:18px;bottom:18px;z-index:9999;padding:10px 15px;border-radius:8px;background:#245cba;color:white;text-decoration:none">DeepSeek Harless 任务工作台</a>' + nativeBridge + '<script>' + readFileSync(fileURLToPath(new URL('./harless_native_bridge.js', import.meta.url)), 'utf8') + '</script></body>')), 'sss-web-tasks-link');
 }
