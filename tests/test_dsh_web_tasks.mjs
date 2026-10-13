@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 
@@ -471,8 +472,8 @@ test('Changed uploaded bytes invalidate the frozen task before budget activation
 
 
 test('Production Execute requires a certified whole-schema snapshot and rejects descriptor/type drift', options, async () => {
-  const manifest = new URL('../examples/motif-library/research-portfolio-v1/online-manifest.json', import.meta.url).pathname;
-  const task = new URL('../examples/motif-library/research-portfolio-v1/task.json', import.meta.url).pathname;
+  const manifest = fileURLToPath(new URL('../examples/motif-library/research-portfolio-v1/online-manifest.json', import.meta.url));
+  const task = fileURLToPath(new URL('../examples/motif-library/research-portfolio-v1/task.json', import.meta.url));
   const library = JSON.parse(readFileSync(manifest));
   const rows = Object.entries(library.contracts).map(([name, contract]) => ({ name, description: contract.description,
     parameters: { type: 'object', properties: Object.fromEntries(contract.required_params.map(param => [param, { type: 'string' }])), required: contract.required_params } }))
