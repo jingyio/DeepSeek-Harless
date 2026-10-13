@@ -57,6 +57,8 @@ def main():
     parser.add_argument('--port', type=int, default=3096)
     parser.add_argument('--run-budget-usd', type=float, default=.06)
     parser.add_argument('--run-request-limit', type=int, default=24)
+    parser.add_argument('--scenes', nargs='+', choices=['new-scene','ppt','paper-proofreading','research-data-analysis'],
+                        default=['new-scene','ppt','paper-proofreading','research-data-analysis'])
     args = parser.parse_args(); os.umask(0o077)
     groups = []
     # Bob stays model-free; separate Connection tokens, DSH_HOME, policy and Session storage.
@@ -85,21 +87,25 @@ def main():
         settings(bob, bob_base, {'action': 'select', 'selection': {'scene': 'ppt', 'mode': 'baseline'}})
         bob_draft = web.api(bob, bob_base, {'action': 'preview', 'request': 'Bob private draft'})
         drafts = []
-        for scene in ('new-scene', 'ppt'):
+        for scene in args.scenes:
             settings(alice, base, {'action': 'select', 'selection': {'scene': scene, 'mode': 'shadow', 'rsi': True}})
-            text = ('列出上传的文件，读取文件文本，引用真实文件名和 SHA256；不要猜路径。' if scene == 'new-scene'
-                    else '调用 list_inputs，pin_source 并 read_source 读取 doc_1，简短概括其文本，引用来源句柄与 SHA256。只读检查，不生成幻灯片。')
+            text = {'new-scene':'列出上传的文件，读取文件文本，引用真实文件名和 SHA256；不要猜路径。',
+                    'ppt':'调用 list_inputs，pin_source 并 read_source 读取 doc_1，简短概括其文本，引用来源句柄与 SHA256。只读检查，不生成幻灯片。',
+                    'paper-proofreading':'调用 list_inputs，按实际文件名和 SHA256 使用 pin_document、read_pinned_document 阅读论文文本，给出一句措辞修改建议并引用来源版本。',
+                    'research-data-analysis':'调用 list_inputs，按实际文件名和 SHA256 使用 pin_dataset、read_pinned_dataset_summary 计算 x 的均值和缺失数，简短回答并引用来源版本。'}[scene]
             draft = web.api(alice, base, {'action': 'preview', 'request': {'instruction': text,
                 **({'scene_options': {'slides': 1, 'allow_output': False}} if scene == 'ppt' else {})}})
             if scene == 'ppt':
                 from reportlab.pdfgen.canvas import Canvas
                 buffer = io.BytesIO(); pdf = Canvas(buffer); pdf.drawString(80, 700, 'Experiment A used 2 seeds. Independent replication is needed.'); pdf.save()
                 name, data = 'source.pdf', buffer.getvalue()
+            elif scene == 'paper-proofreading': name, data = 'paper.md', b'We proves the result using two independent seeds. Further replication is needed.'
+            elif scene == 'research-data-analysis': name, data = 'data.csv', b'x,y\n1,2\n2,4\n,6\n3,8\n'
             else: name, data = 'note.txt', b'Experiment A used 2 seeds. Independent replication is needed.'
             draft = web.api(alice, base, {'action': 'upload', 'task_id': draft['task_id'], 'name': name,
                 'data': base64.b64encode(data).decode()})
             frozen = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())
-            prefix = 'mcp__ppt__' if scene == 'ppt' else 'mcp__workspace__'
+            prefix = {'ppt':'mcp__ppt__','new-scene':'mcp__workspace__','paper-proofreading':'mcp__paper_checks__','research-data-analysis':'mcp__data_analysis__'}[scene]
             assert frozen['tools'] and all(tool['name'].startswith(prefix) for tool in frozen['tools'])
             assert frozen['instructions'] and frozen['instructions_sha256']
             assert frozen['user_id'] == 'scene-check-alice' and frozen['selection']['mode'] == 'shadow'
@@ -129,7 +135,7 @@ def main():
                 web.api(alice, base, {'action': 'cancel', 'task_id': draft['task_id']})
                 groups.append({'group': scene + '-actual-mcp-config-and-upload', 'model_requests': 0})
             drafts.append(draft)
-        assert drafts[0]['session_id'] != drafts[1]['session_id']
+        assert len({draft['session_id'] for draft in drafts}) == len(drafts)
         web.api(bob, bob_base, {'action': 'cancel', 'task_id': bob_draft['task_id']})
         groups.append({'group': 'two-principal-processes-and-foreign-session-task-receipt-denial', 'model_requests': 0})
         run_id = output.name

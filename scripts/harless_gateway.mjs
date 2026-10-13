@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { memberSceneDeployment } from './harless_member_scenes.mjs';
 
 const scrypt = promisify(scryptCallback);
 const dummyHash = 'scrypt-v1$anonymous-login$' + scryptSync('dummy-password', 'anonymous-login', 64,
@@ -84,6 +85,7 @@ function safePath(url) {
 function errorCode(error) { return typeof error?.code === 'string' ? error.code : 'error'; }
 
 export function createGateway(config) {
+  const sceneDeployment = memberSceneDeployment(config.memberPolicy, config.memberSceneDeployment);
   const dataDir = config.dataDir;
   const dbPath = join(dataDir, 'accounts.json');
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -312,8 +314,9 @@ export function createGateway(config) {
       const port = await allocatePort();
       const userDir = join(config.membersDir, user.id);
       for (const sub of ['', 'dsh', 'workspace', 'tasks/tasks', 'config']) mkdirSync(join(userDir, sub), { recursive: true, mode: 0o700 });
-      const policy = { ...config.memberPolicy, output: '/user/tasks',
-        allowed_tools: [], resources: {}, budget_task_prefix: taskPrefix(user),
+      const policy = { ...config.memberPolicy, output: sceneDeployment?.output ?? '/user/tasks',
+        ...(sceneDeployment ? {scenes:sceneDeployment.scenes} : {}),
+        allowed_tools: sceneDeployment?.allowed_tools ?? [], resources: {}, budget_task_prefix: taskPrefix(user),
         endpoint: `http://127.0.0.1:${scopedPort}/v1`,
         control_endpoint: `http://127.0.0.1:${scopedPort}`,
         budget_broker_endpoint: `http://127.0.0.1:${scopedPort}`,
@@ -324,7 +327,8 @@ export function createGateway(config) {
       patch.push({ insert: [{ name: 'file:///app/src/adapters/dsh_member_workspace.ts' }] });
       const preset = patch.find(row => row.id === 'agent-presets');
       if (!preset) throw Error('Agent preset patch unavailable');
-      preset.config = { ...preset.config, roots: [{ path: '/user/config/presets', trust: 'system' }] };
+      preset.config = { ...preset.config, roots: [{ path: '/user/config/presets', trust: 'system' },
+        ...(sceneDeployment ? [{path:sceneDeployment.output+'/presets',trust:'system'}] : [])] };
       store(join(userDir, 'config', 'host.patch.yml'), patch);
       mkdirSync(join(userDir, 'config', 'presets', 'sss-task'), { recursive: true, mode: 0o700 });
       store(join(userDir, 'config', 'presets', 'sss-task', 'preset.yml'), { name: 'DeepSeek Harless · 我的工作区' });
@@ -338,12 +342,15 @@ export function createGateway(config) {
         '--tmpfs', '/tmp', '--dir', '/opt', '--ro-bind', config.nodeRoot, '/opt/node',
         '--dir', '/app', '--ro-bind', config.nodeModules, '/app/node_modules',
         '--ro-bind', config.sourceDir, '/app/src', '--bind', userDir, '/user',
+        ...(sceneDeployment ? ['--dir','/app/.local','--bind',join(userDir,'tasks'),sceneDeployment.output,
+          ...sceneDeployment.mounts.filter(m=>m.target!=='/app/src').flatMap(m=>['--ro-bind',m.source,m.target])] : []),
         '--chdir', '/user/workspace', bin, '/app/node_modules/@deepseek-ai/dsh/lib/bin.js',
         '--profile', 'web', '--patch', '/user/config/host.patch.yml', '--host', '127.0.0.1',
         '--port', String(port), '--no-open', '--trusted-host', new URL(config.publicOrigin).host];
       const env = { PATH: '/opt/node/bin:/usr/bin:/bin', HOME: '/user/workspace', DSH_HOME: '/user/dsh',
         SSS_WEB_POLICY: '/user/config/policy.json', DEEPSEEK_API_KEY: delegate(user, 'model'),
         HARLESS_GATEWAY_ENABLED: '1',
+        ...(sceneDeployment ? {SSS_PYTHON:sceneDeployment.python} : {}),
         NO_PROXY: 'localhost,127.0.0.1,::1', no_proxy: 'localhost,127.0.0.1,::1',
         LANG: 'C.UTF-8', PYTHONUTF8: '1' };
       const child = spawn('/usr/bin/bwrap', args, { env, stdio: ['ignore', 'pipe', 'pipe'] });

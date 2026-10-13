@@ -70,7 +70,13 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     if (bytes !== ref.bytes) throw Error('file_bytes_changed');
     const data = Buffer.concat(chunks), suffix = extname(ref.name).toLowerCase();
     if (scene.adapter === 'ppt' && !['.pdf', '.pptx'].includes(suffix)) throw Error('ppt_requires_pdf_or_pptx');
-    const leaf = `doc_${inputs.length + 1}-${basename(ref.name).replace(/[^\p{L}\p{N}._-]/gu, '_').slice(-120)}`;
+    if (scene.id === 'paper-proofreading' && !['.pdf','.tex','.bib','.bbl','.log','.md','.txt'].includes(suffix)) throw Error('paper_input_format_unsupported');
+    if (scene.id === 'research-data-analysis' && !['.csv','.tsv'].includes(suffix)) throw Error('data_requires_csv_or_tsv');
+    // Literal LaTeX references resolve original flat filenames, not renamed doc_N files.
+    const original = basename(ref.name);
+    if (scene.id === 'paper-proofreading' && (original !== ref.name || !/^[\p{L}\p{N}._-]{1,120}$/u.test(original) || original.startsWith('.'))) throw Error('paper_requires_safe_flat_filenames');
+    const leaf = scene.id === 'paper-proofreading' ? original : `doc_${inputs.length + 1}-${original.replace(/[^\p{L}\p{N}._-]/gu, '_').slice(-120)}`;
+    if (preparedFiles.some(file => file.path === join(workspace, 'inputs', leaf))) throw Error('duplicate_scene_filename');
     const path = join(workspace, 'inputs', leaf);
     preparedFiles.push({ path, data });
     inputs.push({ document_id: `doc_${inputs.length + 1}`, name: ref.name, path, version_sha256: sha(data) });

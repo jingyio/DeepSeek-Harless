@@ -2,10 +2,41 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createHash, createHmac } from 'node:crypto';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGateway, createOwnerClaim, createInvites } from '../scripts/harless_gateway.mjs';
+import { memberSceneDeployment } from '../scripts/harless_member_scenes.mjs';
+
+test('Scene deployment mounts code read-only and keeps user data and credentials out', t => {
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-scene-deploy-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for(const name of ['src','scripts','scenarios','python/bin'])mkdirSync(join(root,name),{recursive:true});
+  const python=join(root,'python/bin/python');writeFileSync(python,'test dependency file');
+  const scene={id:'new-scene',preset:'sss-task',label:'New Scene',adapter:'workspace',
+    allowed_tools:['mcp__workspace__list_files'],environment_references:{},
+    mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',config:{serverName:'workspace',transport:'stdio',command:python,
+      cwd:root,args:[join(root,'scenarios/general/server.py'),'__HARLESS_SESSION_WORKSPACE__/inputs']}}]};
+  const policy={scenes:[scene],resources:{owner_private:{text:'Never inherit this'}}};
+  const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')]};
+  const result=memberSceneDeployment(policy,deployment);
+  assert.equal(result.output,'/app/.local/web');
+  assert.deepEqual(result.allowed_tools,scene.allowed_tools);
+  assert.equal(result.scenes[0].mcp_rows[0].config.args[0],'/app/scenarios/general/server.py');
+  assert.equal(result.scenes[0].mcp_rows[0].config.args[1],'__HARLESS_SESSION_WORKSPACE__/inputs');
+  assert.ok(result.mounts.every(row=>row.source!==root && !row.source.includes('/.local/')));
+  assert.equal(policy.scenes[0].mcp_rows[0].config.cwd,root);
+  assert.equal(result.scenes[0].resources,undefined);
+  assert.equal(memberSceneDeployment(policy,undefined),null);
+  assert.throws(()=>memberSceneDeployment({...policy,scenes:[{...scene,environment_references:{key:'owner-secret'}}]},deployment),/credentials/);
+  const withSecret=structuredClone(scene);withSecret.mcp_rows[0].config.env={API_KEY:'never-deploy'};
+  assert.throws(()=>memberSceneDeployment({...policy,scenes:[withSecret]},deployment),/authority/);
+  const unsafe=structuredClone(scene);unsafe.mcp_rows[0].config.args[0]='/owner/private/tool.py';
+  assert.throws(()=>memberSceneDeployment({...policy,scenes:[unsafe]},deployment),/approved scene code/);
+  assert.throws(()=>memberSceneDeployment({...policy,scenes:[{...scene,manifest:join(root,'private-manifest.json')}]},deployment),/sanitized/);
+  const library=join(root,'library');mkdirSync(library);writeFileSync(join(library,'agent-events.jsonl'),'private raw trace');
+  assert.throws(()=>memberSceneDeployment(policy,{...deployment,libraryRoot:library}),/private evidence/);
+});
 
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 const close = server => new Promise(resolve => server.close(resolve));

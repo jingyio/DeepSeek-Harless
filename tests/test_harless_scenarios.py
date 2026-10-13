@@ -48,5 +48,7 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['ppt']['mcp_rows'])
     assert rows['new-scene']['allowed_tools'] == ['mcp__workspace__list_files', 'mcp__workspace__read_file']
     for identity in ('paper-proofreading', 'research-data-analysis'):
-        assert rows[identity]['unavailable_reason'] and not rows[identity]['allowed_tools']
-        assert 'scenario' not in rows[identity]
+        assert 'unavailable_reason' not in rows[identity] and rows[identity]['allowed_tools']
+        assert rows[identity]['adapter'] == 'workspace'
+        assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows[identity]['mcp_rows'])
+        assert 'examples/' not in rows[identity]['scenario'] and 'portfolio' not in rows[identity]['scenario']
