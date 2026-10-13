@@ -1,0 +1,7 @@
+# 此场景的额外依赖；先安装仓库根 requirements.txt。
+pypdf==6.19.0
+Pillow==12.0.0
+defusedxml==0.7.1
+PyMuPDF==1.26.7
+python-pptx==1.0.2
+reportlab==4.4.9

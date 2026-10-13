@@ -1,0 +1,200 @@
+{
+  "schema_version": 1,
+  "published_at": "2026-10-11",
+  "scope": "research_ppt 场景自行生成的历轮实验 PDF 报告；不含同伴参考报告、原论文、原始轨迹、凭证和交付 ZIP。",
+  "deduplication": "按完整 PDF 字节 SHA-256 去除备份重复件；同一实验的不同报告版本全部保留，不重复统计为新任务。",
+  "total_pdf_files": 19,
+  "total_pdf_bytes": 148600784,
+  "reports": [
+    {
+      "path": "v2/report-original.pdf",
+      "title": "V2–V4 全成本报告初版",
+      "version_note": "历史累计报告；保留旧版，不与修订版重复计为新实验。",
+      "source_sha256": "694cd9a31837732c04c21af856000af69e4cea95a5e770891690104073ba4083",
+      "published_sha256": "694cd9a31837732c04c21af856000af69e4cea95a5e770891690104073ba4083",
+      "size_bytes": 2623792,
+      "pages": 30,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v2/report-revised.pdf",
+      "title": "V2–V4 全成本报告修订版",
+      "version_note": "原累计数据补充、边界与失败记录；不是新增付费实验。",
+      "source_sha256": "8db61e95f20f2e19ea4b8f5e85d29dc232858fbea5c7483c6776ec65ad163955",
+      "published_sha256": "8db61e95f20f2e19ea4b8f5e85d29dc232858fbea5c7483c6776ec65ad163955",
+      "size_bytes": 2625506,
+      "pages": 31,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v2/report-demo-quality.pdf",
+      "title": "V2 演示质量补充报告",
+      "version_note": "独立保留演示质量记录；不替代完整矩阵原稿。",
+      "source_sha256": "1f332b4e4fe19569cc26664c0af9135e7052f79108f2b5f48016735c74db9817",
+      "published_sha256": "1f332b4e4fe19569cc26664c0af9135e7052f79108f2b5f48016735c74db9817",
+      "size_bytes": 1908847,
+      "pages": 9,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v2/report-peer-style-01.pdf",
+      "title": "V2–V4 同伴结构版初版",
+      "version_note": "相同真实运行按总结果与八节重组；原错误稿与失败运行保留。",
+      "source_sha256": "198d047ce511d1c7a1316f49a1585f01c54ca99f7419626e4550ad599260fdbc",
+      "published_sha256": "198d047ce511d1c7a1316f49a1585f01c54ca99f7419626e4550ad599260fdbc",
+      "size_bytes": 6787945,
+      "pages": 28,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v2/report-peer-style-server-v2.pdf",
+      "title": "V2–V4 同伴结构版服务器另存版",
+      "version_note": "从服务器补齐的同伴结构版历史报告；不视作新的独立实验。",
+      "source_sha256": "aa80410fa743fb3c917a3002fcd30b5e8602373d9a535a8f600977eadc91dc59",
+      "published_sha256": "aa80410fa743fb3c917a3002fcd30b5e8602373d9a535a8f600977eadc91dc59",
+      "size_bytes": 6788285,
+      "pages": 28,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v2/report-peer-style-02.pdf",
+      "title": "V2–V4 同伴结构版修订版",
+      "version_note": "本阶段推荐阅读版；E4 相同文档结果下的局部调度节省不外推任意生成任务。",
+      "source_sha256": "1e4894d8b6313dba4f4f0e59e41958b4c6a7e1648cfb334971583c0865f6e1b6",
+      "published_sha256": "1e4894d8b6313dba4f4f0e59e41958b4c6a7e1648cfb334971583c0865f6e1b6",
+      "size_bytes": 6788582,
+      "pages": 28,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v5/report-original-matrix.pdf",
+      "title": "V5 原五题三组矩阵",
+      "version_note": "设计 Skill、原生图形与受限布局 RSI；机械认证不保证科学/审美质量。",
+      "source_sha256": "c65319077d8f87c1548cc5ec1cfeb6128cf687ce0c128c2bb35daa59d8c7be8f",
+      "published_sha256": "c65319077d8f87c1548cc5ec1cfeb6128cf687ce0c128c2bb35daa59d8c7be8f",
+      "size_bytes": 11081774,
+      "pages": 29,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v5/report-post-review-pilot.pdf",
+      "title": "V5 审查后 P1/P2 修订 pilot",
+      "version_note": "使用已知错误反馈的工程修订对照；来源重叠，不与原矩阵混算。",
+      "source_sha256": "66361ea42e8d2dbe04f2b5f1116341e2e6b96e3b938f9f04afe388457f975be9",
+      "published_sha256": "66361ea42e8d2dbe04f2b5f1116341e2e6b96e3b938f9f04afe388457f975be9",
+      "size_bytes": 3741199,
+      "pages": 17,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v6/report-early.pdf",
+      "title": "V6 真实工具生成与新 Motif 早期报告",
+      "version_note": "从服务器补齐的早期交付报告；后续审查版另存，保留早期证据。",
+      "source_sha256": "dce696fe18da19161ff89de580f2e095db5e72dfffb54e09ec6d328ba63308ad",
+      "published_sha256": "dce696fe18da19161ff89de580f2e095db5e72dfffb54e09ec6d328ba63308ad",
+      "size_bytes": 7801801,
+      "pages": 23,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v6/report-original.pdf",
+      "title": "V6 真实工具生成与新 Motif 初版",
+      "version_note": "模型生成受限 TypeScript 工具并独立认证；保留初版。",
+      "source_sha256": "b95f1d945a7a3ec2e08a62444edf374bcee9de32d3be67eec36e48267896e24f",
+      "published_sha256": "b95f1d945a7a3ec2e08a62444edf374bcee9de32d3be67eec36e48267896e24f",
+      "size_bytes": 7804333,
+      "pages": 23,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v6/report-reviewed.pdf",
+      "title": "V6 真实工具生成与新 Motif 审查版",
+      "version_note": "本阶段推荐阅读版；相对生成工具组的局部下降仍高于普通 baseline，未证同质量降本。",
+      "source_sha256": "9e867c26afb75126daba9e0eade5e0d36431a3fac7692a894ce09c1048f007a0",
+      "published_sha256": "9e867c26afb75126daba9e0eade5e0d36431a3fac7692a894ce09c1048f007a0",
+      "size_bytes": 7804979,
+      "pages": 22,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v7/report-01.pdf",
+      "title": "V7 交付恢复报告 01",
+      "version_note": "从最新备份恢复的早期报告，保留负面证据。",
+      "source_sha256": "0cb5afc93f2beeacd4817ac42cf9dfcca1ede9417bcfd454b1eb22b21a2cf925",
+      "published_sha256": "0cb5afc93f2beeacd4817ac42cf9dfcca1ede9417bcfd454b1eb22b21a2cf925",
+      "size_bytes": 8923983,
+      "pages": 26,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v7/report-02.pdf",
+      "title": "V7 交付恢复报告 02",
+      "version_note": "早期报告修订；不视作新的独立实验。",
+      "source_sha256": "de1d5bf874e6e9cab288eb0d8b5d7376159fe20cd87e58925cd418a11c8ddcea",
+      "published_sha256": "de1d5bf874e6e9cab288eb0d8b5d7376159fe20cd87e58925cd418a11c8ddcea",
+      "size_bytes": 8924570,
+      "pages": 26,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v7/report-03.pdf",
+      "title": "V7 交付恢复报告 03",
+      "version_note": "完整运行、失败与质量辅助审查版。",
+      "source_sha256": "8c4212a17365c811cec02ca51d45603da29ef76fab8b75027370f018e8566a85",
+      "published_sha256": "8c4212a17365c811cec02ca51d45603da29ef76fab8b75027370f018e8566a85",
+      "size_bytes": 8934589,
+      "pages": 27,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v7/report-04.pdf",
+      "title": "V7 交付恢复报告 04",
+      "version_note": "报告排版/展示修订；原运行记录不覆盖。",
+      "source_sha256": "f631a56bde254419a1f55e12bbed203866991eced11e275dbb5eb67afccbeb91",
+      "published_sha256": "f631a56bde254419a1f55e12bbed203866991eced11e275dbb5eb67afccbeb91",
+      "size_bytes": 8934368,
+      "pages": 26,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v7/report-05.pdf",
+      "title": "V7 交付恢复报告 05",
+      "version_note": "本阶段推荐阅读版；9 个新工具候选未晋级，不能称工具 RSI 成功闭环。",
+      "source_sha256": "f7b6cf2e8859a3e9ae2e02ddc9b1f8d96c1ce069b7cfef958aac80c3914d02e6",
+      "published_sha256": "f7b6cf2e8859a3e9ae2e02ddc9b1f8d96c1ce069b7cfef958aac80c3914d02e6",
+      "size_bytes": 8933432,
+      "pages": 25,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v8/report-01.pdf",
+      "title": "V8/V8c 阶段成果报告 01",
+      "version_note": "记录学习、认证、生成与重启修订；保留首次阶段版本。",
+      "source_sha256": "7c892211c2f2a426663d642d55cc93beed2c480dca4c2b2dc949041c85153536",
+      "published_sha256": "7c892211c2f2a426663d642d55cc93beed2c480dca4c2b2dc949041c85153536",
+      "size_bytes": 12677099,
+      "pages": 29,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v8/report-02.pdf",
+      "title": "V8/V8c 辅助质量审查报告 02",
+      "version_note": "补充辅助审查和失败/图件定位；不是新评测数据集。",
+      "source_sha256": "1e2db219fc829acff580d87182516663a6ad8559fed1e60f1db1d942301fa682",
+      "published_sha256": "1e2db219fc829acff580d87182516663a6ad8559fed1e60f1db1d942301fa682",
+      "size_bytes": 12751620,
+      "pages": 35,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    },
+    {
+      "path": "v8/report-03.pdf",
+      "title": "V8/V8c 最终报告 03",
+      "version_note": "本阶段推荐阅读版；局部旁路生效但整任务请求、token、代理估费高于普通 baseline。",
+      "source_sha256": "20a2a5ea5be8e8f2657c2d0488a65647513c1278f85e97ade7cb25c7f042f08c",
+      "published_sha256": "20a2a5ea5be8e8f2657c2d0488a65647513c1278f85e97ade7cb25c7f042f08c",
+      "size_bytes": 12764080,
+      "pages": 37,
+      "publication": "原字节复制，仅重命名；无内容改写或重新计算历史结果。"
+    }
+  ]
+}

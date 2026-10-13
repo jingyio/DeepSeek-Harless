@@ -9,6 +9,8 @@
     "smoke": "node scripts/project.mjs smoke",
     "scenario": "node scripts/project.mjs scenario",
     "scenario:real": "node scripts/project.mjs scenario --call-model",
+    "ppt": "node scripts/project.mjs python -m scenarios.research_ppt.trial",
+    "ppt:feedback": "node scripts/project.mjs python -m scenarios.research_ppt.feedback_learning",
     "web": "node scripts/project.mjs web",
     "web:real": "node scripts/project.mjs web --real-model",
     "web:check": "node scripts/project.mjs python scripts/check-harness-web.py",

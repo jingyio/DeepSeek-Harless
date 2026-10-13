@@ -11,6 +11,7 @@ __pycache__/
 .env.*
 !.env.example
 *.log
+test-logs/
 .DS_Store
 dist/
 coverage/
@@ -20,3 +21,6 @@ experiments/results/
 office/papers/inbox/
 office/papers/archive/
 office/papers/notes/
+
+# 科研 PPT 历轮 PDF 保留在私有归档
+docs/experiments/research-ppt-reports/**/*.pdf

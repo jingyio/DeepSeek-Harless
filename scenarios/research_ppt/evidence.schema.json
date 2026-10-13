@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sss:research-ppt:scientific-evidence:v1",
+  "title": "直接科研结果侧表；逐字定位不等于科学支持",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "claims"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "claims": {"type": "array", "maxItems": 300, "items": {"$ref": "#/$defs/claim"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S"},
+    "span": {
+      "type": "object", "additionalProperties": false, "required": ["start", "end", "quote"],
+      "description": "来源解析页Unicode码点区间[start,end)，不是UTF-16字节/单元偏移",
+      "properties": {
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 1},
+        "quote": {"type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S"}
+      }
+    },
+    "result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["value", "method", "metric", "unit", "condition"],
+      "properties": {
+        "value": {"$ref": "#/$defs/id"}, "method": {"$ref": "#/$defs/id"},
+        "metric": {"$ref": "#/$defs/id"}, "unit": {"$ref": "#/$defs/id"},
+        "condition": {
+          "type": "object", "minProperties": 1, "maxProperties": 32,
+          "propertyNames": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+          "additionalProperties": {"$ref": "#/$defs/id"}
+        }
+      }
+    },
+    "claim": {
+      "type": "object", "additionalProperties": false,
+      "required": ["claim_id", "source_id", "version_sha256", "page", "span", "result"],
+      "properties": {
+        "claim_id": {"$ref": "#/$defs/id"}, "source_id": {"$ref": "#/$defs/id"},
+        "version_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "page": {"type": "integer", "minimum": 1, "maximum": 200},
+        "span": {"$ref": "#/$defs/span"}, "panel": {"$ref": "#/$defs/id"},
+        "fact_id": {"$ref": "#/$defs/id"}, "result": {"$ref": "#/$defs/result"}
+      }
+    }
+  }
+}

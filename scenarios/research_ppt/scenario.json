@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "research_ppt",
+  "prompt": "prompt.md",
+  "servers": [{
+    "server_name": "ppt", "transport": "stdio", "command": "${PYTHON}",
+    "args": ["${PROJECT_ROOT}/scenarios/research_ppt/server.py"],
+    "cwd": "${PROJECT_ROOT}", "tool_call_timeout_ms": 120000,
+    "env": {"SSS_PPT_JOB": {"from_env": "SSS_PPT_JOB"}}
+  }],
+  "allowed_tools": [
+    "mcp__ppt__list_inputs", "mcp__ppt__pin_source", "mcp__ppt__read_source",
+    "mcp__ppt__read_page", "mcp__ppt__render_deck", "mcp__ppt__inspect_deck",
+    "mcp__ppt__list_templates", "mcp__ppt__extract_figure", "mcp__ppt__restyle_deck",
+    "mcp__ppt__validate_deck", "mcp__ppt__deliver_deck", "mcp__ppt__build_delivery",
+    "mcp__ppt__read_deck_plan", "mcp__ppt__revise_deck"
+  ]
+}
