@@ -1,5 +1,9 @@
 # 科研 PPT 当前交接
 
+## 2026-10-14 私有库迁移补记
+
+Codex 按用户授权从旧部署取回 12 份 PPT Manifest 及 322 个库/认证依赖文件，同步到 V100 `.local/imports/ppt-library-transfer-20261014/`；本机同名私有目录也保留备份。两端逐项 SHA256 核验通过。4 份完整证据锁匹配旧部署，当前 Runtime 格式检查接受 10/12、拒绝 2/12；当前代码相较旧证据仍有版本变化，尚未认证迁移或绑定 Web Execute。此次模型调用 0，未改变预算、权限或历史证据。详情与接手步骤见 [迁移记录](../experiments/ppt-library-transfer-20261014-v1.md)。以下保留原场景发布交接；原本机 `H:/DeepSeekHarness` 路径属于原负责人环境，不能当作本次 macOS 已存在的文件。
+
 - 更新时间与交接人：2026-10-13，Codex。
 - 目标与本次范围：停止扩展研究机制，收敛课题组试用。保留接口，朴素组会稿、双路生成/记账、版本安全修订、显式反馈与受控学习；结果见 `docs/experiments/research-ppt-v15-deployment-20261013.md`，历轮索引见 `docs/experiments/research-ppt-reports/README.md`；20 份 PDF 留在团队私有归档，不进入 main。
 - 分支 / commit / 工作区：原场景开发位于 `feature/research-ppt-agent`；不含 PDF 的集成改动从 main `b330bb4` 另建 `codex/research-ppt-clean-pr`，已提交并推送，见 PR #5。原场景工作区与私有数据未覆盖；PR 审查及 CI 完成前不合并。
