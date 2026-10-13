@@ -22,7 +22,7 @@ async function fixture(overrides = {}) {
     const value = text ? JSON.parse(text) : undefined;
     controlCalls.push({ path: url.pathname, value });
     if (url.pathname === '/tasks/register') registrations.set(value.session_id,
-      { task_id: value.task_id, budget_usd: value.budget_usd });
+      { task_id: value.task_id, budget_usd: value.budget_usd, model: value.model });
     const session = value?.session_id ?? url.searchParams.get('session_id');
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ stats: { upstream_requests: 0, prompt_tokens: 0,
@@ -143,7 +143,7 @@ test('DeepSeek Harless tasks use authenticated Connection API routes and protect
       writeHead(status) { result.status = status; }, end(value) { result.body = value; },
     });
     assert.equal(result.status, 200); assert.match(result.body, /DeepSeek Harless 任务工作台/);
-    assert.match(result.body, /模型与账号/);
+    assert.match(result.body, /任务模型/);
     const listing = await f.api();
     assert.deepEqual(listing.value.model_options, [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }]);
   } finally { await f.close(); }
@@ -171,6 +171,26 @@ test('Dynamic preview creates independent tasks, binds resource versions, and is
       [{ instruction: '任务', inputs: [{ resource_id: 'source:one', version: 'v2' }] }, 'resource_version_changed'],
     ]) { const result = await f.api({ action: 'preview', request }); assert.equal(result.value.error.code, code); }
     const list = await f.api(); assert.equal(list.value.tasks.length, 2); assert.equal(list.value.aggregate.tasks, 2);
+  } finally { await f.close(); }
+});
+
+test('GLM selection binds the preview, task budget, and model admission', options, async () => {
+  const models = [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true },
+    { provider: 'harless-glm', model: 'glm-4.6', label: 'GLM 4.6', available: true }];
+  const f = await fixture({ models });
+  try {
+    assert.deepEqual((await f.api()).value.model_options, models);
+    const task = await f.preview({ instruction: '检查材料', model: 'glm-4.6' });
+    assert.equal(task.provider, 'harless-glm'); assert.equal(task.model, 'glm-4.6');
+    assert.equal(f.registrations.get(task.session_id).model, 'glm-4.6');
+    assert.equal((await f.api({ action: 'preview', request: { instruction: '错误模型', model: 'unlisted' } })).status, 400);
+    await assert.rejects(f.ctx.sessionController.selectModel({ sessionId: task.session_id,
+      provider: 'deepseek-official', model: 'deepseek-flash' }), /outside the approved task/);
+    assert.equal((await f.submit(task)).status, 200);
+    const glmRequest = f.modelRequest(task, { provider: 'harless-glm', model: 'glm-4.6' });
+    delete glmRequest.reasoningEffort;
+    assert.doesNotThrow(() => f.stream(glmRequest, async function* () {}));
+    assert.throws(() => f.stream(f.modelRequest(task), async function* () {}), /Unapproved task model/);
   } finally { await f.close(); }
 });
 

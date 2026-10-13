@@ -2,7 +2,7 @@
 
 DeepSeek Harless 是本项目统一的产品名称；当前仓库是供场景开发使用的最小主线。MotifAgent 的迁移内核负责有证据支持的结构执行；DeepSeek Harness（DSH）负责 Agent 循环、语义判断、工具派发和会话。场景通过 MCP 扩展。历史环境变量、协议标识和目录保持兼容，不因产品更名修改其含义。
 
-项目负责人已明确：后续模型联调、场景验收和质量/成本对照统一使用真实 DeepSeek API。服务器先加载 `.local/remote-env.sh`，在私有 `.env` 配置 `DEEPSEEK_API_KEY`；Web 用 `npm run web:real`，SDK 场景用 `npm run scenario:real -- --scenario scenarios/example/scenario.json --budget-usd 0.25`。Web 每任务与整次启动均默认上限 0.25 美元；SDK 每次运行默认上限 0.25 美元，运行前核对预览与有效配置，超出既有上限另行确认。已完成一次 SDK/Harness/MCP 的真实 API 闭环：3 次 HTTP 200、4 次工具、来源引用一致，见[最小真实调用记录](docs/experiments/deepseek-real-api-smoke-20261009-v1.md)。3080 的历史服务为模拟模式；3086 真实 Web 后端两项任务已通过，浏览器点击体验仍待确认，见[连接恢复与真实 Web 验收](docs/experiments/web-real-recovery-20261009-v1.md)。
+既有论文/DeepSeek 对照继续使用真实 DeepSeek API；共享 Web 现在可按服务器配置选择 GLM。服务器先加载 `.local/remote-env.sh`，在私有 `.env` 配置所需模型密钥（SDK 场景仍需 `DEEPSEEK_API_KEY`）；Web 用 `npm run web:real`，SDK 场景用 `npm run scenario:real -- --scenario scenarios/example/scenario.json --budget-usd 0.25`。Web 每任务与整次启动均默认上限 0.25 美元；SDK 每次运行默认上限 0.25 美元，运行前核对预览与有效配置，超出既有上限另行确认。已完成一次 SDK/Harness/MCP 的真实 API 闭环：3 次 HTTP 200、4 次工具、来源引用一致，见[最小真实调用记录](docs/experiments/deepseek-real-api-smoke-20261009-v1.md)。3080 的历史服务为模拟模式；3086 真实 Web 后端两项任务已通过，浏览器点击体验仍待确认，见[连接恢复与真实 Web 验收](docs/experiments/web-real-recovery-20261009-v1.md)。
 
 `npm test`、无模型 `smoke`、故障注入及旧模拟回归继续检查协议、权限和失败恢复。它们仅是开发诊断；不能作为模型回答、科研交付或真实降本的验收依据。真实 API 失败时记录失败，不切回固定模拟回复来报告通过。
 
@@ -51,7 +51,7 @@ ssh -N -L 3080:127.0.0.1:3080 -p SSH_PORT USER@SERVER
 
 默认选择 `scenarios/example/`，使用免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，再打开同源的 `/tasks` 工作台。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。填写要求或 JSON、选择模式与附件后，点击“开始免费联调”即可执行，无需填写额度或再次确认；界面在后台完成规范化、预览、上传和提交。结束后可直接创建下一个任务，不需要重启。官方聊天在模拟模式也能接收新会话的任务，真实模式的官方聊天会弹出题面与预算确认框，确认前不调用模型；任务工作台也保留预览与确认。旧 `/sss` 保留为兼容别名。
 
-`/tasks` 输入区现在显示模型与账号菜单；菜单从任务 API 读取已接通的模型，并在任务预览里写明实际模型。当前仅有 `DeepSeek Flash` 可执行。ChatGPT/Codex 显示为“登录待接入”，不能选择或发起 GPT 请求。2026-10-13 的单人 DSH Codex 设备码试用后，用户报告本地 Codex 桌面 App 会话被中断并退出登录；旧入口已撤销，试用服务已停止，Harless 私有目录中该条 OAuth 凭据已删除。原因未确认，不再把旧通道当作可用登录方案。OpenAI 的开源 SIWC 流程要求本机回环地址完成授权；远程网页接入需先明确适用条件和客户端资格。见[OpenAI 开源方案](https://developers.openai.com/siwc/token-sharing-open-source)、[远程 VM 指南](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms)和[网页登录指南](https://developers.openai.com/siwc/website)。
+`/tasks` 输入区的模型菜单由任务 API 返回可用模型；选择会绑定任务预览、确认摘要和预算账本。真实 Web 可从服务器私有 `.env` 启用 DeepSeek Flash、一个指定的 GLM 模型，或只启用 GLM；默认免费模拟仍使用 DeepSeek。GLM 通过 Harness 的 OpenAI 兼容适配器访问[智谱官方 API 地址](https://open.bigmodel.cn/claw-plan-team)，目前只接文字输入。ChatGPT/Codex 显示为“登录待接入”，不能选择或发起 GPT 请求。2026-10-13 的单人 DSH Codex 设备码试用后，用户报告本地 Codex 桌面 App 会话被中断并退出登录；旧入口已撤销，试用服务已停止，Harless 私有目录中该条 OAuth 凭据已删除。原因未确认，不再把旧通道当作可用登录方案。OpenAI 的开源 SIWC 流程要求本机回环地址完成授权；远程网页接入需先明确适用条件和客户端资格。见[OpenAI 开源方案](https://developers.openai.com/siwc/token-sharing-open-source)、[远程 VM 指南](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms)和[网页登录指南](https://developers.openai.com/siwc/website)。
 
 文字字符串、`instruction`、`content`、仅含 user 的 `messages` 统一规范化为一次任务输入；结构化对象中的后三项必须三选一。`mode` 支持 baseline/shadow/execute。可在 `content` 中附带官方格式的图片 base64 或同 Session 已上传文件的 receipt。工作台文件上传上限为 256 KiB；模型不支持图片时任务明确失败且不发起模型请求，不能据此宣称已支持图片理解。资料引用使用已由服务器登记的 `resource_id`，不接受浏览器本地路径。请求和响应详见[接口文档](docs/interfaces.md)。
 
@@ -88,13 +88,15 @@ Baseline 对应 RSI Off；Shadow/Execute 对应 On。Off 保留上次 RSI 模式
 
 后台保留双层预算：每任务默认 0.25 美元/24 次，全启动默认 0.25 美元/256 次，每请求最多 1000 输出 token；新任务不重置全局限制。任务上限用 `--budget-usd/--request-limit` 配置，全启动用 `--run-budget-usd/--run-request-limit` 配置。固定 `reasoning_effort="off"`，默认关闭压缩；请求、缓存输入/输出 token、费用和 verified skips 仍完整记录，代理估值需与账单核对。免费模拟不展示额度表单，实际支出为零。
 
-真实连接须在服务器根目录的私有 `.env` 填写 `DEEPSEEK_API_KEY`，公共字段模板为 `.env.example`；不要提交或发送密钥。统一 npm 入口通过 Node `loadEnvFile` 读取它（要求 Node 20.12+），已有环境变量优先。填写密钥不会自动调用付费模型：
+真实连接在服务器根目录的私有 `.env` 填写 `DEEPSEEK_API_KEY` 或 `HARLESS_GLM_API_KEY`；GLM 还要配置 `HARLESS_GLM_MODEL`、官方 `HARLESS_GLM_BASE_URL` 和两项保守的美元/百万 token 价格，字段见 `.env.example`。密钥只由服务器读取；浏览器 API 仅收到模型名称和可用状态，不读取 `.env`。不要提交或发送密钥。统一 npm 入口通过 Node `loadEnvFile` 读取它（要求 Node 20.12+），已有环境变量优先。填写密钥不会自动调用付费模型：
 
 ```sh
 npm run web:real
 ```
 
 这个显式入口只开放真实连接。官方聊天首次发送会显示题面与预算确认框；也可在 `/tasks` 预览并确认，之后才执行。官方聊天入口的真实接口验证见[确认流程验收](docs/experiments/native-chat-confirm-20261009-v1.md)，浏览器实际点击仍待确认。官方聊天不能绕过确认；SDK 的真实 API 基本连通已通过，真实 Web 后端最小闭环已通过；浏览器体验和科研交付质量仍需分别验收。
+
+GLM 请求通过本地预算代理绑定已确认任务；`HARLESS_GLM_BASE_URL` 仅接受智谱官方 HTTPS API 根地址。价格由管理员按所用模型与账户填写，代理估值不等于账单实付。当前 GLM 已完成假密钥启动、网页目录与预览验证，真实 GLM 请求和工具调用仍待配置有效密钥后验收。
 
 免费复验、旧入口与停止：
 

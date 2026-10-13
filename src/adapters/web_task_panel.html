@@ -38,6 +38,8 @@
     .model-menu-title { padding: 8px 10px; color: #617086; font-size: 12px; }
     .model-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 10px; border-radius: 9px; }
     .model-row.active { background: #edf4ff; color: #245cba; }
+    button.model-row { width: 100%; border: 0; background: transparent; text-align: left; }
+    button.model-row.active { background: #edf4ff; }
     .model-row.unavailable { color: #617086; }
     .model-row small { margin: 0; text-align: right; }
     .model-menu p { margin: 8px 10px 4px; font-size: 12px; color: #617086; }
@@ -79,7 +81,6 @@
       <form id="task-form">
         <div id="text-fields">
           <div class="field"><label for="instruction">你希望完成什么？</label><textarea id="instruction" placeholder="例如：整理这些资料，检查结论与来源，并输出修改建议。" required></textarea></div>
-          <details id="model-picker" class="model-picker"><summary aria-label="查看模型与登录状态"><span id="model-current">正在确认模型…</span></summary><div class="model-menu"><div class="model-menu-title">模型与账号</div><div id="model-options"></div><div class="model-row unavailable"><span>ChatGPT / Codex</span><small>登录待接入</small></div><p>当前只显示已接通的任务模型。ChatGPT 授权和请求通道完成前，不能选用 GPT 执行任务。</p></div></details>
           <div class="row">
             <div class="field"><label for="profile">场景</label><select id="profile" required></select><small>选择服务已登记的场景。</small></div>
             <div class="field"><label for="mode">执行模式</label><select id="mode"><option value="baseline">Baseline · 普通 Harness</option><option value="shadow">Shadow · 观察 RSI 候选</option><option value="execute">Execute · 验证后接管</option></select></div>
@@ -90,6 +91,7 @@
           <div class="field" style="margin-top:17px"><label for="images">图片（可选）</label><input id="images" type="file" accept="image/png,image/jpeg,image/webp" multiple><small>每张最多 256 KiB。是否可用于模型输入，以后端预览结果为准。</small><p id="image-summary" class="muted"></p></div>
         </div>
         <div id="json-fields" hidden><label for="json-request">任务请求 JSON</label><textarea id="json-request" style="min-height:300px" spellcheck="false" placeholder='{"instruction":"检查资料","capability_profile":"example","mode":"baseline","budget_usd":0.25,"inputs":[]}'></textarea><small>JSON 中的 mode 和 budget_usd 原样交给后端，文字表单不会覆盖它们。</small></div>
+        <details id="model-picker" class="model-picker"><summary aria-label="选择任务模型"><span id="model-current">正在确认模型…</span></summary><div class="model-menu"><div class="model-menu-title">任务模型</div><div id="model-options"></div><div class="model-row unavailable"><span>ChatGPT / Codex</span><small>登录待接入</small></div><p>只列出服务器已启用的模型。密钥保存在服务器。</p></div></details>
         <div class="field" style="margin-top:17px"><label for="files">附加文件（可选）</label><input id="files" type="file" multiple><small>每个文件最多 256 KiB。发送时先建立任务会话，再上传并绑定资料。</small><p id="file-status" class="muted" aria-live="polite"></p></div>
         <div class="notice">baseline 按普通流程执行；shadow 只记录候选；execute 仅在证据和守卫满足时接管。缺少可用 Motif 时应继续普通流程。</div>
         <p id="provider-label" class="muted" aria-live="polite">正在确认模型通道…</p>
@@ -114,6 +116,7 @@ const $ = id => document.getElementById(id);
 let inputMode = 'text', draft = null, pending = false, selectedTask = null, pollTimer, providerMode = null;
 let selectedFiles = [], pendingFiles = [], uploadedNames = [];
 const endpoint = '/api/harless/tasks';
+let selectedModel = null, availableModels = [];
 const targetSession = new URLSearchParams(location.search).get('session_id') || undefined;
 $('settings-link').href='/harless'+(targetSession?'?session_id='+encodeURIComponent(targetSession):'');
 const unavailableLabel=reason=>({no_certified_library:'尚未配置认证库',no_embedding_service:'尚未配置本地匹配服务',no_certified_input:'缺少认证输入版本',no_valid_certified_library:'认证库校验未通过',library_tools_outside_scene:'认证库工具超出场景权限'}[reason]||'当前配置未满足接管条件');
@@ -128,11 +131,12 @@ const terminal = new Set(['completed','failed','cancelled','budget_exhausted','b
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const fmt = value => value === undefined || value === null ? '—' : String(value);
 const money = value => typeof value==='number' && Number.isFinite(value) ? value.toFixed(6):'—';
-const providerLabels = {mock:'免费联调模拟',real:'真实 DeepSeek API'};
+const providerLabels = {mock:'免费联调模拟',real:'真实模型 API'};
 const fallbackLabels = {no_certified_library:'尚无适用的认证 Motif，按普通流程执行。',no_embedding_service:'缺少匹配服务，按普通流程执行。',input_not_certified_for_library:'本次输入超出认证范围，已回退普通流程。',no_valid_certified_library:'认证库校验未通过，已回退普通流程。'};
 const freeTask = value => value?.provider_mode==='mock' && value?.paid_calls_enabled===false;
-function updateProvider(mode) { providerMode=providerLabels[mode] ? mode:null; $('budget-field').hidden=providerMode==='mock'; $('preview-button').textContent=providerMode==='mock' ? '开始免费联调':'生成任务预览'; $('provider-label').textContent=providerMode==='mock' ? '免费联调模拟 · 实际支出为零，固定示例仅验证链路与机制。':providerMode==='real' ? '真实 DeepSeek API · 预览并明确确认后才执行。':'模型通道尚未确认 · 先预览，再决定是否执行。'; }
-function renderModels(options) { const available=Array.isArray(options)?options.filter(option=>option.available===true):[]; const current=available[0]; $('model-current').textContent=current?current.label+' · '+(providerMode==='real'?'真实 API':'模拟'):'没有可用模型'; $('model-options').innerHTML=available.map(option=>`<div class="model-row active"><span>${esc(option.label)}</span><small>${esc(option.model)} · 已接通</small></div>`).join(''); }
+function updateProvider(mode) { providerMode=providerLabels[mode] ? mode:null; $('budget-field').hidden=providerMode==='mock'; $('preview-button').textContent=providerMode==='mock' ? '开始免费联调':'生成任务预览'; $('provider-label').textContent=providerMode==='mock' ? '免费联调模拟 · 实际支出为零，固定示例仅验证链路与机制。':providerMode==='real' ? '真实模型 API · 预览并明确确认后才执行。':'模型通道尚未确认 · 先预览，再决定是否执行。'; }
+function renderModels(options) { availableModels=Array.isArray(options)?options.filter(option=>option.available===true):[]; if(!availableModels.some(option=>option.model===selectedModel))selectedModel=availableModels[0]?.model||null; const current=availableModels.find(option=>option.model===selectedModel); $('model-current').textContent=current?current.label+' · '+(providerMode==='real'?'真实 API':'模拟'):'没有可用模型'; $('model-options').innerHTML=availableModels.map(option=>`<button type="button" class="model-row ${option.model===selectedModel?'active':''}" data-model="${esc(option.model)}" aria-pressed="${option.model===selectedModel}"><span>${esc(option.label)}</span><small>${esc(option.model)}</small></button>`).join(''); }
+$('model-options').onclick=event=>{const button=event.target.closest('button[data-model]');if(!button||pending)return;selectedModel=button.dataset.model;renderModels(availableModels);$('model-picker').open=false;invalidateDraft();};
 function showError(error) { $('error').textContent = error instanceof Error ? error.message : String(error); $('error').hidden = false; }
 function clearError() { $('error').hidden = true; }
 function lock(value, message='') { pending = value; $('busy').textContent = message; for (const input of $('task-form').querySelectorAll('input,select,textarea,button')) input.disabled=value; $('upload-button').disabled=value || !draft || !pendingFiles.length; $('submit-button').disabled=value || !draft?.task_id || !draft?.confirmation_digest || !!pendingFiles.length; }
@@ -152,10 +156,13 @@ $('images').onchange = () => { $('image-summary').textContent = Array.from($('im
 $('files').onchange = () => { selectedFiles=Array.from($('files').files); pendingFiles=[...selectedFiles]; showFiles(); if(draft)showPreview(draft); lock(false); };
 async function requestValue() {
   await selectionPending;
-  if (inputMode === 'json') { const value = JSON.parse($('json-request').value); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('请输入一个任务 JSON 对象。'); if (value.mode) $('mode').value = value.mode; return value; }
+  if (!selectedModel) throw new Error('服务器尚未提供可用模型，请稍后重试。');
+  if (availableModels.find(option=>option.model===selectedModel)?.provider==='harless-glm' &&
+      ($('images').files.length || selectedFiles.length)) throw new Error('当前 GLM 通道只支持文字输入，请移除图片和附件。');
+  if (inputMode === 'json') { const value = JSON.parse($('json-request').value); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('请输入一个任务 JSON 对象。'); if (value.mode) $('mode').value = value.mode; value.model??=selectedModel; return value; }
   const instruction = $('instruction').value.trim(); if (!instruction) throw new Error('请填写任务要求。');
   const inputs = $('inputs').value.trim() ? JSON.parse($('inputs').value) : []; if (!Array.isArray(inputs)) throw new Error('资料引用必须是 JSON 数组。');
-  const request = {instruction,mode:$('mode').value,inputs};
+  const request = {instruction,mode:$('mode').value,inputs,model:selectedModel};
   if (providerMode!=='mock') request.budget_usd=Number($('budget').value);
   if ($('profile').value.trim()) request.capability_profile=$('profile').value.trim();
   const content = [{type:'text',text:instruction}];

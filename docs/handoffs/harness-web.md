@@ -1,5 +1,15 @@
 # DeepSeek Harless Web 当前交接
 
+## 2026-10-13 DeepSeek / GLM 任务模型配置（Codex）
+
+- 目标与范围：在共享网页任务入口选择服务器已启用的模型，新增 GLM OpenAI 兼容 API；Codex 登录继续延期。用户明确授权仅将已选 GLM 且确认后的任务内容发往所配智谱官方 API。
+- 分支 / 工作区：独立 `codex/codex-login` 工作树，基于 `695e63d`，本节改动已本地提交，提交号以 Git log 为准；未推送或部署到 V100；本机主工作区及服务器服务未改。
+- 已完成：私有 `.env` 配置 GLM key、模型 ID、官方 API 根地址及输入/输出美元估价；前端 API 只返回模型公开元数据。预览冻结模型并进入确认摘要，任务预算登记绑定模型；GLM 通过私有令牌本地预算代理，仅在唯一已激活任务下放行。GLM 目前文字输入，DeepSeek 原路由保留。关键文件：`scripts/harness-web.py`、`dsh_web_tasks.ts`、`deepseek_cost_gate.py`、`web_task_budget.py`、`web_task_panel.html`。
+- 已验证：本机假密钥 GLM-only 启动；认证后 `model_options` 只含 GLM，key 不在 API/policy，GLM 预览返回 `awaiting_confirmation`，模型请求数及付费请求数均为 0。`SSS_PYTHON=/Users/apple/Desktop/SSS/.venv312/bin/python npm test` 全量通过，`npm run web:tasks:check` 免费 Harness HTTP 诊断通过，局部 GLM 预算和模型守卫测试通过；真实 GLM 请求、工具调用、账单及浏览器人工点击待验证，不能称为生产闭环。
+- 配置与数据：字段见 `.env.example`，私有真实 key 不进入 Git。假密钥诊断在本工作树忽略的 `.local/web/runs/`；已按运行身份停止。价格由管理员填保守估值，账单另核对。
+- 未完成与下一步：配置真实 GLM key 后，在 V100 隔离运行先做一项有预算确认的文字任务及工具调用验收；随后验证两种模型切换和费用账本。课题组 20 人身份、文件/任务隔离、网络可达性仍未完成，不能直接开放共享凭证。
+- 回退与风险：不修改上游 Harness 核心；本地撤销本次提交即可回到原 DeepSeek 路由。外部 GLM 仅接已确认的 GLM 任务；目前端到端真实请求未验证。
+
 ## 2026-10-13 明日课题组试用的登录决策（Codex）
 
 - 负责人明确：预计 10 月 14 日约 20 人使用，成员要各自登录自己的 Codex；没有服务器 OpenAI API Key。因此不采用服务器统一 API Key/GPT API 方案，也不复用此前撤销的 DSH Codex 设备码入口。

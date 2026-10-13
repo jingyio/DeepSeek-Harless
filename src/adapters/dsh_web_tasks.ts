@@ -23,7 +23,9 @@ type Policy = {
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
   scenes?: Scene[]; scene_registry_sha256?: string;
   resources?: Record<string, { version: string; text: string }>;
+  models?: ModelOption[];
 };
+type ModelOption = { provider: string; model: string; label: string; available: boolean };
 type Task = {
   request: NormalizedWebTask; delivery: PromptPart[]; confirmation_digest: string;
   status: string; created_at: string; started_at?: string; finished_at?: string;
@@ -32,6 +34,7 @@ type Task = {
   humans: Map<string, string>; sources: { resource_id: string; version: string; sha256: string }[];
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
+  model_option: ModelOption;
 };
 class TaskError extends Error {
   code: string; status: number;
@@ -54,6 +57,17 @@ export function apply(ctx: any) {
       !['baseline', 'shadow', 'execute'].includes(config.mode) ||
       !['mock', 'real'].includes(config.provider_mode)) throw Error('Invalid dynamic Web policy');
   const tasks = new Map<string, Task>(), sessions = new Map<string, string>();
+  const modelOptions = config.models ?? [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }];
+  const defaultModel = modelOptions.find(option => option.available);
+  if (!defaultModel || modelOptions.some(option => !/^[a-z][a-z0-9-]*$/.test(option.provider) || !/^[A-Za-z0-9._-]+$/.test(option.model) ||
+        typeof option.label !== 'string' || !option.label || typeof option.available !== 'boolean') ||
+      new Set(modelOptions.map(option => option.model)).size !== modelOptions.length) throw Error('Invalid server model catalog');
+  const modelSelections = new Map<string, ModelOption>();
+  const findModel = (id: unknown): ModelOption => {
+    const option = modelOptions.find(row => row.model === id && row.available);
+    if (!option) throw new TaskError('model_not_allowed', 'Model is not enabled by the server configuration');
+    return option;
+  };
   const schemas = new Map<string, any[]>(), requests = new Map<string, string>();
   const ownedSessions = new Set<string>();
   const scenes = sceneCatalog(config.scenes ?? [{ ...config, id: config.capability_profile, label: config.capability_profile, preset: 'sss-task' }]);
@@ -145,7 +159,7 @@ export function apply(ctx: any) {
       created_at: task.created_at, started_at: task.started_at, finished_at: task.finished_at,
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
       request_sha256: request.request_sha256, confirmation_digest: task.confirmation_digest,
-      provider_mode: config.provider_mode, provider: 'deepseek-official', model: 'deepseek-flash',
+      provider_mode: config.provider_mode, provider: task.model_option.provider, model: task.model_option.model,
       paid_calls_enabled: config.provider_mode === 'real',
       effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
       stats: task.stats, sources: task.sources,
@@ -195,6 +209,10 @@ export function apply(ctx: any) {
     if (!selections.has(created.sessionId)) {
       selections.set(created.sessionId, { ...defaults, scene: chosen.id });
       bindScene(agents.get(created.sessionId), chosen);
+      await original.selectModel({ sessionId: created.sessionId, provider: defaultModel.provider,
+        model: defaultModel.model,
+        ...(defaultModel.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' }) });
+      modelSelections.set(created.sessionId, defaultModel);
     }
     return created;
   };
@@ -202,12 +220,17 @@ export function apply(ctx: any) {
   // Native queue editing would change the approved content after its digest was
   // shown. Edits use a new task/preview rather than silently mutating this binding.
   controller.updateQueue = () => { throw new TaskError('queue_edit_not_supported', 'Preview a new task before changing queued input', 409); };
-  controller.selectModel = (request: any, signal: AbortSignal) => {
-    if (!ownedSessions.has(request.sessionId) || request.provider !== 'deepseek-official' ||
-        request.model !== 'deepseek-flash' || (request.reasoningEffort !== undefined && request.reasoningEffort !== 'off')) {
-      throw new TaskError('model_not_allowed', 'Provider/model are fixed by the server configuration');
-    }
-    return original.selectModel({ ...request, reasoningEffort: 'off' }, signal);
+  controller.selectModel = async (request: any, signal: AbortSignal) => {
+    const option = findModel(request.model);
+    if (!ownedSessions.has(request.sessionId) || forSession(request.sessionId) || request.provider !== option.provider ||
+        (request.reasoningEffort !== undefined && request.reasoningEffort !== 'off'))
+      throw new TaskError('model_not_allowed', 'Model selection is outside the approved task configuration');
+    const requested = { ...request };
+    if (option.provider === 'harless-glm') delete requested.reasoningEffort;
+    else requested.reasoningEffort = 'off';
+    const result = await original.selectModel(requested, signal);
+    modelSelections.set(request.sessionId, option);
+    return result;
   };
   if (ctx.agentPresets) ctx.agentPresets.select = (agent: any, preset: string) => serialize(async () => {
     const scene = scenes.find(scene => scene.preset === preset);
@@ -217,16 +240,23 @@ export function apply(ctx: any) {
   });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
     const taskId = randomUUID().replaceAll('-', ''), tentativeSession = existingSession ?? 'pending';
+    const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
+    const chosenModel = supplied.model === undefined ? (existingSession ? modelSelections.get(existingSession) ?? defaultModel : defaultModel) : findModel(supplied.model);
+    const taskInput = input && typeof input === 'object' && !Array.isArray(input)
+      ? { ...supplied } : input;
+    if (taskInput && typeof taskInput === 'object' && !Array.isArray(taskInput)) delete taskInput.model;
     const selected = existingSession ? selections.get(existingSession)! : defaults;
     if (existingSession && !selected) throw new TaskError('session_not_owned', 'Session is outside this Web run');
-    const request = normalizeWebTaskRequest(input, { task_id: taskId, session_id: tentativeSession,
+    const request = normalizeWebTaskRequest(taskInput, { task_id: taskId, session_id: tentativeSession,
       default_mode: selected.mode, default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
       default_profile: selected.scene, allowed_profiles: scenes.map(scene => scene.id),
       max_content_bytes: 768 * 1024, max_parts: 32 });
+    if (chosenModel.provider === 'harless-glm' && request.content.some(part => part.type !== 'text'))
+      throw new TaskError('unsupported_input', '当前 GLM 通道只支持文字输入；请移除图片或文件后重新预览');
     const previous = requests.get(request.request_id);
     if (previous) {
       const task = get(previous);
-      if (request.request_sha256 !== task.request.request_sha256) throw new TaskError('request_id_conflict', 'request_id already binds different input', 409);
+      if (request.request_sha256 !== task.request.request_sha256 || chosenModel.model !== task.model_option.model) throw new TaskError('request_id_conflict', 'request_id already binds different input or model', 409);
       return task;
     }
     const sources: Task['sources'] = [];
@@ -244,16 +274,21 @@ export function apply(ctx: any) {
     request.session_id = existingSession ?? (await controller.create({ agentPreset: scene.preset })).sessionId;
     if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', 'Use /harless to choose a scene before preview', 409);
     if (sessions.has(request.session_id)) throw new TaskError('session_already_bound', 'This session already has a task; create a new task', 409);
+    if (modelSelections.get(request.session_id)?.model !== chosenModel.model) await controller.selectModel({
+      sessionId: request.session_id, provider: chosenModel.provider, model: chosenModel.model, reasoningEffort: 'off'
+    }, new AbortController().signal);
     selections.set(request.session_id, selection);
     const output = join(config.output, 'tasks', taskId); mkdirSync(output, { recursive: true, mode: 0o700 });
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
       scene, selection: { ...selection }, tools: structuredClone(schemas.get(request.session_id) ?? []),
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output, humans: new Map(), sources,
+      model_option: chosenModel,
       stats: { tool_calls: 0, tool_errors: 0, llm_decisions: 0, motif_attempts: 0, shadow_candidates: 0, verified_skips: 0,
         upstream_requests: 0, model_requests: 0, actual_paid_usd: config.provider_mode === 'mock' ? 0 : null } };
     for (const filename of ['events.jsonl', 'motif-audit.jsonl']) writeFileSync(join(output, filename), '', { mode: 0o600 });
-    await control('/tasks/register', { task_id: taskId, session_id: request.session_id, budget_usd: request.budget_usd });
+    await control('/tasks/register', { task_id: taskId, session_id: request.session_id,
+      budget_usd: request.budget_usd, model: chosenModel.model });
     tasks.set(taskId, task); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
     const snapshot = await controller.inspect(request.session_id);
     json(join(output, 'session-header.json'), snapshot.meta);
@@ -266,6 +301,8 @@ export function apply(ctx: any) {
       scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
       provider_mode: config.provider_mode, max_output_tokens: config.max_output_tokens });
+    task.confirmation_digest = digest({ confirmation: task.confirmation_digest,
+      provider: task.model_option.provider, model: task.model_option.model });
     json(join(task.output, 'task.json'), task.request);
     json(join(task.output, 'effective-config.json'), { ...view(task), selection: task.selection, tools: task.tools,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
@@ -358,14 +395,16 @@ export function apply(ctx: any) {
   ctx.on('llm/stream', (request: any, next: any) => {
     const task = forSession(request.sessionId);
     if (!task || task.status !== 'running' || active !== task.request.task_id ||
-        request.provider !== 'deepseek-official' || request.model !== 'deepseek-flash' ||
-        request.reasoningEffort !== 'off' || request.maxTokens !== config.max_output_tokens || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
+        request.provider !== task.model_option.provider || request.model !== task.model_option.model ||
+        request.reasoningEffort !== (task.model_option.provider === 'harless-glm' ? undefined : 'off') ||
+        request.maxTokens !== config.max_output_tokens || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
     if (!humans.length || humans.some((message: any) => task.humans.get(message.id) !== digest(message.content))) throw Error('Task user envelope changed');
     if (digest(request.tools) !== digest(task.tools)) throw Error('Tool schema version changed');
     json(join(task.output, 'model-request-config.json'), { provider: request.provider, model: request.model,
-      reasoning_effort: request.reasoningEffort, max_output_tokens: request.maxTokens,
+      reasoning_effort: request.reasoningEffort ?? 'off', reasoning_effort_sent: request.reasoningEffort !== undefined,
+      max_output_tokens: request.maxTokens,
       tools_order: request.tools.map((tool: any) => tool.name), tools_sha256: digest(request.tools),
       human_message_sha256: humans.map((message: any) => digest(message.content)), mode: task.request.mode });
     task.stats.llm_decisions = Number(task.stats.llm_decisions) + 1; record(task);
@@ -382,7 +421,7 @@ export function apply(ctx: any) {
           for (const row of rows) { aggregate[row.status] = (aggregate[row.status] ?? 0) + 1;
             for (const field of ['upstream_requests', 'verified_skips', 'tool_calls', 'prompt_tokens', 'completion_tokens']) aggregate[field] = (aggregate[field] ?? 0) + Number(row.stats[field] ?? 0); }
           return Response.json({ tasks: rows, aggregate, capability_profile: config.capability_profile,
-            provider_mode: config.provider_mode, model_options: [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }],
+            provider_mode: config.provider_mode, model_options: modelOptions,
             default_mode: defaults.mode, budget_usd: config.budget_usd, settings: settingsView() });
         }
         const body: any = await request.json();
@@ -396,6 +435,7 @@ export function apply(ctx: any) {
           if (body.action === 'cancel') { await controller.cancel({ sessionId: task.request.session_id }); return view(task, true); }
           if (body.action === 'upload') {
             if (task.status !== 'awaiting_confirmation') throw new TaskError('task_not_draft', 'Only draft tasks accept attachments', 409);
+            if (task.model_option.provider === 'harless-glm') throw new TaskError('unsupported_input', '当前 GLM 通道只支持文字输入', 400);
             if (typeof body.name !== 'string' || !body.name.length || body.name.length > 255 || /[\x00-\x1f]/.test(body.name) ||
                 typeof body.data !== 'string' || body.data.length > 350000 || Buffer.from(body.data, 'base64').toString('base64') !== body.data) throw new TaskError('invalid_upload', 'Invalid file name or canonical base64');
             const data = Buffer.from(body.data, 'base64');
