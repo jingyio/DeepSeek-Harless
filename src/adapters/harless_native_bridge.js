@@ -133,6 +133,38 @@
     refresh();
   }
   installPicker();
-  new MutationObserver(installPicker).observe(document.body, { childList: true, subtree: true });
+  let observedInput = null;
+  let inputObserver = null;
+  let openingFromSlash = false;
+  function openFromSlash() {
+    const input = observedInput;
+    if (openingFromSlash || !input || input.getAttribute('data-phase') !== 'claimed' ||
+        !/^\/harless\s*$/.test(input.textContent || '')) return;
+    const anchor = document.getElementById('harless-picker-anchor');
+    const trigger = anchor?.querySelector('.harless-picker-trigger');
+    const menu = anchor?.querySelector('.harless-picker-menu');
+    if (!trigger || !menu) return;
+    openingFromSlash = true;
+    input.focus();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(input);
+    selection.removeAllRanges(); selection.addRange(range);
+    document.execCommand('delete');
+    if (menu.hidden) trigger.click();
+    openingFromSlash = false;
+  }
+  function watchComposer() {
+    const input = document.querySelector('[data-composer-input]');
+    if (input === observedInput) return;
+    inputObserver?.disconnect();
+    observedInput = input;
+    if (!input) return;
+    inputObserver = new MutationObserver(openFromSlash);
+    inputObserver.observe(input, { childList: true, characterData: true, subtree: true });
+    openFromSlash();
+  }
+  watchComposer();
+  new MutationObserver(() => { installPicker(); watchComposer(); }).observe(document.body, { childList: true, subtree: true });
 
 })();

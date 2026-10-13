@@ -445,7 +445,7 @@ export function apply(ctx: any) {
     } };
   ctx.effect(() => ctx.connection.fetch.register({ ...settingsRoute, path: '/api/harless/settings' }), 'harless-settings-api');
   if (ctx.commands) ctx.effect(() => ctx.commands.register({ name: 'harless', description: '选择场景、运行模式与 RSI 开关（不调用模型）',
-    input: { hint: '<场景> | mode [baseline|shadow|execute] | rsi [on|off] | list | status' },
+    input: { hint: '选择场景、运行模式与 RSI' },
     handler: ({ agent, rawInput }: any) => serialize(async () => {
       try {
         const id = agent.session.id, command = parseHarlessCommand(rawInput);
