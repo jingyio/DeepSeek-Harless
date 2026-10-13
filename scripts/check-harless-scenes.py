@@ -70,6 +70,7 @@ def main():
         assert value['selection']['scene'] == 'new-scene'
         ppt = next(scene for scene in value['scenes'] if scene['id'] == 'ppt')
         assert ppt['available'], ppt
+        matrix_drafts=0
         for scene in value['scenes']:
             for mode in ('baseline', 'shadow', 'execute'):
                 for rsi in (False, True):
@@ -83,8 +84,19 @@ def main():
                     if not scene['available']:
                         status, denied = web.request(alice, base, '/api/harless/tasks', {'action': 'preview', 'request': '不得用样例代替'})
                         assert status == 409 and denied['error']['code'] == 'scene_not_connected'
+                    else:
+                        draft=web.api(alice,base,{'action':'preview','request':'Configuration matrix only; do not call the model.'})
+                        frozen=json.loads((output/'tasks'/draft['task_id']/'effective-config.json').read_text())
+                        assert frozen['selected_mode']==mode and frozen['rsi']==rsi
+                        assert frozen['mode']==(mode if rsi else 'baseline') and frozen['scene']==scene['id']
+                        assert frozen['tools'] and frozen['instructions_sha256'] and frozen['scene_sha256']
+                        settings(alice,base,{'action':'select','session_id':draft['session_id'],
+                            'selection':{'scene':scene['id'],'mode':'baseline' if mode=='shadow' else 'shadow','rsi':True}})
+                        assert web.api(alice,base,task_id=draft['task_id'])['confirmation_digest']==draft['confirmation_digest']
+                        web.api(alice,base,{'action':'cancel','task_id':draft['task_id']})
+                        matrix_drafts+=1
         assert web.api(alice, base)['aggregate'].get('upstream_requests', 0) == 0
-        groups.append({'group': '24-menu-combinations-and-missing-backend-rejection', 'model_requests': 0})
+        groups.append({'group': '24-menu-combinations-and-frozen-task-previews', 'frozen_previews':matrix_drafts,'model_requests': 0})
 
         settings(bob, bob_base, {'action': 'select', 'selection': {'scene': 'ppt', 'mode': 'baseline'}})
         bob_draft = web.api(bob, bob_base, {'action': 'preview', 'request': 'Bob private draft'})
