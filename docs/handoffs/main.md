@@ -1,5 +1,19 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-13：多场景前后端桥接
+
+- 更新时间与交接人：2026-10-13，Codex。
+- 目标与范围：原生 `/harless` 实际选择 Scene/Mode/RSI，统一已有 Runtime；未开发缺失的论文/数据业务后端。
+- 分支/版本：`codex/scene-rsi-bridge` 基于 main `62ee46b`，已推送；PR与最终提交以本分支历史为准，未合并。原论文/用户隔离工作区保持。
+- 已完成：`harless_scenarios.py`登记；`harless_settings.ts/dsh_web_tasks.ts`真实选择及任务冻结；`harless_task_scope.ts`独立cwd/preset/上传/job；PPT现有19工具及通用文件MCP；生产Execute完整Schema/匹配服务准入，历史诊断分列。无新Agent循环或上游改动。
+- 已验证：V100 154 Python/60 Node；PPT53 Node；18题/83来源smoke；控制与新场景/动态协议。两项合成来源真实模型任务7请求/5MCP/0工具错误/0实际跳过，见`docs/experiments/harless-scenes-runtime-20261013-v1.md`。生产有库Execute、科研质量和浏览器操作未验收。
+- 配置与数据：生产`config/harless-scenes.json`；诊断`config/harless-diagnostics.json`。私有轨迹/配置/失败保留隔离验收目录，真实run `907266faee4d40d799eca6ae2fa2109d` 已同步本地`.local/integration/scene-rsi-results/`；密钥仅由既有环境提供，未提交。
+- 未完成与接口依赖：论文/数据正式Scenario尚缺，明确拒绝；PPT生产Library缺，Execute拒绝。用户gateway负责人须按可信principal分配独立Harness启动并传`--user-id`；本次没有改变账户/认证接口。PPT页数/模板/输出权限暂用任务API，默认只读。
+- 接手下一步：1. 审阅并合并桥接PR，安装PPT依赖后`npm run web:scenes:check`。2. 用户负责人联合验收gateway隔离；场景负责人登记正式论文/数据MCP与Prompt。3. 用独立任务认证完整Schema/库/来源绑定后，按授权做真实Execute对照。
+- 权限与预算：本次真实联调累计封顶0.06美元/24请求，已用代理估费0.004229508美元/7请求，账单未知，已停止。没有借论文uncapped权限扩大Web预算，无外部写/投稿。
+- 回退与风险：按本分支提交回退；旧诊断明确使用`config/harless-diagnostics.json`。不覆盖共享服务器、不修改协作者工作区、不清理`.local`；单登录实例不能当作单进程多账号。
+
+
 ## 2026-10-13 原生二级菜单与输入框状态（已推送，PR 待创建）
 
 - 范围：`/harless` 原生选择器改为 Scenes、Mode、RSI 二级菜单；Scenes 新增 New Scene，使用当前服务器运行时探索。PPT、Paper Proofreading、Research Data Analysis 仍只预览且阻止误用样例工具。Mode 显示 Origin/Shadow/Execute，协议 Origin 仍为 `baseline`；RSI 默认 On，切换模式不自动改变开关，Off 的下一任务按 Origin 执行。输入框加入加粗 Harless 状态标签。
