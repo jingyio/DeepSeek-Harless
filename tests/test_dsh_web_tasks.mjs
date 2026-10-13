@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
@@ -22,10 +21,10 @@ async function fixture(overrides = {}) {
     const value = text ? JSON.parse(text) : undefined;
     controlCalls.push({ path: url.pathname, value });
     if (url.pathname === '/tasks/register') registrations.set(value.session_id,
-      { task_id: value.task_id, budget_usd: value.budget_usd });
+      { task_id: value.task_id, budget_usd: value.budget_usd, model: value.model });
     const session = value?.session_id ?? url.searchParams.get('session_id');
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ stats: { upstream_requests: 0, prompt_tokens: 0,
+    res.end(JSON.stringify({ stats: { global_budget_usd: .25, upstream_requests: 0, prompt_tokens: 0,
       completion_tokens: 0, estimated_cost_usd: 0, ...registrations.get(session) } }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -128,21 +127,24 @@ async function fixture(overrides = {}) {
   };
 }
 
-test('DeepSeek Harless tasks use authenticated Connection API routes and protect the task panel', options, async () => {
+test('Harless task APIs remain available without separate workbench or settings pages', options, async () => {
   const f = await fixture();
   try {
     const route = f.routes.get('/api/harless/tasks');
     assert.deepEqual(route.methods, ['GET', 'POST']); assert.equal(route.requestBody, 'buffered');
-    assert.equal(f.webRoutes.get('/tasks').kind, 'exact');
-    const result = {};
-    f.webRoutes.get('/tasks').handler({ authorized: false }, {
-      writeHead(status) { result.status = status; }, end(value) { result.body = value; },
-    });
-    assert.equal(result.status, 401); assert.ok(!result.body.includes('<form'));
-    f.webRoutes.get('/tasks').handler({ authorized: true }, {
-      writeHead(status) { result.status = status; }, end(value) { result.body = value; },
-    });
-    assert.equal(result.status, 200); assert.match(result.body, /DeepSeek Harless 任务工作台/);
+    assert.equal(f.routes.has('/api/harless/settings'), true);
+    for (const path of ['/tasks', '/sss', '/harless']) {
+      const page = f.webRoutes.get(path);
+      assert.equal(page.kind, 'exact');
+      const response = { writeHead(status, headers) { this.status = status; this.headers = headers; }, end() {} };
+      page.handler({}, response);
+      assert.equal(response.status, 302); assert.equal(response.headers.Location, '/');
+    }
+    assert.equal(f.ctx.indexTransform, undefined);
+    const settings = await f.settings();
+    assert.equal(settings.status, 200); assert.equal('panels' in settings.value, false);
+    const listing = await f.api();
+    assert.deepEqual(listing.value.model_options, [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }]);
   } finally { await f.close(); }
 });
 
@@ -156,6 +158,7 @@ test('Dynamic preview creates independent tasks, binds resource versions, and is
     assert.equal(f.agents.size, 1); assert.equal(f.registrations.size, 1);
     assert.equal(first.sources[0].resource_id, 'source:one');
     assert.equal(first.status, 'awaiting_confirmation'); assert.equal(first.paid_calls_enabled, false);
+    assert.equal(first.provider, 'deepseek-official'); assert.equal(first.model, 'deepseek-flash');
     const second = await f.preview({ messages: [{ role: 'user', content: '另一项任务' }], mode: 'shadow' });
     assert.notEqual(second.task_id, first.task_id); assert.notEqual(second.session_id, first.session_id);
     assert.equal(second.mode, 'shadow');
@@ -167,6 +170,46 @@ test('Dynamic preview creates independent tasks, binds resource versions, and is
       [{ instruction: '任务', inputs: [{ resource_id: 'source:one', version: 'v2' }] }, 'resource_version_changed'],
     ]) { const result = await f.api({ action: 'preview', request }); assert.equal(result.value.error.code, code); }
     const list = await f.api(); assert.equal(list.value.tasks.length, 2); assert.equal(list.value.aggregate.tasks, 2);
+  } finally { await f.close(); }
+});
+
+test('GLM selection binds the preview, task budget, and model admission', options, async () => {
+  const models = [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true },
+    { provider: 'harless-glm', model: 'glm-4.6', label: 'GLM 4.6', available: true }];
+  const f = await fixture({ models });
+  try {
+    assert.deepEqual((await f.api()).value.model_options, models);
+    const task = await f.preview({ instruction: '检查材料', model: 'glm-4.6' });
+    assert.equal(task.provider, 'harless-glm'); assert.equal(task.model, 'glm-4.6');
+    assert.equal(f.registrations.get(task.session_id).model, 'glm-4.6');
+    assert.equal((await f.api({ action: 'preview', request: { instruction: '错误模型', model: 'unlisted' } })).status, 400);
+    await assert.rejects(f.ctx.sessionController.selectModel({ sessionId: task.session_id,
+      provider: 'deepseek-official', model: 'deepseek-flash' }), /outside the approved task/);
+    assert.equal((await f.submit(task)).status, 200);
+    const glmRequest = f.modelRequest(task, { provider: 'harless-glm', model: 'glm-4.6' });
+    delete glmRequest.reasoningEffort;
+    assert.doesNotThrow(() => f.stream(glmRequest, async function* () {}));
+    assert.throws(() => f.stream(f.modelRequest(task), async function* () {}), /Unapproved task model/);
+  } finally { await f.close(); }
+});
+
+test('Native model picker selection is used by the next chat task', options, async () => {
+  const f = await fixture({ models: [
+    { provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true },
+    { provider: 'harless-glm', model: 'glm-4.6', label: 'GLM 4.6', available: true },
+  ] });
+  try {
+    const { sessionId } = await f.ctx.sessionController.create({});
+    await f.ctx.sessionController.selectModel({ sessionId, provider: 'harless-glm', model: 'glm-4.6' },
+      new AbortController().signal);
+    await f.ctx.sessionController.prompt({ sessionId, requestId: 'native-glm', mode: 'queue',
+      content: [{ type: 'text', text: 'Check this paper' }] }, new AbortController().signal);
+    const task = (await f.api()).value.tasks[0];
+    assert.equal(task.provider, 'harless-glm');
+    assert.equal(task.model, 'glm-4.6');
+    assert.equal(task.status, 'running');
+    assert.equal(f.registrations.get(sessionId).model, 'glm-4.6');
+    await f.complete(task);
   } finally { await f.close(); }
 });
 
@@ -236,27 +279,23 @@ test('Native mock chat admits dynamic content in a new session and records task 
   } finally { await f.close(); }
 });
 
-test('Real-provider native prompt cannot bypass explicit task preview and budget confirmation', options, async () => {
+test('Real-provider native prompt runs immediately with budget admission and no confirmation dialog', options, async () => {
   const f = await fixture({ provider_mode: 'real' });
   try {
     const created = await f.ctx.sessionController.create({});
-    const request = { sessionId: created.sessionId, requestId: 'unconfirmed-paid', mode: 'queue',
-      content: [{ type: 'text', text: '未确认付费请求' }] };
+    const request = { sessionId: created.sessionId, requestId: 'native-paid', mode: 'queue',
+      content: [{ type: 'text', text: '直接执行的请求' }] };
     assert.deepEqual(await f.ctx.sessionController.prompt(request, new AbortController().signal), { accepted: true });
     await f.ctx.sessionController.prompt(request, new AbortController().signal);
     const listing = await f.api(), task = listing.value.tasks[0];
     assert.equal(listing.value.tasks.length, 1); assert.equal(task.entrypoint, 'native_chat');
-    assert.equal(task.session_id, created.sessionId); assert.equal(task.status, 'awaiting_confirmation');
-    assert.equal(task.input_preview, '未确认付费请求');
-    assert.equal(f.promptCalls.length, 0); assert.equal(f.registrations.size, 1);
-    assert.equal(f.controlCalls.some(call => call.path === '/tasks/activate'), false);
-    const denied = await f.api({ action: 'submit', task_id: task.task_id, confirmation_digest: 'wrong' });
-    assert.equal(denied.status, 409); assert.equal(f.promptCalls.length, 0);
-    const html = f.ctx.indexTransform('<body></body>');
-    assert.match(html, /harless-native-confirmation/); assert.match(html, /确认本次任务与预算/);
-    assert.equal((await f.submit(task)).status, 200);
-    assert.equal(f.promptCalls.length, 1); assert.deepEqual(f.promptCalls[0].content, request.content);
-    await f.submit(task); assert.equal(f.promptCalls.length, 1);
+    assert.equal(task.session_id, created.sessionId); assert.equal(task.status, 'running');
+    assert.equal(task.input_preview, '直接执行的请求');
+    assert.equal(f.promptCalls.length, 1); assert.equal(f.registrations.size, 1);
+    assert.equal(f.controlCalls.filter(call => call.path === '/tasks/activate').length, 1);
+    assert.deepEqual(f.promptCalls[0].content, request.content);
+    assert.equal(f.ctx.indexTransform, undefined);
+    assert.equal((await f.submit(task)).status, 200); assert.equal(f.promptCalls.length, 1);
     await f.complete(task);
   } finally { await f.close(); }
 });
@@ -277,48 +316,20 @@ test('Queued content cannot be edited or steered past an accepted confirmation',
 });
 
 
-test('Native confirmation UI displays the saved preview and executes only after an explicit click', options, async () => {
-  const f = await fixture({ provider_mode: 'real' });
-  try {
-    const created = await f.ctx.sessionController.create({});
-    await f.ctx.sessionController.prompt({ sessionId: created.sessionId, requestId: 'native-modal', mode: 'queue',
-      content: [{ type: 'text', text: '<script>not executable</script> 需要确认的题面' }] }, new AbortController().signal);
-    const node = tag => ({ tag, children: [], open: false, append(...rows) { this.children.push(...rows); },
-      setAttribute() {}, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, style: {} });
-    const body = node('body');
-    await runInNewContext(readFileSync(new URL('../src/adapters/web_native_bridge.js', import.meta.url), 'utf8'), {
-      document: { body, hidden: false, createElement: node, addEventListener() {} },
-      window: { addEventListener() {} }, setInterval() { return 1; }, clearInterval() {},
-      async fetch(url, options) {
-        assert.equal(options.credentials, 'same-origin');
-        const result = await f.api(options.body ? JSON.parse(options.body) : undefined);
-        return { status: result.status, ok: result.status === 200, async json() { return result.value; } };
-      },
-    });
-    const dialog = body.children[0];
-    assert.equal(dialog.open, true); assert.equal(f.promptCalls.length, 0);
-    assert.ok(dialog.children.some(child => child.tag === 'pre' && child.textContent.includes('<script>not executable</script>')));
-    assert.ok(dialog.children.some(child => child.textContent.includes('$0.25')));
-    const confirm = dialog.children.find(child => child.tag === 'button' && child.textContent === '确认并执行');
-    await Promise.all([confirm.onclick(), confirm.onclick()]);
-    assert.equal(f.promptCalls.length, 1); assert.equal(dialog.open, false);
-    const listing = await f.api(); await f.complete(listing.value.tasks[0]);
-  } finally { await f.close(); }
-});
-
 const multiScenes = [
   { id: 'example', label: '资料', preset: 'sss-task', allowed_tools: ['mcp__demo__read_note'], config_sha256: 'a'.repeat(64) },
   { id: 'other', label: '另一场景', preset: 'sss-scene-other', allowed_tools: ['mcp__other__read'], config_sha256: 'b'.repeat(64) },
 ];
-test('Native /harless and settings controls select without admitting a model task; malformed commands fail', options, async () => {
+test('Native /harless commands and settings menu select without admitting a model task; malformed commands fail', options, async () => {
   const f=await fixture({ scenes: multiScenes, mode: 'shadow' });
   try {
     const {sessionId:id}=await f.ctx.sessionController.create({});
     for(const raw of ['', 'list', 'status', 'mode', 'rsi']) assert.equal((await f.command(id,raw)).kind,'success');
+    assert.match((await f.command(id,'')).text,/\/harless picker/);
     assert.equal((await f.command(id,'mode baseline')).kind,'success');
     assert.equal((await f.command(id,'rsi on')).kind,'success');
     let value=(await f.settings(undefined,'?session_id='+id)).value;
-    assert.equal(value.selection.mode,'shadow'); assert.equal(value.selection.rsi,true);
+    assert.equal(value.selection.mode,'baseline'); assert.equal(value.selection.rsi,true);
     assert.equal((await f.command(id,'other')).kind,'success');
     value=(await f.settings(undefined,'?session_id='+id)).value;
     assert.equal(value.selection.scene,'other'); assert.equal(f.presetCalls.length,1);
@@ -331,6 +342,29 @@ test('Native /harless and settings controls select without admitting a model tas
     assert.equal((await f.api()).value.tasks.length,0); assert.equal(f.registrations.size,0); assert.equal(f.promptCalls.length,0);
   } finally {await f.close();}
 });
+test('Preview-only product scenes are selectable but cannot silently run the sample runtime', options, async () => {
+  const f = await fixture();
+  try {
+    const { sessionId } = await f.ctx.sessionController.create({});
+    let result = await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'ppt' });
+    assert.equal(result.status, 200);
+    assert.equal(result.value.preview_scene, 'ppt');
+    assert.deepEqual(result.value.preview_scenes.map(scene => scene.label),
+      ['PPT', 'Paper Proofreading', 'Research Data Analysis', 'New Scene']);
+    await assert.rejects(f.ctx.sessionController.prompt({ sessionId, requestId: 'preview-only', mode: 'queue',
+      content: [{ type: 'text', text: 'Make a slide' }] }, new AbortController().signal), /UI preview/);
+    assert.equal((await f.api()).value.tasks.length, 0);
+    assert.equal(f.promptCalls.length, 0);
+    result = await f.settings({ action: 'clear_preview_scene', session_id: sessionId });
+    assert.equal(result.value.preview_scene, null);
+    assert.equal((await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'unknown' })).status, 400);
+    result = await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'new-scene' });
+    assert.equal(result.value.preview_scene, 'new-scene');
+    const draft = await f.api({ action: 'preview', session_id: sessionId, request: 'Explore a new topic' });
+    assert.equal(draft.status, 200);
+    assert.equal(draft.value.scene, 'example');
+  } finally { await f.close(); }
+});
 test('Running task keeps frozen tools and mode while next-task choices are inherited by a fresh Session', options, async()=>{
   const f=await fixture({ scenes: multiScenes, mode:'shadow', provider_mode:'real' });
   try {
@@ -340,7 +374,7 @@ test('Running task keeps frozen tools and mode while next-task choices are inher
     assert.deepEqual(f.agents.get(first.session_id).allow.allow,['mcp__demo__read_note']);
     assert.equal(f.presetCalls.length,0);
     const second=(await f.settings({action:'new_session',inherit_session:first.session_id})).value;
-    assert.notEqual(second.session_id,first.session_id); assert.equal(second.selection.scene,'other');assert.equal(second.selection.mode,'baseline');
+    assert.notEqual(second.session_id,first.session_id); assert.equal(second.selection.scene,'other');assert.equal(second.selection.mode,'shadow');
     await f.complete(first);
     const draft=await f.api({action:'preview',session_id:second.session_id,request:'独立任务'});
     assert.equal(draft.value.scene,'other');assert.equal(draft.value.mode,'baseline');assert.equal(draft.value.rsi,false);

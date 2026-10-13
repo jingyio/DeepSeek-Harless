@@ -1,16 +1,37 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-13 `/harless` 场景选择首版（Codex）
+## 2026-10-13 原生二级菜单与输入框状态（已推送，PR 待创建）
 
-- 目标与范围：按已审阅计划实现原生命令和可选界面、场景/模式/RSI联动、逐任务冻结。当前一个Session绑定一个Task；下一任务新建Session并继承选择。
-- 分支/commit/工作区：独立 `codex/harless-controls`，基于远端main `b143bcc`；提交见Git历史，已推送；[PR #4](https://github.com/jingyio/DeepSeek-Harless/pull/4) 为本次合入main的交付记录，负责人于2026-10-13明确授权合并；最终合并状态和提交以该PR为准。原 `feature/paper-submission` 及全部未提交工作保留。V100只使用 `.local/validation/harless-controls-20261013-v1/` 代码快照，没有覆盖共享论文目录。
-- 已完成：`harless_settings.ts`、`harless_scenarios.py`、原生 `dsh_web_tasks.ts`、`harless_panel.html`/浏览器bridge；登记example/portfolio-v1/portfolio-v2，各自MCP preset。`/harless`、场景、list/status、mode、rsi on/off；无库/匹配服务时Execute不可选，Shadow记录普通回退。任务预览绑定场景、schema、指令、library/版本及确认摘要，不改上游核心。接口见 `docs/harless-controls.md`。
-- 已验证：本机与V100 `npm test` 151 Python/51 Node、smoke18题/83对象；GitHub首轮Linux CI通过，Windows在新增测试的POSIX权限位断言处失败，现改为只在POSIX检查权限位、Windows保留其余登记检查；修复提交 `e5cb56f` 的Linux/Windows共4项CI均通过（push运行38380070197、PR运行38380075943）；后续纯交接提交的检查以PR为准。原有动态任务协议包含Baseline/Shadow/Execute及输入变化回退、上传/预算拒绝。原生Remote命令、场景切换后的工具快照、下一任务继承0模型调用。浏览器实测下拉框/RSI模式恢复/Execute禁用/新建任务和原生slash发现；命令提交时测试隧道断开，最终点击因预览重启需重新登录且Chrome返回ERR_BLOCKED_BY_CLIENT尚待复核（API已通过），未伪称完整浏览器命令闭环。
-- 实验结论：`harless-controls-20261013-v1`，`docs/experiments/harless-controls-20261013-v1.md`。V100真实example/portfolio-v1均完成，15请求/20工具/0工具错误，估费0.005733756美元、账单未知；质量未盲评，真实verified skip0。没有效益结论。
-- 配置与数据：公共 `config/harless-scenes.json` 和既有场景配置；记录有效schema/输入/library摘要。私有有效配置和日志在独立验证目录的 `.local/`；本机同步 `.local/validation/controls-real.json`。没有复制密钥，服务器仅使用已有私有.env；登录URL不写公共文档。
-- 未完成与下一步：1. 私有预览登录后复核原生`/harless`弹面板；部署时在独立目录同步已合并main，核对版本后再使用统一Web入口；2. 场景负责人登记自己的真实MCP/指令，独立认证适用library；3. PPT工具、自动持续学习发布、多人账号/资料隔离另做，不能把Session当作身份隔离。跨启动设置恢复、Windows Web尚未验。
-- 权限与预算：本次测试目的真实累计上限0.06美元，已观察估费0.005733756（剩余估费上界0.054266244）；公共产品额度仍由既有启动配置提供。后续新运行必须累计旧请求/失败，不通过重启清零。免费预览及所有诊断0新增实付，没有execute真实接管或外部应用写入。
-- 回退与风险：独立分支可撤回；保留 `.local` 和旧服务。免费浏览器预览在V100专用tmux `harless-controls-preview`、3094、本机专用SSH转发；不是原私人3080正式服务。停止仅终止该会话及专用隧道，不清空数据。不提供跨用户隔离。
+- 范围：`/harless` 原生选择器改为 Scenes、Mode、RSI 二级菜单；Scenes 新增 New Scene，使用当前服务器运行时探索。PPT、Paper Proofreading、Research Data Analysis 仍只预览且阻止误用样例工具。Mode 显示 Origin/Shadow/Execute，协议 Origin 仍为 `baseline`；RSI 默认 On，切换模式不自动改变开关，Off 的下一任务按 Origin 执行。输入框加入加粗 Harless 状态标签。
+- 分支与文件：`codex/harless-picker-ui`，从 `b330bb4` 起包含原生菜单、输入框状态、模型选择与 GLM 配置；已合入最新 `origin/main`（`856c02c`），提交 `fd06213`，当前完整 HEAD 为 merge commit。对应代码、文档和回归测试已提交并推送到同名远程分支。
+- 已验证：合并后 `SSS_PYTHON=/Users/apple/Desktop/SSS/.venv312/bin/python npm test` 通过 153 项 Python、56 项 Node；纯离线与模拟控制服务，模型费用为零。3094 的本机预览运行 ID 为 `9b844f86fc6f4481bb36992dad328720`，认证地址留在 `.local/web/runs/<RUN_ID>/access-url.txt`。用户确认本功能完成；真实模型任务与场景运行时仍未接入。
+- 下一步：创建面向 `main` 的 PR。三个正式场景的 MCP、权限与交付仍待接入，New Scene 当前复用服务器已配置运行时。此变更不扩大付费或外部写入授权；不要提交 `.local` 或认证地址。
+
+## 2026-10-13 原生 Harless 选择菜单（当前）
+
+- 目标与本次范围：用户要求像 Harness 原生模型选择框一样操作，界面用英文，只显示 PPT、Paper Proofreading、Research Data Analysis，不展示样例场景。按用户确认，这三项本次仅做可选界面，运行时接入后续完成。
+- 分支与改动：`codex/harless-picker-ui`；新增 `src/adapters/harless_web_client/` 双端包，使用 Harness `commandUi.decorate({kind:'popupSelect'})` 装饰裸 `/harless`；移除注入 DOM 的旧悬浮菜单及输入框观察器。后台新增 `select_preview_scene` / `clear_preview_scene`，选中尚未接通的场景后以 `scene_not_connected` 阻止任务，避免误用样例工具。
+- 已验证：本机 `npm test` 151 Python、52 Node 全部通过；本机免费模拟 Web 启动成功，认证 HTML 含原生客户端插件登记且不含旧菜单注入。未操作用户浏览器，真实点击与视觉效果由用户验证；未调用模型，费用为零。
+- 配置与数据：真实运行时场景仍登记在 `config/harless-scenes.json`，三个界面预览标签在 Web 适配器中；私有启动产物留在 `.local/`。V100 3094 专用预览已部署 `c147400`，服务监听 `127.0.0.1:3094`；正式 3080 与原论文工作区不变。
+- 未完成与下一步：用户测试 3094 的原生菜单与英文选项；之后分别接入三个场景的 MCP、权限、输入与交付。未接通前选择这三项会拒绝任务。多人账号与文件隔离、跨启动选择恢复仍未实现。
+- 回退与风险：回退本分支的原生客户端包和服务器预览选择接口；不清理 `.local`。若原生菜单未加载，保留 `/harless` 参数命令作诊断入口。
+
+## 2026-10-13 输入框菜单与页面清理（历史）
+
+- 最新修复：用户反馈选中 `/harless` 后页面卡住。`52d245f` 曾直接编辑原生输入框，可能与 Harness 输入框更新互相触发；本次移除此编辑，仅观察命令状态并打开设置菜单，同一段输入最多触发一次。新增重复变更回归测试；Node 语法、新测试及 11 项 Web 定向测试通过。浏览器交互按用户要求由用户测试，当前仍未验证；`/harless` 文本可能留在输入框，需根据反馈继续完善。
+- 当前预览：V100 专用 3094 实例将更新到本次修复提交；正式 3080 与原论文工作区不变。本次无模型调用及费用。
+
+- 目标与范围：保留聊天输入框旁的 Harless 场景/RSI/模式选择；移除独立 `/tasks`、`/sss`、`/harless` 页面、悬浮入口及真实模式预算确认弹窗。原生聊天发送后直接执行，服务端预算约束保留。
+- 分支 / commit / 工作区：`codex/harless-picker-ui`，基于合并后的 main `b330bb4`；选择菜单 `e45338f`、页面清理 `359d0bf`、直接发送 `cb7efb2`，尚未推送。原论文工作区未改动。
+- 已完成：移除两个旧 HTML 面板和命令打开旧面板的轮询；旧页面地址返回 302 跳转聊天首页。裸 `/harless` 提示使用输入框旁菜单，具体场景/模式快捷命令保留。删除真实模式预算弹窗，原生消息发送时由服务端登记、激活预算并提交；显式任务 API 的预览/提交和全部兼容路由保留。
+- 已验证：Node JS/TS 语法、Python 编译、diff 检查通过；本次在本机以现有 `.venv312` 运行 `npm test`，151 项 Python 与 50 项 Node 通过。真实模式原生发送的夹具检查了直接派发、预算只激活一次、重复请求不重跑，以及页面不再注入弹窗；这是模拟控制服务，不是付费或浏览器验收。本次零模型调用。
+- 实验结论：此前 `harless-controls-20261013-v1` 真实运行记录未更改；本次仅前端入口与文档调整，不新增真实 API 测试或费用。
+- 配置与数据：场景登记仍在 `config/harless-scenes.json`；V100 独立副本 `.local/validation/harless-picker-cb7efb2/` 已检出本提交并通过 11 项 Web 任务 Node 定向检查。专用 tmux `harless-controls-preview` / 3094 仍运行此前版本，尚未切换；不触碰正式 3080 或私有运行数据。
+- 未完成与下一步：V100 主目录为他人正在修改的论文工作区，3094 原预览副本也有未提交改动；独立副本已就绪，3094 切换暂停，不能覆盖两处工作。浏览器确认直接发送、菜单和旧页面跳转仍待完成。多人账号与文件隔离、跨启动设置恢复仍未实现。
+- 权限与预算：本次删除与 UI 检查不调用模型，预计真实 API 费用为零；真实调用继续遵循项目既有授权与预算。
+- 回退与风险：本次是可逆 UI 路由/面板删除；不清理 `.local`。跨用户隔离尚未实现。
+
+## 2026-10-09 至 10-10 历史交接（当时状态）
 
 - 2026-10-10 本机连接修复：3086 手工隧道再次消失，改为专用受限 SSH 账号与用户 LaunchAgent 自动重连，并追加本地地址代理绕过。主动断开测试约 2 秒恢复，现有认证/任务页/API 均 HTTP 200；原服务器运行、预算和 3 请求/4 MCP 统计保留，本次零模型调用。浏览器刷新待用户确认；运维配置、回退及限制见 `docs/handoffs/harness-web.md`。此记录随 PR #2 更新，原论文工作区其他修改保留；尚未合入 main。
 

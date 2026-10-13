@@ -45,12 +45,14 @@ def _image_count(value: Any) -> int:
     return 0
 
 
-def reservation(body: bytes, *, max_output: int) -> tuple[str, float, int]:
+def reservation(body: bytes, *, max_output: int,
+                rates: dict[str, tuple[float, float]] | None = None) -> tuple[str, float, int]:
     request = json.loads(body)
     if not isinstance(request, dict):
         raise ValueError("request body must be an object")
     model = request.get("model")
-    if model not in PEAK_USD_PER_MILLION:
+    rates = PEAK_USD_PER_MILLION if rates is None else rates
+    if model not in rates:
         raise ValueError("model is not in the approved peak-price table")
     output = request.get("max_tokens")
     if not isinstance(output, int) or isinstance(output, bool) or not 1 <= output <= max_output:
@@ -59,7 +61,7 @@ def reservation(body: bytes, *, max_output: int) -> tuple[str, float, int]:
     # additional 2,000 tokens for protocol/accounting differences and 1,024 for
     # each image reference; inline base64 is already covered by body bytes.
     input_ceiling = len(body) + 2_000 + 1_024 * _image_count(request)
-    input_rate, output_rate = PEAK_USD_PER_MILLION[model]
+    input_rate, output_rate = rates[model]
     dollars = (input_ceiling * input_rate + output * output_rate) / 1_000_000
     return model, dollars, input_ceiling
 
@@ -88,6 +90,12 @@ def response_usage(content_type: str, answer: bytes) -> dict[str, int]:
     fields = ("prompt_tokens", "prompt_cache_hit_tokens",
               "prompt_cache_miss_tokens", "completion_tokens", "total_tokens")
     values = {field: usage.get(field) for field in fields}
+    if any(type(usage.get(field)) is not int or usage[field] < 0
+           for field in ("prompt_tokens", "completion_tokens", "total_tokens")):
+        return {}
+    if values["prompt_cache_hit_tokens"] is None and values["prompt_cache_miss_tokens"] is None:
+        values["prompt_cache_hit_tokens"] = 0
+        values["prompt_cache_miss_tokens"] = values["prompt_tokens"]
     if any(type(value) is not int or value < 0 for value in values.values()):
         return {}
     if (values["prompt_tokens"] != values["prompt_cache_hit_tokens"]
@@ -96,9 +104,13 @@ def response_usage(content_type: str, answer: bytes) -> dict[str, int]:
     return values
 
 
-def observed_peak_cost(model: str, usage: dict[str, int]) -> float:
+def observed_peak_cost(model: str, usage: dict[str, int], *,
+                       rates: dict[str, tuple[float, float]] | None = None,
+                       cache_rates: dict[str, float] | None = None) -> float:
     """Price a complete provider usage record without reading response content."""
-    if model not in PEAK_USD_PER_MILLION:
+    rates = PEAK_USD_PER_MILLION if rates is None else rates
+    cache_rates = CACHE_HIT_PEAK_USD_PER_MILLION if cache_rates is None else cache_rates
+    if model not in rates:
         raise ValueError("model is not in the approved peak-price table")
     required = ("prompt_tokens", "prompt_cache_hit_tokens",
                 "prompt_cache_miss_tokens", "completion_tokens", "total_tokens")
@@ -108,28 +120,32 @@ def observed_peak_cost(model: str, usage: dict[str, int]) -> float:
             + usage["prompt_cache_miss_tokens"]
             or usage["total_tokens"] != usage["prompt_tokens"] + usage["completion_tokens"]):
         raise ValueError("inconsistent provider usage")
-    input_rate, output_rate = PEAK_USD_PER_MILLION[model]
+    input_rate, output_rate = rates[model]
     return (usage["prompt_cache_miss_tokens"] * input_rate
-            + usage["prompt_cache_hit_tokens"] * CACHE_HIT_PEAK_USD_PER_MILLION[model]
+            + usage["prompt_cache_hit_tokens"] * cache_rates.get(model, input_rate)
             + usage["completion_tokens"] * output_rate) / 1_000_000
 
 
 class State:
     def __init__(self, *, cap_usd: float, output_cap: int, record: Path,
-                 request_limit: int | None = None):
+                 request_limit: int | None = None,
+                 rates: dict[str, tuple[float, float]] | None = None,
+                 cache_rates: dict[str, float] | None = None):
         if request_limit is not None and (type(request_limit) is not int or request_limit < 1):
             raise ValueError('request_limit must be a positive integer')
         self.request_limit = request_limit
         self.cap_usd = cap_usd
         self.output_cap = output_cap
         self.record = record
+        self.rates = PEAK_USD_PER_MILLION if rates is None else rates
+        self.cache_rates = CACHE_HIT_PEAK_USD_PER_MILLION if cache_rates is None else cache_rates
         self.reserved_usd = 0.0
         self.request_count = 0
         self.pending: dict[int, float] = {}
         self.lock = threading.Lock()
 
     def book(self, body: bytes) -> tuple[int, str, float, int] | None:
-        model, dollars, ceiling = reservation(body, max_output=self.output_cap)
+        model, dollars, ceiling = reservation(body, max_output=self.output_cap, rates=self.rates)
         with self.lock:
             if (self.reserved_usd + dollars > self.cap_usd or
                     (self.request_limit is not None and self.request_count >= self.request_limit)):
@@ -147,7 +163,7 @@ class State:
             if status != 200:
                 return None, 0.0
             try:
-                observed = observed_peak_cost(model, usage)
+                observed = observed_peak_cost(model, usage, rates=self.rates, cache_rates=self.cache_rates)
             except ValueError:
                 return None, 0.0
             if observed > reserved:
@@ -168,7 +184,9 @@ class State:
 
 
 def create_server(host: str, port: int, upstream: str, state: State, *,
-                  state_selector=None) -> ThreadingHTTPServer:
+                  state_selector=None, allowed_models: set[str] | None = None,
+                  chat_path: str = '/v1/chat/completions', allow_files: bool = True,
+                  gate_token: str | None = None) -> ThreadingHTTPServer:
     # macOS can supply system proxies even with no *_PROXY environment variables.
     # Never send a local mock/loopback upstream through an external proxy.
     opener = (urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -196,21 +214,22 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
         def do_GET(self) -> None:  # noqa: N802
             if self.path == "/budget/health":
                 self._reply(200, "ok")
-            elif FILE_PATH.match(self.path):
+            elif allow_files and FILE_PATH.match(self.path):
                 self._forward_file(None, "GET")
             else:
                 self._reply(403, "budget gate only forwards model requests")
 
         def do_DELETE(self) -> None:  # noqa: N802
-            if FILE_PATH.match(self.path):
+            if allow_files and FILE_PATH.match(self.path):
                 self._forward_file(None, "DELETE")
             else:
                 self._reply(403, "unmetered endpoint refused")
 
         def _call_upstream(self, body: bytes | None, method: str) -> tuple[int, str, bytes]:
             headers = {key: value for key, value in self.headers.items()
-                       if key.lower() not in HOP_HEADERS}
-            request = urllib.request.Request(upstream + self.path, data=body,
+                       if key.lower() not in HOP_HEADERS | {'x-sss-model-gate-token'}}
+            target_path = chat_path if self.path == '/v1/chat/completions' else self.path
+            request = urllib.request.Request(upstream.rstrip('/') + target_path, data=body,
                                              headers=headers, method=method)
             try:
                 with opener.open(request, timeout=900) as response:
@@ -247,7 +266,7 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
             self._send_upstream(status, content_type, answer)
 
         def do_POST(self) -> None:  # noqa: N802
-            file_upload = self.path == "/v1/files"
+            file_upload = allow_files and self.path == "/v1/files"
             if self.path != "/v1/chat/completions" and not file_upload:
                 self._reply(403, "unmetered endpoint refused")
                 return
@@ -265,11 +284,15 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                 self._forward_file(body, "POST")
                 return
             try:
+                if gate_token is not None and self.headers.get('X-SSS-Model-Gate-Token') != gate_token:
+                    raise PermissionError('model gate token is invalid')
                 request_state = self._state()
             except (ValueError, PermissionError):
                 self._reply(403, "model session is not approved")
                 return
             try:
+                if allowed_models is not None and json.loads(body).get('model') not in allowed_models:
+                    raise ValueError('model is outside this provider gate')
                 booked = request_state.book(body)
             except (ValueError, TypeError, json.JSONDecodeError):
                 self._reply(400, "unpriced or unbounded model request refused")

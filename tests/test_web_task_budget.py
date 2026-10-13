@@ -17,6 +17,18 @@ USAGE = {"prompt_tokens": 12, "prompt_cache_hit_tokens": 8,
 
 
 class WebTaskBudgetTests(unittest.TestCase):
+    def test_active_route_never_charges_a_different_model(self):
+        session = self.register()
+        with self.assertRaises(PermissionError): self.registry.active_state_for({})
+        self.registry.activate(session)
+        route = self.registry.active_state_for({})
+        self.assertEqual(route.model, 'deepseek-flash')
+        with self.assertRaises(ValueError): route.book(b'{"model":"deepseek-v4-pro","max_tokens":10}')
+        self.assertEqual(self.registry.stats(session)['upstream_requests'], 0)
+        other = self.register(2)
+        self.registry.activate(other)
+        with self.assertRaises(PermissionError): self.registry.active_state_for({})
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / ".local" / "web" / "run"

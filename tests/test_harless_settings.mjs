@@ -1,14 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const options={skip:!process.features?.typescript};
-test('RSI modes, conflict checks, remembering Execute, and unavailable Execute are coherent',options,async()=>{
+test('RSI defaults On, mode is independent, and unavailable Execute is guarded',options,async()=>{
  const {initialSelection,changeSelection,sceneCatalog}=await import('../src/adapters/harless_settings.ts');
  const scenes=sceneCatalog([{id:'example',label:'示例',preset:'sss-task',allowed_tools:['mcp__demo__read']}]);
  let state=initialSelection('example','shadow');
  const change=patch=>state=changeSelection(state,patch,scenes,()=>null);
- change({mode:'execute'});change({rsi:false});assert.equal(state.mode,'baseline');change({rsi:true});assert.equal(state.mode,'execute');
- change({mode:'baseline'});assert.equal(state.rsi,false);change({mode:'shadow'});assert.equal(state.rsi,true);
- assert.throws(()=>change({mode:'baseline',rsi:true}),/Baseline/);
+ assert.equal(initialSelection('example','baseline').rsi,true);
+ change({mode:'execute'});change({rsi:false});assert.equal(state.mode,'execute');
+ change({mode:'baseline'});assert.equal(state.rsi,false);
+ change({mode:'shadow'});assert.equal(state.rsi,false);
+ change({rsi:true});assert.equal(state.mode,'shadow');
+ change({mode:'baseline',rsi:true});assert.equal(state.rsi,true);
  assert.throws(()=>changeSelection(state,{mode:'execute'},scenes,()=> 'no_certified_library'),/no_certified_library/);
  assert.throws(()=>change({scene:'../../private'}),/未登记/);assert.throws(()=>change({manifest:'private'}),/只支持/);
 });

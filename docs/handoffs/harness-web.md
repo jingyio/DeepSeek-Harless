@@ -1,16 +1,25 @@
 # DeepSeek Harless Web 当前交接
 
-## 2026-10-13 `/harless` 场景选择首版（Codex）
+## 2026-10-13 模型选择与 GLM 分支合并
 
-- 目标与范围：按已审阅计划实现原生命令和可选界面、场景/模式/RSI联动、逐任务冻结。当前一个Session绑定一个Task；下一任务新建Session并继承选择。
-- 分支/commit/工作区：独立 `codex/harless-controls`，基于远端main `b143bcc`；提交见Git历史，已推送；[PR #4](https://github.com/jingyio/DeepSeek-Harless/pull/4) 为本次合入main的交付记录，负责人于2026-10-13明确授权合并；最终合并状态和提交以该PR为准。原 `feature/paper-submission` 及全部未提交工作保留。V100只使用 `.local/validation/harless-controls-20261013-v1/` 代码快照，没有覆盖共享论文目录。
-- 已完成：`harless_settings.ts`、`harless_scenarios.py`、原生 `dsh_web_tasks.ts`、`harless_panel.html`/浏览器bridge；登记example/portfolio-v1/portfolio-v2，各自MCP preset。`/harless`、场景、list/status、mode、rsi on/off；无库/匹配服务时Execute不可选，Shadow记录普通回退。任务预览绑定场景、schema、指令、library/版本及确认摘要，不改上游核心。接口见 `docs/harless-controls.md`。
-- 已验证：本机与V100 `npm test` 151 Python/51 Node、smoke18题/83对象；GitHub首轮Linux CI通过，Windows在新增测试的POSIX权限位断言处失败，现改为只在POSIX检查权限位、Windows保留其余登记检查；修复提交 `e5cb56f` 的Linux/Windows共4项CI均通过（push运行38380070197、PR运行38380075943）；后续纯交接提交的检查以PR为准。原有动态任务协议包含Baseline/Shadow/Execute及输入变化回退、上传/预算拒绝。原生Remote命令、场景切换后的工具快照、下一任务继承0模型调用。浏览器实测下拉框/RSI模式恢复/Execute禁用/新建任务和原生slash发现；命令提交时测试隧道断开，最终点击因预览重启需重新登录且Chrome返回ERR_BLOCKED_BY_CLIENT尚待复核（API已通过），未伪称完整浏览器命令闭环。
-- 实验结论：`harless-controls-20261013-v1`，`docs/experiments/harless-controls-20261013-v1.md`。V100真实example/portfolio-v1均完成，15请求/20工具/0工具错误，估费0.005733756美元、账单未知；质量未盲评，真实verified skip0。没有效益结论。
-- 配置与数据：公共 `config/harless-scenes.json` 和既有场景配置；记录有效schema/输入/library摘要。私有有效配置和日志在独立验证目录的 `.local/`；本机同步 `.local/validation/controls-real.json`。没有复制密钥，服务器仅使用已有私有.env；登录URL不写公共文档。
-- 未完成与下一步：1. 私有预览登录后复核原生`/harless`弹面板；部署时在独立目录同步已合并main，核对版本后再使用统一Web入口；2. 场景负责人登记自己的真实MCP/指令，独立认证适用library；3. PPT工具、自动持续学习发布、多人账号/资料隔离另做，不能把Session当作身份隔离。跨启动设置恢复、Windows Web尚未验。
-- 权限与预算：本次测试目的真实累计上限0.06美元，已观察估费0.005733756（剩余估费上界0.054266244）；公共产品额度仍由既有启动配置提供。后续新运行必须累计旧请求/失败，不通过重启清零。免费预览及所有诊断0新增实付，没有execute真实接管或外部应用写入。
-- 回退与风险：独立分支可撤回；保留 `.local` 和旧服务。免费浏览器预览在V100专用tmux `harless-controls-preview`、3094、本机专用SSH转发；不是原私人3080正式服务。停止仅终止该会话及专用隧道，不清空数据。不提供跨用户隔离。
+- `codex/codex-login` 的模型选择、GLM 路由与预算绑定合入当前原生聊天分支；旧 `/tasks` 页面保持删除，Codex 登录原型仍为撤销状态。
+- GLM 配置见 `.env.example`，凭证只保存在私有环境。已完成假密钥及免费协议诊断；真实 GLM 请求、工具调用与账单均未验收。
+- 已验证：本机 `npm test` 为 153 项 Python、54 项 Node 全部通过；`npm run web:tasks:check` 免费 Harness HTTP 诊断通过，付费请求 0。新增原生模型选择到下一项聊天任务的模型与预算绑定测试。浏览器人工点击和 V100 部署仍待验收。
+- 课题组共享入口仍缺独立身份、任务与文件隔离，不应向全组共享单个认证令牌。
+
+## 2026-10-13 输入框菜单与页面清理（当前）
+
+- 目标与范围：保留聊天输入框旁的 Harless 场景/RSI/模式选择；移除独立 `/tasks`、`/sss`、`/harless` 页面、悬浮入口及真实模式预算确认弹窗。原生聊天发送后直接执行，服务端预算约束保留。
+- 分支 / commit / 工作区：`codex/harless-picker-ui`，基于合并后的 main `b330bb4`；选择菜单 `e45338f`、页面清理 `359d0bf`、直接发送 `cb7efb2`，尚未推送。
+- 已完成：移除两个旧 HTML 面板和命令打开旧面板的轮询；旧页面地址返回 302 跳转聊天首页。裸 `/harless` 提示使用输入框旁菜单，具体场景/模式快捷命令保留。删除真实模式预算弹窗，原生消息发送时由服务端登记、激活预算并提交；显式任务 API 的预览/提交和全部兼容路由保留。
+- 已验证：Node JS/TS 语法、Python 编译、diff 检查通过；本次在本机以现有 `.venv312` 运行 `npm test`，151 项 Python 与 50 项 Node 通过。真实模式原生发送的夹具检查了直接派发、预算只激活一次、重复请求不重跑，以及页面不再注入弹窗；这是模拟控制服务，不是付费或浏览器验收。本次零模型调用。
+- 实验结论：此前 `harless-controls-20261013-v1` 真实运行记录未更改；本次仅前端入口与文档调整，不新增真实 API 测试或费用。
+- 配置与数据：场景登记仍在 `config/harless-scenes.json`；V100 独立副本 `.local/validation/harless-picker-cb7efb2/` 已检出本提交并通过 11 项 Web 任务 Node 定向检查。专用 tmux `harless-controls-preview` / 3094 仍运行此前版本，尚未切换；不触碰正式 3080 或私有运行数据。
+- 未完成与下一步：V100 主目录为他人正在修改的论文工作区，3094 原预览副本也有未提交改动；独立副本已就绪，3094 切换暂停，不能覆盖两处工作。浏览器确认直接发送、菜单和旧页面跳转仍待完成。多人账号与文件隔离、跨启动设置恢复仍未实现。
+- 权限与预算：本次删除与 UI 检查不调用模型，预计真实 API 费用为零；真实调用继续遵循项目既有授权与预算。
+- 回退与风险：本次是可逆 UI 路由/面板删除；不清理 `.local`。跨用户隔离尚未实现。
+
+## 2026-10-09 至 10-10 历史交接（当时状态）
 
 - 2026-10-10 访问恢复（二次故障）：用户再次出现 ERR_CONNECTION_REFUSED；本机 3086 监听和手工 SSH socket 已消失，服务器原 Web 仍响应，旧隧道退出原因未确定。改用用户级 LaunchAgent `com.jingyio.harless-web-tunnel` 自动重连，专用密钥在 `~/.ssh/harless-web-tunnel-3086`，日志在 `~/Library/Logs/DeepSeekHarless/`。服务器 `harless-tunnel` 账号仅允许公钥认证、本地转发至 127.0.0.1:3086，禁止 shell/远程转发/PTY；标记配置块 `HARLESS WEB TUNNEL 3086`，sshd 校验后重载。后台访问 Desktop 密钥曾被系统拒绝，移至 ~/.ssh 后成功；一次服务器断开被自动重试恢复。主动终止专用隧道后约 2 秒恢复，恢复后认证、/tasks、只读任务 API 均 HTTP 200。WT15/Wi-Fi 代理原绕过列表合成一个条目，追加独立 localhost/127.0.0.1/::1，原代理与规则保留。既有运行 `ebd724e8f4464b72b5cbc797210da350`、0.247 美元预算及 3 请求/4 MCP 统计不变，本次零模型调用。cookie 约 30 天，连接拒绝发生在认证前；浏览器实际刷新结果仍待用户确认。配置/代理回退快照及验证在本机 `.local/web-review/`，服务器 SSH 原配置备份在 `.local/web-review/sshd_config.before-tunnel`。回退先卸载专用 LaunchAgent，再仅移除该账号/标记配置块，校验并重载 SSH；代理按私有 snapshot 恢复，不能覆盖后来的 SSH 改动。私有运维配置未进入 Git；匿名化记录随 PR #2 更新，尚未合入 main。
 
