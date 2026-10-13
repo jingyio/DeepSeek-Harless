@@ -15,8 +15,7 @@ class RecoveryScopeTests(unittest.TestCase):
         self.area = Path(self.temp.name)
         self.service = object.__new__(CheckpointPPTService)
         self.service.job_path = self.area / 'job.json'
-        self.service.job = {'slides': 1}
-        self.service.input_version = 'current'
+        self.service.job = {'slides': 1, 'inputs': []}
         self.service.decks = {'deck': self.area / 'outputs/deck/presentation.pptx'}
         self.service.deck_records = {'deck': {'sha256': 'a' * 64}}
 
@@ -25,7 +24,7 @@ class RecoveryScopeTests(unittest.TestCase):
 
     def report(self, root):
         return {'validation_id': 'validation-test', 'deck_id': 'deck', 'passed': False,
-                'input_version': 'current', 'file_sha256': 'a' * 64,
+                'input_version': self.service.input_version, 'file_sha256': 'a' * 64,
                 'pptx_path': str(self.service.decks['deck']), 'artifacts': [],
                 'report_path': str(root / 'diagnostic/report.json')}
 
