@@ -43,13 +43,87 @@ test('旧计划兼容；两套科研模板的布局检查可复现且不冒充�
   const first=buildLayout(original);
   assert.deepEqual(first,buildLayout(original));
   assert.equal(first.template,'academic');
+  assert.equal(first.renderer_version,'research-ppt-layout-v11.2');
   assert.equal(first.slides[0].layout,'content');
   assert.equal(first.checks.pixel_render_verified,false);
   assert.equal(first.checks.semantic_quality_verified,false);
   const lab=buildLayout({...original,template:'lab'});
   assert.equal(lab.template,'lab');
+  assert.equal(lab.renderer_version,'research-ppt-layout-v15-lab.1');
   assert.ok(lab.checks.min_body_font_size>=18);
   assert.notEqual(first.deck_sha256,lab.deck_sha256);
+});
+
+test('朴素组会风仅移除装饰标签；科学内容摘要和全部证据几何与会议版保持一致',()=>{
+  const image={data:'image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=',width:1,height:1};
+  const deck={title:'两种风格相同科研内容',slides:[
+    slide({layout:'title',bullets:['相同输入与来源'],notes:'封面备注保持'}),
+    slide({layout:'image',archetype:'evidence-focus',image,bullets:['完整原图'],notes:'原图条件保持'}),
+    slide({layout:'chart',archetype:'result-summary',chart,bullets:[],notes:'图表单位与数值保持'}),
+    slide({layout:'process',archetype:'method-map',bullets:[],process:{steps:[
+      {label:'输入',detail:'保留输入条件'},{label:'输出',detail:'保留输出定义'}]},notes:'方法讲稿保持'}),
+  ]};
+  const original=JSON.stringify(deck), academic=buildLayout({...deck,template:'academic'}), lab=buildLayout({...deck,template:'lab'});
+  assert.equal(academic.semantic_content_sha256,lab.semantic_content_sha256);
+  assert.equal(lab.semantic_content_sha256,semanticContentHash(deck));
+  assert.equal(academic.slides.flatMap(s=>s.elements).filter(e=>e.role==='scientific_label').length,3);
+  assert.ok(lab.slides.every(s=>s.elements.every(e=>e.role!=='scientific_label')));
+  for(const [i,page] of academic.slides.entries()) {
+    assert.deepEqual(lab.slides[i].elements,page.elements.filter(e=>e.role!=='scientific_label'),
+      '标题、正文、原图、图表与连接几何不能因换组会风而改变');
+  }
+  assert.equal(JSON.stringify(deck),original,'换风格不能改写输入事实或notes');
+});
+
+test('朴素组会版真实OOXML无模板口号与彩色数字圆底；原图、原生图表/表格/过程及来源讲稿保留',async()=>{
+  const area=fileURLToPath(new URL('../../../.local/research-ppt/node-render-tests/',import.meta.url));
+  await mkdir(area,{recursive:true});
+  const temporary=await mkdtemp(join(area,'plain-lab-'));
+  try {
+    const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
+    const deck={title:'真实组会风格保持',slides:[
+      slide({layout:'title',bullets:['完整研究主题'],notes:'封面讲稿'}),
+      slide({layout:'section',bullets:['具体问题'],notes:'章节讲稿'}),
+      slide({layout:'image',archetype:'evidence-focus',bullets:['图中的实际观察'],
+        image:{data:'image/png;base64,'+png,width:1,height:1},notes:'图件与实验条件'}),
+      slide({layout:'table',archetype:'result-summary',bullets:[],table:[['条件','指标'],['相同设置','3.75']],notes:'表格比较条件'}),
+      slide({layout:'chart',archetype:'result-summary',chart,bullets:[],notes:'图表口径说明'}),
+      slide({layout:'process',archetype:'method-map',bullets:[],process:{steps:[
+        {label:'输入步骤',detail:'输入定义'},{label:'输出步骤',detail:'输出定义'}]},notes:'科学方法完整讲稿'}),
+      slide({layout:'process',bullets:[],process:{steps:Array.from({length:4},(_,i)=>({label:`过程${i+1}`,detail:`条件${i+1}`}))},
+        takeaway:'只保留来源支持的解释',notes:'过程条件完整讲稿'}),
+    ]};
+    const output=join(temporary,'lab.pptx'), result=await render({...deck,template:'lab'},output);
+    assert.equal(result.editable_table_count,1);
+    assert.equal(result.editable_chart_count,1);
+    assert.equal(result.editable_process_count,2);
+    const files=unzip(await readFile(output));
+    const allSlides=deck.slides.map((s,i)=>files.get(`ppt/slides/slide${i+1}.xml`).toString('utf8'));
+    for(const label of ['RESEARCH BRIEF','RESEARCH / SECTION','EVIDENCE','RESULTS','METHOD']) {
+      assert.ok(allSlides.every(xml=>!xml.includes(`<a:t>${label}</a:t>`)),`不得加入装饰标签 ${label}`);
+    }
+    assert.ok(allSlides.every(xml=>!xml.includes('prst="ellipse"')),'流程编号保留文字，不加入彩色圆底');
+    for(const [i,s] of deck.slides.entries()) {
+      const xml=allSlides[i], notes=files.get(`ppt/notesSlides/notesSlide${i+1}.xml`).toString('utf8');
+      assert.ok(xml.includes(`<a:t>${s.title}</a:t>`));
+      for(const text of s.bullets) assert.ok(xml.includes(`<a:t>${text}</a:t>`));
+      assert.ok(notes.includes(s.notes)&&notes.includes(source),'实际来源与完整讲稿必须保留');
+      if(s.process) {
+        for(const step of s.process.steps) {
+          assert.ok(xml.includes(`<a:t>${step.label}</a:t>`)&&xml.includes(`<a:t>${step.detail}</a:t>`));
+        }
+        assert.equal([...xml.matchAll(/tailEnd type="triangle"/g)].length,s.process.steps.length-1,
+          '每条真实流程连接仍是原生可编辑箭头');
+      }
+    }
+    assert.ok(allSlides[3].includes('<a:tbl>')&&allSlides[3].includes('<a:t>3.75</a:t>'));
+    assert.ok(allSlides[4].includes('<c:chart'));
+    const dataXml=chartXml(files);
+    assert.ok(dataXml.includes('<c:v>-1.25</c:v>')&&dataXml.includes('<c:v>3.75</c:v>'));
+    assert.ok([...files.keys()].some(k=>/^ppt\/embeddings\/.*\.xlsx$/.test(k)),'图表仍携带可编辑数据工作簿');
+    assert.ok([...files.entries()].some(([path,data])=>/^ppt\/media\//.test(path)&&data.equals(Buffer.from(png,'base64'))),
+      '原图必须以原字节嵌入');
+  } finally {await rm(temporary,{recursive:true,force:true});}
 });
 
 test('拒绝冲突布局、未支持的数据、外部图片与会越界的长表格',()=>{

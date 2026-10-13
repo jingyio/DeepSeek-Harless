@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scenarios.research_ppt.cli import ROOT, save, scenario_for
+from scenarios.research_ppt.cli import ROOT, save, scenario_for, run
 from src.adapters.scenario import prepare_scenario
 
 
@@ -58,3 +58,20 @@ class CLIRuntimeTests(unittest.TestCase):
     def test_unknown_runtime_rejected(self):
         with self.assertRaises(ValueError):
             scenario_for(self.job, False, 'unknown')
+
+    def test_output_limit_is_forwarded_and_recorded_without_model(self):
+        save(self.job, {**self.data, 'job_id': 'output-limit-regression', 'allow_output': False})
+        with patch('scenarios.research_ppt.cli.subprocess.call', return_value=0) as launcher:
+            self.assertEqual(run(self.job, max_output=8000), 0)
+        args = launcher.call_args.args[0]
+        self.assertEqual(args[args.index('--max-output') + 1], '8000')
+        invocation = json.loads(next(self.job.parent.glob('invocation-*.json')).read_text(encoding='utf-8'))
+        self.assertEqual(invocation['max_output'], 8000)
+        self.assertFalse(invocation['model_call_enabled'])
+
+    def test_invalid_output_limit_rejected_before_starting_or_reading_job(self):
+        with patch('scenarios.research_ppt.cli.subprocess.call') as launcher:
+            for limit in (0, 8001, True, 5000.0):
+                with self.assertRaises(ValueError):
+                    run(self.job.parent / 'nonexistent.json', max_output=limit)
+            launcher.assert_not_called()

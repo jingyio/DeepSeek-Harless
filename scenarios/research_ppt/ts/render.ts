@@ -48,7 +48,7 @@ const FONT = 'Noto Sans CJK SC';
 const BODY: Box = {x: 0.7, y: 1.75, w: 11.93, h: 4.99};
 const THEMES = {
   academic: { title: '17345C', accent: '117D88', body: '243247', pale: 'F2F6FA', border: 'D7DFEA' },
-  lab: { title: '164A46', accent: '207C6B', body: '243B39', pale: 'F1F7F4', border: 'D5E4DE' },
+  lab: { title: '17345C', accent: '5E6875', body: '282C33', pale: 'F3F4F5', border: 'D7DBE0' },
 };
 const layouts: Layout[] = ['title','content','image','table','chart','section','comparison','process'];
 const scientificArchetypes: ScientificArchetype[] = ['evidence-focus','result-summary','method-map'];
@@ -490,9 +490,9 @@ function scientificMethod(elements: LayoutElement[], s: Slide, body: Box) {
   throw failure ?? new LayoutFailure('text_overflow','方法模块与全部说明无法同时容纳，请拆页',undefined,'process');
 }
 /** 三类科研页型独立于旧布局策略；不改变任何未opt-in页面的元素或样式。 */
-function addScientificSlide(elements: LayoutElement[], s: Slide, page: number, count: number) {
+function addScientificSlide(elements: LayoutElement[], s: Slide, page: number, count: number, template: Template) {
   const label={'evidence-focus':'EVIDENCE','result-summary':'RESULTS','method-map':'METHOD'}[s.archetype!];
-  elements.push(scientificTextElement('scientific_label',label,{x:0.7,y:0.13,w:10.5,h:0.28},11));
+  if(template!=='lab') elements.push(scientificTextElement('scientific_label',label,{x:0.7,y:0.13,w:10.5,h:0.28},11));
   const titleH=scientificLines(s.title,11.93,28)*28/72*1.28+0.07;
   if(titleH>1.1) throw new LayoutFailure('text_overflow','科研标题超过两行，请明确缩短标题',undefined,'title');
   elements.push(scientificTextElement('title',s.title,{x:0.7,y:0.43,w:11.93,h:titleH},28));
@@ -532,7 +532,7 @@ export function buildLayout(deck: Deck): LayoutManifest {
     const add = (role: string, text: string, box: Box, fontSize: number) => elements.push(textElement(role,text,box,fontSize));
     try {
       if(s.archetype) {
-        addScientificSlide(elements,s,index+1,deck.slides.length);
+        addScientificSlide(elements,s,index+1,deck.slides.length,deck.template??'academic');
       } else if (layout === 'title' || layout === 'section') {
         add('title',s.title,{x:0.9,y:1.78,w:11.35,h:1.47},36);
         const introY = 3.42;
@@ -613,7 +613,7 @@ export function buildLayout(deck: Deck): LayoutManifest {
   });
   const bodySizes=pages.flatMap(s=>s.elements.filter(e=>e.font_size && !['title','footer','page','scientific_label'].includes(e.role) &&
     (!s.archetype || (!e.role.endsWith('_number') && !(e.role.startsWith('evidence_note_') && e.role.endsWith('_heading'))))).map(e=>e.font_size!));
-  return {schema_version:1,renderer_version:'research-ppt-layout-v11.2',template:deck.template??'academic',width:WIDTH,height:HEIGHT,
+  return {schema_version:1,renderer_version:deck.template==='lab'?'research-ppt-layout-v15-lab.1':'research-ppt-layout-v11.2',template:deck.template??'academic',width:WIDTH,height:HEIGHT,
     font_face:FONT,deck_sha256:createHash('sha256').update(JSON.stringify(deck)).digest('hex'),slides:pages,
     layout_policy:policy,layout_policy_sha256:policyHash(policy),semantic_content_sha256:semanticContentHash(deck),diagnostics:[],
     checks:{bounds_passed:true,estimated_text_fit_passed:true,content_overlap_passed:true,
@@ -622,6 +622,7 @@ export function buildLayout(deck: Deck): LayoutManifest {
 
 export async function render(deck: Deck, output: string) {
   const manifest = buildLayout(deck), theme = THEMES[manifest.template];
+  const plainLab = manifest.template==='lab';
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_WIDE'; pptx.author = 'SSS Research PPT'; pptx.subject = 'Research presentation';
   pptx.title = deck.title;
@@ -629,7 +630,7 @@ export async function render(deck: Deck, output: string) {
   for (const [index,s] of deck.slides.entries()) {
     const page = manifest.slides[index], slide = pptx.addSlide();
     slide.background = {color:'FFFFFF'};
-    if(s.archetype) {
+    if(s.archetype || plainLab) {
       // 不使用默认粗分隔线/卡片；版面由证据、条件与克制的字体层次组成。
     } else if(page.layout==='title' || page.layout==='section') {
       slide.addText(page.layout==='title'?'RESEARCH BRIEF':'RESEARCH / SECTION',
@@ -669,15 +670,16 @@ export async function render(deck: Deck, output: string) {
             fontFace:FONT,fontSize:22,bold:true,color:theme.accent,margin:0});
         }
       }
-      if(e.role==='takeaway' && !s.archetype) slide.addShape(pptx.ShapeType.line,
+      if(e.role==='takeaway' && !s.archetype && !plainLab) slide.addShape(pptx.ShapeType.line,
         {x:e.x-0.18,y:e.y,w:0,h:e.h,line:{color:theme.accent,width:2}});
-      if(e.role.endsWith('_number') && !s.archetype) slide.addShape(pptx.ShapeType.ellipse,
+      if(e.role.endsWith('_number') && !s.archetype && !plainLab) slide.addShape(pptx.ShapeType.ellipse,
         {...box,line:{color:theme.accent,transparency:100},fill:{color:theme.accent}});
       if(e.text !== undefined) {
         const mainTitle=e.role==='title', footer=['footer','page'].includes(e.role), heading=e.role.endsWith('_heading');
         const takeaway=e.role==='takeaway', number=e.role.endsWith('_number');
         slide.addText(e.text,{...box,fontFace:FONT,fontSize:e.font_size,bold:mainTitle||heading||takeaway||number,
-          color:s.archetype?(footer?'667388':number||e.role==='scientific_label'?'6B7F99':mainTitle||heading?'17345C':'26344A'):
+          color:plainLab?(footer?'667388':mainTitle||heading?theme.title:theme.body):
+            s.archetype?(footer?'667388':number||e.role==='scientific_label'?'6B7F99':mainTitle||heading?'17345C':'26344A'):
             number?'FFFFFF':footer?'667388':takeaway?theme.accent:mainTitle||heading?theme.title:theme.body,margin:0,breakLine:false,
           valign:mainTitle||number?'middle':'top',align:number&&!s.archetype?'center':e.role==='page'?'right':'left',
           ...(footer?{}:{lineSpacingMultiple:1.15,paraSpaceAfter:8})});
@@ -704,7 +706,7 @@ export async function render(deck: Deck, output: string) {
             valAxisTitle:[chart.y_label,chart.unit].filter(Boolean).join(' / '),
             showValAxisTitle:!!(chart.y_label || chart.unit),valAxisTitleFontFace:FONT,valAxisTitleFontSize:18,
             catAxisLineColor:theme.border,valAxisLineColor:theme.border,
-            chartColors:s.archetype?['315B89','7594B5','ADB9C8']:[theme.accent,'496CA2','AA7235'],chartArea:{fill:{color:'FFFFFF'}},
+            chartColors:plainLab?['315B89','667388','ADB9C8']:s.archetype?['315B89','7594B5','ADB9C8']:[theme.accent,'496CA2','AA7235'],chartArea:{fill:{color:'FFFFFF'}},
             plotArea:{fill:{color:'FFFFFF'}},valGridLine:{color:theme.border,size:0.5},
             showValue:false,showTitle:false,barDir:'col',barGrouping:'clustered',
             lineSize:2,lineDataSymbol:'circle',lineDataSymbolSize:5,lineSmooth:false,

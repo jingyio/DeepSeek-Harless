@@ -27,7 +27,7 @@ SCENE = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from scenarios.research_ppt import generated_tools as host
 from scenarios.research_ppt.documents import file_hash
-from scenarios.research_ppt.experiment import lines, token_totals, version
+from scenarios.research_ppt.accounting import lines, token_totals, version
 from scenarios.research_ppt.figure_catalog import catalog_input, expected_catalog, verify_catalog
 from scenarios.research_ppt.service import private_path
 from src.adapters.deepseek_cost_gate import State, create_server

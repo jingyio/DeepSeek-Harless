@@ -2,6 +2,12 @@
 
 接收 1–8 份 PDF/PPTX、1–30 页要求与用户说明，目标是生成可编辑 PPTX，或将现有 PPTX 改为学术/组会风格，并提供真实 PDF 预览、来源与交付验收。
 
+组会试用统一采用 [双路入口](trial.md)：`npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output` 默认仅预览，生成两个独立任务；确认后 `npm run ppt -- --trial <实际trial.json> --call-model`。两路使用相同模型、来源与固定19工具，分别逐步交付／普通组合交付；原始账本、失败和待评审状态均保留。双路合计预算默认 $3，每路 $1.50，不是预计费用。输入先本机下载再上传服务器；不提交论文、日志或交付文件。
+
+`lab` 的 `research-ppt-layout-v15-lab.1` 使用朴素科研表达，去掉固定英文装饰标签与流程数字圆底，保留正文、图件、条件、原生数据与来源。`academic` 外观保持 V11.2。两者仍是公共 JSON→PptxGenJS 可靠交付，V12–V14 的私有原生模板服务没有在此冒充已接入。设计指导为 `research-design-v3`，标题可用具体主题，takeaway 可省略，避免固定贡献点和重复叙述。
+
+显式 `--collect-feedback` 保存未评审反馈且默认不授权学习；[反馈与离线学习](feedback-learning.md) 管理去重、训练／认证划分、候选及受控晋级、回滚。`--use-active-learning` 仅继承已晋级且当前有效的版本，沿用现有 Runtime 守卫与正常回退；无 active 时如实记录普通模式。首次生成、后续使用和学习投入分开记账，稳定同质量降本仍须真实用户评审。
+
 V9 普通 `cli run` 默认使用 [可靠交付入口](delivery.md)，提供同一任务重启恢复和固定19工具；`--runtime legacy` 保留原内存服务，旧动态目录工具仅在此入口加载。`prepare --document-cache` 可开启普通内容寻址缓存（默认关闭），缓存不保存授权、读取状态或科学结论。计划正文、结论、表格、流程和图表数据独立核对实际OOXML/PDF；PPT页序依据presentation关系，复合图不确定时拒绝猜测。进度、失败和限制见 [V9记录](../../docs/experiments/research-ppt-v9-quality-20261012.md)。新增条件续执行协议默认关闭，尚不代表模型学得、独立认证或真实降本。
 
 V10 增加 [明确页修改的零模型入口](direct-edit.md)，并改善默认渲染：在保留全部正文的左右/上下候选中选择图件面积或表格宽度更合适的版式，表格按内容分配列宽，方法流程使用可编辑的编号与箭头。默认图页优先 22pt，只有原图面积明显改善（至少 25%）或原版无法容纳时，逐页尝试 20pt 的紧凑正文；不联动缩小其他页面。未提供显式 `layout_policy` 时才使用自动选择；这些是普通工程能力，不是新 Motif 或 RSI。V10 历史渲染版本为 `research-ppt-layout-v10.1`，当前为下述 V11.2；旧 checkpoint/布局证书不得重签复用。
@@ -193,15 +199,17 @@ python -m scenarios.research_ppt.layout_learning \
 
 训练门槛为失败减少或原图平均面积提高至少 10%，认证须无回归、保留内容与真实 OOXML 文字/notes/来源。认证集只绑定一个冻结候选，不能反馈后换候选继续调参。证书再核资料、提案、代码版本及 PPTX/PDF/PNG 证据 SHA；`mechanical_certified=true` 仅是机械/几何代理，不证明审美或科研质量。新任务的 `prepare --layout-policy CERTIFICATE_PATH` 接受完整证书，不接受裸策略；五类枚举布局失败才回退默认策略，在新目录生成且保留候选失败证据。证书或依赖变化拒绝使用，不靠回退绕过版本守卫。
 
-新矩阵默认预览，三组共享同一 Skill、工具和模型配置；缺有效证书时 `motif_rsi` 明确跳过：
+V5 原矩阵使用当时冻结的隔离实验控制器：三组共享同一 Skill、工具和模型配置，缺有效证书时 `motif_rsi` 明确跳过。该控制器已退出当前公共产品入口，历史运行条件和恢复定位保留在 [V5 实验记录](../../docs/experiments/research-ppt-v5-design-rsi-20261010.md)，不要求新克隆具备旧私有配置。
+
+当前新任务使用 [双路试用入口](trial.md) 或上述 `cli prepare/run`。双路入口默认只预览：
 
 ```sh
-python -m scenarios.research_ppt.experiment_v5 \
-  --inputs .local/research-ppt/v5-inputs --certificate CERTIFICATE_PATH \
-  2>&1 | tee test-logs/research-ppt-v5-matrix-preview.log
+npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output
 ```
 
-真实运行增加 `--call-model`；默认每 run 防失控上限 `$0.75` / 40 步、矩阵 `$15`，可用 `--task` / `--group` 选子集，`--resume` 恢复同版本且同为真实或预览的实验目录。五题是不同用户任务，不是五篇固定合成一个 PPT；支持 `--matrix` 提供其他题面。V5 原矩阵已完成五题三组共 15 次真实运行，P1/P2 审查反馈 pilot 另完成六次，原始记录及比较条件分别冻结；不把重复材料修订称为新独立数据集。
+当前双路为普通 DSH 与普通组合优化，各自独立 job，双路预算默认总上限 `$3`、每路 `$1.50`；确认实际预览后，通过 `npm run ppt -- --trial <实际trial.json> --call-model` 执行。这不是 V5 三组矩阵或历史 RSI 条件的自动复现。
+
+V5 历史控制器每 run 防失控上限 `$0.75` / 40 步、矩阵 `$15`，当时支持题面/组别子集及同版本恢复。五题是不同用户任务，不是五篇固定合成一个 PPT。原矩阵已完成五题三组共 15 次真实运行，P1/P2 审查反馈 pilot 另完成六次，原始记录及比较条件分别冻结；不把重复材料修订称为新独立数据集。
 
 ## 验收、日志与实验方案
 
@@ -250,9 +258,9 @@ python -m scenarios.research_ppt.tool_learning \
 
 新 Motif 另用 `python -m scenarios.research_ppt.motif_v6 --dataset DATASET --contracts CONTRACTS --version-fields VERSIONS --tool-schema ACTUAL_SCHEMA --generated-tool FULL_TOOL_NAME --mining witnessed_edges --out-dir NEW_PRIVATE_DIRECTORY` 学习。沿用两个独立正常训练任务和一个独立认证任务，完整轨迹不裁剪；公共参数边编译器容许无关只读操作交错，写入/失败仍是 barrier。默认 `sequence` 保留相邻挖掘路径及其失败结果。加载 manifest 检查来源、工具代码/schema 和编译证据锁；是否真实跳过请求须看在线审计，两个工具旁路不自动等于两次请求节省。
 
-`DATASET` 为 `{"train":["正常训练运行目录A","正常训练运行目录B"],"heldout":["独立认证运行目录"]}`，各目录须有完整 `agent-events.jsonl` 和由公共 `freeze-dsh-task-identity.py` 冻结的 `task-identity.json`。动态目录契约须按实际 MCP schema 扩展默认 `contracts.json`：pin 返回 `source_id/version_sha256`，read 的必填参数及来源参数为 `source_id`，输出字段与实际工具一致，版本字段取实际 `version_sha256`；禁止凭空填入图边。`experiment_v6` 的 Motif 组还使用旧私有准入证书 `.local/research-ppt/rsi/v2-20261010/active-guard.json`，是本轮实验复现依赖；新安装须先通过 `improve` 认证并启用自己的准入程序，并通过普通 `cli run --mode execute --manifest ...` 加载，不应假设该历史文件存在。
+`DATASET` 为 `{"train":["正常训练运行目录A","正常训练运行目录B"],"heldout":["独立认证运行目录"]}`，各目录须有完整 `agent-events.jsonl` 和由公共 `freeze-dsh-task-identity.py` 冻结的 `task-identity.json`。动态目录契约须按实际 MCP schema 扩展默认 `contracts.json`：pin 返回 `source_id/version_sha256`，read 的必填参数及来源参数为 `source_id`，输出字段与实际工具一致，版本字段取实际 `version_sha256`；禁止凭空填入图边。V6 历史隔离实验的 Motif 组还使用旧私有准入证书 `.local/research-ppt/rsi/v2-20261010/active-guard.json`，是历史复现依赖；新安装须先通过 `improve` 认证并启用自己的准入程序，并通过普通 `cli run --mode execute --manifest ...` 加载，不应假设该历史文件存在。
 
-本轮配置和结果见 [V6 实验记录](../../docs/experiments/research-ppt-v6-tool-rsi-20261011.md)。使用默认布局；V5 布局证书绑定旧代码，不能假称继续有效。所有实验在服务器留日志，本机仅编辑、下载和审阅。`experiment_v6` 默认预览，显式 `--call-model` 才执行新任务并保留各组有效配置、实际 MCP schema、费用、失败、初稿与修订交付证据。未完成人工盲评和账单核对前不宣称同质量总成本下降。
+本轮历史配置和结果见 [V6 实验记录](../../docs/experiments/research-ppt-v6-tool-rsi-20261011.md)。当时使用默认布局；V5 布局证书绑定旧代码，不能假称继续有效。历史隔离矩阵控制器不随当前产品分发；新任务使用 `cli run` 或 [双路试用](trial.md)，仍先预览、显式 `--call-model` 才付费。所有实验在服务器留日志，本机仅编辑、下载和审阅。各组有效配置、实际 MCP schema、费用、失败、初稿与修订交付证据分别保留；未完成人工盲评和账单核对前不宣称同质量总成本下降。
 
 ## V4 及此前最终成果
 
@@ -265,3 +273,11 @@ python -m scenarios.research_ppt.tool_learning \
 当前新增的可维护能力包括同一 job 的 MCP 重启恢复、TypeScript 有限交付组合和指定页固定读取。它与上方 V6 入口并存，安装及真实回归见 [delivery.md](delivery.md)。未认证成功的 V7/V8 生成工具候选不注册；历史冻结实验与本次发布移植分别记录。
 
 全部可共享历史 PDF 与版本说明见 [报告索引](../../docs/experiments/research-ppt-reports/README.md)。V7、V8 局部 verified 旁路已经观察到，但计入失败恢复后未降低整任务成本；科学质量未独立人工盲评。V6 的工具生成成功记录与 V7/V8 的失败记录分别保留，不能互相覆盖。
+
+## V13 成品模板库与受限内容绑定
+
+[成品模板素材库](template-library/README.md) 登记五套风格、28 个页型，保留上游 MIT 许可、来源 commit、原始 SVG 与适配差异。固定依赖包含 21 个 Tabler 图标及单独许可；图标必须在任务准备阶段按实际模板复制、核验并冻结，不能只登记路径。两张大图派生页保留完整原图，移除会遮图的正文槽；普通小图槽不能代替要求交付的科研图件。
+
+`ts/template-library.ts` 的 `registerTemplate` 核验原稿/适配稿/许可摘要与可重放变更，`bindTemplate` 仅绑定已登记的文本与来源图片，`bindTemplateDeck` 核验整稿页数及一致画布；family 选择由准备端控制。未知/缺失槽、容量超限、非法 SVG、来源图版本变化和模板摘要不符均拒绝，不自动缩字或删除科学内容。运行时收据明确 `rsi_generated=false`、科学与像素质量未认证；该能力是普通工程优化。
+
+真实新稿仍通过忽略目录内的七工具 MCP 原型、固定 PPTMaster compiler 与 LibreOffice/PDF/PNG 验收。默认 `render.ts` 和现有公共 MCP **尚未切换到该原型**，不能将模板文件存在视为新克隆已能使用完整新链路。V13 的模型生成只读契约选择程序、独立认证与新任务对照另记于 [实验记录](../../docs/experiments/research-ppt-v13-template-library-20261012.md)；候选生成、编译、认证、启用和净收益分别报告，未分发新 Motif library 或私有证书。

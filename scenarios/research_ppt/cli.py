@@ -140,7 +140,9 @@ def structural_only_endpoint():
 
 
 def run(job: Path, *, call_model=False, budget=0.25, max_steps=16, improve=False,
-        mode='baseline', manifest: Path | None = None, execution='steps', runtime='reliable') -> int:
+        mode='baseline', manifest: Path | None = None, execution='steps', runtime='reliable', max_output=6000) -> int:
+    if type(max_output) is not int or not 1 <= max_output <= 8000:
+        raise ValueError('每请求输出上限应为 [1,8000] 的整数')
     job = private_path(job)
     data = json.loads(job.read_text(encoding='utf-8'))
     from .layout_learning import baseline_mode
@@ -166,11 +168,12 @@ def run(job: Path, *, call_model=False, budget=0.25, max_steps=16, improve=False
                       '\n本次执行方式：分别调用 render_deck、inspect_deck、validate_deck、deliver_deck，保持真实核验。')
         prompt_path.write_text(prompt_path.read_text(encoding='utf-8')+suffix,encoding='utf-8')
     args = [sys.executable, str(ROOT / 'scripts/run-scenario.py'), '--scenario', str(scenario),
-            '--budget-usd', str(budget), '--max-steps', str(max_steps), '--max-output', '6000']
+            '--budget-usd', str(budget), '--max-steps', str(max_steps), '--max-output', str(max_output)]
     if call_model:
         args.append('--call-model')
     env = dict(os.environ, SSS_PPT_JOB=str(job), PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
     effective = {'job_id': data['job_id'], 'requested_mode': mode, 'improve': improve, 'budget_cap_usd': budget,
+                 'max_steps': max_steps, 'max_output': max_output,
                  'model_call_enabled': call_model, 'output_enabled': data['allow_output'], 'execution':execution,
                  'runtime': 'legacy' if improve else runtime,
                  'document_cache': data.get('document_cache', False),
@@ -291,6 +294,7 @@ def main():
         p.add_argument('--job',type=Path,required=True)
         p.add_argument('--budget-usd',type=float,default=0.25)
         p.add_argument('--max-steps',type=int,default=16)
+        p.add_argument('--max-output',type=int,default=6000)
         p.add_argument('--call-model',action='store_true')
         p.add_argument('--mode',choices=['baseline','shadow','execute'],default='baseline')
         p.add_argument('--manifest',type=Path)
@@ -308,10 +312,10 @@ def main():
     if args.command == 'learn':
         print(learn(args.dataset))
         return 0
-    if not 0 < args.budget_usd <= 10 or not 1 <= args.max_steps <= 40:
-        parser.error('场景预算应在 (0, 10] 美元、步数在 [1, 40]')
+    if not 0 < args.budget_usd <= 10 or not 1 <= args.max_steps <= 40 or not 1 <= args.max_output <= 8000:
+        parser.error('场景预算应在 (0, 10] 美元、步数在 [1, 40]、输出上限在 [1,8000]')
     common = dict(call_model=args.call_model,budget=args.budget_usd,max_steps=args.max_steps,
-                  mode=args.mode,manifest=args.manifest,execution=args.execution,runtime=args.runtime)
+                  mode=args.mode,manifest=args.manifest,execution=args.execution,runtime=args.runtime,max_output=args.max_output)
     if args.command == 'cycle':
         # 两段请求共享显式总上限，各自仍经过公共预算代理。
         common['budget'] *= 0.7
@@ -319,7 +323,7 @@ def main():
         if status:
             return status
         return run(args.job,call_model=args.call_model,budget=args.budget_usd*0.3,
-                   max_steps=min(args.max_steps,8),improve=True)
+                   max_steps=min(args.max_steps,8),improve=True,max_output=args.max_output)
     return run(args.job,improve=args.command=='improve',**common)
 
 

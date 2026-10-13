@@ -3,7 +3,7 @@
 2026-10-11 按用户明确要求公开归档本场景此前生成的所有现存实验报告。共 **19 份不同 SHA 的 PDF**。同一 PDF 的备份副本只保留一个；报告修订版本全部保留。报告按原字节复制，仅整理文件名和目录，旧结论、错误稿截图与失败证据没有追改。
 PDF 合计 148,600,784 字节（约 141.7 MiB）；文件规模由清单可复核。
 
-建议先读 [最新 V8/V8c 报告](v8/report-03.pdf)，再按阶段查看历史。最新版也未证明统一质量门槛下的整任务降本：V8 的两题聚合 C 组比普通 A 组请求 +13.64%、总 token +29.61%、代理估费 +18.57%；仅 E2 修订阶段观察到两次可验证的整请求旁路。所有账单实付、人工盲评及人工修订分钟仍未齐备。
+最新归档 PDF 为 [V8/V8c 报告](v8/report-03.pdf)；后续 V9–V14 实验以本索引下方的 Markdown 记录交付，不能据 PDF 编号判断后续工作缺失。V8 也未证明统一质量门槛下的整任务降本：两题聚合 C 组比普通 A 组请求 +13.64%、总 token +29.61%、代理估费 +18.57%；仅 E2 修订阶段观察到两次可验证的整请求旁路。所有账单实付、人工盲评及人工修订分钟仍未齐备。
 
 ## 报告索引
 
@@ -31,12 +31,23 @@ PDF 合计 148,600,784 字节（约 141.7 MiB）；文件规模由清单可复�
 
 ## 配套实验记录
 
+汇报用 [V1–V14 总实验报告（18页）](research-ppt-v1-v14-summary-20261013.pdf) 已补入，文件身份见 [summary-manifest.json](summary-manifest.json)。这是既有实验的汇总，不改变原19份报告的身份清单，也不构成新增效果证据。
+
 - [最早真实 baseline / execute 试跑](../research-ppt-real-baseline-execute-20261010.md)。
 - [V2 方案](../research-ppt-v2-20261010-plan.md)与[V2–V4 结果及修订依据](../research-ppt-v2-20261010-results.md)。
 - [V5 设计 Skill 与受限布局 RSI](../research-ppt-v5-design-rsi-20261010.md)。
 - [V6 真实工具生成与新 Motif](../research-ppt-v6-tool-rsi-20261011.md)。
 - [V7 可靠交付与恢复](../research-ppt-v7-delivery-rsi-20261011.md)。
 - [V8/V8c 成本、质量与恢复](../research-ppt-v8-cost-quality-rsi-20261011.md)。
+- [V9 质量、内容保持与部署修复](../research-ppt-v9-quality-20261012.md)。
+- [V10 明确编辑与产品布局](../research-ppt-v10-product-20261012.md)。
+- [V11 科研原图、结果与方法页型](../research-ppt-v11-scientific-design-20261012.md)。
+- [V12 原生工作流与后端选择](../research-ppt-v12-native-design-20261012.md)。
+- [V13 模板素材库与有界 RSI 试用](../research-ppt-v13-template-library-20261012.md)。
+- [V14 容量恢复、真实交付与继承程序对照](../research-ppt-v14-recovery-20261013.md)。
+- [V15 双路试用、朴素组会稿与反馈部署](../research-ppt-v15-deployment-20261013.md)。
+
+2026-10-13 补齐上述后续记录的索引；原 19 份 PDF 及其清单保持原字节。后轮设计重排、普通规则、生成程序及辅助修订分别报告，不将其统称为新增 Motif 或 RSI 成果。当前产品入口见 [场景 README](../../../scenarios/research_ppt/README.md)；V12–V14 的历史隔离原生服务并未成为默认产品后端。
 
 ## 阅读边界与可复核范围
 

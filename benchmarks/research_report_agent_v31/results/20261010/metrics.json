@@ -1,0 +1,134 @@
+{
+  "experiment_id": "research-report-agent-v31-20261010",
+  "evaluation": {
+    "baseline": {
+      "runs": 8,
+      "business_delivered": 8,
+      "qualified": 7,
+      "qualified_rate": 0.875,
+      "upstream_requests": 143,
+      "tool_calls": 135,
+      "verified_motif_bypasses": 0,
+      "tool_failure_count": 23,
+      "elapsed_seconds": 462.04839653894305,
+      "peak_estimate_cny": 0.7201656,
+      "offpeak_estimate_cny": 0.3600828,
+      "usage": {
+        "prompt_tokens": 1896070,
+        "prompt_cache_hit_tokens": 1779840,
+        "prompt_cache_miss_tokens": 116230,
+        "completion_tokens": 52064,
+        "total_tokens": 1948134
+      },
+      "tool_outcomes": {
+        "successful_executions": 112,
+        "business_rejections": 21,
+        "schema_error_results": 2
+      }
+    },
+    "execute": {
+      "runs": 8,
+      "business_delivered": 8,
+      "qualified": 6,
+      "qualified_rate": 0.75,
+      "upstream_requests": 62,
+      "tool_calls": 134,
+      "verified_motif_bypasses": 80,
+      "tool_failure_count": 22,
+      "elapsed_seconds": 378.0025856271386,
+      "peak_estimate_cny": 0.612174,
+      "offpeak_estimate_cny": 0.306087,
+      "usage": {
+        "prompt_tokens": 709367,
+        "prompt_cache_hit_tokens": 598400,
+        "prompt_cache_miss_tokens": 110967,
+        "completion_tokens": 45788,
+        "total_tokens": 755155
+      },
+      "tool_outcomes": {
+        "successful_executions": 112,
+        "business_rejections": 19,
+        "schema_error_results": 3
+      }
+    }
+  },
+  "preparation": {
+    "runs": 3,
+    "business_delivered": 3,
+    "qualified": 3,
+    "qualified_rate": 1.0,
+    "upstream_requests": 50,
+    "tool_calls": 47,
+    "verified_motif_bypasses": 0,
+    "tool_failure_count": 5,
+    "elapsed_seconds": 159.8880046159029,
+    "peak_estimate_cny": 0.23453344,
+    "offpeak_estimate_cny": 0.11726672,
+    "usage": {
+      "prompt_tokens": 628212,
+      "prompt_cache_hit_tokens": 587136,
+      "prompt_cache_miss_tokens": 41076,
+      "completion_tokens": 16112,
+      "total_tokens": 644324
+    },
+    "tool_outcomes": {
+      "successful_executions": 42,
+      "business_rejections": 4,
+      "schema_error_results": 1
+    }
+  },
+  "this_round": {
+    "upstream_requests": 255,
+    "peak_estimate_cny": 1.5668730399999995
+  },
+  "historical_total": {
+    "upstream_requests": 1419,
+    "peak_estimate_cny": 7.4209871199999995,
+    "offpeak_estimate_cny": 3.7104935599999997
+  },
+  "learned_motif_edge_count": 10,
+  "learned_motif_edges": [
+    {
+      "from_tool": "mcp__research_report__approve_analysis",
+      "to_tool": "mcp__research_report__run_analysis"
+    },
+    {
+      "from_tool": "mcp__research_report__approve_presentation",
+      "to_tool": "mcp__research_report__render_figures"
+    },
+    {
+      "from_tool": "mcp__research_report__audit_layout",
+      "to_tool": "mcp__research_report__verify_report"
+    },
+    {
+      "from_tool": "mcp__research_report__compose_report",
+      "to_tool": "mcp__research_report__layout_report"
+    },
+    {
+      "from_tool": "mcp__research_report__layout_report",
+      "to_tool": "mcp__research_report__audit_layout"
+    },
+    {
+      "from_tool": "mcp__research_report__render_figures",
+      "to_tool": "mcp__research_report__verify_figures"
+    },
+    {
+      "from_tool": "mcp__research_report__run_analysis",
+      "to_tool": "mcp__research_report__verify_analysis"
+    },
+    {
+      "from_tool": "mcp__research_report__submit_report_text",
+      "to_tool": "mcp__research_report__compose_report"
+    },
+    {
+      "from_tool": "mcp__research_report__verify_analysis",
+      "to_tool": "mcp__research_report__build_evidence"
+    },
+    {
+      "from_tool": "mcp__research_report__verify_report",
+      "to_tool": "mcp__research_report__deliver_report"
+    }
+  ],
+  "cost_scope": "代理按记录的usage及定价估算，非平台账单；包括本轮重试/失败，准备与历史开发单列；不含服务器、开发、人工作业与独立评审成本。",
+  "interpretation": "正式运行请求数减少56.64%，峰时模型费用估算减少15.00%；两组科研合格率不同（7/8 vs 6/8），不构成相同质量下降本或科研质量提升的结论。"
+}

@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "skill_id": "research-ppt-design",
-  "skill_version": "research-design-v2",
-  "reviewed_on": "2026-10-12",
-  "implementation": "本场景独立编写的科研设计指导；v2支持受限科研archetype与有来源索引的说明槽。不是Motif或RSI晋级。",
+  "skill_version": "research-design-v3",
+  "reviewed_on": "2026-10-13",
+  "implementation": "本场景独立编写的科研设计指导；v2的受限科研archetype与来源说明保持，v3强调真实组会表达、具体主题标题、原图与条件、少重复和自然讲稿。不是Motif或RSI晋级。",
   "references": [
     {
       "repository": "yb2460/harness-anything",

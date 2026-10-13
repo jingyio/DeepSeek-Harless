@@ -230,6 +230,55 @@ test('unique certified pinned-source read bypasses a broad-intent similarity gat
     similarity: async () => { throw new Error('no candidate expected'); } }), []);
 });
 
+function documentReadFixture() {
+  const { pin, read, manifest, task } = fixture();
+  const version = 'd'.repeat(64);
+  manifest.contracts[pin].required_params = ['document_id'];
+  manifest.contracts[pin].output_fields = ['source_id', 'version_sha256'];
+  manifest.contracts[read].output_fields = ['text', 'version_sha256'];
+  manifest.slot_rules[pin] = { document_id: 'doc_[A-Za-z0-9]+' };
+  manifest.version_fields = { [pin]: 'version_sha256', [read]: 'version_sha256' };
+  task.bindings = { [pin]: { document_id: 'doc_1' } };
+  task.source_versions = { [pin]: version, [read]: version };
+  sealManifest(manifest);
+  const history = [{ name: pin, callId: 'model-selected-document', ok: true,
+    arguments: { document_id: 'doc_1' }, output: { source_id: 'source-opaque', version_sha256: version },
+    sourceVersion: version, inputVersion: task.input_version }];
+  return { pin, read, manifest, task, history, version,
+    availableTools: new Map([[read, offered(read, ['source_id'])]]),
+    minSimilarity: 0.8, minMargin: 0.1 };
+}
+
+test('certified document-id pin read skips only the closed versioned continuation', async () => {
+  const args = documentReadFixture();
+  const rows = await proposeReadyBatch({ ...args,
+    similarity: async () => { throw new Error('closed continuation needs no semantic selection'); } });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].selection_basis, 'closed_source_read');
+  assert.deepEqual(rows[0].arguments, { source_id: 'source-opaque' });
+  const drifted = { ...args.task, source_versions: { ...args.task.source_versions, [args.read]: 'e'.repeat(64) } };
+  assert.deepEqual(await proposeReadyBatch({ ...args, task: drifted, similarity: async () => [1] }), []);
+  const schema = offered(args.read, ['source_id', 'new_required']);
+  assert.deepEqual(await proposeReadyBatch({ ...args, availableTools: new Map([[args.read, schema]]), similarity: async () => [1] }), []);
+});
+
+test('document read shape changes and failure or write barriers preserve fallback', async () => {
+  for (const change of ['missing-provenance', 'extra-pin-param']) {
+    const args = documentReadFixture();
+    if (change === 'missing-provenance') args.manifest.contracts[args.pin].output_fields = ['source_id'];
+    else args.manifest.contracts[args.pin].required_params.push('selection');
+    sealManifest(args.manifest);
+    assert.deepEqual(await proposeReadyBatch({ ...args, similarity: async () => [0] }), []);
+  }
+  for (const barrier of [
+    { name: 'write_file', callId: 'write', ok: true, barrier: true },
+    { name: 'failed_read', callId: 'failed', ok: false, barrier: true },
+  ]) {
+    const args = documentReadFixture();
+    assert.deepEqual(await proposeReadyBatch({ ...args, history: [...args.history, barrier], similarity: async () => [1] }), []);
+  }
+});
+
 test('competing pinned-source reads still require a semantic choice', async () => {
   const { pin, read, manifest, task } = fixture();
   const first = 'mcp__research__read_pinned_item';
