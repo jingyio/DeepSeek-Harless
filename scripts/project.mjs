@@ -27,7 +27,7 @@ if (action === 'setup') {
   run(join(root, '.venv-sss', suffix), ['-m', 'pip', 'install', '-r', 'requirements.txt']);
 } else if (action === 'test') {
   run(python, ['-m', 'pytest', 'tests', '-q']);
-  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_dsh_web_policy.mjs', 'tests/test_web_task_request.mjs', 'tests/test_dsh_web_tasks.mjs', 'tests/test_harless_settings.mjs']);
+  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_dsh_web_policy.mjs', 'tests/test_web_task_request.mjs', 'tests/test_dsh_web_tasks.mjs', 'tests/test_harless_settings.mjs', 'tests/test_dsh_codex_login.mjs']);
 } else if (action === 'scenario') {
   run(python, ['scripts/run-scenario.py', ...args]);
 } else if (action === 'web') {

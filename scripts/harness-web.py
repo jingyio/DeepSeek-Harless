@@ -120,12 +120,17 @@ def prepare(args, output, endpoint):
     save(output / 'policy.json', policy)
     disabled = ['llm-deepseek', 'llm-pi-ai', 'session-title-llm', 'llm-retry',
                 'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']
+    if args.codex_login: disabled.remove('llm-pi-ai')
     patch = [{'id': name, 'disabled': True} for name in disabled]
     patch += [{'id': 'agent-presets', 'config': {'default': 'sss-task',
         'includeShippedRoot': False, 'includeUserRoot': False,
         'roots': [{'path': str(output / 'presets'), 'trust': 'system'}]}},
         {'insert': [{'id': 'sss-web-policy', 'name': (ROOT / 'src/adapters' /
             ('dsh_web_policy.ts' if args.frozen else 'dsh_web_tasks.ts')).as_uri()}]}]
+    if args.codex_login:
+        patch += [{'id': 'llm-pi-ai', 'config': {'providers': {'openai-codex': {}}}},
+                  {'insert': [{'id': 'authorization', 'name': '@deepseek-ai/dsh-authorization'},
+                              {'id': 'sss-codex-login', 'name': (ROOT / 'src/adapters/dsh_codex_login.ts').as_uri()}]}]
     save(output / 'host.patch.yml', patch)
     (output / 'prompt.md').write_text(prepared['prompt']); (output / 'prompt.md').chmod(0o600)
     snapshot = {**public, 'mode': args.mode, 'scenario': args.scenario,
@@ -142,6 +147,7 @@ def prepare(args, output, endpoint):
                 'dirty_files': subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).splitlines(),
                 'output': str(output), 'provider_mode': 'real' if args.real_model else 'mock',
                 'paid_calls': None if args.real_model else 0, 'entry': 'frozen' if args.frozen else 'dynamic',
+                'codex_login_enabled': args.codex_login,
                 'run_budget_usd': args.run_budget_usd, 'run_request_limit': args.run_request_limit}
     snapshot.update(task_id=output.name, platform=platform.platform(), real_models_enabled=args.real_model,
         motif_min_similarity=0.8, motif_min_margin=0.1, disabled_host_plugins=disabled,
@@ -174,6 +180,7 @@ def main():
     parser.add_argument('--scene-registry', default='config/harless-scenes.json', help='server-owned versioned scene registry')
     parser.add_argument('--frozen', action='store_true', help='legacy single-task mock regression entry')
     parser.add_argument('--real-model', action='store_true', help='enable real DeepSeek connection; each task still requires preview confirmation')
+    parser.add_argument('--codex-login', action='store_true', help='private single-operator Codex OAuth page; task execution stays on DeepSeek')
     parser.add_argument('--manifest', help='certified online manifest for this capability profile')
     parser.add_argument('--task', help='certified task/version binding, paired with --manifest')
     parser.add_argument('--resources', help='private server-owned resource registry JSON: ID -> {text_file}')
@@ -199,6 +206,7 @@ def main():
     if not math.isfinite(args.run_budget_usd) or not args.budget_usd <= args.run_budget_usd <= 100 or args.run_request_limit < 1:
         parser.error('whole-launch budget must cover task cap and be <=100; request limit must be positive')
     if bool(args.manifest) != bool(args.task): parser.error('--manifest and --task must be supplied together')
+    if args.codex_login and args.frozen: parser.error('Codex login is only supported by the dynamic Web entry')
     if args.real_model and (args.frozen or args.fixture != 'normal'):
         parser.error('real provider cannot use frozen/failure fixtures')
     if args.real_model and not os.environ.get('DEEPSEEK_API_KEY', '').strip():
@@ -257,7 +265,9 @@ def main():
     for server in servers:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     prepare(args, output, f'http://127.0.0.1:{gate.server_port}/v1')
-    env = {**os.environ, 'DSH_HOME': str(output / 'dsh'), 'SSS_WEB_POLICY': str(output / 'policy.json'),
+    dsh_home = ROOT / '.local/codex-login/dsh' if args.codex_login else output / 'dsh'
+    dsh_home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    env = {**os.environ, 'DSH_HOME': str(dsh_home), 'SSS_WEB_POLICY': str(output / 'policy.json'),
            'DEEPSEEK_API_KEY': os.environ['DEEPSEEK_API_KEY'] if args.real_model else 'sss-mock-only',
            'DEEPSEEK_BASE_URL': f'http://127.0.0.1:{gate.server_port}/v1',
            'SSS_ONLINE_MOTIF_MANIFEST': '', 'SSS_ONLINE_MOTIF_TASK': ''}
