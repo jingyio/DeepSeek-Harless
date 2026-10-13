@@ -1,7 +1,7 @@
 /** Dynamic business tasks on the official Harness Web/Session lifecycle. */
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
@@ -24,6 +24,7 @@ type Policy = {
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   budget_broker_endpoint?: string;
   budget_task_prefix?: string;
+  ownership_legacy_outputs?: string[];
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
   scenes?: Scene[]; scene_registry_sha256?: string;
@@ -167,32 +168,51 @@ export function apply(ctx: any) {
     workspaces.set(id, path); return path;
   };
   const selectPreset = ctx.agentPresets?.select.bind(ctx.agentPresets);
-  // Ownership belongs to a persisted DSH home, not to one Node process.
-  const ownershipScope = digest({ output: config.output, home: process.env.DSH_HOME ?? null });
-  const ownershipPath = join(config.output, 'session-ownership-' + ownershipScope + '.json');
+  // DSH history persists across deployments, so its admission record must
+  // follow the same per-user DSH home instead of a disposable Web run output.
+  const home = process.env.DSH_HOME ?? null;
+  if (config.ownership_legacy_outputs !== undefined &&
+      (!Array.isArray(config.ownership_legacy_outputs) ||
+        config.ownership_legacy_outputs.some(path => typeof path !== 'string' || !isAbsolute(path))))
+    throw Error('Invalid legacy Web ownership outputs');
+  const runScope = digest({ output: config.output, home });
+  const ownershipScope = home ? digest({ home, principal }) : runScope;
+  const ownershipPath = home ? join(home, 'harless-web-ownership-' + ownershipScope + '.json')
+    : join(config.output, 'session-ownership-' + ownershipScope + '.json');
   const boundSessions = new Set<string>();
-  try {
-    const saved = JSON.parse(readFileSync(ownershipPath, 'utf8'));
-    if (saved.scope !== ownershipScope || !Array.isArray(saved.sessions) || !Array.isArray(saved.bound) ||
-        [...saved.sessions, ...saved.bound].some(id => typeof id !== 'string' || !id.length)) throw Error('Invalid Web session ownership record');
+  const readOwnership = (path: string, scope: string): boolean => {
+    let saved: any;
+    try { saved = JSON.parse(readFileSync(path, 'utf8')); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error; }
+    if (saved.scope !== scope || !Array.isArray(saved.sessions) || !Array.isArray(saved.bound) ||
+        [...saved.sessions, ...saved.bound].some(id => typeof id !== 'string' || !id.length) ||
+        saved.bound.some(id => !saved.sessions.includes(id))) throw Error('Invalid Web session ownership record');
     for (const id of saved.sessions) ownedSessions.add(id);
     for (const id of saved.bound) {
       if (!ownedSessions.has(id)) throw Error('Unowned task session in ownership record');
       boundSessions.add(id);
     }
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    return true;
+  };
+  readOwnership(ownershipPath, ownershipScope);
+  let importedLegacy = false;
+  if (home) for (const output of new Set([config.output, ...(config.ownership_legacy_outputs ?? [])])) {
+    const scope = digest({ output, home });
+    importedLegacy = readOwnership(join(output, 'session-ownership-' + scope + '.json'), scope) || importedLegacy;
+  }
   const saveOwnership = () => json(ownershipPath, { scope: ownershipScope,
     sessions: [...ownedSessions], bound: [...boundSessions] });
-  const modelPath = join(config.output, 'session-models-' + ownershipScope + '.json');
+  if (importedLegacy) saveOwnership();
+  const modelPath = join(config.output, 'session-models-' + runScope + '.json');
   try {
     const saved = JSON.parse(readFileSync(modelPath, 'utf8'));
-    if (saved.scope !== ownershipScope || !saved.models || typeof saved.models !== 'object') throw Error('Invalid Web model selection record');
+    if (saved.scope !== runScope || !saved.models || typeof saved.models !== 'object') throw Error('Invalid Web model selection record');
     for (const [id, model] of Object.entries(saved.models)) {
       const option = modelOptions.find(row => row.model === model && row.available);
       if (ownedSessions.has(id) && option) modelSelections.set(id, option);
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  const saveModels = () => json(modelPath, { scope: ownershipScope,
+  const saveModels = () => json(modelPath, { scope: runScope,
     models: Object.fromEntries([...modelSelections].map(([id, option]) => [id, option.model])) });
   try {
     const saved = JSON.parse(readFileSync(join(config.output, 'harless-settings.json'), 'utf8'));
@@ -201,16 +221,16 @@ export function apply(ctx: any) {
       if (ownedSessions.has(id)) selections.set(id, changeSelection(defaults, selection, scenes, executeUnavailable));
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  const taskIndexPath = join(config.output, 'task-index-' + ownershipScope + '.json');
+  const taskIndexPath = join(config.output, 'task-index-' + runScope + '.json');
   let indexedTasks: string[] = [];
   try {
     const saved = JSON.parse(readFileSync(taskIndexPath, 'utf8'));
-    if (saved.scope !== ownershipScope || !Array.isArray(saved.tasks) ||
+    if (saved.scope !== runScope || !Array.isArray(saved.tasks) ||
         saved.tasks.some((id: unknown) => typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id)) ||
         new Set(saved.tasks).size !== saved.tasks.length) throw Error('Invalid Web task index');
     indexedTasks = saved.tasks;
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  const saveTaskIndex = () => json(taskIndexPath, { scope: ownershipScope, tasks: indexedTasks });
+  const saveTaskIndex = () => json(taskIndexPath, { scope: runScope, tasks: indexedTasks });
   // Earlier frontend versions wrote durable task files before they had a
   // scoped index. Recover only terminal tasks for sessions already proven to
   // belong to this DSH_HOME; the source run also contains other frontends.

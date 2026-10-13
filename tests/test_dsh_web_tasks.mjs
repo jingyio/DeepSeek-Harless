@@ -8,12 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
+import { digest } from '../src/motif_core/online_skill_runtime.mjs';
 
 const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
-async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture_schemas, ...overrides } = {}) {
+async function fixture({ broker = false, dshHome = false, fixtureSchemas: schemaOverride, fixture_schemas, ...overrides } = {}) {
   const fixtureSchemas = schemaOverride ?? fixture_schemas ?? toolSchemas;
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
@@ -54,6 +55,9 @@ async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture
   mkdirSync(join(directory, 'tasks'));
   const policyPath = join(directory, 'policy.json'); writeFileSync(policyPath, JSON.stringify(policy));
   const previous = process.env.SSS_WEB_POLICY; process.env.SSS_WEB_POLICY = policyPath;
+  const previousHome = process.env.DSH_HOME;
+  if (dshHome) { mkdirSync(join(directory, 'dsh')); process.env.DSH_HOME = join(directory, 'dsh'); }
+  else delete process.env.DSH_HOME;
   const listeners = new Map(), routes = new Map(), webRoutes = new Map(), agents = new Map();
   const receipts = new Map();
   const storedSessions = new Map();
@@ -124,6 +128,7 @@ async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture
     const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
   } catch (error) {
     if (previous === undefined) delete process.env.SSS_WEB_POLICY; else process.env.SSS_WEB_POLICY = previous;
+    if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
     rmSync(directory, { recursive: true }); throw error;
   }
@@ -145,7 +150,7 @@ async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture
         content: event.data.content })), ...changes };
     return tagged ? markAgentLoopRequest(body) : body;
   }
-  return { ctx, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts,
+  return { ctx, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts, policy, policyPath,
     async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
     async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
     promptCalls, queueMutations, controlCalls, directory,
@@ -161,6 +166,7 @@ async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture
       await api(undefined, '?task_id=' + task.task_id); },
     async close() {
       if (previous === undefined) delete process.env.SSS_WEB_POLICY; else process.env.SSS_WEB_POLICY = previous;
+      if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
       server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
       if (brokerServer) { brokerServer.closeAllConnections(); await new Promise(resolve => brokerServer.close(resolve)); }
       rmSync(directory, { recursive: true });
@@ -394,6 +400,62 @@ test('Owned empty sessions survive restart while bound task identities cannot ge
       new AbortController().signal), /already has a task/);
     assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 1);
     assert.equal(f.controlCalls.filter(row => row.path === '/tasks/activate').length, 1);
+  } finally { await f.close(); }
+});
+
+test('Completed chat survives a Web output change without adopting another user session or reusing its budget', options, async () => {
+  const f = await fixture({ broker: true, dshHome: true, provider_mode: 'real' });
+  try {
+    const home = process.env.DSH_HOME;
+    const { sessionId: id } = await f.ctx.sessionController.create({});
+    await f.ctx.sessionController.prompt({ sessionId: id, requestId: 'old-turn', mode: 'queue',
+      content: [{ type: 'text', text: '第一轮' }] }, new AbortController().signal);
+    const first = (await f.api()).value.tasks[0];
+    await f.complete(first);
+    await f.originalController.create({ sessionId: 'foreign-used', agentPreset: 'sss-task' });
+    f.agents.get('foreign-used').events.push({ type: 'user/message', data: { content: [] } });
+
+    // Simulate the old release: ownership lived only in the previous run output.
+    const stable = join(home, readdirSync(home).find(name => name.startsWith('harless-web-ownership-')));
+    const saved = JSON.parse(readFileSync(stable, 'utf8'));
+    const oldScope = digest({ output: f.directory, home });
+    writeFileSync(join(f.directory, 'session-ownership-' + oldScope + '.json'),
+      JSON.stringify({ ...saved, scope: oldScope }));
+    rmSync(stable);
+    const nextOutput = join(f.directory, 'next-run');
+    mkdirSync(join(nextOutput, 'tasks'), { recursive: true });
+    writeFileSync(f.policyPath, JSON.stringify({ ...f.policy, output: nextOutput,
+      ownership_legacy_outputs: [f.directory] }));
+    await f.restart();
+    assert.equal((await f.settings(undefined, '?session_id=' + id)).status, 200);
+    await assert.rejects(f.ctx.sessionController.prompt({ sessionId: 'foreign-used', requestId: 'foreign',
+      mode: 'queue', content: [{ type: 'text', text: '拒绝' }] }, new AbortController().signal), /outside/);
+    await f.ctx.sessionController.prompt({ sessionId: id, requestId: 'second-turn', mode: 'queue',
+      content: [{ type: 'text', text: '继续' }] }, new AbortController().signal);
+    const second = (await f.api()).value.tasks[0];
+    assert.equal(second.session_id, id);
+    assert.notEqual(second.task_id, first.task_id);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 2);
+    await f.complete(second);
+
+    // Future deployments use the stable per-home record without old output paths.
+    const laterOutput = join(f.directory, 'later-run');
+    mkdirSync(join(laterOutput, 'tasks'), { recursive: true });
+    writeFileSync(f.policyPath, JSON.stringify({ ...f.policy, output: laterOutput }));
+    await f.restart();
+    await f.ctx.sessionController.prompt({ sessionId: id, requestId: 'third-turn', mode: 'queue',
+      content: [{ type: 'text', text: '再次继续' }] }, new AbortController().signal);
+    const third = (await f.api()).value.tasks[0];
+    assert.equal(third.session_id, id);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 3);
+    await f.complete(third);
+
+    process.env.DSH_HOME = join(f.directory, 'other-user-dsh');
+    mkdirSync(process.env.DSH_HOME);
+    await f.restart();
+    await assert.rejects(f.ctx.sessionController.prompt({ sessionId: id, requestId: 'cross-user',
+      mode: 'queue', content: [{ type: 'text', text: '拒绝' }] }, new AbortController().signal), /outside/);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 3);
   } finally { await f.close(); }
 });
 
