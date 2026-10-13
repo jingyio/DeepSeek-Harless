@@ -135,24 +135,21 @@
   installPicker();
   let observedInput = null;
   let inputObserver = null;
-  let openingFromSlash = false;
+  let handledSlash = false;
   function openFromSlash() {
     const input = observedInput;
-    if (openingFromSlash || !input || input.getAttribute('data-phase') !== 'claimed' ||
-        !/^\/harless\s*$/.test(input.textContent || '')) return;
+    if (!input || input.getAttribute('data-phase') !== 'claimed' ||
+        !/^\/harless\s*$/.test(input.textContent || '')) {
+      handledSlash = false;
+      return;
+    }
+    if (handledSlash) return;
     const anchor = document.getElementById('harless-picker-anchor');
     const trigger = anchor?.querySelector('.harless-picker-trigger');
     const menu = anchor?.querySelector('.harless-picker-menu');
     if (!trigger || !menu) return;
-    openingFromSlash = true;
-    input.focus();
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(input);
-    selection.removeAllRanges(); selection.addRange(range);
-    document.execCommand('delete');
+    handledSlash = true;
     if (menu.hidden) trigger.click();
-    openingFromSlash = false;
   }
   function watchComposer() {
     const input = document.querySelector('[data-composer-input]');
