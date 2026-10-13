@@ -186,12 +186,14 @@ def example_checks():
             'inputs': [{'resource_id': 'unregistered-resource'}]}})
         rows.append({'group': 'strict-input-and-resource-denials', 'passed': True})
 
-        execute = preview(opener, base, {'instruction': '阅读笔记，检查现有实验是否可比。', 'mode': 'execute'})
-        submit(opener, base, execute)
-        execute = wait_task(opener, base, execute['task_id'])
-        assert execute['mode'] == 'execute' and statistics(execute)['verified_skips'] == 0
-        assert statistics(execute)['upstream_requests'] == 5
-        rows.append(summary('no-library-safe-fallback', execute))
+        code = denied(opener, base, {'action': 'preview', 'request': {'instruction': '阅读笔记，检查现有实验是否可比。', 'mode': 'execute'}})
+        assert code == 'execute_unavailable', code
+        fallback = preview(opener, base, {'instruction': '阅读笔记，检查现有实验是否可比。', 'mode': 'shadow'})
+        submit(opener, base, fallback)
+        fallback = wait_task(opener, base, fallback['task_id'])
+        assert fallback['fallback_reason'] == 'no_certified_library' and statistics(fallback)['verified_skips'] == 0
+        assert statistics(fallback)['upstream_requests'] == 5
+        rows.append(summary('no-library-shadow-fallback-and-execute-denial', fallback))
 
         # 文件必须绑定同一 draft/session；上传后的旧摘要不能授权新内容。
         file_task = preview(opener, base, {'instruction': '读取笔记并核对附加的说明文件。'})

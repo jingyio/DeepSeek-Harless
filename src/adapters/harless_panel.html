@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Harless 场景与 RSI</title>
+<style>body{margin:0;padding:24px;background:#f5f7fb;color:#172336;font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:680px;margin:auto;background:white;border:1px solid #dfe5ee;border-radius:14px;padding:24px}h1{font-size:23px;margin:0 0 12px}p{line-height:1.6}label{display:block;margin-top:18px;font-weight:600}select,button{font:inherit;padding:10px;border:1px solid #cbd3df;border-radius:8px;background:white}select{display:block;width:100%;margin-top:8px}button{cursor:pointer;margin-top:20px;background:#245cba;color:white}button:disabled{opacity:.5}small{color:#617086}#status{padding:12px;background:#edf4ff;white-space:pre-wrap}#error{color:#b42318}a{color:#245cba}</style></head>
+<body><main><h1>场景、运行模式与 RSI</h1><p>选择后生效于下一项任务。已预览或已运行的任务保留原配置。</p>
+<label for="target">配置应用到</label><select id="target"><option value="">新会话的默认设置</option></select>
+<label for="scene">场景</label><select id="scene"></select>
+<label for="mode">运行模式</label><select id="mode"><option value="baseline">Baseline · 普通 Harness</option><option value="shadow">Shadow · 观察 RSI 候选</option><option value="execute">Execute · 验证后接管</option></select>
+<label for="rsi">RSI</label><select id="rsi"><option value="on">On</option><option value="off">Off</option></select>
+<p><small>Baseline 对应 Off；Shadow 与 Execute 对应 On。打开 RSI 时恢复上次模式，首次使用 Shadow。未满足认证条件的 Execute 不可选。</small></p>
+<p id="status" role="status">正在读取设置…</p><p id="error" role="alert"></p>
+<button id="new-task" type="button">使用此配置新建任务</button><p><a href="/tasks" target="_top">返回任务工作台</a></p></main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id), endpoint='/api/harless/settings';
+const unavailableLabel=reason=>({no_certified_library:'尚未配置认证库',no_embedding_service:'尚未配置本地匹配服务',no_certified_input:'缺少认证输入版本',no_valid_certified_library:'认证库校验未通过',library_tools_outside_scene:'认证库工具超出场景权限'}[reason]||'当前配置未满足接管条件');
+let state=null, busy=false;
+const selectedSession=new URLSearchParams(location.search).get('session_id') || '';
+async function api(body){const response=await fetch(endpoint+(body?'':'?session_id='+encodeURIComponent($('target').value)),{method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const value=await response.json();if(!response.ok||value.error)throw Error(value.error?.message||'读取设置失败，请先登录');return value;}
+function render(value){state=value;$('scene').replaceChildren(...value.scenes.map(scene=>{const option=document.createElement('option');option.value=scene.id;option.textContent=scene.label+' · '+scene.id;return option;}));$('scene').value=value.selection.scene;$('mode').value=value.selection.mode;$('rsi').value=value.selection.rsi?'on':'off';const scene=value.scenes.find(scene=>scene.id===value.selection.scene);$('mode').querySelector('[value="execute"]').disabled=!scene.execute_available;const current=value.current_task;$('status').textContent=(value.applies_to==='next_task'?'下一任务生效':'下一次输入生效')+'：'+value.selection.scene+' / '+value.selection.mode+' / RSI '+(value.selection.rsi?'On':'Off')+(current?'\n当前任务保持：'+current.scene+' / '+current.mode+' / '+current.status:'')+(!scene.execute_available?'\nExecute 暂不可用：'+unavailableLabel(scene.execute_unavailable_reason):'');}
+function lock(value){busy=value;for(const id of ['target','scene','mode','rsi','new-task'])$(id).disabled=value;}
+async function save(patch){if(busy)return;lock(true);$('error').textContent='';try{render(await api({action:'select',session_id:$('target').value||undefined,selection:patch}));}catch(error){$('error').textContent=error.message;if(state)render(state);}finally{lock(false);}}
+$('scene').onchange=()=>{const id=$('scene').value, scene=state.scenes.find(scene=>scene.id===id);save({scene:id,...(state.selection.mode==='execute'&&!scene.execute_available?{mode:'shadow'}:{})});};
+$('mode').onchange=()=>save({mode:$('mode').value});$('rsi').onchange=()=>save({rsi:$('rsi').value==='on'});
+$('target').onchange=async()=>{lock(true);try{render(await api());$('error').textContent='';}catch(error){$('error').textContent=error.message;}finally{lock(false);}};
+$('new-task').onclick=async()=>{if(busy)return;lock(true);try{const value=await api({action:'new_session',inherit_session:$('target').value||undefined});window.top.location.href='/tasks?session_id='+encodeURIComponent(value.session_id);}catch(error){$('error').textContent=error.message;lock(false);}};
+(async()=>{try{const value=await api();for(const session of value.sessions){const option=document.createElement('option');option.value=session.session_id;option.textContent=session.session_id+' · '+session.selection.scene;$('target').append(option);}$('target').value=selectedSession;if(selectedSession&&!$('target').value)throw Error('该会话不属于本次服务');render(selectedSession?await api():value);const section=new URLSearchParams(location.search).get('section');if(section==='mode'||section==='rsi')$(section).focus();}catch(error){$('error').textContent=error.message;lock(true);}})();
+</script></body></html>

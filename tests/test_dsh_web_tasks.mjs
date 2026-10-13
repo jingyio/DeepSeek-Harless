@@ -38,9 +38,11 @@ async function fixture(overrides = {}) {
   const policyPath = join(directory, 'policy.json'); writeFileSync(policyPath, JSON.stringify(policy));
   const previous = process.env.SSS_WEB_POLICY; process.env.SSS_WEB_POLICY = policyPath;
   const listeners = new Map(), routes = new Map(), webRoutes = new Map(), agents = new Map();
-  const promptCalls = [], queueMutations = [], adapters = [];
+  const promptCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
+    commands: { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } },
+    agentPresets: { async select(agent, preset) { presetCalls.push({ session_id: agent.session.id, preset }); agent.preset = preset; } },
     effect(factory) { factory(); },
     on(name, listener) { const rows = listeners.get(name) ?? []; rows.push(listener); listeners.set(name, rows); },
     llm: { registerAdapter(names, adapter) { adapters.push({ names, adapter }); return () => {}; } },
@@ -61,9 +63,10 @@ async function fixture(overrides = {}) {
         const id = request.sessionId ?? `mock-session-${agents.size + 1}`;
         if (!agents.has(id)) {
           const guardFns = [];
-          const agent = { session: { id }, guards: guardFns, events: [], ctx: {
-            tools: { restrict(value) { agent.allow = value; }, guard(fn) { guardFns.push(fn); },
-              schemas() { return structuredClone(toolSchemas); } },
+          const agent = { preset: request.agentPreset, session: { id }, guards: guardFns, events: [], ctx: {
+            tools: { restrict(value) { agent.allow = value; return () => {}; }, guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
+              schemas() { return structuredClone(toolSchemas.map(row => ({ ...row, name: agent.allow.allow[0] }))); } },
+            systemPrompt: { section() { return () => {}; } },
             on() {},
           } };
           agents.set(id, agent); emit('agent/created', { agent });
@@ -109,7 +112,10 @@ async function fixture(overrides = {}) {
       messages: [{ role: 'user', id: event.data.id, source: event.data.source, content: event.data.content }], ...changes };
     return tagged ? markAgentLoopRequest(body) : body;
   }
-  return { ctx, api, preview, submit, agents, emit, promptCalls, queueMutations, controlCalls,
+  return { ctx, api, preview, submit, agents, emit, commands, presetCalls,
+    async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
+    async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
+    promptCalls, queueMutations, controlCalls,
     registrations, modelRequest, routes, webRoutes,
     stream(request, next) { return listeners.get('llm/stream')[0](request, next); },
     async complete(task) { emit('agent/status', { agent: agents.get(task.session_id), status: 'idle' });
@@ -298,4 +304,68 @@ test('Native confirmation UI displays the saved preview and executes only after 
     assert.equal(f.promptCalls.length, 1); assert.equal(dialog.open, false);
     const listing = await f.api(); await f.complete(listing.value.tasks[0]);
   } finally { await f.close(); }
+});
+
+const multiScenes = [
+  { id: 'example', label: '资料', preset: 'sss-task', allowed_tools: ['mcp__demo__read_note'], config_sha256: 'a'.repeat(64) },
+  { id: 'other', label: '另一场景', preset: 'sss-scene-other', allowed_tools: ['mcp__other__read'], config_sha256: 'b'.repeat(64) },
+];
+test('Native /harless and settings controls select without admitting a model task; malformed commands fail', options, async () => {
+  const f=await fixture({ scenes: multiScenes, mode: 'shadow' });
+  try {
+    const {sessionId:id}=await f.ctx.sessionController.create({});
+    for(const raw of ['', 'list', 'status', 'mode', 'rsi']) assert.equal((await f.command(id,raw)).kind,'success');
+    assert.equal((await f.command(id,'mode baseline')).kind,'success');
+    assert.equal((await f.command(id,'rsi on')).kind,'success');
+    let value=(await f.settings(undefined,'?session_id='+id)).value;
+    assert.equal(value.selection.mode,'shadow'); assert.equal(value.selection.rsi,true);
+    assert.equal((await f.command(id,'other')).kind,'success');
+    value=(await f.settings(undefined,'?session_id='+id)).value;
+    assert.equal(value.selection.scene,'other'); assert.equal(f.presetCalls.length,1);
+    assert.deepEqual(f.agents.get(id).allow.allow,['mcp__other__read']);
+    assert.equal(f.agents.get(id).guards.length,1);
+    assert.match(f.agents.get(id).guards[0]({name:'mcp__demo__read_note'}),/outside/);
+    for(const raw of ['off','mode queue','rsi perhaps','missing','other extra','mode shadow extra']) assert.equal((await f.command(id,raw)).kind,'error');
+    assert.equal((await f.settings({action:'select',session_id:id,selection:{mode:'execute'}})).value.error.code,'execute_unavailable');
+    assert.equal((await f.settings({action:'select',session_id:'foreign',selection:{rsi:false}})).status,404);
+    assert.equal((await f.api()).value.tasks.length,0); assert.equal(f.registrations.size,0); assert.equal(f.promptCalls.length,0);
+  } finally {await f.close();}
+});
+test('Running task keeps frozen tools and mode while next-task choices are inherited by a fresh Session', options, async()=>{
+  const f=await fixture({ scenes: multiScenes, mode:'shadow', provider_mode:'real' });
+  try {
+    const first=await f.preview('首项任务');await f.submit(first);
+    const next=await f.settings({action:'select',session_id:first.session_id,selection:{scene:'other',rsi:false}});
+    assert.equal(next.value.applies_to,'next_task');assert.equal(next.value.current_task.scene,'example');assert.equal(next.value.current_task.mode,'shadow');
+    assert.deepEqual(f.agents.get(first.session_id).allow.allow,['mcp__demo__read_note']);
+    assert.equal(f.presetCalls.length,0);
+    const second=(await f.settings({action:'new_session',inherit_session:first.session_id})).value;
+    assert.notEqual(second.session_id,first.session_id); assert.equal(second.selection.scene,'other');assert.equal(second.selection.mode,'baseline');
+    await f.complete(first);
+    const draft=await f.api({action:'preview',session_id:second.session_id,request:'独立任务'});
+    assert.equal(draft.value.scene,'other');assert.equal(draft.value.mode,'baseline');assert.equal(draft.value.rsi,false);
+    assert.equal(f.registrations.size,2);
+    assert.equal((await f.submit(draft.value)).status,200);await f.complete(draft.value);
+  }finally{await f.close();}
+});
+test('Changing next-task selection after preview cannot change that preview or its confirmation',options,async()=>{
+  const f=await fixture({scenes:multiScenes,mode:'shadow'});
+  try{
+    const draft=await f.preview('待确认的首项任务');
+    await f.settings({action:'select',session_id:draft.session_id,selection:{scene:'other',mode:'baseline'}});
+    const current=(await f.api(undefined,'?task_id='+draft.task_id)).value;
+    assert.equal(current.confirmation_digest,draft.confirmation_digest);assert.equal(current.mode,'shadow');assert.equal(current.scene,'example');
+    assert.equal((await f.submit(draft)).status,200);await f.complete(draft);
+  }finally{await f.close();}
+});
+
+test('Preview-bound library bytes cannot change before confirmation even if the requested input stays identical',options,async()=>{
+ const directory=mkdtempSync(join(tmpdir(),'harless-library-'));
+ const manifest=join(directory,'manifest.json'), binding=join(directory,'task.json');
+ writeFileSync(manifest,'{}');writeFileSync(binding,'{}');
+ const f=await fixture({manifest,task:binding});
+ try{
+  const draft=await f.preview('同一输入');writeFileSync(manifest,'{"changed":true}');
+  const result=await f.submit(draft);assert.equal(result.status,409);assert.equal(result.value.error.code,'confirmation_changed');assert.equal(f.promptCalls.length,0);
+ }finally{await f.close();rmSync(directory,{recursive:true});}
 });

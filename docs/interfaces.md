@@ -242,3 +242,10 @@ npm run scenario -- --scenario scenarios/my_scene/scenario.json --mode shadow --
 Python 语义端口在 `motif_read_semantic.py`：接收明确的结构缺口，调用受预算代理保护的 `dsh_client.call_bounded_prompt`，校验输出，交回 `SemanticResolution` 恢复。`harness_runtime.py` 将 SDK 私有 `_launch_args` 接缝限制在一个文件；升级固定的 DSH/SDK 版本时必须重新验证。
 
 `motif_output_projection.py` 与编译器的 evidence projection 只保留为可选机制及回归测试，不挂在新入口默认链路。旧 Distil/压缩启动器已归档。
+
+
+## `/harless` 场景与模式控制（2026-10-13）
+
+动态 Web 新增原生 `ctx.commands.register` 命令和 `/harless` 选择面板；命令、下拉框共用 `harless_settings.ts` 的验证。`GET/POST /api/harless/settings` 管理场景、Baseline/Shadow/Execute 与 RSI On/Off；命令不调用模型。服务器场景登记为 `config/harless-scenes.json`，MCP preset 各自独立，配置不得由浏览器覆盖。每 Task 冻结场景、工具、库摘要与确认 digest；Session 绑定任务后，修改只对新 Session 的下一任务生效。旧单场景 policy 仍兼容，冻结 Web/SDK 保留。
+
+字段、边界与复现见 [Harless 控制接口](harless-controls.md)。当前登记的三个场景是合成资料样例，不表示 PPT 或多人隔离已经完成。
