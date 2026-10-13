@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
@@ -37,6 +37,7 @@ async function fixture(overrides = {}) {
   const policyPath = join(directory, 'policy.json'); writeFileSync(policyPath, JSON.stringify(policy));
   const previous = process.env.SSS_WEB_POLICY; process.env.SSS_WEB_POLICY = policyPath;
   const listeners = new Map(), routes = new Map(), webRoutes = new Map(), agents = new Map();
+  const receipts = new Map();
   const promptCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
@@ -53,9 +54,14 @@ async function fixture(overrides = {}) {
       register(route) { webRoutes.set(route.path, route); return () => {}; },
       tapIndex(transform) { ctx.indexTransform = transform; return () => {}; },
     },
+    attachments: { async *readFileStream(ref) { yield receipts.get(ref.attachmentId).data; } },
     fileUploads: {
+      resolve(agent, receipt) { const row = receipts.get(receipt); return row?.session === agent.session.id ? row.ref : undefined; },
       async uploadStream(request) { let bytes=0; for await (const part of request.data) bytes += part.length;
-        return { receiptId: `receipt-${request.sessionId}-${bytes}`, file: { path: 'private-fixture' } }; },
+        const receiptId = `receipt-${request.sessionId}-${bytes}`;
+        const ref = { name: request.name, bytes, attachmentId: receiptId };
+        receipts.set(receiptId, { session: request.sessionId, ref, data: Buffer.alloc(bytes, 65) });
+        return { receiptId, file: ref };  },
     },
     sessionController: {
       async create(request) {
@@ -65,7 +71,7 @@ async function fixture(overrides = {}) {
           const agent = { preset: request.agentPreset, session: { id }, guards: guardFns, events: [], ctx: {
             tools: { restrict(value) { agent.allow = value; return () => {}; }, guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
               schemas() { return structuredClone(toolSchemas.map(row => ({ ...row, name: agent.allow.allow[0] }))); } },
-            systemPrompt: { section() { return () => {}; } },
+            systemPrompt: { section(row) { agent.instruction = row.text; return () => {}; } },
             on() {},
           } };
           agents.set(id, agent); emit('agent/created', { agent });
@@ -111,7 +117,7 @@ async function fixture(overrides = {}) {
       messages: [{ role: 'user', id: event.data.id, source: event.data.source, content: event.data.content }], ...changes };
     return tagged ? markAgentLoopRequest(body) : body;
   }
-  return { ctx, api, preview, submit, agents, emit, commands, presetCalls,
+  return { ctx, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts,
     async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
     async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
     promptCalls, queueMutations, controlCalls,
@@ -216,7 +222,7 @@ test('Native model picker selection is used by the next chat task', options, asy
 test('Submit requires the current confirmation and never reruns a retry; only one task is active', options, async () => {
   const f = await fixture();
   try {
-    const first = await f.preview('可执行任务一'), second = await f.preview({ instruction: '可执行任务二', mode: 'execute' });
+    const first = await f.preview('可执行任务一'), second = await f.preview({ instruction: '可执行任务二', mode: 'shadow' });
     const denied = await f.api({ action: 'submit', task_id: first.task_id, confirmation_digest: '0'.repeat(64) });
     assert.equal(denied.status, 409); assert.equal(denied.value.error.code, 'confirmation_changed');
     assert.equal(f.promptCalls.length, 0);
@@ -342,29 +348,35 @@ test('Native /harless commands and settings menu select without admitting a mode
     assert.equal((await f.api()).value.tasks.length,0); assert.equal(f.registrations.size,0); assert.equal(f.promptCalls.length,0);
   } finally {await f.close();}
 });
-test('Preview-only product scenes are selectable but cannot silently run the sample runtime', options, async () => {
-  const f = await fixture();
+const productScenes = [
+  { ...multiScenes[0], id: 'new-scene', label: 'New Scene' },
+  { ...multiScenes[1], id: 'ppt', label: 'PPT', instructions: 'PPT task instructions' },
+  { id: 'paper-proofreading', label: 'Paper Proofreading', preset: 'sss-paper', allowed_tools: [], unavailable_reason: 'paper_backend_missing' },
+  { id: 'research-data-analysis', label: 'Research Data Analysis', preset: 'sss-data', allowed_tools: [], unavailable_reason: 'data_backend_missing' },
+];
+test('Four product scenes x three modes x RSI: effective mode, missing backend and Execute admission', options, async () => {
+  const f = await fixture({ scenes: productScenes, capability_profile: 'new-scene' });
   try {
-    const { sessionId } = await f.ctx.sessionController.create({});
-    let result = await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'ppt' });
-    assert.equal(result.status, 200);
-    assert.equal(result.value.preview_scene, 'ppt');
-    assert.deepEqual(result.value.preview_scenes.map(scene => scene.label),
-      ['PPT', 'Paper Proofreading', 'Research Data Analysis', 'New Scene']);
-    await assert.rejects(f.ctx.sessionController.prompt({ sessionId, requestId: 'preview-only', mode: 'queue',
-      content: [{ type: 'text', text: 'Make a slide' }] }, new AbortController().signal), /UI preview/);
-    assert.equal((await f.api()).value.tasks.length, 0);
-    assert.equal(f.promptCalls.length, 0);
-    result = await f.settings({ action: 'clear_preview_scene', session_id: sessionId });
-    assert.equal(result.value.preview_scene, null);
-    assert.equal((await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'unknown' })).status, 400);
-    result = await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'new-scene' });
-    assert.equal(result.value.preview_scene, 'new-scene');
-    const draft = await f.api({ action: 'preview', session_id: sessionId, request: 'Explore a new topic' });
-    assert.equal(draft.status, 200);
-    assert.equal(draft.value.scene, 'example');
+    for (const scene of productScenes) for (const mode of ['baseline', 'shadow', 'execute']) for (const rsi of [false, true]) {
+      const { sessionId } = await f.ctx.sessionController.create({});
+      const selected = await f.settings({ action: 'select', session_id: sessionId, selection: { scene: scene.id, mode, rsi } });
+      if (mode === 'execute' && rsi) { assert.equal(selected.value.error.code, 'execute_unavailable'); continue; }
+      assert.equal(selected.status, 200); assert.equal(selected.value.selection.scene, scene.id);
+      const draft = await f.api({ action: 'preview', session_id: sessionId, request: 'Bound task' });
+      if (scene.unavailable_reason) { assert.equal(draft.value.error.code, 'scene_not_connected'); continue; }
+      assert.equal(draft.status, 200); assert.equal(draft.value.scene, scene.id);
+      assert.equal(draft.value.mode, rsi ? mode : 'baseline'); assert.equal(draft.value.selected_mode, mode);
+      const snapshot = JSON.parse(readFileSync(join(f.directory, 'tasks', draft.value.task_id, 'effective-config.json')));
+      assert.equal(snapshot.selection.mode, mode); assert.deepEqual(snapshot.allowed_tools, scene.allowed_tools);
+      assert.equal(snapshot.instructions, scene.instructions);
+    }
+    assert.equal(f.promptCalls.length, 0); // all menu/preview operations are model-free
+    const denied = await f.api({ action: 'preview', request: { instruction: 'No library', mode: 'execute' } });
+    assert.equal(denied.value.error.code, 'execute_unavailable');
+    assert.equal((await f.settings({ action: 'select_preview_scene', scene_id: 'unknown' })).status, 400);
   } finally { await f.close(); }
 });
+
 test('Running task keeps frozen tools and mode while next-task choices are inherited by a fresh Session', options, async()=>{
   const f=await fixture({ scenes: multiScenes, mode:'shadow', provider_mode:'real' });
   try {
@@ -402,4 +414,42 @@ test('Preview-bound library bytes cannot change before confirmation even if the 
   const draft=await f.preview('同一输入');writeFileSync(manifest,'{"changed":true}');
   const result=await f.submit(draft);assert.equal(result.status,409);assert.equal(result.value.error.code,'confirmation_changed');assert.equal(f.promptCalls.length,0);
  }finally{await f.close();rmSync(directory,{recursive:true});}
+});
+
+
+test('Two server-owned principals have independent settings, task/session identities and workspaces', options, async () => {
+  const first = await fixture({ user_id: 'alice', scenes: productScenes, capability_profile: 'new-scene' });
+  const second = await fixture({ user_id: 'bob', scenes: productScenes, capability_profile: 'new-scene' });
+  try {
+    await second.settings({ action: 'select', selection: { scene: 'ppt', rsi: false, mode: 'execute' } });
+    const [a, b] = await Promise.all([first.preview('Alice task'), second.preview('Bob task')]);
+    assert.equal(a.user_id, 'alice'); assert.equal(b.user_id, 'bob');
+    assert.equal(a.scene, 'new-scene'); assert.equal(b.scene, 'ppt');
+    assert.equal(b.mode, 'baseline'); assert.equal(b.selected_mode, 'execute');
+    assert.equal((await first.api(undefined, '?task_id=' + b.task_id)).status, 404);
+    assert.equal((await second.settings(undefined, '?session_id=' + a.session_id)).status, 404);
+    await Promise.all([first.submit(a), second.submit(b)]);
+    assert.equal(first.promptCalls.length, 1); assert.equal(second.promptCalls.length, 1);
+    await Promise.all([first.complete(a), second.complete(b)]);
+    await assert.rejects(first.ctx.sessionController.create({ cwd: second.directory }), /private Session/);
+  } finally { await second.close(); await first.close(); }
+});
+
+test('Session adapter binds private presets and rejects foreign file receipts before model admission', options, async () => {
+  const scene = { ...multiScenes[0], id: 'new-scene', adapter: 'workspace',
+    mcp_rows: [{ id: 'mcp', name: 'mcp-client', config: { cwd: '__HARLESS_SESSION_WORKSPACE__' } }] };
+  const f = await fixture({ scenes: [scene], capability_profile: 'new-scene' });
+  try {
+    const a = await f.ctx.sessionController.create({}); const b = await f.ctx.sessionController.create({});
+    const uploaded = await f.ctx.fileUploads.uploadStream({ sessionId: a.sessionId, name: 'alice.txt',
+      data: (async function* () { yield Buffer.from('AAA'); })() });
+    const content = [{ type: 'file', receiptId: uploaded.receiptId }];
+    const rejected = await f.api({ action: 'preview', session_id: b.sessionId, request: { content } });
+    assert.equal(rejected.status, 400); assert.equal(f.registrations.size, 0); assert.equal(f.promptCalls.length, 0);
+    const accepted = await f.api({ action: 'preview', session_id: a.sessionId, request: { content } });
+    assert.equal(accepted.status, 200); assert.equal(accepted.value.scene_inputs[0].name, 'alice.txt');
+    const snapshot = JSON.parse(readFileSync(join(f.directory, 'tasks', accepted.value.task_id, 'effective-config.json')));
+    assert.ok(snapshot.workspace.includes(a.sessionId)); assert.ok(!snapshot.workspace.includes(b.sessionId));
+    assert.equal(readFileSync(join(snapshot.workspace, 'inputs', 'doc_1-alice.txt'), 'utf8'), 'AAA');
+  } finally { await f.close(); }
 });

@@ -1,4 +1,4 @@
-"""Server-owned scene registry; each preset mounts its own MCP composition."""
+"""Server-owned scene registry; session templates mount the same RSI Runtime."""
 from __future__ import annotations
 import hashlib
 import json
@@ -7,6 +7,8 @@ from pathlib import Path
 from .scenario import prepare_scenario
 
 IDENTITY = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
+WORKSPACE = '__HARLESS_SESSION_WORKSPACE__'
+
 
 def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, prepared_default: dict,
                            output: Path, embedding_endpoint: str, embedding_model: str) -> list[dict]:
@@ -19,16 +21,26 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
     seen = set()
     scenes = []
     for row in definitions:
-        if (not isinstance(row, dict) or set(row) - {'id', 'label', 'scenario', 'case', 'instructions', 'rsi'} or
+        if (not isinstance(row, dict) or set(row) - {'id', 'label', 'scenario', 'case', 'instructions', 'rsi', 'adapter', 'unavailable_reason'} or
             not IDENTITY.fullmatch(row.get('id', '')) or row['id'] in seen or
             not isinstance(row.get('label'), str) or not 1 <= len(row['label']) <= 128):
             raise ValueError('invalid or duplicate scene identity')
         seen.add(row['id'])
+        scene = {'id': row['id'], 'label': row['label'], 'preset': 'sss-task' if row['id'] == default_id else 'sss-scene-' + row['id']}
+        if row.get('unavailable_reason'):
+            if set(row) != {'id', 'label', 'unavailable_reason'} or not IDENTITY.fullmatch(row['unavailable_reason']):
+                raise ValueError('unavailable scene cannot bind a substitute scenario')
+            scenes.append({**scene, 'allowed_tools': [], 'unavailable_reason': row['unavailable_reason']})
+            continue
+        if row.get('adapter') not in (None, 'ppt', 'workspace'): raise ValueError('unsupported scene adapter')
         path = (root / row['scenario']).resolve(strict=True)
-        prepared = prepared_default if row['id'] == default_id else prepare_scenario(path, case=row.get('case', ''))
-        scene = {'id': row['id'], 'label': row['label'], 'preset': 'sss-task' if row['id'] == default_id else 'sss-scene-' + row['id'],
-                 'allowed_tools': prepared['allowed_tools'], 'config_sha256': prepared['config_sha256'],
-                 'case': prepared['case'], 'embedding_endpoint': embedding_endpoint, 'embedding_model': embedding_model}
+        prepared = (prepared_default if row['id'] == default_id else
+                    prepare_scenario(path, case=row.get('case', ''), session_workspace=WORKSPACE if row.get('adapter') else None))
+        scene.update(allowed_tools=prepared['allowed_tools'], config_sha256=prepared['config_sha256'],
+                     scenario_version=1, scenario=row['scenario'], case=prepared['case'],
+                     embedding_endpoint=embedding_endpoint, embedding_model=embedding_model)
+        if row.get('adapter'):
+            scene.update(adapter=row['adapter'], mcp_rows=prepared['mcp_rows'], environment_references=prepared['environment_references'])
         if row.get('instructions'):
             instructions = (root / row['instructions']).read_text(encoding='utf-8')
             if not instructions.strip() or len(instructions) > 100000: raise ValueError('invalid scene instructions')
@@ -41,9 +53,11 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                          certified_input_sha256=hashlib.sha256(prepared['prompt'].strip().encode()).hexdigest())
         if row['id'] != default_id:
             preset = output / 'presets' / scene['preset']; preset.mkdir(parents=True, mode=0o700)
+            # Session adapters compose their MCP only after a private workspace is allocated.
             rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
                 'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
-                'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *prepared['mcp_rows']]
+                'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}},
+                *([] if row.get('adapter') else prepared['mcp_rows'])]
             rendered = json.dumps(rows, ensure_ascii=False, indent=2)
             for token, expression in prepared['environment_references'].items(): rendered = rendered.replace(json.dumps(token), expression)
             (preset / 'agent.cordis.yml').write_text(rendered, encoding='utf-8'); (preset / 'agent.cordis.yml').chmod(0o600)
@@ -51,7 +65,6 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             (preset / 'preset.yml').chmod(0o600)
         scenes.append(scene)
     if default_id not in seen:
-        # A private single-scene configuration still has a selectable entry.
         scenes.append({'id': default_id, 'label': prepared_default['name'], 'preset': 'sss-task',
                        'allowed_tools': prepared_default['allowed_tools'], 'config_sha256': prepared_default['config_sha256']})
     return scenes

@@ -11,7 +11,7 @@ NAME = re.compile(r'^[a-z][a-z0-9_]{0,31}$')
 ENV_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
 
-def prepare_scenario(path: Path, *, case: str = '') -> dict:
+def prepare_scenario(path: Path, *, case: str = '', session_workspace: str | None = None) -> dict:
     path = path.resolve(strict=True)
     scenario = json.loads(path.read_text(encoding='utf-8'))
     if set(scenario) - {'schema_version', 'name', 'prompt', 'servers', 'allowed_tools'}:
@@ -21,6 +21,8 @@ def prepare_scenario(path: Path, *, case: str = '') -> dict:
     if case and not NAME.fullmatch(case):
         raise ValueError('invalid case name')
     substitutions = {'PROJECT_ROOT': str(ROOT), 'PYTHON': sys.executable, 'CASE': case}
+    if session_workspace is not None:
+        substitutions['SESSION_WORKSPACE'] = session_workspace
     references = {}
     required_env = []
 

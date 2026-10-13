@@ -6,16 +6,18 @@ import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-dee
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
-import { digest } from '../motif_core/online_skill_runtime.mjs';
+import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
 import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, SettingsError } from './harless_settings.ts';
+import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions } from './harless_task_scope.ts';
+import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
 
 export const name = 'sss-web-tasks';
-export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets'];
+export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments'];
 type Policy = {
-  output: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number;
+  output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number;
   mode: ExecutionMode; budget_usd: number; capability_profile: string;
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   manifest?: string; task?: string; certified_input_sha256?: string;
@@ -33,14 +35,8 @@ type Task = {
   humans: Map<string, string>; sources: { resource_id: string; version: string; sha256: string }[];
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
-  model_option: ModelOption;
+  model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[];
 };
-const previewScenes = Object.freeze([
-  { id: 'ppt', label: 'PPT' },
-  { id: 'paper-proofreading', label: 'Paper Proofreading' },
-  { id: 'research-data-analysis', label: 'Research Data Analysis' },
-  { id: 'new-scene', label: 'New Scene' },
-]);
 class TaskError extends Error {
   code: string; status: number;
   constructor(code: string, message: string, status = 400) { super(message); this.code = code; this.status = status; }
@@ -79,7 +75,8 @@ export function apply(ctx: any) {
   if (!scenes.some(scene => scene.id === config.capability_profile)) throw Error('Default scene is not registered');
   let defaults = initialSelection(config.capability_profile, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
-  const previewSceneSelections = new Map<string, string>();
+  const workspaces = new Map<string, string>();
+  const principal = config.user_id ?? 'local-operator';
   const guards = new Map<string, (() => void)[]>();
   const sceneFor = (id: string) => {
     const scene = scenes.find(scene => scene.id === id);
@@ -87,6 +84,7 @@ export function apply(ctx: any) {
     return scene;
   };
   function executeUnavailable(scene: Scene): string | null {
+    if (scene.unavailable_reason) return scene.unavailable_reason;
     if (!scene.manifest || !scene.task) return 'no_certified_library';
     if (!scene.embedding_endpoint) return 'no_embedding_service';
     if (!/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
@@ -114,10 +112,11 @@ export function apply(ctx: any) {
     const selected = sessionId ? selections.get(sessionId)! : defaults;
     const task = sessionId ? forSession(sessionId) : undefined;
     return { selection: selected, applies_to: task ? 'next_task' : 'next_prompt',
-      preview_scene: sessionId ? previewSceneSelections.get(sessionId) ?? null : null,
-      preview_scenes: previewScenes,
+      preview_scene: selected.scene, // compatibility alias; now an actual registered selection
+      preview_scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason })),
       current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status } : null,
       scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, config_sha256: scene.config_sha256,
+        available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason,
         execute_available: !executeUnavailable(scene), execute_unavailable_reason: executeUnavailable(scene) })),
       session_id: sessionId ?? null, model_calls: 0 };
   }
@@ -128,11 +127,14 @@ export function apply(ctx: any) {
     if (sessionId) {
       const agent = agents.get(sessionId);
       if (!forSession(sessionId) && next.scene !== current.scene) {
-        await selectPreset!(agent, sceneFor(next.scene).preset);
-        bindScene(agent, sceneFor(next.scene));
+        const scene = sceneFor(next.scene);
+        if (!scene.unavailable_reason) {
+          await selectPreset!(agent, sessionPreset(config.output, workspaces.get(sessionId)!, scene));
+          bindScene(agent, scene);
+        }
       }
       selections.set(sessionId, next);
-      if ((patch as Record<string, unknown>).scene !== undefined) previewSceneSelections.delete(sessionId);
+
     } else defaults = next;
     json(join(config.output, 'harless-settings.json'), { defaults, sessions: Object.fromEntries(selections) });
     return settingsView(sessionId);
@@ -163,13 +165,14 @@ export function apply(ctx: any) {
     const request = task.request;
     return { task_id: request.task_id, session_id: request.session_id, request_id: request.request_id,
       capability_profile: request.capability_profile, scene: task.scene.id, scene_sha256: task.scene.config_sha256,
-      rsi: task.selection.rsi, mode: request.mode, budget_usd: request.budget_usd,
+      user_id: principal, selected_mode: task.selection.mode, rsi: task.selection.rsi, mode: request.mode, budget_usd: request.budget_usd,
       entrypoint: task.entrypoint, status: task.status, failure: task.failure, fallback_reason: task.fallback_reason,
       created_at: task.created_at, started_at: task.started_at, finished_at: task.finished_at,
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
       request_sha256: request.request_sha256, confirmation_digest: task.confirmation_digest,
       provider_mode: config.provider_mode, provider: task.model_option.provider, model: task.model_option.model,
       paid_calls_enabled: config.provider_mode === 'real',
+      scene_options: task.scene_options, scene_inputs: task.scene_inputs,
       effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
       stats: task.stats, sources: task.sources,
       ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
@@ -213,7 +216,15 @@ export function apply(ctx: any) {
     if (request.agentPreset && !scenes.some(scene => scene.preset === request.agentPreset)) throw new TaskError('profile_not_allowed', 'Use the server-configured DeepSeek Harless preset');
     if (request.sessionId && !ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
     const chosen = request.agentPreset ? scenes.find(scene => scene.preset === request.agentPreset)! : sceneFor(defaults.scene);
-    const created = await original.create({ ...request, agentPreset: chosen.preset });
+    if (chosen.unavailable_reason) throw new TaskError('scene_not_connected', chosen.unavailable_reason, 409);
+    if (request.cwd !== undefined || request.workspaceId !== undefined)
+      throw new TaskError('workspace_not_allowed', 'The server allocates a private Session workspace');
+    if (request.sessionId && ownedSessions.has(request.sessionId)) return original.create(request);
+    const sessionId = 'sss-' + randomUUID().replaceAll('-', '');
+    const workspace = sessionWorkspace(config.output, sessionId);
+    workspaces.set(sessionId, workspace);
+    const created = await original.create({ ...request, sessionId, cwd: workspace,
+      agentPreset: sessionPreset(config.output, workspace, chosen) });
     ownedSessions.add(created.sessionId);
     if (!selections.has(created.sessionId)) {
       selections.set(created.sessionId, { ...defaults, scene: chosen.id });
@@ -248,31 +259,25 @@ export function apply(ctx: any) {
     await setSelection(agent.session.id, { scene: scene.id }); return preset;
   });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
-    const previewScene = existingSession ? previewSceneSelections.get(existingSession) : undefined;
-    if (previewScene && previewScene !== 'new-scene') throw new TaskError('scene_not_connected',
-      `${previewScenes.find(scene => scene.id === previewScene)?.label ?? previewScene} is a UI preview; its runtime is not connected yet.`, 409);
     const taskId = randomUUID().replaceAll('-', ''), tentativeSession = existingSession ?? 'pending';
     const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
     const chosenModel = supplied.model === undefined ? (existingSession ? modelSelections.get(existingSession) ?? defaultModel : defaultModel) : findModel(supplied.model);
     const taskInput = input && typeof input === 'object' && !Array.isArray(input)
       ? { ...supplied } : input;
-    if (taskInput && typeof taskInput === 'object' && !Array.isArray(taskInput)) delete taskInput.model;
+    if (taskInput && typeof taskInput === 'object' && !Array.isArray(taskInput)) { delete taskInput.model; delete taskInput.scene_options; }
     const selected = existingSession ? selections.get(existingSession)! : defaults;
     if (existingSession && !selected) throw new TaskError('session_not_owned', 'Session is outside this Web run');
     const request = normalizeWebTaskRequest(taskInput, { task_id: taskId, session_id: tentativeSession,
-      default_mode: selected.rsi ? selected.mode : 'baseline', default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
+      default_mode: selected.mode, default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
       default_profile: selected.scene, allowed_profiles: scenes.map(scene => scene.id),
       max_content_bytes: 768 * 1024, max_parts: 32 });
-    if (!selected.rsi && request.mode !== 'baseline')
-      throw new TaskError('rsi_disabled', 'Turn RSI On before running Shadow or Execute');
+    const requestedMode = request.mode;
+    if (!selected.rsi) {
+      request.mode = 'baseline';
+      request.request_sha256 = digest({ request: request.request_sha256, rsi: false });
+    }
     if (chosenModel.provider === 'harless-glm' && request.content.some(part => part.type !== 'text'))
       throw new TaskError('unsupported_input', 'The GLM connection currently supports text only; remove images and files before retrying');
-    const previous = requests.get(request.request_id);
-    if (previous) {
-      const task = get(previous);
-      if (request.request_sha256 !== task.request.request_sha256 || chosenModel.model !== task.model_option.model) throw new TaskError('request_id_conflict', 'request_id already binds different input or model', 409);
-      return task;
-    }
     const sources: Task['sources'] = [];
     const delivery = request.content.map(part => ({ ...part }));
     for (const reference of request.resources) {
@@ -284,17 +289,46 @@ export function apply(ctx: any) {
     }
     if (Buffer.byteLength(JSON.stringify(delivery)) > 768 * 1024) throw new TaskError('request_too_large', 'Resolved input exceeds byte limit', 413);
     const scene = sceneFor(request.capability_profile);
-    const selection = config.scenes ? changeSelection(selected, { scene: scene.id, mode: request.mode }, scenes, executeUnavailable) : initialSelection(scene.id, request.mode);
+    if (scene.unavailable_reason) throw new TaskError('scene_not_connected', scene.unavailable_reason, 409);
+    const options = sceneOptions(supplied.scene_options, scene);
+    const selection = changeSelection(selected, { scene: scene.id, mode: requestedMode }, scenes, executeUnavailable);
+    request.request_sha256 = digest({ request: request.request_sha256, selection, scene_options: options, user_id: principal });
+    const previous = requests.get(request.request_id);
+    if (previous) {
+      const task = get(previous);
+      if (request.request_sha256 !== task.request.request_sha256 || chosenModel.model !== task.model_option.model) throw new TaskError('request_id_conflict', 'request_id already binds different input or model', 409);
+      return task;
+    }
     request.session_id = existingSession ?? (await controller.create({ agentPreset: scene.preset })).sessionId;
     if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', '预览前请先选择与当前会话一致的 Harless 场景', 409);
     if (sessions.has(request.session_id)) throw new TaskError('session_already_bound', 'This session already has a task; create a new task', 409);
     if (modelSelections.get(request.session_id)?.model !== chosenModel.model) await controller.selectModel({
       sessionId: request.session_id, provider: chosenModel.provider, model: chosenModel.model, reasoningEffort: 'off'
     }, new AbortController().signal);
+    const workspace = workspaces.get(request.session_id)!;
+    const sceneInputs = scene.adapter ? await bindSceneInputs(ctx, agents.get(request.session_id), workspace, scene,
+      request.content, options, delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), taskId) : [];
+    if (scene.adapter) {
+      await selectPreset!(agents.get(request.session_id), sessionPreset(config.output, workspace, scene));
+      bindScene(agents.get(request.session_id), scene);
+    }
+    const tools = structuredClone(schemas.get(request.session_id) ?? []);
+    if (tools.length !== scene.allowed_tools.length || tools.some((tool: any) => !scene.allowed_tools.includes(tool.name)))
+      throw new TaskError('scene_tools_unavailable', 'Configured MCP tool surface did not load', 409);
+    if (request.mode === 'execute') {
+      const manifest = JSON.parse(readFileSync(scene.manifest!, 'utf8'));
+      const offered = new Map(tools.map((tool: any) => [tool.name, tool]));
+      if (Object.entries(manifest.contracts).some(([name, contract]) => !offeredSchemaMatches(offered, name, contract)))
+        throw new TaskError('execute_unavailable', 'library_tool_schema_mismatch', 409);
+      try {
+        const binding = JSON.parse(readFileSync(scene.task!, 'utf8'));
+        await loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model!)(binding.intent, ['Runtime admission probe']);
+      } catch { throw new TaskError('execute_unavailable', 'embedding_service_unavailable', 409); }
+    }
     selections.set(request.session_id, selection);
     const output = join(config.output, 'tasks', taskId); mkdirSync(output, { recursive: true, mode: 0o700 });
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
-      scene, selection: { ...selection }, tools: structuredClone(schemas.get(request.session_id) ?? []),
+      scene, selection: Object.freeze({ ...selection }), tools, workspace, scene_options: options, scene_inputs: sceneInputs,
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output, humans: new Map(), sources,
       model_option: chosenModel,
@@ -314,11 +348,15 @@ export function apply(ctx: any) {
       delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
       scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
+      scene_options: task.scene_options, scene_inputs: task.scene_inputs, user_id: principal,
       provider_mode: config.provider_mode, max_output_tokens: config.max_output_tokens });
     task.confirmation_digest = digest({ confirmation: task.confirmation_digest,
       provider: task.model_option.provider, model: task.model_option.model });
     json(join(task.output, 'task.json'), task.request);
     json(join(task.output, 'effective-config.json'), { ...view(task), selection: task.selection, tools: task.tools,
+      scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
+      instructions: task.scene.instructions, instructions_sha256: task.scene.instructions_sha256,
+      allowed_tools: task.scene.allowed_tools, workspace: task.workspace,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
       run_config: '../../effective-config.json', manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256, scene_registry_sha256: config.scene_registry_sha256 });
     record(task);
@@ -326,21 +364,24 @@ export function apply(ctx: any) {
   function configureMotif(task: Task) {
     if (task.request.mode === 'baseline') return;
     const parts = task.request.content, scene = task.scene;
+    const availableTools = new Map(task.tools.map(tool => [tool.name, tool]));
     const pinned = (path: string, expected: string | null) => { const bytes = readFileSync(path); if (sha(bytes) !== expected) throw Error('Motif binding version changed'); return JSON.parse(bytes.toString('utf8')); };
     if (!scene.manifest || !scene.task) task.fallback_reason = 'no_certified_library';
     else if (!scene.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
     else if (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
         sha(parts[0].text.trim()) !== scene.certified_input_sha256) task.fallback_reason = 'input_not_certified_for_library';
     else try {
+      const manifest = pinned(scene.manifest, task.manifest_sha256);
+      if (Object.entries(manifest.contracts).some(([name, contract]) => !offeredSchemaMatches(availableTools, name, contract))) throw Error('library_tool_schema_mismatch');
       const binding = pinned(scene.task, task.binding_sha256);
       binding.session_id = task.request.session_id; binding.task_id = task.request.task_id;
       json(join(task.output, 'bound-motif-task.json'), binding);
-      task.interceptor = createOnlineInterceptor({ manifest: pinned(scene.manifest, task.manifest_sha256),
+      task.interceptor = createOnlineInterceptor({ manifest,
         task: binding, mode: task.request.mode, minSimilarity: 0.8, minMargin: 0.1,
         similarity: loopbackSimilarity(scene.embedding_endpoint, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
         audit: (row: unknown) => audit(task, row) });
     } catch (error) {
-      task.interceptor = undefined; task.fallback_reason = 'no_valid_certified_library';
+      task.interceptor = undefined; task.fallback_reason = (error as Error).message === 'library_tool_schema_mismatch' ? 'library_tool_schema_mismatch' : 'no_valid_certified_library';
       audit(task, { kind: 'motif_library_invalid', error_type: (error as Error).name });
     }
     if (task.fallback_reason) audit(task, { kind: 'motif_fallback', reason: task.fallback_reason });
@@ -351,6 +392,10 @@ export function apply(ctx: any) {
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
         fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256) {
       throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
+    }
+    if (task.request.mode === 'execute') {
+      const reason = executeUnavailable(task.scene);
+      if (reason) throw new TaskError('execute_unavailable', reason, 409);
     }
     requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
     try {
@@ -461,14 +506,22 @@ export function apply(ctx: any) {
               default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
               default_profile: task.scene.id, allowed_profiles: [task.scene.id], max_parts: 32, max_content_bytes: 768 * 1024 });
             task.request = changed; task.delivery.push({ type: 'file', receiptId: uploaded.receiptId });
+            if (task.scene.adapter) {
+              task.scene_inputs = await bindSceneInputs(ctx, agents.get(task.request.session_id), task.workspace, task.scene,
+                task.request.content, task.scene_options, task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), task.request.task_id);
+              await selectPreset!(agents.get(task.request.session_id), sessionPreset(config.output, task.workspace, task.scene));
+              bindScene(agents.get(task.request.session_id), task.scene);
+              if (digest(schemas.get(task.request.session_id)) !== digest(task.tools)) throw new TaskError('confirmation_changed', 'Tool schema changed', 409);
+            }
             updateDraft(task); return view(task, true);
           }
           throw new TaskError('unknown_action', 'Supported actions: preview, submit, cancel, upload');
         });
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error) {
+        appendFileSync(join(config.output, 'admission-errors.jsonl'), JSON.stringify({ time: utc(), error: String(error) }) + '\n', { mode: 0o600 });
         const known = error instanceof TaskError || error instanceof WebTaskRequestError || error instanceof SettingsError;
-        return Response.json({ error: { code: known ? error.code : 'task_request_failed', message: String((error as Error).message ?? error) } },
+        return Response.json({ error: { code: known ? error.code : 'task_request_failed', message: known ? String((error as Error).message) : 'Task configuration or input admission failed; inspect the private server log' } },
           { status: error instanceof TaskError ? error.status : 400 });
       }
     } };
@@ -485,25 +538,13 @@ export function apply(ctx: any) {
         const body: any = await request.json();
         const result = await serialize(async () => {
           if (body.action === 'select') return setSelection(body.session_id, body.selection);
-          if (body.action === 'select_preview_scene') {
-            settingsView(body.session_id); // enforce ownership before changing the UI choice
-            if (!body.session_id || !previewScenes.some(scene => scene.id === body.scene_id))
-              throw new SettingsError('scene_not_found', 'Choose one of the listed preview scenes');
-            previewSceneSelections.set(body.session_id, body.scene_id);
-            return settingsView(body.session_id);
-          }
-          if (body.action === 'clear_preview_scene') {
-            settingsView(body.session_id);
-            if (!body.session_id) throw new SettingsError('session_required', 'Choose a session first');
-            previewSceneSelections.delete(body.session_id);
-            return settingsView(body.session_id);
-          }
+          if (body.action === 'select_preview_scene') return setSelection(body.session_id, { scene: body.scene_id });
+          if (body.action === 'clear_preview_scene') return setSelection(body.session_id, { scene: config.capability_profile });
           if (body.action === 'new_session') {
             const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const created = await controller.create({ agentPreset: sceneFor(chosen.scene).preset });
             selections.set(created.sessionId, { ...chosen });
-            if (body.inherit_session && previewSceneSelections.has(body.inherit_session))
-              previewSceneSelections.set(created.sessionId, previewSceneSelections.get(body.inherit_session)!);
+
             return { session_id: created.sessionId, ...settingsView(created.sessionId) };
           }
           throw new SettingsError('unknown_action', 'Supported actions: select, select_preview_scene, clear_preview_scene, new_session');
@@ -524,12 +565,12 @@ export function apply(ctx: any) {
         if (command.kind === 'panel') {
           return { kind: 'success', text: 'Choose a scene, mode, or RSI setting from the /harless picker.' };
         }
-        if (command.kind === 'list') return { kind: 'success', text: previewScenes.map(scene =>
-          `${scene.label} · ${scene.id === 'new-scene' ? 'explore with the current runtime' : 'UI preview only'}`).join('\n') };
+        if (command.kind === 'list') return { kind: 'success', text: scenes.map(scene =>
+          `${scene.label} · ${scene.unavailable_reason ?? 'connected'}`).join('\n') };
         const value = command.kind === 'change' ? await setSelection(id, command.patch) : settingsView(id);
         const current = value.current_task;
-        const planned = previewScenes.find(scene => scene.id === value.preview_scene);
-        return { kind: 'success', text: `${planned ? `${planned.label} (${planned.id === 'new-scene' ? 'current runtime' : 'UI preview only; runtime not connected'})` : 'Current runtime'} · Mode ${value.selection.mode === 'baseline' ? 'Origin' : value.selection.mode} · RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? ` · Current task: ${current.scene} / ${current.mode} / ${current.status}` : ''}` };
+        const planned = sceneFor(value.selection.scene);
+        return { kind: 'success', text: `${planned.label}${planned.unavailable_reason ? ' (' + planned.unavailable_reason + ')' : ''} · Mode ${value.selection.mode === 'baseline' ? 'Origin' : value.selection.mode} · RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? ` · Current task: ${current.scene} / ${current.mode} / ${current.status}` : ''}` };
       } catch (error) { return { kind: 'error', text: String((error as Error).message) }; }
     }) }), 'harless-command');
   for (const path of ['/tasks', '/sss', '/harless']) {

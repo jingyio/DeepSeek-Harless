@@ -10,7 +10,7 @@ from src.adapters.harless_scenarios import prepare_scene_registry
 def prepared(tmp_path, registry=None):
     initial = prepare_scenario(ROOT / 'scenarios/example/scenario.json')
     output = tmp_path / 'run'; (output / 'presets').mkdir(parents=True)
-    return prepare_scene_registry(ROOT, registry or ROOT / 'config/harless-scenes.json', default_id='example',
+    return prepare_scene_registry(ROOT, registry or ROOT / 'config/harless-diagnostics.json', default_id='example',
         prepared_default=initial, output=output, embedding_endpoint='http://127.0.0.1:9876/v1/embeddings', embedding_model='diagnostic')
 
 
@@ -29,10 +29,24 @@ def test_registry_builds_separate_presets_without_using_task_prompt_as_instructi
 
 @pytest.mark.parametrize('change', ['version', 'duplicate', 'unsupported', 'rsi'])
 def test_registry_refuses_invalid_registration_before_runtime(tmp_path, change):
-    value = json.loads((ROOT / 'config/harless-scenes.json').read_text())
+    value = json.loads((ROOT / 'config/harless-diagnostics.json').read_text())
     if change == 'version': value['schema_version'] = 2
     if change == 'duplicate': value['scenes'][1]['id'] = 'example'
     if change == 'unsupported': value['scenes'][0]['matcher'] = 'keyword'
     if change == 'rsi': value['scenes'][0]['rsi'] = {'manifest': 'anything'}
     registry = tmp_path / 'registry.json'; registry.write_text(json.dumps(value))
     with pytest.raises(ValueError): prepared(tmp_path, registry)
+
+
+def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
+    scenes = prepared(tmp_path, ROOT / 'config/harless-scenes.json')
+    rows = {scene['id']: scene for scene in scenes}
+    assert rows['ppt']['scenario'] == 'scenarios/research_ppt/web-scenario.json'
+    assert rows['ppt']['adapter'] == 'ppt'
+    assert 'SSS_PPT_JOB' in json.dumps(rows['ppt']['mcp_rows'])
+    assert rows['ppt']['instructions'].startswith('完成科研 PPT 任务。')
+    assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['ppt']['mcp_rows'])
+    assert rows['new-scene']['allowed_tools'] == ['mcp__workspace__list_files', 'mcp__workspace__read_file']
+    for identity in ('paper-proofreading', 'research-data-analysis'):
+        assert rows[identity]['unavailable_reason'] and not rows[identity]['allowed_tools']
+        assert 'scenario' not in rows[identity]
