@@ -4,6 +4,11 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const dotenv = join(root, '.env');
+if (existsSync(dotenv)) {
+  if (!process.loadEnvFile) throw new Error('读取 .env 需要 Node.js 20.12+；推荐 Node 22。');
+  process.loadEnvFile(dotenv);
+}
 const suffix = process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python';
 const python = process.env.SSS_PYTHON ?? ['.venv-sss', '.venv312', '.venv']
   .map(dir => join(root, dir, suffix)).find(existsSync) ?? (process.platform === 'win32' ? 'python' : 'python3');
@@ -21,11 +26,17 @@ if (action === 'setup') {
   run(join(root, '.venv-sss', suffix), ['-m', 'pip', 'install', '-r', 'requirements.txt']);
 } else if (action === 'test') {
   run(python, ['-m', 'pytest', 'tests', '-q']);
-  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs']);
+  const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+  if (nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 18)) {
+    run(process.execPath, ['scripts/build-continuation-policy.mjs', '--check']);
+  }
+  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_approved_plan_continuation.mjs', 'tests/test_dsh_web_policy.mjs', 'tests/test_web_task_request.mjs', 'tests/test_dsh_web_tasks.mjs', 'tests/test_dsh_completion_guard.mjs', 'tests/test_code_container.mjs', 'tests/test_entry_motif.mjs', 'tests/test_terminal_motif.mjs', 'tests/test_collection_motif.mjs', 'tests/test_collection_script.mjs', 'tests/test_plan_motif.mjs', 'tests/test_collection_reentry.mjs', 'tests/test_acceptance_guard.mjs']);
 } else if (action === 'scenario') {
   run(python, ['scripts/run-scenario.py', ...args]);
+} else if (action === 'web') {
+  run(python, ['scripts/harness-web.py', ...args]);
 } else if (action === 'smoke') {
   run(python, ['scripts/smoke.py', ...args]);
 } else if (action === 'python') {
   run(python, args);
-} else { console.error('Use setup, test, scenario, smoke or python'); process.exit(1); }
+} else { console.error('Use setup, test, scenario, web, smoke or python'); process.exit(1); }

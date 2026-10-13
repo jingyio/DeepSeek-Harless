@@ -1,4 +1,5 @@
 /** Scenario capability boundary; arbitrary MCP extensions share this host plugin. */
+import { scopeOf } from '@deepseek-ai/dsh-scope';
 export const name = 'sss-scenario-guard';
 export const inject = ['tools', 'agents'];
 
@@ -7,9 +8,11 @@ export function apply(ctx) {
   if (!Array.isArray(names) || !names.length ||
       names.some(name => typeof name !== 'string' || !/^mcp__[a-zA-Z0-9_]+$/.test(name)) ||
       new Set(names).size !== names.length) throw new TypeError('Invalid scenario tool allowlist');
+  const presentation = process.env.SSS_SCENARIO_PRESENTATION ?? 'native';
+  if (!['native','ptc'].includes(presentation)) throw new TypeError('Invalid scenario presentation');
   const allowed = new Set(names);
   ctx.on('agent/created', ({ agent }) => {
     agent.ctx.tools.restrict({ allow: names });
-    agent.ctx.tools.guard(call => allowed.has(call.name) ? undefined : 'Tool is outside this scenario');
+    agent.ctx.tools.guard(call => (allowed.has(call.name) || (presentation === 'ptc' && call.name === 'run_code' && agent.ctx.tools.modeFor(scopeOf(agent.ctx)) === 'ptc')) ? undefined : 'Tool is outside this scenario');
   });
 }

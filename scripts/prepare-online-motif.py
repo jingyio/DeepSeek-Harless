@@ -18,7 +18,7 @@ def prepare(manifest: Path, task: Path) -> dict:
     task = task.resolve(strict=True)
     declared = json.loads(manifest.read_text(encoding="utf-8"))
     structured = json.loads(task.read_text(encoding="utf-8"))
-    if (declared.get("schema_version") != 1
+    if (declared.get("schema_version") not in (1, 2)
             or not declared.get("manifest_digest")
             or structured.get("schema_version") != 1
             or not structured.get("session_id")):

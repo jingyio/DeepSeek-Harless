@@ -1,6 +1,8 @@
 /** DSH adapter: replace one model decision with certified read-only calls. */
 
 import { randomUUID, createHash } from 'node:crypto';
+import { validGrant, verifyContinuationResult } from '../motif_core/approved_plan_continuation.generated.mjs';
+import { sourceDereferenceHistoryCapacity } from '../motif_core/source_dereference.generated.mjs';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
@@ -73,6 +75,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
                                            audit = () => {} }) {
   validateOnlineManifest(manifest);
   const parsedTask = parseStructuredTask(task, manifest);
+  const historyCapacity = sourceDereferenceHistoryCapacity(parsedTask, manifest);
   if (!['shadow', 'execute'].includes(mode) ||
       typeof similarity !== 'function' || typeof audit !== 'function') {
     throw new TypeError('invalid online Motif policy');
@@ -94,18 +97,25 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     const version = outputField(output, manifest.version_fields[exec.name]);
     const pending = current.pending.get(exec.callId);
     const ok = result?.isError !== true && output !== null;
-    const barrier = !ok || manifest.contracts[exec.name]?.read_only !== true ||
+    const policy = manifest.contracts[exec.name]?.continuation_policy;
+    const permissionValid = !policy || validGrant(output, policy,
+      policy.steps.findIndex(step => step.tool === exec.name), parsedTask);
+    if (policy && !permissionValid) audit({ kind: 'motif_continuation_rejected',
+      session_id: sessionId, tool: exec.name, reason: 'missing_stale_or_revoked_grant' });
+    const barrier = !ok || !permissionValid || manifest.contracts[exec.name]?.read_only !== true ||
       (!!manifest.version_fields[exec.name] &&
        !versionWithinTask(parsedTask, manifest, exec.name, version, pending));
     current.history.push({ name: exec.name, callId: exec.callId, ok,
       barrier, arguments: exec.arguments, output, sourceVersion: version,
       inputVersion: parsedTask.input_version });
-    current.history.splice(0, Math.max(0, current.history.length - 12));
+    current.history.splice(0, Math.max(0, current.history.length - historyCapacity));
     if (pending) {
       const verified = ok && exec.name === pending.tool &&
         exec.arguments && typeof exec.arguments === 'object' &&
         digest(exec.arguments) === digest(pending.arguments) &&
-        version === pending.expected_version;
+        version === pending.expected_version &&
+        (!pending.continuation_expected || verifyContinuationResult(
+          pending.continuation_expected, output, parsedTask));
       const batch = current.batches.get(pending.batch_id);
       batch.remaining.delete(exec.callId);
       batch.failed ||= !verified;
@@ -126,6 +136,11 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     if (sessionId !== parsedTask.session_id) return next();
     const current = state(sessionId);
     if (current.halted || current.pending.size) return next();
+    if ((options.messages ?? []).some(message => message.source?.kind === 'task-acceptance-repair')) {
+      current.halted = true;
+      audit({ kind: 'motif_deferred', session_id: sessionId, reason: 'acceptance_repair_requires_ordinary_harness' });
+      return next();
+    }
     const availableTools = new Map((options.tools ?? [])
       .filter((tool) => typeof tool?.name === 'string')
       .map((tool) => [tool.name, tool]));
@@ -168,6 +183,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
       certified_digests: proposals.map((row) => row.certified_digest),
       tools: proposals.map((row) => row.tool),
       selection_bases: proposals.map((row) => row.selection_basis),
+      continuation_policy_digests: proposals.map(row => row.continuation_expected?.root.policy_sha256 ?? null),
       code_node_ids: proposals.flatMap((row) => row.code_node_ids),
       code_program_digests: proposals.flatMap((row) => row.code_program_digests),
       similarities: proposals.map((row) => row.similarity) });

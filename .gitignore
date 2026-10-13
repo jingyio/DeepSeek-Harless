@@ -20,3 +20,5 @@ experiments/results/
 office/papers/inbox/
 office/papers/archive/
 office/papers/notes/
+# Local experimental papers are user data; use tests/fixtures for public samples.
+/testpdf/

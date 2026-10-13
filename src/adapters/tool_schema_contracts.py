@@ -10,6 +10,7 @@ from dataclasses import replace
 from typing import Any, Mapping
 
 from src.adapters.dsh_trajectory import ToolContract
+from src.motif_core.offline.continuation_policy import policy_digest
 
 
 def bind_mcp_descriptions(
@@ -41,5 +42,9 @@ def bind_mcp_descriptions(
                 or set(parameters.get("required", [])) != set(contract.required_params)
                 or not set(contract.required_params) <= set(parameters["properties"])):
             raise ValueError(f"MCP schema does not match approved tool: {name}")
+        if contract.continuation_policy:
+            step = next(s for s in contract.continuation_policy['steps'] if s['tool'] == name)
+            if policy_digest(parameters) != step['input_schema_sha256']:
+                raise ValueError(f'continuation schema changed: {name}')
         updated[name] = replace(contract, description=description.strip())
     return updated

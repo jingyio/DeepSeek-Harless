@@ -3,6 +3,10 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { validateContinuationManifest, validateTaskContinuation, closedContinuation }
+  from './approved_plan_continuation.generated.mjs';
+import { validateSourceDereferences, isSourceDereferenceName }
+  from './source_dereference.generated.mjs';
 
 const PURE_CODE_WORKER = fileURLToPath(new URL('./pure_code.py', import.meta.url));
 
@@ -61,7 +65,7 @@ const field = (value, path) => path.split('.').reduce((item, part) =>
   item && typeof item === 'object' ? item[part] : undefined, value);
 
 export function validateOnlineManifest(manifest) {
-  if (!manifest || manifest.schema_version !== 1 ||
+  if (!manifest || ![1, 2].includes(manifest.schema_version) ||
       !/^[a-f0-9]{64}$/.test(manifest.source_library_digest ?? '') ||
       !Array.isArray(manifest.artifacts) || !manifest.artifacts.length ||
       !manifest.contracts || typeof manifest.contracts !== 'object' ||
@@ -192,6 +196,8 @@ export function validateOnlineManifest(manifest) {
       throw new TypeError('version guard is not an approved output field');
     }
   }
+  validateContinuationManifest(manifest);
+  validateSourceDereferences(manifest);
   return manifest;
 }
 
@@ -256,6 +262,7 @@ export function parseStructuredTask(raw, manifest) {
            !/^[a-f0-9]{64}$/.test(version))))) {
     throw new TypeError('invalid approved lookup version scope');
   }
+  validateTaskContinuation(task, manifest);
   return task;
 }
 
@@ -348,6 +355,10 @@ function witnessedPrefix(artifact, prefix, task, manifest) {
 
 export async function proposeNext({ manifest, task, history, availableTools,
                                     similarity, minSimilarity, minMargin }) {
+  if (manifest.artifacts.some(a => a.continuation_policy_digest !== undefined)) {
+    return (await proposeReadyBatch({ manifest, task, history, availableTools,
+      similarity, minSimilarity, minMargin, maxBatch: 1 }))[0] ?? null;
+  }
   if (!history.length || typeof similarity !== 'function' ||
       !(minSimilarity >= 0 && minSimilarity <= 1) ||
       !(minMargin >= 0 && minMargin <= 1)) return null;
@@ -488,7 +499,7 @@ function isClosedSourceRead(row, manifest) {
     Object.keys(contract.default_params).length === 0 &&
     edges.length === 1 && edges[0].to_param === 'source_id' &&
     edges[0].from_field === 'source_id' &&
-    /(?:^|__)read_pinned_[a-z0-9_]+$/.test(row.tool);
+    isSourceDereferenceName(row.tool, contract);
 }
 
 function isClosedUniqueMessageRead(row, manifest) {
@@ -536,6 +547,11 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
         if (artifact.code_nodes?.length && ++codeAttempts > 8) return [];
         const args = await bindNext(artifact, nextTool, prefix, task, manifest);
         if (!args) continue;
+        const hasGrantPolicy = manifest.contracts[artifact.tools[0]]?.continuation_policy !== undefined;
+        const continuation = hasGrantPolicy ? closedContinuation({ artifact, prefix, task,
+          manifest, availableTools, args, nextTool }) : null;
+        // An invalid permission must never be rescued by semantic similarity.
+        if (hasGrantPolicy && !continuation) continue;
         const edges = artifact.transfer_evidence.filter((edge) => edge.to_tool === nextTool);
         const codeNodes = artifact.code_nodes?.filter((node) =>
           node.to_tool === nextTool) ?? [];
@@ -575,6 +591,7 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
           prefix_length: length, supporting_task_count: artifact.supporting_task_count,
           code_node_ids: codeNodes.map((node) => node.node_id),
           code_program_digests: codeNodes.map((node) => node.program_digest),
+          ...(continuation ? { continuation_expected: continuation } : {}),
           // Match the task against the certified remaining path. A navigation
           // step alone may say little about the purpose of the read it enables.
           description: artifact.tools.slice(length)
@@ -593,7 +610,7 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     .filter(([, rows]) =>
       (new Set(rows.map((row) => digest([row.tool, row.arguments]))).size === 1 &&
         rows.every((row) => isClosedSourceRead(row, manifest) ||
-          isClosedUniqueMessageRead(row, manifest))))
+          isClosedUniqueMessageRead(row, manifest) || row.continuation_expected)))
     .map(([root]) => root));
   const query = `${task.intent}\nRecent tools: ${history.slice(-4)
     .map((row) => row.name).join(', ')}`;
@@ -607,7 +624,7 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     const closed = closedRoots.has(row.root_key);
     const similarityScore = closed ? null : scores[scoreIndex++];
     return { ...row, similarity: similarityScore,
-    selection_basis: closed ? (isClosedUniqueMessageRead(row, manifest)
+    selection_basis: closed ? (row.continuation_expected ? 'closed_approved_plan_continuation' : isClosedUniqueMessageRead(row, manifest)
       ? 'closed_unique_message_read' : 'closed_source_read') : 'semantic_score',
     score: (closed ? 0.8 : similarityScore * 0.8) +
       Math.min(row.supporting_task_count, 5) / 5 * 0.1 +

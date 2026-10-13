@@ -13,6 +13,7 @@ import json
 from typing import Any, Mapping
 
 from .trace_compiler import artifact_signature, contract_signature
+from .continuation_policy import valid_granted_record, same_grant
 
 
 def _value(observation: dict[str, Any] | None, field: str) -> Any:
@@ -77,6 +78,12 @@ def _witnesses(trace: Any, candidate: dict[str, Any], contracts: Mapping[str, An
                     or not _argument_shape(source.arguments, contracts[source_name])):
                 continue
             value = _value(source.observation, source_field)
+            policies = [contracts[name].continuation_policy for name in (source_name, target_name)]
+            if any(policies) and (not all(policies) or policies[0] != policies[1]
+                    or not valid_granted_record(source, policies[0])
+                    or not valid_granted_record(target, policies[0])
+                    or not same_grant(source, target)):
+                continue
             if (value is not None and not isinstance(value, (list, dict))
                     and type(value) is type(target.arguments[target_param])
                     and value == target.arguments[target_param]
