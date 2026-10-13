@@ -1,6 +1,6 @@
 # Harless 多场景 Runtime 集成验收
 
-- 实验 ID：`harless-scenes-runtime-20261013-v1`；日期：2026-10-13。
+- 实验 ID：`harless-scenes-runtime-20261013-v1`；开始：2026-10-13，交接完成：2026-10-14。
 - 问题：原生菜单是否实际改变下一任务的 MCP/Prompt/RSI 策略，同时维持任务冻结与用户边界。若只改变显示、错用样例或跨 Session 读取输入，即否定集成通过。
 - 类型：合成资料上的实际 Harness/MCP 和真实 DeepSeek 联调；不是前瞻科研任务，也不证明科研质量或降本。
 - 基线：最新 `origin/main` `62ee46b`；独立分支 `codex/scene-rsi-bridge`。保留原论文目录、用户隔离协作者未提交文件及共享服务器；没有修改上游 Harness。
@@ -31,6 +31,7 @@ npm run web:scenes:check -- --real-model
 - 全套 `npm test`：154 Python / 60 Node 通过。PPT Node含空job权限反例：53通过。smoke：18题/83来源通过。
 - 控制协议：命令、模式、preset重组、预览冻结、继承、拒绝及三套历史MCP表面通过，模拟Provider仅用于协议诊断。
 - 新生产场景无模型验收：24种菜单组合、缺后端/缺库拒绝、PPT19工具与通用2工具实际加载、指令/上传绑定、已预览任务冻结、两个用户启动实例、外来Session/Task/收据拒绝均通过。
+- 旧冻结入口：11组通过，含错误工具、失败、取消、限额及失效恢复。
 - 历史动态任务诊断：13组通过；portfolio baseline/shadow/execute 为14/14/7模拟请求，Execute结果验证5次，改题面回退14请求/0跳过。上述是原认证有限契约诊断，独立标记 `diagnostic:true`，不能当作生产全Schema认证或实付节省。
 
 | 真实任务 | 任务 ID | 状态 | LLM请求 | MCP调用/错误 | verified skip | 代理估费USD | 耗时秒 |

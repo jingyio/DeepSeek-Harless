@@ -1,8 +1,8 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-13：多场景前后端桥接
+## 2026-10-14：多场景前后端桥接
 
-- 更新时间与交接人：2026-10-13，Codex。
+- 更新时间与交接人：2026-10-14，Codex。
 - 目标与范围：原生 `/harless` 实际选择 Scene/Mode/RSI，统一已有 Runtime；未开发缺失的论文/数据业务后端。
 - 分支/版本：`codex/scene-rsi-bridge` 基于 main `62ee46b`，已推送；PR与最终提交以本分支历史为准，未合并。原论文/用户隔离工作区保持。
 - 已完成：`harless_scenarios.py`登记；`harless_settings.ts/dsh_web_tasks.ts`真实选择及任务冻结；`harless_task_scope.ts`独立cwd/preset/上传/job；PPT现有19工具及通用文件MCP；生产Execute完整Schema/匹配服务准入，历史诊断分列。无新Agent循环或上游改动。
