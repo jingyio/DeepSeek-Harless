@@ -107,7 +107,8 @@
   const status = document.createElement('span'); status.hidden = true;
 
   function installPicker() {
-    const slot = document.querySelector('[data-slot="conversation.hero.agentPreset"]');
+    const slot = document.querySelector('[data-slot="conversation.input.left"]')
+      ?? document.querySelector('[data-slot="conversation.hero.agentPreset"]');
     if (!slot || document.getElementById('harless-picker-anchor')) return;
     const anchor = document.createElement('span'); anchor.id = 'harless-picker-anchor'; anchor.className = 'harless-picker-anchor';
     const trigger = document.createElement('button'); trigger.type = 'button'; trigger.className = 'harless-picker-trigger';
