@@ -141,10 +141,3 @@ Motif 模式的入口与普通组相同，增加 `--mode shadow` 或 `--mode exe
 
 每人一个场景分支，例如 `codex/scene-literature`、`codex/scene-results`、`codex/scene-collaboration`，主要改自己的 `scenarios/<name>/` 和对应测试。你负责公共接口和合并；核心变更先协调。每个小改动提交一次，通过 `npm test` 后发 PR，尽早合回 main。合入别人的工作后，各自同步最新 main。具体操作见 [协作说明](docs/collaboration.md)。
 
-## 科研 PPT 历轮报告与恢复交付
-
-历轮完整 PDF 报告及修订版本见 [报告索引](docs/experiments/research-ppt-reports/README.md)，包含历史失败和勘误；原始论文、运行日志、凭证仍只保存在私有区域。报告版本数量不等于独立实验数量。
-
-V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复与交付说明](scenarios/research_ppt/delivery.md)。新增入口仍使用 Python 场景工具后端；未实现无 Python 插件产品。最新两题对照的 Motif 组请求、token 和代理估费均增加，且未达到统一人工质量门槛，不支持整体降本。详见 [V7](docs/experiments/research-ppt-v7-delivery-rsi-20261011.md)、[V8](docs/experiments/research-ppt-v8-cost-quality-rsi-20261011.md)。科研 PPT 为场景 pilot，不能代替主线跨应用科研决定验收。
-
-后续工程结果见 [V10](docs/experiments/research-ppt-v10-product-20261012.md) 与 [V11](docs/experiments/research-ppt-v11-scientific-design-20261012.md)：V10 在两份相同明确标题编辑任务中由普通入口省去模型；V11 增加科研原图、结果、方法页型并交付三组同内容对照和一份真实新稿。两者都不称新增 RSI。原始轨迹、来源及 PPT 仅保存在私有区，独立科学/视觉人评与完整生成净成本仍未证明。
