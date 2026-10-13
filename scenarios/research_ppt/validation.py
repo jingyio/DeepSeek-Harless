@@ -749,6 +749,7 @@ def _convert(binary: str, source: Path, directory: Path, timeout: int):
                '--nologo', '--nodefault', '--norestore', '--nofirststartwizard',
                '--convert-to', 'pdf:impress_pdf_Export', '--outdir', str(directory), str(source)]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               env={**os.environ,'SAL_DISABLE_OPENCL':'1','SAL_USE_VCLPLUGIN':'svp'},
                                start_new_session=os.name == 'posix')
     timed_out = False
     try:
