@@ -34,6 +34,8 @@ PPT 未构建或缺 Python 依赖时目录返回 `ppt_adapter_not_built` / `ppt_
 
 `GET/POST /api/harless/settings` 仍由 Harness Connection 认证，`selection:{scene,mode,rsi}` 仅接受登记 ID 和协议值。GET 返回 `available/unavailable_reason/execute_available/execute_unavailable_reason`，不返回 MCP 命令、凭证或服务器路径。旧 `select_preview_scene` / `clear_preview_scene` 作为真实选择的兼容别名，不保存独立预览状态。
 
+GET 另返回 `conversation_only:boolean`：经管理员从其他旧运行目录迁入的历史会话为 `true`，允许保留上下文的文字续聊，继续使用逐轮预算，但不加载新版场景工具或修改已锁定的旧 preset。向此类会话提交附件返回 `409 new_session_required`；文件任务或新版工具需要新会话。普通会话及当前目录内正常重启的会话为 `false`。
+
 `new_session` 可继承已绑定 Session 的下一任务设置；不能改变现有任务。浏览器 `cwd/workspaceId` 被拒绝，服务器分配独立 cwd 与 preset。独立启动模式每 Session 绑定一项任务；网关的无工具通用对话保留同 Session 连续轮次与逐轮预算。切换场景或重新绑定文件/PPT任务要求新 Session，不修改历史任务。
 
 任务 API 新增可选 `request.scene_options`，只接受 PPT `{slides:1..30, template:"academic"|"lab", allow_output:boolean}`；默认 6 页、academic、只读。输出开启须先有已批准 PDF/PPTX，通过预览后明确 submit。原生聊天当前未提供页数、模板和输出权限编辑界面；需要生成交付的用户先用任务 API 设置这些字段，不能通过自然语言默提高 job 权限。
