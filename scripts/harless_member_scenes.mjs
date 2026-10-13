@@ -12,6 +12,11 @@ export function memberSceneDeployment(policy, deployment) {
     const p = realpathSync(path);
     if (!isAbsolute(p) || p === '/' || !statSync(p).isDirectory() || /\/(?:\.ssh|credentials|secrets)(?:\/|$)/.test(p))
       throw Error('Invalid member Python dependency root');
+    const children=readdirSync(p);
+    if(children.some(name=>['.env','.credentials.yaml','accounts.json','.ssh'].includes(name)) ||
+       !(children.includes('pyvenv.cfg') || (children.includes('bin') && children.includes('lib') &&
+          readdirSync(join(p,'lib')).some(name=>/^python\d+\.\d+$/.test(name)))))
+      throw Error('Member Python mount must be an installation, not a user or project directory');
     return p;
   });
   const executable = join(realpathSync(dirname(deployment.pythonExecutable)), basename(deployment.pythonExecutable));
@@ -26,13 +31,16 @@ export function memberSceneDeployment(policy, deployment) {
   const mounts = [...mappings, ...pythonRoots.map(source => ({ source, target: source }))];
   if (deployment.libraryRoot) {
     const source = realpathSync(deployment.libraryRoot);
+    if(source==='/')throw Error('Invalid member runtime library root');
     // Deploy only sanitized runtime artifacts; never mount historical raw traces or inputs.
     const allowed = new Set(['online-manifest.json','library.json','tool-schemas.json','task.json','certification.json']);
+    let count=0;
     const check = path => { for (const item of readdirSync(path, { withFileTypes: true })) {
+      if(++count>128)throw Error('Member runtime library is too large');
       if (item.isSymbolicLink()) throw Error('Member library symlink rejected');
       const p=join(path,item.name);
       if (item.isDirectory()) check(p);
-      else if (!item.isFile() || !allowed.has(item.name)) throw Error('Member library includes non-runtime private evidence');
+      else if (!item.isFile() || !allowed.has(item.name) || statSync(p).size>4000000) throw Error('Member library includes non-runtime private evidence');
     } };
     check(source); mounts.push({ source, target: '/app/motif-libraries' });
     mappings.push({ source, target: '/app/motif-libraries' });

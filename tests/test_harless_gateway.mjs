@@ -13,6 +13,7 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   for(const name of ['src','scripts','scenarios','python/bin'])mkdirSync(join(root,name),{recursive:true});
   const python=join(root,'python/bin/python');writeFileSync(python,'test dependency file');
+  writeFileSync(join(root,'python/pyvenv.cfg'),'diagnostic installation marker');
   const scene={id:'new-scene',preset:'sss-task',label:'New Scene',adapter:'workspace',
     allowed_tools:['mcp__workspace__list_files'],environment_references:{},
     mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',config:{serverName:'workspace',transport:'stdio',command:python,
@@ -31,6 +32,7 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   assert.throws(()=>memberSceneDeployment({...policy,scenes:[{...scene,environment_references:{key:'owner-secret'}}]},deployment),/credentials/);
   const withSecret=structuredClone(scene);withSecret.mcp_rows[0].config.env={API_KEY:'never-deploy'};
   assert.throws(()=>memberSceneDeployment({...policy,scenes:[withSecret]},deployment),/authority/);
+  assert.throws(()=>memberSceneDeployment(policy,{...deployment,pythonRoots:[root]}),/installation/);
   const unsafe=structuredClone(scene);unsafe.mcp_rows[0].config.args[0]='/owner/private/tool.py';
   assert.throws(()=>memberSceneDeployment({...policy,scenes:[unsafe]},deployment),/approved scene code/);
   assert.throws(()=>memberSceneDeployment({...policy,scenes:[{...scene,manifest:join(root,'private-manifest.json')}]},deployment),/sanitized/);

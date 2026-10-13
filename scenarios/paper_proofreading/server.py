@@ -33,6 +33,9 @@ class PaperEvidence(SessionFiles):
         if not row or len(row) != 3 or row[2] != 'latex': raise ValueError('wrong_or_unknown_source_view')
         main, version, _ = row
         if self.scope_version() != version: raise ValueError('paper_scope_version_changed')
+        for entry in self.list_files()['files']:
+            if Path(entry['name']).suffix.lower() in ('.tex','.bib','.bbl','.log') and entry['bytes']>256*1024:
+                raise ValueError('paper_text_limit')
         bbl_path = self.root / (Path(main).stem + '.bbl')
         bbl = self.read(bbl_path.name, limit=256*1024)[0].decode('utf-8') if bbl_path.exists() else None
         diagnostic = paper_static_checks.source_diagnostics(self.root, main, bbl)

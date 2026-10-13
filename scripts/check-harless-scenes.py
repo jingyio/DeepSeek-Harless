@@ -59,6 +59,7 @@ def main():
     parser.add_argument('--run-request-limit', type=int, default=24)
     parser.add_argument('--scenes', nargs='+', choices=['new-scene','ppt','paper-proofreading','research-data-analysis'],
                         default=['new-scene','ppt','paper-proofreading','research-data-analysis'])
+    parser.add_argument('--mode', choices=['baseline','shadow','execute'], default='shadow')
     args = parser.parse_args(); os.umask(0o077)
     groups = []
     # Bob stays model-free; separate Connection tokens, DSH_HOME, policy and Session storage.
@@ -73,9 +74,10 @@ def main():
             for mode in ('baseline', 'shadow', 'execute'):
                 for rsi in (False, True):
                     wanted = {'scene': scene['id'], 'mode': mode, 'rsi': rsi}
+                    rejected = mode == 'execute' and rsi and not scene['execute_available']
                     result = settings(alice, base, {'action': 'select', 'selection': wanted},
-                        expected=400 if mode == 'execute' and rsi else 200)
-                    if mode == 'execute' and rsi:
+                        expected=400 if rejected else 200)
+                    if rejected:
                         assert result['error']['code'] == 'execute_unavailable'; continue
                     assert result['selection'] == wanted
                     if not scene['available']:
@@ -88,11 +90,13 @@ def main():
         bob_draft = web.api(bob, bob_base, {'action': 'preview', 'request': 'Bob private draft'})
         drafts = []
         for scene in args.scenes:
-            settings(alice, base, {'action': 'select', 'selection': {'scene': scene, 'mode': 'shadow', 'rsi': True}})
+            settings(alice, base, {'action': 'select', 'selection': {'scene': scene, 'mode': args.mode, 'rsi': True}})
             text = {'new-scene':'列出上传的文件，读取文件文本，引用真实文件名和 SHA256；不要猜路径。',
                     'ppt':'调用 list_inputs，pin_source 并 read_source 读取 doc_1，简短概括其文本，引用来源句柄与 SHA256。只读检查，不生成幻灯片。',
                     'paper-proofreading':'调用 list_inputs，按实际文件名和 SHA256 使用 pin_document、read_pinned_document 阅读论文文本，给出一句措辞修改建议并引用来源版本。',
                     'research-data-analysis':'调用 list_inputs，按实际文件名和 SHA256 使用 pin_dataset、read_pinned_dataset_summary 计算 x 的均值和缺失数，简短回答并引用来源版本。'}[scene]
+            if scene=='ppt' and args.mode=='execute':
+                text='当前已上传 doc_1。请直接调用 pin_source(document_id="doc_1") 固定它，再读取其内容，用一句话概括并引用真实来源句柄和版本。只读检查，不生成幻灯片。'
             draft = web.api(alice, base, {'action': 'preview', 'request': {'instruction': text,
                 **({'scene_options': {'slides': 1, 'allow_output': False}} if scene == 'ppt' else {})}})
             if scene == 'ppt':
@@ -108,7 +112,7 @@ def main():
             prefix = {'ppt':'mcp__ppt__','new-scene':'mcp__workspace__','paper-proofreading':'mcp__paper_checks__','research-data-analysis':'mcp__data_analysis__'}[scene]
             assert frozen['tools'] and all(tool['name'].startswith(prefix) for tool in frozen['tools'])
             assert frozen['instructions'] and frozen['instructions_sha256']
-            assert frozen['user_id'] == 'scene-check-alice' and frozen['selection']['mode'] == 'shadow'
+            assert frozen['user_id'] == 'scene-check-alice' and frozen['selection']['mode'] == args.mode
             assert frozen['workspace'].startswith(str(output)) and draft['scene_inputs']
             other = 'ppt' if scene == 'new-scene' else 'new-scene'
             next_choice = settings(alice, base, {'action': 'select', 'session_id': draft['session_id'],
@@ -128,8 +132,13 @@ def main():
             if args.real_model:
                 web.submit(alice, base, draft); result = web.wait_task(alice, base, draft['task_id'], seconds=180)
                 assert result['status'] == 'completed' and result['stats']['tool_calls'] > 0
-                assert result['stats']['tool_errors'] == 0 and result['stats']['verified_skips'] == 0
-                assert result['fallback_reason'] in ('no_certified_library','runtime_bundle_not_deployed')
+                assert result['stats']['tool_errors'] == 0
+                if args.mode=='execute':
+                    assert result['stats']['verified_skips']>0 and result['fallback_reason'] is None
+                else:
+                    assert result['stats']['verified_skips']==0
+                    if not frozen.get('binding_policy'):
+                        assert result['fallback_reason'] in ('no_certified_library','runtime_bundle_not_deployed')
                 groups.append({'group': scene + '-real-harness', 'task_id': draft['task_id'], 'stats': result['stats']})
             else:
                 web.api(alice, base, {'action': 'cancel', 'task_id': draft['task_id']})
