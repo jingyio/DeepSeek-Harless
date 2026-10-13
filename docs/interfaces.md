@@ -437,3 +437,9 @@ v1三十任务14合格/16失败，v2十四任务9合格/5失败且L2编译拒绝
 场景schema_version仍为1，新增显式acceptance_guard={kind:"file_management",max_repairs:0..2}；只允许native及已允许的mcp__file_management__submit_report，不接受客户端验收程序路径。配置会替代completion_guard，避免叠加续写次数。SDK与普通Web preset共用sss-acceptance-guard TypeScript停止钩子，固定Python验收器仅检查原FM_TASK_FILE、真实交付与实际副本。每轮档案不可覆盖；原任务SHA/权限/预算代理/步数/MCP状态保持。task-acceptance-repair为后端生成来源，全部Motif门收到该来源后回普通模型；失败非成功或认证跳过。
 
 验收报告必须与当前workspace快照一致；历史额外读取不能通过删除日志修复，权限/版本/预算/次数不足保持失败。CLI指标acceptance_guard_enabled/acceptance_checks/acceptance_repairs/acceptance_passed/acceptance_trace_dir/max_repairs；Web stats暴露修复/验收次数及最终验收布尔，最后验收失败或缺少结果不得显示completed。默认场景不启用。前端接入见handoffs/frontend.md，源和验证见changes/acceptance-repair.md。
+
+## 文件任务操作与读取范围契约（2026-10-13）
+
+新任务显式使用task_tools.TaskScene/sss-file-task-v1，14工具及参数结构保持，read_task追加任务/读取契约、task_execution_version_sha256、全局rename_targets或仅表示候选路径的classification_targets；submit_report追加任务契约版本和读取口径。预览前校验原输入实际读取/完整集合，重命名全局编号、转换指定参数及分类完整目标路径，空/空白必须实际读取且保持原位。无匹配时不生成写计划。未知版本/字段拒绝。
+
+转换区分必读原件与可选/必读产物，产物需真实执行、当前字节/版本/日志及成功原生读取事件；无关读取仍不合格。重命名新题显式allow_optional_original_reads=true，零必读不等于禁止正文。固定验收器只对含task_contract的新输入分流，旧基准不重判，失败/费用/每轮归档与最多2次普通修复保留。读取图四方法及依赖/实际schema未改，旧L2锁不改，新效果验收另记源摘要。详见[逐项改动](changes/file-management-task-contract.md)、[前端Schema](schemas/file-task-contract.schema.json)、[48次实验记录](experiments/file-management-task-quality-20261013.md)。

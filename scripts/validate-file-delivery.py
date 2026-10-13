@@ -7,6 +7,7 @@ sys.path.insert(0,str(ROOT/'scenarios/file-management'))
 from common import DATA,digest,save,snapshot
 from report_study import verify_report,benchmark_targets
 from verify import verify as legacy_verify
+from task_contract import verify_task,scope_errors
 
 def private(path):
     p=Path(path)
@@ -31,19 +32,23 @@ def check(task_file,task_sha,delivery_root,archive_root,round_no,payload):
     receipt=payload.get('receipt');receipt_ok=bool(isinstance(receipt,dict) and report and
         receipt.get('status') in ('delivered','delivered_with_gaps') and receipt.get('artifact_sha256')==digest(report)
         and receipt.get('input_sha256')==digest(spec) and Path(receipt.get('artifact','')).resolve()==report_path.resolve())
-    verify=verify_report if spec.get('report_contract') else legacy_verify
+    verify=verify_task if spec.get('task_contract') else verify_report if spec.get('report_contract') else legacy_verify
     review=verify(spec,report if receipt_ok else None,delivery,payload.get('events',[]))
     if not receipt_ok and 'no actual submit_report receipt' not in review['errors']:review['errors'].append('no verified current submit_report receipt')
     if report and report.get('final_snapshot')!=current:review['errors'].append('published report snapshot differs from current workspace; publish current results again')
     review['passed']=not review['errors']
     repairable=True
-    if spec.get('report_contract') and spec.get('role')=='benchmark':
+    if spec.get('task_contract'):
+        scope,_=scope_errors(spec,delivery)
+        if any(error.startswith(('read outside','original input read version')) for error in scope):repairable=False
+    elif spec.get('report_contract') and spec.get('role')=='benchmark':
         required=benchmark_targets(spec)
         read_paths={json.loads(p.read_text())['path'] for p in (delivery/'reads').glob('*.json')}
         if required and not read_paths<=required:repairable=False
     result={'version':'sss-file-acceptance-v1','round':round_no,'passed':review['passed'],'errors':review['errors'],
         'repairable':repairable,'receipt_verified':receipt_ok,'task_sha256':task_sha,'task_input_sha256':digest(spec),
         'workspace_snapshot_sha256':digest(current),'archive':str(stage),'human_blind_review':False}
+    if spec.get('task_contract'):result.update(task_contract_version=review['contract_version'],reading_scope=review)
     save(stage/'result.json',result)
     if snapshot(workspace)!=current:raise ValueError('workspace changed during read-only acceptance')
     return result

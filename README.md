@@ -109,3 +109,5 @@ Motif 模式的入口与普通组相同，增加 `--mode shadow` 或 `--mode exe
 ## 两天协作约定
 
 每人一个场景分支，例如 `codex/scene-literature`、`codex/scene-results`、`codex/scene-collaboration`，主要改自己的 `scenarios/<name>/` 和对应测试。你负责公共接口和合并；核心变更先协调。每个小改动提交一次，通过 `npm test` 后发 PR，尽早合回 main。合入别人的工作后，各自同步最新 main。具体操作见 [协作说明](docs/collaboration.md)。
+
+普通文件管理新增[全局重命名与读取范围契约](docs/changes/file-management-task-contract.md)：错误编号/分类路径在写前拒绝，转换产物按真实执行版本核验，空文本必须实际读取，无需写操作时直接交付。[新留出最终24/24通过](docs/experiments/file-management-task-quality-20261013.md)，首轮4失败及两版513HTTP/USD0.338547576全部保留；L2总体费用仅−1.43%，不支持普遍降本。前端新任务选task_tools.py与显式task_contract；旧工具和历史验收保留。

@@ -1,6 +1,30 @@
 # 前端接入当前科研Agent分支
 
-2026-10-13。代码分支：`feature/rsi-research-agent`，仓库 `jingyio/DeepSeek-Harless`。这是开发联调版本；源码提交 `47d9218` 已于北京时间19:46推送，下面安装命令从当前分支取得它。
+## 最新文件任务契约（2026-10-13）
+
+重命名/转换/空文本的新TaskScene最终24次新留出均通过机器验收。使用既有分支更新后的`scenarios/file-management/task_tools.py`作为MCP入口，保持原14工具、stdio配置及`FM_TASK_FILE`/`FM_OUTPUT`变量；场景继续显式`acceptance_guard={"kind":"file_management","max_repairs":2}`。旧服务和旧任务不会自动升级口径。
+
+在原本私有任务JSON（含workspace、initial_snapshot、objective、rules、allowed_operations等）增加如下字段；这里只展示新增部分，不是可独立执行的完整任务。工作目录仍必须是授权testpdf实验副本并有标记，任务JSON与交付目录在.local。
+
+```json
+{
+  "family": "rename",
+  "report_contract": {"version": "sss-file-report-v3", "kind": "task_result"},
+  "task_contract": {
+    "version": "sss-file-task-v1", "kind": "rename",
+    "source_prefix": "inbox/", "destination_prefix": "normalized/",
+    "allow_optional_original_reads": true
+  }
+}
+```
+
+转换使用`kind/family=convert`与`conversions=[{source,destination,format}]`（format=text/csv/jpeg），按需求设置`allow_output_verification_reads`、`require_output_verification_reads`。分类用`kind/family=content_classify`、`source_prefix`与`routes=[{literal,destination_prefix}]`，按首个不区分大小写的字面命中选择，保留相对路径；仅docx/txt/md必读，空白实际读后原位，全部为空则无需操作计划。
+
+前端显示`read_task.reading_contract`中的必读原件、可选读取和允许/必读产物，以及正确编号/完整候选路径。只有当前程序验收通过才显示完成；不要把`submit_report.status=delivered`单独当任务成功。最终task_result的file_ids须包含所有当前身份。结构预校验可用[JSON Schema](../schemas/file-task-contract.schema.json)，服务端继续执行跨字段/相对路径/版本/权限校验。
+
+新TaskScene继承原认证读取图，私有L2需明确policy/scope才启用；新效果契约不代表整个Agent已经认证或Web可任意选择用户目录。[逐项接口变化](../changes/file-management-task-contract.md)、[两版质量/费用/失败](../experiments/file-management-task-quality-20261013.md)。
+
+2026-10-13。代码分支：`feature/rsi-research-agent`，仓库 `jingyio/DeepSeek-Harless`。这是开发联调版本；首个源码包`47d9218`已于北京时间19:46推送，本轮任务契约修订继续同步到该分支，下面安装命令取得最新HEAD。
 
 ## 安装与免费联调
 
@@ -55,6 +79,8 @@ npm run web
 node scripts/project.mjs python scripts/check-acceptance-repair.py --case pass
 node scripts/project.mjs python scripts/check-acceptance-repair.py --case exhaustion
 node scripts/project.mjs python scripts/check-acceptance-repair.py --case budget
+# 新任务契约走同一闭环
+node scripts/project.mjs python scripts/check-acceptance-repair.py --task-contract --case pass
 ```
 
 普通文件管理目前通过指定实验副本和CLI运行，不是一个可任意选择用户真实目录的成品HTTP服务。复制、移动、转换、隔离和恢复均须遵循现有工具权限；前端不能通过选择execute或修复按钮扩大授权。实现细节见[接口变更](../changes/acceptance-repair.md)、[场景入口](../../scenarios/file-management/README.md)。新克隆缺少本机私有库时先用普通Harness或公开Motif样例，不复制别人实验库或构造认证摘要。

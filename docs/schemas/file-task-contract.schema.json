@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "Conversion": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "destination": {
+          "title": "Destination",
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "text",
+            "csv",
+            "jpeg"
+          ],
+          "title": "Format",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "destination",
+        "format"
+      ],
+      "title": "Conversion",
+      "type": "object"
+    },
+    "Route": {
+      "additionalProperties": false,
+      "properties": {
+        "literal": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Literal",
+          "type": "string"
+        },
+        "destination_prefix": {
+          "title": "Destination Prefix",
+          "type": "string"
+        }
+      },
+      "required": [
+        "literal",
+        "destination_prefix"
+      ],
+      "title": "Route",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "sss-file-task-v1",
+      "title": "Version",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "rename",
+        "convert",
+        "content_classify"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "source_prefix": {
+      "default": "inbox/",
+      "title": "Source Prefix",
+      "type": "string"
+    },
+    "destination_prefix": {
+      "default": "normalized/",
+      "title": "Destination Prefix",
+      "type": "string"
+    },
+    "conversions": {
+      "items": {
+        "$ref": "#/$defs/Conversion"
+      },
+      "maxItems": 32,
+      "title": "Conversions",
+      "type": "array"
+    },
+    "routes": {
+      "items": {
+        "$ref": "#/$defs/Route"
+      },
+      "maxItems": 8,
+      "title": "Routes",
+      "type": "array"
+    },
+    "allow_output_verification_reads": {
+      "default": true,
+      "title": "Allow Output Verification Reads",
+      "type": "boolean"
+    },
+    "require_output_verification_reads": {
+      "default": false,
+      "title": "Require Output Verification Reads",
+      "type": "boolean"
+    },
+    "allow_optional_original_reads": {
+      "default": false,
+      "title": "Allow Optional Original Reads",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "version",
+    "kind"
+  ],
+  "title": "TaskContract",
+  "type": "object"
+}

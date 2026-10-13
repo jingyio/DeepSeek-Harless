@@ -146,3 +146,11 @@ node scripts/project.mjs python scenarios/file-management/learn.py --experiment 
 从18个独立训练任务、跨10类任务的117条真实参数传递中学出1个 `pin_file → read_file` Motif，并经独立认证、213份文件读取重放及权威Node manifest校验。库位于 `.local/file-management/fm-20261013-01c48298/learned/`；当前不默认启用。
 
 正式36任务292请求、代理估费0.20159148美元；包含6项试跑，总42任务336请求、0.239280204美元。5项未通过验收、17次工具错误（试跑12、正式5）和一次离线收集器修复均保留。内容检索结果集合、重命名编号作用域需要下一版本明确；原始失败不追改。详见实验记录。
+
+## 当前任务质量修复入口
+
+新任务用task_tools.py、显式sss-file-task-v1及sss-file-report-v3/task_result，配置acceptance_guard最多2轮。重命名rename_targets统一编号，建议显式allow_optional_original_reads=true；转换指定conversions并区分原件/产物核验；分类只读前缀内docx/txt/md，含0字节/空白，完整collect_reads后判断，无变化直接报告。
+
+最终新12条件×H/L2为24/24；首轮24中4失败及全部费用保留。两版513HTTP/USD0.338547576；仅生成/模板材料的机械验收。读取图和旧L2不改，确定性守卫不是learned Motif收益；效果验收单独记版本。[完整结果](../../docs/experiments/file-management-task-quality-20261013.md)、[前端字段/Schema](../../docs/changes/file-management-task-contract.md)。
+
+准备新实验：node scripts/project.mjs python scenarios/file-management/task_quality_study.py（本机需既有私有模板，不调用模型）；显式--call-model才执行。此前report_study.py和历史协议保留，精确重现使用frozen-source，不改旧结果。

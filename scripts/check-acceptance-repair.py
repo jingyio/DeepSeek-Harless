@@ -38,19 +38,25 @@ class Provider(BaseHTTPRequestHandler):
   elif not executed:actions=[('execute_plan',{'plan_id':plans[-1]['plan_id']})]
   elif any(r['path'].startswith('inbox/') for r in listing['files']):actions=[('list_files',{})]
   elif len(reports)==1:actions=[('submit_report',{'summary':'Corrected global numbering.','file_ids':[r['file_id'] for r in listing['files']],'gaps':[]})]
+  if work and work.get('report_contract'):
+   for n,args in actions:
+    if n=='submit_report':args['report_kind']='task_result'
   delta={'role':'assistant','tool_calls':[{'index':i,'id':f'fixture-{len(self.server.requests)}-{i}','type':'function','function':{'name':PREFIX+n,'arguments':json.dumps(a)}} for i,(n,a) in enumerate(actions)]} if actions else {'role':'assistant','content':'Stop and let the fixed acceptance guard decide.'}
   base={'id':'repair-fixture','created':1,'model':body['model'],'object':'chat.completion.chunk'}
   chunks=[{**base,'choices':[{'index':0,'delta':delta,'finish_reason':None}]},{**base,'choices':[{'index':0,'delta':{},'finish_reason':'tool_calls' if actions else 'stop'}]},{**base,'choices':[],'usage':{'prompt_tokens':100,'completion_tokens':20,'total_tokens':120}}]
   data=(''.join('data: '+json.dumps(c)+'\n\n' for c in chunks)+'data: [DONE]\n\n').encode();self.send_response(200);self.send_header('Content-Type','text/event-stream');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--case',choices=['pass','exhaustion','budget'],default='pass');a=p.parse_args();uid=uuid4().hex
+ p=argparse.ArgumentParser();p.add_argument('--case',choices=['pass','exhaustion','budget'],default='pass');p.add_argument('--task-contract',action='store_true');a=p.parse_args();uid=uuid4().hex
  out=ROOT/'.local/acceptance-repair-checks'/uid;work=ROOT/'testpdf/file-management-experiment'/('repair-check-'+uid)
  (work/'inbox').mkdir(parents=True);(work/'.experiment-copy').write_text(uid);(work/'inbox/a.txt').write_text('text bytes');(work/'inbox/z.md').write_text('markdown bytes')
  spec={'workspace':str(work),'task_id':uid,'family':'rename','objective':'Rename all inbox files with globally numbered destinations.','rules':{},'allowed_operations':[] if a.case=='exhaustion' else ['move'],'initial_snapshot':snapshot(work)}
+ if a.task_contract:
+  spec.update(report_contract={'version':'sss-file-report-v3','kind':'task_result'},task_contract={'version':'sss-file-task-v1','kind':'rename'})
  save(out/'input.json',spec);(out/'prompt.md').write_text('Use actual tools. The provider fixture injects one incomplete first report. Repair only inside the original permissions.');(out/'prompt.md').chmod(0o600)
  names=['read_task','list_files','pin_file','read_file','hash_files','build_index','search_index','compare_snapshot','preview_actions','execute_plan','restore_plan','submit_report']
- config={'schema_version':1,'name':'file_management','prompt':str(out/'prompt.md'),'servers':[{'server_name':'file_management','transport':'stdio','command':'${PYTHON}','args':['${PROJECT_ROOT}/scenarios/file-management/file_tools.py'],'cwd':'${PROJECT_ROOT}','env':{'FM_TASK_FILE':{'from_env':'FM_TASK_FILE'},'FM_OUTPUT':{'from_env':'FM_OUTPUT'}}}], 'allowed_tools':[PREFIX+n for n in names],'acceptance_guard':{'kind':'file_management','max_repairs':2}}
+ server_path='task_tools.py' if a.task_contract else 'file_tools.py'
+ config={'schema_version':1,'name':'file_management','prompt':str(out/'prompt.md'),'servers':[{'server_name':'file_management','transport':'stdio','command':'${PYTHON}','args':['${PROJECT_ROOT}/scenarios/file-management/'+server_path],'cwd':'${PROJECT_ROOT}','env':{'FM_TASK_FILE':{'from_env':'FM_TASK_FILE'},'FM_OUTPUT':{'from_env':'FM_OUTPUT'}}}], 'allowed_tools':[PREFIX+n for n in names],'acceptance_guard':{'kind':'file_management','max_repairs':2}}
  save(out/'scenario.json',config);prepared=prepare_scenario(out/'scenario.json')
  provider=ThreadingHTTPServer(('127.0.0.1',0),Provider);provider.requests=[];provider.case=a.case;provider.forbidden_attempts=0
  threads=[threading.Thread(target=provider.serve_forever,daemon=True)];threads[0].start()
@@ -70,7 +76,7 @@ def main():
  save(out/'events.json',guard.events);save(out/'provider-requests.json',provider.requests)
  archive=ROOT/'.local/task-acceptance'/hashlib.sha256(session.encode()).hexdigest();checks=[json.loads(x.read_text()) for x in sorted(archive.glob('round-*/result.json'))]
  repairs=[e for e in guard.events if e.get('type')=='user/message' and e.get('data',{}).get('source',{}).get('kind')=='task-acceptance-repair']
- body={'case':a.case,'error':error,'finish_reason':result.finish_reason if result else None,'checks':checks,'repairs':len(repairs),'mock_http_requests':len(provider.requests),'budget_accounted_usd':state.reserved_usd,'real_api_requests':0,'output':str(out)};save(out/'outcome.json',body)
+ body={'case':a.case,'task_contract':a.task_contract,'error':error,'finish_reason':result.finish_reason if result else None,'checks':checks,'repairs':len(repairs),'mock_http_requests':len(provider.requests),'budget_accounted_usd':state.reserved_usd,'real_api_requests':0,'output':str(out)};save(out/'outcome.json',body)
  if a.case=='pass':assert result and result.finish_reason=='completed' and len(checks)==2 and not checks[0]['passed'] and checks[1]['passed'] and len(repairs)==1,body
  elif a.case=='exhaustion':assert len(checks)==3 and all(not x['passed'] for x in checks) and len(repairs)==2 and snapshot(work)==spec['initial_snapshot'],body
  else:assert len(provider.requests)==2 and state.request_count==2 and snapshot(work)==spec['initial_snapshot'],body

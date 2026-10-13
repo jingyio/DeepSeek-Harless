@@ -1,5 +1,18 @@
 # file-management 当前交接
 
+## 最新：重命名/转换/空文本契约修复及新留出完成（2026-10-13）
+
+- 当前feature/rsi-research-agent；本轮新增TaskScene/task_contract固定工具和验收、新实验控制/独立审计、11项契约回归、前端结构Schema。具体共享变化docs/changes/file-management-task-contract.md；旧File/Collection/ReportScene、原22基准失败和库证书不改。
+- 最终fm-task-quality-v2-20261013-f3079826：12新条件×H/L2，24/24机器验收/文件后置通过；225HTTP/USD0.153151224，4工具拒绝计费，0验收失败/后端修复。编号在预览前验证，转换分必读原件/真实产物，空白实际读取且保持原位，全空目录不写。
+- 首轮fm-task-quality-20261013-580d0285：20/24主验收、文件22/24，288HTTP/USD0.185396352；两个重命名读取口径失败、两个L2分类路径/集合错误未完成，49拒绝/7失败阶段/3次修复保留。修订只展示适用字段与完整候选路径，重命名显式允许可选读取，再换新路径/文本冻结，不追改成绩。
+- 两版48任务/513HTTP/USD0.338547576全部计费；独立审计原来源/源码/事件/回执/每轮副本/HTTP/token/费用，原三PDF SHA不变。系列495attempts/4593HTTP/USD3.836167800，74任务失败保留，预算估费余额996.163832200USD；实际账单和人工盲评未知。
+- 最终H/L2均12/12，请求126/99、估费0.077127624/0.076023600，总体仅约−1.43%；转换/分类较低、重命名较高，L2额外24获准但非必需读取。34首集合核验批次/0后继、140自动工具；不证明再入增量、普遍降本或语义泛化。
+- 读取图四方法、实际schema和四个依赖源码不变，原L2 SHA/digest锁不改；新操作/验收另记task_execution_version。新留出未训练库，效果/语义仍普通Harness。默认普通Web不全局启用私有库。
+- 最终561Python/139Node通过、3Docker跳过，18smoke、14工具MCP兼容预检通过；实际免费Harness/MCP一次修复、两轮权限不足、两请求预算停止均通过，0API。原审计计数口径错误及修正日志保存。
+- 入口task_tools.py；前端按docs/handoffs/frontend.md新增显式task_contract和MCP路径，旧入口继续旧口径。完整质量/费用docs/experiments/file-management-task-quality-20261013.md，Schema docs/schemas/file-task-contract.schema.json。
+- 私有.local/file-management两ID留protocol/frozen-source/library-lock/mcp与源兼容/overlap/tasks/attempts/summary/independent-audit；.local/task-acceptance全部逐轮证据；.local/task-contract-development-20261013改前/调度/测试/审计与失败日志；testpdf pristine/retained-final副本。不提交原日志/PDF/库/密钥。
+- 接手：1按显式新契约接前端并实测动态任务，2真实材料/人工盲评和维护总成本，3继续持久化权限/版本/恢复组合认证及独立插件分发。分支同步以最终提交状态为准，旧交接的commit/未推送表述属历史。
+
 ## 最新：验收失败后的普通Harness修复已验证并推送（2026-10-13）
 
 - 用户已恢复推送授权：要求原权限/预算内补最多2轮修复，真实验证后北京时间20:00前推项目分支。源码提交47d9218已于北京时间19:46推送feature/rsi-research-agent，远端SHA已核对；main未改。当前交接补记另随分支提交同步。
