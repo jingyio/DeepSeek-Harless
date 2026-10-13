@@ -4,7 +4,7 @@
 
 - 更新时间与交接人：2026-10-14，Codex。
 - 目标与范围：原生 `/harless` 实际选择 Scene/Mode/RSI，统一已有 Runtime；未开发缺失的论文/数据业务后端。
-- 分支/版本：`codex/scene-rsi-bridge` 基于 main `62ee46b`，已推送；PR与最终提交以本分支历史为准，未合并。原论文/用户隔离工作区保持。
+- 分支/版本：`codex/scene-rsi-bridge` 基于 main `62ee46b`，已推送；[PR #8](https://github.com/jingyio/DeepSeek-Harless/pull/8) 已创建，未合并；最终提交以本分支历史为准。原论文/用户隔离工作区保持。
 - 已完成：`harless_scenarios.py`登记；`harless_settings.ts/dsh_web_tasks.ts`真实选择及任务冻结；`harless_task_scope.ts`独立cwd/preset/上传/job；PPT现有19工具及通用文件MCP；生产Execute完整Schema/匹配服务准入，历史诊断分列。无新Agent循环或上游改动。
 - 已验证：V100 154 Python/60 Node；PPT53 Node；18题/83来源smoke；控制与新场景/动态协议。两项合成来源真实模型任务7请求/5MCP/0工具错误/0实际跳过，见`docs/experiments/harless-scenes-runtime-20261013-v1.md`。生产有库Execute、科研质量和浏览器操作未验收。
 - 配置与数据：生产`config/harless-scenes.json`；诊断`config/harless-diagnostics.json`。私有轨迹/配置/失败保留隔离验收目录，真实run `907266faee4d40d799eca6ae2fa2109d` 已同步本地`.local/integration/scene-rsi-results/`；密钥仅由既有环境提供，未提交。
