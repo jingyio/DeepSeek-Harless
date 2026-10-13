@@ -479,7 +479,19 @@ function offeredSchemaMatches(availableTools, tool, contract) {
 function isClosedSourceRead(row, manifest) {
   const artifact = manifest.artifacts.find((item) => item.motif_id === row.motif_id);
   const contract = manifest.contracts[row.tool];
+  const sourceContract = manifest.contracts[artifact?.tools?.[0]];
   const edges = artifact.transfer_evidence.filter((edge) => edge.to_tool === row.tool);
+  // A PPT/document pin is a structural source selection already frozen by
+  // the task's file hash. Reading the returned source handle is therefore a
+  // closed continuation, provided the contract exposes the same provenance
+  // fields as the witnessed edge. Keep the naming and shape checks narrow so
+  // an arbitrary read tool cannot bypass semantic matching.
+  const documentPinRead = /(?:^|__)pin_source$/.test(artifact?.tools?.[0] ?? '') &&
+    /(?:^|__)read_source$/.test(row.tool) &&
+    sourceContract?.required_params?.length === 1 &&
+    sourceContract.required_params[0] === 'document_id' &&
+    sourceContract.output_fields?.includes('source_id') &&
+    sourceContract.output_fields?.includes('version_sha256');
   return row.version_relation === 'same_source' &&
     row.code_node_ids.length === 0 &&
     contract.read_only === true &&
@@ -488,7 +500,7 @@ function isClosedSourceRead(row, manifest) {
     Object.keys(contract.default_params).length === 0 &&
     edges.length === 1 && edges[0].to_param === 'source_id' &&
     edges[0].from_field === 'source_id' &&
-    /(?:^|__)read_pinned_[a-z0-9_]+$/.test(row.tool);
+    (/(?:^|__)read_pinned_[a-z0-9_]+$/.test(row.tool) || documentPinRead);
 }
 
 function isClosedUniqueMessageRead(row, manifest) {

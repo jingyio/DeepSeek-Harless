@@ -10,7 +10,7 @@ DeepSeek Harless 是本项目统一的产品名称；当前仓库是供场景开
 
 ## 十分钟启动
 
-项目要求 Node.js 20+，当前优先使用已验收的 Node.js 22。Python 3.10.8 与 3.12 均已通过免费运行验收；服务器 3.10.8 的安装、测试与模拟闭环见[验收记录](docs/experiments/server-python310-free-loop-20261009-v1.md)。先安装固定依赖，再跑不付费的检查：
+当前 SDK 场景入口使用 `import.meta.main`，需要 Node.js 22.18+；安装清单的宽松 engine 范围不能代替实际启动验证。Python 3.10.8 与 3.12 均已通过主线免费运行验收；科研 PPT 场景在服务器使用 Python 3.12，额外渲染依赖按场景说明安装。服务器 3.10.8 的主线验收见[验收记录](docs/experiments/server-python310-free-loop-20261009-v1.md)。先安装固定依赖，再跑不付费的检查：
 
 ```sh
 npm ci
@@ -132,6 +132,12 @@ node scripts/project.mjs python scripts/stop-harness-web.py RUN_ID
 
 先读 [接口契约](docs/interfaces.md)，再复制 `scenarios/example/` 接一个新场景。`src/motif_core/LICENSE` 和 [来源及迁移记录](src/motif_core/PROVENANCE.md) 必须保留。
 
+科研 PPT 场景的安装与最短入口见 [research_ppt](scenarios/research_ppt/README.md)：接收 PDF/PPTX、生成可编辑 PPTX，并在 Linux 服务器通过 LibreOffice 输出真实预览。其渲染、字体和场景依赖需另外安装；PPT 场景的真实 Windows 运行尚未验证。来源读取 Motif 与普通组合生成脚本的边界见接口契约，不把脚本执行计为 Motif 收益。
+
+科研 PPT 试用统一使用 `npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output`：默认准备普通 DSH／组合优化两路预览，双路总上限 $3、每路 $1.50，不调用模型。确认预览后用 `npm run ppt -- --trial <实际trial.json> --call-model` 执行；完整命令、评审与费用范围见[双路试用](scenarios/research_ppt/trial.md)。朴素 `lab` 保留科研原图与可编辑数据，不强迫填满卡片；原生模板实验服务仍属历史隔离试用，不是此默认入口。
+
+部署反馈与离线学习见[使用说明](scenarios/research_ppt/feedback-learning.md)。仅显式授权时收集，质量未审阅不进入训练；独立认证生成候选，后续真实任务验证收益后才可受控晋级。`--use-active-learning` 显式继承当前有效版本，没有已晋级版本时走普通流程并记录原因。不能仅因工具生成或测试通过宣称自进化收益。
+
 ## 随仓库分发的 Motif 库
 
 [首发样例](examples/motif-library/research-portfolio-v1/README.md) 包含此前真实 DeepSeek 调用轨迹编译出的 4 个 Motif、在线 manifest、公开证据夹具和版本锁。任务资料为合成科研模拟；历史认证摘要保持不变，没有分发原始私有日志。
@@ -152,3 +158,11 @@ Motif 模式的入口与普通组相同，增加 `--mode shadow` 或 `--mode exe
 ## 两天协作约定
 
 每人一个场景分支，例如 `codex/scene-literature`、`codex/scene-results`、`codex/scene-collaboration`，主要改自己的 `scenarios/<name>/` 和对应测试。你负责公共接口和合并；核心变更先协调。每个小改动提交一次，通过 `npm test` 后发 PR，尽早合回 main。合入别人的工作后，各自同步最新 main。具体操作见 [协作说明](docs/collaboration.md)。
+
+## 科研 PPT 历轮报告与恢复交付
+
+历轮 PDF 的文件身份和结论见 [报告索引](docs/experiments/research-ppt-reports/README.md)；PDF 本体保留在团队私有归档，不进入 main，历史失败和勘误仍可按索引追溯；原始论文、运行日志、凭证仍只保存在私有区域。报告版本数量不等于独立实验数量。
+
+V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复与交付说明](scenarios/research_ppt/delivery.md)。新增入口仍使用 Python 场景工具后端；未实现无 Python 插件产品。最新两题对照的 Motif 组请求、token 和代理估费均增加，且未达到统一人工质量门槛，不支持整体降本。详见 [V7](docs/experiments/research-ppt-v7-delivery-rsi-20261011.md)、[V8](docs/experiments/research-ppt-v8-cost-quality-rsi-20261011.md)。科研 PPT 为场景 pilot，不能代替主线跨应用科研决定验收。
+
+后续工程结果见 [V10](docs/experiments/research-ppt-v10-product-20261012.md) 与 [V11](docs/experiments/research-ppt-v11-scientific-design-20261012.md)：V10 在两份相同明确标题编辑任务中由普通入口省去模型；V11 增加科研原图、结果、方法页型并交付三组同内容对照和一份真实新稿。两者都不称新增 RSI。原始轨迹、来源及 PPT 仅保存在私有区，独立科学/视觉人评与完整生成净成本仍未证明。

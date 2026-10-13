@@ -1,0 +1,14 @@
+{
+  "mcp__ppt__pin_source": {
+    "required_params": ["document_id"], "read_only": true,
+    "output_fields": ["document_id", "source_id", "version_sha256", "format", "page_count", "text_chars"],
+    "replay_stable": true,
+    "description": "Pin one approved PDF/PPTX to a fresh versioned source handle."
+  },
+  "mcp__ppt__read_source": {
+    "required_params": ["source_id"], "read_only": true, "provenance_params": ["source_id"],
+    "output_fields": ["source_id", "document_id", "version_sha256", "pages", "images"],
+    "replay_stable": true,
+    "description": "Read the text and image inventory of a pinned source; reject a changed version."
+  }
+}
