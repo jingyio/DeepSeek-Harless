@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Real bwrap/member/MCP deployment diagnostic; no prompt or model invocation."""
 import base64
+import argparse
 import importlib.util
 import json
 import os
@@ -35,7 +36,59 @@ def account():
     headers=AccountHeaders()
     return urllib.request.build_opener(urllib.request.ProxyHandler({}),headers),headers
 
+def render_in_member(user_dir, task_id):
+    """Run the zero-model probe with the actual gateway's bwrap mounts.
+
+    Uses a fresh, explicitly writable diagnostic job and only that member's
+    uploaded synthetic input. It is not an autonomous model generation test.
+    """
+    effective=json.loads((user_dir/'tasks/tasks'/task_id/'effective-config.json').read_text())
+    workspace=effective['workspace']
+    assert workspace.startswith('/app/.local/web/')
+    host_workspace=user_dir/'tasks'/workspace.removeprefix('/app/.local/web/')
+    job=json.loads((host_workspace/'job.json').read_text())
+    probe_id=uuid4().hex
+    host_probe=user_dir/'tasks/diagnostics'/probe_id
+    sandbox_probe='/app/.local/web/diagnostics/'+probe_id
+    (host_probe/'inputs').mkdir(parents=True)
+    for row in job['inputs']:
+        leaf=Path(row['path']).name
+        shutil.copyfile(host_workspace/'inputs'/leaf,host_probe/'inputs'/leaf)
+        row['path']=sandbox_probe+'/inputs/'+leaf
+    job.update(job_id=probe_id,slides=1,allow_output=True)
+    (host_probe/'job.json').write_text(json.dumps(job))
+    shutil.copyfile(host_workspace/'approved-inputs.json',host_probe/'approved-inputs.json')
+    prefix=None
+    for process in Path('/proc').iterdir():
+        if not process.name.isdigit():continue
+        try:argv=(process/'cmdline').read_bytes().decode().rstrip('\0').split('\0')
+        except (OSError,UnicodeError):continue
+        if (argv and Path(argv[0]).name=='bwrap' and str(user_dir) in argv
+                and '/opt/node/bin/node' in argv):
+            prefix=argv[:argv.index('/opt/node/bin/node')];break
+    if prefix is None:raise RuntimeError('actual member bwrap mount arguments unavailable')
+    policy=json.loads((user_dir/'config/policy.json').read_text())
+    ppt=next(scene for scene in policy['scenes'] if scene['id']=='ppt')
+    mcp_env=ppt['mcp_rows'][0]['config']['env']
+    env={'HOME':'/user/workspace','LANG':'C.UTF-8','PYTHONUTF8':'1',
+         'PATH':mcp_env['PATH'],'SSS_PYTHON':mcp_env['SSS_PPT_DELIVERY_PYTHON'],
+         'HARLESS_PPT_RUNTIME_BUNDLE':str(Path(ppt['manifest']).parent),
+         'FONTCONFIG_FILE':mcp_env['FONTCONFIG_FILE'],'FONTCONFIG_PATH':mcp_env['FONTCONFIG_PATH']}
+    with (host_probe/'probe.log').open('w') as log:
+        subprocess.run([*prefix,'/opt/node/bin/node','/app/scripts/check-ppt-runtime.mjs',
+                        sandbox_probe+'/job.json'],env=env,stdout=log,stderr=subprocess.STDOUT,
+                       check=True,timeout=180)
+    result=json.loads((host_probe/'probe-result.json').read_text())
+    assert result['delivered'] and result['model_requests']==0
+    for artifact in result['delivery']['artifacts']:
+        path=artifact['path'];assert path.startswith(sandbox_probe+'/validation/')
+        assert (host_probe/path.removeprefix(sandbox_probe+'/')).is_file()
+    return probe_id
+
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--render-ppt',action='store_true',help='also render one synthetic page inside each member mount')
+    args=parser.parse_args()
     if sys.platform!='linux' or not shutil.which('bwrap'):raise RuntimeError('requires Linux bwrap')
     os.umask(0o077)
     area=ROOT/'.local/member-scene-checks'/uuid4().hex;area.mkdir(parents=True)
@@ -78,14 +131,15 @@ def main():
                     with socket.create_connection(('127.0.0.1',port),timeout=.1):break
                 except OSError:time.sleep(.1)
             codes=subprocess.check_output(['node',str(ROOT/'scripts/harless_gateway.mjs'),str(config_path),'invite','2'],text=True).splitlines()
-            clients=[];base=f'http://127.0.0.1:{port}'
+            clients=[];user_ids={};base=f'http://127.0.0.1:{port}'
             for i,code in enumerate(codes):
                 client,headers=account()
                 req=urllib.request.Request(base+'/api/account/register',data=json.dumps({'inviteCode':code,
                     'username':'diagnostic'+str(i),'displayName':'Diagnostic '+str(i),'password':'OnlyDiagnosticPassword123!'}).encode(),
                     headers={'Content-Type':'application/json'})
                 with client.open(req,timeout=10) as response:
-                    headers.cookie=response.headers['Set-Cookie'].split(';',1)[0];json.load(response)
+                    headers.cookie=response.headers['Set-Cookie'].split(';',1)[0]
+                    user_ids[client]=json.load(response)['user']['id']
                 clients.append(client)
             # Trigger both isolated processes before waiting; startup remains concurrent.
             for client in clients:web.request(client,base,'/api/workspace/ready')
@@ -96,7 +150,7 @@ def main():
                     if status>=400:raise RuntimeError('member startup failed; inspect private gateway log')
                     time.sleep(.5)
                 else:raise RuntimeError('member startup timeout')
-            tasks=[]
+            tasks=[];ppt_tasks=[]
             for client in clients:
                 for identity in ['new-scene','ppt','paper-proofreading','research-data-analysis']:
                     result=scenes.settings(client,base,{'action':'select','selection':{'scene':identity,'mode':'shadow','rsi':True}})
@@ -112,14 +166,21 @@ def main():
                     draft=web.api(client,base,{'action':'upload','task_id':draft['task_id'],'name':name,'data':base64.b64encode(data).decode()})
                     assert draft['scene']==identity and draft['scene_inputs']
                     tasks.append((client,draft))
+                    if identity=='ppt':ppt_tasks.append((user_ids[client],draft))
                     foreign=clients[1] if client is clients[0] else clients[0]
                     assert web.request(foreign,base,'/api/harless/tasks?task_id='+draft['task_id'])[0]==404
                     assert scenes.settings(foreign,base,session=draft['session_id'],expected=404)['error']['code']=='session_not_owned'
                     web.api(client,base,{'action':'cancel','task_id':draft['task_id']})
             assert len({task['session_id'] for _,task in tasks})==8
             assert all(web.api(c,base)['aggregate'].get('upstream_requests',0)==0 for c in clients)
+            rendered=[]
+            if args.render_ppt:
+                for user_id,task in ppt_tasks:
+                    user_dir=area/'members'/user_id
+                    assert user_dir.is_dir()
+                    rendered.append(render_in_member(user_dir,task['task_id']))
             report={'status':'passed','users':2,'scene_drafts':8,'actual_bwrap':True,'actual_mcp':True,
-                    'model_requests':0,'browser_verified':False,'quality_reviewed':False}
+                    'model_requests':0,'member_ppt_deliveries':len(rendered),'browser_verified':False,'quality_reviewed':False}
             (area/'result.json').write_text(json.dumps(report,indent=2)+'\n')
             print(json.dumps(report))
         finally:
