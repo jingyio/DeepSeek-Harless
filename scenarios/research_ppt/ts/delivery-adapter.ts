@@ -157,11 +157,11 @@ export class DeliveryAdapter {
   private constructor(readonly root: string, readonly jobPath: string, readonly job: Job, private backend: Backend,
     readonly auditPath: string, readonly inputVersion: string) {}
 
-  static async create(rootPath: string, jobPath: string, backend: Backend, dependencyFiles: string[]): Promise<DeliveryAdapter> {
+  static async create(rootPath: string, jobPath: string, backend: Backend, dependencyFiles: string[], allowEmptyReadOnly = false): Promise<DeliveryAdapter> {
     const root = await realpath(rootPath); const path = await privateFile(root, jobPath);
     const raw = await readFile(path, 'utf8'); const value: unknown = JSON.parse(raw);
     if (!object(value) || !Number.isSafeInteger(value.slides) || Number(value.slides) < 1 || Number(value.slides) > 30
-      || typeof value.allow_output !== 'boolean' || !Array.isArray(value.inputs) || !value.inputs.length || value.inputs.length > 8
+      || typeof value.allow_output !== 'boolean' || !Array.isArray(value.inputs) || (!value.inputs.length && (!allowEmptyReadOnly || value.allow_output !== false)) || value.inputs.length > 8
       || value.inputs.some(x => !object(x) || typeof x.path !== 'string' || !hash(x.version_sha256)))
       return fail('invalid_job', '固定任务缺少页数、权限或批准来源版本。');
     const job = value as Job;

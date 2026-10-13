@@ -97,6 +97,8 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     const barrier = !ok || manifest.contracts[exec.name]?.read_only !== true ||
       (!!manifest.version_fields[exec.name] &&
        !versionWithinTask(parsedTask, manifest, exec.name, version, pending));
+    if (barrier) audit({ kind: 'motif_deferred', session_id: sessionId, tool: exec.name,
+      reason: !ok ? 'tool_result_failed' : manifest.contracts[exec.name]?.read_only !== true ? 'tool_not_certified_read_only' : 'source_version_mismatch' });
     current.history.push({ name: exec.name, callId: exec.callId, ok,
       barrier, arguments: exec.arguments, output, sourceVersion: version,
       inputVersion: parsedTask.input_version });

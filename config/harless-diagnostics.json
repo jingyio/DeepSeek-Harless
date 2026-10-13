@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "scenes": [
+    {
+      "id": "example",
+      "label": "示例资料核验",
+      "scenario": "scenarios/example/scenario.json",
+      "diagnostic": true
+    },
+    {
+      "id": "portfolio-v1",
+      "label": "科研决定样例 v1",
+      "scenario": "scenarios/portfolio-v1/scenario.json",
+      "case": "l_retrieval_persistence",
+      "rsi": {
+        "manifest": "examples/motif-library/research-portfolio-v1/online-manifest.json",
+        "task": "examples/motif-library/research-portfolio-v1/task.json"
+      },
+      "diagnostic": true
+    },
+    {
+      "id": "portfolio-v2",
+      "label": "科研决定样例 v2",
+      "scenario": "scenarios/portfolio-v2/scenario.json",
+      "case": "e_state_vs_retrieval",
+      "diagnostic": true
+    }
+  ]
+}

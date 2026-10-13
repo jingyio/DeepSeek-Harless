@@ -1,26 +1,9 @@
 {
   "schema_version": 1,
   "scenes": [
-    {
-      "id": "example",
-      "label": "示例资料核验",
-      "scenario": "scenarios/example/scenario.json"
-    },
-    {
-      "id": "portfolio-v1",
-      "label": "科研决定样例 v1",
-      "scenario": "scenarios/portfolio-v1/scenario.json",
-      "case": "l_retrieval_persistence",
-      "rsi": {
-        "manifest": "examples/motif-library/research-portfolio-v1/online-manifest.json",
-        "task": "examples/motif-library/research-portfolio-v1/task.json"
-      }
-    },
-    {
-      "id": "portfolio-v2",
-      "label": "科研决定样例 v2",
-      "scenario": "scenarios/portfolio-v2/scenario.json",
-      "case": "e_state_vs_retrieval"
-    }
+    {"id":"ppt", "label":"PPT", "scenario":"scenarios/research_ppt/web-scenario.json", "instructions":"scenarios/research_ppt/prompt.md", "adapter":"ppt"},
+    {"id":"paper-proofreading", "label":"Paper Proofreading", "unavailable_reason":"paper_backend_not_published_on_main"},
+    {"id":"research-data-analysis", "label":"Research Data Analysis", "unavailable_reason":"data_analysis_backend_not_implemented"},
+    {"id":"new-scene", "label":"New Scene", "scenario":"scenarios/general/scenario.json", "instructions":"scenarios/general/prompt.md", "adapter":"workspace"}
   ]
 }

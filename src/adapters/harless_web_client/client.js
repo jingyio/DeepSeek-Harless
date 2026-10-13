@@ -26,22 +26,11 @@ window.__ModuleLoader__.load({
       if (!response.ok || value.error) throw Error(value.error?.message || 'Could not save Harless settings');
       return value;
     }
-    async function choosePreviewScene(session, sceneId) {
-      const response = await fetch(endpoint, {
-        method: 'POST', credentials: 'same-origin', cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: sceneId ? 'select_preview_scene' : 'clear_preview_scene',
-          session_id: session.sessionId, ...(sceneId ? { scene_id: sceneId } : {}) }),
-      });
-      const value = await response.json();
-      if (!response.ok || value.error) throw Error(value.error?.message || 'Could not choose scene');
-      return value;
-    }
     const modeLabel = mode => mode === 'baseline' ? 'Origin' : mode[0].toUpperCase() + mode.slice(1);
     function options(value, page) {
       const current = value.selection;
       if (page === 'root') {
-        const scene = value.preview_scenes.find(row => row.id === value.preview_scene);
+        const scene = value.scenes.find(row => row.id === value.selection.scene);
         return [
           { id: 'page:scenes', label: 'Scenes', detail: `${scene?.label || 'Current runtime'}  ›` },
           { id: 'page:modes', label: 'Mode', detail: `${modeLabel(current.mode)}  ›` },
@@ -50,10 +39,10 @@ window.__ModuleLoader__.load({
       }
       if (page === 'scenes') return [
         { id: 'page:root', label: '‹ Back', detail: 'Harless' },
-        ...value.preview_scenes.map(scene => ({
+        ...value.scenes.map(scene => ({
           id: `scene:${scene.id}`, label: scene.label,
-          detail: scene.id === 'new-scene' ? 'Explore with the current runtime' : 'UI preview · runtime coming later',
-          active: value.preview_scene === scene.id,
+          detail: scene.available === false ? `Unavailable: ${scene.unavailable_reason}` : 'Use this scenario',
+          active: current.scene === scene.id,
         })),
       ];
       if (page === 'modes') return [
@@ -86,7 +75,7 @@ window.__ModuleLoader__.load({
           if (!group.size) observers.delete(sessionId);
         };
       }, [sessionId]);
-      const scene = value?.preview_scenes.find(row => row.id === value.preview_scene);
+      const scene = value?.scenes.find(row => row.id === value.selection.scene);
       const detail = value ? [scene?.label, modeLabel(value.selection.mode),
         `RSI ${value.selection.rsi ? 'On' : 'Off'}`].filter(Boolean).join(' · ') : '';
       const label = detail ? `Harless · ${detail}` : 'Harless';
@@ -128,7 +117,7 @@ window.__ModuleLoader__.load({
             }
             let value;
             if (kind === 'scene') {
-              value = await choosePreviewScene(session, id);
+              value = await select(session, { scene: id });
             } else if (kind === 'mode' && ['baseline', 'shadow', 'execute'].includes(id)) {
               value = await select(session, { mode: id });
             } else if (kind === 'rsi' && ['on', 'off'].includes(id)) {

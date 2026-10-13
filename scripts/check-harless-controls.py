@@ -38,7 +38,7 @@ def main():
         return value['result']['value']['result']
     groups = []
     with (checks / (run_id + '.log')).open('w') as log:
-        child = subprocess.Popen([sys.executable, str(ROOT / 'scripts/harness-web.py'), '--port', str(args.port),
+        child = subprocess.Popen([sys.executable, str(ROOT / 'scripts/harness-web.py'), '--scenario', 'example', '--scene-registry', 'config/harless-diagnostics.json', '--port', str(args.port),
             '--run-id', run_id, '--mode', 'shadow', '--budget-usd', '0.03', '--run-budget-usd', '0.06',
             '--request-limit', '24', '--run-request-limit', '32' if args.real_model else '64', *(['--real-model'] if args.real_model else [])], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
         try:
@@ -58,7 +58,7 @@ def main():
             for line in ['/harless off', '/harless mode wrong', '/harless rsi perhaps', '/harless missing']:
                 assert command(session, line)['kind'] == 'error'
             assert command(session, '/harless rsi off')['kind'] == 'success'
-            assert settings(session=session)['selection']['mode'] == 'baseline'
+            assert settings(session=session)['selection']['mode'] == 'shadow'
             assert command(session, '/harless rsi on')['kind'] == 'success'
             assert settings(session=session)['selection']['mode'] == 'shadow'
             assert command(session, '/harless portfolio-v1')['kind'] == 'success'

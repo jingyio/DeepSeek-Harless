@@ -114,7 +114,7 @@ def launch(scenario, fixture='normal'):
     base = 'http://127.0.0.1:3083'
     with (logs / f'{run_id}.log').open('w', encoding='utf-8') as log:
         child = subprocess.Popen([sys.executable, str(ROOT / 'scripts/harness-web.py'),
-            '--scenario', scenario, '--mode', 'baseline', '--port', '3083',
+            '--scenario', scenario, '--scene-registry', 'config/harless-diagnostics.json', '--mode', 'baseline', '--port', '3083',
             '--run-id', run_id, '--fixture', fixture], cwd=ROOT,
             stdout=log, stderr=subprocess.STDOUT)
         try:

@@ -1,0 +1,6 @@
+{
+  "schema_version":1,"name":"general","prompt":"prompt.md",
+  "servers":[{"server_name":"workspace","transport":"stdio","command":"${PYTHON}",
+    "args":["${PROJECT_ROOT}/scenarios/general/server.py","${SESSION_WORKSPACE}/inputs"],"cwd":"${PROJECT_ROOT}"}],
+  "allowed_tools":["mcp__workspace__list_files","mcp__workspace__read_file"]
+}

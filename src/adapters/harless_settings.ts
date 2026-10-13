@@ -5,6 +5,10 @@ export type Scene = {
   config_sha256?: string; instructions?: string;
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string;
+  diagnostic?: boolean; tool_schemas?: string; certified_tool_schemas?: any[]; certified_tool_schemas_sha256?: string;
+  scenario?: string; scenario_version?: number; instructions_sha256?: string;
+  unavailable_reason?: string; adapter?: 'ppt' | 'workspace';
+  mcp_rows?: any[]; environment_references?: Record<string, string>;
 };
 export type Selection = { scene: string; mode: ExecutionMode; rsi: boolean };
 export class SettingsError extends Error {
@@ -21,10 +25,12 @@ export function sceneCatalog(rows: unknown): Scene[] {
         !Array.isArray(row.allowed_tools) ||
         row.allowed_tools.some((tool: unknown) => typeof tool !== 'string' || !/^mcp__[a-z0-9_]+__[a-zA-Z0-9_]+$/.test(tool as string)) ||
         new Set(row.allowed_tools).size !== row.allowed_tools.length ||
+        (row.unavailable_reason !== undefined && !/^[a-z][a-z0-9_]{0,127}$/.test(row.unavailable_reason)) ||
+        (row.adapter !== undefined && (!['ppt', 'workspace'].includes(row.adapter) || !Array.isArray(row.mcp_rows))) ||
         (row.instructions !== undefined && (typeof row.instructions !== 'string' || row.instructions.length > 100000))) {
       throw new SettingsError('invalid_registry', '场景 ID、工具或 preset 无效');
     }
-    ids.add(row.id); presets.add(row.preset); return Object.freeze({ ...row, allowed_tools: Object.freeze([...row.allowed_tools]) });
+    ids.add(row.id); presets.add(row.preset); return Object.freeze({ ...structuredClone(row), allowed_tools: Object.freeze([...row.allowed_tools]) });
   });
 }
 export function initialSelection(scene: string, mode: ExecutionMode): Selection {

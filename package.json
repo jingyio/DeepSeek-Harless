@@ -17,6 +17,7 @@
     "web:tasks:check": "node scripts/project.mjs python scripts/check-web-tasks.py",
     "motif:check": "node scripts/project.mjs python scripts/motif-example.py check",
     "motif:rebuild": "node scripts/project.mjs python scripts/motif-example.py rebuild",
+    "web:scenes:check": "node scripts/project.mjs python scripts/check-harless-scenes.py",
     "web:controls:check": "node scripts/project.mjs python scripts/check-harless-controls.py"
   },
   "dependencies": {

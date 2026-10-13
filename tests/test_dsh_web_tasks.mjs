@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
@@ -12,7 +13,8 @@ const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
-async function fixture({ broker = false, fixtureSchemas = toolSchemas, ...overrides } = {}) {
+async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture_schemas, ...overrides } = {}) {
+  const fixtureSchemas = schemaOverride ?? fixture_schemas ?? toolSchemas;
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
   const token = 'fixture-control-authority';
@@ -53,6 +55,7 @@ async function fixture({ broker = false, fixtureSchemas = toolSchemas, ...overri
   const policyPath = join(directory, 'policy.json'); writeFileSync(policyPath, JSON.stringify(policy));
   const previous = process.env.SSS_WEB_POLICY; process.env.SSS_WEB_POLICY = policyPath;
   const listeners = new Map(), routes = new Map(), webRoutes = new Map(), agents = new Map();
+  const receipts = new Map();
   const storedSessions = new Map();
   const storedHeaders = new Map();
   const promptCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
@@ -71,9 +74,14 @@ async function fixture({ broker = false, fixtureSchemas = toolSchemas, ...overri
       register(route) { webRoutes.set(route.path, route); return () => {}; },
       tapIndex(transform) { ctx.indexTransform = transform; return () => {}; },
     },
+    attachments: { async *readFileStream(ref) { yield receipts.get(ref.attachmentId).data; } },
     fileUploads: {
+      resolve(agent, receipt) { const row = receipts.get(receipt); return row?.session === agent.session.id ? row.ref : undefined; },
       async uploadStream(request) { let bytes=0; for await (const part of request.data) bytes += part.length;
-        return { receiptId: `receipt-${request.sessionId}-${bytes}`, file: { path: 'private-fixture' } }; },
+        const receiptId = `receipt-${request.sessionId}-${bytes}`;
+        const ref = { name: request.name, bytes, attachmentId: receiptId };
+        receipts.set(receiptId, { session: request.sessionId, ref, data: Buffer.alloc(bytes, 65) });
+        return { receiptId, file: ref };  },
     },
     sessionController: {
       async create(request) {
@@ -85,8 +93,8 @@ async function fixture({ broker = false, fixtureSchemas = toolSchemas, ...overri
           const agent = { preset: request.agentPreset, session: { id }, guards: guardFns, events, ctx: {
             tools: { restrict(value) { agent.allow = value; return () => {}; },
               guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
-              schemas() { return structuredClone(fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
-            systemPrompt: { section() { return () => {}; } },
+              schemas() { return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
+            systemPrompt: { section(row) { agent.instruction = row.text; return () => {}; } },
             on() {},
           } };
           agents.set(id, agent); emit('agent/created', { agent });
@@ -137,7 +145,7 @@ async function fixture({ broker = false, fixtureSchemas = toolSchemas, ...overri
         content: event.data.content })), ...changes };
     return tagged ? markAgentLoopRequest(body) : body;
   }
-  return { ctx, api, preview, submit, agents, emit, commands, presetCalls,
+  return { ctx, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts,
     async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
     async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
     promptCalls, queueMutations, controlCalls, directory,
@@ -268,7 +276,7 @@ test('Selected model and empty session survive a Web process restart', options, 
 test('Submit requires the current confirmation and never reruns a retry; only one task is active', options, async () => {
   const f = await fixture();
   try {
-    const first = await f.preview('可执行任务一'), second = await f.preview({ instruction: '可执行任务二', mode: 'execute' });
+    const first = await f.preview('可执行任务一'), second = await f.preview({ instruction: '可执行任务二', mode: 'shadow' });
     const denied = await f.api({ action: 'submit', task_id: first.task_id, confirmation_digest: '0'.repeat(64) });
     assert.equal(denied.status, 409); assert.equal(denied.value.error.code, 'confirmation_changed');
     assert.equal(f.promptCalls.length, 0);
@@ -516,29 +524,35 @@ test('Native /harless commands and settings menu select without admitting a mode
     assert.equal((await f.api()).value.tasks.length,0); assert.equal(f.registrations.size,0); assert.equal(f.promptCalls.length,0);
   } finally {await f.close();}
 });
-test('Preview-only product scenes are selectable but cannot silently run the sample runtime', options, async () => {
-  const f = await fixture();
+const productScenes = [
+  { ...multiScenes[0], id: 'new-scene', label: 'New Scene' },
+  { ...multiScenes[1], id: 'ppt', label: 'PPT', instructions: 'PPT task instructions' },
+  { id: 'paper-proofreading', label: 'Paper Proofreading', preset: 'sss-paper', allowed_tools: [], unavailable_reason: 'paper_backend_missing' },
+  { id: 'research-data-analysis', label: 'Research Data Analysis', preset: 'sss-data', allowed_tools: [], unavailable_reason: 'data_backend_missing' },
+];
+test('Four product scenes x three modes x RSI: effective mode, missing backend and Execute admission', options, async () => {
+  const f = await fixture({ scenes: productScenes, capability_profile: 'new-scene' });
   try {
-    const { sessionId } = await f.ctx.sessionController.create({});
-    let result = await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'ppt' });
-    assert.equal(result.status, 200);
-    assert.equal(result.value.preview_scene, 'ppt');
-    assert.deepEqual(result.value.preview_scenes.map(scene => scene.label),
-      ['PPT', 'Paper Proofreading', 'Research Data Analysis', 'New Scene']);
-    await assert.rejects(f.ctx.sessionController.prompt({ sessionId, requestId: 'preview-only', mode: 'queue',
-      content: [{ type: 'text', text: 'Make a slide' }] }, new AbortController().signal), /UI preview/);
-    assert.equal((await f.api()).value.tasks.length, 0);
-    assert.equal(f.promptCalls.length, 0);
-    result = await f.settings({ action: 'clear_preview_scene', session_id: sessionId });
-    assert.equal(result.value.preview_scene, null);
-    assert.equal((await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'unknown' })).status, 400);
-    result = await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'new-scene' });
-    assert.equal(result.value.preview_scene, 'new-scene');
-    const draft = await f.api({ action: 'preview', session_id: sessionId, request: 'Explore a new topic' });
-    assert.equal(draft.status, 200);
-    assert.equal(draft.value.scene, 'example');
+    for (const scene of productScenes) for (const mode of ['baseline', 'shadow', 'execute']) for (const rsi of [false, true]) {
+      const { sessionId } = await f.ctx.sessionController.create({});
+      const selected = await f.settings({ action: 'select', session_id: sessionId, selection: { scene: scene.id, mode, rsi } });
+      if (mode === 'execute' && rsi) { assert.equal(selected.value.error.code, 'execute_unavailable'); continue; }
+      assert.equal(selected.status, 200); assert.equal(selected.value.selection.scene, scene.id);
+      const draft = await f.api({ action: 'preview', session_id: sessionId, request: 'Bound task' });
+      if (scene.unavailable_reason) { assert.equal(draft.value.error.code, 'scene_not_connected'); continue; }
+      assert.equal(draft.status, 200); assert.equal(draft.value.scene, scene.id);
+      assert.equal(draft.value.mode, rsi ? mode : 'baseline'); assert.equal(draft.value.selected_mode, mode);
+      const snapshot = JSON.parse(readFileSync(join(f.directory, 'tasks', draft.value.task_id, 'effective-config.json')));
+      assert.equal(snapshot.selection.mode, mode); assert.deepEqual(snapshot.allowed_tools, scene.allowed_tools);
+      assert.equal(snapshot.instructions, scene.instructions);
+    }
+    assert.equal(f.promptCalls.length, 0); // all menu/preview operations are model-free
+    const denied = await f.api({ action: 'preview', request: { instruction: 'No library', mode: 'execute' } });
+    assert.equal(denied.value.error.code, 'execute_unavailable');
+    assert.equal((await f.settings({ action: 'select_preview_scene', scene_id: 'unknown' })).status, 400);
   } finally { await f.close(); }
 });
+
 test('Running task keeps frozen tools and mode while next-task choices are inherited by a fresh Session', options, async()=>{
   const f=await fixture({ scenes: multiScenes, mode:'shadow', provider_mode:'real' });
   try {
@@ -576,4 +590,125 @@ test('Preview-bound library bytes cannot change before confirmation even if the 
   const draft=await f.preview('同一输入');writeFileSync(manifest,'{"changed":true}');
   const result=await f.submit(draft);assert.equal(result.status,409);assert.equal(result.value.error.code,'confirmation_changed');assert.equal(f.promptCalls.length,0);
  }finally{await f.close();rmSync(directory,{recursive:true});}
+});
+
+
+test('Two server-owned principals have independent settings, task/session identities and workspaces', options, async () => {
+  const first = await fixture({ user_id: 'alice', scenes: productScenes, capability_profile: 'new-scene' });
+  const second = await fixture({ user_id: 'bob', scenes: productScenes, capability_profile: 'new-scene' });
+  try {
+    await second.settings({ action: 'select', selection: { scene: 'ppt', rsi: false, mode: 'execute' } });
+    const [a, b] = await Promise.all([first.preview('Alice task'), second.preview('Bob task')]);
+    assert.equal(a.user_id, 'alice'); assert.equal(b.user_id, 'bob');
+    assert.equal(a.scene, 'new-scene'); assert.equal(b.scene, 'ppt');
+    assert.equal(b.mode, 'baseline'); assert.equal(b.selected_mode, 'execute');
+    assert.equal((await first.api(undefined, '?task_id=' + b.task_id)).status, 404);
+    assert.equal((await second.settings(undefined, '?session_id=' + a.session_id)).status, 404);
+    await Promise.all([first.submit(a), second.submit(b)]);
+    assert.equal(first.promptCalls.length, 1); assert.equal(second.promptCalls.length, 1);
+    await Promise.all([first.complete(a), second.complete(b)]);
+    await assert.rejects(first.ctx.sessionController.create({ cwd: second.directory }), /private Session/);
+  } finally { await second.close(); await first.close(); }
+});
+
+test('Session adapter binds private presets and rejects foreign file receipts before model admission', options, async () => {
+  const scene = { ...multiScenes[0], id: 'new-scene', adapter: 'workspace',
+    mcp_rows: [{ id: 'mcp', name: 'mcp-client', config: { cwd: '__HARLESS_SESSION_WORKSPACE__' } }] };
+  const f = await fixture({ scenes: [scene], capability_profile: 'new-scene' });
+  try {
+    const a = await f.ctx.sessionController.create({}); const b = await f.ctx.sessionController.create({});
+    const uploaded = await f.ctx.fileUploads.uploadStream({ sessionId: a.sessionId, name: 'alice.txt',
+      data: (async function* () { yield Buffer.from('AAA'); })() });
+    const content = [{ type: 'file', receiptId: uploaded.receiptId }];
+    const rejected = await f.api({ action: 'preview', session_id: b.sessionId, request: { content } });
+    assert.equal(rejected.status, 400); assert.equal(f.registrations.size, 0); assert.equal(f.promptCalls.length, 0);
+    const accepted = await f.api({ action: 'preview', session_id: a.sessionId, request: { content } });
+    assert.equal(accepted.status, 200); assert.equal(accepted.value.scene_inputs[0].name, 'alice.txt');
+    const snapshot = JSON.parse(readFileSync(join(f.directory, 'tasks', accepted.value.task_id, 'effective-config.json')));
+    assert.ok(snapshot.workspace.includes(a.sessionId)); assert.ok(!snapshot.workspace.includes(b.sessionId));
+    assert.equal(readFileSync(join(snapshot.workspace, 'inputs', 'doc_1-alice.txt'), 'utf8'), 'AAA');
+  } finally { await f.close(); }
+});
+
+test('Changed uploaded bytes invalidate the frozen task before budget activation', options, async () => {
+  const scene = { ...multiScenes[0], adapter: 'workspace', mcp_rows: [] };
+  const f = await fixture({ scenes: [scene] });
+  try {
+    const draft = await f.preview('Freeze session input');
+    const snapshot = JSON.parse(readFileSync(join(f.directory, 'tasks', draft.task_id, 'effective-config.json')));
+    writeFileSync(join(snapshot.workspace, 'inputs', 'injected.txt'), 'Unconfirmed evidence');
+    const denied = await f.submit(draft);
+    assert.equal(denied.value.error.code, 'confirmation_changed');
+    assert.equal(f.controlCalls.filter(call => call.path === '/tasks/activate').length, 0);
+    assert.equal(f.promptCalls.length, 0);
+  } finally { await f.close(); }
+});
+
+
+test('Production Execute requires a certified whole-schema snapshot and rejects descriptor/type drift', options, async () => {
+  const manifest = fileURLToPath(new URL('../examples/motif-library/research-portfolio-v1/online-manifest.json', import.meta.url));
+  const task = fileURLToPath(new URL('../examples/motif-library/research-portfolio-v1/task.json', import.meta.url));
+  const library = JSON.parse(readFileSync(manifest));
+  const rows = Object.entries(library.contracts).map(([name, contract]) => ({ name, description: contract.description,
+    parameters: { type: 'object', properties: Object.fromEntries(contract.required_params.map(param => [param, { type: 'string' }])), required: contract.required_params } }))
+    .sort((a, b) => a.name < b.name ? -1 : 1);
+  const scene = { ...multiScenes[0], allowed_tools: rows.map(row => row.name), manifest, task,
+    embedding_endpoint: 'http://127.0.0.1:1/v1/embeddings', embedding_model: 'fixture', certified_input_sha256: 'a'.repeat(64) };
+  const f = await fixture({ scenes: [scene], fixture_schemas: rows });
+  try {
+    const missing = await f.api({ action: 'preview', request: { instruction: 'No certified full schema', mode: 'execute' } });
+    assert.equal(missing.value.error.code, 'execute_unavailable');
+    assert.match(missing.value.error.message, /no_certified_tool_schemas/);
+    assert.equal(f.registrations.size, 0);
+  } finally { await f.close(); }
+  const changed = structuredClone(rows); changed[0].description = 'Changed after certification';
+  const g = await fixture({ scenes: [{ ...scene, certified_tool_schemas: changed }], fixture_schemas: rows });
+  try {
+    const denied = await g.api({ action: 'preview', request: { instruction: 'Schema mismatch', mode: 'execute' } });
+    assert.equal(denied.value.error.code, 'execute_unavailable'); assert.match(denied.value.error.message, /certified_tool_schema_mismatch/);
+    assert.equal(g.registrations.size, 0); assert.equal(g.promptCalls.length, 0);
+  } finally { await g.close(); }
+});
+
+test('Member zero-tool policy cannot inherit owner scene MCP capabilities', options, async () => {
+  const f = await fixture({ broker: true, allowed_tools: [], fixtureSchemas: [], scenes: productScenes, capability_profile: 'new-scene' });
+  try {
+    const list = (await f.settings()).value.scenes;
+    assert.equal(list.find(row => row.id === 'new-scene').available, true);
+    assert.equal(list.find(row => row.id === 'ppt').unavailable_reason, 'scene_not_deployed_in_member_sandbox');
+    await f.settings({ action: 'select', selection: { scene: 'ppt', mode: 'baseline' } });
+    const denied = await f.api({ action: 'preview', request: 'PPT must not use ordinary chat as its backend' });
+    assert.equal(denied.value.error.code, 'scene_not_connected');
+    await f.settings({ action: 'select', selection: { scene: 'new-scene' } });
+    const draft = await f.preview('Generic member task');
+    assert.deepEqual(f.agents.get(draft.session_id).allow.allow, []);
+    assert.equal(f.registrations.size, 1);
+  } finally { await f.close(); }
+});
+
+test('Restricted member starts New Scene even when owner default is a privileged scene', options, async () => {
+  const rows = productScenes.map(row => ({ ...row, preset: row.id === 'ppt' ? 'sss-task' : 'sss-' + row.id }));
+  const f = await fixture({ broker: true, allowed_tools: [], fixtureSchemas: [], scenes: rows, capability_profile: 'ppt', budget_task_prefix: 'a1234567' });
+  try {
+    assert.equal((await f.settings()).value.selection.scene, 'new-scene');
+    const task = await f.preview('Member generic chat');
+    assert.equal(task.scene, 'new-scene'); assert.equal(task.user_id, 'member-a1234567');
+    assert.ok(task.task_id.startsWith('a1234567')); assert.equal(f.presetCalls.length, 0);
+  } finally { await f.close(); }
+});
+
+test('Restored terminal task retains its approved scene version and selected Off mode', options, async () => {
+  const f = await fixture({ scenes: multiScenes });
+  try {
+    await f.settings({ action: 'select', selection: { mode: 'execute', rsi: false } });
+    const task = await f.preview('Frozen version through restart'); await f.submit(task); await f.complete(task);
+    const file = join(f.directory, 'policy.json'); const policy = JSON.parse(readFileSync(file));
+    policy.scenes[0].config_sha256 = 'c'.repeat(64); writeFileSync(file, JSON.stringify(policy));
+    await f.restart();
+    const recovered = (await f.api(undefined, '?task_id=' + task.task_id)).value;
+    assert.equal(recovered.scene_sha256, 'a'.repeat(64)); assert.equal(recovered.selected_mode, 'execute');
+    assert.equal(recovered.mode, 'baseline'); assert.equal(recovered.confirmation_digest, task.confirmation_digest);
+    assert.equal((await f.settings()).value.scenes[0].config_sha256, 'c'.repeat(64));
+    assert.equal(f.promptCalls.length, 1);
+  } finally { await f.close(); }
 });

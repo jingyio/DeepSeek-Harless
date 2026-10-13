@@ -101,13 +101,13 @@ def prepare(args, output, endpoint):
     if not scenario.is_absolute():
         scenario = ROOT / scenario
     if scenario.suffix != '.json':
-        scenario = ROOT / f'scenarios/{args.scenario}/scenario.json'
-    prepared = prepare_scenario(scenario, case=args.case or ('l_retrieval_persistence' if args.scenario == 'portfolio-v1' else ''))
+        scenario = ROOT / ({'new-scene': 'scenarios/general/scenario.json', 'ppt': 'scenarios/research_ppt/web-scenario.json'}.get(args.scenario, f'scenarios/{args.scenario}/scenario.json'))
+    prepared = prepare_scenario(scenario, session_workspace='__HARLESS_SESSION_WORKSPACE__', case=args.case or ('l_retrieval_persistence' if args.scenario == 'portfolio-v1' else ''))
     preset = output / 'presets/sss-task'
     preset.mkdir(parents=True, mode=0o700)
     rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
         'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
-        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *prepared['mcp_rows']]
+        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *([] if args.scenario in ('new-scene', 'ppt') else prepared['mcp_rows'])]
     rendered = json.dumps(rows, ensure_ascii=False, indent=2)
     for token, expression in prepared['environment_references'].items():
         rendered = rendered.replace(json.dumps(token), expression)
@@ -142,7 +142,8 @@ def prepare(args, output, endpoint):
                 if len(data) > 256 * 1024: raise ValueError('registered resource exceeds 256 KiB')
                 resources[identity] = {'text': data.decode('utf-8'), 'version': hashlib.sha256(data).hexdigest()}
         policy.update(capability_profile=args.scenario if '/' not in args.scenario else prepared['name'],
-            budget_usd=args.budget_usd, provider_mode='real' if args.real_model else 'mock',
+            budget_usd=args.budget_usd, provider_mode='real' if args.real_model else 'mock', user_id=args.user_id,
+            request_limit=args.request_limit, run_budget_usd=args.run_budget_usd, run_request_limit=args.run_request_limit,
             control_endpoint=args.control_endpoint, control_token=args.control_token,
             certified_input_sha256=canonical_prompt_sha, resources=resources,
             embedding_model=args.embedding_model)
@@ -194,7 +195,7 @@ def prepare(args, output, endpoint):
                 'allowed_tools': prepared['allowed_tools'], 'tools_order': sorted(prepared['allowed_tools']),
                 'fixture': args.fixture,
                 'case': prepared['case'], 'embedding_model': args.embedding_model if args.embedding_endpoint else None,
-                'dsh_version': '0.1.5-rc.3', 'python_version': sys.version.split()[0],
+                'dsh_version': '0.1.5-rc.3', 'filesystem_watcher_polling': os.environ.get('CHOKIDAR_USEPOLLING') == '1', 'python_version': sys.version.split()[0],
                 'node_version': subprocess.check_output(['node', '--version'], text=True).strip(),
                 'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 'dirty_files': subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).splitlines(),
@@ -234,7 +235,8 @@ def prepare(args, output, endpoint):
 def main():
     defaults = json.loads((ROOT / 'config/harness-web.json').read_text())
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', default='example', help='scenario name or path to scenario.json (server configuration)')
+    parser.add_argument('--scenario', default=None, help='scenario name or path to scenario.json (server configuration)')
+    parser.add_argument('--user-id', default='local-operator', help='server-owned principal; one isolated launch per authenticated user')
     parser.add_argument('--case', default='')
     parser.add_argument('--scene-registry', default='config/harless-scenes.json', help='server-owned versioned scene registry')
     parser.add_argument('--frozen', action='store_true', help='legacy single-task mock regression entry')
@@ -255,6 +257,8 @@ def main():
     parser.add_argument('--fixture', choices=['normal', 'stale', 'tool-failure', 'provider-failure', 'outside-tool', 'delay'],
                         default='normal', help='mock-only failure injection for diagnostics')
     args = parser.parse_args()
+    args.scenario = args.scenario or ('example' if args.frozen else 'new-scene')
+    if not re.fullmatch(r'[a-zA-Z0-9_-]{1,64}', args.user_id): parser.error('invalid user-id')
     args.mode = args.mode or ('baseline' if args.frozen else 'shadow')
     if args.public_origin:
         try: args.public_origin = https_public_origin(args.public_origin)
@@ -286,6 +290,8 @@ def main():
     module = fixture_module()
     def scene_fixture_action(values, event, body):
         # Synthetic transport diagnostic only; real models never use this selector.
+        if args.fixture == 'outside-tool' and len(handler.calls) == 1:
+            return 'bash', {'command': 'echo forbidden'}
         if any(tool.get('function', {}).get('name', '').startswith('mcp__demo__') for tool in body.get('tools', [])):
             return demo_action(values, event)
         texts = [message.get('content', '') for message in body.get('messages', []) if message.get('role') == 'user' and isinstance(message.get('content'), str)]
@@ -293,12 +299,6 @@ def main():
         return module.next_fixture_action(values, match.group() if match else event)
     handler = module.provider_handler('event:l_retrieval_persistence:01', with_usage=True,
         request_limit=24 if args.frozen else args.run_request_limit, action_selector=scene_fixture_action)
-    if args.fixture == 'outside-tool':
-        original_action = module.next_fixture_action
-        def outside_action(values, event):
-            if len(handler.calls) == 1: return 'bash', {'command': 'echo forbidden'}
-            return original_action(values, event)
-        module.next_fixture_action = outside_action
     if args.fixture in ('delay', 'provider-failure'):
         original_respond = handler.respond
         def respond(self):
