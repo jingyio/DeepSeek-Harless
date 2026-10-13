@@ -59,4 +59,12 @@ test('Native /harless picker opens Scenes and Mode submenus and saves choices', 
   assert.deepEqual(Array.from(modeRows.slice(1), row => row.label), ['Origin', 'Shadow', 'Execute']);
   await popup.ui.onSelect(modeRows.find(row => row.id === 'mode:baseline'), session);
   assert.deepEqual(posts[1], { action: 'select', session_id: 'session-1', selection: { mode: 'baseline' } });
+  value.selection.scene='ppt';value.scene_options={};
+  value.scene_option_fields=[{key:'allow_output',label:'输出权限',default:false,
+    values:[{value:false,label:'只读检查'},{value:true,label:'允许生成 PPT 新副本'}]}];
+  const pptRows=await decoration.ui.options(session,new AbortController().signal);
+  await decoration.ui.onSelect(pptRows.find(row=>row.id==='page:options'),session);
+  const outputRows=await popup.ui.options(session,new AbortController().signal);
+  await popup.ui.onSelect(outputRows.find(row=>row.id==='option:allow_output=true'),session);
+  assert.deepEqual(posts[2],{action:'set_scene_options',session_id:'session-1',options:{allow_output:true}});
 });

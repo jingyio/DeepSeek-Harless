@@ -53,6 +53,7 @@ class DatasetEvidence(SessionFiles):
                             if is_numeric else None})
         self.pinned(source_id)
         return {'source_id': source_id, 'version_sha256': version, 'rows': len(rows), 'columns': columns,
+                'missing_policy':'empty_or_whitespace_only',
                 'coverage': 'descriptive_statistics_only_no_imputation_or_causal_claims'}
 
     def correlation(self, source_id, x, y):
@@ -79,6 +80,7 @@ class DatasetEvidence(SessionFiles):
         self.pinned(source_id)
         return {'source_id': source_id, 'version_sha256': version, 'x': x, 'y': y,
                 'pearson_r': max(-1., min(1., value)), 'complete_pairs': len(pairs),
+                'missing_policy':'empty_or_whitespace_only',
                 'excluded_missing_pairs': len(rows)-len(pairs), 'causality_established': False}
 
 

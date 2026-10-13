@@ -97,10 +97,11 @@ export function apply(ctx: any) {
   const defaultSceneId = memberRestricted && scenes.some(scene => scene.id === 'new-scene') ? 'new-scene' : config.capability_profile;
   let defaults = initialSelection(defaultSceneId, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
+  const optionSelections = new Map<string,Record<string,SceneOptions>>();
   const workspaces = new Map<string, string>();
   const principal = brokerMode && config.budget_task_prefix ? 'member-' + config.budget_task_prefix : config.user_id ?? 'local-operator';
   const saveSettings = () => json(join(config.output, 'harless-settings.json'),
-    { defaults, sessions: Object.fromEntries(selections) });
+    { defaults, sessions: Object.fromEntries(selections),scene_options:Object.fromEntries(optionSelections) });
   const guards = new Map<string, (() => void)[]>();
   const sceneFor = (id: string) => {
     const scene = scenes.find(scene => scene.id === id);
@@ -150,6 +151,12 @@ export function apply(ctx: any) {
       scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, config_sha256: scene.config_sha256,
         available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason,
         execute_available: !executeUnavailable(scene), execute_unavailable_reason: executeUnavailable(scene) })),
+      scene_options:sessionId ? optionSelections.get(sessionId)?.[selected.scene] ?? {} : {},
+      scene_option_fields:sceneFor(selected.scene).adapter==='ppt' ? [
+        {key:'slides',label:'页数',default:6,values:[1,6,8,10,12].map(value=>({value,label:`${value} 页`}))},
+        {key:'template',label:'模板',default:'academic',values:[{value:'academic',label:'学术模板'},{value:'lab',label:'组会模板'}]},
+        {key:'allow_output',label:'输出权限',default:false,values:[{value:false,label:'只读检查'},{value:true,label:'允许生成 PPT 新副本',detail:sceneFor(selected.scene).output_unavailable_reason ?? '仅生成本任务的新文件'}]},
+      ] : [],
       session_id: sessionId ?? null, model_calls: 0 };
   }
   async function setSelection(sessionId: string | undefined, patch: unknown) {
@@ -208,6 +215,11 @@ export function apply(ctx: any) {
     if (saved.defaults) defaults = changeSelection(defaults, saved.defaults, scenes, executeUnavailable);
     for (const [id, selection] of Object.entries(saved.sessions ?? {})) {
       if (ownedSessions.has(id)) selections.set(id, changeSelection(defaults, selection, scenes, executeUnavailable));
+    }
+    for(const [id, values] of Object.entries(saved.scene_options ?? {}))if(ownedSessions.has(id)){
+      const scoped:Record<string,SceneOptions>={};
+      for(const [sceneId,value] of Object.entries(values as Record<string,unknown>))scoped[sceneId]=sceneOptions(value,sceneFor(sceneId));
+      optionSelections.set(id,scoped);
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   const taskIndexPath = join(config.output, 'task-index-' + ownershipScope + '.json');
@@ -490,7 +502,8 @@ export function apply(ctx: any) {
     if (Buffer.byteLength(JSON.stringify(delivery)) > 768 * 1024) throw new TaskError('request_too_large', 'Resolved input exceeds byte limit', 413);
     const scene = sceneFor(request.capability_profile);
     if (scene.unavailable_reason) throw new TaskError('scene_not_connected', scene.unavailable_reason, 409);
-    const options = sceneOptions(supplied.scene_options, scene);
+    const options = sceneOptions(supplied.scene_options ?? (existingSession ? optionSelections.get(existingSession)?.[scene.id] : undefined), scene);
+    if(options.allow_output && scene.output_unavailable_reason)throw new TaskError('scene_output_unavailable',scene.output_unavailable_reason,409);
     const selection = changeSelection(selected, { scene: scene.id, mode: requestedMode }, scenes, executeUnavailable);
     request.request_sha256 = digest({ request: request.request_sha256, selection, scene_options: options, user_id: principal });
     const previous = requests.get(request.request_id);
@@ -588,6 +601,7 @@ export function apply(ctx: any) {
       binding_policy:task.scene.binding_policy,matching_policy:task.scene.matching_policy,
       certification_scope:task.scene.certification_scope,quality_cost_promoted:task.scene.quality_cost_promoted,
       allowed_tools: task.scene.allowed_tools, workspace: task.workspace, scope_sha256: task.scope_sha256,
+      runtime_file_locks:task.scene.runtime_file_locks,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
       budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit,
         run_usd: config.run_budget_usd, run_requests: config.run_request_limit, reset_history: false },
@@ -628,6 +642,7 @@ export function apply(ctx: any) {
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
         scopeDigest(task.workspace, task.scene) !== task.scope_sha256 ||
+        (task.scene.runtime_file_locks && Object.entries(task.scene.runtime_file_locks).some(([path,expected])=>fileSha(path)!==expected)) ||
         (task.scene.tool_schemas && fileSha(task.scene.tool_schemas) !== task.scene.certified_tool_schemas_sha256) ||
         fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256) {
       throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
@@ -812,11 +827,19 @@ export function apply(ctx: any) {
           if (body.action === 'select') return setSelection(body.session_id, body.selection);
           if (body.action === 'select_preview_scene') return setSelection(body.session_id, { scene: body.scene_id });
           if (body.action === 'clear_preview_scene') return setSelection(body.session_id, { scene: defaultSceneId });
+          if(body.action==='set_scene_options'){
+            const current=settingsView(body.session_id);
+            if(typeof body.session_id!=='string')throw new SettingsError('session_required','请选择所属 Session');
+            const options=sceneOptions(body.options,sceneFor(current.selection.scene));
+            optionSelections.set(body.session_id,{...(optionSelections.get(body.session_id)??{}),[current.selection.scene]:options});
+            saveSettings();return settingsView(body.session_id);
+          }
           if (body.action === 'new_session') {
             const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const created = await controller.create({ agentPreset: sceneFor(chosen.scene).preset });
             selections.set(created.sessionId, { ...chosen });
-
+            if(body.inherit_session && optionSelections.has(body.inherit_session))optionSelections.set(created.sessionId,structuredClone(optionSelections.get(body.inherit_session)!));
+            saveSettings();
             return { session_id: created.sessionId, ...settingsView(created.sessionId) };
           }
           throw new SettingsError('unknown_action', 'Supported actions: select, select_preview_scene, clear_preview_scene, new_session');

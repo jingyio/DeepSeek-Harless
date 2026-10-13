@@ -26,6 +26,13 @@ window.__ModuleLoader__.load({
       if (!response.ok || value.error) throw Error(value.error?.message || 'Could not save Harless settings');
       return value;
     }
+    async function selectOptions(session, options) {
+      const response=await fetch(endpoint,{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'set_scene_options',session_id:session.sessionId,options})});
+      const value=await response.json();
+      if(!response.ok || value.error)throw Error(value.error?.message || 'Could not save task options');
+      return value;
+    }
     const modeLabel = mode => mode === 'baseline' ? 'Origin' : mode[0].toUpperCase() + mode.slice(1);
     function options(value, page) {
       const current = value.selection;
@@ -35,6 +42,7 @@ window.__ModuleLoader__.load({
           { id: 'page:scenes', label: 'Scenes', detail: `${scene?.label || 'Current runtime'}  ›` },
           { id: 'page:modes', label: 'Mode', detail: `${modeLabel(current.mode)}  ›` },
           { id: 'page:rsi', label: 'RSI', detail: `${current.rsi ? 'On' : 'Off'}  ›` },
+          ...(value.scene_option_fields?.length ? [{id:'page:options',label:'PPT 任务选项',detail:'仅用于下一项任务  ›'}] : []),
         ];
       }
       if (page === 'scenes') return [
@@ -54,6 +62,10 @@ window.__ModuleLoader__.load({
         ].map(([id, label, detail]) => ({ id: `mode:${id}`, label, detail,
           active: current.mode === id })),
       ];
+      if(page==='options')return [{id:'page:root',label:'‹ Back',detail:'Harless'},
+        ...(value.scene_option_fields || []).flatMap(field=>field.values.map(choice=>({
+          id:`option:${field.key}=${JSON.stringify(choice.value)}`,label:choice.label,detail:choice.detail || field.label,
+          active:(value.scene_options?.[field.key] ?? field.default)===choice.value})))];
       return [
         { id: 'page:root', label: '‹ Back', detail: 'Harless' },
         { id: 'rsi:on', label: 'On', detail: 'Enable RSI', active: current.rsi },
@@ -111,7 +123,7 @@ window.__ModuleLoader__.load({
           },
           onSelect: async (option, session) => {
             const [kind, id] = option.id.split(':', 2);
-            if (kind === 'page' && ['root', 'scenes', 'modes', 'rsi'].includes(id)) {
+            if (kind === 'page' && ['root', 'scenes', 'modes', 'rsi','options'].includes(id)) {
               openPage(id, session);
               return;
             }
@@ -122,6 +134,12 @@ window.__ModuleLoader__.load({
               value = await select(session, { mode: id });
             } else if (kind === 'rsi' && ['on', 'off'].includes(id)) {
               value = await select(session, { rsi: id === 'on' });
+            } else if(kind==='option'){
+              const current=await settings(session);
+              const split=id.indexOf('='),key=id.slice(0,split),selected=JSON.parse(id.slice(split+1));
+              const field=current.scene_option_fields?.find(row=>row.key===key);
+              if(!field || !field.values.some(row=>row.value===selected))throw Error('Unsupported task option');
+              value=await selectOptions(session,{...current.scene_options,[key]:selected});
             } else throw Error('Unknown Harless option');
             publish(session.sessionId, value);
           },

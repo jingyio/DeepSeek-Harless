@@ -65,6 +65,9 @@ def main():
         if os.environ.get('HARLESS_PPT_RUNTIME_BUNDLE'):
             config['memberSceneDeployment']['libraryRoot']=os.environ['HARLESS_PPT_RUNTIME_BUNDLE']
             config_path.write_text(json.dumps(config))
+        for key,name in [('rendererRoot','HARLESS_PPT_RENDERER_ROOT'),('fontRoot','HARLESS_PPT_FONT_ROOT')]:
+            if os.environ.get(name):config['memberSceneDeployment'][key]=os.environ[name]
+        config_path.write_text(json.dumps(config))
         log=(area/'gateway.log').open('w')
         child=subprocess.Popen(['node',str(ROOT/'scripts/harless_gateway.mjs'),str(config_path)],
             cwd=ROOT,env={**os.environ,'DEEPSEEK_API_KEY':'no-model-diagnostic-delegate'},stdout=log,stderr=subprocess.STDOUT)

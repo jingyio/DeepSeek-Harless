@@ -1,5 +1,5 @@
 /** Trusted scene deployment into the existing per-account bwrap; no auth changes. */
-import { readdirSync, realpathSync, statSync } from 'node:fs';
+import { readdirSync, realpathSync, statSync, existsSync } from 'node:fs';
 import { join, relative, dirname, basename, isAbsolute } from 'node:path';
 
 const inside = (base, value) => value === base || (!relative(base, value).startsWith('..') && !isAbsolute(relative(base, value)));
@@ -29,6 +29,26 @@ export function memberSceneDeployment(policy, deployment) {
     return { source, target: '/app/' + name };
   });
   const mounts = [...mappings, ...pythonRoots.map(source => ({ source, target: source }))];
+  const renderer=deployment.rendererRoot ? realpathSync(deployment.rendererRoot) : null;
+  const fonts=deployment.fontRoot ? realpathSync(deployment.fontRoot) : null;
+  if(renderer){
+    if(!existsSync(join(renderer,'program/soffice.bin')) || !existsSync(join(renderer,'share')))
+      throw Error('Member renderer must be a LibreOffice installation');
+    mounts.push({source:renderer,target:renderer});
+  }
+  if(fonts){
+    const names=new Set(['fonts-static.conf','NotoSansCJKsc-Regular.otf','LICENSE.txt']);
+    if(!existsSync(join(fonts,'NotoSansCJKsc-Regular.otf')) || readdirSync(fonts,{withFileTypes:true}).some(f=>!f.isFile() || !names.has(f.name)))
+      throw Error('Member fonts must contain only fixed public font resources');
+    mounts.push({source:fonts,target:fonts});
+  }
+  const pptModules=join(root,'scenarios/research_ppt/node_modules');
+  if(existsSync(pptModules)){
+    const source=realpathSync(pptModules);
+    if(basename(source)!=='node_modules')throw Error('PPT dependencies must be an installed node_modules directory');
+    // Preserve the target of an installation symlink without exposing its parent checkout.
+    mounts.push({source,target:source});
+  }
   if (deployment.libraryRoot) {
     const source = realpathSync(deployment.libraryRoot);
     if(source==='/')throw Error('Invalid member runtime library root');
@@ -67,9 +87,13 @@ export function memberSceneDeployment(policy, deployment) {
       cfg.command=cfg.command === 'node' ? 'node' : executable;
       cfg.cwd='/app'; cfg.args=cfg.args.map(translate);
       const env=cfg.env ?? {};
-      if (Object.keys(env).some(k=>!['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON'].includes(k)))
+      if (Object.keys(env).some(k=>!['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH'].includes(k)))
         throw Error('Member scene environment contains unapproved authority');
+      if((env.PATH && (!renderer || scene.renderer_root!==renderer)) ||
+         (env.FONTCONFIG_FILE && (!fonts || env.FONTCONFIG_FILE!==join(fonts,'fonts-static.conf') || env.FONTCONFIG_PATH!==fonts)))
+        throw Error('Member renderer/font environment requires explicit matching installations');
       cfg.env=Object.fromEntries(Object.entries(env).map(([k,v])=>[k,k==='SSS_PPT_DELIVERY_PYTHON'?executable:translate(v)]));
+      if(cfg.env.PATH)cfg.env.PATH=join(renderer,'program')+':/opt/node/bin:/usr/bin:/bin';
     }
     const next={...structuredClone(scene),mcp_rows:rows};
     for(const key of ['manifest','task','tool_schemas','certification_path']) if(next[key]) {

@@ -46,6 +46,9 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
         if row.get('adapter'):
             scene.update(adapter=row['adapter'], mcp_rows=prepared['mcp_rows'], environment_references=prepared['environment_references'])
         if row.get('adapter') == 'ppt':
+            from .harless_ppt_deployment import configure_ppt_rendering
+            try:configure_ppt_rendering(scene)
+            except (ValueError,OSError):scene['output_unavailable_reason']='ppt_rendering_dependencies_invalid'
             if not (root / 'scenarios/research_ppt/dist/mcp-adapter.js').is_file():
                 scene['unavailable_reason'] = 'ppt_adapter_not_built'
             elif any(importlib.util.find_spec(module) is None for module in ('pypdf', 'fitz', 'pptx', 'reportlab', 'PIL')):

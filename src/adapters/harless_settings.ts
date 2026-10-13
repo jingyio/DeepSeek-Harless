@@ -12,6 +12,7 @@ export type Scene = {
   rsi_unavailable_reason?: string; matching_policy?: 'structural_only'; binding_policy?: 'ppt_uploaded_sources_v1';
   certification_path?: string; certification_sha256?: string; certified_code_locks?: Record<string,string>;
   certification_scope?: string; quality_cost_promoted?: boolean;
+  output_unavailable_reason?: string; renderer_root?: string; font_root?: string; runtime_file_locks?: Record<string,string>;
 };
 export type Selection = { scene: string; mode: ExecutionMode; rsi: boolean };
 export class SettingsError extends Error {

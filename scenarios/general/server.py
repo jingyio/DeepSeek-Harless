@@ -2,36 +2,25 @@
 from pathlib import Path
 import hashlib
 import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.adapters.session_files import SessionFiles
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 
 def create_server(directory: Path):
-    root = directory.resolve(strict=True)
+    files = SessionFiles(directory)
     server = MCPServer('Harless session files')
 
     def list_files() -> dict:
         """List this session's uploaded files with exact content versions."""
-        rows = []
-        for path in sorted(root.iterdir()):
-            if path.is_file() and not path.is_symlink():
-                data = path.read_bytes()
-                rows.append({'name': path.name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
-        return {'files': rows}
+        return files.list_files()
 
     def read_file(name: str, sha256: str) -> dict:
         """Read UTF-8 text with the version returned by list_files; reject traversal and changed files."""
-        if not name or Path(name).name != name or name in ('.', '..') or '\\' in name:
-            raise ToolError('file_not_in_session')
-        path = root / name
-        if path.is_symlink() or not path.is_file() or path.resolve().parent != root:
-            raise ToolError('file_not_in_session')
-        if path.stat().st_size > 256 * 1024:
-            raise ToolError('text_file_too_large')
-        data = path.read_bytes()
-        if hashlib.sha256(data).hexdigest() != sha256:
-            raise ToolError('file_version_changed')
+        try: data, _ = files.read(name,sha256,limit=256*1024)
+        except (ValueError,OSError) as exc:raise ToolError(str(exc)) from None
         try: text = data.decode('utf-8')
         except UnicodeDecodeError: raise ToolError('not_utf8_text') from None
         return {'name': name, 'sha256': sha256, 'text': text}
