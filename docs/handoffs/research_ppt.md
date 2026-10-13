@@ -2,7 +2,7 @@
 
 - 更新时间与交接人：2026-10-13，Codex。
 - 目标与本次范围：用户接受V17效果与成本并放行；完成必需前端对接，合入最新main菜单，整理必须代码/维护回归/历轮报告，推feature/research-ppt-agent，不开PR。
-- 分支 / commit / 工作区：独立发布树research-ppt-v17-release；081db45已本地提交V17整理与接口，本次最终提交合入main 62ee46b；按已授权推feature/research-ppt-agent，实际远端commit以Git与本次完成回复为准；原H盘及reports-v14脏工作区未覆盖。
+- 分支 / commit / 工作区：独立发布树research-ppt-v17-release；081db45已本地提交V17整理与接口，最终代码8ad2f31合入main 62ee46b，已推送feature/research-ppt-agent，无PR；本交接补记随同分支发布；原H盘及reports-v14脏工作区未覆盖。
 - 已完成：V17可靠交付/局部恢复，持久资料组件库；ts/web-tasks.ts复用认证与trial实现流式上传、回执绑定、独立双路job、预算确认、串行后台状态、取消、重启不自动重付费、交付SHA下载和费用展示。main原生/harless菜单PPT选项进入/ppt；其他main模型/菜单逻辑保留。Python web_bridge仅复用prepare_trial，不造模型循环。
 - 最短入口：根/场景安装与服务器渲染依赖按README/deploy-ubuntu18.md；配置私有DEEPSEEK_API_KEY；npm run web:real -- --ppt-run-budget-usd 3。打开本次Harness认证地址，在原生/harless菜单选PPT或访问/ppt。
 - 参数：默认15页，1–30；1–8 PDF/PPTX，每份100MiB，总256MiB，说明10000字符。双路$3/每路$1.50、60步骤/8000输出，off/off；PPT独立启动额度按确认上限预留，不退回未结算费用，普通任务预算不变。每次任务不生成新工具。ZIP/来源/版本/权限守卫保留。
