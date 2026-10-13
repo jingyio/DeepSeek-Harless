@@ -3,7 +3,7 @@
 ## 2026-10-13 多用户账号网关与连续对话（[PR #7](https://github.com/jingyio/DeepSeek-Harless/pull/7) 待审）
 
 - 范围与代码：分支 `codex/multiuser-web-gateway` 基于 `main` 的 `62ee46b`；账号网关、邀请码、账户设置、成员独立 DSH Home/工作区、账号预算路由及同一会话逐轮任务在 `scripts/harless_gateway.mjs`、`scripts/web_budget_broker.mjs`、`src/adapters/dsh_web_tasks.ts`。保留主线原生 Harless 场景/模型选择；未纳入服务器论文实验或私有配置。
-- 已验证：服务器独立 Linux worktree 中 `npm test` 为 164 Python、67 Node 全部通过。免费模拟 Web 带 `--public-origin` 启动，认证 303、首页和任务/设置 API 均 200。测试覆盖并发注册、跨账号预算拒绝、第二轮消息及重启恢复；没有真实模型调用。Windows 本机全量测试另有符号链接权限和纯代码节点环境限制，Linux 全量通过。
+- 已验证：服务器独立 Linux worktree 中 `npm test` 为 164 Python、67 Node 全部通过。免费模拟 Web 带 `--public-origin` 启动，认证 303、首页和任务/设置 API 均 200。另用两个临时测试账号同时启动隔离 DSH 后端，双方就绪与首页均 200、进程端口不同；没有真实模型调用。旧检出的 host patch 在新检出上被拒绝，改用同一检出的 patch 后通过。Windows 本机全量测试另有符号链接权限和纯代码节点环境限制，Linux 全量通过。
 - 配置与部署：公共说明见 `docs/harless-account-gateway.md`，账号、邀请码、模型密钥、运行日志和私有论文继续只在 `.local/`。本 PR 未切换正在运行的公网服务；生产切换前需要以最新主线重建私有 host patch，确认 `bubblewrap` 挂载、两个测试账号实际并发和 HTTPS 隧道稳定性。服务器原论文工作区的未提交改动没有改写。
 - 后续：审阅 PR 后在隔离部署上完成双账号浏览器与真实模型预算验收，再安排生产切换。PR 暂不合并；回退为停止可选账号网关并继续使用现有单用户 Web 入口。
 

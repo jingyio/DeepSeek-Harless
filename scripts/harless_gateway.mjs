@@ -93,6 +93,20 @@ export function createGateway(config) {
   const save = () => store(dbPath, db);
   const backends = new Map(), pending = new Map(), failures = new Map(), startupErrors = new Map();
   const origin = new URL(config.publicOrigin).origin;
+  // Reject a stale host patch before anybody can register into a backend that
+  // cannot start. The patch must be generated from the same source checkout.
+  const memberPatchTemplate = config.memberPatch ? (() => {
+    const sourceUri = pathToFileURL(config.sourceDir).href.replace(/\/?$/, '/');
+    const patch = config.memberPatch.filter(row => !row.insert ||
+      !row.insert.some(item => String(item.name ?? '').includes('dsh_paper_revision_web')))
+      .map(row => structuredClone(row));
+    for (const row of patch) if (row.insert) row.insert = row.insert.map(item => {
+      const name = String(item.name);
+      if (name.startsWith('file:') && !name.startsWith(sourceUri)) throw Error('Plugin is outside source directory');
+      return { ...item, name: name.startsWith(sourceUri) ? 'file:///app/src/' + name.slice(sourceUri.length) : name };
+    });
+    return patch;
+  })() : null;
   const taskPrefix = user => sha(user.id).slice(0, 8);
   const delegate = (user, purpose) => createHmac('sha256', config.adminToken ?? 'test-only')
     .update(purpose + ':' + user.id).digest('base64url');
@@ -305,15 +319,8 @@ export function createGateway(config) {
         budget_broker_endpoint: `http://127.0.0.1:${scopedPort}`,
         control_token: delegate(user, 'control') };
       store(join(userDir, 'config', 'policy.json'), policy);
-      const patch = config.memberPatch.filter(row => !row.insert ||
-        !row.insert.some(item => String(item.name ?? '').includes('dsh_paper_revision_web')))
-        .map(row => structuredClone(row));
-      const sourceUri = pathToFileURL(config.sourceDir).href.replace(/\/?$/, '/');
-      for (const row of patch) if (row.insert) row.insert = row.insert.map(item => {
-        const name = String(item.name);
-        if (name.startsWith('file:') && !name.startsWith(sourceUri)) throw Error('Plugin is outside source directory');
-        return { ...item, name: name.startsWith(sourceUri) ? 'file:///app/src/' + name.slice(sourceUri.length) : name };
-      });
+      if (!memberPatchTemplate) throw Error('Member host patch unavailable');
+      const patch = structuredClone(memberPatchTemplate);
       patch.push({ insert: [{ name: 'file:///app/src/adapters/dsh_member_workspace.ts' }] });
       const preset = patch.find(row => row.id === 'agent-presets');
       if (!preset) throw Error('Agent preset patch unavailable');

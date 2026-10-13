@@ -143,6 +143,13 @@ test('two invited users register and remain authenticated concurrently', async t
   assert.equal((await f.request('/api/account/me', { cookie: bobCookie }).then(r => r.json())).user.username, 'bob');
 });
 
+test('stale member plugin paths fail during gateway startup', async t => {
+  const f = await fixture(t);
+  assert.throws(() => createGateway({ ...f.config, sourceDir: join(f.dir, 'new-checkout', 'src'),
+    memberPatch: [{ insert: [{ name: 'file:///old-checkout/src/adapters/dsh_web_tasks.ts' }] }] }),
+  /Plugin is outside source directory/);
+});
+
 test('scoped budget rejects cross-account control and model traffic', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'harless-scoped-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
