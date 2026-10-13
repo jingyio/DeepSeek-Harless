@@ -401,7 +401,7 @@ export function apply(ctx: any) {
       if (chosen.unavailable_reason) throw new TaskError('scene_not_connected', chosen.unavailable_reason, 409);
       if (!brokerMode && (request.cwd !== undefined || request.workspaceId !== undefined))
         throw new TaskError('workspace_not_allowed', 'The server allocates a private Session workspace');
-      const id = request.sessionId ?? 'sss-' + randomUUID().replaceAll('-', '');
+      const id = request.sessionId ?? (brokerMode ? 'session-' + randomUUID() : 'sss-' + randomUUID().replaceAll('-', ''));
       const workspace = workspaceFor(id);
       const priorPreset = ownedSessions.has(id) ? (await controller.inspect(id)).meta.agentPreset : undefined;
       const created = await original.create({ ...request, sessionId: id, ...(priorPreset ? { agentPreset: priorPreset } : {}),

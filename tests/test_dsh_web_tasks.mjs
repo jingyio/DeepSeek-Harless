@@ -400,8 +400,8 @@ test('Owned empty sessions survive restart while bound task identities cannot ge
 test('Real native chat keeps one DSH session across confirmed turns with distinct budget routes', options, async () => {
   const f = await fixture({ broker: true, provider_mode: 'real' });
   try {
-    const id = 'session-11111111-1111-4111-8111-111111111111';
-    await f.ctx.sessionController.create({ sessionId: id });
+    const { sessionId: id } = await f.ctx.sessionController.create({});
+    assert.match(id, /^session-[a-f0-9-]{36}$/);
     const prompt = (requestId, text) => f.ctx.sessionController.prompt({ sessionId: id,
       requestId, mode: 'queue', content: [{ type: 'text', text }] }, new AbortController().signal);
     await prompt('first-turn', '你好');
