@@ -284,8 +284,8 @@ class CheckpointPPTService(PPTService):
         path = private_path(Path(report_path))
         # New deliveries persist inside their own job, including member mounts.
         # Keep the historical CLI directory readable, never another job's root.
-        validation_roots = {(self.job_path.parent / "validation").resolve(),
-                            (ROOT / ".local/research-ppt/validation").resolve()}
+        validation_roots = {self.job_path.parent / "validation",
+                            (ROOT / ".local").resolve() / "research-ppt/validation"}
         if path.name != "report.json" or path.parent.parent not in validation_roots:
             raise CheckpointRejected("checkpoint 核验报告路径越界")
         if report.get("pptx_path") != str(self.decks[report["deck_id"]]):
