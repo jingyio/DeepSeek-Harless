@@ -6,6 +6,8 @@
 
 分支 `codex/harless-launch-readiness-20261014`，基于桥接 PR #8，整合 main `6ade286`（PR #9/#10）；功能/协议最终验证代码 `396e2cf`。不修改上游 Harness、账号密码或 Session 归属恢复；原论文工作区不覆盖。新配置引用路径均由服务器登记，不接收前端主机路径/命令。
 
+后续Windows CI在 `2321c74` 暴露新增成员部署helper的目标路径分隔符问题：得到 `/app/scenarios\\general\\server.py`，实际应为Linux挂载路径。`80be6a1` 将目标后缀显式归一化为 `/`，保留原安全检查；本机/V100再次183 Python/79 Node通过。CI结果可在 [PR #13](https://github.com/jingyio/DeepSeek-Harless/pull/13) 检查记录追溯；不能把离线Windows回归当作Windows完整PPT渲染验收。
+
 环境为 V100 Ubuntu 18.04.6，Node22.23.3、Python3.10.21、DSH0.1.5-rc.3、SDK0.1.5rc1；Python虚拟环境继承既有隔离依赖。服务器新独立检出私有 ID `harless-launch-20261014`，本机也使用独立 worktree。固定 DeepSeek Flash、reasoning off、压缩关闭、单次输出1000；旧失败、重试、请求与估费持续累计，不借论文不限额授权扩张公共Web预算。GLM及公网浏览器本轮未验收。
 
 真实运行有效配置、逐次请求/用量、原始审计与结果在该检出的 `.local/web/runs/<RUN_ID>/`；菜单/场景诊断在 `.local/harless-scenes/`。它们不进Git。四场景公共配置在 `config/harless-scenes.json`，工具顺序、Schema/Prompt/Scope及代码摘要写入每任务 `effective-config.json`。账单实付、人工修改时间和维护成本未测量，不填零。
