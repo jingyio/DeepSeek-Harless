@@ -1,6 +1,6 @@
 /** Trusted scene deployment into the existing per-account bwrap; no auth changes. */
 import { readdirSync, realpathSync, statSync, existsSync } from 'node:fs';
-import { join, relative, dirname, basename, isAbsolute } from 'node:path';
+import { join, relative, dirname, basename, isAbsolute, sep } from 'node:path';
 
 const inside = (base, value) => value === base || (!relative(base, value).startsWith('..') && !isAbsolute(relative(base, value)));
 export function memberSceneDeployment(policy, deployment) {
@@ -68,7 +68,8 @@ export function memberSceneDeployment(policy, deployment) {
   const translate = value => {
     if (typeof value !== 'string') return value;
     if (value === root) return '/app';
-    for (const {source,target} of mappings) if (inside(source, value)) return target + value.slice(source.length);
+    for (const {source,target} of mappings) if (inside(source, value))
+      return target + value.slice(source.length).split(sep).join('/');
     return value;
   };
   const scenes = policy.scenes.map(scene => {
