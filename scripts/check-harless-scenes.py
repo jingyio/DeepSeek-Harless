@@ -21,14 +21,14 @@ web = importlib.util.module_from_spec(spec); spec.loader.exec_module(web)
 
 
 @contextmanager
-def launch(port, principal, real=False):
+def launch(port, principal, real=False, run_budget=.06, run_limit=24):
     run_id = uuid4().hex
     output = ROOT / '.local/web/runs' / run_id
     logs = ROOT / '.local/harless-scenes'; logs.mkdir(parents=True, exist_ok=True)
     with (logs / (run_id + '.log')).open('w') as log:
         child = subprocess.Popen([sys.executable, str(ROOT / 'scripts/harness-web.py'), '--port', str(port),
-            '--run-id', run_id, '--user-id', principal, '--budget-usd', '.03', '--run-budget-usd', '.06',
-            '--request-limit', '12', '--run-request-limit', '24', *(['--real-model'] if real else [])],
+            '--run-id', run_id, '--user-id', principal, '--budget-usd', str(min(.03, run_budget)), '--run-budget-usd', str(run_budget),
+            '--request-limit', str(min(12, run_limit)), '--run-request-limit', str(run_limit), *(['--real-model'] if real else [])],
             stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
         try:
             for _ in range(400):
@@ -55,10 +55,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--real-model', action='store_true')
     parser.add_argument('--port', type=int, default=3096)
+    parser.add_argument('--run-budget-usd', type=float, default=.06)
+    parser.add_argument('--run-request-limit', type=int, default=24)
     args = parser.parse_args(); os.umask(0o077)
     groups = []
     # Bob stays model-free; separate Connection tokens, DSH_HOME, policy and Session storage.
-    with launch(args.port, 'scene-check-alice', args.real_model) as (alice, base, output), \
+    with launch(args.port, 'scene-check-alice', args.real_model, args.run_budget_usd, args.run_request_limit) as (alice, base, output), \
          launch(args.port + 1, 'scene-check-bob') as (bob, bob_base, bob_output):
         value = settings(alice, base)
         assert [scene['id'] for scene in value['scenes']] == ['ppt', 'paper-proofreading', 'research-data-analysis', 'new-scene']
@@ -132,7 +134,7 @@ def main():
         groups.append({'group': 'two-principal-processes-and-foreign-session-task-receipt-denial', 'model_requests': 0})
         run_id = output.name
     report = {'run_id': run_id, 'code_commit': subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
-              'provider_mode': 'real' if args.real_model else 'no_model', 'budget_usd': .06, 'request_limit': 24,
+              'provider_mode': 'real' if args.real_model else 'no_model', 'budget_usd': args.run_budget_usd, 'request_limit': args.run_request_limit,
               'max_output_tokens': 1000, 'model': 'deepseek-flash', 'reasoning_effort': 'off',
               'quality_reviewed': False, 'browser_verified': False, 'groups': groups}
     directory = ROOT / '.local/harless-scenes'

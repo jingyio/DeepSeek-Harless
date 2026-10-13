@@ -685,3 +685,14 @@ test('Member zero-tool policy cannot inherit owner scene MCP capabilities', opti
     assert.equal(f.registrations.size, 1);
   } finally { await f.close(); }
 });
+
+test('Restricted member starts New Scene even when owner default is a privileged scene', options, async () => {
+  const rows = productScenes.map(row => ({ ...row, preset: row.id === 'ppt' ? 'sss-task' : 'sss-' + row.id }));
+  const f = await fixture({ broker: true, allowed_tools: [], fixtureSchemas: [], scenes: rows, capability_profile: 'ppt', budget_task_prefix: 'a1234567' });
+  try {
+    assert.equal((await f.settings()).value.selection.scene, 'new-scene');
+    const task = await f.preview('Member generic chat');
+    assert.equal(task.scene, 'new-scene'); assert.equal(task.user_id, 'member-a1234567');
+    assert.ok(task.task_id.startsWith('a1234567')); assert.equal(f.presetCalls.length, 0);
+  } finally { await f.close(); }
+});

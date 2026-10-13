@@ -84,12 +84,16 @@ export function apply(ctx: any) {
   const registeredScenes = config.scenes?.map(row => {
     if (!memberRestricted) return row;
     const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas, certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = row;
-    return { ...safe, allowed_tools: [], ...(row.id === 'new-scene' ? { preset: 'sss-task', unavailable_reason: undefined, instructions: '当前成员沙箱仅开放普通 Harness 对话；没有文件或场景 MCP 工具。不要声称已读取文件或完成生成。' }
+    const instructions = '当前成员沙箱仅开放普通 Harness 对话；没有文件或场景 MCP 工具。不要声称已读取文件或完成生成。';
+    return { ...safe, allowed_tools: [], preset: 'sss-disabled-' + row.id,
+      config_sha256: digest({ scene: row.id, parent: row.config_sha256 ?? null, role: 'member_chat_only', allowed_tools: [] }),
+      ...(row.id === 'new-scene' ? { preset: 'sss-task', unavailable_reason: undefined, instructions, instructions_sha256: sha(instructions) }
       : { unavailable_reason: row.unavailable_reason ?? 'scene_not_deployed_in_member_sandbox' }) };
   });
   const scenes = sceneCatalog(registeredScenes ?? [{ ...config, id: config.capability_profile, label: config.capability_profile, preset: 'sss-task' }]);
   if (!scenes.some(scene => scene.id === config.capability_profile)) throw Error('Default scene is not registered');
-  let defaults = initialSelection(config.capability_profile, config.mode);
+  const defaultSceneId = memberRestricted && scenes.some(scene => scene.id === 'new-scene') ? 'new-scene' : config.capability_profile;
+  let defaults = initialSelection(defaultSceneId, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
   const workspaces = new Map<string, string>();
   const principal = brokerMode && config.budget_task_prefix ? 'member-' + config.budget_task_prefix : config.user_id ?? 'local-operator';
@@ -775,7 +779,7 @@ export function apply(ctx: any) {
         const result = await serialize(async () => {
           if (body.action === 'select') return setSelection(body.session_id, body.selection);
           if (body.action === 'select_preview_scene') return setSelection(body.session_id, { scene: body.scene_id });
-          if (body.action === 'clear_preview_scene') return setSelection(body.session_id, { scene: config.capability_profile });
+          if (body.action === 'clear_preview_scene') return setSelection(body.session_id, { scene: defaultSceneId });
           if (body.action === 'new_session') {
             const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const created = await controller.create({ agentPreset: sceneFor(chosen.scene).preset });
