@@ -18,12 +18,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import uuid4
 from secrets import token_hex
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.adapters.scenario import prepare_scenario
 from src.adapters.harless_scenarios import prepare_scene_registry
-from src.adapters.deepseek_cost_gate import State, create_server
+from src.adapters.deepseek_cost_gate import State, create_server, PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION
 from src.adapters.web_task_budget import TaskBudgetRegistry, create_control_server
 
 
@@ -53,6 +54,26 @@ def demo_action(values, _event):
     return None, {'answer': '两次试验的种子数与评测协议不同；还缺同协议下的独立复现实验。',
                   'sources': [{key: row[key] for key in ('object_id', 'source_id', 'version_sha256')}
                               for row in values if 'text' in row]}
+
+
+def configured_glm(real_model: bool):
+    """Read server-side GLM routing without serializing the credential."""
+    if not real_model or not os.environ.get('HARLESS_GLM_API_KEY', '').strip():
+        return None
+    model = os.environ.get('HARLESS_GLM_MODEL', 'glm-4.6').strip()
+    if not re.fullmatch(r'glm-[A-Za-z0-9._-]+', model):
+        raise ValueError('HARLESS_GLM_MODEL must be a GLM model ID')
+    base = os.environ.get('HARLESS_GLM_BASE_URL', 'https://open.bigmodel.cn/api/paas/v4').rstrip('/')
+    parsed = urlparse(base)
+    if parsed.scheme != 'https' or parsed.netloc not in {'open.bigmodel.cn', 'api.z.ai'} or parsed.path != '/api/paas/v4' or parsed.query or parsed.fragment:
+        raise ValueError('HARLESS_GLM_BASE_URL must be an approved official HTTPS API root')
+    prices = []
+    for field in ('HARLESS_GLM_INPUT_USD_PER_MILLION', 'HARLESS_GLM_OUTPUT_USD_PER_MILLION'):
+        try: value = float(os.environ[field])
+        except (KeyError, ValueError): raise ValueError(f'{field} must specify a conservative USD rate') from None
+        if not math.isfinite(value) or value <= 0: raise ValueError(f'{field} must be positive and finite')
+        prices.append(value)
+    return {'model': model, 'base_url': base, 'rates': tuple(prices)}
 
 
 def prepare(args, output, endpoint):
@@ -106,6 +127,12 @@ def prepare(args, output, endpoint):
             control_endpoint=args.control_endpoint, control_token=args.control_token,
             certified_input_sha256=canonical_prompt_sha, resources=resources,
             embedding_model=args.embedding_model)
+        policy['models'] = ([{'provider': 'deepseek-official', 'model': 'deepseek-flash',
+                              'label': 'DeepSeek Flash', 'available': True}]
+                            if not args.real_model or os.environ.get('DEEPSEEK_API_KEY', '').strip() else [])
+        if args.glm:
+            policy['models'].append({'provider': 'harless-glm', 'model': args.glm['model'],
+                                     'label': args.glm['model'].upper(), 'available': True})
     if not args.frozen:
         registry = Path(args.scene_registry)
         if not registry.is_absolute(): registry = ROOT / registry
@@ -118,9 +145,20 @@ def prepare(args, output, endpoint):
             selected.update({key: policy[key] for key in ('manifest', 'task', 'certified_input_sha256')})
         policy.update(scenes=scenes, scene_registry_sha256=hashlib.sha256(registry.read_bytes()).hexdigest())
     save(output / 'policy.json', policy)
-    disabled = ['llm-deepseek', 'llm-pi-ai', 'session-title-llm', 'llm-retry',
+    disabled = ['llm-deepseek', 'session-title-llm', 'llm-retry',
                 'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']
     patch = [{'id': name, 'disabled': True} for name in disabled]
+    if args.glm:
+        patch.append({'id': 'llm-pi-ai', 'config': {'providers': {'harless-glm': {
+            'displayName': 'GLM', 'apiKeyEnv': 'HARLESS_GLM_API_KEY',
+            'api': 'openai-completions', 'baseURL': args.glm_gate_endpoint,
+            'compat': {'maxTokensField': 'max_tokens'},
+            'headers': {'X-SSS-Model-Gate-Token': args.glm_gate_token},
+            'models': [{'id': args.glm['model'], 'name': args.glm['model'],
+                        'reasoningEfforts': False, 'input': ['text']}],
+        }}}})
+    else:
+        patch.append({'id': 'llm-pi-ai', 'disabled': True})
     patch += [{'id': 'agent-presets', 'config': {'default': 'sss-task',
         'includeShippedRoot': False, 'includeUserRoot': False,
         'roots': [{'path': str(output / 'presets'), 'trust': 'system'}]}},
@@ -143,6 +181,10 @@ def prepare(args, output, endpoint):
                 'output': str(output), 'provider_mode': 'real' if args.real_model else 'mock',
                 'paid_calls': None if args.real_model else 0, 'entry': 'frozen' if args.frozen else 'dynamic',
                 'run_budget_usd': args.run_budget_usd, 'run_request_limit': args.run_request_limit}
+    snapshot['configured_models'] = policy.get('models', [])
+    if args.glm:
+        snapshot['glm_price_basis'] = {'input_usd_per_million': args.glm['rates'][0],
+                                       'output_usd_per_million': args.glm['rates'][1]}
     snapshot.update(task_id=output.name, platform=platform.platform(), real_models_enabled=args.real_model,
         motif_min_similarity=0.8, motif_min_margin=0.1, disabled_host_plugins=disabled,
         git_diff_sha256=hashlib.sha256(subprocess.check_output(['git', 'diff', '--binary'], cwd=ROOT)).hexdigest())
@@ -204,8 +246,10 @@ def main():
     if bool(args.manifest) != bool(args.task): parser.error('--manifest and --task must be supplied together')
     if args.real_model and (args.frozen or args.fixture != 'normal'):
         parser.error('real provider cannot use frozen/failure fixtures')
-    if args.real_model and not os.environ.get('DEEPSEEK_API_KEY', '').strip():
-        parser.error('configure DEEPSEEK_API_KEY in private .env and start through npm run web')
+    try: args.glm = configured_glm(args.real_model and not args.frozen)
+    except ValueError as error: parser.error(str(error))
+    if args.real_model and not (os.environ.get('DEEPSEEK_API_KEY', '').strip() or args.glm):
+        parser.error('configure DEEPSEEK_API_KEY or HARLESS_GLM_API_KEY in private .env')
     if args.run_id is not None and not re.fullmatch('[0-9a-f]{32}', args.run_id):
         parser.error('run-id must be 32 lowercase hexadecimal characters')
     os.umask(0o077)
@@ -242,9 +286,15 @@ def main():
     upstream = f'http://127.0.0.1:{provider.server_port}'
     if not args.real_model: args.embedding_endpoint = args.embedding_endpoint or upstream + '/v1/embeddings'
     else: upstream = 'https://api.deepseek.com'
+    rates = dict(PEAK_USD_PER_MILLION)
+    cache_rates = dict(CACHE_HIT_PEAK_USD_PER_MILLION)
+    if args.glm:
+        rates[args.glm['model']] = args.glm['rates']
+        cache_rates[args.glm['model']] = args.glm['rates'][0]
     state = State(cap_usd=args.budget_usd if args.frozen else args.run_budget_usd,
                   output_cap=defaults['max_output_tokens'], record=output / 'ledger.jsonl',
-                  request_limit=args.request_limit if args.frozen else args.run_request_limit)
+                  request_limit=args.request_limit if args.frozen else args.run_request_limit,
+                  rates=rates, cache_rates=cache_rates)
     servers = [] if args.real_model else [provider]
     registry = None
     if not args.frozen:
@@ -255,13 +305,21 @@ def main():
         args.control_endpoint = f'http://127.0.0.1:{control.server_port}'
         servers.append(control)
     gate = create_server('127.0.0.1', 0, upstream, state,
-                         state_selector=registry.state_for if registry else None)
+                         state_selector=registry.state_for if registry else None,
+                         allowed_models={'deepseek-flash', 'deepseek-v4-pro'})
     servers.append(gate)
+    if args.glm:
+        args.glm_gate_token = token_hex(32)
+        glm_gate = create_server('127.0.0.1', 0, args.glm['base_url'], state,
+            state_selector=registry.active_state_for, allowed_models={args.glm['model']},
+            chat_path='/chat/completions', allow_files=False, gate_token=args.glm_gate_token)
+        args.glm_gate_endpoint = f'http://127.0.0.1:{glm_gate.server_port}/v1'
+        servers.append(glm_gate)
     for server in servers:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     prepare(args, output, f'http://127.0.0.1:{gate.server_port}/v1')
     env = {**os.environ, 'DSH_HOME': str(output / 'dsh'), 'SSS_WEB_POLICY': str(output / 'policy.json'),
-           'DEEPSEEK_API_KEY': os.environ['DEEPSEEK_API_KEY'] if args.real_model else 'sss-mock-only',
+           'DEEPSEEK_API_KEY': os.environ.get('DEEPSEEK_API_KEY', '') if args.real_model else 'sss-mock-only',
            'DEEPSEEK_BASE_URL': f'http://127.0.0.1:{gate.server_port}/v1',
            'SSS_ONLINE_MOTIF_MANIFEST': '', 'SSS_ONLINE_MOTIF_TASK': ''}
     log = (output / 'startup.log').open('w')
@@ -296,7 +354,7 @@ def main():
             snapshot['observed_tools_order'] = [row['function']['name'] for row in first['tools']]
             snapshot['observed_tools_sha256'] = hashlib.sha256(json.dumps(first['tools'], sort_keys=True).encode()).hexdigest()
             save(output / 'effective-config.json', snapshot)
-    print('DeepSeek Harless Web：' + ('真实 DeepSeek；任务须预览并确认预算。' if args.real_model else '模拟模型，实际费用为 0。'), flush=True)
+    print('DeepSeek Harless Web：' + ('真实模型 API；聊天发送后直接执行，服务端预算约束生效。' if args.real_model else '模拟模型，实际费用为 0。'), flush=True)
     print('私有输出目录：' + str(output), flush=True)
     try:
         for _ in range(300):

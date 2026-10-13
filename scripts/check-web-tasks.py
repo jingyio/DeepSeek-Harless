@@ -134,8 +134,10 @@ def launch(scenario, fixture='normal'):
             with opener.open(base + '/', timeout=20) as response:
                 assert response.status == 200
                 index = response.read().decode('utf-8')
-                assert 'harless-picker-anchor' in index
+                assert 'deepseek-harless-web-client' in index
                 assert 'DeepSeek Harless 任务工作台' not in index
+            status, listing = request(opener, base, '/api/harless/tasks')
+            assert status == 200 and any(row['model'] == 'deepseek-flash' for row in listing['model_options'])
             try:
                 with opener.open(base + '/tasks', timeout=10) as response:
                     old_page = response.read().decode('utf-8')

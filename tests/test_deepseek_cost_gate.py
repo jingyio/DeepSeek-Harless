@@ -9,6 +9,21 @@ from src.adapters.deepseek_cost_gate import State, observed_peak_cost, reservati
 
 
 class DeepSeekCostGateTests(unittest.TestCase):
+    def test_configured_glm_usage_is_priced_without_cache_fields(self) -> None:
+        rates = {'glm-4.6': (2.0, 8.0)}
+        body = b'{"model":"glm-4.6","max_tokens":100,"messages":[]}'
+        usage = response_usage('application/json',
+            b'{"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}')
+        self.assertEqual(usage['prompt_cache_miss_tokens'], 12)
+        with tempfile.TemporaryDirectory() as temporary:
+            state = State(cap_usd=1, output_cap=100, record=Path(temporary) / 'gate.jsonl',
+                          rates=rates, cache_rates={'glm-4.6': 2.0})
+            booked = state.book(body)
+            observed, released = state.settle(booked[0], booked[1], 200, usage)
+            self.assertAlmostEqual(observed, (12 * 2 + 3 * 8) / 1_000_000)
+            self.assertGreater(released, 0)
+            with self.assertRaises(ValueError): state.book(b'{"model":"deepseek-flash","max_tokens":10}')
+
     def test_request_limit_survives_usage_settlement(self) -> None:
         body = b'{"model":"deepseek-flash","max_tokens":100,"messages":[]}'
         with tempfile.TemporaryDirectory() as temporary:
