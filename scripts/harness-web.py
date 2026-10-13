@@ -19,6 +19,7 @@ from pathlib import Path
 from uuid import uuid4
 from secrets import token_hex
 from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -33,6 +34,24 @@ def save(path, value):
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     temporary.chmod(0o600)
     temporary.replace(path)
+
+
+def https_public_origin(value):
+    """One exact HTTPS authority for the upstream public --trusted-host seam."""
+    if not isinstance(value, str) or re.search(r'\s|[\x00-\x1f]', value):
+        raise ValueError('public-origin must be an HTTPS origin')
+    parsed = urlsplit(value)
+    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username is not None or
+            parsed.password is not None or parsed.path not in ('', '/') or parsed.query or parsed.fragment):
+        raise ValueError('public-origin must be an HTTPS origin without credentials or a path')
+    host = parsed.hostname.lower()
+    if not re.fullmatch(r'[a-z0-9.-]+|[a-f0-9:]+', host):
+        raise ValueError('public-origin hostname must be an ASCII hostname or IP literal')
+    port = parsed.port
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError('invalid public-origin port')
+    authority = ('[' + host + ']' if ':' in host else host) + (':' + str(port) if port not in (None, 443) else '')
+    return 'https://' + authority
 
 
 def fixture_module():
@@ -82,13 +101,13 @@ def prepare(args, output, endpoint):
     if not scenario.is_absolute():
         scenario = ROOT / scenario
     if scenario.suffix != '.json':
-        scenario = ROOT / f'scenarios/{args.scenario}/scenario.json'
-    prepared = prepare_scenario(scenario, case=args.case or ('l_retrieval_persistence' if args.scenario == 'portfolio-v1' else ''))
+        scenario = ROOT / ({'new-scene': 'scenarios/general/scenario.json', 'ppt': 'scenarios/research_ppt/web-scenario.json'}.get(args.scenario, f'scenarios/{args.scenario}/scenario.json'))
+    prepared = prepare_scenario(scenario, session_workspace='__HARLESS_SESSION_WORKSPACE__', case=args.case or ('l_retrieval_persistence' if args.scenario == 'portfolio-v1' else ''))
     preset = output / 'presets/sss-task'
     preset.mkdir(parents=True, mode=0o700)
     rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
         'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
-        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *prepared['mcp_rows']]
+        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *([] if args.scenario in ('new-scene', 'ppt') else prepared['mcp_rows'])]
     rendered = json.dumps(rows, ensure_ascii=False, indent=2)
     for token, expression in prepared['environment_references'].items():
         rendered = rendered.replace(json.dumps(token), expression)
@@ -123,11 +142,13 @@ def prepare(args, output, endpoint):
                 if len(data) > 256 * 1024: raise ValueError('registered resource exceeds 256 KiB')
                 resources[identity] = {'text': data.decode('utf-8'), 'version': hashlib.sha256(data).hexdigest()}
         policy.update(capability_profile=args.scenario if '/' not in args.scenario else prepared['name'],
-            budget_usd=args.budget_usd, provider_mode='real' if args.real_model else 'mock',
+            budget_usd=args.budget_usd, provider_mode='real' if args.real_model else 'mock', user_id=args.user_id,
+            request_limit=args.request_limit, run_budget_usd=args.run_budget_usd, run_request_limit=args.run_request_limit,
             control_endpoint=args.control_endpoint, control_token=args.control_token,
             certified_input_sha256=canonical_prompt_sha, resources=resources,
             embedding_model=args.embedding_model)
         policy['ppt_run_budget_usd'] = args.ppt_run_budget_usd
+        policy['ppt_state_directory'] = str(ROOT / '.local/research-ppt/web')
         policy['models'] = ([{'provider': 'deepseek-official', 'model': 'deepseek-flash',
                               'label': 'DeepSeek Flash', 'available': True}]
                             if not args.real_model or os.environ.get('DEEPSEEK_API_KEY', '').strip() else [])
@@ -167,7 +188,8 @@ def prepare(args, output, endpoint):
             ROOT / 'src/adapters/harless_web_client/index.mjs').as_uri()}]}]
     save(output / 'host.patch.yml', patch)
     (output / 'prompt.md').write_text(prepared['prompt']); (output / 'prompt.md').chmod(0o600)
-    snapshot = {**public, 'mode': args.mode, 'scenario': args.scenario,
+    snapshot = {**public, 'host': '127.0.0.1', 'port': args.port,
+                'public_origin': args.public_origin, 'mode': args.mode, 'scenario': args.scenario,
                 'budget_usd': args.budget_usd, 'request_limit': args.request_limit,
                 'prompt_sha256': canonical_prompt_sha, 'raw_prompt_sha256': prepared['prompt_sha256'],
                 'prompt_normalization': 'outer whitespace only (official composer trim)',
@@ -175,7 +197,7 @@ def prepare(args, output, endpoint):
                 'allowed_tools': prepared['allowed_tools'], 'tools_order': sorted(prepared['allowed_tools']),
                 'fixture': args.fixture,
                 'case': prepared['case'], 'embedding_model': args.embedding_model if args.embedding_endpoint else None,
-                'dsh_version': '0.1.5-rc.3', 'python_version': sys.version.split()[0],
+                'dsh_version': '0.1.5-rc.3', 'filesystem_watcher_polling': os.environ.get('CHOKIDAR_USEPOLLING') == '1', 'python_version': sys.version.split()[0],
                 'node_version': subprocess.check_output(['node', '--version'], text=True).strip(),
                 'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 'dirty_files': subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).splitlines(),
@@ -216,7 +238,8 @@ def prepare(args, output, endpoint):
 def main():
     defaults = json.loads((ROOT / 'config/harness-web.json').read_text())
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', default='example', help='scenario name or path to scenario.json (server configuration)')
+    parser.add_argument('--scenario', default=None, help='scenario name or path to scenario.json (server configuration)')
+    parser.add_argument('--user-id', default='local-operator', help='server-owned principal; one isolated launch per authenticated user')
     parser.add_argument('--case', default='')
     parser.add_argument('--scene-registry', default='config/harless-scenes.json', help='server-owned versioned scene registry')
     parser.add_argument('--frozen', action='store_true', help='legacy single-task mock regression entry')
@@ -228,16 +251,22 @@ def main():
     parser.add_argument('--embedding-model', default='fixture-vectors-not-a-semantic-model')
     parser.add_argument('--mode', choices=['baseline', 'shadow', 'execute'], default=None)
     parser.add_argument('--port', type=int, default=defaults['port'])
+    parser.add_argument('--public-origin', help='exact HTTPS gateway origin; backend remains on loopback, no proxy or account isolation is created')
     parser.add_argument('--run-id', help='optional unique 32-character hexadecimal output identity')
     parser.add_argument('--budget-usd', type=float, default=defaults['budget_usd'])
     parser.add_argument('--request-limit', type=int, default=defaults['request_limit'])
     parser.add_argument('--run-request-limit', type=int, default=256, help='whole-launch request cap across all tasks')
     parser.add_argument('--run-budget-usd', type=float, default=defaults['budget_usd'], help='whole-launch budget, never reset by a new task')
-    parser.add_argument('--ppt-run-budget-usd', type=float, default=3.0, help='独立PPT双路启动总额度，按确认上限预留，普通任务额度另计')
+    parser.add_argument('--ppt-run-budget-usd', type=float, default=3.0, help='独立PPT双路累计额度，确认时预留、完整结算后释放余额；重启不清零，普通任务另计')
     parser.add_argument('--fixture', choices=['normal', 'stale', 'tool-failure', 'provider-failure', 'outside-tool', 'delay'],
                         default='normal', help='mock-only failure injection for diagnostics')
     args = parser.parse_args()
+    args.scenario = args.scenario or ('example' if args.frozen else 'new-scene')
+    if not re.fullmatch(r'[a-zA-Z0-9_-]{1,64}', args.user_id): parser.error('invalid user-id')
     args.mode = args.mode or ('baseline' if args.frozen else 'shadow')
+    if args.public_origin:
+        try: args.public_origin = https_public_origin(args.public_origin)
+        except ValueError as error: parser.error(str(error))
     if args.frozen and args.mode != 'baseline' and args.scenario != 'portfolio-v1':
         parser.error('Motif modes require the portfolio-v1 historical library scenario')
     if args.fixture in ('stale', 'tool-failure') and (args.mode != 'execute' or args.scenario != 'portfolio-v1'):
@@ -267,6 +296,8 @@ def main():
     module = fixture_module()
     def scene_fixture_action(values, event, body):
         # Synthetic transport diagnostic only; real models never use this selector.
+        if args.fixture == 'outside-tool' and len(handler.calls) == 1:
+            return 'bash', {'command': 'echo forbidden'}
         if any(tool.get('function', {}).get('name', '').startswith('mcp__demo__') for tool in body.get('tools', [])):
             return demo_action(values, event)
         texts = [message.get('content', '') for message in body.get('messages', []) if message.get('role') == 'user' and isinstance(message.get('content'), str)]
@@ -274,12 +305,6 @@ def main():
         return module.next_fixture_action(values, match.group() if match else event)
     handler = module.provider_handler('event:l_retrieval_persistence:01', with_usage=True,
         request_limit=24 if args.frozen else args.run_request_limit, action_selector=scene_fixture_action)
-    if args.fixture == 'outside-tool':
-        original_action = module.next_fixture_action
-        def outside_action(values, event):
-            if len(handler.calls) == 1: return 'bash', {'command': 'echo forbidden'}
-            return original_action(values, event)
-        module.next_fixture_action = outside_action
     if args.fixture in ('delay', 'provider-failure'):
         original_respond = handler.respond
         def respond(self):
@@ -330,7 +355,8 @@ def main():
     log = (output / 'startup.log').open('w')
     process = subprocess.Popen(['node', str(ROOT / 'node_modules/@deepseek-ai/dsh/lib/bin.js'),
         '--profile', 'web', '--patch', str(output / 'host.patch.yml'),
-        '--host', '127.0.0.1', '--port', str(args.port), '--no-open'],
+        '--host', '127.0.0.1', '--port', str(args.port), '--no-open',
+        *(['--trusted-host', urlsplit(args.public_origin).netloc] if args.public_origin else [])],
         cwd=output / 'work', env=env, stdout=log, stderr=subprocess.STDOUT)
     proc = Path(f'/proc/{os.getpid()}/stat')
     ticks = proc.read_text().rsplit(')', 1)[1].split()[19] if proc.exists() else None
@@ -368,6 +394,11 @@ def main():
             match = re.search(r'http://127\.0\.0\.1:' + str(args.port) + r'/\?token=[^\s]+', text)
             if match:
                 (output / 'access-url.txt').write_text(match.group(0) + '\n'); (output / 'access-url.txt').chmod(0o600)
+                if args.public_origin:
+                    public_url = args.public_origin + '/?' + urlsplit(match.group(0)).query
+                    (output / 'public-access-url.txt').write_text(public_url + '\n')
+                    (output / 'public-access-url.txt').chmod(0o600)
+                    print('HTTPS 网关登录地址仅保存在 public-access-url.txt；网关须另行配置。', flush=True)
                 print('官方 Web 已启动；认证地址仅保存在 access-url.txt。' + ('冻结题面见 prompt.md。' if args.frozen else '认证后在聊天输入框旁选择 Harless 场景与模式。'), flush=True)
                 break
             time.sleep(0.1)

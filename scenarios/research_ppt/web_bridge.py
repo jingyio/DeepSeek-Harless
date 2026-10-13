@@ -11,7 +11,8 @@ def main():
     data = json.loads(raw)
     path = prepare_trial([Path(p) for p in data['inputs']], data['instruction'], data['slides'],
                          budget=data['budget_usd'], max_steps=60, max_output=8000,
-                         template=data['template'], operation=data['operation'], allow_output=True)
+                         template=data['template'], operation=data['operation'], allow_output=True,
+                         order='optimized-first')
     print(json.dumps({'trial': str(path)}, ensure_ascii=False), flush=True)
 
 if __name__ == '__main__':

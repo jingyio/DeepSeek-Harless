@@ -177,7 +177,7 @@ async function main(): Promise<void> {
   const schemaDigest=digest(offered);
   const adapterDirectory=dirname(fileURLToPath(import.meta.url));
   const adapter=await DeliveryAdapter.create(root,job,async(name,args)=>payload(await client.callTool({name,arguments:args},undefined,{timeout:240_000})),
-    await dependencyFiles(root,backendPath,adapterDirectory));
+    await dependencyFiles(root,backendPath,adapterDirectory),args.includes('--web-session'));
   const pendingPlans=executionPolicy.strategy==='host_delivery' && jobData.allow_output===true
     ? await PendingPlanStore.create({root,jobPath:job,expectedSlides:Number(jobData.slides),
       evidence:adapter.versionEvidence(schemaDigest),guard:()=>adapter.guard(),audit:(kind,data)=>adapter.audit(kind,data)}) : undefined;

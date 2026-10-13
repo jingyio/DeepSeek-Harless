@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 
-test('Native /harless picker opens Scenes and Mode submenus and saves choices', async () => {
+for (const pptWebUrl of [null, '/ppt']) test(`Native /harless picker keeps PPT in chat; separate delivery entry ${pptWebUrl ?? 'not enabled'}`, async () => {
   const source = readFileSync(new URL('../src/adapters/harless_web_client/client.js', import.meta.url), 'utf8');
   const posts = [];
   const navigations = [];
@@ -13,6 +13,7 @@ test('Native /harless picker opens Scenes and Mode submenus and saves choices', 
   const popup = { binding: { segment: { via: 'enter', token: '/harless' } },
     open(_name, ui) { this.ui = ui; } };
   const value = {
+    ppt_web_url: pptWebUrl,
     selection: { scene: 'example', mode: 'shadow', rsi: true }, preview_scene: null,
     preview_scenes: [
       { id: 'ppt', label: 'PPT' },
@@ -20,7 +21,12 @@ test('Native /harless picker opens Scenes and Mode submenus and saves choices', 
       { id: 'research-data-analysis', label: 'Research Data Analysis' },
       { id: 'new-scene', label: 'New Scene' },
     ],
-    scenes: [{ id: 'example', label: 'Sample', execute_available: false }],
+    scenes: [
+      { id: 'ppt', label: 'PPT', available: true },
+      { id: 'paper-proofreading', label: 'Paper Proofreading', available: false, unavailable_reason: 'missing_backend' },
+      { id: 'research-data-analysis', label: 'Research Data Analysis', available: false, unavailable_reason: 'missing_backend' },
+      { id: 'new-scene', label: 'New Scene', available: true },
+    ],
   };
   const fetch = async (_url, init) => {
     if (init.method === 'POST') posts.push(JSON.parse(init.body));
@@ -49,8 +55,8 @@ test('Native /harless picker opens Scenes and Mode submenus and saves choices', 
     ['PPT', 'Paper Proofreading', 'Research Data Analysis', 'New Scene']);
   assert.equal(sceneRows.some(row => row.label === 'Sample'), false);
   await popup.ui.onSelect(sceneRows[1], session);
-  assert.deepEqual(posts[0], { action: 'select_preview_scene', session_id: 'session-1', scene_id: 'ppt' });
-  assert.deepEqual(navigations, ['/ppt']);
+  assert.deepEqual(posts[0], { action: 'select', session_id: 'session-1', selection: { scene: 'ppt' } });
+  assert.deepEqual(navigations, []);
   await decoration.ui.onSelect(rows[1], session);
   const modeRows = await popup.ui.options(session, new AbortController().signal);
   assert.deepEqual(Array.from(modeRows.slice(1), row => row.label), ['Origin', 'Shadow', 'Execute']);

@@ -1,5 +1,35 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-14：跨部署续聊恢复（已部署，PR 待审）
+
+- 范围与版本：分支 `codex/persistent-chat-recovery` 基于 main `6ade286`；实现提交 `373eadd`（含 `5e1ecbe`），后续为文档。修复历史可见但升级后发送被拒绝，以及旧锁定 preset 无新版工具导致的二次失败。
+- 接口：归属持久化至账号 `DSH_HOME`，按 Home/principal 隔离；私有 `ownership_legacy_outputs` 只导入同 Home 的明确旧目录，成员清空此配置。外部旧目录迁入的会话为文字续聊，`conversation_only:true`；附件及新版工具需新会话。正常重启不移除当前会话工具。
+- 验证：Linux 全量 165 Python / 78 Node 通过；两临时账号并发各三轮真实模型对话，第三轮在网关与成员后端重启后完成，跨账号访问拒绝；实际报错旧会话两轮续聊通过；公网登录表单正常。详见 [实验记录](../experiments/chat-session-recovery-20261014-v1.md)。
+- 部署与数据：正式隔离检出运行 `373eadd`；端口保持 owner 33102 / gateway 33101，原 3080 模型预算进程继续运行。保存旧启动配置与迁移前 policy；DSH Home、workspace、output 和三个生产账号保留，临时验收账号清理。原论文根工作区未重置，私有配置与日志未提交。
+- 预算：有效 `deepseek-flash`、baseline、reasoning off、输出 cap 1000；本次新增 14 请求，代理估费 0.001674612 美元；当前运行累计 17 请求 / 0.002159760 美元，上限 0.23 美元 / 250 请求未重置，账单未核对。
+- 后续与限制：PR 仅提交审阅，不合并。两个并发账号验证不代表容量压测；旧迁移会话为文字模式，新工具要新会话。临时 Cloudflare 隧道不在本修复范围。今后升级保留账号 Home、工作区及任务 output，回退不删除归属/任务数据、不重置预算。
+
+## 2026-10-14：多场景前后端桥接
+
+- 更新时间与交接人：2026-10-14，Codex。
+- 目标与范围：原生 `/harless` 实际选择 Scene/Mode/RSI，统一已有 Runtime；未开发缺失的论文/数据业务后端。
+- 分支/版本：`codex/scene-rsi-bridge` 最初基于 main `62ee46b`，已整合最新 `2a96552`（PR #7），已推送；[PR #8](https://github.com/jingyio/DeepSeek-Harless/pull/8) 已创建，未合并；最终提交以本分支历史为准。原论文/用户隔离工作区保持。
+- 已完成：`harless_scenarios.py`登记；`harless_settings.ts/dsh_web_tasks.ts`真实选择及任务冻结；`harless_task_scope.ts`独立cwd/preset/上传/job；PPT现有19工具及通用文件MCP；生产Execute完整Schema/匹配服务准入，历史诊断分列。无新Agent循环或上游改动。
+- 已验证：V100合并前154 Python/60 Node；合并后165 Python/75 Node通过；PPT53 Node；18题/83来源smoke；控制与新场景/动态协议。合并前后各两项合成来源真实模型任务，累计14请求/10MCP/0工具错误/0实际跳过，见`docs/experiments/harless-scenes-runtime-20261013-v1.md`。生产有库Execute、科研质量和浏览器操作未验收。
+- 配置与数据：生产`config/harless-scenes.json`；诊断`config/harless-diagnostics.json`。私有轨迹/配置/失败保留隔离验收目录，真实runs `907266faee4d40d799eca6ae2fa2109d` / `47ac1c37b74b494391bff14b56ce6b13` 已同步本地`.local/integration/scene-rsi-results/`；密钥仅由既有环境提供，未提交。
+- 未完成与接口依赖：论文/数据正式Scenario尚缺，明确拒绝；PPT生产Library缺，Execute拒绝。已保留PR #7的成员预算broker、Session持久化和连续对话；零工具成员不继承所有者MCP，PPT在成员沙箱尚未部署，明确拒绝。本次没有改变账号、密码或认证模块。PPT页数/模板/输出权限暂用任务API，默认只读。
+- 接手下一步：1. 审阅并合并桥接PR，安装PPT依赖后`npm run web:scenes:check`。2. 用户负责人联合验收gateway隔离；场景负责人登记正式论文/数据MCP与Prompt。3. 用独立任务认证完整Schema/库/来源绑定后，按授权做真实Execute对照。
+- 权限与预算：本次真实联调累计封顶0.06美元/24请求，已用代理估费0.00647472美元/14请求，账单未知，已停止。没有借论文uncapped权限扩大Web预算，无外部写/投稿。
+- 回退与风险：按本分支提交回退；旧诊断明确使用`config/harless-diagnostics.json`。不覆盖共享服务器、不修改协作者工作区、不清理`.local`；单登录实例不能当作单进程多账号。
+
+
+## 2026-10-13 多用户账号网关与连续对话（[PR #7](https://github.com/jingyio/DeepSeek-Harless/pull/7) 待审）
+
+- 范围与代码：分支 `codex/multiuser-web-gateway` 基于 `main` 的 `62ee46b`；账号网关、邀请码、账户设置、成员独立 DSH Home/工作区、账号预算路由及同一会话逐轮任务在 `scripts/harless_gateway.mjs`、`scripts/web_budget_broker.mjs`、`src/adapters/dsh_web_tasks.ts`。保留主线原生 Harless 场景/模型选择；未纳入服务器论文实验或私有配置。
+- 已验证：服务器独立 Linux worktree 中 `npm test` 为 164 Python、67 Node 全部通过。免费模拟 Web 带 `--public-origin` 启动，认证 303、首页和任务/设置 API 均 200。另用两个临时测试账号同时启动隔离 DSH 后端，双方就绪与首页均 200、进程端口不同；没有真实模型调用。旧检出的 host patch 在新检出上被拒绝，改用同一检出的 patch 后通过。Windows 本机全量测试另有符号链接权限和纯代码节点环境限制，Linux 全量通过。
+- 配置与部署：公共说明见 `docs/harless-account-gateway.md`，账号、邀请码、模型密钥、运行日志和私有论文继续只在 `.local/`。本 PR 未切换正在运行的公网服务；生产切换前需要以最新主线重建私有 host patch，确认 `bubblewrap` 挂载、两个测试账号实际并发和 HTTPS 隧道稳定性。服务器原论文工作区的未提交改动没有改写。
+- 后续：审阅 PR 后在隔离部署上完成双账号浏览器与真实模型预算验收，再安排生产切换。PR 暂不合并；回退为停止可选账号网关并继续使用现有单用户 Web 入口。
+
 ## 2026-10-13 原生二级菜单与输入框状态（已推送，PR 待创建）
 
 - 范围：`/harless` 原生选择器改为 Scenes、Mode、RSI 二级菜单；Scenes 新增 New Scene，使用当前服务器运行时探索。PPT、Paper Proofreading、Research Data Analysis 仍只预览且阻止误用样例工具。Mode 显示 Origin/Shadow/Execute，协议 Origin 仍为 `baseline`；RSI 默认 On，切换模式不自动改变开关，Off 的下一任务按 Origin 执行。输入框加入加粗 Harless 状态标签。

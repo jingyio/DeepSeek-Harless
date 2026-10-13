@@ -24,7 +24,7 @@
 
 原独立工作台页面已移除。官方聊天的免费模拟和真实模式都在发送后直接提交；真实模式仍经任务登记、配置摘要核验与双层预算代理。任务 API 继续支持 `preview → upload（如有文件）→ submit`，并保留规范化、最新摘要绑定和统计。
 
-上传只对待确认任务开放，单文件上限 256 KiB。任务状态为 `awaiting_confirmation/running/completed/failed/cancelled/budget_exhausted`。同进程支持连续多任务，同一时刻一个活动任务，一任务一 Session；后续问题创建新任务/Session，不复用旧任务授权。`request_id` 重复且内容相同返回已有任务；内容或模式/预算改变而复用该 ID 则拒绝。重复提交不重新执行已接纳任务。goal 续轮、队列内容编辑、fork/steer 均不能绕过任务绑定；更改输入须预览新任务。
+上传只对待确认任务开放，单文件上限 256 KiB。任务状态为 `awaiting_confirmation/running/completed/failed/cancelled/budget_exhausted`。单个 Harness 进程同一时刻只执行一个任务；账号网关为每名成员启动独立进程，同一会话的后续消息在上一轮结束后登记新的任务与预算路由，旧轮授权不会复用。未启用账号预算代理的单用户入口仍要求新任务使用新 Session。`request_id` 重复且内容相同返回已有任务；内容或模式/预算改变而复用该 ID 则拒绝。重复提交不重新执行已接纳任务。goal 续轮、队列内容编辑、fork/steer 均不能绕过任务绑定；更改输入须预览新任务。
 
 业务请求可以直接是文字字符串，也可以是下面的对象：
 
@@ -317,7 +317,7 @@ V17 `read_pending_plan({draft_id,version_sha256,pages})`读取同job失败草稿
 
 Provider-facing schema为兼容接口，图表/流程等部分嵌套字段使用浅层object；TS `preflightPlan`、pending patch和Python后端仍严格执行字段、类型、来源、容量及版本校验。schema浅化不授权任意结构，也不能代替运行时验证。V17历史统计误判以追加校正记录保留，不改原冻结快照或重新签署旧学习证书。
 
-V17发布准备统一输入摘要与资料库上限100 MiB/份，摘要分块读取；1–8份/1–30页及ZIP展开150 MiB、单图8 MiB守卫保留。单路`cli.run`默认$1.50/60步/8000输出，双路总$3；delivery MCP外层300秒、内层工具240秒。以上是PPT接口的实际参数，不改变main通用Web默认值。网页任务级job、流式上传映射、实际交付状态/鉴权下载及反馈/对照展示仍待新增适配，见[接入约定](../scenarios/research_ppt/frontend-integration.md)；当前registry和`WebTaskRequest`未加入未经运行时支持的字段。
+V17发布准备统一输入摘要与资料库上限100 MiB/份，摘要分块读取；1–8份/1–30页及ZIP展开150 MiB、单图8 MiB守卫保留。单路`cli.run`默认$1.50/60步/8000输出，双路总$3；delivery MCP外层300秒、内层工具240秒。以上是PPT接口的实际参数，不改变main通用Web默认值。主聊天桥接、流式上传映射、实际交付状态、鉴权下载及反馈/对照展示已在V17 Web接缝实现；完整边界见[接入约定](../scenarios/research_ppt/frontend-integration.md)，`registry`和`WebTaskRequest`仍不加入未经运行时支持的字段。
 
 `FeedbackStore.collect/queue/preview/learn/activate/rollback/active_manifest/candidate_manifest` 是项目私有管理API，CLI通过 `npm run ppt:feedback` 调用。collect明确授权，learn默认false；不可变追加反馈。preview最小2训练/1留出，learn复用已有编译器，仅生成candidate。`--candidate-version` 隔离评测，与 `--use-active-learning` 互斥；无active记录普通fallback，不造证书。两路径沿用cli已有准入/schema/来源/权限守卫，新安装须独立准备准入程序。
 
@@ -349,6 +349,24 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 
 ### 科研 PPT V17 Web 专用接口
 
-主页面原生 `/harless` 菜单的PPT选项进入 `/ppt`；PPT保持独立任务级job，不登记不可启动的静态MCP preset。`POST /api/harless/ppt/upload?name=...`接收二进制流并返回服务端回执；`POST /api/harless/ppt`处理严格preview/submit/cancel；`GET`查询状态；`GET /api/harless/ppt/download?task_id=...&artifact_id=...`复核真实交付SHA后下载。均复用Harness认证，禁止任意路径、策略/权限/tenant覆盖。
+主页面原生 `/harless` 菜单选择PPT后留在主聊天，不强制跳转。默认`local-operator`、没有成员预算broker且启用状态目录时，`session/prompt`连接同一双路后台，官方上传回执绑定到当前Session；任务/预算卡片确认后生成，下载与后续同稿反馈返回聊天。服务端登记“Harless 主聊天”启动工作区，收到该工作区的创建请求仍重新分配每Session私有目录，拒绝任意cwd/外部工作区。其他principal和成员不加载、不共享所有者状态；通用任务API的只读MCP路径保留。`ppt_native_chat`表示主聊天桥接可用，`ppt_web_url`表示备用`/ppt`可用。
 
-默认15页，单文件100MiB/1–8份/总256MiB；双路总$3，每路60步骤/8000输出，PPT独立启动预算由 `--ppt-run-budget-usd` 控制，确认时保守预留、不退回未结算费。普通任务预算不变。原始账本私有，completed要求双方机械交付及策略合格，科研质量另评。完整契约见 [PPT前端接入](../scenarios/research_ppt/frontend-integration.md)。网页反馈改页、持续学习与多账号隔离暂缓，现有MCP/离线接口保留。
+`GET /api/harless/ppt/chat?session_id=...&turn_id=...`返回Session所属的轮次、冻结预览与后台结果；`POST`只接受`{action:"confirm",session_id,turn_id,preview_digest}`或`{action:"cancel",session_id,turn_id}`。无需前端提交task_id或路径；Session归属、预览摘要和稿件版本由服务器检查。原生用户消息与后台command事件使用公开Session接口，客户端仅通过`conversation.chat.commandview`插件显示PPT卡片，不修改上游。PPT链路固定普通/优化双路与DeepSeek Flash，普通Mode/RSI菜单不改变已冻结策略，实际配置在卡片中披露。
+
+备用接口`POST /api/harless/ppt/upload?name=...`接收二进制流并返回服务端回执；`POST /api/harless/ppt`处理严格preview/submit/cancel/message；`GET`查询状态；`GET /api/harless/ppt/download?task_id=...&artifact_id=...`复核真实交付SHA后下载。均复用Harness认证，禁止任意路径、策略/权限/tenant覆盖。
+
+默认15页，单文件100MiB/1–8份/总256MiB；生成双路总$3，每路60步骤/8000输出。`message`需要task_id/message/request_id/expected_version；同请求幂等、旧版拒绝，绑定明确页码或全部页面，仅提问不改稿。每条反馈双路$0.50、每路24步/4000输出；原稿与非目标页必须保持，新稿重新渲染验收。PPT独立累计预算由`--ppt-run-budget-usd`控制，确认时保守预留；完整账本结算后释放未使用部分，未知费用不退回。后台状态跨启动保存版本与费用，不自动重付费；浏览器刷新可继续同一聊天，但统一启动器的新run尚不会自动恢复旧DSH_HOME/主聊天映射，重启后可通过`/ppt`恢复。普通任务预算不变。原始账本私有，completed要求双方机械交付及策略合格，科研质量另评。完整契约见 [PPT前端接入](../scenarios/research_ppt/frontend-integration.md)。自动学习发布与PPT多账号隔离仍暂缓。
+
+## Harless 多场景任务桥接（2026-10-13）
+
+生产菜单从 `config/harless-scenes.json` 获取 `ppt/paper-proofreading/research-data-analysis/new-scene`；通过 `POST /api/harless/settings` 的 `selection` 选择实际场景。`selected_mode/rsi/mode` 分别记录模式选择、独立开关和实际模式。RSI Off 即实际 baseline，不抹去模式选择。缺正式后端拒绝任务；生产 Execute 缺完整认证 schema、manifest/任务绑定或可用匹配服务拒绝准入。
+
+新增 `harless_task_scope.ts` 仅负责服务器分配的 Session cwd、私有 preset、批准上传文件和 PPT job；共享匹配/执行仍由现有在线 Runtime 提供。PPT `{slides,template,allow_output}` 经任务 API `request.scene_options` 设置并冻结，默认6页/academic/只读；Web空 Session 只能只读初始化。任务响应含 `user_id/selected_mode/scene_options/scene_inputs`；完整有效配置与 scope/library/schema 摘要保存于私有任务目录。
+
+当前用户边界是一个可信 principal 一个独立 Harness 启动；启动器接受 `--user-id`，客户端不能指定 cwd/工作区、库或命令。上传收据通过官方 Agent scope 解析后复制，重新确认时验证字节摘要。多账号 gateway 仍需账户负责人接入并联合验收。场景安装、登记字段、限额、拒绝原因与已验证边界见 [Harless 控制协议](harless-controls.md)；本节更新旧“仅前端预览”描述，不改写旧实验结论。
+
+### 账号会话跨部署恢复（2026-10-14）
+
+Web 会话归属使用持久 `DSH_HOME` 与可信 `principal` 作为 scope，记录在该 Home 的 `harless-web-ownership-*.json`，不再随代码部署的 `output` 变化。未提供 Home 时保留旧 output scope。记录中的 `sessions/bound` 保持原义，新增可选 `chat_only_sessions` 必须是 `sessions` 的子集；任务索引与模型选择仍使用原运行 scope，不迁移预算或重放任务。
+
+私有 policy 可选 `ownership_legacy_outputs:string[]`，只接受管理员配置的绝对路径。自动迁移当前 output，另只导入与同一个 Home 匹配的旧 scope；不能按客户端 session ID 或标题认领。成员启动器将此列表清空。跨旧 output 导入的已锁定会话以无工具文字模式恢复，`GET /api/harless/settings` 返回 `conversation_only:true`，附件请求返回 `409 new_session_required`。没有逐轮预算 broker 的入口不因此获得多任务复用权限。操作说明见 [账号网关](harless-account-gateway.md)，验证见 [恢复实验](experiments/chat-session-recovery-20261014-v1.md)。

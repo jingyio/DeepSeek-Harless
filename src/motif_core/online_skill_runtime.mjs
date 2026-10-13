@@ -458,7 +458,7 @@ function matchingPrefixes(artifact, history, length, task, manifest) {
     }));
 }
 
-function offeredSchemaMatches(availableTools, tool, contract) {
+export function offeredSchemaMatches(availableTools, tool, contract) {
   const offered = availableTools.get(tool);
   const required = contract.required_params;
   return offered?.parameters?.type === 'object' &&

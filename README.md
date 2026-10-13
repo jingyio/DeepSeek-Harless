@@ -81,7 +81,7 @@ npm run web -- --scenario portfolio-v1 --mode execute
 
 Mode 菜单显示 Origin、Shadow、Execute；Origin 在协议中仍为 `baseline`。RSI 默认 On，切换模式不改变开关；Off 保留所选模式，但下一任务按 Origin 执行。没有认证库或本地匹配服务时 Execute 会被服务端拒绝；Shadow 可以运行并明确记录普通 Harness 回退。菜单选择本身不调用模型，默认用于之后创建的会话。一个 Session 仍只绑定一个 Task，不复用旧预算或证据。
 
-目前登记 `example`、`portfolio-v1`、`portfolio-v2` 三个合成资料场景；新增场景由服务器维护登记表和 MCP 配置。PPT场景已通过专用网页与MCP接入；自动持续学习发布、多用户账号和文件隔离尚未实现。详细配置与 API 见 [Harless 控制接口](docs/harless-controls.md)。
+生产场景登记在 `config/harless-scenes.json`，合成诊断样例单列在 `config/harless-diagnostics.json`。PPT 已提供 MCP 与专用网页，自动持续学习发布尚未实现。可选的 Linux 账号网关提供邀请码注册、独立 Harness Home/工作区及按账号隔离的预算路由；它需要单独配置并通过反向代理公开，直接运行 `npm run web` 仍是单用户开发入口。成员沙箱尚未部署 PPT 后端，不能访问所有者的专用 PPT 任务。配置与限制见[账号网关部署说明](docs/harless-account-gateway.md)，任务接口见 [Harless 控制接口](docs/harless-controls.md)。
 
 后台保留双层预算：每任务默认 0.25 美元/24 次，全启动默认 0.25 美元/256 次，每请求最多 1000 输出 token；新任务不重置全局限制。任务上限用 `--budget-usd/--request-limit` 配置，全启动用 `--run-budget-usd/--run-request-limit` 配置。固定 `reasoning_effort="off"`，默认关闭压缩；请求、缓存输入/输出 token、费用和 verified skips 仍完整记录，代理估值需与账单核对。免费模拟不展示额度表单，实际支出为零。
 
@@ -136,7 +136,7 @@ node scripts/project.mjs python scripts/stop-harness-web.py RUN_ID
 
 科研 PPT 试用统一使用 `npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output`：默认准备普通 DSH／宿主交付两路预览，双路总上限 $3、每路 $1.50、60步、每请求8000输出token，不调用模型。接收1–8份PDF/PPTX，每份不超过100 MiB。双方禁止模型直接选择组合工具；优化组由TypeScript宿主执行固定交付脚本，V17失败计划支持局部恢复。确认后用 `npm run ppt -- --trial <实际trial.json> --call-model` 执行；见[双路试用](scenarios/research_ppt/trial.md)。朴素 `lab` 保留原图与可编辑数据；原生模板实验仍属隔离试用。
 
-默认将已授权来源和组件描述保存在项目私有长期库，跨任务保留；版本、租户权限和撤回状态每次核验，解析缓存默认关闭。main网页尚未接通PPT任务，参数未自动应用到通用Web场景。七个接入点、新增代码与调用约定见[前端接入说明](scenarios/research_ppt/frontend-integration.md)，资料库见[长期库](scenarios/research_ppt/persistent-library.md)。
+默认将已授权来源和组件描述保存在项目私有长期库，跨任务保留；版本、租户权限和撤回状态每次核验，解析缓存默认关闭。单用户科研PPT主聊天已连接V17双路后台：选择PPT、上传文件、发送需求、确认聊天预算卡片后执行，成品直接返回聊天；后续消息继续同稿提问/指定页修订。默认15页，`/ppt`保留备用。用`npm run web:real -- --scenario ppt --ppt-run-budget-usd 3`启动；服务端创建“Harless 主聊天”工作区，实际Session目录仍各自隔离。成员沙箱暂不启用此后台；通用任务API的PPT只读MCP路径仍保留。调用、恢复限制和配置见[前端接入说明](scenarios/research_ppt/frontend-integration.md)，资料库见[长期库](scenarios/research_ppt/persistent-library.md)。
 
 部署反馈与离线学习见[使用说明](scenarios/research_ppt/feedback-learning.md)。仅显式授权时收集，质量未审阅不进入训练；独立认证生成候选，后续真实任务验证收益后才可受控晋级。`--use-active-learning` 显式继承当前有效版本，没有已晋级版本时走普通流程并记录原因。不能仅因工具生成或测试通过宣称自进化收益。
 
@@ -171,4 +171,12 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 
 ## V17 科研 PPT 网页入口
 
-认证后访问 `/ppt`，或在主前端 `/harless` 菜单选择“PPT”。上传PDF/PPTX、预览确认、进度、双路费用与成品下载已接入；不需要embedding路由。未规定页数默认15页。启动 `npm run web:real -- --ppt-run-budget-usd 3`，PPT独立启动额度默认$3，普通工作台预算不变；确认后按预算上限保守预留。部署依赖、API契约与暂缓项见 [PPT前端接入](scenarios/research_ppt/frontend-integration.md)。当前是单一可信操作人服务，不是多用户文件沙箱。
+认证后可直接访问 `/ppt` 使用专用双路流程。主前端 `/harless` 菜单选择“PPT”仍留在主聊天并绑定main原生PPT MCP，不强制跳转。专用页已实现上传PDF/PPTX、预览确认、进度、双路费用与成品下载；不需要embedding路由。专用页未规定页数默认15页。启动 `npm run web:real -- --ppt-run-budget-usd 3`，PPT独立累计额度默认$3，普通工作台预算不变；确认后保守预留，完整结算后释放未使用额度。部署依赖、API契约与暂缓项见 [PPT前端接入](scenarios/research_ppt/frontend-integration.md)。专用页当前是单一可信操作人服务，不是多用户文件沙箱。
+
+在主聊天或备用 `/ppt` 选择已生成任务后都可继续对话，例如“第4页精简，其他页不动”；问题只回答，改页生成新副本、保留历史版本，并核验非目标页与渲染交付。每条反馈双路总上限$0.50、每路24步/4000输出；完整费用结算后释放未使用预留，未知费用保守保留。任务、聊天、当前版本与累计预算存于私有 `.local/research-ppt/web/state.json`，重启不自动重复付费。主聊天桥接与备用页共享同一后台契约；专用服务只在没有成员预算broker、并显式配置状态目录的所有者启动中加载，成员不跳转，也不访问这套账本。
+
+### Harless 多场景 Web
+
+`npm run web` / `web:real` 默认打开 `new-scene` 普通 Harness + Session 文件工具；`/harless` 的场景菜单直接选择服务端登记配置。PPT 连接现有21工具交付后端（需按 `scenarios/research_ppt/README.md` 安装依赖并构建）；论文校对和数据分析尚缺 main 正式后端，明确拒绝启动。没有认证生产 Library 时 Shadow 记录回退，Execute 拒绝；RSI Off 保留模式选择并实际采用 Origin。
+
+任务与用户启动实例分别隔离；菜单不调用模型，已确认任务不随菜单变化。PPT 默认只读，生成页数/模板/输出权限经任务 API 设置后确认；原生聊天尚无该参数编辑界面。完整配置、用户入口依赖和验收见 [Harless 控制协议](docs/harless-controls.md)。`npm run web:scenes:check` 检查实际 Harness/MCP 与两用户实例隔离；`-- --real-model` 明确启用最多0.06美元的只读模型验收。历史样例工具只用 `--scene-registry config/harless-diagnostics.json --scenario example` 等显式诊断配置，默认产品菜单不映射样例。
