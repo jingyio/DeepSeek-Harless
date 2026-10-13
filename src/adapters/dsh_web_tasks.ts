@@ -2,7 +2,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
@@ -33,6 +32,11 @@ type Task = {
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
 };
+const previewScenes = Object.freeze([
+  { id: 'ppt', label: 'PPT' },
+  { id: 'paper-proofreading', label: 'Paper Proofreading' },
+  { id: 'research-data-analysis', label: 'Research Data Analysis' },
+]);
 class TaskError extends Error {
   code: string; status: number;
   constructor(code: string, message: string, status = 400) { super(message); this.code = code; this.status = status; }
@@ -60,6 +64,7 @@ export function apply(ctx: any) {
   if (!scenes.some(scene => scene.id === config.capability_profile)) throw Error('Default scene is not registered');
   let defaults = initialSelection(config.capability_profile, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
+  const previewSceneSelections = new Map<string, string>();
   const guards = new Map<string, (() => void)[]>();
   const sceneFor = (id: string) => {
     const scene = scenes.find(scene => scene.id === id);
@@ -94,6 +99,8 @@ export function apply(ctx: any) {
     const selected = sessionId ? selections.get(sessionId)! : defaults;
     const task = sessionId ? forSession(sessionId) : undefined;
     return { selection: selected, applies_to: task ? 'next_task' : 'next_prompt',
+      preview_scene: sessionId ? previewSceneSelections.get(sessionId) ?? null : null,
+      preview_scenes: previewScenes,
       current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status } : null,
       scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, config_sha256: scene.config_sha256,
         execute_available: !executeUnavailable(scene), execute_unavailable_reason: executeUnavailable(scene) })),
@@ -110,6 +117,7 @@ export function apply(ctx: any) {
         bindScene(agent, sceneFor(next.scene));
       }
       selections.set(sessionId, next);
+      if ((patch as Record<string, unknown>).scene !== undefined) previewSceneSelections.delete(sessionId);
     } else defaults = next;
     json(join(config.output, 'harless-settings.json'), { defaults, sessions: Object.fromEntries(selections) });
     return settingsView(sessionId);
@@ -215,6 +223,9 @@ export function apply(ctx: any) {
     await setSelection(agent.session.id, { scene: scene.id }); return preset;
   });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
+    const previewScene = existingSession ? previewSceneSelections.get(existingSession) : undefined;
+    if (previewScene) throw new TaskError('scene_not_connected',
+      `${previewScenes.find(scene => scene.id === previewScene)?.label ?? previewScene} is a UI preview; its runtime is not connected yet.`, 409);
     const taskId = randomUUID().replaceAll('-', ''), tentativeSession = existingSession ?? 'pending';
     const selected = existingSession ? selections.get(existingSession)! : defaults;
     if (existingSession && !selected) throw new TaskError('session_not_owned', 'Session is outside this Web run');
@@ -429,13 +440,28 @@ export function apply(ctx: any) {
         const body: any = await request.json();
         const result = await serialize(async () => {
           if (body.action === 'select') return setSelection(body.session_id, body.selection);
+          if (body.action === 'select_preview_scene') {
+            settingsView(body.session_id); // enforce ownership before changing the UI choice
+            if (!body.session_id || !previewScenes.some(scene => scene.id === body.scene_id))
+              throw new SettingsError('scene_not_found', 'Choose one of the listed preview scenes');
+            previewSceneSelections.set(body.session_id, body.scene_id);
+            return settingsView(body.session_id);
+          }
+          if (body.action === 'clear_preview_scene') {
+            settingsView(body.session_id);
+            if (!body.session_id) throw new SettingsError('session_required', 'Choose a session first');
+            previewSceneSelections.delete(body.session_id);
+            return settingsView(body.session_id);
+          }
           if (body.action === 'new_session') {
             const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const created = await controller.create({ agentPreset: sceneFor(chosen.scene).preset });
             selections.set(created.sessionId, { ...chosen });
+            if (body.inherit_session && previewSceneSelections.has(body.inherit_session))
+              previewSceneSelections.set(created.sessionId, previewSceneSelections.get(body.inherit_session)!);
             return { session_id: created.sessionId, ...settingsView(created.sessionId) };
           }
-          throw new SettingsError('unknown_action', '只支持 select 和 new_session');
+          throw new SettingsError('unknown_action', 'Supported actions: select, select_preview_scene, clear_preview_scene, new_session');
         });
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error) {
@@ -444,19 +470,20 @@ export function apply(ctx: any) {
       }
     } };
   ctx.effect(() => ctx.connection.fetch.register({ ...settingsRoute, path: '/api/harless/settings' }), 'harless-settings-api');
-  if (ctx.commands) ctx.effect(() => ctx.commands.register({ name: 'harless', description: '选择场景、运行模式与 RSI 开关（不调用模型）',
-    input: { hint: '选择场景、运行模式与 RSI' },
+  if (ctx.commands) ctx.effect(() => ctx.commands.register({ name: 'harless', description: 'Choose a scene, mode, and RSI setting',
+    input: { hint: 'scene | mode | rsi | list | status' },
     handler: ({ agent, rawInput }: any) => serialize(async () => {
       try {
         const id = agent.session.id, command = parseHarlessCommand(rawInput);
         settingsView(id);
         if (command.kind === 'panel') {
-          return { kind: 'success', text: '请使用聊天输入框旁的 Harless 设置菜单选择场景、RSI 和运行模式。' };
+          return { kind: 'success', text: 'Choose a scene, mode, or RSI setting from the /harless picker.' };
         }
-        if (command.kind === 'list') return { kind: 'success', text: scenes.map(scene => `${scene.id} · ${scene.label}`).join('\n') };
+        if (command.kind === 'list') return { kind: 'success', text: previewScenes.map(scene => `${scene.label} · UI preview only`).join('\n') };
         const value = command.kind === 'change' ? await setSelection(id, command.patch) : settingsView(id);
         const current = value.current_task;
-        return { kind: 'success', text: `${value.applies_to === 'next_task' ? '下一任务生效' : '下一次输入生效'}：${value.selection.scene} / ${value.selection.mode} / RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? `；当前任务：${current.scene} / ${current.mode} / ${current.status}` : ''}` };
+        const planned = previewScenes.find(scene => scene.id === value.preview_scene);
+        return { kind: 'success', text: `${planned ? `${planned.label} (UI preview only; runtime not connected)` : 'No preview scene selected'} · Mode ${value.selection.mode} · RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? ` · Current task: ${current.scene} / ${current.mode} / ${current.status}` : ''}` };
       } catch (error) { return { kind: 'error', text: String((error as Error).message) }; }
     }) }), 'harless-command');
   for (const path of ['/tasks', '/sss', '/harless']) {
@@ -465,6 +492,4 @@ export function apply(ctx: any) {
       response.end();
     } }), 'harless-legacy-page-redirect-' + path);
   }
-  ctx.effect(() => ctx.webServer.tapIndex((html: string) => html.replace('</body>',
-    '<script>' + readFileSync(fileURLToPath(new URL('./harless_native_bridge.js', import.meta.url)), 'utf8') + '</script></body>')), 'sss-harless-composer-picker');
 }

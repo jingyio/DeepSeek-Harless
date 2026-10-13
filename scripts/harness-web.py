@@ -124,8 +124,8 @@ def prepare(args, output, endpoint):
     patch += [{'id': 'agent-presets', 'config': {'default': 'sss-task',
         'includeShippedRoot': False, 'includeUserRoot': False,
         'roots': [{'path': str(output / 'presets'), 'trust': 'system'}]}},
-        {'insert': [{'id': 'sss-web-policy', 'name': (ROOT / 'src/adapters' /
-            ('dsh_web_policy.ts' if args.frozen else 'dsh_web_tasks.ts')).as_uri()}]}]
+        {'insert': [{'id': 'sss-web-policy', 'name': (ROOT / 'src/adapters/dsh_web_policy.ts' if args.frozen else
+            ROOT / 'src/adapters/harless_web_client/index.mjs').as_uri()}]}]
     save(output / 'host.patch.yml', patch)
     (output / 'prompt.md').write_text(prepared['prompt']); (output / 'prompt.md').chmod(0o600)
     snapshot = {**public, 'mode': args.mode, 'scenario': args.scenario,
@@ -155,7 +155,9 @@ def prepare(args, output, endpoint):
                      *([] if args.frozen else [ROOT / 'src/adapters/web_task_request.ts',
                        ROOT / 'src/adapters/web_task_budget.py',
                        ROOT / 'src/adapters/harless_settings.ts', ROOT / 'src/adapters/harless_scenarios.py',
-                       ROOT / 'src/adapters/harless_native_bridge.js',
+                       ROOT / 'src/adapters/harless_web_client/index.mjs',
+                       ROOT / 'src/adapters/harless_web_client/package.json',
+                       ROOT / 'src/adapters/harless_web_client/client.js',
                        registry])]}
     if policy.get('manifest'):
         snapshot['manifest_sha256'] = hashlib.sha256(Path(policy['manifest']).read_bytes()).hexdigest()

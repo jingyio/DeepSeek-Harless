@@ -140,9 +140,7 @@ test('Harless task APIs remain available without separate workbench or settings 
       page.handler({}, response);
       assert.equal(response.status, 302); assert.equal(response.headers.Location, '/');
     }
-    const index = f.ctx.indexTransform('<body></body>');
-    assert.match(index, /harless-picker-anchor/);
-    assert.doesNotMatch(index, /DeepSeek Harless 任务工作台|href="\/tasks"/);
+    assert.equal(f.ctx.indexTransform, undefined);
     const settings = await f.settings();
     assert.equal(settings.status, 200); assert.equal('panels' in settings.value, false);
   } finally { await f.close(); }
@@ -253,8 +251,7 @@ test('Real-provider native prompt runs immediately with budget admission and no 
     assert.equal(f.promptCalls.length, 1); assert.equal(f.registrations.size, 1);
     assert.equal(f.controlCalls.filter(call => call.path === '/tasks/activate').length, 1);
     assert.deepEqual(f.promptCalls[0].content, request.content);
-    const html = f.ctx.indexTransform('<body></body>');
-    assert.doesNotMatch(html, /harless-native-confirmation|确认本次任务与预算/);
+    assert.equal(f.ctx.indexTransform, undefined);
     assert.equal((await f.submit(task)).status, 200); assert.equal(f.promptCalls.length, 1);
     await f.complete(task);
   } finally { await f.close(); }
@@ -285,7 +282,7 @@ test('Native /harless commands and settings menu select without admitting a mode
   try {
     const {sessionId:id}=await f.ctx.sessionController.create({});
     for(const raw of ['', 'list', 'status', 'mode', 'rsi']) assert.equal((await f.command(id,raw)).kind,'success');
-    assert.match((await f.command(id,'')).text,/输入框旁/);
+    assert.match((await f.command(id,'')).text,/\/harless picker/);
     assert.equal((await f.command(id,'mode baseline')).kind,'success');
     assert.equal((await f.command(id,'rsi on')).kind,'success');
     let value=(await f.settings(undefined,'?session_id='+id)).value;
@@ -301,6 +298,24 @@ test('Native /harless commands and settings menu select without admitting a mode
     assert.equal((await f.settings({action:'select',session_id:'foreign',selection:{rsi:false}})).status,404);
     assert.equal((await f.api()).value.tasks.length,0); assert.equal(f.registrations.size,0); assert.equal(f.promptCalls.length,0);
   } finally {await f.close();}
+});
+test('Preview-only product scenes are selectable but cannot silently run the sample runtime', options, async () => {
+  const f = await fixture();
+  try {
+    const { sessionId } = await f.ctx.sessionController.create({});
+    let result = await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'ppt' });
+    assert.equal(result.status, 200);
+    assert.equal(result.value.preview_scene, 'ppt');
+    assert.deepEqual(result.value.preview_scenes.map(scene => scene.label),
+      ['PPT', 'Paper Proofreading', 'Research Data Analysis']);
+    await assert.rejects(f.ctx.sessionController.prompt({ sessionId, requestId: 'preview-only', mode: 'queue',
+      content: [{ type: 'text', text: 'Make a slide' }] }, new AbortController().signal), /UI preview/);
+    assert.equal((await f.api()).value.tasks.length, 0);
+    assert.equal(f.promptCalls.length, 0);
+    result = await f.settings({ action: 'clear_preview_scene', session_id: sessionId });
+    assert.equal(result.value.preview_scene, null);
+    assert.equal((await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'unknown' })).status, 400);
+  } finally { await f.close(); }
 });
 test('Running task keeps frozen tools and mode while next-task choices are inherited by a fresh Session', options, async()=>{
   const f=await fixture({ scenes: multiScenes, mode:'shadow', provider_mode:'real' });

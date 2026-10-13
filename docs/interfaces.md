@@ -2,7 +2,7 @@
 
 ## 官方 Web 与统一任务接口（0.1.5-rc.3）
 
-`npm run web` → `scripts/harness-web.py` → 官方 `dsh --profile web --patch <私有 host overlay>`。执行、会话、队列、模型消息和工具调度归官方 Harness；SDK 的 `run-scenario.py` 与 `harness_runtime.py` 保留。场景配置定义能力，不再固定一次用户任务。默认动态策略为 `src/adapters/dsh_web_tasks.ts`，请求规范化在 `web_task_request.ts`，双层预算路由在 `web_task_budget.py`；用户从官方聊天输入框旁的菜单选择场景/模式/RSI。独立 `/tasks`、`/sss` 与 `/harless` 页面已移除，旧地址跳转聊天首页；任务 API 保留，历史代码/环境变量标识保持兼容。
+`npm run web` → `scripts/harness-web.py` → 官方 `dsh --profile web --patch <私有 host overlay>`。执行、会话、队列、模型消息和工具调度归官方 Harness；SDK 的 `run-scenario.py` 与 `harness_runtime.py` 保留。场景配置定义能力，不再固定一次用户任务。默认动态策略为 `src/adapters/dsh_web_tasks.ts`，请求规范化在 `web_task_request.ts`，双层预算路由在 `web_task_budget.py`；浏览器通过 `src/adapters/harless_web_client/` 装饰原生 `/harless` 命令，选择场景/模式/RSI。独立 `/tasks`、`/sss` 与 `/harless` 页面已移除，旧地址跳转聊天首页；任务 API 保留，历史代码/环境变量标识保持兼容。
 
 后续涉及模型的联调与场景验收统一走真实 API：`npm run web:real` 等价于 `npm run web -- --real-model`；`npm run scenario:real` 等价于 `npm run scenario -- --call-model`。官方聊天真实任务发送后直接执行；任务 API 仍支持显式 preview/submit，SDK 入口仍先预览。两者均保留原有预算代理。用户已授权此测试用途，默认沿用现有 0.25 美元额度，扩大上限或外部副作用另行确认。纯单元、无模型 smoke 和故障注入仅作开发诊断；真实调用失败不得用模拟成绩替代。SDK 真实最小场景已完成 3 次 HTTP 200 与 4 次 MCP，见[真实调用记录](experiments/deepseek-real-api-smoke-20261009-v1.md)；现有 3080 模拟服务未重启，真实 Web 后端最小闭环已通过，浏览器交互仍待验收，见[恢复记录](experiments/web-real-recovery-20261009-v1.md)。
 
@@ -246,6 +246,6 @@ Python 语义端口在 `motif_read_semantic.py`：接收明确的结构缺口，
 
 ## `/harless` 场景与模式控制（2026-10-13）
 
-动态 Web 在聊天输入框旁提供 Harless 选择菜单，原生 `ctx.commands.register` 命令作为快捷入口保留；菜单与命令共用 `harless_settings.ts` 的验证。`GET/POST /api/harless/settings` 管理场景、Baseline/Shadow/Execute 与 RSI On/Off；选择不调用模型。服务器场景登记为 `config/harless-scenes.json`，MCP preset 各自独立，配置不得由浏览器覆盖。每 Task 冻结场景、工具、库摘要与确认 digest；Session 绑定任务后，修改只对新 Session 的下一任务生效。旧单场景 policy 仍兼容，冻结 Web/SDK 保留。
+动态 Web 用 Harness `commandUi.decorate({kind:'popupSelect'})` 为裸 `/harless` 打开原生选择菜单，参数命令仍由 `ctx.commands.register` 处理。`GET/POST /api/harless/settings` 管理 Baseline/Shadow/Execute 与 RSI On/Off；选择不调用模型。菜单仅显示英文的 PPT、Paper Proofreading、Research Data Analysis 三个界面预览场景，`select_preview_scene` 保存 Session 的选择，`clear_preview_scene` 清除；选中预览场景后提交任务以 `scene_not_connected` 拒绝，不能运行旧样例工具。已接通的服务器场景仍登记在 `config/harless-scenes.json`，MCP preset 各自独立，配置不得由浏览器覆盖。每 Task 冻结实际场景、工具、库摘要与确认 digest；Session 绑定任务后，修改只对新 Session 的下一任务生效。旧单场景 policy 仍兼容，冻结 Web/SDK 保留。
 
 字段、边界与复现见 [Harless 控制接口](harless-controls.md)。当前登记的三个场景是合成资料样例，不表示 PPT 或多人隔离已经完成。

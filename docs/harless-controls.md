@@ -2,7 +2,7 @@
 
 ## 使用
 
-登录本次 Harness Web，使用聊天输入框旁的 Harless 菜单选择场景、RSI 和运行模式。独立 `/harless` 页面已移除；裸 `/harless` 命令会提示使用菜单，快捷设置、`list` 和 `status` 命令仍可用。
+登录本次 Harness Web，选择 `/harless` 后使用 Harness 原生 `popupSelect` 菜单选择场景、RSI 和运行模式。独立 `/harless` 页面和注入的悬浮菜单均已移除；快捷设置、`list` 和 `status` 命令仍可用。界面文案使用英文。当前菜单中的 PPT、Paper Proofreading、Research Data Analysis 仅是可选择的界面预览，不展示 `example`/`portfolio` 样例；三个运行时尚未接入，选中后提交任务会以 `scene_not_connected` 拒绝，模型调用为零。清除界面选择后仍可运行现有诊断场景。
 
 | 模式 | RSI | 行为 |
 | --- | --- | --- |
@@ -28,6 +28,7 @@ Off 记住最后一次 Shadow/Execute；On 恢复该模式。首次恢复 Shadow
 
 - `GET /api/harless/settings[?session_id=...]`：选择、适用时点、当前任务、可用场景及 Execute 原因；不返回凭证、资料正文或服务器路径。
 - `POST` 同路径：`{action:"select", session_id?, selection:{scene?, mode?, rsi?}}`。`rsi` 为布尔值，冲突字段拒绝。省略 Session 表示新会话默认。
+- `{action:"select_preview_scene", session_id, scene_id}`：保存当前 Session 的 PPT／Paper Proofreading／Research Data Analysis 界面选择；`{action:"clear_preview_scene", session_id}` 清除。该选择不会映射到样例运行时；提交时返回 `scene_not_connected`，不发起模型请求。`GET` 同时返回 `preview_scene` 和 `preview_scenes`。
 - `{action:"new_session", inherit_session?}`：独立新 Session，不启动任务或模型。
 - 任务预览保留 `/api/harless/tasks`，新增可选顶层 `session_id`，只接受本启动拥有且未绑定任务的 Session。任务 `capability_profile` 即登记场景 ID。
 

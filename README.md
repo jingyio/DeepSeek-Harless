@@ -37,7 +37,7 @@ npm run scenario:real -- --budget-usd 0.25 --max-steps 16
 
 ## 官方 Harness Web 与动态任务入口
 
-SDK 的 `npm run scenario` 继续保留。`npm run web` 默认启动官方 Web 与 DeepSeek Harless 任务接口：任务从官方聊天提交，输入框旁的 Harless 菜单选择场景、RSI 和执行模式。每项任务有独立 Session、模式、预算和记录，同一时刻只执行一个任务；不再提供独立任务工作台页面或悬浮入口。服务器已验证 Node 22.23.3、Python 3.10.8；TypeScript 插件需要支持原生类型剥离的 Node，其他平台的 Web 尚未验证。
+SDK 的 `npm run scenario` 继续保留。`npm run web` 默认启动官方 Web 与 DeepSeek Harless 任务接口：任务从官方聊天提交，`/harless` 使用 Harness 原生命令菜单选择场景、RSI 和执行模式。每项任务有独立 Session、模式、预算和记录，同一时刻只执行一个任务；不再提供独立任务工作台页面或悬浮入口。服务器已验证 Node 22.23.3、Python 3.10.8；TypeScript 插件需要支持原生类型剥离的 Node，其他平台的 Web 尚未验证。
 
 在服务器项目目录启动，本地建立端口转发：
 
@@ -49,11 +49,11 @@ npm run web
 ssh -N -L 3080:127.0.0.1:3080 -p SSH_PORT USER@SERVER
 ```
 
-默认选择 `scenarios/example/`，使用免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。在输入框旁的 Harless 菜单选择场景、RSI 与模式，再像普通 Harness 一样发送消息；免费和真实模式都直接提交，真实模式会调用 DeepSeek API，服务端仍执行任务与全局预算限制。任务 API 仍支持结构化输入、来源和附件；旧 `/tasks`、`/sss`、`/harless` 页面地址跳回聊天首页，`/api/sss/tasks` 兼容 API 保留。
+默认运行时仍使用 `scenarios/example/`，免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。原生 `/harless` 菜单仅显示英文的 PPT、Paper Proofreading、Research Data Analysis 场景入口与模式、RSI 选项。三个场景当前只完成界面选择，选中后发送任务会明确拒绝且不会误用 `example` 工具；对应运行时和 MCP 接入后续完成。清除界面场景选择后可继续使用当前运行时。免费和真实模式的已接通任务都直接提交，真实模式会调用 DeepSeek API，服务端仍执行任务与全局预算限制。任务 API 仍支持结构化输入、来源和附件；旧 `/tasks`、`/sss`、`/harless` 页面地址跳回聊天首页，`/api/sss/tasks` 兼容 API 保留。
 
 文字字符串、`instruction`、`content`、仅含 user 的 `messages` 统一规范化为一次任务输入；结构化对象中的后三项必须三选一。`mode` 支持 baseline/shadow/execute。任务 API 可接收官方格式的图片 base64 或同 Session 已上传文件的 receipt，单文件上限 256 KiB；模型不支持图片时任务明确失败且不发起模型请求，不能据此宣称已支持图片理解。资料引用使用已由服务器登记的 `resource_id`，不接受浏览器本地路径。请求和响应详见[接口文档](docs/interfaces.md)。
 
-`--scenario` 接受场景名或场景配置路径，用来选择初始场景；`config/harless-scenes.json` 登记可选择的场景，每个场景使用独立的 MCP preset。动态题面不再固定在场景文件中。资料登记为服务器私有 JSON，例如 `.local/inputs/resources.json`：
+`--scenario` 接受场景名或场景配置路径，用来选择初始运行时；`config/harless-scenes.json` 登记已接通的后台场景，每个场景使用独立的 MCP preset，当前诊断样例不在前端选项中。动态题面不再固定在场景文件中。资料登记为服务器私有 JSON，例如 `.local/inputs/resources.json`：
 
 ```json
 {"paper-notes": {"text_file": "notes.md"}}
@@ -68,11 +68,10 @@ npm run web -- --scenario portfolio-v1 --mode execute
 
 三种模式由后端保存和执行。example 没有认证库，shadow 会记录原因并回到正常 Harness，execute 不可选；portfolio 的精确冻结样例可使用首发库。新题面、附件或资料版本不能沿用旧任务的认证绑定。模拟诊断中的 execute 已观察到 7 次请求、5 个结果验证通过的接管批次，不能当成真实质量或费用收益。
 
-主要通过聊天输入框旁的 Harless 菜单选择。可选的 `/harless` 命令仍支持快捷设置与查询；裸命令会提示使用菜单。支持：
+主要通过原生 `/harless` 选择菜单操作。具体参数命令仍可用于诊断；裸命令在不支持浏览器装饰的客户端会提示使用菜单。支持：
 
 ```text
 /harless list
-/harless example
 /harless mode shadow
 /harless rsi off
 /harless status
