@@ -282,8 +282,11 @@ class CheckpointPPTService(PPTService):
         if not isinstance(report_path, str):
             raise CheckpointRejected("checkpoint 核验缺少真实 report_path")
         path = private_path(Path(report_path))
-        validation_root = (ROOT / ".local/research-ppt/validation").resolve()
-        if not path.is_relative_to(validation_root) or path.name != "report.json" or path.parent.parent != validation_root:
+        # New deliveries persist inside their own job, including member mounts.
+        # Keep the historical CLI directory readable, never another job's root.
+        validation_roots = {(self.job_path.parent / "validation").resolve(),
+                            (ROOT / ".local/research-ppt/validation").resolve()}
+        if path.name != "report.json" or path.parent.parent not in validation_roots:
             raise CheckpointRejected("checkpoint 核验报告路径越界")
         if report.get("pptx_path") != str(self.decks[report["deck_id"]]):
             raise CheckpointRejected("checkpoint 核验PPT路径与当前deck不一致")
