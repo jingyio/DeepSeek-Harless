@@ -34,7 +34,7 @@ PPT 未构建或缺 Python 依赖时目录返回 `ppt_adapter_not_built` / `ppt_
 
 `GET/POST /api/harless/settings` 仍由 Harness Connection 认证，`selection:{scene,mode,rsi}` 仅接受登记 ID 和协议值。GET 返回 `available/unavailable_reason/execute_available/execute_unavailable_reason`，不返回 MCP 命令、凭证或服务器路径。旧 `select_preview_scene` / `clear_preview_scene` 作为真实选择的兼容别名，不保存独立预览状态。
 
-`new_session` 可继承已绑定 Session 的下一任务设置；不能改变现有任务。浏览器 `cwd/workspaceId` 被拒绝，服务器分配独立 cwd 与 preset。每 Session 只绑定一项任务。
+`new_session` 可继承已绑定 Session 的下一任务设置；不能改变现有任务。浏览器 `cwd/workspaceId` 被拒绝，服务器分配独立 cwd 与 preset。独立启动模式每 Session 绑定一项任务；网关的无工具通用对话保留同 Session 连续轮次与逐轮预算。切换场景或重新绑定文件/PPT任务要求新 Session，不修改历史任务。
 
 任务 API 新增可选 `request.scene_options`，只接受 PPT `{slides:1..30, template:"academic"|"lab", allow_output:boolean}`；默认 6 页、academic、只读。输出开启须先有已批准 PDF/PPTX，通过预览后明确 submit。原生聊天当前未提供页数、模板和输出权限编辑界面；需要生成交付的用户先用任务 API 设置这些字段，不能通过自然语言默提高 job 权限。
 
@@ -42,7 +42,7 @@ PPT 未构建或缺 Python 依赖时目录返回 `ppt_adapter_not_built` / `ppt_
 
 ## 用户隔离与验证
 
-当前 main 的 Harness Connection 是单登录实例。`--user-id` 是可信服务器启动参数，不是浏览器自报身份；认证负责人应为每个用户分配独立启动/DSH_HOME/预算实例并传入该 ID。两个独立用户进程已验证配置、cwd、Session、任务、收据和轨迹隔离；本次没有修改认证/账户模块，也未宣称单进程多账号已实现。认证协作者尚未合入的 gateway 接口不能凭历史实验视为通过。
+2026-10-14 main 已合入 PR #7 多用户网关。每个 Harness Connection 仍是单登录实例，网关为成员隔离启动、DSH Home和工作区，预算 broker 沿用主线。`--user-id` 是可信服务器启动参数，不是浏览器自报身份；认证负责人应为每个用户分配独立启动/DSH_HOME/预算实例并传入该 ID。两个独立用户进程已验证配置、cwd、Session、任务、收据和轨迹隔离；本次没有修改认证/账户模块，也未宣称单进程多账号已实现。本轮合并保留其会话恢复与连续对话测试。成员现有零工具沙箱策略派生为 New Scene 普通对话；PPT等场景返回 `scene_not_deployed_in_member_sandbox`，不会继承所有者 MCP/库/输入。网关账号、密码和认证模块未改动；扩大沙箱挂载仍需负责人另行部署验收。
 
 ```sh
 npm test

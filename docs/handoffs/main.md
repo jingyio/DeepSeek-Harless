@@ -4,13 +4,13 @@
 
 - 更新时间与交接人：2026-10-14，Codex。
 - 目标与范围：原生 `/harless` 实际选择 Scene/Mode/RSI，统一已有 Runtime；未开发缺失的论文/数据业务后端。
-- 分支/版本：`codex/scene-rsi-bridge` 基于 main `62ee46b`，已推送；[PR #8](https://github.com/jingyio/DeepSeek-Harless/pull/8) 已创建，未合并；最终提交以本分支历史为准。原论文/用户隔离工作区保持。
+- 分支/版本：`codex/scene-rsi-bridge` 最初基于 main `62ee46b`，已整合最新 `2a96552`（PR #7），已推送；[PR #8](https://github.com/jingyio/DeepSeek-Harless/pull/8) 已创建，未合并；最终提交以本分支历史为准。原论文/用户隔离工作区保持。
 - 已完成：`harless_scenarios.py`登记；`harless_settings.ts/dsh_web_tasks.ts`真实选择及任务冻结；`harless_task_scope.ts`独立cwd/preset/上传/job；PPT现有19工具及通用文件MCP；生产Execute完整Schema/匹配服务准入，历史诊断分列。无新Agent循环或上游改动。
-- 已验证：V100 154 Python/60 Node；PPT53 Node；18题/83来源smoke；控制与新场景/动态协议。两项合成来源真实模型任务7请求/5MCP/0工具错误/0实际跳过，见`docs/experiments/harless-scenes-runtime-20261013-v1.md`。生产有库Execute、科研质量和浏览器操作未验收。
-- 配置与数据：生产`config/harless-scenes.json`；诊断`config/harless-diagnostics.json`。私有轨迹/配置/失败保留隔离验收目录，真实run `907266faee4d40d799eca6ae2fa2109d` 已同步本地`.local/integration/scene-rsi-results/`；密钥仅由既有环境提供，未提交。
-- 未完成与接口依赖：论文/数据正式Scenario尚缺，明确拒绝；PPT生产Library缺，Execute拒绝。用户gateway负责人须按可信principal分配独立Harness启动并传`--user-id`；本次没有改变账户/认证接口。PPT页数/模板/输出权限暂用任务API，默认只读。
+- 已验证：V100合并前154 Python/60 Node；合并后最终结果见本实验记录；PPT53 Node；18题/83来源smoke；控制与新场景/动态协议。合并前后各两项合成来源真实模型任务，累计14请求/10MCP/0工具错误/0实际跳过，见`docs/experiments/harless-scenes-runtime-20261013-v1.md`。生产有库Execute、科研质量和浏览器操作未验收。
+- 配置与数据：生产`config/harless-scenes.json`；诊断`config/harless-diagnostics.json`。私有轨迹/配置/失败保留隔离验收目录，真实runs `907266faee4d40d799eca6ae2fa2109d` / `47ac1c37b74b494391bff14b56ce6b13` 已同步本地`.local/integration/scene-rsi-results/`；密钥仅由既有环境提供，未提交。
+- 未完成与接口依赖：论文/数据正式Scenario尚缺，明确拒绝；PPT生产Library缺，Execute拒绝。已保留PR #7的成员预算broker、Session持久化和连续对话；零工具成员不继承所有者MCP，PPT在成员沙箱尚未部署，明确拒绝。本次没有改变账号、密码或认证模块。PPT页数/模板/输出权限暂用任务API，默认只读。
 - 接手下一步：1. 审阅并合并桥接PR，安装PPT依赖后`npm run web:scenes:check`。2. 用户负责人联合验收gateway隔离；场景负责人登记正式论文/数据MCP与Prompt。3. 用独立任务认证完整Schema/库/来源绑定后，按授权做真实Execute对照。
-- 权限与预算：本次真实联调累计封顶0.06美元/24请求，已用代理估费0.004229508美元/7请求，账单未知，已停止。没有借论文uncapped权限扩大Web预算，无外部写/投稿。
+- 权限与预算：本次真实联调累计封顶0.06美元/24请求，已用代理估费0.00647472美元/14请求，账单未知，已停止。没有借论文uncapped权限扩大Web预算，无外部写/投稿。
 - 回退与风险：按本分支提交回退；旧诊断明确使用`config/harless-diagnostics.json`。不覆盖共享服务器、不修改协作者工作区、不清理`.local`；单登录实例不能当作单进程多账号。
 
 
