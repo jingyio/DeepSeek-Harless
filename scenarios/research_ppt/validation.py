@@ -774,7 +774,8 @@ def validate_delivery(pptx_path: str | Path, expected_slides: int,
                       expected_tables=None,
                       expected_images=None,
                       expected_visible_sources=None,
-                      timeout_seconds: int = 120) -> dict:
+                      timeout_seconds: int = 120,
+                      validation_root: Path | None = None) -> dict:
     """返回可 JSON 序列化报告，保留真实 PDF/PNG 和失败证据。
 
     ``expected_texts`` / ``expected_sources`` 为逐页字符串列表。前者检查
@@ -796,7 +797,7 @@ def validate_delivery(pptx_path: str | Path, expected_slides: int,
     expected_tables = _expected_tables(expected_tables, expected_slides)
     expected_images = _expected_images(expected_images, expected_slides)
     expected_visible_sources = _expected(expected_visible_sources, expected_slides, 'expected_visible_sources')
-    directory = _private(ROOT / '.local/research-ppt/validation' / uuid4().hex)
+    directory = _private((validation_root if validation_root is not None else ROOT / '.local/research-ppt/validation') / uuid4().hex)
     directory.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
     report = {

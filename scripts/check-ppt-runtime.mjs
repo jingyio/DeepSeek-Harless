@@ -52,6 +52,7 @@ try{
   const rendered=payload(await call('build_delivery',{plan:{title:'交付环境诊断',template:job.template,
     slides:[{title:'真实资料与原生交付',layout:'content',bullets:['两个种子的试验仍需要独立复现。'],
       sources:[{source_id:source.source_id,page:1}],notes:'固定合成计划，仅验证机械交付，不是模型生成或科研质量验收。'}]}}));
+  writeFileSync(join(area,'probe-delivery.json'),JSON.stringify(rendered,null,2)+'\n',{mode:0o600});
   assert.equal(rendered.delivered,true);
   const report={model_requests:0,scope:'actual_mcp_rendering_and_runtime_protocol_not_model_quality',
     protocol_shadow_candidates:1,protocol_verified_batches:1,shadow_tool_calls:0,

@@ -492,7 +492,7 @@ class PPTService:
         if expected and expected.get('source_notes'):
             expected_sources = [list(sources) + list(expected['source_notes'][index])
                                 for index, sources in enumerate(expected_sources)]
-        report = validate_delivery(target,self.job['slides'],
+        report = validate_delivery(target,self.job['slides'], validation_root=self.job_path.parent/'validation',
             expected_texts=expected['texts'] if expected else None,
             expected_charts=expected['charts'] if expected else None,
             expected_tables=expected['tables'] if expected else None,

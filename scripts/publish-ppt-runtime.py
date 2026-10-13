@@ -10,7 +10,7 @@ from pathlib import Path
 import shutil
 import sys
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
-from scenarios.research_ppt.motif_v6 import learn
+from scenarios.research_ppt.motif_v6 import learn, validate_compilation
 
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def write(p,v):
@@ -18,7 +18,9 @@ def write(p,v):
 
 def main():
     a=argparse.ArgumentParser(description=__doc__)
-    a.add_argument('--dataset',type=Path,required=True);a.add_argument('--schemas',type=Path,required=True)
+    inputs=a.add_mutually_exclusive_group(required=True)
+    inputs.add_argument('--dataset',type=Path);inputs.add_argument('--compiled-manifest',type=Path)
+    a.add_argument('--schemas',type=Path,required=True)
     a.add_argument('--output',type=Path,required=True);args=a.parse_args()
     out=args.output.resolve()
     if not out.is_relative_to((ROOT/'.local').resolve()):raise ValueError('private output required')
@@ -29,7 +31,10 @@ def main():
     if schemas!=sorted(schemas,key=lambda s:s['name']):raise ValueError('actual Harness tool order required')
     mcp=[{'name':s['name'],'description':s['description'],'inputSchema':s['parameters']} for s in schemas]
     schema_path=out/'actual-mcp-schema.json';write(schema_path,{'tools':mcp})
-    manifest=learn(args.dataset,tool_schema_path=schema_path,out_dir=out/'compilation',mining='witnessed_edges')
+    if args.compiled_manifest:
+        manifest=args.compiled_manifest.resolve(strict=True);validate_compilation(manifest)
+    else:
+        manifest=learn(args.dataset,tool_schema_path=schema_path,out_dir=out/'compilation',mining='witnessed_edges')
     data=json.loads(manifest.read_text())
     if not data['artifacts'] or set(data['contracts'])!={'mcp__ppt__pin_source','mcp__ppt__read_source'}:
         raise ValueError('no compatible certified PPT read-only continuation')
