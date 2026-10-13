@@ -5,7 +5,7 @@
 - 负责人明确：预计 10 月 14 日约 20 人使用，成员要各自登录自己的 Codex；没有服务器 OpenAI API Key。因此不采用服务器统一 API Key/GPT API 方案，也不复用此前撤销的 DSH Codex 设备码入口。
 - 现状：当前浏览器可见一个 Harless 网页，但没有 20 人独立身份、凭据、文件/任务隔离的验收；现有单运行的连接认证与 DSH_HOME 仍是共享边界。校园网连接页和正式工作台从其他成员电脑可达性也尚未逐人验证。不能将可打开页面等同于 20 人可安全共用。
 - 官方接入条件：开源 SIWC 使用每位用户本机的 127.0.0.1 回调；OpenAI 文档要求对付费或远程托管应用提交申请，网页身份登录另需获批客户端。当前无证据表明本项目已有远程网页客户端资格。参考 https://developers.openai.com/siwc/token-sharing-open-source 、https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms 、https://developers.openai.com/siwc/website 。普通 OpenAI API 与 ChatGPT 订阅分开计费，参考 https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform 。
-- 下一步决策：若 10 月 14 日必须使用每人自己的 Codex，应先确认是否接受每人本机运行的独立授权路线并完成实际端到端验收；若必须共享网页，则 Codex 登录待获得合适的网页接入资格及后端成员隔离后再开放。上述两条均未达到 20 人上线验收。可单独进行 3–5 人只读连接试用；不得把共享认证令牌发给全组作为账号替代。
+- 负责人随后确认 10 月 14 日必须是共享网页，Codex 登录延期；没有服务器 OpenAI API Key。本次不接 GPT API，也不把个人 Codex 登录态迁入共享 DSH。明日可继续现有 DeepSeek 通道的受控试用，但 20 人任务开放仍需独立 Harless 身份/运行空间、网关路由和并发验收；当前尚未完成。先做 3–5 人只读连接试用并核对最终网络入口，不得把共享认证令牌发给全组作为账号替代。
 
 ## 2026-10-13 模型菜单与 Codex 登录试用回退（Codex）
 
