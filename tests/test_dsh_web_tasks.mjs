@@ -130,6 +130,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     if (previous === undefined) delete process.env.SSS_WEB_POLICY; else process.env.SSS_WEB_POLICY = previous;
     if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+    if (brokerServer) { brokerServer.closeAllConnections(); await new Promise(resolve => brokerServer.close(resolve)); }
     rmSync(directory, { recursive: true }); throw error;
   }
   async function api(body, query = '') {
@@ -456,6 +457,43 @@ test('Completed chat survives a Web output change without adopting another user 
     await assert.rejects(f.ctx.sessionController.prompt({ sessionId: id, requestId: 'cross-user',
       mode: 'queue', content: [{ type: 'text', text: '拒绝' }] }, new AbortController().signal), /outside/);
     assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 3);
+  } finally { await f.close(); }
+});
+
+test('Imported legacy history continues without changing its locked preset or gaining new workspace tools', options, async () => {
+  const scene = { id: 'new-scene', label: 'Workspace', preset: 'sss-task', adapter: 'workspace',
+    mcp_rows: [], allowed_tools: ['mcp__workspace__read_file'], config_sha256: 'a'.repeat(64) };
+  const f = await fixture({ broker: true, dshHome: true, fixtureSchemas: [],
+    allowed_tools: scene.allowed_tools, scenes: [scene], capability_profile: scene.id });
+  try {
+    const id = 'session-11111111-1111-4111-8111-111111111111';
+    await f.originalController.create({ sessionId: id, agentPreset: 'sss-task' });
+    f.agents.get(id).events.push({ type: 'user/message', data: { id: 'legacy-human',
+      source: { kind: 'user' }, content: [{ type: 'text', text: '旧版第一轮' }] } });
+    const legacyOutput = join(f.directory, 'old-run'); mkdirSync(legacyOutput);
+    const scope = digest({ output: legacyOutput, home: process.env.DSH_HOME });
+    writeFileSync(join(legacyOutput, 'session-ownership-' + scope + '.json'), JSON.stringify({
+      scope, sessions: [id], bound: [id] }));
+    writeFileSync(f.policyPath, JSON.stringify({ ...f.policy, ownership_legacy_outputs: [legacyOutput] }));
+    // Official Harness locks the preset once a turn exists.
+    f.ctx.agentPresets.select = async () => { throw Error('preset is locked'); };
+    await f.restart();
+    assert.equal((await f.settings(undefined, '?session_id=' + id)).value.conversation_only, true);
+    for (let turn = 1; turn <= 2; turn++) {
+      await f.ctx.sessionController.prompt({ sessionId: id, requestId: 'legacy-followup-' + turn,
+        mode: 'queue', content: [{ type: 'text', text: '继续文字对话' }] }, new AbortController().signal);
+      const task = (await f.api()).value.tasks.find(row => row.request_id === 'legacy-followup-' + turn);
+      assert.deepEqual(f.agents.get(id).allow.allow, []);
+      const next = () => (async function* () { yield { type: 'fixture' }; })();
+      for await (const row of f.stream(f.modelRequest(task, { tools: [] }), next)) assert.equal(row.type, 'fixture');
+      await f.complete(task); await f.restart();
+    }
+    assert.equal(f.promptCalls.length, 2);
+    assert.equal(f.presetCalls.length, 0);
+    const denied = await f.api({ action: 'preview', session_id: id,
+      request: { content: [{ type: 'file', receiptId: 'some-receipt' }] } });
+    assert.equal(denied.value.error.code, 'new_session_required');
+    assert.equal(f.registrations.size, 2);
   } finally { await f.close(); }
 });
 

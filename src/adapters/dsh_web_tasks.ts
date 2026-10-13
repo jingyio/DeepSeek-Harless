@@ -81,6 +81,7 @@ export function apply(ctx: any) {
   };
   const schemas = new Map<string, any[]>(), requests = new Map<string, string>();
   const ownedSessions = new Set<string>();
+  const legacyChatSessions = new Set<string>();
   const memberRestricted = brokerMode && config.allowed_tools.length === 0;
   const registeredScenes = config.scenes?.map(row => {
     if (!memberRestricted) return row;
@@ -121,7 +122,18 @@ export function apply(ctx: any) {
     } catch { return 'no_valid_certified_library'; }
     return null;
   }
-  function bindScene(agent: any, scene: Scene) {
+  function sessionScene(id: string, scene: Scene): Scene {
+    if (!legacyChatSessions.has(id)) return scene;
+    // A started Harness session has an immutable preset. Imported history must
+    // not acquire a new MCP composition or reuse an obsolete tool surface.
+    const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas,
+      certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = scene;
+    const instructions = '此会话为升级前保留的历史对话，只支持继续文字问答。当前没有文件或场景工具，不要声称已读取文件或完成生成；需要工作区工具时请用户新建会话。';
+    return { ...safe, allowed_tools: [], instructions, instructions_sha256: sha(instructions),
+      config_sha256: digest({ scene: scene.id, parent: scene.config_sha256 ?? null, legacy_chat_only: true }) };
+  }
+  function bindScene(agent: any, configuredScene: Scene) {
+    const scene = sessionScene(agent.session.id, configuredScene);
     for (const dispose of guards.get(agent.session.id) ?? []) dispose();
     const allowed = new Set(scene.allowed_tools);
     const disposers = [agent.ctx.tools.restrict({ allow: scene.allowed_tools }),
@@ -136,6 +148,7 @@ export function apply(ctx: any) {
     const selected = sessionId ? selections.get(sessionId) ?? defaults : defaults;
     const task = sessionId ? forSession(sessionId) : undefined;
     return { selection: selected, applies_to: task ? 'next_task' : 'next_prompt',
+      conversation_only: sessionId ? legacyChatSessions.has(sessionId) : false,
       preview_scene: selected.scene, // compatibility alias; now an actual registered selection
       preview_scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason })),
       current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status } : null,
@@ -180,14 +193,17 @@ export function apply(ctx: any) {
   const ownershipPath = home ? join(home, 'harless-web-ownership-' + ownershipScope + '.json')
     : join(config.output, 'session-ownership-' + ownershipScope + '.json');
   const boundSessions = new Set<string>();
-  const readOwnership = (path: string, scope: string): boolean => {
+  const readOwnership = (path: string, scope: string, legacy = false): boolean => {
     let saved: any;
     try { saved = JSON.parse(readFileSync(path, 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error; }
     if (saved.scope !== scope || !Array.isArray(saved.sessions) || !Array.isArray(saved.bound) ||
         [...saved.sessions, ...saved.bound].some(id => typeof id !== 'string' || !id.length) ||
-        saved.bound.some(id => !saved.sessions.includes(id))) throw Error('Invalid Web session ownership record');
+        saved.bound.some(id => !saved.sessions.includes(id)) ||
+        (saved.chat_only_sessions !== undefined && (!Array.isArray(saved.chat_only_sessions) ||
+          saved.chat_only_sessions.some(id => !saved.sessions.includes(id))))) throw Error('Invalid Web session ownership record');
     for (const id of saved.sessions) ownedSessions.add(id);
+    for (const id of legacy ? saved.sessions : saved.chat_only_sessions ?? []) legacyChatSessions.add(id);
     for (const id of saved.bound) {
       if (!ownedSessions.has(id)) throw Error('Unowned task session in ownership record');
       boundSessions.add(id);
@@ -198,10 +214,10 @@ export function apply(ctx: any) {
   let importedLegacy = false;
   if (home) for (const output of new Set([config.output, ...(config.ownership_legacy_outputs ?? [])])) {
     const scope = digest({ output, home });
-    importedLegacy = readOwnership(join(output, 'session-ownership-' + scope + '.json'), scope) || importedLegacy;
+    importedLegacy = readOwnership(join(output, 'session-ownership-' + scope + '.json'), scope, output !== config.output) || importedLegacy;
   }
   const saveOwnership = () => json(ownershipPath, { scope: ownershipScope,
-    sessions: [...ownedSessions], bound: [...boundSessions] });
+    sessions: [...ownedSessions], bound: [...boundSessions], chat_only_sessions: [...legacyChatSessions] });
   if (importedLegacy) saveOwnership();
   const modelPath = join(config.output, 'session-models-' + runScope + '.json');
   try {
@@ -319,7 +335,7 @@ export function apply(ctx: any) {
         !ownedSessions.has(request.session_id) || typeof route.budget_session_id !== 'string' ||
         state.task_id !== taskId || state.session_id !== request.session_id) throw Error('Web task index identity mismatch');
     const effective = JSON.parse(readFileSync(join(output, 'effective-config.json'), 'utf8'));
-    const restoredScene = sceneFor(state.scene ?? request.capability_profile);
+    const restoredScene = sessionScene(request.session_id, sceneFor(state.scene ?? request.capability_profile));
     const task: Task = { request, delivery: request.content, confirmation_digest: state.confirmation_digest,
       status: state.status, created_at: state.created_at, started_at: state.started_at,
       finished_at: state.finished_at, failure: state.failure, fallback_reason: state.fallback_reason,
@@ -498,7 +514,9 @@ export function apply(ctx: any) {
       delivery.push({ type: 'text', text: `\n\n[来源 ${reference.resource_id}；版本 ${resource.version}]\n${resource.text}` });
     }
     if (Buffer.byteLength(JSON.stringify(delivery)) > 768 * 1024) throw new TaskError('request_too_large', 'Resolved input exceeds byte limit', 413);
-    const scene = sceneFor(request.capability_profile);
+    const scene = sessionScene(existingSession ?? '', sceneFor(request.capability_profile));
+    if (existingSession && legacyChatSessions.has(existingSession) && request.content.some(part => part.type !== 'text'))
+      throw new TaskError('new_session_required', '历史会话可以继续文字对话；使用文件或场景工具请新建会话。', 409);
     if (scene.unavailable_reason) throw new TaskError('scene_not_connected', scene.unavailable_reason, 409);
     const options = sceneOptions(supplied.scene_options, scene);
     const selection = changeSelection(selected, { scene: scene.id, mode: requestedMode }, scenes, executeUnavailable);
@@ -650,7 +668,8 @@ export function apply(ctx: any) {
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
     if (!selections.has(request.sessionId)) {
       const snapshot = await controller.inspect(request.sessionId);
-      const scene = scenes.find(row => row.preset === snapshot.meta.agentPreset);
+      const scene = scenes.find(row => row.preset === snapshot.meta.agentPreset) ??
+        (legacyChatSessions.has(request.sessionId) ? sceneFor(defaults.scene) : undefined);
       if (!scene) throw new TaskError('session_not_owned', 'Session is outside this Web run');
       selections.set(request.sessionId, { ...defaults, scene: scene.id });
       saveSettings();
