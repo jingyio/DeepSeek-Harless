@@ -1,5 +1,6 @@
 """Server-owned scene registry; session templates mount the same RSI Runtime."""
 from __future__ import annotations
+import importlib.util
 import hashlib
 import json
 import re
@@ -41,6 +42,11 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                      embedding_endpoint=embedding_endpoint, embedding_model=embedding_model)
         if row.get('adapter'):
             scene.update(adapter=row['adapter'], mcp_rows=prepared['mcp_rows'], environment_references=prepared['environment_references'])
+        if row.get('adapter') == 'ppt':
+            if not (root / 'scenarios/research_ppt/dist/mcp-adapter.js').is_file():
+                scene['unavailable_reason'] = 'ppt_adapter_not_built'
+            elif any(importlib.util.find_spec(module) is None for module in ('pypdf', 'fitz', 'pptx', 'reportlab', 'PIL')):
+                scene['unavailable_reason'] = 'ppt_python_dependencies_missing'
         if row.get('instructions'):
             instructions = (root / row['instructions']).read_text(encoding='utf-8')
             if not instructions.strip() or len(instructions) > 100000: raise ValueError('invalid scene instructions')

@@ -1,6 +1,6 @@
 /** Session-local compositions and inputs; no cwd/env mutation or Agent loop. */
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
 import type { Scene } from './harless_settings.ts';
 import type { PromptPart } from './web_task_request.ts';
@@ -56,6 +56,7 @@ function readJob(workspace: string): any {
 export async function bindSceneInputs(ctx: any, agent: any, workspace: string, scene: Scene, content: PromptPart[],
     options: SceneOptions, instruction: string, taskId: string) {
   const inputs: any[] = [];
+  for (const file of readdirSync(join(workspace, 'inputs'))) unlinkSync(join(workspace, 'inputs', file));
   for (const part of content) {
     if (part.type !== 'file') continue;
     const ref = ctx.fileUploads.resolve(agent, part.receiptId);
@@ -79,5 +80,11 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     slides: options.slides ?? 6, template: options.template ?? 'academic', operation: 'generate',
     allow_output: options.allow_output === true, allow_rsi: false, document_cache: false, rsi_dir: join(workspace, 'rsi'),
   });
-  return inputs.map(({ path, ...row }) => row);
+  return inputs.map(({ path, ...row }) => ({ ...row, file: basename(path) }));
+}
+
+export function scopeDigest(workspace: string, scene: Scene): string | null {
+  if (!scene.adapter) return null;
+  const files = readdirSync(join(workspace, 'inputs')).sort().map(name => [name, sha(readFileSync(join(workspace, 'inputs', name)))]);
+  return sha(JSON.stringify({ files, job: scene.adapter === 'ppt' ? sha(readFileSync(join(workspace, 'job.json'))) : null }));
 }

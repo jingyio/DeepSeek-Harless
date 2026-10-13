@@ -9,7 +9,7 @@ import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
 import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, SettingsError } from './harless_settings.ts';
-import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions } from './harless_task_scope.ts';
+import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest } from './harless_task_scope.ts';
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
@@ -18,7 +18,7 @@ export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments'];
 type Policy = {
   output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number;
-  mode: ExecutionMode; budget_usd: number; capability_profile: string;
+  mode: ExecutionMode; budget_usd: number; request_limit?: number; run_budget_usd?: number; run_request_limit?: number; capability_profile: string;
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
@@ -35,7 +35,7 @@ type Task = {
   humans: Map<string, string>; sources: { resource_id: string; version: string; sha256: string }[];
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
-  model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[];
+  model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; scope_sha256: string | null;
 };
 class TaskError extends Error {
   code: string; status: number;
@@ -328,7 +328,7 @@ export function apply(ctx: any) {
     selections.set(request.session_id, selection);
     const output = join(config.output, 'tasks', taskId); mkdirSync(output, { recursive: true, mode: 0o700 });
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
-      scene, selection: Object.freeze({ ...selection }), tools, workspace, scene_options: options, scene_inputs: sceneInputs,
+      scene, selection: Object.freeze({ ...selection }), tools, workspace, scene_options: options, scene_inputs: sceneInputs, scope_sha256: scopeDigest(workspace, scene),
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output, humans: new Map(), sources,
       model_option: chosenModel,
@@ -348,7 +348,7 @@ export function apply(ctx: any) {
       delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
       scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
-      scene_options: task.scene_options, scene_inputs: task.scene_inputs, user_id: principal,
+      scene_options: task.scene_options, scene_inputs: task.scene_inputs, scope_sha256: task.scope_sha256, user_id: principal,
       provider_mode: config.provider_mode, max_output_tokens: config.max_output_tokens });
     task.confirmation_digest = digest({ confirmation: task.confirmation_digest,
       provider: task.model_option.provider, model: task.model_option.model });
@@ -356,8 +356,10 @@ export function apply(ctx: any) {
     json(join(task.output, 'effective-config.json'), { ...view(task), selection: task.selection, tools: task.tools,
       scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
       instructions: task.scene.instructions, instructions_sha256: task.scene.instructions_sha256,
-      allowed_tools: task.scene.allowed_tools, workspace: task.workspace,
+      allowed_tools: task.scene.allowed_tools, workspace: task.workspace, scope_sha256: task.scope_sha256,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
+      budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit,
+        run_usd: config.run_budget_usd, run_requests: config.run_request_limit, reset_history: false },
       run_config: '../../effective-config.json', manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256, scene_registry_sha256: config.scene_registry_sha256 });
     record(task);
   }
@@ -390,6 +392,7 @@ export function apply(ctx: any) {
     if (confirmation !== task.confirmation_digest) throw new TaskError('confirmation_changed', 'Input/configuration changed; preview and confirm again', 409);
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
+        scopeDigest(task.workspace, task.scene) !== task.scope_sha256 ||
         fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256) {
       throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
     }
@@ -511,6 +514,7 @@ export function apply(ctx: any) {
                 task.request.content, task.scene_options, task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), task.request.task_id);
               await selectPreset!(agents.get(task.request.session_id), sessionPreset(config.output, task.workspace, task.scene));
               bindScene(agents.get(task.request.session_id), task.scene);
+              task.scope_sha256 = scopeDigest(task.workspace, task.scene);
               if (digest(schemas.get(task.request.session_id)) !== digest(task.tools)) throw new TaskError('confirmation_changed', 'Tool schema changed', 409);
             }
             updateDraft(task); return view(task, true);

@@ -124,6 +124,7 @@ def prepare(args, output, endpoint):
                 resources[identity] = {'text': data.decode('utf-8'), 'version': hashlib.sha256(data).hexdigest()}
         policy.update(capability_profile=args.scenario if '/' not in args.scenario else prepared['name'],
             budget_usd=args.budget_usd, provider_mode='real' if args.real_model else 'mock', user_id=args.user_id,
+            request_limit=args.request_limit, run_budget_usd=args.run_budget_usd, run_request_limit=args.run_request_limit,
             control_endpoint=args.control_endpoint, control_token=args.control_token,
             certified_input_sha256=canonical_prompt_sha, resources=resources,
             embedding_model=args.embedding_model)
