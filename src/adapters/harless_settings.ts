@@ -9,6 +9,9 @@ export type Scene = {
   scenario?: string; scenario_version?: number; instructions_sha256?: string;
   unavailable_reason?: string; adapter?: 'ppt' | 'workspace';
   mcp_rows?: any[]; environment_references?: Record<string, string>;
+  rsi_unavailable_reason?: string; matching_policy?: 'structural_only'; binding_policy?: 'ppt_uploaded_sources_v1';
+  certification_path?: string; certification_sha256?: string; certified_code_locks?: Record<string,string>;
+  certification_scope?: string; quality_cost_promoted?: boolean;
 };
 export type Selection = { scene: string; mode: ExecutionMode; rsi: boolean };
 export class SettingsError extends Error {

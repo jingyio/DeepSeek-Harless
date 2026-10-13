@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from .scenario import prepare_scenario
@@ -55,19 +56,21 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             scene.update(instructions=instructions, instructions_sha256=hashlib.sha256(instructions.encode()).hexdigest())
         if row.get('rsi'):
             rsi = row['rsi']
-            if not isinstance(rsi, dict) or not {'manifest', 'task'} <= set(rsi) or set(rsi) - {'manifest', 'task', 'tool_schemas'}: raise ValueError('rsi requires manifest and task')
-            if rsi.get('tool_schemas'):
-                schema_path = (root / rsi['tool_schemas']).resolve(strict=True)
-                tool_schemas = json.loads(schema_path.read_text(encoding='utf-8'))
-                if not isinstance(tool_schemas, list) or not tool_schemas: raise ValueError('empty certified tool schemas')
-                scene.update(tool_schemas=str(schema_path), certified_tool_schemas=tool_schemas,
-                             certified_tool_schemas_sha256=hashlib.sha256(schema_path.read_bytes()).hexdigest())
-            scene.update(manifest=str((root / rsi['manifest']).resolve(strict=True)),
-                         task=str((root / rsi['task']).resolve(strict=True)),
-                         certified_input_sha256=hashlib.sha256(prepared['prompt'].strip().encode()).hexdigest())
+            if isinstance(rsi, dict) and set(rsi)=={'bundle_from_env'}:
+                if row['id']!='ppt' or not re.fullmatch(r'[A-Z][A-Z0-9_]{0,100}',rsi['bundle_from_env']):raise ValueError('invalid trusted runtime bundle reference')
+                value=os.environ.get(rsi['bundle_from_env'])
+                if value:
+                    from .harless_rsi_bundle import load_ppt_bundle
+                    try:scene.update(load_ppt_bundle(root,Path(value)))
+                    except (ValueError,OSError,KeyError):scene['rsi_unavailable_reason']='runtime_bundle_certification_invalid'
+                else:scene['rsi_unavailable_reason']='runtime_bundle_not_deployed'
+                rsi = None
+            if rsi is None:
+                pass
+            else:
+                _bind_legacy_rsi(root, rsi, scene, prepared)
         if row['id'] != default_id:
             preset = output / 'presets' / scene['preset']; preset.mkdir(parents=True, mode=0o700)
-            # Session adapters compose their MCP only after a private workspace is allocated.
             rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
                 'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
                 'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}},
@@ -82,3 +85,16 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
         scenes.append({'id': default_id, 'label': prepared_default['name'], 'preset': 'sss-task',
                        'allowed_tools': prepared_default['allowed_tools'], 'config_sha256': prepared_default['config_sha256']})
     return scenes
+
+
+def _bind_legacy_rsi(root, rsi, scene, prepared):
+    if not isinstance(rsi, dict) or not {'manifest', 'task'} <= set(rsi) or set(rsi) - {'manifest', 'task', 'tool_schemas'}: raise ValueError('rsi requires manifest and task')
+    if rsi.get('tool_schemas'):
+        schema_path = (root / rsi['tool_schemas']).resolve(strict=True)
+        tool_schemas = json.loads(schema_path.read_text(encoding='utf-8'))
+        if not isinstance(tool_schemas, list) or not tool_schemas: raise ValueError('empty certified tool schemas')
+        scene.update(tool_schemas=str(schema_path), certified_tool_schemas=tool_schemas,
+                     certified_tool_schemas_sha256=hashlib.sha256(schema_path.read_bytes()).hexdigest())
+    scene.update(manifest=str((root / rsi['manifest']).resolve(strict=True)),
+                 task=str((root / rsi['task']).resolve(strict=True)),
+                 certified_input_sha256=hashlib.sha256(prepared['prompt'].strip().encode()).hexdigest())

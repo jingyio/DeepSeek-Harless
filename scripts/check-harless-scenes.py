@@ -129,7 +129,7 @@ def main():
                 web.submit(alice, base, draft); result = web.wait_task(alice, base, draft['task_id'], seconds=180)
                 assert result['status'] == 'completed' and result['stats']['tool_calls'] > 0
                 assert result['stats']['tool_errors'] == 0 and result['stats']['verified_skips'] == 0
-                assert result['fallback_reason'] == 'no_certified_library'
+                assert result['fallback_reason'] in ('no_certified_library','runtime_bundle_not_deployed')
                 groups.append({'group': scene + '-real-harness', 'task_id': draft['task_id'], 'stats': result['stats']})
             else:
                 web.api(alice, base, {'action': 'cancel', 'task_id': draft['task_id']})

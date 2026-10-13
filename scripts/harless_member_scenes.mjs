@@ -64,11 +64,12 @@ export function memberSceneDeployment(policy, deployment) {
       cfg.env=Object.fromEntries(Object.entries(env).map(([k,v])=>[k,k==='SSS_PPT_DELIVERY_PYTHON'?executable:translate(v)]));
     }
     const next={...structuredClone(scene),mcp_rows:rows};
-    for(const key of ['manifest','task','tool_schemas']) if(next[key]) {
+    for(const key of ['manifest','task','tool_schemas','certification_path']) if(next[key]) {
       if(!deployment.libraryRoot || !inside(realpathSync(deployment.libraryRoot),next[key]))
         throw Error('Member Motif library is outside sanitized runtime artifacts');
       next[key]=translate(next[key]);
     }
+    if(next.certified_code_locks)next.certified_code_locks=Object.fromEntries(Object.entries(next.certified_code_locks).map(([path,sha])=>[translate(path),sha]));
     return next;
   });
   return {scenes,mounts,allowed_tools:[...new Set(scenes.filter(s=>!s.unavailable_reason).flatMap(s=>s.allowed_tools))],

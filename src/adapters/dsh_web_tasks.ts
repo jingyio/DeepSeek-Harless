@@ -15,6 +15,7 @@ import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDi
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
+import {bindUploadedPptTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
 
 export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments'];
@@ -42,6 +43,7 @@ type Task = {
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
   model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; scope_sha256: string | null;
   budget_session_id: string;
+  bound_binding_sha256?: string | null;
 };
 class TaskError extends Error {
   code: string; status: number;
@@ -107,12 +109,19 @@ export function apply(ctx: any) {
   };
   function executeUnavailable(scene: Scene): string | null {
     if (scene.unavailable_reason) return scene.unavailable_reason;
+    if (scene.rsi_unavailable_reason) return scene.rsi_unavailable_reason;
     if (!scene.manifest || !scene.task) return 'no_certified_library';
     if (!scene.diagnostic && !scene.certified_tool_schemas) return 'no_certified_tool_schemas';
-    if (!scene.embedding_endpoint) return 'no_embedding_service';
-    if (!/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
+    const structural=scene.matching_policy==='structural_only';
+    if (!structural && !scene.embedding_endpoint) return 'no_embedding_service';
+    if (!structural && !/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
     try {
-      loopbackSimilarity(scene.embedding_endpoint, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model');
+      if(structural){
+        if(scene.id!=='ppt' || scene.binding_policy!=='ppt_uploaded_sources_v1' ||
+           scene.certification_scope!=='independent_trace_structure' || !scene.certification_path ||
+           fileSha(scene.certification_path)!==scene.certification_sha256 || !scene.certified_code_locks ||
+           Object.entries(scene.certified_code_locks).some(([path,expected])=>fileSha(path)!==expected))return 'runtime_bundle_certification_invalid';
+      }else loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model');
       const manifest = JSON.parse(readFileSync(scene.manifest, 'utf8'));
       if (Object.keys(manifest.contracts ?? {}).some(tool => !scene.allowed_tools.includes(tool))) return 'library_tools_outside_scene';
       createOnlineInterceptor({ manifest, task: JSON.parse(readFileSync(scene.task, 'utf8')), mode: 'execute',
@@ -313,6 +322,7 @@ export function apply(ctx: any) {
       tools: effective.tools ?? [],
       manifest_sha256: effective.manifest_sha256 ?? null,
       binding_sha256: effective.binding_sha256 ?? null,
+      bound_binding_sha256: effective.bound_binding_sha256 ?? null,
       model_option: modelOptions.find(option => option.model === state.model && option.provider === state.provider) ?? defaultModel };
     try { task.answer = readFileSync(join(output, 'answer.md'), 'utf8'); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
@@ -520,7 +530,7 @@ export function apply(ctx: any) {
       const offered = new Map(tools.map((tool: any) => [tool.name, tool]));
       if (Object.entries(manifest.contracts).some(([name, contract]) => !offeredSchemaMatches(offered, name, contract)))
         throw new TaskError('execute_unavailable', 'library_tool_schema_mismatch', 409);
-      try {
+      if(scene.matching_policy!=='structural_only')try {
         const binding = JSON.parse(readFileSync(scene.task!, 'utf8'));
         await loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model!)(binding.intent, ['Runtime admission probe']);
       } catch { throw new TaskError('execute_unavailable', 'embedding_service_unavailable', 409); }
@@ -554,11 +564,17 @@ export function apply(ctx: any) {
     indexedTasks.push(taskId); saveTaskIndex(); return task;
   }
   function updateDraft(task: Task) {
+    if(task.scene.binding_policy==='ppt_uploaded_sources_v1' && task.request.mode!=='baseline' && task.scene_inputs.length){
+      const binding=bindUploadedPptTask(task.workspace,task.scene_inputs,task.request,JSON.parse(readFileSync(task.scene.manifest!,'utf8')));
+      json(join(task.output,'bound-motif-task.json'),binding);
+      task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
+    }
     task.confirmation_digest = digest({ task_id: task.request.task_id, request: task.request.request_sha256,
       delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
       scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256,
+      bound_binding_sha256: task.bound_binding_sha256, certification_sha256:task.scene.certification_sha256,
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, scope_sha256: task.scope_sha256, user_id: principal,
       provider_mode: config.provider_mode, max_output_tokens: config.max_output_tokens });
     task.confirmation_digest = digest({ confirmation: task.confirmation_digest,
@@ -568,6 +584,9 @@ export function apply(ctx: any) {
       scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
       instructions: task.scene.instructions, instructions_sha256: task.scene.instructions_sha256,
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256, diagnostic: task.scene.diagnostic ?? false,
+      bound_binding_sha256:task.bound_binding_sha256,certification_sha256:task.scene.certification_sha256,
+      binding_policy:task.scene.binding_policy,matching_policy:task.scene.matching_policy,
+      certification_scope:task.scene.certification_scope,quality_cost_promoted:task.scene.quality_cost_promoted,
       allowed_tools: task.scene.allowed_tools, workspace: task.workspace, scope_sha256: task.scope_sha256,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
       budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit,
@@ -580,21 +599,23 @@ export function apply(ctx: any) {
     const parts = task.request.content, scene = task.scene;
     const availableTools = new Map(task.tools.map(tool => [tool.name, tool]));
     const pinned = (path: string, expected: string | null) => { const bytes = readFileSync(path); if (sha(bytes) !== expected) throw Error('Motif binding version changed'); return JSON.parse(bytes.toString('utf8')); };
-    if (!scene.manifest || !scene.task) task.fallback_reason = 'no_certified_library';
+    if (!scene.manifest || !scene.task) task.fallback_reason = scene.rsi_unavailable_reason ?? 'no_certified_library';
     else if (!scene.diagnostic && !scene.certified_tool_schemas) task.fallback_reason = 'no_certified_tool_schemas';
     else if (scene.certified_tool_schemas && digest(task.tools) !== digest(scene.certified_tool_schemas)) task.fallback_reason = 'certified_tool_schema_mismatch';
-    else if (!scene.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
-    else if (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
-        sha(parts[0].text.trim()) !== scene.certified_input_sha256) task.fallback_reason = 'input_not_certified_for_library';
+    else if (scene.matching_policy==='structural_only' && executeUnavailable(scene))task.fallback_reason='runtime_bundle_certification_invalid';
+    else if (scene.matching_policy!=='structural_only' && !scene.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
+    else if (scene.binding_policy==='ppt_uploaded_sources_v1' && !task.bound_binding_sha256)task.fallback_reason='ppt_rsi_requires_approved_sources';
+    else if (scene.binding_policy!=='ppt_uploaded_sources_v1' && (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
+        sha(parts[0].text.trim()) !== scene.certified_input_sha256)) task.fallback_reason = 'input_not_certified_for_library';
     else try {
       const manifest = pinned(scene.manifest, task.manifest_sha256);
       if (Object.entries(manifest.contracts).some(([name, contract]) => !offeredSchemaMatches(availableTools, name, contract))) throw Error('library_tool_schema_mismatch');
-      const binding = pinned(scene.task, task.binding_sha256);
+      const binding = scene.binding_policy==='ppt_uploaded_sources_v1' ? pinned(join(task.output,'bound-motif-task.json'),task.bound_binding_sha256!) : pinned(scene.task, task.binding_sha256);
       binding.session_id = task.request.session_id; binding.task_id = task.request.task_id;
       json(join(task.output, 'bound-motif-task.json'), binding);
       task.interceptor = createOnlineInterceptor({ manifest,
         task: binding, mode: task.request.mode, minSimilarity: 0.8, minMargin: 0.1,
-        similarity: loopbackSimilarity(scene.embedding_endpoint, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
+        similarity: scene.matching_policy==='structural_only' ? structuralOnlySimilarity : loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
         audit: (row: unknown) => audit(task, row) });
     } catch (error) {
       task.interceptor = undefined; task.fallback_reason = (error as Error).message === 'library_tool_schema_mismatch' ? 'library_tool_schema_mismatch' : 'no_valid_certified_library';
@@ -614,6 +635,11 @@ export function apply(ctx: any) {
     if (task.request.mode === 'execute') {
       const reason = executeUnavailable(task.scene);
       if (reason) throw new TaskError('execute_unavailable', reason, 409);
+      if(task.scene.binding_policy==='ppt_uploaded_sources_v1'){
+        if(!task.bound_binding_sha256)throw new TaskError('execute_unavailable','ppt_rsi_requires_approved_sources',409);
+        if(fileSha(join(task.output,'bound-motif-task.json'))!==task.bound_binding_sha256)
+          throw new TaskError('confirmation_changed','bound_motif_task_changed',409);
+      }
     }
     requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
     try {
