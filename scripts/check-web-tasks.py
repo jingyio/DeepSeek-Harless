@@ -129,16 +129,21 @@ def launch(scenario, fixture='normal'):
             opener = client()
             status, _ = request(opener, base, '/api/harless/tasks')
             assert status == 401, f'Unauthenticated task API accepted: {status}'
-            try:
-                opener.open(base + '/tasks', timeout=10)
-                raise AssertionError('Unauthenticated task panel accepted')
-            except urllib.error.HTTPError as error:
-                assert error.code == 401
             with opener.open((output / 'access-url.txt').read_text(encoding='utf-8'), timeout=20) as response:
                 assert response.status == 200
-            with opener.open(base + '/tasks', timeout=20) as response:
+            with opener.open(base + '/', timeout=20) as response:
                 assert response.status == 200
-                assert 'DeepSeek Harless 任务工作台' in response.read().decode('utf-8')
+                index = response.read().decode('utf-8')
+                assert 'deepseek-harless-web-client' in index
+                assert 'DeepSeek Harless 任务工作台' not in index
+            status, listing = request(opener, base, '/api/harless/tasks')
+            assert status == 200 and any(row['model'] == 'deepseek-flash' for row in listing['model_options'])
+            try:
+                with opener.open(base + '/tasks', timeout=10) as response:
+                    old_page = response.read().decode('utf-8')
+            except urllib.error.HTTPError as error:
+                old_page = error.read().decode('utf-8', errors='replace')
+            assert 'DeepSeek Harless 任务工作台' not in old_page
             yield opener, base, output
         finally:
             if child.poll() is None:

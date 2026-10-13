@@ -2,7 +2,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
@@ -23,7 +22,9 @@ type Policy = {
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
   scenes?: Scene[]; scene_registry_sha256?: string;
   resources?: Record<string, { version: string; text: string }>;
+  models?: ModelOption[];
 };
+type ModelOption = { provider: string; model: string; label: string; available: boolean };
 type Task = {
   request: NormalizedWebTask; delivery: PromptPart[]; confirmation_digest: string;
   status: string; created_at: string; started_at?: string; finished_at?: string;
@@ -32,7 +33,14 @@ type Task = {
   humans: Map<string, string>; sources: { resource_id: string; version: string; sha256: string }[];
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
+  model_option: ModelOption;
 };
+const previewScenes = Object.freeze([
+  { id: 'ppt', label: 'PPT' },
+  { id: 'paper-proofreading', label: 'Paper Proofreading' },
+  { id: 'research-data-analysis', label: 'Research Data Analysis' },
+  { id: 'new-scene', label: 'New Scene' },
+]);
 class TaskError extends Error {
   code: string; status: number;
   constructor(code: string, message: string, status = 400) { super(message); this.code = code; this.status = status; }
@@ -54,13 +62,25 @@ export function apply(ctx: any) {
       !['baseline', 'shadow', 'execute'].includes(config.mode) ||
       !['mock', 'real'].includes(config.provider_mode)) throw Error('Invalid dynamic Web policy');
   const tasks = new Map<string, Task>(), sessions = new Map<string, string>();
+  const modelOptions = config.models ?? [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }];
+  const defaultModel = modelOptions.find(option => option.available);
+  if (!defaultModel || modelOptions.some(option => !/^[a-z][a-z0-9-]*$/.test(option.provider) || !/^[A-Za-z0-9._-]+$/.test(option.model) ||
+        typeof option.label !== 'string' || !option.label || typeof option.available !== 'boolean') ||
+      new Set(modelOptions.map(option => option.model)).size !== modelOptions.length) throw Error('Invalid server model catalog');
+  const modelSelections = new Map<string, ModelOption>();
+  const findModel = (id: unknown): ModelOption => {
+    const option = modelOptions.find(row => row.model === id && row.available);
+    if (!option) throw new TaskError('model_not_allowed', 'Model is not enabled by the server configuration');
+    return option;
+  };
   const schemas = new Map<string, any[]>(), requests = new Map<string, string>();
   const ownedSessions = new Set<string>();
   const scenes = sceneCatalog(config.scenes ?? [{ ...config, id: config.capability_profile, label: config.capability_profile, preset: 'sss-task' }]);
   if (!scenes.some(scene => scene.id === config.capability_profile)) throw Error('Default scene is not registered');
   let defaults = initialSelection(config.capability_profile, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
-  const guards = new Map<string, (() => void)[]>(), panels = new Map<string, { revision: string; section: string }>();
+  const previewSceneSelections = new Map<string, string>();
+  const guards = new Map<string, (() => void)[]>();
   const sceneFor = (id: string) => {
     const scene = scenes.find(scene => scene.id === id);
     if (!scene) throw new SettingsError('scene_not_found', '场景未登记');
@@ -94,6 +114,8 @@ export function apply(ctx: any) {
     const selected = sessionId ? selections.get(sessionId)! : defaults;
     const task = sessionId ? forSession(sessionId) : undefined;
     return { selection: selected, applies_to: task ? 'next_task' : 'next_prompt',
+      preview_scene: sessionId ? previewSceneSelections.get(sessionId) ?? null : null,
+      preview_scenes: previewScenes,
       current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status } : null,
       scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, config_sha256: scene.config_sha256,
         execute_available: !executeUnavailable(scene), execute_unavailable_reason: executeUnavailable(scene) })),
@@ -110,6 +132,7 @@ export function apply(ctx: any) {
         bindScene(agent, sceneFor(next.scene));
       }
       selections.set(sessionId, next);
+      if ((patch as Record<string, unknown>).scene !== undefined) previewSceneSelections.delete(sessionId);
     } else defaults = next;
     json(join(config.output, 'harless-settings.json'), { defaults, sessions: Object.fromEntries(selections) });
     return settingsView(sessionId);
@@ -145,7 +168,8 @@ export function apply(ctx: any) {
       created_at: task.created_at, started_at: task.started_at, finished_at: task.finished_at,
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
       request_sha256: request.request_sha256, confirmation_digest: task.confirmation_digest,
-      provider_mode: config.provider_mode, paid_calls_enabled: config.provider_mode === 'real',
+      provider_mode: config.provider_mode, provider: task.model_option.provider, model: task.model_option.model,
+      paid_calls_enabled: config.provider_mode === 'real',
       effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
       stats: task.stats, sources: task.sources,
       ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
@@ -194,6 +218,10 @@ export function apply(ctx: any) {
     if (!selections.has(created.sessionId)) {
       selections.set(created.sessionId, { ...defaults, scene: chosen.id });
       bindScene(agents.get(created.sessionId), chosen);
+      await original.selectModel({ sessionId: created.sessionId, provider: defaultModel.provider,
+        model: defaultModel.model,
+        ...(defaultModel.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' }) });
+      modelSelections.set(created.sessionId, defaultModel);
     }
     return created;
   };
@@ -201,31 +229,48 @@ export function apply(ctx: any) {
   // Native queue editing would change the approved content after its digest was
   // shown. Edits use a new task/preview rather than silently mutating this binding.
   controller.updateQueue = () => { throw new TaskError('queue_edit_not_supported', 'Preview a new task before changing queued input', 409); };
-  controller.selectModel = (request: any, signal: AbortSignal) => {
-    if (!ownedSessions.has(request.sessionId) || request.provider !== 'deepseek-official' ||
-        request.model !== 'deepseek-flash' || (request.reasoningEffort !== undefined && request.reasoningEffort !== 'off')) {
-      throw new TaskError('model_not_allowed', 'Provider/model are fixed by the server configuration');
-    }
-    return original.selectModel({ ...request, reasoningEffort: 'off' }, signal);
+  controller.selectModel = async (request: any, signal: AbortSignal) => {
+    const option = findModel(request.model);
+    if (!ownedSessions.has(request.sessionId) || forSession(request.sessionId) || request.provider !== option.provider ||
+        (request.reasoningEffort !== undefined && request.reasoningEffort !== 'off'))
+      throw new TaskError('model_not_allowed', 'Model selection is outside the approved task configuration');
+    const requested = { ...request };
+    if (option.provider === 'harless-glm') delete requested.reasoningEffort;
+    else requested.reasoningEffort = 'off';
+    const result = await original.selectModel(requested, signal);
+    modelSelections.set(request.sessionId, option);
+    return result;
   };
   if (ctx.agentPresets) ctx.agentPresets.select = (agent: any, preset: string) => serialize(async () => {
     const scene = scenes.find(scene => scene.preset === preset);
     if (!scene) throw new SettingsError('scene_not_found', '只能选择服务器登记的场景');
-    if (forSession(agent.session.id)) throw new TaskError('session_already_bound', 'Use /harless to set the next task', 409);
+    if (forSession(agent.session.id)) throw new TaskError('session_already_bound', '当前会话已绑定任务，请新建会话后选择 Harless 设置', 409);
     await setSelection(agent.session.id, { scene: scene.id }); return preset;
   });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
+    const previewScene = existingSession ? previewSceneSelections.get(existingSession) : undefined;
+    if (previewScene && previewScene !== 'new-scene') throw new TaskError('scene_not_connected',
+      `${previewScenes.find(scene => scene.id === previewScene)?.label ?? previewScene} is a UI preview; its runtime is not connected yet.`, 409);
     const taskId = randomUUID().replaceAll('-', ''), tentativeSession = existingSession ?? 'pending';
+    const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
+    const chosenModel = supplied.model === undefined ? (existingSession ? modelSelections.get(existingSession) ?? defaultModel : defaultModel) : findModel(supplied.model);
+    const taskInput = input && typeof input === 'object' && !Array.isArray(input)
+      ? { ...supplied } : input;
+    if (taskInput && typeof taskInput === 'object' && !Array.isArray(taskInput)) delete taskInput.model;
     const selected = existingSession ? selections.get(existingSession)! : defaults;
     if (existingSession && !selected) throw new TaskError('session_not_owned', 'Session is outside this Web run');
-    const request = normalizeWebTaskRequest(input, { task_id: taskId, session_id: tentativeSession,
-      default_mode: selected.mode, default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
+    const request = normalizeWebTaskRequest(taskInput, { task_id: taskId, session_id: tentativeSession,
+      default_mode: selected.rsi ? selected.mode : 'baseline', default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
       default_profile: selected.scene, allowed_profiles: scenes.map(scene => scene.id),
       max_content_bytes: 768 * 1024, max_parts: 32 });
+    if (!selected.rsi && request.mode !== 'baseline')
+      throw new TaskError('rsi_disabled', 'Turn RSI On before running Shadow or Execute');
+    if (chosenModel.provider === 'harless-glm' && request.content.some(part => part.type !== 'text'))
+      throw new TaskError('unsupported_input', 'The GLM connection currently supports text only; remove images and files before retrying');
     const previous = requests.get(request.request_id);
     if (previous) {
       const task = get(previous);
-      if (request.request_sha256 !== task.request.request_sha256) throw new TaskError('request_id_conflict', 'request_id already binds different input', 409);
+      if (request.request_sha256 !== task.request.request_sha256 || chosenModel.model !== task.model_option.model) throw new TaskError('request_id_conflict', 'request_id already binds different input or model', 409);
       return task;
     }
     const sources: Task['sources'] = [];
@@ -241,18 +286,23 @@ export function apply(ctx: any) {
     const scene = sceneFor(request.capability_profile);
     const selection = config.scenes ? changeSelection(selected, { scene: scene.id, mode: request.mode }, scenes, executeUnavailable) : initialSelection(scene.id, request.mode);
     request.session_id = existingSession ?? (await controller.create({ agentPreset: scene.preset })).sessionId;
-    if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', 'Use /harless to choose a scene before preview', 409);
+    if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', '预览前请先选择与当前会话一致的 Harless 场景', 409);
     if (sessions.has(request.session_id)) throw new TaskError('session_already_bound', 'This session already has a task; create a new task', 409);
+    if (modelSelections.get(request.session_id)?.model !== chosenModel.model) await controller.selectModel({
+      sessionId: request.session_id, provider: chosenModel.provider, model: chosenModel.model, reasoningEffort: 'off'
+    }, new AbortController().signal);
     selections.set(request.session_id, selection);
     const output = join(config.output, 'tasks', taskId); mkdirSync(output, { recursive: true, mode: 0o700 });
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
       scene, selection: { ...selection }, tools: structuredClone(schemas.get(request.session_id) ?? []),
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output, humans: new Map(), sources,
+      model_option: chosenModel,
       stats: { tool_calls: 0, tool_errors: 0, llm_decisions: 0, motif_attempts: 0, shadow_candidates: 0, verified_skips: 0,
         upstream_requests: 0, model_requests: 0, actual_paid_usd: config.provider_mode === 'mock' ? 0 : null } };
     for (const filename of ['events.jsonl', 'motif-audit.jsonl']) writeFileSync(join(output, filename), '', { mode: 0o600 });
-    await control('/tasks/register', { task_id: taskId, session_id: request.session_id, budget_usd: request.budget_usd });
+    await control('/tasks/register', { task_id: taskId, session_id: request.session_id,
+      budget_usd: request.budget_usd, model: chosenModel.model });
     tasks.set(taskId, task); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
     const snapshot = await controller.inspect(request.session_id);
     json(join(output, 'session-header.json'), snapshot.meta);
@@ -265,6 +315,8 @@ export function apply(ctx: any) {
       scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
       provider_mode: config.provider_mode, max_output_tokens: config.max_output_tokens });
+    task.confirmation_digest = digest({ confirmation: task.confirmation_digest,
+      provider: task.model_option.provider, model: task.model_option.model });
     json(join(task.output, 'task.json'), task.request);
     json(join(task.output, 'effective-config.json'), { ...view(task), selection: task.selection, tools: task.tools,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
@@ -313,9 +365,7 @@ export function apply(ctx: any) {
     if (!ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
     const task = await preview({ content: request.content, request_id: request.requestId }, request.sessionId, 'native_chat');
-    // The official Web bridge displays the bound preview; paid admission stays closed
-    // until its explicit confirmation uses the same task API as the workbench.
-    if (config.provider_mode === 'mock') await submit(task, task.confirmation_digest, signal);
+    await submit(task, task.confirmation_digest, signal);
     return { accepted: true };
   });
   controller.cancel = async (request: any) => {
@@ -357,14 +407,16 @@ export function apply(ctx: any) {
   ctx.on('llm/stream', (request: any, next: any) => {
     const task = forSession(request.sessionId);
     if (!task || task.status !== 'running' || active !== task.request.task_id ||
-        request.provider !== 'deepseek-official' || request.model !== 'deepseek-flash' ||
-        request.reasoningEffort !== 'off' || request.maxTokens !== config.max_output_tokens || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
+        request.provider !== task.model_option.provider || request.model !== task.model_option.model ||
+        request.reasoningEffort !== (task.model_option.provider === 'harless-glm' ? undefined : 'off') ||
+        request.maxTokens !== config.max_output_tokens || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
     if (!humans.length || humans.some((message: any) => task.humans.get(message.id) !== digest(message.content))) throw Error('Task user envelope changed');
     if (digest(request.tools) !== digest(task.tools)) throw Error('Tool schema version changed');
     json(join(task.output, 'model-request-config.json'), { provider: request.provider, model: request.model,
-      reasoning_effort: request.reasoningEffort, max_output_tokens: request.maxTokens,
+      reasoning_effort: request.reasoningEffort ?? 'off', reasoning_effort_sent: request.reasoningEffort !== undefined,
+      max_output_tokens: request.maxTokens,
       tools_order: request.tools.map((tool: any) => tool.name), tools_sha256: digest(request.tools),
       human_message_sha256: humans.map((message: any) => digest(message.content)), mode: task.request.mode });
     task.stats.llm_decisions = Number(task.stats.llm_decisions) + 1; record(task);
@@ -381,7 +433,8 @@ export function apply(ctx: any) {
           for (const row of rows) { aggregate[row.status] = (aggregate[row.status] ?? 0) + 1;
             for (const field of ['upstream_requests', 'verified_skips', 'tool_calls', 'prompt_tokens', 'completion_tokens']) aggregate[field] = (aggregate[field] ?? 0) + Number(row.stats[field] ?? 0); }
           return Response.json({ tasks: rows, aggregate, capability_profile: config.capability_profile,
-            provider_mode: config.provider_mode, default_mode: defaults.mode, budget_usd: config.budget_usd, settings: settingsView() });
+            provider_mode: config.provider_mode, model_options: modelOptions,
+            default_mode: defaults.mode, budget_usd: config.budget_usd, settings: settingsView() });
         }
         const body: any = await request.json();
         const result = await serialize(async () => {
@@ -394,6 +447,7 @@ export function apply(ctx: any) {
           if (body.action === 'cancel') { await controller.cancel({ sessionId: task.request.session_id }); return view(task, true); }
           if (body.action === 'upload') {
             if (task.status !== 'awaiting_confirmation') throw new TaskError('task_not_draft', 'Only draft tasks accept attachments', 409);
+            if (task.model_option.provider === 'harless-glm') throw new TaskError('unsupported_input', 'The GLM connection currently supports text only', 400);
             if (typeof body.name !== 'string' || !body.name.length || body.name.length > 255 || /[\x00-\x1f]/.test(body.name) ||
                 typeof body.data !== 'string' || body.data.length > 350000 || Buffer.from(body.data, 'base64').toString('base64') !== body.data) throw new TaskError('invalid_upload', 'Invalid file name or canonical base64');
             const data = Buffer.from(body.data, 'base64');
@@ -426,24 +480,33 @@ export function apply(ctx: any) {
       try {
         const url = new URL(request.url), sessionId = url.searchParams.get('session_id') ?? undefined;
         if (request.method === 'GET') {
-          if (url.searchParams.has('panels')) return Response.json({ panels: [...panels].map(([session_id, panel]) => ({ session_id, ...panel })) }, { headers: { 'Cache-Control': 'no-store' } });
           return Response.json({ ...settingsView(sessionId), sessions: [...ownedSessions].map(session_id => ({ session_id, ...settingsView(session_id) })) }, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
         const result = await serialize(async () => {
           if (body.action === 'select') return setSelection(body.session_id, body.selection);
-          if (body.action === 'dismiss_panel') {
+          if (body.action === 'select_preview_scene') {
+            settingsView(body.session_id); // enforce ownership before changing the UI choice
+            if (!body.session_id || !previewScenes.some(scene => scene.id === body.scene_id))
+              throw new SettingsError('scene_not_found', 'Choose one of the listed preview scenes');
+            previewSceneSelections.set(body.session_id, body.scene_id);
+            return settingsView(body.session_id);
+          }
+          if (body.action === 'clear_preview_scene') {
             settingsView(body.session_id);
-            if (panels.get(body.session_id)?.revision === body.revision) panels.delete(body.session_id);
-            return { dismissed: true };
+            if (!body.session_id) throw new SettingsError('session_required', 'Choose a session first');
+            previewSceneSelections.delete(body.session_id);
+            return settingsView(body.session_id);
           }
           if (body.action === 'new_session') {
             const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const created = await controller.create({ agentPreset: sceneFor(chosen.scene).preset });
             selections.set(created.sessionId, { ...chosen });
+            if (body.inherit_session && previewSceneSelections.has(body.inherit_session))
+              previewSceneSelections.set(created.sessionId, previewSceneSelections.get(body.inherit_session)!);
             return { session_id: created.sessionId, ...settingsView(created.sessionId) };
           }
-          throw new SettingsError('unknown_action', '只支持 select、new_session 和 dismiss_panel');
+          throw new SettingsError('unknown_action', 'Supported actions: select, select_preview_scene, clear_preview_scene, new_session');
         });
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error) {
@@ -452,38 +515,27 @@ export function apply(ctx: any) {
       }
     } };
   ctx.effect(() => ctx.connection.fetch.register({ ...settingsRoute, path: '/api/harless/settings' }), 'harless-settings-api');
-  if (ctx.commands) ctx.effect(() => ctx.commands.register({ name: 'harless', description: '选择场景、运行模式与 RSI 开关（不调用模型）',
-    input: { hint: '<场景> | mode [baseline|shadow|execute] | rsi [on|off] | list | status' },
+  if (ctx.commands) ctx.effect(() => ctx.commands.register({ name: 'harless', description: 'Choose a scene, mode, and RSI setting',
+    input: { hint: 'scene | mode | rsi | list | status' },
     handler: ({ agent, rawInput }: any) => serialize(async () => {
       try {
         const id = agent.session.id, command = parseHarlessCommand(rawInput);
         settingsView(id);
         if (command.kind === 'panel') {
-          panels.set(id, { revision: randomUUID(), section: command.section });
-          return { kind: 'success', text: `已打开 Harless 选择面板：/harless?session_id=${encodeURIComponent(id)}` };
+          return { kind: 'success', text: 'Choose a scene, mode, or RSI setting from the /harless picker.' };
         }
-        if (command.kind === 'list') return { kind: 'success', text: scenes.map(scene => `${scene.id} · ${scene.label}`).join('\n') };
+        if (command.kind === 'list') return { kind: 'success', text: previewScenes.map(scene =>
+          `${scene.label} · ${scene.id === 'new-scene' ? 'explore with the current runtime' : 'UI preview only'}`).join('\n') };
         const value = command.kind === 'change' ? await setSelection(id, command.patch) : settingsView(id);
         const current = value.current_task;
-        return { kind: 'success', text: `${value.applies_to === 'next_task' ? '下一任务生效' : '下一次输入生效'}：${value.selection.scene} / ${value.selection.mode} / RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? `；当前任务：${current.scene} / ${current.mode} / ${current.status}` : ''}` };
+        const planned = previewScenes.find(scene => scene.id === value.preview_scene);
+        return { kind: 'success', text: `${planned ? `${planned.label} (${planned.id === 'new-scene' ? 'current runtime' : 'UI preview only; runtime not connected'})` : 'Current runtime'} · Mode ${value.selection.mode === 'baseline' ? 'Origin' : value.selection.mode} · RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? ` · Current task: ${current.scene} / ${current.mode} / ${current.status}` : ''}` };
       } catch (error) { return { kind: 'error', text: String((error as Error).message) }; }
     }) }), 'harless-command');
-  const settingsPanel = readFileSync(fileURLToPath(new URL('./harless_panel.html', import.meta.url)), 'utf8');
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/harless', handler: (request: any, response: any) => {
-    const rejected = ctx.connection.requestRejection(request);
-    response.writeHead(rejected ?? 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    response.end(rejected ? '请先登录 Harness。' : settingsPanel);
-  } }), 'harless-settings-panel');
-  const panel = readFileSync(fileURLToPath(new URL('./web_task_panel.html', import.meta.url)), 'utf8');
-  const panelHandler = (request: any, response: any) => {
-    const rejected = ctx.connection.requestRejection(request);
-    response.writeHead(rejected ?? 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    response.end(rejected ? '请先打开本次 Harness 认证地址。' : panel);
-  };
-  for (const path of ['/tasks', '/sss']) {
-    ctx.effect(() => ctx.webServer.register({ kind: 'exact', path, handler: panelHandler }), 'harless-tasks-panel-' + path);
+  for (const path of ['/tasks', '/sss', '/harless']) {
+    ctx.effect(() => ctx.webServer.register({ kind: 'exact', path, handler: (_request: any, response: any) => {
+      response.writeHead(302, { Location: '/', 'Cache-Control': 'no-store' });
+      response.end();
+    } }), 'harless-legacy-page-redirect-' + path);
   }
-  const nativeBridge = config.provider_mode === 'real' ? '<script>' + readFileSync(fileURLToPath(new URL('./web_native_bridge.js', import.meta.url)), 'utf8') + '</script>' : '';
-  ctx.effect(() => ctx.webServer.tapIndex((html: string) => html.replace('</body>',
-    '<a href="/tasks" style="position:fixed;right:18px;bottom:18px;z-index:9999;padding:10px 15px;border-radius:8px;background:#245cba;color:white;text-decoration:none">DeepSeek Harless 任务工作台</a>' + nativeBridge + '<script>' + readFileSync(fileURLToPath(new URL('./harless_native_bridge.js', import.meta.url)), 'utf8') + '</script></body>')), 'sss-web-tasks-link');
 }
