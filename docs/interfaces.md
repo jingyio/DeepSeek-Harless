@@ -248,6 +248,6 @@ Python 语义端口在 `motif_read_semantic.py`：接收明确的结构缺口，
 
 ## `/harless` 场景与模式控制（2026-10-13）
 
-动态 Web 用 Harness `commandUi.decorate({kind:'popupSelect'})` 为裸 `/harless` 打开原生选择菜单，参数命令仍由 `ctx.commands.register` 处理。`GET/POST /api/harless/settings` 管理 Baseline/Shadow/Execute 与 RSI On/Off；选择不调用模型。菜单仅显示英文的 PPT、Paper Proofreading、Research Data Analysis 三个界面预览场景，`select_preview_scene` 保存 Session 的选择，`clear_preview_scene` 清除；选中预览场景后提交任务以 `scene_not_connected` 拒绝，不能运行旧样例工具。已接通的服务器场景仍登记在 `config/harless-scenes.json`，MCP preset 各自独立，配置不得由浏览器覆盖。每 Task 冻结实际场景、工具、库摘要与确认 digest；Session 绑定任务后，修改只对新 Session 的下一任务生效。旧单场景 policy 仍兼容，冻结 Web/SDK 保留。
+动态 Web 用 Harness `commandUi.decorate({kind:'popupSelect'})` 为裸 `/harless` 打开原生选择菜单，再在同一原生弹层内进入 Scenes、Mode、RSI 二级菜单；参数命令仍由 `ctx.commands.register` 处理。`GET/POST /api/harless/settings` 管理协议 `baseline`/`shadow`/`execute` 与 RSI On/Off，前端显示 Origin/Shadow/Execute，RSI 默认 On 且独立切换；RSI Off 时新任务按 `baseline` 执行。选择不调用模型。菜单中的 PPT、Paper Proofreading、Research Data Analysis 是界面预览场景，`select_preview_scene` 保存 Session 的选择；选中后提交任务以 `scene_not_connected` 拒绝，不能运行旧样例工具。New Scene 使用当前服务器运行时探索，不创建独立 MCP 场景。已接通的服务器场景仍登记在 `config/harless-scenes.json`，MCP preset 各自独立，配置不得由浏览器覆盖。每 Task 冻结实际场景、工具、库摘要与确认 digest；Session 绑定任务后，修改只对新 Session 的下一任务生效。旧单场景 policy 仍兼容，冻结 Web/SDK 保留。
 
 字段、边界与复现见 [Harless 控制接口](harless-controls.md)。当前登记的三个场景是合成资料样例，不表示 PPT 或多人隔离已经完成。

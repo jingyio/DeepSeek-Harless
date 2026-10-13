@@ -39,6 +39,7 @@ const previewScenes = Object.freeze([
   { id: 'ppt', label: 'PPT' },
   { id: 'paper-proofreading', label: 'Paper Proofreading' },
   { id: 'research-data-analysis', label: 'Research Data Analysis' },
+  { id: 'new-scene', label: 'New Scene' },
 ]);
 class TaskError extends Error {
   code: string; status: number;
@@ -248,7 +249,7 @@ export function apply(ctx: any) {
   });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
     const previewScene = existingSession ? previewSceneSelections.get(existingSession) : undefined;
-    if (previewScene) throw new TaskError('scene_not_connected',
+    if (previewScene && previewScene !== 'new-scene') throw new TaskError('scene_not_connected',
       `${previewScenes.find(scene => scene.id === previewScene)?.label ?? previewScene} is a UI preview; its runtime is not connected yet.`, 409);
     const taskId = randomUUID().replaceAll('-', ''), tentativeSession = existingSession ?? 'pending';
     const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
@@ -259,9 +260,11 @@ export function apply(ctx: any) {
     const selected = existingSession ? selections.get(existingSession)! : defaults;
     if (existingSession && !selected) throw new TaskError('session_not_owned', 'Session is outside this Web run');
     const request = normalizeWebTaskRequest(taskInput, { task_id: taskId, session_id: tentativeSession,
-      default_mode: selected.mode, default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
+      default_mode: selected.rsi ? selected.mode : 'baseline', default_budget_usd: config.budget_usd, max_budget_usd: config.budget_usd,
       default_profile: selected.scene, allowed_profiles: scenes.map(scene => scene.id),
       max_content_bytes: 768 * 1024, max_parts: 32 });
+    if (!selected.rsi && request.mode !== 'baseline')
+      throw new TaskError('rsi_disabled', 'Turn RSI On before running Shadow or Execute');
     if (chosenModel.provider === 'harless-glm' && request.content.some(part => part.type !== 'text'))
       throw new TaskError('unsupported_input', 'The GLM connection currently supports text only; remove images and files before retrying');
     const previous = requests.get(request.request_id);
@@ -521,11 +524,12 @@ export function apply(ctx: any) {
         if (command.kind === 'panel') {
           return { kind: 'success', text: 'Choose a scene, mode, or RSI setting from the /harless picker.' };
         }
-        if (command.kind === 'list') return { kind: 'success', text: previewScenes.map(scene => `${scene.label} · UI preview only`).join('\n') };
+        if (command.kind === 'list') return { kind: 'success', text: previewScenes.map(scene =>
+          `${scene.label} · ${scene.id === 'new-scene' ? 'explore with the current runtime' : 'UI preview only'}`).join('\n') };
         const value = command.kind === 'change' ? await setSelection(id, command.patch) : settingsView(id);
         const current = value.current_task;
         const planned = previewScenes.find(scene => scene.id === value.preview_scene);
-        return { kind: 'success', text: `${planned ? `${planned.label} (UI preview only; runtime not connected)` : 'No preview scene selected'} · Mode ${value.selection.mode} · RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? ` · Current task: ${current.scene} / ${current.mode} / ${current.status}` : ''}` };
+        return { kind: 'success', text: `${planned ? `${planned.label} (${planned.id === 'new-scene' ? 'current runtime' : 'UI preview only; runtime not connected'})` : 'Current runtime'} · Mode ${value.selection.mode === 'baseline' ? 'Origin' : value.selection.mode} · RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? ` · Current task: ${current.scene} / ${current.mode} / ${current.status}` : ''}` };
       } catch (error) { return { kind: 'error', text: String((error as Error).message) }; }
     }) }), 'harless-command');
   for (const path of ['/tasks', '/sss', '/harless']) {

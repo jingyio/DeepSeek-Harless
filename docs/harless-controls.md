@@ -2,15 +2,15 @@
 
 ## 使用
 
-登录本次 Harness Web，选择 `/harless` 后使用 Harness 原生 `popupSelect` 菜单选择场景、RSI 和运行模式。独立 `/harless` 页面和注入的悬浮菜单均已移除；快捷设置、`list` 和 `status` 命令仍可用。界面文案使用英文。当前菜单中的 PPT、Paper Proofreading、Research Data Analysis 仅是可选择的界面预览，不展示 `example`/`portfolio` 样例；三个运行时尚未接入，选中后提交任务会以 `scene_not_connected` 拒绝，模型调用为零。清除界面选择后仍可运行现有诊断场景。
+登录本次 Harness Web，选择 `/harless` 后在原生 `popupSelect` 的 Scenes、Mode、RSI 二级菜单中设置；输入框显示加粗的 Harless 名称及当前选择。独立 `/harless` 页面和注入的悬浮菜单均已移除；快捷设置、`list` 和 `status` 命令仍可用。界面文案使用英文。PPT、Paper Proofreading、Research Data Analysis 是界面预览，选中后提交任务以 `scene_not_connected` 拒绝，模型调用为零。New Scene 用当前服务器运行时探索，尚无独立工具配置；不在菜单展示 `example`/`portfolio` 样例。
 
 | 模式 | RSI | 行为 |
 | --- | --- | --- |
-| Baseline | Off | 普通 Harness，保留工具权限和预算 |
+| Origin (`baseline`) | On 或 Off | 普通 Harness，保留工具权限和预算 |
 | Shadow | On | 记录结构候选，原模型继续执行 |
 | Execute | On | 认证、输入、来源版本和工具守卫通过后才接管 |
 
-Off 记住最后一次 Shadow/Execute；On 恢复该模式。首次恢复 Shadow。切到不支持 Execute 的场景时，界面先选择 Shadow；直接 API/命令请求非法 Execute 会拒绝，不隐藏失败。Execute 即使场景层可选，当前输入或来源不合格仍会回退并记录原因。真实模式没有配置匹配服务时不会用模拟 embedding 冒充。
+RSI 默认 On，模式与开关分别保存。Off 时显示的模式保持原选择，但下一任务按 Origin 执行；重新 On 后继续使用所选模式。Execute 会一直显示，缺少认证库或匹配服务时由服务端明确拒绝。Execute 即使场景层可选，当前输入或来源不合格仍会回退并记录原因。真实模式没有配置匹配服务时不会用模拟 embedding 冒充。
 
 菜单和设置 API 不启动 Agent turn、不注册付费任务、不调用模型。预览后任务的模式、工具快照、场景配置、指令和认证库文件摘要冻结；菜单选择用于之后创建的会话。新任务使用新的 Session，重新绑定输入、来源和预算；全局预算继续累计。
 
@@ -27,8 +27,8 @@ Off 记住最后一次 Shadow/Execute；On 恢复该模式。首次恢复 Shadow
 所有路径使用 Harness Connection 的同源、Host 和登录认证。
 
 - `GET /api/harless/settings[?session_id=...]`：选择、适用时点、当前任务、可用场景及 Execute 原因；不返回凭证、资料正文或服务器路径。
-- `POST` 同路径：`{action:"select", session_id?, selection:{scene?, mode?, rsi?}}`。`rsi` 为布尔值，冲突字段拒绝。省略 Session 表示新会话默认。
-- `{action:"select_preview_scene", session_id, scene_id}`：保存当前 Session 的 PPT／Paper Proofreading／Research Data Analysis 界面选择；`{action:"clear_preview_scene", session_id}` 清除。该选择不会映射到样例运行时；提交时返回 `scene_not_connected`，不发起模型请求。`GET` 同时返回 `preview_scene` 和 `preview_scenes`。
+- `POST` 同路径：`{action:"select", session_id?, selection:{scene?, mode?, rsi?}}`。`mode` 的协议值为 `baseline`/`shadow`/`execute`，`rsi` 为独立布尔值；省略 Session 表示新会话默认。
+- `{action:"select_preview_scene", session_id, scene_id}`：保存当前 Session 的 PPT／Paper Proofreading／Research Data Analysis／New Scene 选择；`{action:"clear_preview_scene", session_id}` 清除。前三项不会映射到样例运行时，提交时返回 `scene_not_connected`；New Scene 使用服务器当前运行时。`GET` 同时返回 `preview_scene` 和 `preview_scenes`。
 - `{action:"new_session", inherit_session?}`：独立新 Session，不启动任务或模型。
 - 任务预览保留 `/api/harless/tasks`，新增可选顶层 `session_id`，只接受本启动拥有且未绑定任务的 Session。任务 `capability_profile` 即登记场景 ID。
 

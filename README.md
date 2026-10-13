@@ -49,7 +49,7 @@ npm run web
 ssh -N -L 3080:127.0.0.1:3080 -p SSH_PORT USER@SERVER
 ```
 
-默认运行时仍使用 `scenarios/example/`，免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。原生 `/harless` 菜单仅显示英文的 PPT、Paper Proofreading、Research Data Analysis 场景入口与模式、RSI 选项。三个场景当前只完成界面选择，选中后发送任务会明确拒绝且不会误用 `example` 工具；对应运行时和 MCP 接入后续完成。清除界面场景选择后可继续使用当前运行时。免费和真实模式的已接通任务都直接提交，真实模式会调用所选模型的 API，服务端仍执行任务与全局预算限制。任务 API 仍支持结构化输入、来源和附件；旧 `/tasks`、`/sss`、`/harless` 页面地址跳回聊天首页，`/api/sss/tasks` 兼容 API 保留。
+默认运行时仍使用 `scenarios/example/`，免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。原生 `/harless` 菜单分为 Scenes、Mode、RSI 二级选择，输入框显示当前 Harless 状态。Scenes 包含英文的 PPT、Paper Proofreading、Research Data Analysis 和 New Scene。前三项当前只完成界面选择，选中后发送任务会明确拒绝且不会误用 `example` 工具；New Scene 使用服务器当前运行时探索，尚无独立的新场景工具。免费和真实模式的已接通任务都直接提交，真实模式会调用所选模型的 API，服务端仍执行任务与全局预算限制。任务 API 仍支持结构化输入、来源和附件；旧 `/tasks`、`/sss`、`/harless` 页面地址跳回聊天首页，`/api/sss/tasks` 兼容 API 保留。
 
 原生模型选择可切换服务器已启用的 DeepSeek Flash 与 GLM；默认免费模拟仍使用 DeepSeek。真实 Web 可在服务器私有 `.env` 配置 GLM 模型、密钥和价格。选定模型会绑定任务和预算账本；GLM 当前只接文字输入，真实 GLM 请求仍待验收。Codex 登录入口已撤销，当前不提供 GPT 登录。
 
@@ -79,7 +79,7 @@ npm run web -- --scenario portfolio-v1 --mode execute
 /harless status
 ```
 
-Baseline 对应 RSI Off；Shadow/Execute 对应 On。Off 保留上次 RSI 模式，On 恢复它（首次默认 Shadow）。没有认证库或本地匹配服务时 Execute 不可选；Shadow 可以运行并明确记录普通 Harness 回退。菜单选择本身不调用模型，默认用于之后创建的会话。一个 Session 仍只绑定一个 Task，不复用旧预算或证据。
+Mode 菜单显示 Origin、Shadow、Execute；Origin 在协议中仍为 `baseline`。RSI 默认 On，切换模式不改变开关；Off 保留所选模式，但下一任务按 Origin 执行。没有认证库或本地匹配服务时 Execute 会被服务端拒绝；Shadow 可以运行并明确记录普通 Harness 回退。菜单选择本身不调用模型，默认用于之后创建的会话。一个 Session 仍只绑定一个 Task，不复用旧预算或证据。
 
 目前登记 `example`、`portfolio-v1`、`portfolio-v2` 三个合成资料场景；新增场景由服务器维护登记表和 MCP 配置。PPT MCP、自动持续学习发布、多用户账号和文件隔离尚未实现。详细配置与 API 见 [Harless 控制接口](docs/harless-controls.md)。
 

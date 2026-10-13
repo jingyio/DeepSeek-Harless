@@ -9,7 +9,7 @@
   },
   "dsh": {
     "client": {
-      "inject": ["@deepseek-ai/dsh-client-ui-commands"],
+      "inject": ["@deepseek-ai/dsh-client-ui-commands", "@deepseek-ai/dsh-client-ui-conversation"],
       "platform": "web"
     }
   }

@@ -1,5 +1,12 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-13 原生二级菜单与输入框状态（当前未提交）
+
+- 范围：`/harless` 原生选择器改为 Scenes、Mode、RSI 二级菜单；Scenes 新增 New Scene，使用当前服务器运行时探索。PPT、Paper Proofreading、Research Data Analysis 仍只预览且阻止误用样例工具。Mode 显示 Origin/Shadow/Execute，协议 Origin 仍为 `baseline`；RSI 默认 On，切换模式不自动改变开关，Off 的下一任务按 Origin 执行。输入框加入加粗 Harless 状态标签。
+- 分支与文件：`codex/harless-picker-ui`，基于 `d0a7d2b` 的工作区未提交改动；主要是 `src/adapters/harless_web_client/client.js`、`src/adapters/harless_settings.ts`、`src/adapters/dsh_web_tasks.ts` 与对应文档/定向测试。当前未推送，未合入 main。
+- 已验证：`node --check`、`git diff --check`、设置单测 2 项、Web 任务定向 14 项通过；测试是本机 loopback 和模拟控制服务，模型费用为零。3094 已从本工作树重启，私有运行 ID `9b844f86fc6f4481bb36992dad328720`，认证地址在该运行的 `.local/web/runs/<RUN_ID>/access-url.txt`。浏览器操作由用户人工验收；尚未验证视觉效果或真实模型任务。
+- 下一步：用户检查 Harless 加粗标签和 Scenes/Mode 二级菜单；根据反馈调整。三个正式场景的 MCP、权限与交付仍待接入，New Scene 当前仅复用启动时配置的运行时。此变更不扩大付费或外部写入授权；不要提交 `.local` 或认证地址。
+
 ## 2026-10-13 原生 Harless 选择菜单（当前）
 
 - 目标与本次范围：用户要求像 Harness 原生模型选择框一样操作，界面用英文，只显示 PPT、Paper Proofreading、Research Data Analysis，不展示样例场景。按用户确认，这三项本次仅做可选界面，运行时接入后续完成。

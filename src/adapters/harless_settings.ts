@@ -6,7 +6,7 @@ export type Scene = {
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string;
 };
-export type Selection = { scene: string; mode: ExecutionMode; rsi: boolean; last_rsi_mode: 'shadow' | 'execute' };
+export type Selection = { scene: string; mode: ExecutionMode; rsi: boolean };
 export class SettingsError extends Error {
   code: string;
   constructor(code: string, message: string) { super(message); this.code = code; }
@@ -28,7 +28,7 @@ export function sceneCatalog(rows: unknown): Scene[] {
   });
 }
 export function initialSelection(scene: string, mode: ExecutionMode): Selection {
-  return { scene, mode, rsi: mode !== 'baseline', last_rsi_mode: mode === 'execute' ? 'execute' : 'shadow' };
+  return { scene, mode, rsi: true };
 }
 export function changeSelection(current: Selection, patch: unknown, scenes: readonly Scene[], unavailable: (scene: Scene) => string | null): Selection {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch) ||
@@ -40,16 +40,14 @@ export function changeSelection(current: Selection, patch: unknown, scenes: read
   }
   if (row.mode !== undefined) {
     if (!['baseline', 'shadow', 'execute'].includes(row.mode as string)) throw new SettingsError('invalid_mode', '模式必须是 baseline、shadow 或 execute');
-    next.mode = row.mode as ExecutionMode; next.rsi = next.mode !== 'baseline';
-    if (next.rsi) next.last_rsi_mode = next.mode as 'shadow' | 'execute';
+    next.mode = row.mode as ExecutionMode;
   }
   if (row.rsi !== undefined) {
     if (typeof row.rsi !== 'boolean') throw new SettingsError('invalid_rsi', 'RSI 开关必须是 on 或 off');
-    if (row.mode !== undefined && row.rsi !== (row.mode !== 'baseline')) throw new SettingsError('selection_conflict', 'Baseline 对应 RSI Off，Shadow/Execute 对应 RSI On');
-    next.rsi = row.rsi; next.mode = next.rsi ? next.last_rsi_mode : 'baseline';
+    next.rsi = row.rsi;
   }
   const scene = scenes.find(scene => scene.id === next.scene)!;
-  if (next.mode === 'execute') {
+  if (next.rsi && next.mode === 'execute') {
     const reason = unavailable(scene);
     if (reason) throw new SettingsError('execute_unavailable', `该场景暂不能 Execute：${reason}。可选择 Shadow。`);
   }
@@ -64,7 +62,7 @@ export function parseHarlessCommand(rawInput: string): Command {
   if (action === 'mode' || action === 'rsi') {
     if (words.length === 1) return { kind: 'panel', section: action };
     if (action === 'rsi' && !['on', 'off'].includes(value)) throw new SettingsError('invalid_rsi', '用 /harless rsi on 或 off，或使用输入框旁的 Harless 菜单');
-    return { kind: 'change', patch: { [action]: action === 'rsi' ? value === 'on' : value } };
+    return { kind: 'change', patch: { [action]: action === 'rsi' ? value === 'on' : value === 'origin' ? 'baseline' : value } };
   }
   if (words.length !== 1) throw new SettingsError('invalid_command', '场景名不接受附加参数');
   if (action === 'list' || action === 'status') return { kind: action };

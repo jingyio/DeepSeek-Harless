@@ -329,7 +329,7 @@ test('Native /harless commands and settings menu select without admitting a mode
     assert.equal((await f.command(id,'mode baseline')).kind,'success');
     assert.equal((await f.command(id,'rsi on')).kind,'success');
     let value=(await f.settings(undefined,'?session_id='+id)).value;
-    assert.equal(value.selection.mode,'shadow'); assert.equal(value.selection.rsi,true);
+    assert.equal(value.selection.mode,'baseline'); assert.equal(value.selection.rsi,true);
     assert.equal((await f.command(id,'other')).kind,'success');
     value=(await f.settings(undefined,'?session_id='+id)).value;
     assert.equal(value.selection.scene,'other'); assert.equal(f.presetCalls.length,1);
@@ -350,7 +350,7 @@ test('Preview-only product scenes are selectable but cannot silently run the sam
     assert.equal(result.status, 200);
     assert.equal(result.value.preview_scene, 'ppt');
     assert.deepEqual(result.value.preview_scenes.map(scene => scene.label),
-      ['PPT', 'Paper Proofreading', 'Research Data Analysis']);
+      ['PPT', 'Paper Proofreading', 'Research Data Analysis', 'New Scene']);
     await assert.rejects(f.ctx.sessionController.prompt({ sessionId, requestId: 'preview-only', mode: 'queue',
       content: [{ type: 'text', text: 'Make a slide' }] }, new AbortController().signal), /UI preview/);
     assert.equal((await f.api()).value.tasks.length, 0);
@@ -358,6 +358,11 @@ test('Preview-only product scenes are selectable but cannot silently run the sam
     result = await f.settings({ action: 'clear_preview_scene', session_id: sessionId });
     assert.equal(result.value.preview_scene, null);
     assert.equal((await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'unknown' })).status, 400);
+    result = await f.settings({ action: 'select_preview_scene', session_id: sessionId, scene_id: 'new-scene' });
+    assert.equal(result.value.preview_scene, 'new-scene');
+    const draft = await f.api({ action: 'preview', session_id: sessionId, request: 'Explore a new topic' });
+    assert.equal(draft.status, 200);
+    assert.equal(draft.value.scene, 'example');
   } finally { await f.close(); }
 });
 test('Running task keeps frozen tools and mode while next-task choices are inherited by a fresh Session', options, async()=>{
@@ -369,7 +374,7 @@ test('Running task keeps frozen tools and mode while next-task choices are inher
     assert.deepEqual(f.agents.get(first.session_id).allow.allow,['mcp__demo__read_note']);
     assert.equal(f.presetCalls.length,0);
     const second=(await f.settings({action:'new_session',inherit_session:first.session_id})).value;
-    assert.notEqual(second.session_id,first.session_id); assert.equal(second.selection.scene,'other');assert.equal(second.selection.mode,'baseline');
+    assert.notEqual(second.session_id,first.session_id); assert.equal(second.selection.scene,'other');assert.equal(second.selection.mode,'shadow');
     await f.complete(first);
     const draft=await f.api({action:'preview',session_id:second.session_id,request:'独立任务'});
     assert.equal(draft.value.scene,'other');assert.equal(draft.value.mode,'baseline');assert.equal(draft.value.rsi,false);
