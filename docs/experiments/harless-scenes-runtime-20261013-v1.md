@@ -15,6 +15,9 @@
 - 启动先加载项目私有环境。服务器文件监听额满，本次使用 `CHOKIDAR_USEPOLLING=1`，快照记录了实际值；不改变系统限额或既有进程。
 
 ```sh
+# 本次 V100 隔离检出，复用项目环境入口；PPT依赖在本次私有解释器：
+source /home/jingyij/jjy/.local/remote-env.sh
+export SSS_PYTHON="$PWD/.local/python/bin/python" CHOKIDAR_USEPOLLING=1
 npm test
 npm run smoke
 npm run web:controls:check
