@@ -3,6 +3,7 @@ from pathlib import Path
 import hashlib
 import math
 import os
+import json
 import pytest
 from src.adapters.session_files import SessionFiles
 from scenarios.data_analysis.server import DatasetEvidence
@@ -75,3 +76,11 @@ def test_file_path_symlink_hardlink_and_versions(tmp_path):
         with pytest.raises(ValueError,match='file_not_in_session'):s.read('link.txt')
         os.link(r/'a.txt',r/'hard.txt')
         with pytest.raises(ValueError,match='private_regular'):s.read('hard.txt')
+
+
+def test_task_admission_versions_cannot_be_replaced_by_a_new_pin(tmp_path):
+    root=tmp_path/'inputs';root.mkdir();version=put(root,'data.csv','x\n1\n')
+    (tmp_path/'approved-inputs.json').write_text(json.dumps({'files':{'data.csv':version}}))
+    s=DatasetEvidence(root);new=put(root,'data.csv','x\n99\n')
+    with pytest.raises(ValueError,match='task_admission'):s.pin('data.csv',new)
+    with pytest.raises(ValueError,match='task_admission'):s.list_files()

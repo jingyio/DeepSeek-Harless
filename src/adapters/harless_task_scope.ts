@@ -84,6 +84,7 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
   if (scene.adapter === 'ppt' && options.allow_output === true && !inputs.length) throw Error('ppt_requires_input_for_output');
   for (const file of readdirSync(join(workspace, 'inputs'))) unlinkSync(join(workspace, 'inputs', file));
   for (const file of preparedFiles) writeFileSync(file.path, file.data, { mode: 0o600 });
+  save(join(workspace,'approved-inputs.json'),{files:Object.fromEntries(inputs.map(row=>[basename(row.path),row.version_sha256]))});
   if (scene.adapter === 'ppt') save(join(workspace, 'job.json'), {
     schema_version: 1, job_id: taskId, inputs, instruction,
     slides: options.slides ?? 6, template: options.template ?? 'academic', operation: 'generate',
@@ -95,5 +96,7 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
 export function scopeDigest(workspace: string, scene: Scene): string | null {
   if (!scene.adapter) return null;
   const files = readdirSync(join(workspace, 'inputs')).sort().map(name => [name, sha(readFileSync(join(workspace, 'inputs', name)))]);
-  return sha(JSON.stringify({ files, job: scene.adapter === 'ppt' ? sha(readFileSync(join(workspace, 'job.json'))) : null }));
+  let approvals=null;
+  try{approvals=sha(readFileSync(join(workspace,'approved-inputs.json')));}catch{/* Empty pre-admission Session. */}
+  return sha(JSON.stringify({ files, approvals, job: scene.adapter === 'ppt' ? sha(readFileSync(join(workspace, 'job.json'))) : null }));
 }

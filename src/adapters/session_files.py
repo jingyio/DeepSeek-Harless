@@ -3,6 +3,7 @@ from pathlib import Path
 import hashlib
 import os
 import stat
+import json
 from uuid import uuid4
 
 
@@ -12,6 +13,8 @@ class SessionFiles:
         self.root = directory.resolve(strict=True)
         self.identity = self.root.stat()
         self.handles = {}
+        manifest=self.root.parent/'approved-inputs.json'
+        self.approved=json.loads(manifest.read_text())['files'] if manifest.exists() else None
 
     def read(self, name: str, expected: str | None = None, limit=20 * 1024 * 1024):
         current = self.root.stat()
@@ -32,10 +35,14 @@ class SessionFiles:
             if len(data) > limit or (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
                 raise ValueError('file_changed_during_read')
         version = hashlib.sha256(data).hexdigest()
+        if self.approved is not None and self.approved.get(name)!=version:
+            raise ValueError('file_version_changed_from_task_admission')
         if expected is not None and version != expected: raise ValueError('file_version_changed')
         return data, version
 
     def list_files(self):
+        if self.approved is not None and set(self.approved)!={p.name for p in self.root.iterdir() if p.is_file() and not p.is_symlink()}:
+            raise ValueError('approved_file_set_changed')
         rows = []
         for path in sorted(self.root.iterdir()):
             if not path.is_file() or path.is_symlink(): continue
