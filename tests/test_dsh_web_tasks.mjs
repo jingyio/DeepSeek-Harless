@@ -696,3 +696,19 @@ test('Restricted member starts New Scene even when owner default is a privileged
     assert.ok(task.task_id.startsWith('a1234567')); assert.equal(f.presetCalls.length, 0);
   } finally { await f.close(); }
 });
+
+test('Restored terminal task retains its approved scene version and selected Off mode', options, async () => {
+  const f = await fixture({ scenes: multiScenes });
+  try {
+    await f.settings({ action: 'select', selection: { mode: 'execute', rsi: false } });
+    const task = await f.preview('Frozen version through restart'); await f.submit(task); await f.complete(task);
+    const file = join(f.directory, 'policy.json'); const policy = JSON.parse(readFileSync(file));
+    policy.scenes[0].config_sha256 = 'c'.repeat(64); writeFileSync(file, JSON.stringify(policy));
+    await f.restart();
+    const recovered = (await f.api(undefined, '?task_id=' + task.task_id)).value;
+    assert.equal(recovered.scene_sha256, 'a'.repeat(64)); assert.equal(recovered.selected_mode, 'execute');
+    assert.equal(recovered.mode, 'baseline'); assert.equal(recovered.confirmation_digest, task.confirmation_digest);
+    assert.equal((await f.settings()).value.scenes[0].config_sha256, 'c'.repeat(64));
+    assert.equal(f.promptCalls.length, 1);
+  } finally { await f.close(); }
+});
