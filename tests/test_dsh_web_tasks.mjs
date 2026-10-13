@@ -630,6 +630,31 @@ test('Session adapter binds private presets and rejects foreign file receipts be
   } finally { await f.close(); }
 });
 
+test('Workspace scene keeps one budgeted chat across text turns and requires a new session for new files', options, async () => {
+  const scene = { ...multiScenes[0], id: 'new-scene', adapter: 'workspace', mcp_rows: [] };
+  const f = await fixture({ broker: true, scenes: [scene], capability_profile: 'new-scene' });
+  try {
+    const { sessionId } = await f.ctx.sessionController.create({});
+    await f.ctx.sessionController.prompt({ sessionId, requestId: 'first', mode: 'queue',
+      content: [{ type: 'text', text: 'First turn' }] }, new AbortController().signal);
+    const first = (await f.api()).value.tasks[0];
+    await f.complete(first);
+    await f.ctx.sessionController.prompt({ sessionId, requestId: 'second', mode: 'queue',
+      content: [{ type: 'text', text: 'Second turn' }] }, new AbortController().signal);
+    const second = (await f.api()).value.tasks.find(row => row.task_id !== first.task_id);
+    assert.equal(second.session_id, sessionId);
+    assert.equal(second.status, 'running');
+    assert.equal(f.promptCalls.length, 2);
+    await f.complete(second);
+    const uploaded = await f.ctx.fileUploads.uploadStream({ sessionId, name: 'new.txt',
+      data: (async function* () { yield Buffer.from('new evidence'); })() });
+    const denied = await f.api({ action: 'preview', session_id: sessionId,
+      request: { content: [{ type: 'file', receiptId: uploaded.receiptId }] } });
+    assert.equal(denied.status, 409);
+    assert.equal(denied.value.error.code, 'new_session_required');
+  } finally { await f.close(); }
+});
+
 test('Changed uploaded bytes invalidate the frozen task before budget activation', options, async () => {
   const scene = { ...multiScenes[0], adapter: 'workspace', mcp_rows: [] };
   const f = await fixture({ scenes: [scene] });
