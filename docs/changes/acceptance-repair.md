@@ -13,3 +13,7 @@
 新增src/adapters/dsh_acceptance_guard.ts、固定scripts/validate-file-delivery.py，scenario.py新增受限配置，dsh_entry_motif/dsh_online_motif在后端验收修复来源下禁用自动执行，run-scenario新增验收指标。普通Web共享preset并校验最终记录，失败不显示completed，统计修复数；允许工具/schema/原文件工具/预算价格/旧库保持。公开免费诊断、离线审计与新recovery_study保留原失败；源变化/前后patch在私有开发归档。
 
 550Python/139Node通过，3Docker跳过；免费三类实际Harness/MCP及18烟测/13普通Web HTTP通过。真实8次6成功+2预期权限失败，108HTTP/USD0.098112864，15验收含9失败阶段全部保留；新L2首段5批后关闭自动调用，由普通模型补齐索引，审计证明修复后0自动工具。总体系列447运行/4080请求/USD3.497620224，实付未知；原22基准失败未追改。完整逐项证据与限制见../experiments/acceptance-repair-20261013.md，前端见../handoffs/frontend.md。
+
+## 首次GitHub CI环境差异修复
+
+源码47d9218于北京时间19:46推送。首次Ubuntu/Windows CI均为1失败/360通过/189跳过，原因是既有文献任务绑定测试调用Poppler却遗漏POPPLER前置标记。补上相同依赖条件，Linux CI显式安装poppler-utils执行PDF检查；Windows未安装该外部解析器时明确跳过，不删断言、不宣称PDF跨平台通过。原失败日志及后续CI状态保留；这项测试/CI修复不改变真实运行代码、库、验收或费用。

@@ -64,3 +64,5 @@ node scripts/project.mjs python scripts/check-acceptance-repair.py --case budget
 `npm run web:literature -- --papers-dir <服务端PDF目录>`将文献任务绑定到上面的官方任务API；`--real-model`才使用真实连接。另有独立本机工作台 `node scenarios/literature-notes/agent.ts serve --port 8765`，其 `/api/jobs`、`/api/run`属于另一套场景协议，不能与 `/api/harless/tasks`混用。该工作台写请求还要求同源及页面会话许可。
 
 新闭环的程序验收不认证科研理解，也不能抹掉此前22项基准失败。依赖审计仍有2项high告警（MCP TypeScript SDK、sharp）；本分支适合限定输入的内部联调，公网发布前须解决并回归。多用户隔离、跨启动恢复和真实文件管理产品入口仍待验收。
+
+CI补记：首次Ubuntu/Windows失败来自一个实际调用Poppler的文献测试漏标外部依赖。已补依赖条件；Linux CI安装poppler-utils以执行全部PDF检查，Windows无Poppler时明确跳过相关PDF测试，不当作Windows PDF能力认证。本机保留完整检查。首次失败日志留私有开发归档，没有删除断言。

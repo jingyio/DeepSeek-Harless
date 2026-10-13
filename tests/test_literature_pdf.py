@@ -332,6 +332,7 @@ def test_delivery_receipt_rejects_modified_artifact(corpus, monkeypatch):
             RUN.collect_preview(run, output)
 
 
+@POPPLER
 def test_question_is_appended_to_frozen_prompt_and_auto_task_is_source_bound(corpus, monkeypatch):
     from pdf_tools import digest
     directory, _ = corpus
