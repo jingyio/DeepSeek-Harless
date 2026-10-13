@@ -22,7 +22,7 @@ export function sceneCatalog(rows: unknown): Scene[] {
     if (!row || typeof row !== 'object' || !/^[a-z][a-z0-9_-]{0,63}$/.test(row.id) || ids.has(row.id) ||
         typeof row.label !== 'string' || !row.label.trim() || row.label.length > 128 ||
         typeof row.preset !== 'string' || !/^sss-[a-z0-9_-]+$/.test(row.preset) || presets.has(row.preset) ||
-        !Array.isArray(row.allowed_tools) || (!row.allowed_tools.length && !row.unavailable_reason) ||
+        !Array.isArray(row.allowed_tools) ||
         row.allowed_tools.some((tool: unknown) => typeof tool !== 'string' || !/^mcp__[a-z0-9_]+__[a-zA-Z0-9_]+$/.test(tool as string)) ||
         new Set(row.allowed_tools).size !== row.allowed_tools.length ||
         (row.unavailable_reason !== undefined && !/^[a-z][a-z0-9_]{0,127}$/.test(row.unavailable_reason)) ||

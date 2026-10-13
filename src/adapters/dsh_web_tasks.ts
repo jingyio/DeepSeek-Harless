@@ -1,10 +1,12 @@
 /** Dynamic business tasks on the official Harness Web/Session lifecycle. */
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
+import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
@@ -20,6 +22,8 @@ type Policy = {
   output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number;
   mode: ExecutionMode; budget_usd: number; request_limit?: number; run_budget_usd?: number; run_request_limit?: number; capability_profile: string;
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
+  budget_broker_endpoint?: string;
+  budget_task_prefix?: string;
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
   scenes?: Scene[]; scene_registry_sha256?: string;
@@ -32,10 +36,12 @@ type Task = {
   status: string; created_at: string; started_at?: string; finished_at?: string;
   failure: string | null; fallback_reason: string | null; answer: string;
   output: string; stats: Record<string, any>; interceptor?: any;
-  humans: Map<string, string>; sources: { resource_id: string; version: string; sha256: string }[];
+  humans: Map<string, string>; current_humans: Set<string>;
+  sources: { resource_id: string; version: string; sha256: string }[];
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
   model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; scope_sha256: string | null;
+  budget_session_id: string;
 };
 class TaskError extends Error {
   code: string; status: number;
@@ -54,10 +60,13 @@ const json = (path: string, value: unknown) => {
 export function apply(ctx: any) {
   const config: Policy = JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!, 'utf8'));
   if (!loopback(config.endpoint) || !loopback(config.control_endpoint) ||
-      !config.control_token || !config.allowed_tools?.length ||
+      (config.budget_broker_endpoint !== undefined && !loopback(config.budget_broker_endpoint)) ||
+      (config.budget_task_prefix !== undefined && !/^[a-f0-9]{8}$/.test(config.budget_task_prefix)) ||
+      !config.control_token || !Array.isArray(config.allowed_tools) ||
       !['baseline', 'shadow', 'execute'].includes(config.mode) ||
       !['mock', 'real'].includes(config.provider_mode)) throw Error('Invalid dynamic Web policy');
   const tasks = new Map<string, Task>(), sessions = new Map<string, string>();
+  const brokerMode = config.budget_broker_endpoint !== undefined;
   const modelOptions = config.models ?? [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }];
   const defaultModel = modelOptions.find(option => option.available);
   if (!defaultModel || modelOptions.some(option => !/^[a-z][a-z0-9-]*$/.test(option.provider) || !/^[A-Za-z0-9._-]+$/.test(option.model) ||
@@ -71,12 +80,21 @@ export function apply(ctx: any) {
   };
   const schemas = new Map<string, any[]>(), requests = new Map<string, string>();
   const ownedSessions = new Set<string>();
-  const scenes = sceneCatalog(config.scenes ?? [{ ...config, id: config.capability_profile, label: config.capability_profile, preset: 'sss-task' }]);
+  const memberRestricted = brokerMode && config.allowed_tools.length === 0;
+  const registeredScenes = config.scenes?.map(row => {
+    if (!memberRestricted) return row;
+    const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas, certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = row;
+    return { ...safe, allowed_tools: [], ...(row.id === 'new-scene' ? { preset: 'sss-task', unavailable_reason: undefined, instructions: '当前成员沙箱仅开放普通 Harness 对话；没有文件或场景 MCP 工具。不要声称已读取文件或完成生成。' }
+      : { unavailable_reason: row.unavailable_reason ?? 'scene_not_deployed_in_member_sandbox' }) };
+  });
+  const scenes = sceneCatalog(registeredScenes ?? [{ ...config, id: config.capability_profile, label: config.capability_profile, preset: 'sss-task' }]);
   if (!scenes.some(scene => scene.id === config.capability_profile)) throw Error('Default scene is not registered');
   let defaults = initialSelection(config.capability_profile, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
   const workspaces = new Map<string, string>();
-  const principal = config.user_id ?? 'local-operator';
+  const principal = brokerMode && config.budget_task_prefix ? 'member-' + config.budget_task_prefix : config.user_id ?? 'local-operator';
+  const saveSettings = () => json(join(config.output, 'harless-settings.json'),
+    { defaults, sessions: Object.fromEntries(selections) });
   const guards = new Map<string, (() => void)[]>();
   const sceneFor = (id: string) => {
     const scene = scenes.find(scene => scene.id === id);
@@ -110,7 +128,7 @@ export function apply(ctx: any) {
   }
   function settingsView(sessionId?: string) {
     if (sessionId && !ownedSessions.has(sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run', 404);
-    const selected = sessionId ? selections.get(sessionId)! : defaults;
+    const selected = sessionId ? selections.get(sessionId) ?? defaults : defaults;
     const task = sessionId ? forSession(sessionId) : undefined;
     return { selection: selected, applies_to: task ? 'next_task' : 'next_prompt',
       preview_scene: selected.scene, // compatibility alias; now an actual registered selection
@@ -130,32 +148,115 @@ export function apply(ctx: any) {
       if (!forSession(sessionId) && next.scene !== current.scene) {
         const scene = sceneFor(next.scene);
         if (!scene.unavailable_reason) {
-          await selectPreset!(agent, sessionPreset(config.output, workspaces.get(sessionId)!, scene));
+          await selectPreset!(agent, sessionPreset(config.output, workspaceFor(sessionId), scene));
           bindScene(agent, scene);
         }
       }
       selections.set(sessionId, next);
 
     } else defaults = next;
-    json(join(config.output, 'harless-settings.json'), { defaults, sessions: Object.fromEntries(selections) });
+    saveSettings();
     return settingsView(sessionId);
   }
+  const workspaceFor = (id: string) => {
+    const path = workspaces.get(id) ?? sessionWorkspace(config.output, id);
+    workspaces.set(id, path); return path;
+  };
   const selectPreset = ctx.agentPresets?.select.bind(ctx.agentPresets);
+  // Ownership belongs to a persisted DSH home, not to one Node process.
+  const ownershipScope = digest({ output: config.output, home: process.env.DSH_HOME ?? null });
+  const ownershipPath = join(config.output, 'session-ownership-' + ownershipScope + '.json');
+  const boundSessions = new Set<string>();
+  try {
+    const saved = JSON.parse(readFileSync(ownershipPath, 'utf8'));
+    if (saved.scope !== ownershipScope || !Array.isArray(saved.sessions) || !Array.isArray(saved.bound) ||
+        [...saved.sessions, ...saved.bound].some(id => typeof id !== 'string' || !id.length)) throw Error('Invalid Web session ownership record');
+    for (const id of saved.sessions) ownedSessions.add(id);
+    for (const id of saved.bound) {
+      if (!ownedSessions.has(id)) throw Error('Unowned task session in ownership record');
+      boundSessions.add(id);
+    }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  const saveOwnership = () => json(ownershipPath, { scope: ownershipScope,
+    sessions: [...ownedSessions], bound: [...boundSessions] });
+  const modelPath = join(config.output, 'session-models-' + ownershipScope + '.json');
+  try {
+    const saved = JSON.parse(readFileSync(modelPath, 'utf8'));
+    if (saved.scope !== ownershipScope || !saved.models || typeof saved.models !== 'object') throw Error('Invalid Web model selection record');
+    for (const [id, model] of Object.entries(saved.models)) {
+      const option = modelOptions.find(row => row.model === model && row.available);
+      if (ownedSessions.has(id) && option) modelSelections.set(id, option);
+    }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  const saveModels = () => json(modelPath, { scope: ownershipScope,
+    models: Object.fromEntries([...modelSelections].map(([id, option]) => [id, option.model])) });
+  try {
+    const saved = JSON.parse(readFileSync(join(config.output, 'harless-settings.json'), 'utf8'));
+    if (saved.defaults) defaults = changeSelection(defaults, saved.defaults, scenes, executeUnavailable);
+    for (const [id, selection] of Object.entries(saved.sessions ?? {})) {
+      if (ownedSessions.has(id)) selections.set(id, changeSelection(defaults, selection, scenes, executeUnavailable));
+    }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  const taskIndexPath = join(config.output, 'task-index-' + ownershipScope + '.json');
+  let indexedTasks: string[] = [];
+  try {
+    const saved = JSON.parse(readFileSync(taskIndexPath, 'utf8'));
+    if (saved.scope !== ownershipScope || !Array.isArray(saved.tasks) ||
+        saved.tasks.some((id: unknown) => typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id)) ||
+        new Set(saved.tasks).size !== saved.tasks.length) throw Error('Invalid Web task index');
+    indexedTasks = saved.tasks;
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  const saveTaskIndex = () => json(taskIndexPath, { scope: ownershipScope, tasks: indexedTasks });
+  // Earlier frontend versions wrote durable task files before they had a
+  // scoped index. Recover only terminal tasks for sessions already proven to
+  // belong to this DSH_HOME; the source run also contains other frontends.
+  const indexedCount = indexedTasks.length;
+  const indexed = new Set(indexedTasks);
+  for (const id of readdirSync(join(config.output, 'tasks'))) {
+    if (!/^[a-f0-9]{32}$/.test(id) || indexed.has(id)) continue;
+    const output = join(config.output, 'tasks', id);
+    if (!lstatSync(output).isDirectory()) continue;
+    try {
+      const state = JSON.parse(readFileSync(join(output, 'task-state.json'), 'utf8'));
+      const request = JSON.parse(readFileSync(join(output, 'task.json'), 'utf8'));
+      const header = JSON.parse(readFileSync(join(output, 'session-header.json'), 'utf8'));
+      if (!terminal.has(state.status) || state.task_id !== id || request.task_id !== id ||
+          state.session_id !== request.session_id || header.id !== request.session_id ||
+           !(scenes.some(scene => scene.preset === header.agentPreset) || (String(header.agentPreset).startsWith('sss-bound-') && scenes.some(scene => scene.id === state.scene))) || !ownedSessions.has(request.session_id)) continue;
+      indexedTasks.push(id); indexed.add(id);
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  }
+  indexedTasks.sort((a, b) => {
+    const aState = JSON.parse(readFileSync(join(config.output, 'tasks', a, 'task-state.json'), 'utf8'));
+    const bState = JSON.parse(readFileSync(join(config.output, 'tasks', b, 'task-state.json'), 'utf8'));
+    return String(aState.created_at).localeCompare(String(bState.created_at));
+  });
+  if (indexedTasks.length !== indexedCount) saveTaskIndex();
+  let creation: Promise<unknown> = Promise.resolve();
   let active: string | null = null;
   // Serial admission prevents two preview/submit retries from creating duplicate work.
   let admission: Promise<unknown> = Promise.resolve();
   const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = admission.then(operation); admission = result.catch(() => undefined); return result;
   };
-  async function control(path: string, payload?: unknown) {
+  async function control(path: string, payload?: unknown, allowMissing = false) {
     const response = await fetch(config.control_endpoint + path, {
       method: payload === undefined ? 'GET' : 'POST',
       headers: { 'X-SSS-Control-Token': config.control_token, 'Content-Type': 'application/json' },
       ...(payload === undefined ? {} : { body: JSON.stringify(payload) }), signal: AbortSignal.timeout(10000),
     });
     const value: any = await response.json();
+    if (allowMissing && response.status === 404) return null;
     if (!response.ok) throw new TaskError('budget_control_failed', value.error || 'Budget service refused request', 409);
     return value;
+  }
+  async function broker(path: string, payload: unknown) {
+    if (!config.budget_broker_endpoint) return;
+    const response = await fetch(config.budget_broker_endpoint + path, {
+      method: 'POST', headers: { 'X-SSS-Control-Token': config.control_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new TaskError('budget_broker_failed', 'Turn budget routing refused the request', 409);
   }
   function get(id: unknown): Task {
     if (typeof id !== 'string' || !tasks.has(id)) throw new TaskError('task_not_found', 'Unknown task', 404);
@@ -180,6 +281,45 @@ export function apply(ctx: any) {
         'ledger.jsonl', 'motif-audit.jsonl', ...(task.answer ? ['answer.md'] : [])] } : {}) };
   }
   function record(task: Task) { json(join(task.output, 'task-state.json'), view(task)); }
+  for (const taskId of indexedTasks) {
+    const output = join(config.output, 'tasks', taskId);
+    const request: NormalizedWebTask = JSON.parse(readFileSync(join(output, 'task.json'), 'utf8'));
+    const state: any = JSON.parse(readFileSync(join(output, 'task-state.json'), 'utf8'));
+    let route: any;
+    try { route = JSON.parse(readFileSync(join(output, 'budget-route.json'), 'utf8')); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      route = { session_id: request.session_id, budget_session_id: request.session_id };
+    }
+    if (request.task_id !== taskId || request.session_id !== route.session_id ||
+        !ownedSessions.has(request.session_id) || typeof route.budget_session_id !== 'string' ||
+        state.task_id !== taskId || state.session_id !== request.session_id) throw Error('Web task index identity mismatch');
+    const task: Task = { request, delivery: request.content, confirmation_digest: state.confirmation_digest,
+      status: state.status, created_at: state.created_at, started_at: state.started_at,
+      finished_at: state.finished_at, failure: state.failure, fallback_reason: state.fallback_reason,
+      answer: '', output, stats: state.stats, humans: new Map(), current_humans: new Set(),
+      sources: state.sources, entrypoint: state.entrypoint, budget_session_id: route.budget_session_id,
+      scene: sceneFor(state.scene ?? request.capability_profile),
+      selection: { scene: state.scene ?? request.capability_profile, mode: state.selected_mode ?? request.mode, rsi: state.rsi ?? false },
+      workspace: workspaceFor(request.session_id), scene_options: state.scene_options ?? {}, scene_inputs: state.scene_inputs ?? [], scope_sha256: null,
+      tools: JSON.parse(readFileSync(join(output, 'effective-config.json'), 'utf8')).tools ?? [],
+      manifest_sha256: fileSha(sceneFor(state.scene ?? request.capability_profile).manifest),
+      binding_sha256: fileSha(sceneFor(state.scene ?? request.capability_profile).task),
+      model_option: modelOptions.find(option => option.model === state.model && option.provider === state.provider) ?? defaultModel };
+    try { task.answer = readFileSync(join(output, 'answer.md'), 'utf8'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    tasks.set(taskId, task); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
+    if (!selections.has(request.session_id)) selections.set(request.session_id, { ...task.selection });
+    if (!modelSelections.has(request.session_id)) modelSelections.set(request.session_id, task.model_option);
+    if (!terminal.has(task.status)) {
+      task.status = 'failed'; task.failure = 'frontend_restarted_before_completion'; task.finished_at = utc();
+      record(task);
+      task.closing = (async () => {
+        await broker('/unbind', { session_id: request.session_id, budget_session_id: task.budget_session_id });
+        await control('/tasks/cancel', { session_id: task.budget_session_id });
+      })().catch(error => { task.failure = 'budget_close_failed: ' + String(error); record(task); });
+    }
+  }
   function audit(task: Task, row: any) {
     appendFileSync(join(task.output, 'motif-audit.jsonl'), JSON.stringify({ ...row, task_id: task.request.task_id }) + '\n', { mode: 0o600 });
     if (row.kind === 'motif_bypass_attempt') task.stats.motif_attempts = Number(task.stats.motif_attempts) + 1;
@@ -189,7 +329,7 @@ export function apply(ctx: any) {
   }
   async function refresh(task: Task) {
     await task.closing;
-    const counters = await control('/tasks/stats?session_id=' + encodeURIComponent(task.request.session_id));
+    const counters = await control('/tasks/stats?session_id=' + encodeURIComponent(task.budget_session_id));
     Object.assign(task.stats, counters.stats ?? counters);
     task.stats.model_requests = Number(task.stats.upstream_requests ?? 0);
     task.stats.actual_paid_usd = config.provider_mode === 'mock' ? 0 : null;
@@ -206,36 +346,73 @@ export function apply(ctx: any) {
     record(task);
     // Every terminal task closes its proxy admission; in-flight calls still settle.
     // Release the launch slot only after budget ownership is retired.
-    task.closing = control('/tasks/cancel', { session_id: task.request.session_id }).then(() => {
+    task.closing = (async () => {
+      await broker('/unbind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
+      await control('/tasks/cancel', { session_id: task.budget_session_id });
       if (active === task.request.task_id) active = null;
-    }).catch((error) => { task.failure = 'budget_close_failed: ' + String(error); record(task); });
+    })().catch((error) => { task.failure = 'budget_close_failed: ' + String(error); record(task); });
   }
   const controller = ctx.sessionController;
   const original = { create: controller.create.bind(controller), prompt: controller.prompt.bind(controller),
     cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller) };
-  controller.create = async (request: any) => {
-    if (request.agentPreset && !scenes.some(scene => scene.preset === request.agentPreset)) throw new TaskError('profile_not_allowed', 'Use the server-configured DeepSeek Harless preset');
-    if (request.sessionId && !ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
-    const chosen = request.agentPreset ? scenes.find(scene => scene.preset === request.agentPreset)! : sceneFor(defaults.scene);
-    if (chosen.unavailable_reason) throw new TaskError('scene_not_connected', chosen.unavailable_reason, 409);
-    if (request.cwd !== undefined || request.workspaceId !== undefined)
-      throw new TaskError('workspace_not_allowed', 'The server allocates a private Session workspace');
-    if (request.sessionId && ownedSessions.has(request.sessionId)) return original.create(request);
-    const sessionId = 'sss-' + randomUUID().replaceAll('-', '');
-    const workspace = sessionWorkspace(config.output, sessionId);
-    workspaces.set(sessionId, workspace);
-    const created = await original.create({ ...request, sessionId, cwd: workspace,
-      agentPreset: sessionPreset(config.output, workspace, chosen) });
-    ownedSessions.add(created.sessionId);
-    if (!selections.has(created.sessionId)) {
-      selections.set(created.sessionId, { ...defaults, scene: chosen.id });
-      bindScene(agents.get(created.sessionId), chosen);
-      await original.selectModel({ sessionId: created.sessionId, provider: defaultModel.provider,
-        model: defaultModel.model,
-        ...(defaultModel.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' }) });
-      modelSelections.set(created.sessionId, defaultModel);
+  async function ensureOwned(id: string) {
+    if (ownedSessions.has(id)) return;
+    let snapshot: any;
+    try { snapshot = await controller.inspect(id); }
+    catch (error) {
+      if (!(error instanceof ApiSessionNotFound)) throw error;
+      throw new TaskError('session_not_owned', 'Session is outside this Web run; create a new session');
     }
-    return created;
+    // Upgrade only an ordinary, untouched blank session from this instance's
+    // configured preset. Official Web reuses these after a process restart.
+    // A session with history or a budget registration cannot be re-admitted.
+    if (!scenes.some(scene => scene.preset === snapshot.meta.agentPreset) || snapshot.meta.isSeeded || snapshot.meta.origin ||
+        snapshot.inheritedEventCount || snapshot.events.some((event: any) =>
+          ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type))) {
+      throw new TaskError('session_not_owned', 'Session is outside this Web run; create a new session');
+    }
+    const registration = await control('/tasks/stats?session_id=' + encodeURIComponent(id), undefined, true);
+    if (registration !== null && !brokerMode) throw new TaskError('session_already_bound', 'This session already has a task；请在工作区菜单中归档此空会话，然后新建会话。', 409);
+    ownedSessions.add(id); saveOwnership();
+    if (!selections.has(id)) selections.set(id, { ...defaults,
+      scene: scenes.find(scene => scene.preset === snapshot.meta.agentPreset)!.id });
+    saveSettings();
+  }
+  controller.create = (request: any) => {
+    const result = creation.then(async () => {
+      if (request.agentPreset && !scenes.some(scene => scene.preset === request.agentPreset)) throw new TaskError('profile_not_allowed', 'Use the server-configured DeepSeek Harless preset');
+      if (request.sessionId && !ownedSessions.has(request.sessionId)) {
+        // Official Web supplies a fresh client-generated ID. Allow only a proven
+        // absent ID; adopting an existing foreign session still fails closed.
+        let absent = false;
+        try { await controller.inspect(request.sessionId); }
+        catch (error) { if (!(error instanceof ApiSessionNotFound)) throw error; absent = true; }
+        if (!absent) throw new TaskError('session_not_owned', 'Session is outside this Web run; create a new session');
+      }
+      const chosen = request.agentPreset ? scenes.find(scene => scene.preset === request.agentPreset)! : sceneFor(defaults.scene);
+      if (chosen.unavailable_reason) throw new TaskError('scene_not_connected', chosen.unavailable_reason, 409);
+      if (!brokerMode && (request.cwd !== undefined || request.workspaceId !== undefined))
+        throw new TaskError('workspace_not_allowed', 'The server allocates a private Session workspace');
+      const id = request.sessionId ?? 'sss-' + randomUUID().replaceAll('-', '');
+      const workspace = workspaceFor(id);
+      const priorPreset = ownedSessions.has(id) ? (await controller.inspect(id)).meta.agentPreset : undefined;
+      const created = await original.create({ ...request, sessionId: id, ...(priorPreset ? { agentPreset: priorPreset } : {}),
+        ...(!ownedSessions.has(id) ? { agentPreset: sessionPreset(config.output, workspace, chosen),
+          ...(!brokerMode || chosen.adapter ? { cwd: workspace } : {}) } : {}) });
+      ownedSessions.add(created.sessionId); saveOwnership();
+      if (!selections.has(created.sessionId)) {
+        selections.set(created.sessionId, { ...defaults, scene: chosen.id });
+        saveSettings();
+        bindScene(agents.get(created.sessionId), chosen);
+        const option = modelSelections.get(created.sessionId) ?? defaultModel;
+        await original.selectModel({ sessionId: created.sessionId, provider: option.provider,
+          model: option.model, ...(option.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' }) });
+        modelSelections.set(created.sessionId, option);
+        saveModels();
+      }
+      return created;
+    });
+    creation = result.catch(() => undefined); return result;
   };
   controller.fork = () => { throw new TaskError('fork_not_supported', 'Create a new task to preserve its input, budget and trace binding'); };
   // Native queue editing would change the approved content after its digest was
@@ -243,7 +420,8 @@ export function apply(ctx: any) {
   controller.updateQueue = () => { throw new TaskError('queue_edit_not_supported', 'Preview a new task before changing queued input', 409); };
   controller.selectModel = async (request: any, signal: AbortSignal) => {
     const option = findModel(request.model);
-    if (!ownedSessions.has(request.sessionId) || forSession(request.sessionId) || request.provider !== option.provider ||
+    const previousTask = forSession(request.sessionId);
+    if (!ownedSessions.has(request.sessionId) || (previousTask && (!brokerMode || !terminal.has(previousTask.status))) || request.provider !== option.provider ||
         (request.reasoningEffort !== undefined && request.reasoningEffort !== 'off'))
       throw new TaskError('model_not_allowed', 'Model selection is outside the approved task configuration');
     const requested = { ...request };
@@ -251,6 +429,7 @@ export function apply(ctx: any) {
     else requested.reasoningEffort = 'off';
     const result = await original.selectModel(requested, signal);
     modelSelections.set(request.sessionId, option);
+    saveModels();
     return result;
   };
   if (ctx.agentPresets) ctx.agentPresets.select = (agent: any, preset: string) => serialize(async () => {
@@ -260,7 +439,9 @@ export function apply(ctx: any) {
     await setSelection(agent.session.id, { scene: scene.id }); return preset;
   });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
-    const taskId = randomUUID().replaceAll('-', ''), tentativeSession = existingSession ?? 'pending';
+    const nonce = randomUUID().replaceAll('-', '');
+    const taskId = config.budget_task_prefix ? config.budget_task_prefix + nonce.slice(8) : nonce;
+    const tentativeSession = existingSession ?? 'pending';
     const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
     const chosenModel = supplied.model === undefined ? (existingSession ? modelSelections.get(existingSession) ?? defaultModel : defaultModel) : findModel(supplied.model);
     const taskInput = input && typeof input === 'object' && !Array.isArray(input)
@@ -302,11 +483,17 @@ export function apply(ctx: any) {
     }
     request.session_id = existingSession ?? (await controller.create({ agentPreset: scene.preset })).sessionId;
     if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', '预览前请先选择与当前会话一致的 Harless 场景', 409);
-    if (sessions.has(request.session_id)) throw new TaskError('session_already_bound', 'This session already has a task; create a new task', 409);
+    const previousTask = forSession(request.session_id);
+    if (previousTask && !terminal.has(previousTask.status)) throw new TaskError('session_busy', '请等待本轮完成或取消，再发送下一条消息。', 409);
+    await previousTask?.closing;
+    if (!brokerMode && (sessions.has(request.session_id) || boundSessions.has(request.session_id))) throw new TaskError('session_already_bound', 'This session already has a task；请点击“新会话”后发送新的任务。', 409);
     if (modelSelections.get(request.session_id)?.model !== chosenModel.model) await controller.selectModel({
-      sessionId: request.session_id, provider: chosenModel.provider, model: chosenModel.model, reasoningEffort: 'off'
+      sessionId: request.session_id, provider: chosenModel.provider, model: chosenModel.model,
+      ...(chosenModel.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' })
     }, new AbortController().signal);
-    const workspace = workspaces.get(request.session_id)!;
+    if (previousTask && (scene.adapter || previousTask.scene.id !== scene.id))
+      throw new TaskError('new_session_required', 'Create a new Session to bind a scene or new file task', 409);
+    const workspace = workspaceFor(request.session_id);
     const sceneInputs = scene.adapter ? await bindSceneInputs(ctx, agents.get(request.session_id), workspace, scene,
       request.content, options, delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), taskId) : [];
     if (scene.adapter) {
@@ -329,22 +516,32 @@ export function apply(ctx: any) {
       } catch { throw new TaskError('execute_unavailable', 'embedding_service_unavailable', 409); }
     }
     selections.set(request.session_id, selection);
+    const snapshot = await controller.inspect(request.session_id);
+    const priorHumans = new Map<string, string>();
+    if (brokerMode) for (const event of snapshot.events) {
+      if (event.type === 'user/message' && event.data.source?.kind === 'user')
+        priorHumans.set(event.data.id, digest(event.data.content));
+    }
+    const budgetSessionId = brokerMode ? 'turn-' + taskId : request.session_id;
     const output = join(config.output, 'tasks', taskId); mkdirSync(output, { recursive: true, mode: 0o700 });
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
       scene, selection: Object.freeze({ ...selection }), tools, workspace, scene_options: options, scene_inputs: sceneInputs, scope_sha256: scopeDigest(workspace, scene),
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
-      entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output, humans: new Map(), sources,
-      model_option: chosenModel,
+      entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output,
+      humans: priorHumans, current_humans: new Set(), sources,
+      model_option: chosenModel, budget_session_id: budgetSessionId,
       stats: { tool_calls: 0, tool_errors: 0, llm_decisions: 0, motif_attempts: 0, shadow_candidates: 0, verified_skips: 0,
         upstream_requests: 0, model_requests: 0, actual_paid_usd: config.provider_mode === 'mock' ? 0 : null } };
     for (const filename of ['events.jsonl', 'motif-audit.jsonl']) writeFileSync(join(output, filename), '', { mode: 0o600 });
-    await control('/tasks/register', { task_id: taskId, session_id: request.session_id,
+    await control('/tasks/register', { task_id: taskId, session_id: budgetSessionId,
       budget_usd: request.budget_usd, model: chosenModel.model });
+    json(join(output, 'budget-route.json'), { session_id: request.session_id, budget_session_id: budgetSessionId });
+    boundSessions.add(request.session_id); saveOwnership();
     tasks.set(taskId, task); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
-    const snapshot = await controller.inspect(request.session_id);
     json(join(output, 'session-header.json'), snapshot.meta);
     for (const event of snapshot.events) appendFileSync(join(output, 'events.jsonl'), JSON.stringify(event) + '\n', { mode: 0o600 });
-    updateDraft(task); return task;
+    updateDraft(task);
+    indexedTasks.push(taskId); saveTaskIndex(); return task;
   }
   function updateDraft(task: Task) {
     task.confirmation_digest = digest({ task_id: task.request.task_id, request: task.request.request_sha256,
@@ -411,15 +608,32 @@ export function apply(ctx: any) {
     requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
     try {
       configureMotif(task);
-      await control('/tasks/activate', { session_id: task.request.session_id });
+      await control('/tasks/activate', { session_id: task.budget_session_id });
+      await broker('/bind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       await original.prompt({ requestId: task.request.request_id, sessionId: task.request.session_id,
         mode: 'queue', content: task.delivery }, signal);
       return view(task, true);
     } catch (error) { finish(task, 'failed', String(error)); throw error; }
   }
   controller.prompt = (request: any, signal: AbortSignal) => serialize(async () => {
-    if (!ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
+    await ensureOwned(request.sessionId);
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
+    if (!selections.has(request.sessionId)) {
+      const snapshot = await controller.inspect(request.sessionId);
+      const scene = scenes.find(row => row.preset === snapshot.meta.agentPreset);
+      if (!scene) throw new TaskError('session_not_owned', 'Session is outside this Web run');
+      selections.set(request.sessionId, { ...defaults, scene: scene.id });
+      saveSettings();
+    }
+    // A cold persisted session must resume through the public controller API so
+    // agent/created reinstalls its tool restrictions and schema binding.
+    if (!schemas.has(request.sessionId)) {
+      const option = modelSelections.get(request.sessionId) ?? defaultModel;
+      await original.selectModel({ sessionId: request.sessionId,
+        provider: option.provider, model: option.model,
+        ...(option.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' }) }, signal);
+      modelSelections.set(request.sessionId, option);
+    }
     const task = await preview({ content: request.content, request_id: request.requestId }, request.sessionId, 'native_chat');
     await submit(task, task.confirmation_digest, signal);
     return { accepted: true };
@@ -429,13 +643,18 @@ export function apply(ctx: any) {
     const task = forSession(request.sessionId);
     const result = await original.cancel(request); if (task) finish(task, 'cancelled', 'user_cancelled'); return result;
   };
-  const options = resolveAdapterOptions({ baseURL: config.endpoint, thinking: 'disabled', reasoningEffort: 'off', maxTokens: config.max_output_tokens } as any);
+  const options = resolveAdapterOptions({ baseURL: brokerMode ? config.budget_broker_endpoint + '/v1' : config.endpoint,
+    thinking: 'disabled', reasoningEffort: 'off', maxTokens: config.max_output_tokens } as any);
   ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new DeepSeekAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
     resolveUserId: () => principal, prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
   })), 'sss-web-task-provider');
   ctx.on('agent/created', ({ agent }: any) => {
     agents.set(agent.session.id, agent);
+    if (ownedSessions.has(agent.session.id)) {
+      workspaceFor(agent.session.id);
+      bindScene(agent, forSession(agent.session.id)?.scene ?? sceneFor(selections.get(agent.session.id)?.scene ?? defaults.scene));
+    }
     agent.ctx.on('tools/result', (execution: any, result: any) => forSession(agent.session.id)?.interceptor?.observe(agent.session.id, execution, result));
   }, { global: true });
   ctx.on('session/event', (session: any, event: any) => {
@@ -444,6 +663,7 @@ export function apply(ctx: any) {
     // Controller has already validated and transformed receipt/image input here.
     if (event.type === 'user/message' && event.data.source?.kind === 'user' && task.status === 'running') {
       task.humans.set(event.data.id, digest(event.data.content));
+      task.current_humans.add(event.data.id);
     }
     if (event.type === 'tool/call') task.stats.tool_calls = Number(task.stats.tool_calls) + 1;
     if (event.type === 'tool/result' && event.data.message?.content?.some((part: any) => part.isError === true)) task.stats.tool_errors = Number(task.stats.tool_errors) + 1;
@@ -468,12 +688,16 @@ export function apply(ctx: any) {
         request.maxTokens !== config.max_output_tokens || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
-    if (!humans.length || humans.some((message: any) => task.humans.get(message.id) !== digest(message.content))) throw Error('Task user envelope changed');
-    if (digest(request.tools) !== digest(task.tools)) throw Error('Tool schema version changed');
+    if (!humans.some((message: any) => task.current_humans.has(message.id)) ||
+        humans.some((message: any) => task.humans.get(message.id) !== digest(message.content))) throw Error('Task user envelope changed');
+    // DSH omits the tools field entirely when the agent has no capabilities.
+    // Treat that wire representation as the same empty schema bound at creation.
+    const requestedTools = request.tools ?? [];
+    if (digest(requestedTools) !== digest(task.tools)) throw Error('Tool schema version changed');
     json(join(task.output, 'model-request-config.json'), { provider: request.provider, model: request.model,
       reasoning_effort: request.reasoningEffort ?? 'off', reasoning_effort_sent: request.reasoningEffort !== undefined,
       max_output_tokens: request.maxTokens,
-      tools_order: request.tools.map((tool: any) => tool.name), tools_sha256: digest(request.tools),
+      tools_order: requestedTools.map((tool: any) => tool.name), tools_sha256: digest(requestedTools),
       human_message_sha256: humans.map((message: any) => digest(message.content)), mode: task.request.mode });
     task.stats.llm_decisions = Number(task.stats.llm_decisions) + 1; record(task);
     return (async function* () { yield* task.interceptor ? await task.interceptor.intercept(request.sessionId, request, next) : next(); })();
@@ -591,4 +815,8 @@ export function apply(ctx: any) {
       response.end();
     } }), 'harless-legacy-page-redirect-' + path);
   }
+  const accountLink = process.env.HARLESS_GATEWAY_ENABLED === '1' ?
+    '<script>' + readFileSync(fileURLToPath(new URL('./harless_account_link.js', import.meta.url)), 'utf8') + '</script>' : '';
+  if (accountLink) ctx.effect(() => ctx.webServer.tapIndex((html: string) => html.replace('</body>',
+    accountLink + '</body>')), 'harless-account-link');
 }
