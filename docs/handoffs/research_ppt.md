@@ -7,7 +7,7 @@
 - 已完成：新增 `scenarios/research_ppt/ts/native-chat.ts`，连接官方上传回执、Session 消息、预算预览、双路后台、进度/成品卡片、下载和同稿反馈；`src/adapters/dsh_web_tasks.ts` 仅在显式选择 PPT 且满足单用户准入时接管，其他场景仍走原生 Harness。`/ppt` 与主聊天共用后台、版本守卫和下载白名单。
 - 交互契约：主聊天选择 PPT 后上传 PDF/PPTX、发送说明，收到预算卡片后确认；默认 15 页，支持 1–30 页，1–8 份输入。生成双路总上限 `$3`，每组 60 步/8000 输出 token；反馈双路每轮 `$0.50`，每组 24 步/4000 输出 token。思考与压缩关闭，运行中不生成新工具。纯提问只回答；改页必须给出明确页码或全部页面，按父稿版本生成新副本并保留历史稿。
 - 身份与安全：主聊天桥接只启用 `local-operator` 且无成员 budget broker 的单用户服务；Session、上传回执、预览摘要、父稿 SHA、request ID 和版本逐项核验。用户不能提交任意 cwd、路径、租户或任务 ID。费用账本、来源、运行日志和私有文件只保留 `.local/` 与服务器受保护目录。
-- 已验证（免费）：`npm run smoke` 通过；PPT TypeScript 构建通过；PPT 场景 117/118 通过，唯一失败是 Windows 未启用创建符号链接权限；主聊天、会话恢复、选择器、网关和预算定向 Node 测试 53/53 通过；仓库 `npm test` 163 项通过，剩余 2 项为 Windows 符号链接权限和本地 Harness runtime 初始化超时环境问题。新增回归覆盖预览无付费、重复确认、回执归属、文字确认、同稿版本传递、取消/失败与持久映射。
+- 已验证（免费）：`npm run smoke` 通过；PPT TypeScript 构建通过；PPT 场景 117/118 通过，唯一失败是 Windows 未启用创建符号链接权限；主聊天、会话恢复、选择器、网关和预算定向 Node 测试 56/56 通过；仓库 `npm test` 164 项通过，剩余 1 项为 Windows 符号链接权限环境问题。`web:controls:check` 通过；本机 `web:tasks:check` 与 `web:scenes:check` 因本地 runtime/PPT Python 依赖未安装失败，服务器真实验收已另行记录。新增回归覆盖预览无付费、重复确认、回执归属、文字确认、同稿版本传递、取消/失败与持久映射。
 - 已验证（真实）：实验 `research-ppt-native-chat-20261014` 使用 Attention Is All You Need，在官方浏览器主聊天上传、确认并生成两份 15 页可编辑 PPTX/PDF/逐页 PNG；34 个下载文件均通过鉴权和 SHA 校验，刷新后同一聊天状态恢复，第 4 页反馈完成版本与非目标页保持校验。优化结果优先返回用户，普通 DSH 仅作后台统计。
 - 成本观察：普通 19 请求/707922 token/$0.03116531，优化 16/410206/$0.01853018；本次两路合计 `$0.04969549`，优化组相对普通组请求少 15.8%、token 少 42.1%、代理估费少 40.5%。这是固定宿主交付路径的单次观察，`verifiedskip=0`，未归因新增 RSI；人工审美/科学质量盲评和账单实付仍未知。
 - 实验与报告：V1–V17 报告和负例在 `docs/experiments/research-ppt-reports/`；本轮记录为 `docs/experiments/research-ppt-native-chat-20261014.md`。本轮不覆盖旧轨迹、不重签历史证书。

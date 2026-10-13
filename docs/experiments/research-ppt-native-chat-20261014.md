@@ -32,7 +32,7 @@
 - `src/adapters/dsh_web_tasks.ts`：只在显式选择 PPT 且满足 `local-operator` 单用户准入时接管；其他场景维持原生 Harness。
 - `scenarios/research_ppt/ts/feedback-runner.ts` 与 `feedback-mcp.ts`：按父稿版本、页码范围和稿件 SHA 执行反馈，并重新渲染验收。
 - `scenarios/research_ppt/tests/native-chat.test.mjs`、`feedback.test.mjs`、`web-session.test.mjs`：覆盖预览不付费、重复确认幂等、外来回执拒绝、版本冲突、同稿反馈和失败/取消恢复。
-- 免费检查：`npm run smoke` 通过；PPT TypeScript 构建通过；主聊天相关定向测试 53/53 通过。仓库全量 `npm test` 163 项通过，2 项环境相关失败（Windows 符号链接权限、本地 runtime 初始化超时）。
+- 免费检查：`npm run smoke` 通过；PPT TypeScript 构建通过；主聊天相关定向测试 56/56 通过。仓库全量 `npm test` 164 项通过，1 项环境相关失败（Windows 符号链接权限）；本机 Web 场景检查受缺少 PPT Python 依赖/runtime 启动环境影响，服务器真实验收已单独通过并留有记录。
 
 ## 结论与边界
 
