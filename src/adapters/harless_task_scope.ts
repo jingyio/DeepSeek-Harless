@@ -56,7 +56,7 @@ function readJob(workspace: string): any {
 export async function bindSceneInputs(ctx: any, agent: any, workspace: string, scene: Scene, content: PromptPart[],
     options: SceneOptions, instruction: string, taskId: string) {
   const inputs: any[] = [];
-  for (const file of readdirSync(join(workspace, 'inputs'))) unlinkSync(join(workspace, 'inputs', file));
+  const preparedFiles: { path: string; data: Buffer }[] = [];
   for (const part of content) {
     if (part.type !== 'file') continue;
     const ref = ctx.fileUploads.resolve(agent, part.receiptId);
@@ -72,9 +72,12 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     if (scene.adapter === 'ppt' && !['.pdf', '.pptx'].includes(suffix)) throw Error('ppt_requires_pdf_or_pptx');
     const leaf = `doc_${inputs.length + 1}-${basename(ref.name).replace(/[^\p{L}\p{N}._-]/gu, '_').slice(-120)}`;
     const path = join(workspace, 'inputs', leaf);
-    writeFileSync(path, data, { mode: 0o600 });
+    preparedFiles.push({ path, data });
     inputs.push({ document_id: `doc_${inputs.length + 1}`, name: ref.name, path, version_sha256: sha(data) });
   }
+  if (scene.adapter === 'ppt' && options.allow_output === true && !inputs.length) throw Error('ppt_requires_input_for_output');
+  for (const file of readdirSync(join(workspace, 'inputs'))) unlinkSync(join(workspace, 'inputs', file));
+  for (const file of preparedFiles) writeFileSync(file.path, file.data, { mode: 0o600 });
   if (scene.adapter === 'ppt') save(join(workspace, 'job.json'), {
     schema_version: 1, job_id: taskId, inputs, instruction,
     slides: options.slides ?? 6, template: options.template ?? 'academic', operation: 'generate',

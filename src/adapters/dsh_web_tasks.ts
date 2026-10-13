@@ -424,7 +424,7 @@ export function apply(ctx: any) {
   const options = resolveAdapterOptions({ baseURL: config.endpoint, thinking: 'disabled', reasoningEffort: 'off', maxTokens: config.max_output_tokens } as any);
   ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new DeepSeekAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
-    resolveUserId: () => 'sss-web-operator', prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
+    resolveUserId: () => principal, prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
   })), 'sss-web-task-provider');
   ctx.on('agent/created', ({ agent }: any) => {
     agents.set(agent.session.id, agent);

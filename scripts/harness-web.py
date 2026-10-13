@@ -175,7 +175,7 @@ def prepare(args, output, endpoint):
                 'allowed_tools': prepared['allowed_tools'], 'tools_order': sorted(prepared['allowed_tools']),
                 'fixture': args.fixture,
                 'case': prepared['case'], 'embedding_model': args.embedding_model if args.embedding_endpoint else None,
-                'dsh_version': '0.1.5-rc.3', 'python_version': sys.version.split()[0],
+                'dsh_version': '0.1.5-rc.3', 'filesystem_watcher_polling': os.environ.get('CHOKIDAR_USEPOLLING') == '1', 'python_version': sys.version.split()[0],
                 'node_version': subprocess.check_output(['node', '--version'], text=True).strip(),
                 'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 'dirty_files': subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).splitlines(),

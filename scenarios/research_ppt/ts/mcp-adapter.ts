@@ -111,7 +111,7 @@ async function main(): Promise<void> {
   const offered=[...expected.map(name=>byName.get(name)!),...ADAPTER_TOOLS];
   const schemaDigest=digest(offered);
   const adapter=await DeliveryAdapter.create(root,job,async(name,args)=>payload(await client.callTool({name,arguments:args},undefined,{timeout:120_000})),
-    await dependencyFiles(root,backendPath,dirname(fileURLToPath(import.meta.url))));
+    await dependencyFiles(root,backendPath,dirname(fileURLToPath(import.meta.url))), args.includes('--web-session'));
   const runtime={schema_version:1,backend_tool_order:expected,advertised_tool_order:offered.map(tool=>tool.name),actual_tools:offered,
     schema_sha256:schemaDigest,input_version:adapter.inputVersion,job:job,scope:'actual_mcp_proxy_schema_not_provider_payload'};
   if (flag('--export-schema')) {

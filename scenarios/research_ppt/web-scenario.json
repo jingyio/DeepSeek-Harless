@@ -8,7 +8,8 @@
       "transport": "stdio",
       "command": "node",
       "args": [
-        "${PROJECT_ROOT}/scenarios/research_ppt/dist/mcp-adapter.js"
+        "${PROJECT_ROOT}/scenarios/research_ppt/dist/mcp-adapter.js",
+        "--web-session"
       ],
       "cwd": "${PROJECT_ROOT}",
       "tool_call_timeout_ms": 120000,
