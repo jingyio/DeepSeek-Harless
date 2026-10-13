@@ -35,18 +35,6 @@ npm run scenario:real -- --budget-usd 0.25 --max-steps 16
 
 每次请求经过本机预算代理；模型输出、轨迹、预算账本与 Motif 审计只写入 `.local/`。费用表是仓库固定配置，运行付费实验前应核对；预算记账不等于真实账单。`--max-steps` 限制 Agent 步数，代理账本才记录实际上游请求。默认不开上下文压缩。
 
-## 私有 Codex 登录试用
-
-在单人、仅本机或 SSH 隧道可访问的 Web 运行中，可显式启用 DSH 自带的 Codex OAuth 设备码授权：
-
-```sh
-npm run web -- --codex-login
-```
-
-打开本次私有 Harness 认证地址后访问同源 `/codex-login`，点击“使用 ChatGPT 登录”，在 OpenAI 页面输入设备码。状态页不会显示或返回 OAuth 凭据；凭据由 DSH 存在忽略版本控制的 `.local/codex-login/dsh/`，重启可复用。退出按钮仅删除本机凭据；远端撤销需在 ChatGPT 设置完成。未点击登录不会开始授权或调用模型。
-
-这个首版只完成单人登录入口和 DSH `openai-codex` Provider 注册。现有 `/tasks` 任务、原生聊天的任务准入及费用守卫仍固定使用 DeepSeek，**尚不能用 Codex 运行 Harless 任务**；模型请求、工具调用和 RSI 尚未验收。登录入口不可作为课题组共享账号入口；多人使用需要成员身份、独立凭据/任务/文件空间及适用的远程托管条件。这里使用 DSH 内置的 Codex 授权通道，不是 OpenAI 新 SIWC 公开 Responses API 流程。
-
 ## 官方 Harness Web 与动态任务入口
 
 SDK 的 `npm run scenario` 继续保留。`npm run web` 默认启动官方 Web 与 DeepSeek Harless 任务工作台：同一进程可连续处理不同任务，每个任务有独立 Session、模式、预算和记录，当前同时只执行一个任务。服务器已验证 Node 22.23.3、Python 3.10.8；TypeScript 插件需要支持原生类型剥离的 Node，其他平台的 Web 尚未验证。

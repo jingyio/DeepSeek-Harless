@@ -1,14 +1,5 @@
 # DeepSeek Harless Web 当前交接
 
-## 2026-10-13 私有 Codex 登录首版（Codex）
-
-- 目标与范围：按用户选择先支持 DSH 内置 Codex OAuth 的单人 Web 登录，不接入课题组共用入口。独立 worktree `codex/codex-login` 基于 `origin/main`；原论文工作区和运行服务未改。
-- 已完成：`--codex-login` 显式挂载 DSH `dsh-authorization` 与 `llm-pi-ai` 的 `openai-codex` 路由；`/codex-login` 和同源受保护 API 提供设备码、状态、取消与本机删除。凭据存 `.local/codex-login/dsh/`，不返回客户端。
-- 已验证：单人模拟 Web 插件加载，匿名页面/API 401、错误 Origin 403、认证后页面和状态 API 200 且 `available=true`；Node 局部测试设备码提示与不返回凭据。未实际授权 ChatGPT，0 模型请求、0 新费用。
-- 未完成：`/tasks` 与原生聊天任务准入仍只接受 DeepSeek；真实 Codex 模型/工具/RSI 未验证；多人账号隔离和远程托管条件未解决。
-- 接手下一步：负责人在私有隧道打开本次认证地址完成设备码授权；验证登录成功和重启仍已登录。随后为 Codex 模型建立独立预算/请求准入和完整任务验收，再设计每位成员的账号与资料隔离。
-- 权限与回退：授权必须由本人在 OpenAI 页面完成。关闭 `--codex-login` 即回到现有启动方式；移除本机登录仅删除该私有运行的凭据。
-
 ## 2026-10-13 `/harless` 场景选择首版（Codex）
 
 - 目标与范围：按已审阅计划实现原生命令和可选界面、场景/模式/RSI联动、逐任务冻结。当前一个Session绑定一个Task；下一任务新建Session并继承选择。

@@ -249,9 +249,3 @@ Python 语义端口在 `motif_read_semantic.py`：接收明确的结构缺口，
 动态 Web 新增原生 `ctx.commands.register` 命令和 `/harless` 选择面板；命令、下拉框共用 `harless_settings.ts` 的验证。`GET/POST /api/harless/settings` 管理场景、Baseline/Shadow/Execute 与 RSI On/Off；命令不调用模型。服务器场景登记为 `config/harless-scenes.json`，MCP preset 各自独立，配置不得由浏览器覆盖。每 Task 冻结场景、工具、库摘要与确认 digest；Session 绑定任务后，修改只对新 Session 的下一任务生效。旧单场景 policy 仍兼容，冻结 Web/SDK 保留。
 
 字段、边界与复现见 [Harless 控制接口](harless-controls.md)。当前登记的三个场景是合成资料样例，不表示 PPT 或多人隔离已经完成。
-
-## 私有 Codex 登录入口（单人试用）
-
-显式 `npm run web -- --codex-login` 才挂载 `/codex-login` 和 `GET/POST /api/harless/codex-login`。两者使用官方 Web 的连接认证；未经认证拒绝，错误 Origin 拒绝。`GET` 仅返回 `signed_in`、`available`、`in_flight`、登录状态与设备码提示，不返回 Access/Refresh Token 或凭据记录。`POST` 接受 JSON `{"action":"login"|"cancel"|"logout"}`；登录启动 DSH `llm-pi-ai/openai-codex` OAuth 设备码流程并返回 202，页面轮询状态。`logout` 删除本机 DSH 凭据，不等于 OpenAI 远端撤销。
-
-当前接口仅面向本机/SSH 隧道中的单一操作者。`/tasks` 及其模型/预算守卫继续固定 DeepSeek；本入口不赋予 Codex 任务执行权限。`DSH_HOME` 为被 Git 忽略的 `.local/codex-login/dsh/`，不写入公共配置或任务日志。多人 Web 身份与授权存储尚未实现。
