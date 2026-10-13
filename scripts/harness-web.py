@@ -156,7 +156,7 @@ def prepare(args, output, endpoint):
                        ROOT / 'src/adapters/web_task_budget.py',
                        ROOT / 'src/adapters/harless_settings.ts', ROOT / 'src/adapters/harless_scenarios.py',
                        ROOT / 'src/adapters/harless_native_bridge.js',
-                       ROOT / 'src/adapters/web_native_bridge.js', registry])]}
+                       registry])]}
     if policy.get('manifest'):
         snapshot['manifest_sha256'] = hashlib.sha256(Path(policy['manifest']).read_bytes()).hexdigest()
         snapshot['task_sha256'] = hashlib.sha256(Path(policy['task']).read_bytes()).hexdigest()
@@ -174,7 +174,7 @@ def main():
     parser.add_argument('--case', default='')
     parser.add_argument('--scene-registry', default='config/harless-scenes.json', help='server-owned versioned scene registry')
     parser.add_argument('--frozen', action='store_true', help='legacy single-task mock regression entry')
-    parser.add_argument('--real-model', action='store_true', help='enable real DeepSeek connection; each task still requires preview confirmation')
+    parser.add_argument('--real-model', action='store_true', help='enable real DeepSeek connection; native chat sends tasks immediately')
     parser.add_argument('--manifest', help='certified online manifest for this capability profile')
     parser.add_argument('--task', help='certified task/version binding, paired with --manifest')
     parser.add_argument('--resources', help='private server-owned resource registry JSON: ID -> {text_file}')

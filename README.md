@@ -49,7 +49,7 @@ npm run web
 ssh -N -L 3080:127.0.0.1:3080 -p SSH_PORT USER@SERVER
 ```
 
-默认选择 `scenarios/example/`，使用免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。在输入框旁的 Harless 菜单选择场景、RSI 与模式，再像普通 Harness 一样发送消息；免费模拟模式直接运行，真实模式先显示题面和预算确认，确认前不调用模型。任务 API 仍支持结构化输入、来源和附件；旧 `/tasks`、`/sss`、`/harless` 页面地址跳回聊天首页，`/api/sss/tasks` 兼容 API 保留。
+默认选择 `scenarios/example/`，使用免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。在输入框旁的 Harless 菜单选择场景、RSI 与模式，再像普通 Harness 一样发送消息；免费和真实模式都直接提交，真实模式会调用 DeepSeek API，服务端仍执行任务与全局预算限制。任务 API 仍支持结构化输入、来源和附件；旧 `/tasks`、`/sss`、`/harless` 页面地址跳回聊天首页，`/api/sss/tasks` 兼容 API 保留。
 
 文字字符串、`instruction`、`content`、仅含 user 的 `messages` 统一规范化为一次任务输入；结构化对象中的后三项必须三选一。`mode` 支持 baseline/shadow/execute。任务 API 可接收官方格式的图片 base64 或同 Session 已上传文件的 receipt，单文件上限 256 KiB；模型不支持图片时任务明确失败且不发起模型请求，不能据此宣称已支持图片理解。资料引用使用已由服务器登记的 `resource_id`，不接受浏览器本地路径。请求和响应详见[接口文档](docs/interfaces.md)。
 
@@ -90,7 +90,7 @@ Baseline 对应 RSI Off；Shadow/Execute 对应 On。Off 保留上次 RSI 模式
 npm run web:real
 ```
 
-这个显式入口只开放真实连接。官方聊天首次发送会显示题面与预算确认框，确认后才执行；任务 API 也保留预览和提交操作。官方聊天入口的真实接口验证见[确认流程验收](docs/experiments/native-chat-confirm-20261009-v1.md)。官方聊天不能绕过确认；SDK 的真实 API 基本连通已通过，真实 Web 后端最小闭环已通过；浏览器体验和科研交付质量仍需分别验收。
+这个显式入口只开放真实连接。官方聊天发送后立即登记并执行任务，不显示预算确认页面；任务 API 仍保留显式预览和提交操作。发送前可在输入框旁选择场景、RSI 与模式，服务端继续限制每任务及全启动费用和请求数。此前的[确认流程验收](docs/experiments/native-chat-confirm-20261009-v1.md)记录的是旧界面；SDK 的真实 API 基本连通已通过，真实 Web 后端最小闭环已通过；当前直接发送的浏览器体验和科研交付质量仍待验收。
 
 免费复验、旧入口与停止：
 

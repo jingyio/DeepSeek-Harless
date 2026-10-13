@@ -313,9 +313,7 @@ export function apply(ctx: any) {
     if (!ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
     const task = await preview({ content: request.content, request_id: request.requestId }, request.sessionId, 'native_chat');
-    // The official Web bridge displays the bound preview; paid admission stays closed
-    // until its explicit confirmation uses the same task API as the workbench.
-    if (config.provider_mode === 'mock') await submit(task, task.confirmation_digest, signal);
+    await submit(task, task.confirmation_digest, signal);
     return { accepted: true };
   });
   controller.cancel = async (request: any) => {
@@ -467,7 +465,6 @@ export function apply(ctx: any) {
       response.end();
     } }), 'harless-legacy-page-redirect-' + path);
   }
-  const nativeBridge = config.provider_mode === 'real' ? '<script>' + readFileSync(fileURLToPath(new URL('./web_native_bridge.js', import.meta.url)), 'utf8') + '</script>' : '';
   ctx.effect(() => ctx.webServer.tapIndex((html: string) => html.replace('</body>',
-    nativeBridge + '<script>' + readFileSync(fileURLToPath(new URL('./harless_native_bridge.js', import.meta.url)), 'utf8') + '</script></body>')), 'sss-harless-composer-picker');
+    '<script>' + readFileSync(fileURLToPath(new URL('./harless_native_bridge.js', import.meta.url)), 'utf8') + '</script></body>')), 'sss-harless-composer-picker');
 }
