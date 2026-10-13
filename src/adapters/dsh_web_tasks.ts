@@ -60,7 +60,7 @@ export function apply(ctx: any) {
   if (!scenes.some(scene => scene.id === config.capability_profile)) throw Error('Default scene is not registered');
   let defaults = initialSelection(config.capability_profile, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
-  const guards = new Map<string, (() => void)[]>(), panels = new Map<string, { revision: string; section: string }>();
+  const guards = new Map<string, (() => void)[]>();
   const sceneFor = (id: string) => {
     const scene = scenes.find(scene => scene.id === id);
     if (!scene) throw new SettingsError('scene_not_found', '场景未登记');
@@ -211,7 +211,7 @@ export function apply(ctx: any) {
   if (ctx.agentPresets) ctx.agentPresets.select = (agent: any, preset: string) => serialize(async () => {
     const scene = scenes.find(scene => scene.preset === preset);
     if (!scene) throw new SettingsError('scene_not_found', '只能选择服务器登记的场景');
-    if (forSession(agent.session.id)) throw new TaskError('session_already_bound', 'Use /harless to set the next task', 409);
+    if (forSession(agent.session.id)) throw new TaskError('session_already_bound', '当前会话已绑定任务，请新建会话后选择 Harless 设置', 409);
     await setSelection(agent.session.id, { scene: scene.id }); return preset;
   });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
@@ -241,7 +241,7 @@ export function apply(ctx: any) {
     const scene = sceneFor(request.capability_profile);
     const selection = config.scenes ? changeSelection(selected, { scene: scene.id, mode: request.mode }, scenes, executeUnavailable) : initialSelection(scene.id, request.mode);
     request.session_id = existingSession ?? (await controller.create({ agentPreset: scene.preset })).sessionId;
-    if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', 'Use /harless to choose a scene before preview', 409);
+    if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', '预览前请先选择与当前会话一致的 Harless 场景', 409);
     if (sessions.has(request.session_id)) throw new TaskError('session_already_bound', 'This session already has a task; create a new task', 409);
     selections.set(request.session_id, selection);
     const output = join(config.output, 'tasks', taskId); mkdirSync(output, { recursive: true, mode: 0o700 });
@@ -426,24 +426,18 @@ export function apply(ctx: any) {
       try {
         const url = new URL(request.url), sessionId = url.searchParams.get('session_id') ?? undefined;
         if (request.method === 'GET') {
-          if (url.searchParams.has('panels')) return Response.json({ panels: [...panels].map(([session_id, panel]) => ({ session_id, ...panel })) }, { headers: { 'Cache-Control': 'no-store' } });
           return Response.json({ ...settingsView(sessionId), sessions: [...ownedSessions].map(session_id => ({ session_id, ...settingsView(session_id) })) }, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
         const result = await serialize(async () => {
           if (body.action === 'select') return setSelection(body.session_id, body.selection);
-          if (body.action === 'dismiss_panel') {
-            settingsView(body.session_id);
-            if (panels.get(body.session_id)?.revision === body.revision) panels.delete(body.session_id);
-            return { dismissed: true };
-          }
           if (body.action === 'new_session') {
             const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const created = await controller.create({ agentPreset: sceneFor(chosen.scene).preset });
             selections.set(created.sessionId, { ...chosen });
             return { session_id: created.sessionId, ...settingsView(created.sessionId) };
           }
-          throw new SettingsError('unknown_action', '只支持 select、new_session 和 dismiss_panel');
+          throw new SettingsError('unknown_action', '只支持 select 和 new_session');
         });
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error) {
@@ -459,8 +453,7 @@ export function apply(ctx: any) {
         const id = agent.session.id, command = parseHarlessCommand(rawInput);
         settingsView(id);
         if (command.kind === 'panel') {
-          panels.set(id, { revision: randomUUID(), section: command.section });
-          return { kind: 'success', text: `已打开 Harless 选择面板：/harless?session_id=${encodeURIComponent(id)}` };
+          return { kind: 'success', text: '请使用聊天输入框旁的 Harless 设置菜单选择场景、RSI 和运行模式。' };
         }
         if (command.kind === 'list') return { kind: 'success', text: scenes.map(scene => `${scene.id} · ${scene.label}`).join('\n') };
         const value = command.kind === 'change' ? await setSelection(id, command.patch) : settingsView(id);
@@ -468,22 +461,13 @@ export function apply(ctx: any) {
         return { kind: 'success', text: `${value.applies_to === 'next_task' ? '下一任务生效' : '下一次输入生效'}：${value.selection.scene} / ${value.selection.mode} / RSI ${value.selection.rsi ? 'On' : 'Off'}${current ? `；当前任务：${current.scene} / ${current.mode} / ${current.status}` : ''}` };
       } catch (error) { return { kind: 'error', text: String((error as Error).message) }; }
     }) }), 'harless-command');
-  const settingsPanel = readFileSync(fileURLToPath(new URL('./harless_panel.html', import.meta.url)), 'utf8');
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/harless', handler: (request: any, response: any) => {
-    const rejected = ctx.connection.requestRejection(request);
-    response.writeHead(rejected ?? 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    response.end(rejected ? '请先登录 Harness。' : settingsPanel);
-  } }), 'harless-settings-panel');
-  const panel = readFileSync(fileURLToPath(new URL('./web_task_panel.html', import.meta.url)), 'utf8');
-  const panelHandler = (request: any, response: any) => {
-    const rejected = ctx.connection.requestRejection(request);
-    response.writeHead(rejected ?? 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    response.end(rejected ? '请先打开本次 Harness 认证地址。' : panel);
-  };
-  for (const path of ['/tasks', '/sss']) {
-    ctx.effect(() => ctx.webServer.register({ kind: 'exact', path, handler: panelHandler }), 'harless-tasks-panel-' + path);
+  for (const path of ['/tasks', '/sss', '/harless']) {
+    ctx.effect(() => ctx.webServer.register({ kind: 'exact', path, handler: (_request: any, response: any) => {
+      response.writeHead(302, { Location: '/', 'Cache-Control': 'no-store' });
+      response.end();
+    } }), 'harless-legacy-page-redirect-' + path);
   }
   const nativeBridge = config.provider_mode === 'real' ? '<script>' + readFileSync(fileURLToPath(new URL('./web_native_bridge.js', import.meta.url)), 'utf8') + '</script>' : '';
   ctx.effect(() => ctx.webServer.tapIndex((html: string) => html.replace('</body>',
-    '<a href="/tasks" style="position:fixed;right:18px;bottom:18px;z-index:9999;padding:10px 15px;border-radius:8px;background:#245cba;color:white;text-decoration:none">DeepSeek Harless 任务工作台</a>' + nativeBridge + '<script>' + readFileSync(fileURLToPath(new URL('./harless_native_bridge.js', import.meta.url)), 'utf8') + '</script></body>')), 'sss-web-tasks-link');
+    nativeBridge + '<script>' + readFileSync(fileURLToPath(new URL('./harless_native_bridge.js', import.meta.url)), 'utf8') + '</script></body>')), 'sss-harless-composer-picker');
 }

@@ -2,7 +2,7 @@
 
 ## 使用
 
-登录本次 Harness Web，点击“场景 · 模式 · RSI”或输入 `/harless`。裸命令打开面板；`mode`、`rsi` 打开对应控件，直接参数也可用。`list` 列登记场景，`status` 列当前任务与下一任务的实际状态；旧 `off` 改为 `rsi off`。
+登录本次 Harness Web，使用聊天输入框旁的 Harless 菜单选择场景、RSI 和运行模式。独立 `/harless` 页面已移除；裸 `/harless` 命令会提示使用菜单，快捷设置、`list` 和 `status` 命令仍可用。
 
 | 模式 | RSI | 行为 |
 | --- | --- | --- |
@@ -12,7 +12,7 @@
 
 Off 记住最后一次 Shadow/Execute；On 恢复该模式。首次恢复 Shadow。切到不支持 Execute 的场景时，界面先选择 Shadow；直接 API/命令请求非法 Execute 会拒绝，不隐藏失败。Execute 即使场景层可选，当前输入或来源不合格仍会回退并记录原因。真实模式没有配置匹配服务时不会用模拟 embedding 冒充。
 
-选择命令和 API 不启动 Agent turn、不注册付费任务、不调用模型。预览后任务的模式、工具快照、场景配置、指令和认证库文件摘要冻结；后续选择存为下一任务。点击“使用此配置新建任务”创建新 Session，继承选择，重新绑定输入、来源和预算。全局预算继续累计。
+菜单和设置 API 不启动 Agent turn、不注册付费任务、不调用模型。预览后任务的模式、工具快照、场景配置、指令和认证库文件摘要冻结；菜单选择用于之后创建的会话。新任务使用新的 Session，重新绑定输入、来源和预算；全局预算继续累计。
 
 ## 登记场景
 
@@ -29,7 +29,6 @@ Off 记住最后一次 Shadow/Execute；On 恢复该模式。首次恢复 Shadow
 - `GET /api/harless/settings[?session_id=...]`：选择、适用时点、当前任务、可用场景及 Execute 原因；不返回凭证、资料正文或服务器路径。
 - `POST` 同路径：`{action:"select", session_id?, selection:{scene?, mode?, rsi?}}`。`rsi` 为布尔值，冲突字段拒绝。省略 Session 表示新会话默认。
 - `{action:"new_session", inherit_session?}`：独立新 Session，不启动任务或模型。
-- `GET ?panels=1` 与 `{action:"dismiss_panel",session_id,revision}`：网页展示原生命令打开面板的通知。
 - 任务预览保留 `/api/harless/tasks`，新增可选顶层 `session_id`，只接受本启动拥有且未绑定任务的 Session。任务 `capability_profile` 即登记场景 ID。
 
 原生 `agentPresets.select` 也经同一选择验证；已经绑定任务的 Session 不能从原生 preset API 改当前组合。空会话使用 Harness 公开 `agentPresets.select`，工具限制的 disposer 随切换更新；新任务随后保存实际 schema 快照。上游核心未修改。

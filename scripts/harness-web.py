@@ -153,9 +153,10 @@ def prepare(args, output, endpoint):
                      ROOT / 'src/adapters/deepseek_cost_gate.py', ROOT / 'scripts/harness-web.py',
                      ROOT / 'scripts/motif-example.py', ROOT / 'package-lock.json',
                      *([] if args.frozen else [ROOT / 'src/adapters/web_task_request.ts',
-                       ROOT / 'src/adapters/web_task_budget.py', ROOT / 'src/adapters/web_task_panel.html',
+                       ROOT / 'src/adapters/web_task_budget.py',
                        ROOT / 'src/adapters/harless_settings.ts', ROOT / 'src/adapters/harless_scenarios.py',
-                       ROOT / 'src/adapters/harless_panel.html', ROOT / 'src/adapters/harless_native_bridge.js', registry])]}
+                       ROOT / 'src/adapters/harless_native_bridge.js',
+                       ROOT / 'src/adapters/web_native_bridge.js', registry])]}
     if policy.get('manifest'):
         snapshot['manifest_sha256'] = hashlib.sha256(Path(policy['manifest']).read_bytes()).hexdigest()
         snapshot['task_sha256'] = hashlib.sha256(Path(policy['task']).read_bytes()).hexdigest()
@@ -302,7 +303,7 @@ def main():
             match = re.search(r'http://127\.0\.0\.1:' + str(args.port) + r'/\?token=[^\s]+', text)
             if match:
                 (output / 'access-url.txt').write_text(match.group(0) + '\n'); (output / 'access-url.txt').chmod(0o600)
-                print('官方 Web 已启动；认证地址仅保存在 access-url.txt。' + ('冻结题面见 prompt.md。' if args.frozen else '认证后访问 /tasks 提交动态任务。'), flush=True)
+                print('官方 Web 已启动；认证地址仅保存在 access-url.txt。' + ('冻结题面见 prompt.md。' if args.frozen else '认证后在聊天输入框旁选择 Harless 场景与模式。'), flush=True)
                 break
             time.sleep(0.1)
         if not (output / 'access-url.txt').exists(): raise RuntimeError('Web startup failed; inspect private startup.log')

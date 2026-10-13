@@ -25,7 +25,7 @@ async function fixture(overrides = {}) {
       { task_id: value.task_id, budget_usd: value.budget_usd });
     const session = value?.session_id ?? url.searchParams.get('session_id');
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ stats: { upstream_requests: 0, prompt_tokens: 0,
+    res.end(JSON.stringify({ stats: { global_budget_usd: .25, upstream_requests: 0, prompt_tokens: 0,
       completion_tokens: 0, estimated_cost_usd: 0, ...registrations.get(session) } }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -128,21 +128,24 @@ async function fixture(overrides = {}) {
   };
 }
 
-test('DeepSeek Harless tasks use authenticated Connection API routes and protect the task panel', options, async () => {
+test('Harless task APIs remain available without separate workbench or settings pages', options, async () => {
   const f = await fixture();
   try {
     const route = f.routes.get('/api/harless/tasks');
     assert.deepEqual(route.methods, ['GET', 'POST']); assert.equal(route.requestBody, 'buffered');
-    assert.equal(f.webRoutes.get('/tasks').kind, 'exact');
-    const result = {};
-    f.webRoutes.get('/tasks').handler({ authorized: false }, {
-      writeHead(status) { result.status = status; }, end(value) { result.body = value; },
-    });
-    assert.equal(result.status, 401); assert.ok(!result.body.includes('<form'));
-    f.webRoutes.get('/tasks').handler({ authorized: true }, {
-      writeHead(status) { result.status = status; }, end(value) { result.body = value; },
-    });
-    assert.equal(result.status, 200); assert.match(result.body, /DeepSeek Harless 任务工作台/);
+    assert.equal(f.routes.has('/api/harless/settings'), true);
+    for (const path of ['/tasks', '/sss', '/harless']) {
+      const page = f.webRoutes.get(path);
+      assert.equal(page.kind, 'exact');
+      const response = { writeHead(status, headers) { this.status = status; this.headers = headers; }, end() {} };
+      page.handler({}, response);
+      assert.equal(response.status, 302); assert.equal(response.headers.Location, '/');
+    }
+    const index = f.ctx.indexTransform('<body></body>');
+    assert.match(index, /harless-picker-anchor/);
+    assert.doesNotMatch(index, /DeepSeek Harless 任务工作台|href="\/tasks"/);
+    const settings = await f.settings();
+    assert.equal(settings.status, 200); assert.equal('panels' in settings.value, false);
   } finally { await f.close(); }
 });
 
@@ -310,11 +313,12 @@ const multiScenes = [
   { id: 'example', label: '资料', preset: 'sss-task', allowed_tools: ['mcp__demo__read_note'], config_sha256: 'a'.repeat(64) },
   { id: 'other', label: '另一场景', preset: 'sss-scene-other', allowed_tools: ['mcp__other__read'], config_sha256: 'b'.repeat(64) },
 ];
-test('Native /harless and settings controls select without admitting a model task; malformed commands fail', options, async () => {
+test('Native /harless commands and settings menu select without admitting a model task; malformed commands fail', options, async () => {
   const f=await fixture({ scenes: multiScenes, mode: 'shadow' });
   try {
     const {sessionId:id}=await f.ctx.sessionController.create({});
     for(const raw of ['', 'list', 'status', 'mode', 'rsi']) assert.equal((await f.command(id,raw)).kind,'success');
+    assert.match((await f.command(id,'')).text,/输入框旁/);
     assert.equal((await f.command(id,'mode baseline')).kind,'success');
     assert.equal((await f.command(id,'rsi on')).kind,'success');
     let value=(await f.settings(undefined,'?session_id='+id)).value;

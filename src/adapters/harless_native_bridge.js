@@ -28,13 +28,6 @@
   `;
   document.head.append(styles);
 
-  const dialog = document.createElement('dialog');
-  dialog.setAttribute('aria-label', 'Harless 场景与 RSI');
-  dialog.style.cssText = 'width:min(720px,calc(100% - 32px));padding:12px;border:1px solid #ddd;border-radius:12px;';
-  const close = document.createElement('button'); close.textContent = '关闭'; close.onclick = () => dialog.close();
-  const frame = document.createElement('iframe'); frame.title = 'Harless 选择面板'; frame.style.cssText = 'display:block;width:100%;height:620px;border:0';
-  dialog.append(close, frame); document.body.append(dialog);
-
   function makeOption(label, selected, disabled, detail, onClick) {
     const button = document.createElement('button'); button.type = 'button';
     button.className = 'harless-picker-option'; button.setAttribute('role', 'menuitemradio');
@@ -141,18 +134,4 @@
   installPicker();
   new MutationObserver(installPicker).observe(document.body, { childList: true, subtree: true });
 
-  let polling = false;
-  async function poll() {
-    if (polling || document.hidden || dialog.open) return; polling = true;
-    try {
-      const response = await fetch(settingsUrl + '?panels=1', { credentials: 'same-origin', cache: 'no-store' }); if (!response.ok) return;
-      const value = await response.json(), panel = value.panels?.[0]; if (!panel) return;
-      frame.src = '/harless?session_id=' + encodeURIComponent(panel.session_id) + '&section=' + encodeURIComponent(panel.section);
-      dialog.showModal();
-      await fetch(settingsUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'dismiss_panel', session_id: panel.session_id, revision: panel.revision }) });
-    } finally { polling = false; }
-  }
-  await poll().catch(() => {}); const timer = setInterval(() => poll().catch(() => {}), 1000);
-  window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
 })();

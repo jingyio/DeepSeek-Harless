@@ -63,7 +63,7 @@ export function parseHarlessCommand(rawInput: string): Command {
   if (words.length > 2) throw new SettingsError('invalid_command', '请使用 /harless <场景>、mode、rsi、list 或 status');
   if (action === 'mode' || action === 'rsi') {
     if (words.length === 1) return { kind: 'panel', section: action };
-    if (action === 'rsi' && !['on', 'off'].includes(value)) throw new SettingsError('invalid_rsi', '用 /harless rsi on 或 off，或打开选择面板');
+    if (action === 'rsi' && !['on', 'off'].includes(value)) throw new SettingsError('invalid_rsi', '用 /harless rsi on 或 off，或使用输入框旁的 Harless 菜单');
     return { kind: 'change', patch: { [action]: action === 'rsi' ? value === 'on' : value } };
   }
   if (words.length !== 1) throw new SettingsError('invalid_command', '场景名不接受附加参数');
