@@ -19,6 +19,7 @@ from pathlib import Path
 from uuid import uuid4
 from secrets import token_hex
 from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -33,6 +34,24 @@ def save(path, value):
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     temporary.chmod(0o600)
     temporary.replace(path)
+
+
+def https_public_origin(value):
+    """One exact HTTPS authority for the upstream public --trusted-host seam."""
+    if not isinstance(value, str) or re.search(r'\s|[\x00-\x1f]', value):
+        raise ValueError('public-origin must be an HTTPS origin')
+    parsed = urlsplit(value)
+    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username is not None or
+            parsed.password is not None or parsed.path not in ('', '/') or parsed.query or parsed.fragment):
+        raise ValueError('public-origin must be an HTTPS origin without credentials or a path')
+    host = parsed.hostname.lower()
+    if not re.fullmatch(r'[a-z0-9.-]+|[a-f0-9:]+', host):
+        raise ValueError('public-origin hostname must be an ASCII hostname or IP literal')
+    port = parsed.port
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError('invalid public-origin port')
+    authority = ('[' + host + ']' if ':' in host else host) + (':' + str(port) if port not in (None, 443) else '')
+    return 'https://' + authority
 
 
 def fixture_module():
@@ -166,7 +185,8 @@ def prepare(args, output, endpoint):
             ROOT / 'src/adapters/harless_web_client/index.mjs').as_uri()}]}]
     save(output / 'host.patch.yml', patch)
     (output / 'prompt.md').write_text(prepared['prompt']); (output / 'prompt.md').chmod(0o600)
-    snapshot = {**public, 'mode': args.mode, 'scenario': args.scenario,
+    snapshot = {**public, 'host': '127.0.0.1', 'port': args.port,
+                'public_origin': args.public_origin, 'mode': args.mode, 'scenario': args.scenario,
                 'budget_usd': args.budget_usd, 'request_limit': args.request_limit,
                 'prompt_sha256': canonical_prompt_sha, 'raw_prompt_sha256': prepared['prompt_sha256'],
                 'prompt_normalization': 'outer whitespace only (official composer trim)',
@@ -226,6 +246,7 @@ def main():
     parser.add_argument('--embedding-model', default='fixture-vectors-not-a-semantic-model')
     parser.add_argument('--mode', choices=['baseline', 'shadow', 'execute'], default=None)
     parser.add_argument('--port', type=int, default=defaults['port'])
+    parser.add_argument('--public-origin', help='exact HTTPS gateway origin; backend remains on loopback, no proxy or account isolation is created')
     parser.add_argument('--run-id', help='optional unique 32-character hexadecimal output identity')
     parser.add_argument('--budget-usd', type=float, default=defaults['budget_usd'])
     parser.add_argument('--request-limit', type=int, default=defaults['request_limit'])
@@ -235,6 +256,9 @@ def main():
                         default='normal', help='mock-only failure injection for diagnostics')
     args = parser.parse_args()
     args.mode = args.mode or ('baseline' if args.frozen else 'shadow')
+    if args.public_origin:
+        try: args.public_origin = https_public_origin(args.public_origin)
+        except ValueError as error: parser.error(str(error))
     if args.frozen and args.mode != 'baseline' and args.scenario != 'portfolio-v1':
         parser.error('Motif modes require the portfolio-v1 historical library scenario')
     if args.fixture in ('stale', 'tool-failure') and (args.mode != 'execute' or args.scenario != 'portfolio-v1'):
@@ -325,7 +349,8 @@ def main():
     log = (output / 'startup.log').open('w')
     process = subprocess.Popen(['node', str(ROOT / 'node_modules/@deepseek-ai/dsh/lib/bin.js'),
         '--profile', 'web', '--patch', str(output / 'host.patch.yml'),
-        '--host', '127.0.0.1', '--port', str(args.port), '--no-open'],
+        '--host', '127.0.0.1', '--port', str(args.port), '--no-open',
+        *(['--trusted-host', urlsplit(args.public_origin).netloc] if args.public_origin else [])],
         cwd=output / 'work', env=env, stdout=log, stderr=subprocess.STDOUT)
     proc = Path(f'/proc/{os.getpid()}/stat')
     ticks = proc.read_text().rsplit(')', 1)[1].split()[19] if proc.exists() else None
@@ -363,6 +388,11 @@ def main():
             match = re.search(r'http://127\.0\.0\.1:' + str(args.port) + r'/\?token=[^\s]+', text)
             if match:
                 (output / 'access-url.txt').write_text(match.group(0) + '\n'); (output / 'access-url.txt').chmod(0o600)
+                if args.public_origin:
+                    public_url = args.public_origin + '/?' + urlsplit(match.group(0)).query
+                    (output / 'public-access-url.txt').write_text(public_url + '\n')
+                    (output / 'public-access-url.txt').chmod(0o600)
+                    print('HTTPS 网关登录地址仅保存在 public-access-url.txt；网关须另行配置。', flush=True)
                 print('官方 Web 已启动；认证地址仅保存在 access-url.txt。' + ('冻结题面见 prompt.md。' if args.frozen else '认证后在聊天输入框旁选择 Harless 场景与模式。'), flush=True)
                 break
             time.sleep(0.1)

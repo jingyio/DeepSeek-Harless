@@ -1,16 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
+import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 
 const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
-async function fixture(overrides = {}) {
+async function fixture({ broker = false, fixtureSchemas = toolSchemas, ...overrides } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
   const token = 'fixture-control-authority';
@@ -23,20 +25,36 @@ async function fixture(overrides = {}) {
     if (url.pathname === '/tasks/register') registrations.set(value.session_id,
       { task_id: value.task_id, budget_usd: value.budget_usd, model: value.model });
     const session = value?.session_id ?? url.searchParams.get('session_id');
+    if (url.pathname === '/tasks/stats' && !registrations.has(session)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Task session not found' })); return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ stats: { global_budget_usd: .25, upstream_requests: 0, prompt_tokens: 0,
       completion_tokens: 0, estimated_cost_usd: 0, ...registrations.get(session) } }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const brokerCalls = [], brokerRoutes = new Map();
+  const brokerServer = broker ? createServer(async (req, res) => {
+    if (req.headers['x-sss-control-token'] !== token) { res.writeHead(401); res.end('{}'); return; }
+    let raw = ''; for await (const part of req) raw += part;
+    const value = JSON.parse(raw); brokerCalls.push({ path: req.url, value });
+    if (req.url === '/bind') brokerRoutes.set(value.session_id, value.budget_session_id);
+    if (req.url === '/unbind') brokerRoutes.delete(value.session_id);
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{}');
+  }) : undefined;
+  if (brokerServer) await new Promise(resolve => brokerServer.listen(0, '127.0.0.1', resolve));
   const policy = { output: directory, endpoint: 'http://127.0.0.1:1234/v1',
-    mode: 'baseline', budget_usd: .25, allowed_tools: toolSchemas.map(row => row.name),
+    mode: 'baseline', budget_usd: .25, allowed_tools: fixtureSchemas.map(row => row.name),
     capability_profile: 'example', max_output_tokens: 1000, provider_mode: 'mock',
     control_endpoint: `http://127.0.0.1:${server.address().port}`, control_token: token,
-    resources: { 'source:one': { version: 'v1', text: 'Public source fixture.' } }, ...overrides };
+    resources: { 'source:one': { version: 'v1', text: 'Public source fixture.' } },
+    ...(brokerServer ? { budget_broker_endpoint: `http://127.0.0.1:${brokerServer.address().port}` } : {}), ...overrides };
   mkdirSync(join(directory, 'tasks'));
   const policyPath = join(directory, 'policy.json'); writeFileSync(policyPath, JSON.stringify(policy));
   const previous = process.env.SSS_WEB_POLICY; process.env.SSS_WEB_POLICY = policyPath;
   const listeners = new Map(), routes = new Map(), webRoutes = new Map(), agents = new Map();
+  const storedSessions = new Map();
+  const storedHeaders = new Map();
   const promptCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
@@ -62,9 +80,12 @@ async function fixture(overrides = {}) {
         const id = request.sessionId ?? `mock-session-${agents.size + 1}`;
         if (!agents.has(id)) {
           const guardFns = [];
-          const agent = { preset: request.agentPreset, session: { id }, guards: guardFns, events: [], ctx: {
-            tools: { restrict(value) { agent.allow = value; return () => {}; }, guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
-              schemas() { return structuredClone(toolSchemas.map(row => ({ ...row, name: agent.allow.allow[0] }))); } },
+          const events = storedSessions.get(id) ?? []; storedSessions.set(id, events);
+          if (!storedHeaders.has(id)) storedHeaders.set(id, { id, agentPreset: request.agentPreset });
+          const agent = { preset: request.agentPreset, session: { id }, guards: guardFns, events, ctx: {
+            tools: { restrict(value) { agent.allow = value; return () => {}; },
+              guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
+              schemas() { return structuredClone(fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
             systemPrompt: { section() { return () => {}; } },
             on() {},
           } };
@@ -81,12 +102,16 @@ async function fixture(overrides = {}) {
         agent.events.push(event); emit('session/event', agent.session, event);
         return { accepted: true };
       },
-      async inspect(id) { return { meta: { id }, events: agents.get(id)?.events ?? [] }; },
+      async inspect(id) {
+        if (!storedSessions.has(id)) throw new ApiSessionNotFound(`Unknown session ${id}`);
+        return { meta: storedHeaders.get(id), events: storedSessions.get(id) };
+      },
       async cancel() { return { accepted: true }; },
-      selectModel(request) { return request; },
+      async selectModel(request) { await originalController.create({ sessionId: request.sessionId }); return request; },
       updateQueue(request) { queueMutations.push(request); return { accepted: true }; },
     },
   };
+  const originalController = { ...ctx.sessionController };
   try {
     const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
   } catch (error) {
@@ -105,23 +130,31 @@ async function fixture(overrides = {}) {
   const submit = async task => api({ action: 'submit', task_id: task.task_id,
     confirmation_digest: task.confirmation_digest });
   function modelRequest(task, changes = {}, tagged = true) {
-    const agent = agents.get(task.session_id), event = agent.events.find(row => row.type === 'user/message');
+    const agent = agents.get(task.session_id), events = agent.events.filter(row => row.type === 'user/message');
     const body = { sessionId: task.session_id, provider: 'deepseek-official', model: 'deepseek-flash',
-      reasoningEffort: 'off', maxTokens: 1000, tools: structuredClone(toolSchemas),
-      messages: [{ role: 'user', id: event.data.id, source: event.data.source, content: event.data.content }], ...changes };
+      reasoningEffort: 'off', maxTokens: 1000, tools: structuredClone(fixtureSchemas),
+      messages: events.map(event => ({ role: 'user', id: event.data.id, source: event.data.source,
+        content: event.data.content })), ...changes };
     return tagged ? markAgentLoopRequest(body) : body;
   }
   return { ctx, api, preview, submit, agents, emit, commands, presetCalls,
     async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
     async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
-    promptCalls, queueMutations, controlCalls,
-    registrations, modelRequest, routes, webRoutes,
+    promptCalls, queueMutations, controlCalls, directory,
+    registrations, brokerCalls, brokerRoutes, modelRequest, routes, webRoutes,
+    originalController,
+    async restart() {
+      Object.assign(ctx.sessionController, originalController);
+      listeners.clear(); routes.clear(); webRoutes.clear(); agents.clear();
+      const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
+    },
     stream(request, next) { return listeners.get('llm/stream')[0](request, next); },
     async complete(task) { emit('agent/status', { agent: agents.get(task.session_id), status: 'idle' });
       await api(undefined, '?task_id=' + task.task_id); },
     async close() {
       if (previous === undefined) delete process.env.SSS_WEB_POLICY; else process.env.SSS_WEB_POLICY = previous;
       server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+      if (brokerServer) { brokerServer.closeAllConnections(); await new Promise(resolve => brokerServer.close(resolve)); }
       rmSync(directory, { recursive: true });
     },
   };
@@ -213,6 +246,25 @@ test('Native model picker selection is used by the next chat task', options, asy
   } finally { await f.close(); }
 });
 
+test('Selected model and empty session survive a Web process restart', options, async () => {
+  const f = await fixture({ models: [
+    { provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true },
+    { provider: 'harless-glm', model: 'glm-4.6', label: 'GLM 4.6', available: true },
+  ] });
+  try {
+    const { sessionId } = await f.ctx.sessionController.create({});
+    await f.ctx.sessionController.selectModel({ sessionId, provider: 'harless-glm', model: 'glm-4.6' },
+      new AbortController().signal);
+    await f.restart();
+    await f.ctx.sessionController.prompt({ sessionId, requestId: 'after-restart', mode: 'queue',
+      content: [{ type: 'text', text: 'Continue with selected model' }] }, new AbortController().signal);
+    const task = (await f.api()).value.tasks[0];
+    assert.equal(task.model, 'glm-4.6'); assert.equal(task.provider, 'harless-glm');
+    assert.equal(task.status, 'running');
+    await f.complete(task);
+  } finally { await f.close(); }
+});
+
 test('Submit requires the current confirmation and never reruns a retry; only one task is active', options, async () => {
   const f = await fixture();
   try {
@@ -258,6 +310,128 @@ test('Model admission rejects auxiliary calls, changed schemas, altered user env
   } finally { await f.close(); }
 });
 
+test('Model admission accepts a no-tool agent whose wire request omits tools', options, async () => {
+  const f = await fixture({ fixtureSchemas: [] });
+  try {
+    const task = await f.preview('无工具对话');
+    assert.equal((await f.submit(task)).status, 200);
+    const next = () => (async function* () { yield { type: 'fixture' }; })();
+    const request = f.modelRequest(task);
+    delete request.tools;
+    const received = [];
+    for await (const row of f.stream(request, next)) received.push(row);
+    assert.equal(received.length, 1);
+    const recorded = JSON.parse(readFileSync(join(f.directory, 'tasks', task.task_id, 'model-request-config.json')));
+    assert.deepEqual(recorded.tools_order, []);
+    await f.complete(task);
+  } finally { await f.close(); }
+});
+
+test('Browser-generated session IDs are admitted, foreign sessions and storage failures are denied', options, async () => {
+  const f = await fixture();
+  try {
+    const request = { sessionId: 'browser-new-id' };
+    const results = await Promise.all([f.ctx.sessionController.create(request), f.ctx.sessionController.create(request)]);
+    assert.equal(results[0].sessionId, request.sessionId);
+    assert.deepEqual(results[0], results[1]); assert.equal(f.agents.size, 1);
+    await f.originalController.create({ sessionId: 'foreign-existing' });
+    await assert.rejects(f.ctx.sessionController.create({ sessionId: 'foreign-existing' }), /outside/);
+    const inspect = f.ctx.sessionController.inspect;
+    f.ctx.sessionController.inspect = async () => { throw Error('storage unavailable'); };
+    await assert.rejects(f.ctx.sessionController.create({ sessionId: 'unproven-id' }), /storage unavailable/);
+    f.ctx.sessionController.inspect = inspect;
+    assert.equal(f.agents.has('unproven-id'), false);
+    assert.equal(f.promptCalls.length, 0); assert.equal(f.registrations.size, 0);
+  } finally { await f.close(); }
+});
+
+test('Legacy blank preset sessions resume only when history and budget registration are absent', options, async () => {
+  const f = await fixture({ provider_mode: 'real' });
+  try {
+    await f.originalController.create({ sessionId: 'legacy-empty', agentPreset: 'sss-task' });
+    await f.originalController.create({ sessionId: 'legacy-used', agentPreset: 'sss-task' });
+    f.agents.get('legacy-used').events.push({ type: 'user/message', data: { content: [] } });
+    await f.originalController.create({ sessionId: 'legacy-budget', agentPreset: 'sss-task' });
+    f.registrations.set('legacy-budget', { task_id: 'previous-task', budget_usd: .25 });
+    await f.originalController.create({ sessionId: 'other-preset' });
+    await f.restart();
+    const prompt = id => f.ctx.sessionController.prompt({ sessionId: id, requestId: 'request-' + id,
+      mode: 'queue', content: [{ type: 'text', text: 'Blank session upgrade' }] }, new AbortController().signal);
+    await assert.rejects(prompt('legacy-used'), /outside/);
+    await assert.rejects(prompt('other-preset'), /outside/);
+    await assert.rejects(prompt('legacy-budget'), /already has a task/);
+    await prompt('legacy-empty');
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 1);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/activate').length, 1);
+    assert.equal(f.promptCalls.length, 1);
+  } finally { await f.close(); }
+});
+
+test('Owned empty sessions survive restart while bound task identities cannot get a fresh budget', options, async () => {
+  const f = await fixture({ provider_mode: 'real' });
+  try {
+    const created = await f.ctx.sessionController.create({ sessionId: 'restart-empty' });
+    await f.originalController.create({ sessionId: 'restart-foreign' });
+    await f.restart();
+    await assert.rejects(f.ctx.sessionController.create({ sessionId: 'restart-foreign' }), /outside/);
+    const request = { sessionId: created.sessionId, requestId: 'persisted-budget', mode: 'queue',
+      content: [{ type: 'text', text: 'Restart must retain this task binding' }] };
+    await f.ctx.sessionController.prompt(request, new AbortController().signal);
+    assert.equal(f.agents.size, 1);
+    assert.deepEqual(f.agents.get(created.sessionId).allow, { allow: toolSchemas.map(row => row.name) });
+    assert.equal(f.registrations.size, 1); assert.equal(f.promptCalls.length, 1);
+    await f.restart();
+    await f.ctx.sessionController.create({ sessionId: created.sessionId });
+    await assert.rejects(f.ctx.sessionController.prompt({ ...request, requestId: 'budget-reset-attempt' },
+      new AbortController().signal), /already has a task/);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 1);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/activate').length, 1);
+  } finally { await f.close(); }
+});
+
+test('Real native chat keeps one DSH session across confirmed turns with distinct budget routes', options, async () => {
+  const f = await fixture({ broker: true, provider_mode: 'real' });
+  try {
+    const id = 'session-11111111-1111-4111-8111-111111111111';
+    await f.ctx.sessionController.create({ sessionId: id });
+    const prompt = (requestId, text) => f.ctx.sessionController.prompt({ sessionId: id,
+      requestId, mode: 'queue', content: [{ type: 'text', text }] }, new AbortController().signal);
+    await prompt('first-turn', '你好');
+    const first = (await f.api()).value.tasks[0];
+    assert.equal(first.status, 'running'); assert.equal(f.promptCalls.length, 1);
+    assert.equal(f.brokerRoutes.get(id), 'turn-' + first.task_id);
+    assert.equal(f.registrations.get('turn-' + first.task_id).task_id, first.task_id);
+    await f.complete(first);
+    assert.equal(f.brokerRoutes.has(id), false);
+    rmSync(join(f.directory, readdirSync(f.directory).find(name => name.startsWith('task-index-'))));
+    rmSync(join(f.directory, 'tasks', first.task_id, 'budget-route.json'));
+    f.registrations.set(id, { task_id: first.task_id, budget_usd: .25 });
+    await f.restart();
+    await prompt('second-turn', '继续回答');
+    const tasks = (await f.api()).value.tasks;
+    assert.equal(tasks.length, 2);
+    assert.equal(tasks.find(task => task.task_id === first.task_id).status, 'completed');
+    const second = tasks.find(task => task.task_id !== first.task_id);
+    assert.equal(second.session_id, id); assert.notEqual(second.task_id, first.task_id);
+    assert.equal(second.status, 'running'); assert.equal(f.promptCalls.length, 2);
+    assert.equal(f.brokerRoutes.get(id), 'turn-' + second.task_id);
+    assert.equal(f.registrations.get('turn-' + second.task_id).task_id, second.task_id);
+    assert.equal(f.promptCalls.length, 2);
+    const next = () => (async function* () { yield { type: 'fixture' }; })();
+    const model = f.modelRequest(second);
+    assert.equal(model.messages.length, 2);
+    const received = []; for await (const row of f.stream(model, next)) received.push(row);
+    assert.equal(received.length, 1);
+    assert.throws(() => f.stream(f.modelRequest(second, { messages: [model.messages[0]] }), next), /envelope/);
+    assert.throws(() => f.stream(f.modelRequest(second, { messages: [{ ...model.messages[0],
+      content: [{ type: 'text', text: 'changed old user turn' }] }, model.messages[1]] }), next), /envelope/);
+    await f.complete(second);
+    assert.equal(f.brokerRoutes.has(id), false);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 2);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/cancel').length, 2);
+  } finally { await f.close(); }
+});
+
 test('Native mock chat admits dynamic content in a new session and records task cancellation', options, async () => {
   const f = await fixture();
   try {
@@ -268,7 +442,7 @@ test('Native mock chat admits dynamic content in a new session and records task 
     const listing = await f.api(), first = listing.value.tasks[0];
     assert.equal(first.session_id, created.sessionId); assert.equal(first.status, 'running');
     await assert.rejects(f.ctx.sessionController.prompt({ sessionId: created.sessionId, requestId: 'native-second', mode: 'queue',
-      content: [{ type: 'text', text: '应另开任务' }] }, new AbortController().signal), /already has a task/);
+      content: [{ type: 'text', text: '应等待当前轮' }] }, new AbortController().signal), /等待本轮完成/);
     await assert.rejects(f.ctx.sessionController.prompt({ sessionId: 'unknown', requestId: 'bad', mode: 'queue',
       content: [{ type: 'text', text: '未知会话' }] }, new AbortController().signal), /outside/);
     const cancelled = await f.api({ action: 'cancel', task_id: first.task_id });
