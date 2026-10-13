@@ -266,6 +266,8 @@ def main():
     module = fixture_module()
     def scene_fixture_action(values, event, body):
         # Synthetic transport diagnostic only; real models never use this selector.
+        if args.fixture == 'outside-tool' and len(handler.calls) == 1:
+            return 'bash', {'command': 'echo forbidden'}
         if any(tool.get('function', {}).get('name', '').startswith('mcp__demo__') for tool in body.get('tools', [])):
             return demo_action(values, event)
         texts = [message.get('content', '') for message in body.get('messages', []) if message.get('role') == 'user' and isinstance(message.get('content'), str)]
@@ -273,12 +275,6 @@ def main():
         return module.next_fixture_action(values, match.group() if match else event)
     handler = module.provider_handler('event:l_retrieval_persistence:01', with_usage=True,
         request_limit=24 if args.frozen else args.run_request_limit, action_selector=scene_fixture_action)
-    if args.fixture == 'outside-tool':
-        original_action = module.next_fixture_action
-        def outside_action(values, event):
-            if len(handler.calls) == 1: return 'bash', {'command': 'echo forbidden'}
-            return original_action(values, event)
-        module.next_fixture_action = outside_action
     if args.fixture in ('delay', 'provider-failure'):
         original_respond = handler.respond
         def respond(self):

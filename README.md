@@ -166,3 +166,9 @@ Motif 模式的入口与普通组相同，增加 `--mode shadow` 或 `--mode exe
 V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复与交付说明](scenarios/research_ppt/delivery.md)。新增入口仍使用 Python 场景工具后端；未实现无 Python 插件产品。最新两题对照的 Motif 组请求、token 和代理估费均增加，且未达到统一人工质量门槛，不支持整体降本。详见 [V7](docs/experiments/research-ppt-v7-delivery-rsi-20261011.md)、[V8](docs/experiments/research-ppt-v8-cost-quality-rsi-20261011.md)。科研 PPT 为场景 pilot，不能代替主线跨应用科研决定验收。
 
 后续工程结果见 [V10](docs/experiments/research-ppt-v10-product-20261012.md) 与 [V11](docs/experiments/research-ppt-v11-scientific-design-20261012.md)：V10 在两份相同明确标题编辑任务中由普通入口省去模型；V11 增加科研原图、结果、方法页型并交付三组同内容对照和一份真实新稿。两者都不称新增 RSI。原始轨迹、来源及 PPT 仅保存在私有区，独立科学/视觉人评与完整生成净成本仍未证明。
+
+### Harless 多场景 Web
+
+`npm run web` / `web:real` 默认打开 `new-scene` 普通 Harness + Session 文件工具；`/harless` 的场景菜单直接选择服务端登记配置。PPT 连接现有19工具交付后端（需按 `scenarios/research_ppt/README.md` 安装依赖并构建）；论文校对和数据分析尚缺 main 正式后端，明确拒绝启动。没有认证生产 Library 时 Shadow 记录回退，Execute 拒绝；RSI Off 保留模式选择并实际采用 Origin。
+
+任务与用户启动实例分别隔离；菜单不调用模型，已确认任务不随菜单变化。PPT 默认只读，生成页数/模板/输出权限经任务 API 设置后确认；原生聊天尚无该参数编辑界面。完整配置、用户入口依赖和验收见 [Harless 控制协议](docs/harless-controls.md)。`npm run web:scenes:check` 检查实际 Harness/MCP 与两用户实例隔离；`-- --real-model` 明确启用最多0.06美元的只读模型验收。历史样例工具只用 `--scene-registry config/harless-diagnostics.json --scenario example` 等显式诊断配置，默认产品菜单不映射样例。
