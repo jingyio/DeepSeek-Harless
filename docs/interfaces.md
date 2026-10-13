@@ -299,7 +299,23 @@ pin/read 的 `version_sha256` 是任务输入 SHA 列表按 Python 默认 JSON �
 
 ### V15：双路试用与反馈管理接口
 
-`npm run ppt` 对应 `python -m scenarios.research_ppt.trial`，复用现有公共DSH入口，在线MCP仍由TypeScript执行。`prepare_trial(inputs, instruction, slides, ...) -> trial.json`、`run_trial(path) -> (status, comparison_path)`、`review_trial(path, review_path) -> 新评审记录` 保留JSON边界，不依赖UI。默认预览，执行显式 `--call-model`，两路独立job；19工具/schema/来源/基础提示相同，仅steps/composed策略后缀不同。结果保留实际请求、缓存输入/输出、失败、代理费、交付SHA、策略遵守、待评审，未知不填零。lab为朴素科研样式，组合工具是普通脚本，不是RSI。
+V16 新预览默认冻结 `execution_policy={schema_version:1,strategy:"baseline_steps"|"host_delivery"}`；CLI prepare 对应 `--execution-policy`。两组保持相同 19 工具/schema/顺序，但服务端均拒绝 `build_delivery/render_delivery/revise_delivery`。普通组保持原子调用；host 组的合法 `render_deck/revise_deck/restyle_deck` 触发现有有限脚本，返回顶层真实交付回执和 `execution_policy` 执行ID/策略摘要。审计保留 loaded/rejected/start/completed/failed 与真实后端序列；固定脚本不计 RSI。缺少策略仅兼容旧冻结任务，不能用于新的严格对照。新步数上限60，旧预览和旧结果不重签。
+
+`cli.prepare(...minimum_original_figures=0)` 和 `trial.prepare_trial(...minimum_original_figures=0)` 对应 `--min-original-figures`，冻结显式完整原图数量，默认0兼容，仅含PDF的generate任务可设置正值。`list_inputs` 返回实际值，不改变工具schema/顺序。生成和修订按源SHA/页码/真实图注候选去重；数量不足在写输出前返回 `insufficient_original_figures`，计划不能降低合同。合同只验证来源身份和数量，不能认证图件解释或科研事实。
+
+`cli.prepare` 默认 `persistent_library=True`，输入保存长期私有副本与 `library_resource_id`，job冻结可信 `library_tenant`。服务与checkpoint恢复逐次核库权限、source SHA及绑定路径；不因原临时上传文件删除而删除资料库。缓存仍显式 `document_cache`，两组采用同值，来源复用不直接等同模型token节省。可信后端设置用户身份，浏览器不得以自报tenant跨用户读取。接口与认证组件边界见[长期库](../scenarios/research_ppt/persistent-library.md)。
+
+新 job 同时冻结 `library_component_schema_version=1` 与 `library_components`。prepare 登记或复用固定 `document_parse/render_delivery` 描述，有输出权限时加入 `direct_edit`；run、服务初始化、每次 current 与恢复路径检查租户、撤回状态、版本及固定脚本身份，描述符不授权动态代码执行。两个字段都缺省仅兼容旧冻结任务；缺一、显式 null、非法版本、集合或脚本身份不匹配均拒绝，不在运行中自动重新登记以绕过撤回。固定组件属于工程复用，不能称为本轮模型学得工具。
+
+`FeedbackStore.preview(...evaluation_only=True)` 允许明确的 AI 辅助审阅范围，但须绑定真实review文件/来源/回执、策略审计与完整运行；候选及冻结计划永久记录 `learning_scope=evaluation_only,production_eligible=false`，不能晋级active。编译前核实际产品版本，编译后锁源码/构建；新任务通过候选入口隔离评测，质量和成本仍独立统计，不把参数流认证当科学质量认证。
+
+`npm run ppt` 对应 `python -m scenarios.research_ppt.trial`，复用现有公共DSH入口，在线MCP仍由TypeScript执行。`prepare_trial(inputs, instruction, slides, ...) -> trial.json`、`run_trial(path) -> (status, comparison_path)`、`review_trial(path, review_path) -> 新评审记录` 保留JSON边界，不依赖UI。默认预览，执行显式 `--call-model`，两路独立job；当前21工具/schema/来源/基础提示相同（V16历史为19），仅冻结的baseline_steps/host_delivery策略不同。两路均拒绝模型直接选择三个组合入口，host在合法请求后执行固定交付链；旧steps/composed仅历史兼容。结果保留实际请求、缓存输入/输出、失败、代理费、交付SHA、策略遵守、待评审，未知不填零。lab为朴素科研样式，组合工具是普通脚本，不是RSI。
+
+V17 `read_pending_plan({draft_id,version_sha256,pages})`读取同job失败草稿的1–5个明确页面，不返回全稿；`repair_pending_plan`要求同一草稿ID及当前版本，接受显式`updates/replacements/insertions/deletions/metadata`，页号以修改前草稿为准。只在`host_delivery`与原任务输出权限下启用；baseline_steps/legacy拒绝。来源/实现/schema/权限变化、陈旧版本、重复无变化执行、预算耗尽和已交付草稿拒绝；未完成草稿存在时拒绝新整稿。最多8次patch、6次恢复渲染尝试，失败仍交回模型，不自动删内容、改数值或选页。最终回执增加`pending_plan/local_repair/automatic_retry`，计账核原host启动/完成摘要、最终adapter工具/参数/回执及实际验收文件三层证据。普通脚本恢复不称学得Motif或RSI。
+
+Provider-facing schema为兼容接口，图表/流程等部分嵌套字段使用浅层object；TS `preflightPlan`、pending patch和Python后端仍严格执行字段、类型、来源、容量及版本校验。schema浅化不授权任意结构，也不能代替运行时验证。V17历史统计误判以追加校正记录保留，不改原冻结快照或重新签署旧学习证书。
+
+V17发布准备统一输入摘要与资料库上限100 MiB/份，摘要分块读取；1–8份/1–30页及ZIP展开150 MiB、单图8 MiB守卫保留。单路`cli.run`默认$1.50/60步/8000输出，双路总$3；delivery MCP外层300秒、内层工具240秒。以上是PPT接口的实际参数，不改变main通用Web默认值。网页任务级job、流式上传映射、实际交付状态/鉴权下载及反馈/对照展示仍待新增适配，见[接入约定](../scenarios/research_ppt/frontend-integration.md)；当前registry和`WebTaskRequest`未加入未经运行时支持的字段。
 
 `FeedbackStore.collect/queue/preview/learn/activate/rollback/active_manifest/candidate_manifest` 是项目私有管理API，CLI通过 `npm run ppt:feedback` 调用。collect明确授权，learn默认false；不可变追加反馈。preview最小2训练/1留出，learn复用已有编译器，仅生成candidate。`--candidate-version` 隔离评测，与 `--use-active-learning` 互斥；无active记录普通fallback，不造证书。两路径沿用cli已有准入/schema/来源/权限守卫，新安装须独立准备准入程序。
 
@@ -328,3 +344,9 @@ pin/read 的 `version_sha256` 是任务输入 SHA 列表按 Python 默认 JSON �
 `revise_deck` / `revise_delivery` / 明确页修改的 `changes` 允许新增两字段及用 `null` 移除。若有已有说明且 `sources` 被更换或重排，同一 `changes` 必须显式更新说明与来源关联或移除说明；明确更换合法 `source_index` 可接受，隐式重绑定拒绝。移除 archetype 时也须移除仍存在的 evidence_notes。来源/notes/新页型变更的有限 TS 修订入口先读取完整当前计划做预检；普通标题等修改不因此额外读取。保持既有权限、版本、原稿副本、非目标页和真实交付守卫。该接口扩展是普通工程能力，不代表新 RSI、审美改善或降本已验证。
 
 V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英寸, 满正文区等比容纳原图的面积×0.5)`。完整文字可容纳但所有候选低于该值时返回公开可恢复的 `text_overflow`（`role=image`）；不删除原图或科学内容、不进一步缩小正文。极窄长图适用比例自适应阈值；仅面积守卫不能认证图字可读。`plan_expectations` 独立保留完整可见 `label [source_index]`、说明、出处及 notes 关联；只改可见索引而 notes 不变也拒绝。`_check_scientific_footer` 检查真实 PDF 的绘制字形，要求大于 12pt 的正文距来源栏至少 3pt，缺失实际绘制出处也拒绝。它不覆盖全部重叠或科学含义，未 opt-in 的旧页不应用该新增来源栏检查。真实结果及边界见 [V11 记录](experiments/research-ppt-v11-scientific-design-20261012.md)。
+
+### 科研 PPT V17 Web 专用接口
+
+主页面及任务工作台显式链接 `/ppt`；PPT保持独立任务级job，不登记不可启动的静态MCP preset。`POST /api/harless/ppt/upload?name=...`接收二进制流并返回服务端回执；`POST /api/harless/ppt`处理严格preview/submit/cancel；`GET`查询状态；`GET /api/harless/ppt/download?task_id=...&artifact_id=...`复核真实交付SHA后下载。均复用Harness认证，禁止任意路径、策略/权限/tenant覆盖。
+
+默认15页，单文件100MiB/1–8份/总256MiB；双路总$3，每路60步骤/8000输出，PPT独立启动预算由 `--ppt-run-budget-usd` 控制，确认时保守预留、不退回未结算费。普通任务预算不变。原始账本私有，completed要求双方机械交付及策略合格，科研质量另评。完整契约见 [PPT前端接入](../scenarios/research_ppt/frontend-integration.md)。网页反馈改页、持续学习与多账号隔离暂缓，现有MCP/离线接口保留。

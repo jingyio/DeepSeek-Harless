@@ -24,9 +24,9 @@ _SAFE_ERRORS = {
     '来源尚未读取或页码越界': ('invalid_source', '读取该来源并使用实际有效页码，保留每页 sources。'),
     '页码越界': ('invalid_source', '使用已固定来源的合法页码。'),
     '来源需要 source_id 和 page': ('invalid_plan', 'sources 每项使用真实 source_id 与整数 page。'),
-    '每页必须声明 sources: [{source_id, page}]': ('invalid_plan', '为每页补充真实来源与页码，保留用户要求的完整页数。'),
-    '计划需要 title 和 slides': ('invalid_plan', '提交包含 title 与完整 slides 的计划，只使用支持字段。'),
-    '幻灯片包含不支持的字段': ('invalid_plan', '使用规定的页面字段，修正完整计划后重试。'),
+    '每页必须声明 sources: [{source_id, page}]': ('invalid_plan', '仅为缺失来源的页面补充真实来源与页码，保持其它页及指定总页数。'),
+    '计划需要 title 和 slides': ('invalid_plan', '补充缺失的 title 或 slides 字段；保留已提供内容，不重写其它页面。'),
+    '幻灯片包含不支持的字段': ('invalid_plan', '仅修正含未知字段的页面；使用规定字段，保持其它页和科研内容。'),
     '科研页型与主体内容类型不一致': ('invalid_plan', 'evidence-focus 使用 image；result-summary 使用 table 或 chart；method-map 使用 process。'),
     'evidence_notes 仅允许用于科研页型': ('invalid_plan', '为证据说明设置合法 archetype，或显式移除 evidence_notes；不要自动丢弃科学说明。'),
     'evidence_notes 的 source_index 超出原 sources 范围': ('invalid_plan', 'source_index 使用原 sources 数组的 1-based 整数索引，不引用后端追加图件来源。'),
@@ -34,6 +34,10 @@ _SAFE_ERRORS = {
     '图片必须引用 source_id 和 image_id，不接受路径或 URL': ('invalid_image', '引用 read_source 或 extract_figure 返回的真实 source_id/image_id。'),
     '图片来源尚未读取': ('invalid_image', '先读取或提取来源中的真实图件，再生成计划。'),
     '图片标识不存在': ('invalid_image', '重新查看 read_source 的 images 或调用 extract_figure，使用真实返回的 image_id；不要编造标识。'),
+    '科研图件须使用 read_page 返回的真实 figure_candidates 和 extract_figure；嵌入素材或整页不能冒充完整原图': ('invalid_image', '先 read_page 读取实际图注和 figure_candidates，再以 candidate_id 调用 extract_figure；不要用整页或局部嵌入素材替代完整原图。'),
+    '科研图件的真实来源页必须列入本页 sources，不能引用其它页代替': ('invalid_plan', '核对 extract_figure 返回的 source_id 和 page，将该真实图件页列入本页 sources；不能改写或编造图件来源。'),
+    '标题声明的图号与真实定位图注不一致，请核对原图而不是改写来源': ('invalid_plan', '核对 read_page/extract_figure 返回的真实图注及图号，修正标题或重新选择对应原图，保留真实来源。'),
+    '计划完整原图数量未达到任务要求': ('insufficient_original_figures', '读取 list_inputs 的 minimum_original_figures，仅修正相关页面以补足不同来源版本/页码/真实图注候选的完整原图；重复展示、重复裁取、嵌入碎片或整页不能凑数，保持其它页及指定总页数。'),
     '图件裁取需要合法 PDF 页码': ('invalid_image', '选择已固定 PDF 来源的有效页码。'),
     'bbox 为 [左,上,右,下]，使用 0–1 归一化坐标': ('invalid_image', '提交四个 0–1 坐标，左小于右、上小于下。'),
     '图件尺寸不在支持范围，请选择更大的区域': ('invalid_image', '选择更大的有效区域重新提取。'),
@@ -89,7 +93,44 @@ _RENDER_ERRORS = {
     '表格文本溢出，请缩短单元格或分成多页', '图表分类标签过长，请缩短标签或减少分类',
     '准入程序必须使用固定 schema，且不能放宽外层边界',
 }
-_ROLE = r'(?:title|body_[1-5]|left_heading|right_heading|left_[1-4]|right_[1-4]|footer|page)'
+_ROLE = (r'(?:title|body|body_[1-5]|left|right|left_heading|right_heading|left_[1-4]|right_[1-4]'
+         r'|footer|page|takeaway|image|table|chart|process|process_[1-5]_(?:heading|detail|number)'
+         r'|process_connector_[1-4]|evidence_note_[1-3](?:_heading)?)')
+
+
+def _recovery_location(report: dict) -> dict:
+    """从确定性版式角色映射到既有计划字段，不回传输入值或任意报告字段。"""
+    location = {}
+    if type(report.get('page')) is int and 1 <= report['page'] <= 30:
+        location['page'] = report['page']
+    role = report.get('role')
+    if not isinstance(role, str) or not re.fullmatch(_ROLE, role):
+        return location
+    location['role'] = role
+    if role in {'title', 'takeaway', 'table', 'chart'}:
+        location['field'] = role
+    elif role == 'footer':
+        location['field'] = 'sources'
+    elif role.startswith('process'):
+        location['field'] = 'process'
+    elif role.startswith('evidence_note_'):
+        location['field'] = 'evidence_notes'
+    elif role.startswith(('left', 'right')):
+        location['field'] = 'comparison'
+    elif role.startswith('body_'):
+        location['field'] = 'bullets'
+    elif role in {'body', 'image'} and report.get('code') == 'text_overflow':
+        # 聚合容量/原图面积守卫不能断言具体哪一句出错，更不能提示裁图凑容量。
+        location['fields'] = ['bullets', 'evidence_notes']
+    elif role == 'image':
+        location['field'] = 'image'
+    return location
+
+
+def _layout_feedback(report: dict, action: str) -> dict:
+    return {'error': report['code'], 'message': '确定性版面检查拒绝了本页计划。',
+            'next_action': action + '仅修正报告涉及的页和字段；保持其它页、事实条件、来源及指定总页数，不重写全稿。',
+            **_recovery_location(report)}
 
 
 def _safe_failure(exc: ValueError) -> dict:
@@ -99,19 +140,17 @@ def _safe_failure(exc: ValueError) -> dict:
         report = exc.report
         code = report.get('code')
         actions = {
-            'text_overflow': '缩短具体位置的文字，保持事实条件、来源和指定总页数。',
-            'table_overflow': '缩短表格单元格或重组本页内容，保持数据和比较条件。',
+            'text_overflow': '明确精简重复文字或重新组织本页；不能自动删除科研条件。',
+            'table_overflow': '明确缩短表格重复表述或重组本页，保留数据、单位和比较条件。',
             'chart_label_overflow': '缩短图表标签，保持原始数值和单位。',
             'out_of_bounds': '减少本页密度并使用支持的页面结构，保持来源和总页数。',
             'content_overlap': '缩短或重组本页内容，保持科研条件和总页数。',
         }
         if code in actions:
-            feedback = {'error': code, 'message': '确定性版面检查拒绝了本页计划。', 'next_action': actions[code]}
-            if type(report.get('page')) is int and 1 <= report['page'] <= 30:
-                feedback['page'] = report['page']
-            if isinstance(report.get('role'), str) and re.fullmatch(r'[a-z_0-9]{1,64}', report['role']):
-                feedback['role'] = report['role']
-            return feedback
+            action = actions[code]
+            if code == 'text_overflow' and report.get('role') == 'image':
+                action = '正文或证据说明挤占完整原图面积；精简重复说明，保留科学条件和完整原图，不能裁图或改图片句柄。'
+            return _layout_feedback(report, action)
         # schema 错误仍通过白名单消息恢复，不公开任意 JSON 内容。
         message = '场景 Node 工具执行失败: ' + message
     if message in _SAFE_ERRORS:
@@ -122,18 +161,26 @@ def _safe_failure(exc: ValueError) -> dict:
                 'next_action': '使用 read_deck_plan 查看原字段格式，只修改明确要求的页和字段后重试。'}
     if re.fullmatch(r'任务要求总共 (?:[1-9]|[12][0-9]|30) 页', message):
         return {'error': 'invalid_plan', 'message': message,
-                'next_action': '按要求提交完整页数的计划；保留每页真实 sources，修正后重试。'}
+                'field': 'slides', 'expected_slides': int(message.split()[1]),
+                'next_action': '仅增补缺页或显式调整多余页；保留已正确页面和真实 sources，精确满足指定总页数，不重写全稿。'}
     if message.startswith('场景 Node 工具执行失败: '):
         for line in message.removeprefix('场景 Node 工具执行失败: ').splitlines():
             candidate = line.strip().removeprefix('Error: ')
             page = re.fullmatch(r'第 ([1-9]|[12][0-9]|30) 页：(.*)', candidate)
             detail = page[2] if page else candidate
+            overflow = re.fullmatch(_ROLE + r' (?:文本溢出，请缩短正文、标题或分成多页；不会自动删改科研内容'
+                                    r'|完整文本超出科研页容量，请拆页；不会删改条件或缩小正文)', detail)
+            if overflow:
+                report = {'code': 'text_overflow', 'role': detail.split(' ', 1)[0]}
+                if page:
+                    report['page'] = int(page[1])
+                return _layout_feedback(report, '明确精简重复文字，不能自动删除科研条件。')
             if (detail in _RENDER_ERRORS or re.fullmatch(r'封面/章节页最多 [1-5] 条短句', detail)
-                    or re.fullmatch(_ROLE + r' 文本溢出，请缩短正文、标题或分成多页；不会自动删改科研内容', detail)
                     or re.fullmatch(_ROLE + r' 超出版面边界', detail)
                     or re.fullmatch(_ROLE + r' 与 ' + _ROLE + r' 版面重叠', detail)):
                 return {'error': 'invalid_plan', 'message': candidate,
-                        'next_action': '按具体校验信息修正完整计划后重试，保持指定页数、真实来源与图件引用。'}
+                        **({'page': int(page[1])} if page else {}),
+                        'next_action': '仅按具体校验信息修正涉及的页和字段，保持其它页、指定总页数、真实来源与图件引用，不重写全稿。'}
     return {'error': 'internal_processing_failed', 'message': '工具内部处理失败，详细信息保留在受保护的服务器日志。',
             'next_action': '请开发者查看本次工具日志；本次调用未成功，不能交付或扩大权限。'}
 

@@ -9,6 +9,7 @@ import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
 import { digest } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
+import { installPptWeb } from '../../scenarios/research_ppt/ts/web-tasks.ts';
 import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, SettingsError } from './harless_settings.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
@@ -23,6 +24,7 @@ type Policy = {
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
   scenes?: Scene[]; scene_registry_sha256?: string;
   resources?: Record<string, { version: string; text: string }>;
+  ppt_run_budget_usd?: number;
 };
 type Task = {
   request: NormalizedWebTask; delivery: PromptPart[]; confirmation_digest: string;
@@ -49,6 +51,7 @@ const json = (path: string, value: unknown) => {
 
 export function apply(ctx: any) {
   const config: Policy = JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!, 'utf8'));
+  installPptWeb(ctx, config);
   if (!loopback(config.endpoint) || !loopback(config.control_endpoint) ||
       !config.control_token || !config.allowed_tools?.length ||
       !['baseline', 'shadow', 'execute'].includes(config.mode) ||
@@ -485,5 +488,6 @@ export function apply(ctx: any) {
   }
   const nativeBridge = config.provider_mode === 'real' ? '<script>' + readFileSync(fileURLToPath(new URL('./web_native_bridge.js', import.meta.url)), 'utf8') + '</script>' : '';
   ctx.effect(() => ctx.webServer.tapIndex((html: string) => html.replace('</body>',
+    '<a href="/ppt" style="position:fixed;right:18px;bottom:68px;z-index:9999;padding:10px 15px;border-radius:8px;background:#245cba;color:white;text-decoration:none">科研 PPT</a>' +
     '<a href="/tasks" style="position:fixed;right:18px;bottom:18px;z-index:9999;padding:10px 15px;border-radius:8px;background:#245cba;color:white;text-decoration:none">DeepSeek Harless 任务工作台</a>' + nativeBridge + '<script>' + readFileSync(fileURLToPath(new URL('./harless_native_bridge.js', import.meta.url)), 'utf8') + '</script></body>')), 'sss-web-tasks-link');
 }

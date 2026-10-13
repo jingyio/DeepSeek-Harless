@@ -106,6 +106,7 @@ def prepare(args, output, endpoint):
             control_endpoint=args.control_endpoint, control_token=args.control_token,
             certified_input_sha256=canonical_prompt_sha, resources=resources,
             embedding_model=args.embedding_model)
+        policy['ppt_run_budget_usd'] = args.ppt_run_budget_usd
     if not args.frozen:
         registry = Path(args.scene_registry)
         if not registry.is_absolute(): registry = ROOT / registry
@@ -143,6 +144,7 @@ def prepare(args, output, endpoint):
                 'output': str(output), 'provider_mode': 'real' if args.real_model else 'mock',
                 'paid_calls': None if args.real_model else 0, 'entry': 'frozen' if args.frozen else 'dynamic',
                 'run_budget_usd': args.run_budget_usd, 'run_request_limit': args.run_request_limit}
+    snapshot['ppt_run_budget_usd'] = args.ppt_run_budget_usd
     snapshot.update(task_id=output.name, platform=platform.platform(), real_models_enabled=args.real_model,
         motif_min_similarity=0.8, motif_min_margin=0.1, disabled_host_plugins=disabled,
         git_diff_sha256=hashlib.sha256(subprocess.check_output(['git', 'diff', '--binary'], cwd=ROOT)).hexdigest())
@@ -186,6 +188,7 @@ def main():
     parser.add_argument('--request-limit', type=int, default=defaults['request_limit'])
     parser.add_argument('--run-request-limit', type=int, default=256, help='whole-launch request cap across all tasks')
     parser.add_argument('--run-budget-usd', type=float, default=defaults['budget_usd'], help='whole-launch budget, never reset by a new task')
+    parser.add_argument('--ppt-run-budget-usd', type=float, default=3.0, help='独立PPT双路启动总额度，按确认上限预留，普通任务额度另计')
     parser.add_argument('--fixture', choices=['normal', 'stale', 'tool-failure', 'provider-failure', 'outside-tool', 'delay'],
                         default='normal', help='mock-only failure injection for diagnostics')
     args = parser.parse_args()
@@ -199,6 +202,8 @@ def main():
     if not math.isfinite(args.run_budget_usd) or not args.budget_usd <= args.run_budget_usd <= 100 or args.run_request_limit < 1:
         parser.error('whole-launch budget must cover task cap and be <=100; request limit must be positive')
     if bool(args.manifest) != bool(args.task): parser.error('--manifest and --task must be supplied together')
+    if not math.isfinite(args.ppt_run_budget_usd) or not 0 <= args.ppt_run_budget_usd <= 100:
+        parser.error('PPT启动额度需在[0,100]美元')
     if args.real_model and (args.frozen or args.fixture != 'normal'):
         parser.error('real provider cannot use frozen/failure fixtures')
     if args.real_model and not os.environ.get('DEEPSEEK_API_KEY', '').strip():

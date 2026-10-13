@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import zipfile
 
+from defusedxml import ElementTree as ET
+
+import fitz
 from pptx import Presentation
 
 from scenarios.research_ppt.cli import prepare
@@ -13,6 +17,7 @@ from scenarios.research_ppt.revision import merge_slide_updates, validate_scient
 from scenarios.research_ppt.server import _safe_failure
 from scenarios.research_ppt.service import ROOT, PPTService, readable_source_name
 from scenarios.research_ppt.tests.test_revision_service import write_source
+from scenarios.research_ppt.validation import NS, _read_package, _speaker_notes_text, plan_expectations, validate_delivery
 
 
 class ScientificPageProtocolTests(unittest.TestCase):
@@ -71,6 +76,24 @@ class ScientificPageProtocolTests(unittest.TestCase):
         self.assertNotIn('private', label)
         self.assertEqual(readable_source_name('real-paper.pdf'), 'real-paper.pdf')
 
+    def test_notes_body_preserves_explicit_user_text_and_ignores_other_placeholders(self):
+        root = ET.fromstring('''<p:notes xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+          xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>
+          <p:sp><p:nvSpPr><p:nvPr><p:ph type="hdr"/></p:nvPr></p:nvSpPr><p:txBody>
+            <a:p><a:r><a:t>Forged source page 99</a:t></a:r></a:p></p:txBody></p:sp>
+          <p:sp><p:nvSpPr><p:nvPr><p:ph type="body"/></p:nvPr></p:nvSpPr><p:txBody>
+            <a:p><a:r><a:t>User crop_literal and rebuild discussion</a:t></a:r><a:br/>
+              <a:r><a:t>must stay.</a:t></a:r></a:p>
+            <a:p><a:r><a:t>source.pdf 第 2 页; SHA256 unchanged</a:t></a:r></a:p></p:txBody></p:sp>
+          </p:spTree></p:cSld></p:notes>''')
+        actual = _speaker_notes_text(root)
+        self.assertEqual(actual, 'User crop_literal and rebuild discussion\nmust stay.\nsource.pdf 第 2 页; SHA256 unchanged')
+        self.assertNotIn('99', actual)
+        tree = root.find('p:cSld/p:spTree', NS)
+        tree.append(copy.deepcopy(tree[-1]))
+        with self.assertRaisesRegex(ValueError, '多个讲者正文'):
+            _speaker_notes_text(root)
+
     def test_new_failures_are_public_recoverable_without_sensitive_suffixes(self):
         for message in ('科研页型与主体内容类型不一致', 'evidence_notes 仅允许用于科研页型',
                         'evidence_notes 的 source_index 超出原 sources 范围',
@@ -89,20 +112,31 @@ class ScientificPageServiceTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(dir=area)
         self.directory = Path(self.temporary.name)
         self.source_file = self.directory / 'actual-source.pdf'
-        write_source(self.source_file, ['The page supplies actual provenance for protocol checks.',
-                                        'All values in this test are synthetic fixture data.'])
+        with fitz.open() as pdf:
+            page = pdf.new_page(width=600, height=800)
+            page.insert_text((50, 70), 'The page supplies actual provenance for protocol checks.')
+            page.draw_rect(fitz.Rect(100, 150, 400, 300), color=(0, 0, 0))
+            page.draw_line((100, 300), (400, 150), color=(0, 0, 0))
+            page.insert_text((100, 320), 'Figure 1: Synthetic figure for source-binding diagnostics.')
+            second = pdf.new_page(width=600, height=800)
+            second.insert_text((50, 70), 'All values in this test are synthetic fixture data.')
+            pdf.save(self.source_file)
         self.job = prepare([self.source_file], 'Verify three editable scientific page types.', 3, True)
         self.service = PPTService(self.job)
         self.service.rsi = self.directory / 'rsi'
         self.service.rsi.mkdir()
         self.source = self.service.pin_source('doc_1')['source_id']
         self.service.read_source(self.source)
-        image = self.service.extract_figure(self.source, 1, bbox=[0, 0, 1, 1])
+        candidates = self.service.read_page(self.source, 1)['figure_candidates']
+        self.assertEqual(len(candidates), 1)
+        image = self.service.extract_figure(self.source, 1, candidate_id=candidates[0]['candidate_id'])
+        self.assertEqual(image['evidence_scope'], 'caption_geometry_candidate')
         sources = [{'source_id': self.source, 'page': 1}]
         self.plan = {'title': 'Scientific page protocol fixtures', 'slides': [
-            {'title': 'Source page evidence', 'bullets': [], 'sources': sources, 'archetype': 'evidence-focus',
+            {'title': 'Source figure evidence', 'bullets': [], 'sources': sources, 'archetype': 'evidence-focus',
+             'notes': 'User explanation keeps crop_literal and a rebuild comparison; do not infer or delete it.',
              'image': {'source_id': self.source, 'image_id': image['image_id']},
-             'evidence_notes': [{'label': 'Scope', 'text': 'Whole source page; not a certified figure.', 'source_index': 1}]},
+             'evidence_notes': [{'label': 'Scope', 'text': 'Synthetic figure; geometry does not certify interpretation.', 'source_index': 1}]},
             {'title': 'Fixture results', 'bullets': [], 'sources': sources, 'archetype': 'result-summary',
              'table': [['Method', 'Metric'], ['Fixture', '12']],
              'evidence_notes': [{'label': 'Conditions', 'text': 'Synthetic protocol values, not paper measurements.', 'source_index': 1}]},
@@ -131,7 +165,7 @@ class ScientificPageServiceTests(unittest.TestCase):
         rendered = self.service.render_deck(self.plan)
         self.assertEqual(self.plan, original)
         saved = json.loads((Path(rendered['path']).parent / 'plan.json').read_text(encoding='utf-8'))
-        self.assertEqual(saved['slides'][0]['visible_sources'], ['[1] actual-source.pdf · p.1'])
+        self.assertEqual(saved['slides'][0]['visible_sources'], ['[1] actual-source.pdf · p.1 · 图注候选 Figure 1'])
         self.assertTrue(all('SHA256' not in label for slide in saved['slides'] for label in slide['visible_sources']))
         self.assertEqual(self.service.read_deck_plan(rendered['deck_id'])['plan'], original)
         sha = file_hash(self.source_file)
@@ -141,6 +175,15 @@ class ScientificPageServiceTests(unittest.TestCase):
             expected = f"证据说明 [1] {note['label']}：{note['text']}"
             self.assertIn(expected, slide.notes_slide.notes_text_frame.text)
             self.assertIn('SHA256 ' + sha, slide.notes_slide.notes_text_frame.text)
+            self.assertIn('; 文档 doc_1', slide.notes_slide.notes_text_frame.text)
+        self.assertIn(original['slides'][0]['notes'], pptx.slides[0].notes_slide.notes_text_frame.text)
+        figure_id = original['slides'][0]['image']['image_id']
+        self.assertNotIn(figure_id, pptx.slides[0].notes_slide.notes_text_frame.text)
+        self.assertIn('图注候选 Figure 1', pptx.slides[0].notes_slide.notes_text_frame.text)
+        metadata = json.loads((Path(rendered['path']).parent / 'source-provenance.json').read_text(encoding='utf-8'))
+        self.assertEqual(metadata['pages'][0]['figures'][0]['image_id'], figure_id)
+        self.assertEqual(metadata['pages'][0]['figures'][0]['source_sha256'], sha)
+        self.assertEqual(metadata['pages'][0]['figures'][0]['figure_label'], 'Figure 1')
         validated = self.service.validate_deck(rendered['deck_id'])
         self.assertTrue(validated['passed'], validated['errors'])
         self.assertEqual(validated['pdf_page_count'], 3)
@@ -161,6 +204,74 @@ class ScientificPageServiceTests(unittest.TestCase):
         self.assertEqual(updated_plan['slides'][1]['evidence_notes'], new_note)
         fresh = self.service.validate_deck(revised['deck_id'])
         self.assertTrue(fresh['passed'], fresh['errors'])
+        self.assertIn('actual-source.pdf 第 2 页; SHA256 ' + sha,
+                      Presentation(revised['path']).slides[1].notes_slide.notes_text_frame.text)
+
+    def test_actual_package_notes_use_unique_body_relationship_not_header_or_page_number(self):
+        rendered = self.service.render_deck(self.plan)
+        source = Path(rendered['path'])
+        disguised = self.directory / 'notes-in-header.pptx'
+        duplicate = self.directory / 'duplicate-notes-relation.pptx'
+        with zipfile.ZipFile(source) as original, zipfile.ZipFile(disguised, 'w') as target:
+            changed = False
+            for item in original.infolist():
+                raw = original.read(item.filename)
+                if item.filename == 'ppt/notesSlides/notesSlide1.xml':
+                    root = ET.fromstring(raw)
+                    bodies = [ph for ph in root.findall('.//p:ph', NS) if ph.get('type') == 'body']
+                    self.assertEqual(len(bodies), 1)
+                    bodies[0].set('type', 'hdr')
+                    raw = ET.tostring(root, encoding='utf-8')
+                    changed = True
+                target.writestr(item, raw)
+            self.assertTrue(changed)
+        _, notes = _read_package(disguised, {'errors': [], 'warnings': []})
+        self.assertEqual(notes[0], '', '来源文字只在header中不能冒充speaker正文')
+        with zipfile.ZipFile(source) as original, zipfile.ZipFile(duplicate, 'w') as target:
+            changed = False
+            for item in original.infolist():
+                raw = original.read(item.filename)
+                if item.filename == 'ppt/slides/_rels/slide1.xml.rels':
+                    root = ET.fromstring(raw)
+                    relations = [rel for rel in root if rel.get('Type', '').endswith('/notesSlide')]
+                    self.assertEqual(len(relations), 1)
+                    copied = copy.deepcopy(relations[0])
+                    copied.set('Id', 'duplicateSpeakerNote')
+                    root.append(copied)
+                    raw = ET.tostring(root, encoding='utf-8')
+                    changed = True
+                target.writestr(item, raw)
+            self.assertTrue(changed)
+        with self.assertRaisesRegex(ValueError, '备注关系不唯一'):
+            _read_package(duplicate, {'errors': [], 'warnings': []})
+        saved = json.loads((source.parent / 'plan.json').read_text(encoding='utf-8'))
+        expected = plan_expectations(saved)
+        self.assertIn(self.plan['slides'][0]['notes'], expected['speaker_notes'][0])
+
+    def test_lost_user_speaker_notes_fail_even_when_all_source_labels_are_preserved(self):
+        rendered = self.service.render_deck(self.plan)
+        source = Path(rendered['path'])
+        saved = json.loads((source.parent / 'plan.json').read_text(encoding='utf-8'))
+        expected = plan_expectations(saved)
+        altered = self.directory / 'user-notes-removed.pptx'
+        marker = self.plan['slides'][0]['notes'].encode('utf-8')
+        with zipfile.ZipFile(source) as original, zipfile.ZipFile(altered, 'w') as target:
+            changed = False
+            for item in original.infolist():
+                raw = original.read(item.filename)
+                if item.filename == 'ppt/notesSlides/notesSlide1.xml':
+                    self.assertIn(marker, raw)
+                    raw = raw.replace(marker, b'Removed user explanation.')
+                    changed = True
+                target.writestr(item, raw)
+            self.assertTrue(changed)
+        report = validate_delivery(altered, 3, expected_texts=expected['texts'],
+                                   expected_sources=[slide['sources'] for slide in saved['slides']],
+                                   expected_notes=expected['speaker_notes'])
+        errors = {row['code'] for row in report['errors']}
+        self.assertFalse(report['passed'])
+        self.assertIn('speaker_notes_missing_or_changed', errors)
+        self.assertNotIn('source_notes_missing', errors)
 
     def test_real_service_compacts_only_consecutive_source_names_and_restores_interleaved_context(self):
         secondary_file = self.directory / 'secondary-source.pdf'

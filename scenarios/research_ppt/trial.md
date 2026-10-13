@@ -2,14 +2,16 @@
 
 这是课题组试用入口。接收已上传到项目 `.local/` 的 1–8 份 PDF/PPTX、自然语言要求和 1–30 页，默认 `lab` 朴素组会风格，可显式选 `academic`。复用现有公共 DSH SDK、可靠 MCP、预算代理和真实 LibreOffice 验收，不另造 Agent 循环。
 
-同一次任务准备两个独立 job，工具集合及登记顺序均为可靠入口的固定 19 工具。来源、要求、模型、设计指导、模板、容量和验收相同；公共提示前缀相同，仅最后的执行策略不同：
+同一次任务准备两个独立 job，工具集合及登记顺序均为可靠入口的当前固定 21 工具（V16历史19，V17增加两项恢复工具）。来源、要求、模型、设计指导、模板、容量和验收相同；公共提示前缀相同，仅最后的执行策略不同：
 
 | 组 | 执行策略 | 机制边界 |
 | --- | --- | --- |
-| baseline | 普通 DSH 分别生成、检查、渲染、交付 | 场景工具增强的普通 Harness，不是没有 PPT 工具的空白模型 |
-| optimized | 同一 DSH 使用有限组合交付工具 | 手写普通工程优化，不是新 RSI/Motif；失败仍由模型审阅实际反馈 |
+| baseline | `baseline_steps`：普通 DSH 分别生成、检查、渲染、交付 | 宿主禁止直接调用三种组合工具，保留同一真实 schema与全部机械验收 |
+| optimized | `host_delivery`：模型提交合法计划给 `render_deck`，宿主执行固定交付脚本 | 手写普通工程优化，不是新 RSI/Motif；失败仍由模型审阅实际反馈 |
 
-本入口不默认加载历史私有证书，也不生成或认证新工具。前述两路主要验证交付组合的实际效果；不能把差额归为 RSI。来源改变、代码/构建摘要改变或工具 schema 不一致会拒绝旧配置；实际工具轨迹还记录执行策略是否遵守，普通组误用组合工具时不发布同质量对照结论。
+本入口不默认加载历史私有证书，也不生成或认证新工具。新任务默认 `--execution-policy controlled`，两组直接调用 `build_delivery/render_delivery/revise_delivery` 均被真实服务拒绝；优化组的频繁交付脚本由宿主路由，模型不再次选择脚本。原始工具事件、冻结job、TS启动/策略/脚本审计和文件回执共同证明策略实际执行。前述两路主要验证固定工程脚本的实际效果；不能把差额归为 RSI。来源改变、代码/构建摘要改变或工具 schema 不一致会拒绝旧配置。旧任务缺少策略字段时保留原来的 `steps/composed` scope，`--execution-policy legacy_model_selected` 仅用于历史诊断，不追改旧结果为新受控实验。
+
+V17 `host_delivery`在可恢复的计划/布局失败时保存草稿；模型凭回执中的`draft_id/version_sha256`调用`read_pending_plan`读取1–5个明确页面，或用`repair_pending_plan`发送显式局部修改。未完成草稿存在时拒绝整稿重交，最多8次patch、6次恢复渲染尝试；版本失效、来源变更或权限失败不能借恢复绕过。普通组仍广告相同schema，但服务端拒绝两项恢复工具。最终恢复回执须同时绑定adapter完整审计、原host结果摘要和实际验收/文件，不能仅凭`delivered=true`记成功。它是普通工程恢复，不默认生成新工具。
 
 ## 1．准备、显示预算和预览
 
@@ -23,14 +25,16 @@ python -m scenarios.research_ppt.trial \
   --input .local/research-ppt/inputs/paper.pdf \
   --instruction '生成6页中文组会汇报，解释方法和实验条件，保留主要原图与来源，不使用装饰性卡片堆砌' \
   --slides 6 --template lab --operation generate \
-  --budget-usd 3 --max-steps 40 --max-output 8000 --allow-output
+  --budget-usd 3 --max-steps 60 --max-output 8000 --allow-output
 ```
 
 默认只准备和预览，不解析 PDF、不调用模型、不生成 PPT。打印 `trial.json`、两路输出位置与复用预览的执行指令。`--allow-output` 只授权本次两份新稿的私有目录，不修改原文件；没有该授权的预览不能在执行时偷偷提高权限。
 
-预算为 **双路合计上限 $3.00，每路各 $1.50**，不是预计费用。两路串行，最多各 40 步、每请求 8000 输出 token；模型 `deepseek-flash`，`reasoning_effort="off"`，不启用上下文压缩、解析缓存或语义匹配。费用表按固定配置留摘要，代理估费需另外核对账单。
+预算为 **双路合计上限 $3.00，每路各 $1.50**，不是预计费用。两路串行，默认最多各 60 步、每请求 8000 输出 token；模型 `deepseek-flash`，`reasoning_effort="off"`，默认不启用上下文压缩、解析缓存或语义匹配。可显式 `--document-cache` 令两组使用相同持久解析缓存并冻结此开关；它是普通缓存，不能算 RSI 收益。费用表按固定配置留摘要，代理估费需另外核对账单。
 
 可增加 `--order optimized-first` 改变运行顺序并留记录。API 缓存会受时间和顺序影响，小样本结果不等于稳定因果收益；首次任务与重复任务需要分别比较。
+
+需要完整原图时，显式增加 `--min-original-figures 2`。两组冻结相同数量并在生成、修订前去重验收；默认0，正值仅适用于含PDF的generate任务。不能用同图重复裁取、整页或局部嵌入素材凑数，无法定位时明确失败。该合同不认证图意、数值或引用的科学充分性。
 
 ## 2．明确启动两路付费任务
 
@@ -75,6 +79,8 @@ python -m scenarios.research_ppt.trial \
 ```
 
 该命令不发模型请求，新增 `reviewed-<id>.json`，不追改原结果。只有两组均评审合格、机械交付与记账完整时才计算同质量单路模型代理费用差；仍未折算人工、维护、历史学习和实付。两组费用相加是试用对照的实际总支出，不能称优化组单路成本。
+
+AI辅助评审明确填写 `reviewer_kind="ai-assisted"`，人评填写 `human/user`。AI辅助输出不标为独立人评，也不授权候选生产晋级；AI审阅耗时与人工修订分钟分开记录，后者未知保持 `null`。反馈学习使用 [evaluation-only入口](feedback-learning.md)，需另外绑定实际AI审阅JSON与SHA。
 
 ## 5．部署反馈与离线学习
 

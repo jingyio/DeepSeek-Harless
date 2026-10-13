@@ -191,7 +191,7 @@ def plan_expectations(plan: dict) -> dict:
     """
     if not isinstance(plan, dict) or not isinstance(plan.get('slides'), list) or not 1 <= len(plan['slides']) <= MAX_SLIDES:
         raise ValueError('完整计划需要 1–30 个页面')
-    texts, charts, tables, images, source_notes = [], [], [], [], []
+    texts, charts, tables, images, source_notes, speaker_notes = [], [], [], [], [], []
     for slide in plan['slides']:
         if not isinstance(slide, dict):
             raise ValueError('完整计划的页面必须是对象')
@@ -248,6 +248,12 @@ def plan_expectations(plan: dict) -> dict:
         elif 'evidence_notes' in slide or 'visible_sources' in slide:
             raise ValueError('科研证据说明和可见出处仅适用于显式科研页型')
         source_notes.append(note_bindings)
+        original_notes = slide.get('notes', '')
+        if not isinstance(original_notes, str):
+            raise ValueError('完整计划的讲者备注必须是字符串')
+        speaker_notes.append([original_notes, *(
+            [f"页面结论（必须核对来源支持）：{slide['takeaway']}"] if slide.get('takeaway') else []),
+            *note_bindings])
         texts.append(row)
         charts.append(slide.get('chart'))
         tables.append(slide.get('table'))
@@ -256,7 +262,31 @@ def plan_expectations(plan: dict) -> dict:
             'charts': _expected_charts(charts, len(texts)),
             'tables': _expected_tables(tables, len(texts)),
             'images': _expected_images(images, len(texts)),
-            'source_notes': _expected(source_notes, len(texts), 'source_notes')}
+            'source_notes': _expected(source_notes, len(texts), 'source_notes'),
+            'speaker_notes': _expected(speaker_notes, len(texts), 'speaker_notes')}
+
+
+def _speaker_notes_text(root) -> str:
+    """只读取实际speaker body，不把页码/页眉文字当作讲者来源证据。"""
+    bodies = []
+    for shape in root.findall('p:cSld/p:spTree/p:sp', NS):
+        placeholder = shape.find('p:nvSpPr/p:nvPr/p:ph', NS)
+        if placeholder is not None and placeholder.attrib.get('type') == 'body':
+            bodies.append(shape)
+    if len(bodies) > 1:
+        raise ValueError('备注包含多个讲者正文，不能唯一定位来源')
+    if not bodies:
+        return ''
+    paragraphs = []
+    for paragraph in bodies[0].findall('p:txBody/a:p', NS):
+        parts = []
+        for element in paragraph.iter():
+            if element.tag == '{' + NS['a'] + '}t':
+                parts.append(element.text or '')
+            elif element.tag == '{' + NS['a'] + '}br':
+                parts.append('\n')
+        paragraphs.append(''.join(parts))
+    return '\n'.join(paragraphs)
 
 
 def _image_signature(raw: bytes) -> dict:
@@ -674,9 +704,10 @@ def _read_package(path: Path, report: dict, *, include_chart_data=False,
             relations = []
             if rel_name in names:
                 relations = list(ET.fromstring(archive.read(rel_name)))
-                for rel in relations:
-                    if not rel.attrib.get('Type', '').endswith('/notesSlide'):
-                        continue
+                note_relations = [rel for rel in relations if rel.attrib.get('Type', '').endswith('/notesSlide')]
+                if len(note_relations) > 1:
+                    raise ValueError('页面备注关系不唯一')
+                for rel in note_relations:
                     target = rel.attrib.get('Target', '')
                     if not re.fullmatch(r'\.\./notesSlides/notesSlide\d+\.xml', target):
                         raise ValueError('备注关系路径不支持')
@@ -684,7 +715,7 @@ def _read_package(path: Path, report: dict, *, include_chart_data=False,
                     if note_name not in names:
                         raise ValueError('备注关系指向缺失文件')
                     note_root = ET.fromstring(archive.read(note_name))
-                    note_text = '\n'.join(part.text or '' for part in note_root.findall('.//a:t', NS))
+                    note_text = _speaker_notes_text(note_root)
             notes.append(note_text)
             charts = []
             if include_chart_data:
@@ -774,6 +805,7 @@ def validate_delivery(pptx_path: str | Path, expected_slides: int,
                       expected_tables=None,
                       expected_images=None,
                       expected_visible_sources=None,
+                      expected_notes=None,
                       timeout_seconds: int = 120) -> dict:
     """返回可 JSON 序列化报告，保留真实 PDF/PNG 和失败证据。
 
@@ -792,6 +824,7 @@ def validate_delivery(pptx_path: str | Path, expected_slides: int,
         raise ValueError('渲染超时须为 10–300 秒的整数')
     expected_texts = _expected(expected_texts, expected_slides, 'expected_texts')
     expected_sources = _expected(expected_sources, expected_slides, 'expected_sources')
+    expected_notes = _expected(expected_notes, expected_slides, 'expected_notes')
     expected_charts = _expected_charts(expected_charts, expected_slides)
     expected_tables = _expected_tables(expected_tables, expected_slides)
     expected_images = _expected_images(expected_images, expected_slides)
@@ -847,10 +880,15 @@ def validate_delivery(pptx_path: str | Path, expected_slides: int,
             if missing:
                 _issue(report, 'submitted_text_missing_in_pptx', '提交文字未完整保留在可编辑 PPTX 中', page=index + 1, missing_count=len(missing))
             if expected_sources is not None:
-                note_text = _normal(notes[index]) if index < len(notes) else ''
-                missing_sources = [text for text in expected_sources[index] if _normal(text) not in note_text]
+                note_text = notes[index] if index < len(notes) else ''
+                missing_sources = _missing_texts(expected_sources[index], note_text)
                 if missing_sources:
                     _issue(report, 'source_notes_missing', '提交的来源标识未完整保留在备注中', page=index + 1, missing_count=len(missing_sources))
+            if expected_notes is not None:
+                missing_notes = _missing_texts(expected_notes[index], notes[index] if index < len(notes) else '')
+                if missing_notes:
+                    _issue(report, 'speaker_notes_missing_or_changed', '提交的讲者讲解备注未完整保留在实际备注正文中',
+                           page=index + 1, missing_count=len(missing_notes))
 
         binary = shutil.which('libreoffice') or shutil.which('soffice')
         if binary is None:

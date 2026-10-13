@@ -1,18 +1,17 @@
 # 科研 PPT 当前交接
 
 - 更新时间与交接人：2026-10-13，Codex。
-- 目标与本次范围：停止扩展研究机制，收敛课题组试用。保留接口，朴素组会稿、双路生成/记账、版本安全修订、显式反馈与受控学习；结果见 `docs/experiments/research-ppt-v15-deployment-20261013.md`，历轮索引见 `docs/experiments/research-ppt-reports/README.md`；20 份 PDF 留在团队私有归档，不进入 main。
-- 分支 / commit / 工作区：原场景开发位于 `feature/research-ppt-agent`；不含 PDF 的集成改动从 main `b330bb4` 另建 `codex/research-ppt-clean-pr`，已提交并推送，见 PR #5。原场景工作区与私有数据未覆盖；PR 审查及 CI 完成前不合并。
-- 已完成：`trial.py` 两独立job、同模型/来源/schema/19工具、预览/显式付费、全账本/实际交付/待评审；`feedback_learning.py` 私有不可变反馈、去重、2训练/1留出、现有编译器、候选隔离、收益晋级/回滚；`accounting.py/runtime_snapshot.py` 替代旧轮次依赖。`ts/render.ts` lab v15.1及prompt/Skill采用朴素科研表达。TypeScript在线/Python后端，不改上游Harness。
-- 最短入口：先按根README及 `scenarios/research_ppt/deploy-ubuntu18.md` 安装/构建并激活实际环境；`npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output --collect-feedback` 仅预览；确认后 `npm run ppt -- --trial <实际trial.json> --call-model`。MCP与Python/JSON接口保留，无新UI。`--operation restyle` 受限样式转换；`direct_edit` 限同job、完整plan及明确page/changes，执行携原SHA生成新副本。
-- 已验证：均在服务器 `/mnt/sevenT/junjiex/DeepSeekHarness-v9` 激活环境执行，日志 `test-logs/research-ppt-v15-deployment-20261013/`。最终根npm test 146Python/47Node；smoke18诊断/0付费；场景build及初批83Node/176Python；最终新增产品53回归；真实两路stdio schema/无active fallback、真实ledger/交付取证、局部修改真实LibreOffice与非目标XML/notes/media/样式保持。批次不相加；协议夹具不是云效果。单独Node测试缺统一Python环境曾失败，根统一入口复验通过，旧失败保留。
-- 实验结论：V15 DoRA六页普通/组合请求18/12、token536799/307233、代理估费0.02201855/0.01778932美元、耗时92.503/75.822秒，双路总0.03980787美元。观察请求−33.33%、token−42.77%、费−19.21%；原稿有来源/均值/流程/局限问题，普通组使用组合修订、未独立人评，不支持同质量稳定降本。verified Motif=0，不称RSI效果。明确辅助修订新副本均0新增模型，不计原自主成功；人工/计算/维护/实付未知。
-- 历史结论：V3 E4输出保持时减少请求、V10明确标题修改10/7→0有局部证据，不能推广完整生成。V6新工具/Motif真实使用但总成本仍高；V13/14候选或继承码verified各1，质量/恢复抵消局部收益。V14三组机械成功但科学有错，不支持同合格质量净收益。公开V1–V14总报告18页不构成跨任务持续降本曲线。
-- 学习边界：默认learn=false、科学/视觉pending；本轮两路原账本入库至显式v2库，原记录不改，训练0/新候选0。稳定前缀/共同题面从真实prompt字节导出，完整prompt绑定manifest；旧缺字段拒绝认证。`--candidate-version` 隔离评测，`--use-active-learning` 仅继承当前有效晋级版。晋级需两独立新任务人评/全费/人工分钟、真实execute/manifest/冻结审计/verified旁路；active和回滚重查最新批准证据。本轮没有真实新候选晋级或完全自主长期学习结果。
-- 配置与数据：公共Schema/锁/工具在 `scenarios/research_ppt/`；来源、credentials、runs、反馈、交付留 `.local/`。变量 `DEEPSEEK_API_KEY`/`DEEPSEEK_BASE_URL` 用途公开，值不记录。服务器旧HEAD `6ced8277d7743bcb260975290665af26d105274a` 加部署，真实运行不是最终发布HEAD；原快照保持。思考/压缩off，proxy账本不当实付。
-- 交付：原稿本机 `.local/research-ppt/research-ppt-v15-deployment-20261013/deliverables-01/`；辅助稿同根 `assisted-02/assisted-{baseline,optimized}-02/delivery/revised.pptx`，含PDF/PNG/overview。原稿22/辅助38文件SHA/size核验一致。V1–V14 PDF/清单/39PPT路径索引在本机 `.local/research-ppt/reports/`；公开汇总PDF身份见 `summary-manifest.json`。
-- 发布清理：保留最新main团队Web/请求上限/预算/API。PPT公共差异仅场景、文档、入口、Windows file-URI及窄闭合pin/read，增加版本/schema/barrier回归。八个历史矩阵/报告脚本逐文件备份核验至本机 `.local/research-ppt/release-archive-20261013/`；开发树/历史数据和关键安全测试保留。见 `docs/research-ppt-release-cleanup.md`。V12–14隔离原生服务/五套素材未作为本次默认后端发布，私人原型不称已接入。
-- 未完成与限制：同学独立科学/视觉评审及人工分钟、账单；任意外部PPT无损编辑、完整主张/公式自动正确性、任意中断恢复、完全自主进化；基础插件无Python依赖。Ubuntu18需兼容工具链/字体，SDK runtime-bin缺项仍不能泛称标准pip部署完成；Windows完整真实渲染未验证。
-- 接手下一步：1）同学提交1真实任务、双路运行并填review，科学/视觉不合格不发布节省结论；2）按具体页反馈明确patch，记人工分钟且原稿保留；3）独立授权合格轨迹2训练/1留出后离线认证，以两新任务完整质量/费用决定晋级，无active走普通流程，不扩候选矩阵。
-- 权限与预算：既有不限DeepSeek实验授权持续，本轮proxy0.03980787美元、实付未知；默认预览，每路1.50美元/40步。新副本、备份及整理中文commit/push已授权，提交前告知，无PR；后续用户数据学习需明确授权，私有日志/凭证不公开。
-- 回退与风险：发布前产品基点 `4008d2d`；新风格可选academic或旧renderer。来源/代码/证书改变需新job/认证，不重签旧结果。权限/schema/version拒绝保持；异常写锁先确认无写入者再处理，不称任意SIGKILL自动恢复。科学理解/选材仍需模型/人审，机械通过不是事实/审美合格。
+- 目标与本次范围：以本地V17整理待发布分支，按已有经验统一稳定运行参数；保留main前端/公共内核、必要PPT代码、维护回归和历轮报告。不新增付费实验，不宣称网页已接通。
+- 分支 / commit / 工作区：独立准备树 research-ppt-v17-release，HEAD为main 856c02cf29ca0be630dd4fec7f2ab6deecbf27a8，已no-commit合入远端feature/research-ppt-agent 34ca217；尚未commit/push，无PR。V17来自research-ppt-reports-v14树e452983加未提交改动；两原工作区不覆盖。
+- 已完成：V16受控baseline_steps/host_delivery、持久资料/组件库、反馈绑定与独立候选接口；V17 ts/pending-plan.ts/plan-recovery.ts局部草稿恢复，严格运行时校验与最终adapter/host/文件三层交付取证。脚本/缓存/局部恢复属于普通工程，不算新RSI。
+- 参数：1–8份PDF/PPTX，每份100 MiB、1–30页、说明10000字符；单路60步骤/8000输出/$1.50上限，双路总$3。思考/压缩off，默认不生成新工具；host最多8patch/6恢复渲染。MCP外层300秒/内层240秒；ZIP150 MiB展开、单图8 MiB及原权限/来源/版本检查保留。main通用Web参数未改。
+- 最短入口：安装按根README与scenarios/research_ppt/deploy-ubuntu18.md，激活服务器环境后构建。npm run ppt -- --input .local/inputs/paper.pdf --slides 15 --template lab --allow-output 默认仅预览；确认后 npm run ppt -- --trial <实际trial.json> --call-model。已有JSON/MCP接口，无新HTTP服务。
+- 清理：沿用main已移除的8个旧矩阵/报告脚本，不重新引入。必要真实MCP smoke、安全失败、版本失效、恢复与费用回归保留。20份历史PDF及V1–V17计划/报告/失败/匿名摘要保留；私人论文/成品/原始日志留.local和server test-logs，未清空或公开。清理说明见docs/research-ppt-release-cleanup.md。
+- 已验证（历史）：服务器V17真实trial-20261013T133803Z-706a7c89，两份同源15页机械交付，普通32请求/1,799,740token/$0.0880055，host28请求/1,283,476token/$0.0418032；质量未人评，不支持合格端到端降本或RSI收益。allow_rsi=false，verified旁路0。回执校正55项服务器回归通过；旧失败/原账本不覆盖。
+- 本次验证：独立服务器副本根151Python/53Node、场景94Node及286Python通过，1字体夹具缺失跳过后显式用已有字体补验5项全过；根smoke两套各9例、真实MCP/LibreOffice交付/修订/重启及局部恢复通过。首交付诊断位置推断只读误报，逐项集合核验修复后新目录通过，旧失败保留。371运行文件与本机SHA/size一致，28证据文件下载核验；记录docs/experiments/research-ppt-v17-release-preparation-20261013.md。未复跑付费模型、改旧快照或重签证书。
+- 实验结论：V16科学失败、优化成本上升等负面结果仍保留；V17观察到普通工程恢复的请求/token/代理费下降，质量待评审。报告索引docs/experiments/research-ppt-reports/README.md；代理估费不是账单实付，真人修订/维护/计算未知。
+- 配置与数据：公共schema/配置/锁在scenarios/research_ppt/；DEEPSEEK_API_KEY/DEEPSEEK_BASE_URL私有不展示。资料库默认保留、解析缓存off，可信后端提供身份。V17成品本机H:/DeepSeekHarness/.local/research-ppt/research-ppt-v17-local-recovery-20261013/review/{baseline,optimized}/。准备manifest和日志在本机.local/research-ppt/v17-release-preparation-20261013/。
+- 未完成与阻塞：main网页仍缺任务级job/流式上传回执映射、PPT参数契约、真实交付完成/鉴权下载、反馈与paired展示。不能只登记静态PPT场景：SSS_PPT_JOB是每任务独立的必需输入。多用户认证、任意外部PPT无损精细修改、Windows完整渲染未验收；无本轮新候选晋级。
+- 接手下一步：1）前端同伴按frontend-integration.md接TypeScript任务生命周期，复用trial/固定MCP及预算代理；2）上传/下载贯穿真实身份并核SHA，补契约/权限/取消失败回归；3）用户查看V17两份结果并通知后，先告知中文commit范围，再推feature/research-ppt-agent，不开PR。
+- 权限与预算：整理、可逆修改和免费检查已授权；本次付费API支出0。既有真实API授权不代替上传条件：用户明确要求看完完整真实测试成品并通知后才能提交/推送，本次尚未收到放行。
+- 回退与风险：发布树为main加V17独立副本，两原工作区与所有私有证据保留。参数/代码摘要改变只用于新job；不能恢复旧证书/旧checkpoint后当作同版本。解析成功不保证规划或渲染成功；机械交付不认证科学/审美。

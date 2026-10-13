@@ -25,6 +25,7 @@ VERSION_FIELDS = ('model', 'provider', 'reasoning_effort', 'tool_schema_sha256',
 COMPATIBILITY_FIELDS = ('model', 'provider', 'reasoning_effort', 'tool_schema_sha256',
                         'prompt_prefix_sha256', 'template_sha256', 'runtime_sha256')
 QUALITY_FIELDS = ('delivery', 'scientific', 'visual')
+LEARNING_SCOPES = ('production_reviewed', 'evaluation_only')
 TASK_PROMPT_MARKER = '\n本次任务：\n'
 EXECUTION_PROMPT_MARKER = '\n本次执行方式：'
 STRATEGY_SUFFIXES = {
@@ -33,6 +34,29 @@ STRATEGY_SUFFIXES = {
     ('restyle', 'steps'): '分别调用 restyle_deck、inspect_deck、validate_deck、deliver_deck，保持全部内容及真实核验。',
     ('restyle', 'composed'): '使用 build_delivery({"operation":"restyle","source_id":"实际返回的句柄","template":"任务模板"}) 完成风格转换、检查、预览和交付。',
 }
+for _operation in ('generate', 'restyle'):
+    STRATEGY_SUFFIXES[(_operation, 'baseline_steps')] = '分别调用 render_deck、inspect_deck、validate_deck、deliver_deck；执行守卫禁止直接调用组合工具。'
+    STRATEGY_SUFFIXES[(_operation, 'host_delivery')] = '提交合法 render_deck 或明确 revise_deck/restyle_deck 后，由宿主自动完成检查、渲染与交付；不直接调用组合工具。'
+STRATEGY_SUFFIXES[('restyle', 'baseline_steps')] += '\n本次输入是已有 PPT，生成动作改为 restyle_deck，随后逐步检查与交付。'
+
+
+def _learning_scope(plan: dict) -> str:
+    # Historical human-reviewed plans have no scope field. New evaluation
+    # plans are permanently isolated, including if later feedback is human.
+    scope = plan.get('learning_scope', 'production_reviewed')
+    if scope not in LEARNING_SCOPES:
+        raise ValueError('学习计划 scope 无效，不能猜测生产准入')
+    return scope
+
+
+def _require_production_candidate(candidate: dict) -> None:
+    if candidate.get('learning_scope', 'production_reviewed') != 'production_reviewed':
+        raise ValueError('evaluation_only 候选只能隔离评测，不能 activate 或作为 active 继承；需要新的人评训练计划')
+
+
+HOST_ROUTES = {'render_deck': 'render_delivery', 'revise_deck': 'revise_delivery',
+               'restyle_deck': 'restyle_delivery', 'repair_pending_plan': 'render_delivery'}
+COMPOSED_TOOLS = {'build_delivery', 'render_delivery', 'revise_delivery'}
 
 
 def _now() -> str:
@@ -126,11 +150,12 @@ def _require_compatible_prompts(rows: list[dict], *, paired=False) -> list[dict]
     if len({_digest(_compatibility(row)) for row in rows}) != 1:
         raise ValueError('实际模型、稳定提示前缀、工具、模板或实现版本不同')
     if paired:
-        if (len(bindings) != 2 or bindings[0]['execution_strategy'] != 'steps'
+        if (len(bindings) != 2 or bindings[0]['execution_strategy'] not in ('steps', 'baseline_steps')
+                or bindings[1]['execution_strategy'] not in ('composed', 'host_delivery')
                 or bindings[0]['shared_prompt_sha256'] != bindings[1]['shared_prompt_sha256']
                 or bindings[0]['task'] != bindings[1]['task']):
             raise ValueError('配对须共用真实题面与稳定前缀，仅允许执行策略后缀不同')
-    elif any(binding['execution_strategy'] != 'steps' for binding in bindings):
+    elif any(binding['execution_strategy'] not in ('steps', 'baseline_steps') for binding in bindings):
         raise ValueError('正常训练/独立认证输入必须使用逐步策略')
     return bindings
 
@@ -148,6 +173,120 @@ def _compiler_schema(path: Path) -> tuple[dict, str]:
         return {'tools': rows}, effective
     from .motif_v6 import schema_tools
     return schema_tools(payload), _hash(path)
+
+
+def _current_runtime_files(rows: list[dict]) -> tuple[dict, tuple[Path, ...]]:
+    # Reuse the product snapshot; do not invent another version boundary.
+    from .trial import code_snapshot
+    snapshot = code_snapshot()
+    if any(row['versions'].get('runtime_sha256') != snapshot['sha256'] for row in rows):
+        raise ValueError('真实训练时的产品实现与当前源码/构建产物不同，不能认证旧运行')
+    files = tuple((ROOT / name).resolve(strict=True) for name in snapshot['files'])
+    if any(not path.is_relative_to(ROOT.resolve()) for path in files):
+        raise ValueError('实际Runtime源码快照越出仓库')
+    return snapshot, files
+
+
+def _review_binding(row: dict) -> dict:
+    """AI reviews are evidence-bound assistance, never independent human review."""
+    evidence = row.get('review_evidence')
+    if not isinstance(evidence, dict):
+        raise ValueError('AI 辅助学习需要实际 review_evidence 文件，不能仅贴 reviewer 标签')
+    path = _private(evidence.get('path', ''), exists=True)
+    if (_hash(path) != evidence.get('sha256')
+            or row.get('evidence_lock', {}).get(str(path)) != evidence.get('sha256')):
+        raise ValueError('AI 辅助评审证据未在收集时冻结或字节变化')
+    review = _read(path)
+    if (review.get('schema_version') != 1 or review.get('reviewer') != 'ai-assisted'
+            or review.get('scope') != 'ai_assisted_not_independent_human'
+            or review.get('run_id') != row['run_id']
+            or review.get('source_evidence') != row['source_evidence']
+            or review.get('delivery_evidence_sha256') != row.get('delivery_evidence', {}).get('sha256')
+            or review.get('quality') != {key: row['quality'][key] for key in QUALITY_FIELDS}
+            or not isinstance(review.get('notes'), str) or not review['notes'].strip()
+            or review.get('review_seconds') is None):
+        raise ValueError('AI 辅助评审未绑定同一真实运行、来源、交付和质量结果')
+    _number(review['review_seconds'], 'review_seconds')
+    return review
+
+
+def _execution_policy_binding(row: dict, binding: dict) -> dict | None:
+    """Bind controlled host execution to actual frozen job/audit bytes."""
+    strategy = binding['execution_strategy']
+    if strategy not in ('baseline_steps', 'host_delivery'):
+        return None
+    evidence = row.get('execution_policy_evidence')
+    if not isinstance(evidence, dict):
+        raise ValueError('宿主策略需要实际 job 和 audit 证据，不能只用提示标签')
+    job = _private(evidence.get('job_path', ''), exists=True)
+    audit = _private(evidence.get('audit_path', ''), exists=True)
+    if (job.parent != audit.parent or audit.name != 'delivery-adapter-audit.jsonl'
+            or any(_hash(path) != evidence.get(field) or row.get('evidence_lock', {}).get(str(path)) != evidence.get(field)
+                   for path, field in ((job, 'job_sha256'), (audit, 'audit_sha256')))):
+        raise ValueError('宿主策略 job/audit 未在收集时冻结或字节变化')
+    config = _read(job).get('execution_policy')
+    if config != {'schema_version': 1, 'strategy': strategy}:
+        raise ValueError('真实 job 的执行策略与提示不同')
+    events = [json.loads(line) for line in audit.read_text(encoding='utf-8').splitlines() if line.strip()]
+    policies = [item for item in events if item.get('kind') == 'execution_policy_loaded']
+    starts = [item for item in events if item.get('kind') == 'adapter_started']
+    if not policies or not starts or any(item.get('job_sha256') != _hash(job) for item in starts):
+        raise ValueError('没有真实宿主启动和策略加载证据')
+    for policy in policies:
+        policy_value = {key: value for key, value in policy.items() if key not in ('kind', 'utc', 'policy_sha256')}
+        if (policy.get('policy_sha256') != evidence.get('policy_sha256')
+                or _digest(policy_value) != evidence.get('policy_sha256')
+                or policy.get('strategy') != strategy or policy.get('config_sha256') != _digest(config)
+                or set(policy.get('disabled_tools', [])) != COMPOSED_TOOLS
+                or policy.get('automatic_retry') is not False
+                or policy.get('automatic_content_change') is not False
+                or policy.get('scope') != 'fixed_host_execution_policy_not_learned_rsi'):
+            raise ValueError('真实宿主策略摘要或组合禁用规则不符')
+        if policy.get('policy_version') == 'research-ppt-execution-v17.1':
+            expected_recovery = set() if strategy == 'host_delivery' else {'read_pending_plan', 'repair_pending_plan'}
+            if (set(policy.get('disabled_recovery_tools', [])) != expected_recovery
+                    or policy.get('local_plan_recovery') != (strategy == 'host_delivery')):
+                raise ValueError('失败草稿恢复策略与真实对照不同')
+    return {'policy_sha256': evidence['policy_sha256'], 'strategy': strategy, 'events': events}
+
+
+def _host_receipt(value: dict, name: str, arguments: dict | None, policy: dict) -> bool:
+    execution = value.get('execution_policy')
+    request = name.removeprefix('mcp__ppt__')
+    if (not isinstance(execution, dict) or request not in HOST_ROUTES
+            or execution.get('schema_version') != 1 or execution.get('strategy') != 'host_delivery'
+            or execution.get('policy_sha256') != policy['policy_sha256']
+            or not isinstance(execution.get('script_execution_id'), str) or not execution['script_execution_id']
+            or execution.get('request_tool') != request or execution.get('host_script') != HOST_ROUTES[request]
+            or execution.get('arguments_sha256') != _digest(arguments)
+            or execution.get('mechanism') != 'ordinary_bounded_host_script'
+            or execution.get('model_selected_script') is not False or value.get('delivered') is not True):
+        return False
+    matching = [item for item in policy['events']
+                if item.get('script_execution_id') == execution['script_execution_id']]
+    if not any(item.get('kind') == 'host_script_started' and
+               all(item.get(key) == field for key, field in execution.items()) for item in matching):
+        return False
+    response = {key: item for key, item in value.items() if key != 'execution_policy'}
+    if request == 'repair_pending_plan':
+        # PlanRecovery appends its final draft receipt after the host script
+        # hashes the delivery. Bind that envelope to the full adapter audit,
+        # then check the unchanged host response against its original hash.
+        if (not isinstance(value.get('pending_plan'), dict)
+                or value['pending_plan'].get('status') != 'delivered'
+                or not isinstance(value.get('local_repair'), dict)
+                or value.get('automatic_retry') is not False
+                or not any(item.get('kind') == 'adapter_tool'
+                           and item.get('name') == request
+                           and _digest(item.get('arguments')) == _digest(arguments)
+                           and _digest(item.get('result')) == _digest(value)
+                           for item in policy['events'])):
+            return False
+        response = {key: item for key, item in response.items()
+                    if key not in {'pending_plan', 'local_repair', 'automatic_retry'}}
+    return any(item.get('kind') == 'host_script_completed' and item.get('delivered') is True
+               and item.get('result_sha256') == _digest(response)
+               and all(item.get(key) == field for key, field in execution.items()) for item in matching)
 
 
 def _validate_record(record: dict) -> dict:
@@ -211,10 +350,24 @@ def _validate_record(record: dict) -> dict:
                 or any(not _sha(evidence.get(field)) for field in ('sha256', 'shared_prompt_sha256', 'prefix_sha256'))):
             raise ValueError('提示证据需私有文件及完整/前缀/共同题面摘要')
         record = {**record, 'prompt_evidence': {**evidence, 'path': str(_private(evidence['path'], exists=True))}}
+    if record.get('review_evidence') is not None:
+        evidence = record['review_evidence']
+        if not isinstance(evidence, dict) or not _sha(evidence.get('sha256')) or not isinstance(evidence.get('path'), str):
+            raise ValueError('评审证据需要实际私有 path 和 sha256')
+        record = {**record, 'review_evidence': {**evidence, 'path': str(_private(evidence['path'], exists=True))}}
+    if record.get('execution_policy_evidence') is not None:
+        evidence = record['execution_policy_evidence']
+        if (not isinstance(evidence, dict) or any(not _sha(evidence.get(field))
+                for field in ('job_sha256', 'audit_sha256', 'policy_sha256'))
+                or any(not isinstance(evidence.get(field), str) for field in ('job_path', 'audit_path'))):
+            raise ValueError('宿主策略证据需要实际私有 job/audit 文件与摘要')
+        record = {**record, 'execution_policy_evidence': {**evidence,
+                  'job_path': str(_private(evidence['job_path'], exists=True)),
+                  'audit_path': str(_private(evidence['audit_path'], exists=True))}}
     if record.get('shared_prompt_sha256') is not None and not _sha(record['shared_prompt_sha256']):
         raise ValueError('共同题面摘要无效')
-    if record.get('execution_strategy') is not None and record['execution_strategy'] not in ('steps', 'composed'):
-        raise ValueError('执行策略须为 steps/composed')
+    if record.get('execution_strategy') is not None and record['execution_strategy'] not in ('steps', 'composed', 'baseline_steps', 'host_delivery'):
+        raise ValueError('执行策略须为 steps/composed/baseline_steps/host_delivery')
     if record.get('accounting_run_dirs') is not None:
         if not isinstance(record['accounting_run_dirs'], list) or not record['accounting_run_dirs']:
             raise ValueError('accounting_run_dirs 需列出全部尝试；无数据请省略')
@@ -282,8 +435,9 @@ class FeedbackStore:
                 or manifest.get('prompt_sha256') != row['versions']['prompt_sha256']):
             raise ValueError('模型或提示记录与实际运行manifest不同')
         binding = _prompt_binding(row, manifest)
-        if require_normal and binding['execution_strategy'] != 'steps':
+        if require_normal and binding['execution_strategy'] not in ('steps', 'baseline_steps'):
             raise ValueError('训练正常组必须使用未经组合优化的逐步策略')
+        policy = _execution_policy_binding(row, binding)
         sums = {key: 0 for key in ('requests', 'proxy_usd', 'cache_hit_input_tokens', 'cache_miss_input_tokens', 'output_tokens')}
         fields = {'cache_hit_input_tokens': 'prompt_cache_hit_tokens',
                   'cache_miss_input_tokens': 'prompt_cache_miss_tokens', 'output_tokens': 'completion_tokens'}
@@ -328,19 +482,33 @@ class FeedbackStore:
                 raise ValueError('交付文件字节变化')
         from src.adapters.dsh_event_projection import is_original_tool_result
         from src.adapters.dsh_trajectory import _observation_digest
-        names, observed_receipts = {}, []
+        names, call_args, observed_receipts, host_count = {}, {}, [], 0
         for line in (directory / 'agent-events.jsonl').read_text(encoding='utf-8').splitlines():
             if not line.strip():
                 continue
             event = json.loads(line); data = event.get('data', {})
             if event.get('type') == 'tool/call':
                 names[data.get('callId')] = data.get('name')
+                try:
+                    call_args[data.get('callId')] = json.loads(data.get('arguments', ''))
+                except (TypeError, ValueError):
+                    call_args[data.get('callId')] = None
             elif is_original_tool_result(event):
-                name = names.get(data.get('message', {}).get('source', {}).get('callId'))
+                call_id = data.get('message', {}).get('source', {}).get('callId')
+                name = names.get(call_id)
                 if name in ('mcp__ppt__deliver_deck', 'mcp__ppt__render_delivery', 'mcp__ppt__build_delivery'):
                     success, _, value = _observation_digest(event, name)
                     if success and isinstance(value, dict) and value.get('delivered') is not False:
+                        if policy and name.removeprefix('mcp__ppt__') in COMPOSED_TOOLS:
+                            raise ValueError('受控对照真实成功调用了已禁组合工具，不能作为合格轨迹')
                         observed_receipts.append(value)
+                elif (policy and policy['strategy'] == 'host_delivery'
+                      and isinstance(name, str) and name.removeprefix('mcp__ppt__') in HOST_ROUTES):
+                    success, _, value = _observation_digest(event, name)
+                    if success and isinstance(value, dict) and _host_receipt(value, name, call_args.get(call_id), policy):
+                        observed_receipts.append(value); host_count += 1
+        if policy and policy['strategy'] == 'host_delivery' and not host_count:
+            raise ValueError('宿主策略没有实际完成且审计绑定的交付脚本')
         if not observed_receipts or any(value not in observed_receipts for value in receipt.get('receipts', [])):
             raise ValueError('交付证据没有来自实际原始成功工具回执')
         receipt_files = {(str(_private(item['path'], exists=True)), item['sha256']) for item in receipt['files']}
@@ -357,12 +525,14 @@ class FeedbackStore:
         return sums
 
     @staticmethod
-    def _eligibility(row: dict) -> tuple[bool, str]:
+    def _eligibility(row: dict, *, evaluation_only=False) -> tuple[bool, str]:
         if not row['consent']['learn']:
             return False, 'learning_not_authorized'
         if row['group'] != 'baseline':
             return False, 'optimized_trace_not_normal_training'
-        if not FeedbackStore._qualified(row):
+        qualified = (all(row['quality'][key] == 'passed' for key in QUALITY_FIELDS)
+                     and row['quality']['reviewer'] in ('human', 'user', 'ai-assisted')) if evaluation_only else FeedbackStore._qualified(row)
+        if not qualified:
             return False, 'quality_failed_or_not_human_reviewed'
         if not row.get('identity_confirmed') or not row.get('run_dir'):
             return False, 'independent_frozen_identity_needed'
@@ -375,9 +545,12 @@ class FeedbackStore:
             if identity['research_decision_id'] != row['task_identity']:
                 return False, 'frozen_task_identity_mismatch'
             FeedbackStore._evidence(row, require_normal=True)
+            if evaluation_only and row['quality']['reviewer'] == 'ai-assisted':
+                _review_binding(row)
         except (ValueError, OSError, json.JSONDecodeError):
             return False, 'real_trace_cost_or_delivery_evidence_changed_or_missing'
-        return True, 'normal_quality_reviewed_frozen_trace'
+        return True, ('evaluation_only_ai_assisted_frozen_trace' if evaluation_only
+                      else 'normal_quality_reviewed_frozen_trace')
 
     def collect(self, record: dict) -> dict:
         """append-only feedback revision; never starts learning or model calls."""
@@ -385,7 +558,7 @@ class FeedbackStore:
         with self._lock():
             previous = next((item for item in self._records() if item['run_id'] == row['run_id']), None)
             stable = ('task_identity', 'pair_id', 'group', 'source_evidence', 'versions', 'run_dir', 'candidate_version',
-                      'prompt_evidence', 'shared_prompt_sha256', 'execution_strategy')
+                      'prompt_evidence', 'shared_prompt_sha256', 'execution_strategy', 'execution_policy_evidence')
             if previous and any(previous.get(key) != row.get(key) for key in stable):
                 raise ValueError('同一 run 的任务、来源、配置和候选版本不能追改')
             paths = []
@@ -399,6 +572,10 @@ class FeedbackStore:
                     paths += [_private(item['path'], exists=True) for item in receipt['files'] if isinstance(item, dict) and item.get('path')]
             if row.get('prompt_evidence'):
                 paths.append(Path(row['prompt_evidence']['path']))
+            if row.get('review_evidence'):
+                paths.append(Path(row['review_evidence']['path']))
+            if row.get('execution_policy_evidence'):
+                paths += [Path(row['execution_policy_evidence'][field]) for field in ('job_path', 'audit_path')]
             if row.get('run_dir'):
                 metrics_path = Path(row['run_dir']) / 'metrics.json'
                 if metrics_path.is_file():
@@ -415,26 +592,27 @@ class FeedbackStore:
                 'queue': 'learning' if eligible else 'diagnostic_only', 'reason': reason,
                 'model_requests': 0, 'learning_started': False}
 
-    def queue(self) -> dict:
+    def queue(self, *, evaluation_only=False) -> dict:
         seen_tasks, seen_pairs, rows = set(), set(), []
         for row in self._records():
-            eligible, reason = self._eligibility(row)
+            eligible, reason = self._eligibility(row, evaluation_only=evaluation_only)
             if eligible and (row['task_identity'] in seen_tasks or row['pair_id'] in seen_pairs):
                 eligible, reason = False, 'same_task_or_pair_already_counted'
             if eligible:
                 seen_tasks.add(row['task_identity']); seen_pairs.add(row['pair_id'])
             rows.append({'record_id': row['record_id'], 'run_id': row['run_id'], 'task_identity': row['task_identity'],
                          'eligible': eligible, 'reason': reason})
-        return {'records': rows, 'independent_eligible_tasks': len(seen_tasks), 'automatic_learning': False}
+        return {'records': rows, 'independent_eligible_tasks': len(seen_tasks), 'automatic_learning': False,
+                'learning_scope': 'evaluation_only' if evaluation_only else 'production_reviewed'}
 
     def preview(self, train: list[str], heldout: list[str], *, contracts: Path, version_fields: Path,
-                tool_schema: Path, mining='sequence') -> dict:
+                tool_schema: Path, mining='sequence', evaluation_only=False) -> dict:
         if len(train) != 2 or len(heldout) != 1 or len(set(train + heldout)) != 3:
             raise ValueError('最小预览需两个 train 和一个独立 heldout 记录')
         if mining not in ('sequence', 'witnessed_edges'):
             raise ValueError('未知现有编译入口')
         rows = [self._record(item) for item in train + heldout]
-        if any(not self._eligibility(row)[0] for row in rows):
+        if any(not self._eligibility(row, evaluation_only=evaluation_only)[0] for row in rows):
             raise ValueError('只有授权、合格、正常、已冻结的轨迹可进入学习')
         if len({row['pair_id'] for row in rows}) != 3 or len({row['task_identity'] for row in rows}) != 3:
             raise ValueError('同一任务的双组或续写不能算独立训练/认证任务')
@@ -443,6 +621,7 @@ class FeedbackStore:
                                          Path(row['run_dir']) / 'agent-events.jsonl', ROOT / '.local') for row in rows]
         require_distinct_decisions(identities)
         _require_compatible_prompts(rows)
+        runtime_snapshot, _ = _current_runtime_files(rows)
         config = {name: {'path': str(Path(path).resolve(strict=True)), 'sha256': _hash(Path(path).resolve(strict=True))}
                   for name, path in [('contracts', contracts), ('version_fields', version_fields), ('tool_schema', tool_schema)]}
         compile_schema, effective_schema_hash = _compiler_schema(Path(config['tool_schema']['path']))
@@ -454,6 +633,9 @@ class FeedbackStore:
                 'records': [{'id': row['record_id'], 'sha256': _hash(self.path / 'records' / (row['record_id'] + '.json'))}
                             for row in rows], 'identities': identities, 'config': config, 'mining': mining,
                 'impact': 'offline_compilation_only_candidate_not_enabled', 'model_requests': 0,
+                'learning_scope': 'evaluation_only' if evaluation_only else 'production_reviewed',
+                'production_eligible': not evaluation_only,
+                'runtime_sha256': runtime_snapshot['sha256'],
                 'training_task_count': 2, 'heldout_task_count': 1}
         with self._lock():
             path = self.path / 'plans' / (plan_id + '.json'); _new(path, plan)
@@ -465,6 +647,7 @@ class FeedbackStore:
         if path.parent != self.path / 'plans':
             raise ValueError('只能确认此反馈库的预览计划')
         plan = _read(path)
+        scope = _learning_scope(plan)
         if not confirm:
             return {'preview': True, 'plan_path': str(path), 'impact': plan['impact'], 'model_requests': 0}
         with self._lock():
@@ -478,12 +661,15 @@ class FeedbackStore:
                     raise ValueError('预览后的反馈证据变化')
                 row = self._record(item['id'])
                 latest = next(record for record in self._records() if record['run_id'] == row['run_id'])
-                if latest['record_id'] != row['record_id'] or not self._eligibility(latest)[0]:
+                if latest['record_id'] != row['record_id'] or not self._eligibility(latest, evaluation_only=scope == 'evaluation_only')[0]:
                     raise ValueError('反馈已更新或授权/质量/身份失效，请重新预览')
                 rows.append(row)
             for item in plan['config'].values():
                 if _hash(Path(item['path'])) != item['sha256']:
                     raise ValueError('工具契约/schema变化，请重新预览')
+            runtime_snapshot, runtime_files = _current_runtime_files(rows)
+            if plan.get('runtime_sha256', runtime_snapshot['sha256']) != runtime_snapshot['sha256']:
+                raise ValueError('预览后的产品实现版本变化，请重新预览')
             dataset_path = self.path / 'datasets' / (plan['plan_id'] + '.json')
             by_id = {row['record_id']: row for row in rows}
             _new(dataset_path, {split: [by_id[key]['run_dir'] for key in plan[split]] for split in ('train', 'heldout')})
@@ -499,7 +685,7 @@ class FeedbackStore:
                     contracts_path=Path(plan['config']['contracts']['path']),
                     version_fields_path=Path(plan['config']['version_fields']['path']),
                     tool_schema_path=schema_path,
-                    guard_paths=(Path(plan['config']['tool_schema']['path']),),
+                    guard_paths=(Path(plan['config']['tool_schema']['path']), *runtime_files),
                     out_dir=self.path / 'compiled' / plan['plan_id'], mining=plan['mining'])
                 motif_v6.validate_compilation(manifest)
             except Exception as exc:
@@ -509,6 +695,7 @@ class FeedbackStore:
                 raise
             version = uuid4().hex
             candidate = {'schema_version': 1, 'version': version, 'created_at': _now(), 'status': 'candidate',
+                         'learning_scope': scope, 'production_eligible': scope == 'production_reviewed',
                          'manifest': str(manifest), 'manifest_sha256': _hash(manifest), 'plan_path': str(path),
                          'plan_sha256': _hash(path), 'training_task_identities': [row['task_identity'] for row in rows],
                          'training_pair_ids': [row['pair_id'] for row in rows],
@@ -528,13 +715,18 @@ class FeedbackStore:
         from .motif_v6 import validate_compilation
         if _hash(Path(row['manifest'])) != row['manifest_sha256'] or _hash(Path(row['plan_path'])) != row['plan_sha256']:
             raise ValueError('候选或训练划分已变化')
+        plan = _read(Path(row['plan_path']))
+        scope = _learning_scope(plan)
+        if (row.get('learning_scope', 'production_reviewed') != scope
+                or row.get('production_eligible', True) is not (scope == 'production_reviewed')):
+            raise ValueError('候选 scope 与冻结学习计划不同，不能贴标签绕过人评准入')
         latest_by_run = {item['run_id']: item for item in self._records()}
-        for item in _read(Path(row['plan_path']))['records']:
+        for item in plan['records']:
             path = self.path / 'records' / (item['id'] + '.json')
             if _hash(path) != item['sha256']:
                 raise ValueError('学习反馈证据变化')
             original = self._record(item['id'])
-            if not self._eligibility(latest_by_run[original['run_id']])[0]:
+            if not self._eligibility(latest_by_run[original['run_id']], evaluation_only=scope == 'evaluation_only')[0]:
                 raise ValueError('学习授权已撤回或最新质量/版本不合格')
         validate_compilation(Path(row['manifest']))
         return row
@@ -544,6 +736,8 @@ class FeedbackStore:
         candidate = self._candidate(version)
         return {'version': version, 'manifest': candidate['manifest'],
                 'manifest_sha256': candidate['manifest_sha256'], 'stage': 'candidate_evaluation',
+                'learning_scope': candidate.get('learning_scope', 'production_reviewed'),
+                'production_eligible': candidate.get('learning_scope', 'production_reviewed') == 'production_reviewed',
                 'quality_cost_promoted': False}
 
     @staticmethod
@@ -590,6 +784,7 @@ class FeedbackStore:
         if version is None:
             return None
         candidate = self._candidate(version)
+        _require_production_candidate(candidate)
         self._release_gate(version)
         return {'version': version, 'manifest': candidate['manifest'],
                 'manifest_sha256': candidate['manifest_sha256'],
@@ -607,6 +802,7 @@ class FeedbackStore:
             except (ValueError, OSError):
                 valid = False
             states.append({'version': row['version'], 'status': 'active' if row['version'] == active else 'candidate',
+                           'learning_scope': row.get('learning_scope', 'production_reviewed'),
                            'valid': valid, 'manifest': row['manifest'], 'learning_cost': row['learning_cost']})
         return {'active_version': active, 'candidates': states, 'last_release': events[-1] if events else None,
                 'automatic_activation': False, 'online_entry_must_explicitly_load_valid_active_manifest': True}
@@ -627,6 +823,7 @@ class FeedbackStore:
         gate reports that distinction; it does not assert a break-even point.
         """
         candidate = self._candidate(version)
+        _require_production_candidate(candidate)
         if len(pairs) < 2 or len(set(pairs)) != len(pairs):
             raise ValueError('晋级至少需要两个新的独立配对任务')
         records = self._records(); evidence = []
@@ -699,7 +896,7 @@ class FeedbackStore:
             raise ValueError('暂无发布可回滚')
         previous = state['last_release']['previous_active_version']
         if previous is not None:
-            self._candidate(previous)
+            _require_production_candidate(self._candidate(previous))
             self._release_gate(previous)
         if not confirm:
             return {'preview': True, 'active_version': state['active_version'], 'rollback_to': previous}
@@ -712,13 +909,15 @@ def main() -> int:
     parser.add_argument('--store', type=Path, default=DEFAULT_STORE)
     commands = parser.add_subparsers(dest='command', required=True)
     collect = commands.add_parser('collect'); collect.add_argument('--record', type=Path, required=True)
-    commands.add_parser('queue'); commands.add_parser('status'); commands.add_parser('active-manifest')
+    queue = commands.add_parser('queue'); queue.add_argument('--evaluation-only', action='store_true')
+    commands.add_parser('status'); commands.add_parser('active-manifest')
     preview = commands.add_parser('preview')
     preview.add_argument('--train', nargs=2, required=True); preview.add_argument('--heldout', nargs=1, required=True)
     preview.add_argument('--contracts', type=Path, default=Path(__file__).parent / 'contracts.json')
     preview.add_argument('--version-fields', type=Path, default=Path(__file__).parent / 'version-fields.json')
     preview.add_argument('--tool-schema', type=Path, required=True)
     preview.add_argument('--mining', choices=['sequence', 'witnessed_edges'], default='sequence')
+    preview.add_argument('--evaluation-only', action='store_true', help='明确AI辅助轨迹仅编译隔离评测候选，永久禁止生产晋级')
     learn = commands.add_parser('learn'); learn.add_argument('--plan', type=Path, required=True); learn.add_argument('--confirm', action='store_true')
     activate = commands.add_parser('activate'); activate.add_argument('--version', required=True)
     activate.add_argument('--pairs', nargs='+', required=True); activate.add_argument('--confirm', action='store_true')
@@ -728,7 +927,8 @@ def main() -> int:
         result = store.collect(_read(_private(args.record, exists=True)))
     elif args.command == 'preview':
         result = store.preview(args.train, args.heldout, contracts=args.contracts,
-                               version_fields=args.version_fields, tool_schema=args.tool_schema, mining=args.mining)
+                               version_fields=args.version_fields, tool_schema=args.tool_schema, mining=args.mining,
+                               evaluation_only=args.evaluation_only)
     elif args.command == 'learn':
         result = store.learn(args.plan, confirm=args.confirm)
     elif args.command == 'activate':
@@ -737,6 +937,8 @@ def main() -> int:
         result = store.rollback(confirm=args.confirm)
     elif args.command == 'active-manifest':
         result = store.active_manifest()
+    elif args.command == 'queue':
+        result = store.queue(evaluation_only=args.evaluation_only)
     else:
         result = getattr(store, args.command)()
     print(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False))

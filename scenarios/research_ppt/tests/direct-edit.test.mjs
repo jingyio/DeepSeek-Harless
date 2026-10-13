@@ -3,7 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { directEditEnvironment, parseDirectEditArgs, previewExplicitUpdates } from '../dist/direct-edit-cli.js';
+import { directEditEnvironment, executeExplicitRevision, parseDirectEditArgs, previewExplicitUpdates } from '../dist/direct-edit-cli.js';
+import { ExecutionPolicy } from '../dist/execution-policy.js';
 
 const sha='a'.repeat(64);
 const args=['--job','.local/jobs/current/job.json','--deck-id','real-deck-id','--updates','.local/edit.json'];
@@ -60,4 +61,62 @@ test('CLI 坏参数以可解析拒绝结果退出，不启动 MCP 或打印未�
   assert.equal(result.status,2); const output=JSON.parse(result.stderr.trim());
   assert.equal(output.code,'expected_version_required'); assert.equal(output.model_requests,0);
   assert.equal(output.provider_called,false); assert.equal(result.stdout,'');
+});
+
+function revisionResponses() {
+  const version='b'.repeat(64),audit={passed:true,non_target_slides_preserved:true,shared_styles_preserved:true,slide_count:2,changed_pages:[2]};
+  const deck={deck_id:'new-copy',parent_deck_id:'original',file_sha256:sha,input_version:version,slide_count:2,
+    each_slide_has_editable_text:true,revision_audit:audit};
+  return {version,responses:{revise_deck:structuredClone(deck),inspect_deck:structuredClone(deck),
+    validate_deck:{...structuredClone(deck),passed:true,validation_id:'actual-validation'},
+    deliver_deck:{deck_id:'new-copy',validation_id:'actual-validation',file_sha256:sha,input_version:version,editable:true,artifacts:[]}}};
+}
+
+test('明确CLI遵守baseline原子步骤，不选择被禁止的组合入口，也不调用模型',async()=>{
+  const {version,responses}=revisionResponses(),calls=[];
+  const call=async(name,args)=>{calls.push({name,args});return structuredClone(responses[name]);};
+  const updates=[{page:2,changes:{title:'Explicit'}}],result=await executeExplicitRevision(call,
+    new ExecutionPolicy({schema_version:1,strategy:'baseline_steps'}),'original',updates,2,version);
+  assert.deepEqual(calls.map(x=>x.name),['revise_deck','inspect_deck','validate_deck','deliver_deck']);
+  assert.deepEqual(calls[0].args,{deck_id:'original',updates});
+  assert.equal(result.delivered,true);assert.equal(result.parent_deck_id,'original');
+  assert.equal(result.revision_audit.non_target_slides_preserved,true);
+});
+
+test('host策略明确CLI仅用revise_deck，核验实际宿主策略，不重复已完成步骤',async()=>{
+  const policy=new ExecutionPolicy({schema_version:1,strategy:'host_delivery'}),{version,responses}=revisionResponses(),calls=[];
+  const delivered={...responses.deliver_deck,delivered:true,parent_deck_id:'original',revision_audit:responses.revise_deck.revision_audit,
+    execution_policy:{policy_sha256:policy.snapshot().policy_sha256,request_tool:'revise_deck',host_script:'revise_delivery'}};
+  const call=async(name,args)=>{calls.push({name,args});return structuredClone(delivered);};
+  assert.equal((await executeExplicitRevision(call,policy,'original',[{page:2,changes:{title:'Explicit'}}],2,version)).delivered,true);
+  assert.deepEqual(calls.map(x=>x.name),['revise_deck']);
+  for (const mutation of [row=>row.delivered=false,row=>delete row.execution_policy,row=>row.execution_policy.policy_sha256='c'.repeat(64),
+    row=>row.execution_policy.host_script='other']) {
+    const value=structuredClone(delivered);mutation(value);
+    await assert.rejects(()=>executeExplicitRevision(async()=>value,policy,'original',[{page:2,changes:{title:'Explicit'}}],2,version),
+      {code:'delivery_contract_rejected'});
+  }
+});
+
+test('baseline明确CLI在修订、版本、真实渲染失败处停止，不盲目继续验收',async()=>{
+  const policy=new ExecutionPolicy({schema_version:1,strategy:'baseline_steps'}),updates=[{page:2,changes:{title:'Explicit'}}];
+  for (const [stage,mutate,expected] of [
+    ['revise_deck',row=>row.revision_audit.non_target_slides_preserved=false,'revision_contract_rejected'],
+    ['revise_deck',row=>row.input_version='c'.repeat(64),'revision_contract_rejected'],
+    ['inspect_deck',row=>row.file_sha256='c'.repeat(64),'deck_contract_rejected'],
+    ['validate_deck',row=>row.passed=false,'validation_contract_rejected'],
+    ['validate_deck',row=>row.validation_id='','validation_contract_rejected'],
+    ['deliver_deck',row=>row.validation_id='other','delivery_contract_rejected']]) {
+    const {version,responses}=revisionResponses(),calls=[];mutate(responses[stage]);
+    await assert.rejects(()=>executeExplicitRevision(async name=>{calls.push(name);return structuredClone(responses[name]);},
+      policy,'original',updates,2,version),{code:expected});
+    assert.equal(calls.at(-1),stage);
+  }
+});
+
+test('没有冻结策略的历史明确CLI仍走原revise_delivery，不能把兼容路径称为host接管',async()=>{
+  const calls=[];
+  const result=await executeExplicitRevision(async name=>{calls.push(name);return {delivered:true};},
+    new ExecutionPolicy(undefined),'original',[{page:2,changes:{title:'Explicit'}}],2,'b'.repeat(64));
+  assert.deepEqual(calls,['revise_delivery']);assert.equal(result.execution_policy,undefined);
 });

@@ -2,13 +2,17 @@
 
 接收 1–8 份 PDF/PPTX、1–30 页要求与用户说明，目标是生成可编辑 PPTX，或将现有 PPTX 改为学术/组会风格，并提供真实 PDF 预览、来源与交付验收。
 
-组会试用统一采用 [双路入口](trial.md)：`npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output` 默认仅预览，生成两个独立任务；确认后 `npm run ppt -- --trial <实际trial.json> --call-model`。两路使用相同模型、来源与固定19工具，分别逐步交付／普通组合交付；原始账本、失败和待评审状态均保留。双路合计预算默认 $3，每路 $1.50，不是预计费用。输入先本机下载再上传服务器；不提交论文、日志或交付文件。
+V17发布参数：每份输入≤100 MiB；单路默认60步/8000输出token/$1.50预算上限，双路总$3。交付MCP外层300秒、内层单工具240秒。页数、图件、ZIP展开、来源/权限/版本守卫仍保持。认证后网页 `/ppt` 已接入专用流式上传、任务预览/确认、双路状态/费用与鉴权下载；默认15页。普通工作台上传协议不变，见[前端契约](frontend-integration.md)。
+
+组会试用统一采用 [双路入口](trial.md)：`npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output` 默认仅预览，生成两个独立任务；确认后 `npm run ppt -- --trial <实际trial.json> --call-model`。两路使用相同模型、来源与当前固定21工具，分别逐步交付／宿主固定脚本交付，模型均不能直接选组合入口；原始账本、失败和待评审状态均保留。双路合计预算默认 $3，每路 $1.50，不是预计费用。输入先本机下载再上传服务器；不提交论文、日志或交付文件。网页已有显式科研PPT入口，见[接口说明](frontend-integration.md)；自由聊天不自动路由PPT。
 
 `lab` 的 `research-ppt-layout-v15-lab.1` 使用朴素科研表达，去掉固定英文装饰标签与流程数字圆底，保留正文、图件、条件、原生数据与来源。`academic` 外观保持 V11.2。两者仍是公共 JSON→PptxGenJS 可靠交付，V12–V14 的私有原生模板服务没有在此冒充已接入。设计指导为 `research-design-v3`，标题可用具体主题，takeaway 可省略，避免固定贡献点和重复叙述。
 
 显式 `--collect-feedback` 保存未评审反馈且默认不授权学习；[反馈与离线学习](feedback-learning.md) 管理去重、训练／认证划分、候选及受控晋级、回滚。`--use-active-learning` 仅继承已晋级且当前有效的版本，沿用现有 Runtime 守卫与正常回退；无 active 时如实记录普通模式。首次生成、后续使用和学习投入分开记账，稳定同质量降本仍须真实用户评审。
 
-V9 普通 `cli run` 默认使用 [可靠交付入口](delivery.md)，提供同一任务重启恢复和固定19工具；`--runtime legacy` 保留原内存服务，旧动态目录工具仅在此入口加载。`prepare --document-cache` 可开启普通内容寻址缓存（默认关闭），缓存不保存授权、读取状态或科学结论。计划正文、结论、表格、流程和图表数据独立核对实际OOXML/PDF；PPT页序依据presentation关系，复合图不确定时拒绝猜测。进度、失败和限制见 [V9记录](../../docs/experiments/research-ppt-v9-quality-20261012.md)。新增条件续执行协议默认关闭，尚不代表模型学得、独立认证或真实降本。
+普通 `cli run` 默认使用 [可靠交付入口](delivery.md)，提供同一任务重启恢复；V9发布时19工具，V17新增两项失败草稿恢复工具后当前为21工具。`--runtime legacy` 保留原内存服务，旧动态目录工具仅在此入口加载。`prepare --document-cache` 可开启普通内容寻址缓存（默认关闭），缓存不保存授权、读取状态或科学结论。计划正文、结论、表格、流程和图表数据独立核对实际OOXML/PDF；PPT页序依据presentation关系，复合图不确定时拒绝猜测。进度、失败和限制见 [V9记录](../../docs/experiments/research-ppt-v9-quality-20261012.md)。新增条件续执行协议默认关闭，尚不代表模型学得、独立认证或真实降本。
+
+V17的`host_delivery`保留失败计划，模型用`read_pending_plan`读取指出的页面，再通过`repair_pending_plan`明确局部修改；失败草稿未完成时拒绝重新提交整稿。来源、权限、实现版本及实际渲染守卫保持，baseline_steps禁止恢复工具。它是普通工程能力，本轮未生成新RSI工具；真实15页对照的机械交付、费用与待评审边界见[V17记录](../../docs/experiments/research-ppt-v17-local-recovery-20261013.md)。
 
 V10 增加 [明确页修改的零模型入口](direct-edit.md)，并改善默认渲染：在保留全部正文的左右/上下候选中选择图件面积或表格宽度更合适的版式，表格按内容分配列宽，方法流程使用可编辑的编号与箭头。默认图页优先 22pt，只有原图面积明显改善（至少 25%）或原版无法容纳时，逐页尝试 20pt 的紧凑正文；不联动缩小其他页面。未提供显式 `layout_policy` 时才使用自动选择；这些是普通工程能力，不是新 Motif 或 RSI。V10 历史渲染版本为 `research-ppt-layout-v10.1`，当前为下述 V11.2；旧 checkpoint/布局证书不得重签复用。
 
@@ -18,7 +22,7 @@ V6 已完成同一 MCP 会话中的可靠局部修订、真实 DeepSeek 生成�
 
 V4 的图像提取、受限样式修改、真实渲染核验与交付链已实现；两轮 5 题×三组共 30 个真实 DeepSeek 对照及逐页辅助审查已完成。历史来源读取 Motif、两套 15 页辅助修订稿及限制见 [V2–V4 实验记录](../../docs/experiments/research-ppt-v2-20261010-results.md)。生成/验收段仍是普通代码。
 
-V5 已接入固定科研设计 Skill、原生可编辑方法流程与短结论，完成真实 DeepSeek 布局提案、训练回放、独立机械认证及服务器复验。原五题三组15次真实运行、两题反馈 pilot 六次、单独 QLoRA 精修一次均已交付并逐页辅助审查。布局认证仅证明几何和内容保持；设计质量尚未人工盲评，稳定同质量降本仍待验证。结果单列 [V5 实验记录](../../docs/experiments/research-ppt-v5-design-rsi-20261010.md)，不覆盖历史结果。用户已授权本轮结束后以中文提交到 `feature/research-ppt-agent`，提交前告知范围，不创建 PR。
+V5 已接入固定科研设计 Skill、原生可编辑方法流程与短结论，完成真实 DeepSeek 布局提案、训练回放、独立机械认证及服务器复验。原五题三组15次真实运行、两题反馈 pilot 六次、单独 QLoRA 精修一次均已交付并逐页辅助审查。布局认证仅证明几何和内容保持；设计质量尚未人工盲评，稳定同质量降本仍待验证。结果单列 [V5 实验记录](../../docs/experiments/research-ppt-v5-design-rsi-20261010.md)，不覆盖历史结果。最新发布条件是用户看完完整真实测试产物并明确通知后再以中文提交/推送 `feature/research-ppt-agent`，提交前告知，不创建 PR。
 
 ## 部署与权限
 
@@ -140,6 +144,8 @@ V5 普通生成会话默认将 [research-ppt-design](skills/research-design/SKIL
 
 PDF 的嵌入图片可能只是阴影或遮罩，并不等于完整论文图。`read_page` 返回真实图注及几何候选，优先将 `candidate_id` 交给 `extract_figure`；包含矢量内容的完整图走页区域渲染。图片透明度合成到白底，明显空白和遮罩片段拒绝或过滤。图注定位只提供可追溯素材，不自动证明模型解释正确；复杂跨页图和 OCR 尚未验证。
 
+需要保证原图数量时，在 `prepare` 或双路入口显式传 `--min-original-figures 2`。默认0保持旧任务兼容，仅适用于含PDF的generate任务，且不能超过页数。最低数量冻结到任务，`list_inputs` 返回实际值；服务在生成及修订前按源SHA/来源页/图注候选去重验收，同图重复裁取和同字节来源别名不能凑数。数量不足返回 `insufficient_original_figures`，要求补读/提取后提交完整计划，不自动改写内容，也不认证图意、科研事实或图内文字可读性。
+
 三种实验组共享工具能力，区别在发起方式：
 
 ```text
@@ -223,7 +229,7 @@ npm run motif:check 2>&1 | tee test-logs/research-ppt-v2-20261010-motif-check.lo
 
 这些是工程/模拟诊断，不代表真实生成质量。真实文件验收须完成 PDF/PPTX 读取、原图/页区域提取、15 页生成、现有 PPTX 重风格、真实 LibreOffice 渲染、失败拒绝和交付版本绑定，并保存各项日志和产物。
 
-最新方案与结果：[research-ppt-v5-design-rsi-20261010](../../docs/experiments/research-ppt-v5-design-rsi-20261010.md)。服务器通过场景 Node 17 项、Python 38 项，以及根 `npm test`（136 Python、29 Node）与 `npm run smoke`。真实布局学习为 3 次 DeepSeek 请求、1 次候选提案，独立机械认证通过；原图平均面积训练增加 18.10%、留出增加 21.53%，不能替代审美或事实评审。原矩阵请求为 96/103/81、总 token 为 3,281,023/4,461,354/2,958,970；独立 Motif 组成本增加，RSI 组本次总量下降，不足以证明因果或同质量收益。原 15 份共 138 页已辅助审查，14 份需修订、1 份未观察到重大问题；账单、人力及独立人工盲评仍未知。
+最新[V17真实对照](../../docs/experiments/research-ppt-v17-local-recovery-20261013.md)两组15页机械完成，普通/host请求32/28、代理费$0.0880055/$0.0418032，科学质量待用户审阅，普通恢复收益不称新RSI或合格总成本下降。此前[V16真实重测](../../docs/experiments/research-ppt-v16-release-real-20261013.md)原稿质量未合格，宿主组代理费上升128.93%的负面证据保留。以下为历史 [V5方案与结果](../../docs/experiments/research-ppt-v5-design-rsi-20261010.md)：服务器通过场景 Node 17 项、Python 38 项，以及根 `npm test`（136 Python、29 Node）与 `npm run smoke`。真实布局学习为 3 次 DeepSeek 请求、1 次候选提案，独立机械认证通过；原图平均面积训练增加 18.10%、留出增加 21.53%，不能替代审美或事实评审。原矩阵请求为 96/103/81、总 token 为 3,281,023/4,461,354/2,958,970；独立 Motif 组成本增加，RSI 组本次总量下降，不足以证明因果或同质量收益。原 15 份共 138 页已辅助审查，14 份需修订、1 份未观察到重大问题；账单、人力及独立人工盲评仍未知。
 
 修订仅补齐缺失 `bullets: []`，显式 `null` 或错误类型继续拒绝，保留来源/notes并记录规范化反馈。修复后两题 pilot 与原矩阵分别报告，真实模型根据相同审查意见重新生成；没有使用 Codex 代写成品。程序通过不证明科研内容合格。
 
@@ -272,12 +278,12 @@ python -m scenarios.research_ppt.tool_learning \
 
 当前新增的可维护能力包括同一 job 的 MCP 重启恢复、TypeScript 有限交付组合和指定页固定读取。它与上方 V6 入口并存，安装及真实回归见 [delivery.md](delivery.md)。未认证成功的 V7/V8 生成工具候选不注册；历史冻结实验与本次发布移植分别记录。
 
-历史 PDF 的文件身份和版本说明见 [报告索引](../../docs/experiments/research-ppt-reports/README.md)；PDF 本体留在团队私有归档，不进入 main。V7、V8 局部 verified 旁路已经观察到，但计入失败恢复后未降低整任务成本；科学质量未独立人工盲评。V6 的工具生成成功记录与 V7/V8 的失败记录分别保留，不能互相覆盖。
+全部可共享历史 PDF 与版本说明见 [报告索引](../../docs/experiments/research-ppt-reports/README.md)。V7、V8 局部 verified 旁路已经观察到，但计入失败恢复后未降低整任务成本；科学质量未独立人工盲评。V6 的工具生成成功记录与 V7/V8 的失败记录分别保留，不能互相覆盖。
 
-## V13 成品模板库与受限内容绑定
+## V13 成品模板库历史验证
 
-[成品模板素材库](template-library/README.md) 登记五套风格、28 个页型，保留上游 MIT 许可、来源 commit、原始 SVG 与适配差异。固定依赖包含 21 个 Tabler 图标及单独许可；图标必须在任务准备阶段按实际模板复制、核验并冻结，不能只登记路径。两张大图派生页保留完整原图，移除会遮图的正文槽；普通小图槽不能代替要求交付的科研图件。
+V13 私有模板原型曾登记五套风格、28 个页型，保留上游 MIT 许可、来源 commit、原始 SVG 与适配差异，并冻结实际使用的 Tabler 图标。两张大图派生页保留完整原图，移除会遮图的正文槽；普通小图槽不能代替要求交付的科研图件。
 
-`ts/template-library.ts` 的 `registerTemplate` 核验原稿/适配稿/许可摘要与可重放变更，`bindTemplate` 仅绑定已登记的文本与来源图片，`bindTemplateDeck` 核验整稿页数及一致画布；family 选择由准备端控制。未知/缺失槽、容量超限、非法 SVG、来源图版本变化和模板摘要不符均拒绝，不自动缩字或删除科学内容。运行时收据明确 `rsi_generated=false`、科学与像素质量未认证；该能力是普通工程优化。
+当时的模板登记和绑定程序核验素材/许可摘要、允许的内容槽、整稿页数与一致画布，拒绝未知槽、容量超限、非法 SVG、来源图版本变化和模板摘要不符。收据明确 `rsi_generated=false`、科学与像素质量未认证；这些检查是普通工程优化。
 
-真实新稿仍通过忽略目录内的七工具 MCP 原型、固定 PPTMaster compiler 与 LibreOffice/PDF/PNG 验收。默认 `render.ts` 和现有公共 MCP **尚未切换到该原型**，不能将模板文件存在视为新克隆已能使用完整新链路。V13 的模型生成只读契约选择程序、独立认证与新任务对照另记于 [实验记录](../../docs/experiments/research-ppt-v13-template-library-20261012.md)；候选生成、编译、认证、启用和净收益分别报告，未分发新 Motif library 或私有证书。
+真实新稿通过七工具 MCP 原型、固定 PPTMaster compiler 与 LibreOffice/PDF/PNG 验收。该原型和素材现已归档到私有目录，**不作为当前安装入口分发**；默认 `render.ts` 和公共 MCP 未切换到该原型。V13 的模型生成只读契约选择程序、独立认证与新任务对照见 [实验记录](../../docs/experiments/research-ppt-v13-template-library-20261012.md)。历史证据保留，不能将原型能力或历史证书视为当前新克隆的功能。

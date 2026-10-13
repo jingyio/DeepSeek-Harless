@@ -143,7 +143,7 @@ class CheckpointPPTService(PPTService):
     def checkpoint_versions(self) -> dict:
         """新增子类可追加自己的宿主文件，不能删掉父类版本守卫。"""
         names = ("service.py", "server.py", "delivery_server.py", "scenario.json", "documents.py", "revision.py", "validation.py",
-                 "restyle.py", "generated_tools.py", "figure_catalog.py", "document_cache.py",
+                 "restyle.py", "generated_tools.py", "figure_catalog.py", "document_cache.py", "knowledge_library.py",
                  "layout_learning.py", "contracts.json", "version-fields.json",
                  "package-lock.json", "ts/render.ts", "ts/layout-policy.ts",
                  "dist/render.js", "dist/layout-policy-cli.js")

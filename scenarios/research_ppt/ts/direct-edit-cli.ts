@@ -7,12 +7,13 @@ import { constants } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AdapterRejected, canonical, digest, inside, object, preflightPlan, privateFile, validateEvidenceRebind, type Obj } from './delivery-adapter.js';
+import { ExecutionPolicy } from './execution-policy.js';
 
 const FIELDS = ['title','bullets','sources','notes','image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes'];
 const REMOVABLE = new Set(['image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes']);
 const TOOLS = ['list_inputs','list_templates','pin_source','read_source','read_page','extract_figure',
   'inspect_deck','deliver_deck','read_deck_plan','list_restorable_decks','render_deck','restyle_deck','revise_deck','validate_deck','build_delivery',
-  'render_delivery','revise_delivery','pin_deck_pages','read_pinned_deck_pages'];
+  'render_delivery','revise_delivery','pin_deck_pages','read_pinned_deck_pages','read_pending_plan','repair_pending_plan'];
 export type DirectEditOptions = {job: string; deckId: string; updatesFile: string; output?: string; expectedSha256?: string; apply: boolean};
 type Update = {page: number; changes: Obj};
 type Difference = {page: number; field: string; before: unknown; after: unknown; removed: boolean};
@@ -76,6 +77,42 @@ export function directEditEnvironment(python: string, environment: NodeJS.Proces
   return result;
 }
 
+/** 明确修订始终零模型；遵守冻结策略，不提供运行时 policy override。 */
+export async function executeExplicitRevision(call: (name: string, args: Obj) => Promise<Obj>, policy: ExecutionPolicy,
+  deckId: string, updates: Update[], expectedSlides: number, inputVersion: string): Promise<Obj> {
+  const revisionArgs={deck_id:deckId,updates};
+  if (policy.strategy==='legacy_model_selected') return call('revise_delivery',revisionArgs);
+  const revised=await call('revise_deck',revisionArgs);
+  if (policy.strategy==='host_delivery') {
+    if (revised.delivered!==true || !object(revised.execution_policy)
+      || revised.execution_policy.policy_sha256!==policy.snapshot().policy_sha256
+      || revised.execution_policy.request_tool!=='revise_deck' || revised.execution_policy.host_script!=='revise_delivery')
+      reject('delivery_contract_rejected','宿主交付未明确成功或不属于当前策略；不盲目重复验证/修改内容。');
+    return revised;
+  }
+  const pages=updates.map(update=>update.page).sort((a,b)=>a-b);
+  if (!shortString(revised.deck_id) || revised.deck_id===deckId || revised.parent_deck_id!==deckId || !hash(revised.file_sha256)
+    || revised.input_version!==inputVersion || revised.slide_count!==expectedSlides || revised.each_slide_has_editable_text!==true
+    || !object(revised.revision_audit) || revised.revision_audit.passed!==true
+    || revised.revision_audit.non_target_slides_preserved!==true || revised.revision_audit.shared_styles_preserved!==true
+    || revised.revision_audit.slide_count!==expectedSlides || canonical(revised.revision_audit.changed_pages)!==canonical(pages))
+    reject('revision_contract_rejected','原子修订版本/可编辑性/非目标页保持未通过，不继续渲染交付。');
+  const newDeck=String(revised.deck_id), inspected=await call('inspect_deck',{deck_id:newDeck});
+  if (inspected.deck_id!==newDeck || inspected.file_sha256!==revised.file_sha256 || inspected.input_version!==inputVersion
+    || inspected.slide_count!==expectedSlides || inspected.each_slide_has_editable_text!==true)
+    reject('deck_contract_rejected','检查结果不属于当前修订版本。');
+  const validated=await call('validate_deck',{deck_id:newDeck});
+  if (validated.passed!==true || validated.deck_id!==newDeck || validated.file_sha256!==revised.file_sha256
+    || validated.input_version!==inputVersion || !shortString(validated.validation_id))
+    reject('validation_contract_rejected','真实渲染未通过或版本改变；不自动重试。');
+  const delivered=await call('deliver_deck',{validation_id:validated.validation_id});
+  if (delivered.deck_id!==newDeck || delivered.file_sha256!==revised.file_sha256 || delivered.input_version!==inputVersion
+    || delivered.validation_id!==validated.validation_id || delivered.editable!==true || !Array.isArray(delivered.artifacts))
+    reject('delivery_contract_rejected','原子交付回执缺少当前版本/可编辑性/真实预览。');
+  return {...delivered,delivered:true,parent_deck_id:deckId,revision_audit:revised.revision_audit,
+    origin:'explicit_revision_steps',mechanism:'ordinary_direct_edit_not_RSI'};
+}
+
 function payload(value: unknown): Obj {
   if (!object(value)) return reject('backend_protocol_rejected','实际 MCP 结果不是对象。');
   let output: unknown=value.structuredContent;
@@ -119,6 +156,7 @@ export async function runDirectEdit(options: DirectEditOptions): Promise<Obj> {
   if (!object(jobData) || !Number.isSafeInteger(jobData.slides) || Number(jobData.slides)<1 || Number(jobData.slides)>30
     || typeof jobData.allow_output!=='boolean') reject('invalid_job','任务需要固定页数和明确输出权限。');
   const checkedJob=jobData as Obj;
+  const executionPolicy=new ExecutionPolicy(checkedJob.execution_policy);
   if (options.apply && !checkedJob.allow_output) reject('output_permission_denied','原任务没有 allow_output 授权；不会自行更改任务权限。');
   const adapterPath=await realpath(resolve(area,'dist/mcp-adapter.js'));
   if (!inside(area,adapterPath)) reject('path_scope_rejected','仅连接本场景安装的固定 MCP 适配器。');
@@ -128,12 +166,13 @@ export async function runDirectEdit(options: DirectEditOptions): Promise<Obj> {
     model_requests:0,input_tokens:0,output_tokens:0,provider_called:false,model_usage_basis:'this_code_path_has_no_provider_or_agent_loop',
     job,job_sha256:await fileHash(job),deck_id:options.deckId,updates_sha256:await fileHash(updatesFile),adapter_sha256:await fileHash(adapterPath),
     original_overwritten:false,output_directory:output,scientific_quality:'not_reviewed',independent_visual_quality:'not_reviewed'};
+  summary.execution_policy=executionPolicy.snapshot();
   const client=new Client({name:'sss-ppt-explicit-direct-edit',version:'0.1.0'},{capabilities:{}});
   const transport=new StdioClientTransport({command:'node',args:[adapterPath,'--job',job],cwd:root,
     env:directEditEnvironment(process.env.SSS_PPT_DELIVERY_PYTHON??process.env.SSS_PYTHON??'python'),stderr:'pipe',maxBufferSize:20_000_000});
   transport.stderr?.on('data',chunk=>{ void appendFile(resolve(output,'mcp.stderr.log'),chunk,{mode:0o600}); });
   const call=async(name:string,args:Obj):Promise<Obj>=>{
-    const t=Date.now(); const response=await client.callTool({name,arguments:args},undefined,{timeout:180_000});
+    const t=Date.now(); const response=await client.callTool({name,arguments:args},undefined,{timeout:300_000});
     attempts.push({name,arguments:args,response,elapsed_ms:Date.now()-t});
     await appendFile(resolve(output,'actual-mcp-calls.jsonl'),JSON.stringify(attempts.at(-1))+'\n',{mode:0o600});
     return payload(response);
@@ -154,9 +193,9 @@ export async function runDirectEdit(options: DirectEditOptions): Promise<Obj> {
     await writeJson(resolve(output,'preview.json'),{...summary,updates:preview.updates});
     if (!options.apply) return summary;
     summary.execution='apply'; summary.status='applying';
-    const revised=await call('revise_delivery',{deck_id:options.deckId,updates:preview.updates});
+    const revised=await executeExplicitRevision(call,executionPolicy,options.deckId,preview.updates,Number(checkedJob.slides),String(current.input_version));
     if (revised.delivered!==true || revised.parent_deck_id!==options.deckId || revised.deck_id===options.deckId
-      || !hash(revised.file_sha256) || !object(revised.revision_audit) || revised.revision_audit.passed!==true
+      || !hash(revised.file_sha256) || revised.input_version!==current.input_version || !object(revised.revision_audit) || revised.revision_audit.passed!==true
       || revised.revision_audit.non_target_slides_preserved!==true || revised.revision_audit.shared_styles_preserved!==true
       || canonical(revised.revision_audit.changed_pages)!==canonical(preview.changedPages) || !Array.isArray(revised.artifacts))
       reject('delivery_contract_rejected','实际修订/非目标页保持/渲染验收未明确通过，不导出。');

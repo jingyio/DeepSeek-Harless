@@ -133,7 +133,9 @@ node scripts/project.mjs python scripts/stop-harness-web.py RUN_ID
 
 科研 PPT 场景的安装与最短入口见 [research_ppt](scenarios/research_ppt/README.md)：接收 PDF/PPTX、生成可编辑 PPTX，并在 Linux 服务器通过 LibreOffice 输出真实预览。其渲染、字体和场景依赖需另外安装；PPT 场景的真实 Windows 运行尚未验证。来源读取 Motif 与普通组合生成脚本的边界见接口契约，不把脚本执行计为 Motif 收益。
 
-科研 PPT 试用统一使用 `npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output`：默认准备普通 DSH／组合优化两路预览，双路总上限 $3、每路 $1.50，不调用模型。确认预览后用 `npm run ppt -- --trial <实际trial.json> --call-model` 执行；完整命令、评审与费用范围见[双路试用](scenarios/research_ppt/trial.md)。朴素 `lab` 保留科研原图与可编辑数据，不强迫填满卡片；原生模板实验服务仍属历史隔离试用，不是此默认入口。
+科研 PPT 试用统一使用 `npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output`：默认准备普通 DSH／宿主交付两路预览，双路总上限 $3、每路 $1.50、60步、每请求8000输出token，不调用模型。接收1–8份PDF/PPTX，每份不超过100 MiB。双方禁止模型直接选择组合工具；优化组由TypeScript宿主执行固定交付脚本，V17失败计划支持局部恢复。确认后用 `npm run ppt -- --trial <实际trial.json> --call-model` 执行；见[双路试用](scenarios/research_ppt/trial.md)。朴素 `lab` 保留原图与可编辑数据；原生模板实验仍属隔离试用。
+
+默认将已授权来源和组件描述保存在项目私有长期库，跨任务保留；版本、租户权限和撤回状态每次核验，解析缓存默认关闭。main网页尚未接通PPT任务，参数未自动应用到通用Web场景。七个接入点、新增代码与调用约定见[前端接入说明](scenarios/research_ppt/frontend-integration.md)，资料库见[长期库](scenarios/research_ppt/persistent-library.md)。
 
 部署反馈与离线学习见[使用说明](scenarios/research_ppt/feedback-learning.md)。仅显式授权时收集，质量未审阅不进入训练；独立认证生成候选，后续真实任务验证收益后才可受控晋级。`--use-active-learning` 显式继承当前有效版本，没有已晋级版本时走普通流程并记录原因。不能仅因工具生成或测试通过宣称自进化收益。
 
@@ -160,8 +162,12 @@ Motif 模式的入口与普通组相同，增加 `--mode shadow` 或 `--mode exe
 
 ## 科研 PPT 历轮报告与恢复交付
 
-历轮 PDF 的文件身份和结论见 [报告索引](docs/experiments/research-ppt-reports/README.md)；PDF 本体保留在团队私有归档，不进入 main，历史失败和勘误仍可按索引追溯；原始论文、运行日志、凭证仍只保存在私有区域。报告版本数量不等于独立实验数量。
+历轮报告及文件身份见 [报告索引](docs/experiments/research-ppt-reports/README.md)。本PPT场景分支按用户要求保留20份历史PDF及V1–V17文字记录；main此前不分发PDF的约定未追改。原始论文、运行日志、凭证只留私有区，匿名运行摘要和失败/勘误记录保留。报告版本数量不等于独立实验数量。
 
 V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复与交付说明](scenarios/research_ppt/delivery.md)。新增入口仍使用 Python 场景工具后端；未实现无 Python 插件产品。最新两题对照的 Motif 组请求、token 和代理估费均增加，且未达到统一人工质量门槛，不支持整体降本。详见 [V7](docs/experiments/research-ppt-v7-delivery-rsi-20261011.md)、[V8](docs/experiments/research-ppt-v8-cost-quality-rsi-20261011.md)。科研 PPT 为场景 pilot，不能代替主线跨应用科研决定验收。
 
 后续工程结果见 [V10](docs/experiments/research-ppt-v10-product-20261012.md) 与 [V11](docs/experiments/research-ppt-v11-scientific-design-20261012.md)：V10 在两份相同明确标题编辑任务中由普通入口省去模型；V11 增加科研原图、结果、方法页型并交付三组同内容对照和一份真实新稿。两者都不称新增 RSI。原始轨迹、来源及 PPT 仅保存在私有区，独立科学/视觉人评与完整生成净成本仍未证明。
+
+## V17 科研 PPT 网页入口
+
+认证后访问 `/ppt`，或点击主前端“科研 PPT”。上传PDF/PPTX、预览确认、进度、双路费用与成品下载已接入；不需要embedding路由。未规定页数默认15页。启动 `npm run web:real -- --ppt-run-budget-usd 3`，PPT独立启动额度默认$3，普通工作台预算不变；确认后按预算上限保守预留。部署依赖、API契约与暂缓项见 [PPT前端接入](scenarios/research_ppt/frontend-integration.md)。当前是单一可信操作人服务，不是多用户文件沙箱。
