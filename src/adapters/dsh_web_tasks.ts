@@ -298,17 +298,21 @@ export function apply(ctx: any) {
     if (request.task_id !== taskId || request.session_id !== route.session_id ||
         !ownedSessions.has(request.session_id) || typeof route.budget_session_id !== 'string' ||
         state.task_id !== taskId || state.session_id !== request.session_id) throw Error('Web task index identity mismatch');
+    const effective = JSON.parse(readFileSync(join(output, 'effective-config.json'), 'utf8'));
+    const restoredScene = sceneFor(state.scene ?? request.capability_profile);
     const task: Task = { request, delivery: request.content, confirmation_digest: state.confirmation_digest,
       status: state.status, created_at: state.created_at, started_at: state.started_at,
       finished_at: state.finished_at, failure: state.failure, fallback_reason: state.fallback_reason,
       answer: '', output, stats: state.stats, humans: new Map(), current_humans: new Set(),
       sources: state.sources, entrypoint: state.entrypoint, budget_session_id: route.budget_session_id,
-      scene: sceneFor(state.scene ?? request.capability_profile),
+      scene: { ...restoredScene, config_sha256: effective.scene_sha256 ?? restoredScene.config_sha256,
+        instructions: effective.instructions ?? restoredScene.instructions, instructions_sha256: effective.instructions_sha256,
+        allowed_tools: effective.allowed_tools ?? restoredScene.allowed_tools },
       selection: { scene: state.scene ?? request.capability_profile, mode: state.selected_mode ?? request.mode, rsi: state.rsi ?? false },
-      workspace: workspaceFor(request.session_id), scene_options: state.scene_options ?? {}, scene_inputs: state.scene_inputs ?? [], scope_sha256: null,
-      tools: JSON.parse(readFileSync(join(output, 'effective-config.json'), 'utf8')).tools ?? [],
-      manifest_sha256: fileSha(sceneFor(state.scene ?? request.capability_profile).manifest),
-      binding_sha256: fileSha(sceneFor(state.scene ?? request.capability_profile).task),
+      workspace: workspaceFor(request.session_id), scene_options: state.scene_options ?? {}, scene_inputs: state.scene_inputs ?? [], scope_sha256: effective.scope_sha256 ?? null,
+      tools: effective.tools ?? [],
+      manifest_sha256: effective.manifest_sha256 ?? null,
+      binding_sha256: effective.binding_sha256 ?? null,
       model_option: modelOptions.find(option => option.model === state.model && option.provider === state.provider) ?? defaultModel };
     try { task.answer = readFileSync(join(output, 'answer.md'), 'utf8'); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
@@ -657,7 +661,7 @@ export function apply(ctx: any) {
     agents.set(agent.session.id, agent);
     if (ownedSessions.has(agent.session.id)) {
       workspaceFor(agent.session.id);
-      bindScene(agent, forSession(agent.session.id)?.scene ?? sceneFor(selections.get(agent.session.id)?.scene ?? defaults.scene));
+      bindScene(agent, sceneFor(forSession(agent.session.id)?.scene.id ?? selections.get(agent.session.id)?.scene ?? defaults.scene));
     }
     agent.ctx.on('tools/result', (execution: any, result: any) => forSession(agent.session.id)?.interceptor?.observe(agent.session.id, execution, result));
   }, { global: true });
