@@ -1,5 +1,14 @@
 # DeepSeek Harless Web 当前交接
 
+## 2026-10-13 模型菜单与 Codex 登录试用回退（Codex）
+
+- 目标与范围：在 `/tasks` 输入区显示可用模型，处理单人 DSH Codex 登录试用后的桌面会话异常。隔离 worktree `codex/codex-login`，原主线及 V100 服务未改。
+- 已完成：撤销本分支旧 `--codex-login` 与设备码插件；停止试用服务；只删除 `.local/codex-login/dsh/.credentials.yaml` 的 `llm-pi-ai/openai-codex` 记录，保留浏览器连接记录。`/tasks` 从任务 API 展示已接通的 `DeepSeek Flash`，预览记录 `provider`/`model`；GPT 显示“登录待接入”且不可选择。
+- 已验证：用户报告旧授权后本地 Codex 桌面 App 会话中断并退出登录。是否由共享客户端、令牌轮换或其他因素导致尚未验证；不能把猜测写成故障根因。`node --test tests/test_dsh_web_tasks.mjs` 12/12；`SSS_PYTHON=/Users/apple/Desktop/SSS/.venv312/bin/python npm test` 151 Python/51 Node；`npm run web:tasks:check` 本机模拟 Harness HTTP 任务链通过、0 付费请求。页面脚本语法已检查，浏览器视觉及 GPT 推理尚未验证。
+- 未完成与阻塞：课题组共享网页登录需要先确定 OpenAI 远程网页客户端资格及每位成员的独立身份/凭据；开源 SIWC 本机回环授权不能直接作为共享网页回调。Codex 桌面 App 需用户自行重新登录。GPT 模型请求、工具、预算及 RSI 仍未接通。
+- 接手下一步：明确可用的 OpenAI 登录产品路径与客户端资格；实现独立授权和逐用户凭据隔离后，按实际可用模型列表接入任务预算及 Agent 模型守卫，并用自有测试账号验收，避免影响桌面 App。公共入口仍使用现有 DeepSeek。
+- 权限、预算与回退：本轮新功能未发起 GPT 模型请求，费用 0；私有凭据不提交。撤销模型菜单本次改动即可回到原 `/tasks`；不要恢复已撤销的旧 OAuth 入口。
+
 ## 2026-10-13 `/harless` 场景选择首版（Codex）
 
 - 目标与范围：按已审阅计划实现原生命令和可选界面、场景/模式/RSI联动、逐任务冻结。当前一个Session绑定一个Task；下一任务新建Session并继承选择。

@@ -51,6 +51,8 @@ ssh -N -L 3080:127.0.0.1:3080 -p SSH_PORT USER@SERVER
 
 默认选择 `scenarios/example/`，使用免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，再打开同源的 `/tasks` 工作台。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。填写要求或 JSON、选择模式与附件后，点击“开始免费联调”即可执行，无需填写额度或再次确认；界面在后台完成规范化、预览、上传和提交。结束后可直接创建下一个任务，不需要重启。官方聊天在模拟模式也能接收新会话的任务，真实模式的官方聊天会弹出题面与预算确认框，确认前不调用模型；任务工作台也保留预览与确认。旧 `/sss` 保留为兼容别名。
 
+`/tasks` 输入区现在显示模型与账号菜单；菜单从任务 API 读取已接通的模型，并在任务预览里写明实际模型。当前仅有 `DeepSeek Flash` 可执行。ChatGPT/Codex 显示为“登录待接入”，不能选择或发起 GPT 请求。2026-10-13 的单人 DSH Codex 设备码试用后，用户报告本地 Codex 桌面 App 会话被中断并退出登录；旧入口已撤销，试用服务已停止，Harless 私有目录中该条 OAuth 凭据已删除。原因未确认，不再把旧通道当作可用登录方案。OpenAI 的开源 SIWC 流程要求本机回环地址完成授权；远程网页接入需先明确适用条件和客户端资格。见[OpenAI 开源方案](https://developers.openai.com/siwc/token-sharing-open-source)、[远程 VM 指南](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms)和[网页登录指南](https://developers.openai.com/siwc/website)。
+
 文字字符串、`instruction`、`content`、仅含 user 的 `messages` 统一规范化为一次任务输入；结构化对象中的后三项必须三选一。`mode` 支持 baseline/shadow/execute。可在 `content` 中附带官方格式的图片 base64 或同 Session 已上传文件的 receipt。工作台文件上传上限为 256 KiB；模型不支持图片时任务明确失败且不发起模型请求，不能据此宣称已支持图片理解。资料引用使用已由服务器登记的 `resource_id`，不接受浏览器本地路径。请求和响应详见[接口文档](docs/interfaces.md)。
 
 `--scenario` 接受场景名或场景配置路径，用来选择初始场景；`config/harless-scenes.json` 登记可选择的场景，每个场景使用独立的 MCP preset。动态题面不再固定在场景文件中。资料登记为服务器私有 JSON，例如 `.local/inputs/resources.json`：

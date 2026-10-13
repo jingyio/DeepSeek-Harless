@@ -145,7 +145,8 @@ export function apply(ctx: any) {
       created_at: task.created_at, started_at: task.started_at, finished_at: task.finished_at,
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
       request_sha256: request.request_sha256, confirmation_digest: task.confirmation_digest,
-      provider_mode: config.provider_mode, paid_calls_enabled: config.provider_mode === 'real',
+      provider_mode: config.provider_mode, provider: 'deepseek-official', model: 'deepseek-flash',
+      paid_calls_enabled: config.provider_mode === 'real',
       effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
       stats: task.stats, sources: task.sources,
       ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
@@ -381,7 +382,8 @@ export function apply(ctx: any) {
           for (const row of rows) { aggregate[row.status] = (aggregate[row.status] ?? 0) + 1;
             for (const field of ['upstream_requests', 'verified_skips', 'tool_calls', 'prompt_tokens', 'completion_tokens']) aggregate[field] = (aggregate[field] ?? 0) + Number(row.stats[field] ?? 0); }
           return Response.json({ tasks: rows, aggregate, capability_profile: config.capability_profile,
-            provider_mode: config.provider_mode, default_mode: defaults.mode, budget_usd: config.budget_usd, settings: settingsView() });
+            provider_mode: config.provider_mode, model_options: [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }],
+            default_mode: defaults.mode, budget_usd: config.budget_usd, settings: settingsView() });
         }
         const body: any = await request.json();
         const result = await serialize(async () => {

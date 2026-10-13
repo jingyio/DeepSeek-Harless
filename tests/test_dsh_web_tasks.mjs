@@ -143,6 +143,9 @@ test('DeepSeek Harless tasks use authenticated Connection API routes and protect
       writeHead(status) { result.status = status; }, end(value) { result.body = value; },
     });
     assert.equal(result.status, 200); assert.match(result.body, /DeepSeek Harless 任务工作台/);
+    assert.match(result.body, /模型与账号/);
+    const listing = await f.api();
+    assert.deepEqual(listing.value.model_options, [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }]);
   } finally { await f.close(); }
 });
 
@@ -156,6 +159,7 @@ test('Dynamic preview creates independent tasks, binds resource versions, and is
     assert.equal(f.agents.size, 1); assert.equal(f.registrations.size, 1);
     assert.equal(first.sources[0].resource_id, 'source:one');
     assert.equal(first.status, 'awaiting_confirmation'); assert.equal(first.paid_calls_enabled, false);
+    assert.equal(first.provider, 'deepseek-official'); assert.equal(first.model, 'deepseek-flash');
     const second = await f.preview({ messages: [{ role: 'user', content: '另一项任务' }], mode: 'shadow' });
     assert.notEqual(second.task_id, first.task_id); assert.notEqual(second.session_id, first.session_id);
     assert.equal(second.mode, 'shadow');

@@ -30,6 +30,17 @@
     .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
     .tabs { display: flex; gap: 6px; margin-bottom: 18px; }
     .tabs button[aria-selected="true"] { color: #245cba; background: #edf4ff; border-color: #9dbff1; }
+    .model-picker { position: relative; margin: -8px 0 17px; font-size: 14px; }
+    .model-picker summary { display: flex; align-items: center; gap: 9px; width: fit-content; margin-left: auto; padding: 9px 13px; border: 1px solid #cbd3df; border-radius: 999px; background: #f7f9fc; font-weight: 600; list-style: none; }
+    .model-picker summary::-webkit-details-marker { display: none; }
+    .model-picker summary::after { content: '⌄'; color: #617086; }
+    .model-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 10; width: min(100%, 390px); padding: 8px; border: 1px solid #dfe5ed; border-radius: 15px; background: white; box-shadow: 0 14px 36px #1723361c; }
+    .model-menu-title { padding: 8px 10px; color: #617086; font-size: 12px; }
+    .model-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 10px; border-radius: 9px; }
+    .model-row.active { background: #edf4ff; color: #245cba; }
+    .model-row.unavailable { color: #617086; }
+    .model-row small { margin: 0; text-align: right; }
+    .model-menu p { margin: 8px 10px 4px; font-size: 12px; color: #617086; }
     .notice { border-left: 3px solid #79a1da; background: #f0f5fd; padding: 10px 12px; font-size: 13px; margin: 15px 0; }
     .error { color: #a12636; background: #fff0f1; border-radius: 7px; padding: 10px; margin-top: 14px; white-space: pre-wrap; }
     .summary { background: #f7f9fc; padding: 13px; border-radius: 8px; font-size: 13px; }
@@ -68,6 +79,7 @@
       <form id="task-form">
         <div id="text-fields">
           <div class="field"><label for="instruction">你希望完成什么？</label><textarea id="instruction" placeholder="例如：整理这些资料，检查结论与来源，并输出修改建议。" required></textarea></div>
+          <details id="model-picker" class="model-picker"><summary aria-label="查看模型与登录状态"><span id="model-current">正在确认模型…</span></summary><div class="model-menu"><div class="model-menu-title">模型与账号</div><div id="model-options"></div><div class="model-row unavailable"><span>ChatGPT / Codex</span><small>登录待接入</small></div><p>当前只显示已接通的任务模型。ChatGPT 授权和请求通道完成前，不能选用 GPT 执行任务。</p></div></details>
           <div class="row">
             <div class="field"><label for="profile">场景</label><select id="profile" required></select><small>选择服务已登记的场景。</small></div>
             <div class="field"><label for="mode">执行模式</label><select id="mode"><option value="baseline">Baseline · 普通 Harness</option><option value="shadow">Shadow · 观察 RSI 候选</option><option value="execute">Execute · 验证后接管</option></select></div>
@@ -120,6 +132,7 @@ const providerLabels = {mock:'免费联调模拟',real:'真实 DeepSeek API'};
 const fallbackLabels = {no_certified_library:'尚无适用的认证 Motif，按普通流程执行。',no_embedding_service:'缺少匹配服务，按普通流程执行。',input_not_certified_for_library:'本次输入超出认证范围，已回退普通流程。',no_valid_certified_library:'认证库校验未通过，已回退普通流程。'};
 const freeTask = value => value?.provider_mode==='mock' && value?.paid_calls_enabled===false;
 function updateProvider(mode) { providerMode=providerLabels[mode] ? mode:null; $('budget-field').hidden=providerMode==='mock'; $('preview-button').textContent=providerMode==='mock' ? '开始免费联调':'生成任务预览'; $('provider-label').textContent=providerMode==='mock' ? '免费联调模拟 · 实际支出为零，固定示例仅验证链路与机制。':providerMode==='real' ? '真实 DeepSeek API · 预览并明确确认后才执行。':'模型通道尚未确认 · 先预览，再决定是否执行。'; }
+function renderModels(options) { const available=Array.isArray(options)?options.filter(option=>option.available===true):[]; const current=available[0]; $('model-current').textContent=current?current.label+' · '+(providerMode==='real'?'真实 API':'模拟'):'没有可用模型'; $('model-options').innerHTML=available.map(option=>`<div class="model-row active"><span>${esc(option.label)}</span><small>${esc(option.model)} · 已接通</small></div>`).join(''); }
 function showError(error) { $('error').textContent = error instanceof Error ? error.message : String(error); $('error').hidden = false; }
 function clearError() { $('error').hidden = true; }
 function lock(value, message='') { pending = value; $('busy').textContent = message; for (const input of $('task-form').querySelectorAll('input,select,textarea,button')) input.disabled=value; $('upload-button').disabled=value || !draft || !pendingFiles.length; $('submit-button').disabled=value || !draft?.task_id || !draft?.confirmation_digest || !!pendingFiles.length; }
@@ -155,7 +168,7 @@ function showPreview(value) {
   updateProvider(value.provider_mode);
   $('preview-title').textContent=freeTask(value) ? '任务已准备，可继续免费联调':'确认本次任务';
   $('submit-button').textContent=freeTask(value) ? '继续免费联调':'确认并执行';
-  const rows = [['RSI',value.rsi?'On':'Off'],['模式',value.mode],['能力配置',value.capability_profile],['模型通道',providerLabels[value.provider_mode] || '尚未确认'],...(freeTask(value)?[]:[['预算上限',value.budget_usd === undefined ? undefined : `$${money(value.budget_usd)}`]]),['实际付费',value.paid_calls_enabled ? '已启用，请核对授权':'未启用'],['输入',value.input_preview || (typeof value.input_summary==='string' ? value.input_summary:JSON.stringify(value.input_summary ?? {}))],['任务标识',value.task_id],['会话标识',value.session_id]];
+  const rows = [['RSI',value.rsi?'On':'Off'],['模式',value.mode],['能力配置',value.capability_profile],['模型',value.model],['模型通道',providerLabels[value.provider_mode] || '尚未确认'],...(freeTask(value)?[]:[['预算上限',value.budget_usd === undefined ? undefined : `$${money(value.budget_usd)}`]]),['实际付费',value.paid_calls_enabled ? '已启用，请核对授权':'未启用'],['输入',value.input_preview || (typeof value.input_summary==='string' ? value.input_summary:JSON.stringify(value.input_summary ?? {}))],['任务标识',value.task_id],['会话标识',value.session_id]];
   $('preview-summary').innerHTML='<dl>'+rows.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(fmt(value))}</dd>`).join('')+'</dl>';
   $('submit-button').disabled = pending || !value.task_id || !value.confirmation_digest || !!pendingFiles.length;
   $('upload-button').disabled = pending || !pendingFiles.length;
@@ -187,7 +200,7 @@ async function resumeDraft(id) { const value=await api(null,'?task_id='+encodeUR
 let refreshing=false, budgetInitialized=false;
 async function refresh() {
   if(refreshing)return; refreshing=true;
-  try { const response=await api(); const tasks=Array.isArray(response) ? response:response.tasks || response.items || []; updateProvider(response.provider_mode); if(!budgetInitialized && response.budget_usd!==undefined){$('budget').value=response.budget_usd;$('budget').max=response.budget_usd;budgetInitialized=true;}  $('connection').textContent=`${providerLabels[providerMode] || '通道待确认'} · 已连接 · ${tasks.length} 项任务 · 每 2 秒更新`; $('tasks').innerHTML=tasks.length ? tasks.map(taskCard).join(''):`<p class="muted">尚未提交任务。${providerMode==='mock'?'填写要求后，即可开始免费联调。':'先生成预览，确认后执行。'}</p>`; if(selectedTask)await detail(selectedTask); }
+  try { const response=await api(); const tasks=Array.isArray(response) ? response:response.tasks || response.items || []; updateProvider(response.provider_mode); renderModels(response.model_options); if(!budgetInitialized && response.budget_usd!==undefined){$('budget').value=response.budget_usd;$('budget').max=response.budget_usd;budgetInitialized=true;}  $('connection').textContent=`${providerLabels[providerMode] || '通道待确认'} · 已连接 · ${tasks.length} 项任务 · 每 2 秒更新`; $('tasks').innerHTML=tasks.length ? tasks.map(taskCard).join(''):`<p class="muted">尚未提交任务。${providerMode==='mock'?'填写要求后，即可开始免费联调。':'先生成预览，确认后执行。'}</p>`; if(selectedTask)await detail(selectedTask); }
   catch(error){$('connection').textContent=error.message;} finally{refreshing=false;}
 }
 $('refresh').onclick=refresh;
