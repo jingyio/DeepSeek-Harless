@@ -27,7 +27,11 @@ if (action === 'setup') {
   run(join(root, '.venv-sss', suffix), ['-m', 'pip', 'install', '-r', 'requirements.txt']);
 } else if (action === 'test') {
   run(python, ['-m', 'pytest', 'tests', '-q']);
-  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_dsh_web_policy.mjs', 'tests/test_web_task_request.mjs', 'tests/test_dsh_web_tasks.mjs', 'tests/test_harless_settings.mjs', 'tests/test_harless_native_picker.mjs', 'tests/test_harless_gateway.mjs', 'tests/test_web_budget_broker.mjs']);
+  const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+  if (nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 18)) {
+    run(process.execPath, ['scripts/build-continuation-policy.mjs', '--check']);
+  }
+  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_approved_plan_continuation.mjs', 'tests/test_dsh_web_policy.mjs', 'tests/test_web_task_request.mjs', 'tests/test_dsh_web_tasks.mjs', 'tests/test_dsh_completion_guard.mjs', 'tests/test_code_container.mjs', 'tests/test_entry_motif.mjs', 'tests/test_terminal_motif.mjs', 'tests/test_collection_motif.mjs', 'tests/test_collection_script.mjs', 'tests/test_plan_motif.mjs', 'tests/test_collection_reentry.mjs', 'tests/test_acceptance_guard.mjs', 'tests/test_harless_settings.mjs', 'tests/test_harless_native_picker.mjs', 'tests/test_harless_gateway.mjs', 'tests/test_web_budget_broker.mjs']);
 } else if (action === 'scenario') {
   run(python, ['scripts/run-scenario.py', ...args]);
 } else if (action === 'web') {

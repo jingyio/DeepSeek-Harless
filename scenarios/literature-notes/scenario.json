@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "name": "literature_notes",
+  "prompt": "cases/${CASE}/task.md",
+  "servers": [{
+    "server_name": "literature_notes",
+    "transport": "stdio",
+    "command": "${PYTHON}",
+    "args": ["${PROJECT_ROOT}/scenarios/literature-notes/server.py", "--case", "${CASE}"],
+    "cwd": "${PROJECT_ROOT}"
+  }],
+  "allowed_tools": [
+    "mcp__literature_notes__pin_annotation_change",
+    "mcp__literature_notes__read_pinned_annotation_context",
+    "mcp__literature_notes__preview_note_update"
+  ]
+}

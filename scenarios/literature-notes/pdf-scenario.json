@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "name": "literature_pdf",
+  "prompt": "pdf-task.md",
+  "servers": [
+    {
+      "server_name": "literature_pdf",
+      "transport": "stdio",
+      "command": "${PYTHON}",
+      "args": [
+        "${PROJECT_ROOT}/scenarios/literature-notes/pdf_tools.py"
+      ],
+      "cwd": "${PROJECT_ROOT}",
+      "env": {
+        "SSS_PDF_ROOT": {
+          "from_env": "SSS_PDF_ROOT"
+        },
+        "SSS_PDF_TASK_FILE": {
+          "from_env": "SSS_PDF_TASK_FILE"
+        },
+        "SSS_PDF_CACHE": {
+          "from_env": "SSS_PDF_CACHE"
+        },
+        "SSS_PDF_CACHE_POLICY": {
+          "from_env": "SSS_PDF_CACHE_POLICY"
+        },
+        "SSS_PDF_SCRIPT_READ": {
+          "from_env": "SSS_PDF_SCRIPT_READ"
+        },
+        "SSS_PDF_DELIVERY": {
+          "from_env": "SSS_PDF_DELIVERY"
+        }
+      }
+    }
+  ],
+  "allowed_tools": [
+    "mcp__literature_pdf__list_pdfs",
+    "mcp__literature_pdf__prepare_pdf",
+    "mcp__literature_pdf__search_pdf_text",
+    "mcp__literature_pdf__pin_pdf_context",
+    "mcp__literature_pdf__read_pinned_pdf_context",
+    "mcp__literature_pdf__preview_research_notes",
+    "mcp__literature_pdf__read_pdf_evidence_plan"
+  ],
+  "completion_guard": {
+    "tool": "mcp__literature_pdf__preview_research_notes",
+    "statuses": [
+      "preview",
+      "needs_review"
+    ],
+    "max_continuations": 2
+  }
+}

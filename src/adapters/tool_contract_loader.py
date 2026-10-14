@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .dsh_trajectory import ToolContract
+from src.motif_core.offline.continuation_policy import validate_policy
 
 
 def _pairs(spec: dict[str, Any], field: str) -> tuple[tuple[str, Any], ...]:
@@ -46,6 +47,14 @@ def parse_tool_contracts(rows: dict[str, Any]) -> dict[str, ToolContract]:
                 or len(set(default_only)) != len(default_only)
                 or not set(default_only) <= {key for key, _ in defaults}):
             raise ValueError("invalid parameter shape or default in approved tool contract")
+        policy = spec.get("continuation_policy")
+        if policy is not None:
+            validate_policy(policy)
+            step = next((s for s in policy['steps'] if s['tool'] == name), None)
+            if (step is None or spec.get('read_only') is not True or not spec['replay_stable']
+                    or spec['required_params'] != [step['param']] or defaults or shapes
+                    or step['receipt_field'] not in spec.get('output_fields', [])):
+                raise ValueError('continuation policy conflicts with tool contract')
         result[name] = ToolContract(
             tuple(spec["required_params"]), spec.get("read_only") is True,
             tuple(spec.get("output_fields", [])),
@@ -53,5 +62,5 @@ def parse_tool_contracts(rows: dict[str, Any]) -> dict[str, ToolContract]:
             spec.get("description", ""),
             tuple(spec.get("provenance_params", [])), shapes, defaults,
             tuple(default_only), spec["replay_stable"],
-            spec.get("observed_anchor", False))
+            spec.get("observed_anchor", False), policy)
     return result

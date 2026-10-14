@@ -7,6 +7,10 @@ import unittest
 from tests.test_motif_controller import library
 from src.motif_core.offline.trace_compiler import artifact_signature
 from src.motif_core.offline.library_builder import _digest as library_digest
+from src.motif_core.offline.library_builder import build_read_motif_library
+from src.adapters.tool_contract_loader import parse_tool_contracts
+from src.adapters.dsh_trajectory import extract_dsh_trace, infer_dsh_provenance
+from tests.test_trace_compiled_read_motif import event_pair
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/export-online-motif-manifest.py"
@@ -16,6 +20,37 @@ SPEC.loader.exec_module(MODULE)
 
 
 class OnlineExportTests(unittest.TestCase):
+    def test_explicit_dereference_keeps_certificate_and_validates_versioned_edge(self):
+        raw = {'pin': {'required_params': ['file_id'], 'read_only': True,
+                      'replay_stable': True, 'output_fields': ['source_id', 'source_version'],
+                      'description': 'Pin a selected source'},
+               'read': {'required_params': ['source_id'], 'read_only': True,
+                        'replay_stable': True, 'output_fields': ['source_id', 'source_version'],
+                        'provenance_params': ['source_id'], 'description': 'Read the selected source'}}
+        contracts = parse_tool_contracts(raw)
+        traces = []
+        for label in 'abc':
+            output = {'source_id': 'source-' + label * 32, 'source_version': label * 64}
+            events = event_pair(1, 'pin', {'file_id': 'file-' + label}, output) + event_pair(
+                2, 'read', {'source_id': output['source_id']}, output)
+            traces.append(extract_dsh_trace(events, contracts, trace_id=label,
+                task_fingerprint='task-' + label,
+                provenance_by_call_id=infer_dsh_provenance(events, contracts)))
+        source = build_read_motif_library(traces[:2], traces[2:], contracts)
+        versions = {'pin': 'source_version', 'read': 'source_version'}
+        old = MODULE.export_manifest(source, raw, version_fields=versions)
+        new = MODULE.export_manifest(source, raw, version_fields=versions, source_dereferences=('read',))
+        self.assertEqual(new['artifacts'], old['artifacts'])
+        self.assertEqual(new['source_library_digest'], old['source_library_digest'])
+        self.assertNotEqual(new['manifest_digest'], old['manifest_digest'])
+        self.assertTrue(new['contracts']['read']['source_dereference'])
+        for bad in [('pin',), ('read', 'read'), ('unknown',)]:
+            with self.assertRaises(ValueError):
+                MODULE.export_manifest(source, raw, version_fields=versions, source_dereferences=bad)
+        with self.assertRaisesRegex(ValueError, 'versioned handle'):
+            MODULE.export_manifest(source, raw, version_fields={'pin': 'source_id', 'read': 'source_version'},
+                                   source_dereferences=('read',))
+
     def rows(self):
         return {
             "search": {"required_params": ["query"], "output_fields": ["id"],

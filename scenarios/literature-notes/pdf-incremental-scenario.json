@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "name": "literature_pdf_incremental",
+  "prompt": "pdf-incremental-task.md",
+  "servers": [
+    {
+      "server_name": "literature_pdf",
+      "transport": "stdio",
+      "command": "${PYTHON}",
+      "args": [
+        "${PROJECT_ROOT}/scenarios/literature-notes/pdf_incremental_tools.py"
+      ],
+      "cwd": "${PROJECT_ROOT}",
+      "env": {
+        "SSS_PDF_ROOT": {
+          "from_env": "SSS_PDF_ROOT"
+        },
+        "SSS_PDF_TASK_FILE": {
+          "from_env": "SSS_PDF_TASK_FILE"
+        },
+        "SSS_PDF_DEPENDENCIES": {
+          "from_env": "SSS_PDF_DEPENDENCIES"
+        },
+        "SSS_PDF_INCREMENTAL_OUTPUT": {
+          "from_env": "SSS_PDF_INCREMENTAL_OUTPUT"
+        },
+        "SSS_PDF_REVOKED": {
+          "from_env": "SSS_PDF_REVOKED"
+        },
+        "SSS_PDF_SCRIPT_READ": {
+          "from_env": "SSS_PDF_SCRIPT_READ"
+        }
+      }
+    }
+  ],
+  "allowed_tools": [
+    "mcp__literature_pdf__list_pdfs",
+    "mcp__literature_pdf__prepare_pdf",
+    "mcp__literature_pdf__search_pdf_text",
+    "mcp__literature_pdf__pin_pdf_context",
+    "mcp__literature_pdf__read_pinned_pdf_context",
+    "mcp__literature_pdf__read_update_plan",
+    "mcp__literature_pdf__read_previous_claims",
+    "mcp__literature_pdf__submit_incremental_update",
+    "mcp__literature_pdf__preview_bibliography",
+    "mcp__literature_pdf__read_pdf_evidence_plan"
+  ]
+}
