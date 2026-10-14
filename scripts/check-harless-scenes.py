@@ -134,9 +134,13 @@ def main():
                 assert spec['initial_snapshot']['.experiment-copy']
                 assert len(spec['write_grant']['source_paths']) == 0
             other = 'ppt' if scene == 'new-scene' else 'new-scene'
-            next_choice = settings(alice, base, {'action': 'select', 'session_id': draft['session_id'],
+            locked = settings(alice, base, {'action': 'select', 'session_id': draft['session_id'],
+                'selection': {'scene': other, 'mode': 'execute', 'rsi': False}}, expected=409)
+            assert locked['error']['code'] == 'scene_requires_new_session'
+            assert settings(alice, base, session=draft['session_id'])['current_task']['scene'] == scene
+            next_choice = settings(alice, base, {'action': 'new_session', 'inherit_session': draft['session_id'],
                 'selection': {'scene': other, 'mode': 'execute', 'rsi': False}})
-            assert next_choice['current_task']['scene'] == scene
+            assert next_choice['session_id'] != draft['session_id'] and next_choice['selection']['scene'] == other
             assert web.api(alice, base, task_id=draft['task_id'])['confirmation_digest'] == draft['confirmation_digest']
             assert settings(bob, bob_base, session=draft['session_id'], expected=404)['error']['code'] == 'session_not_owned'
             status, value = web.request(alice, base, '/api/harless/tasks?task_id=' + bob_draft['task_id'])
