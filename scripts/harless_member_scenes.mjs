@@ -80,8 +80,8 @@ export function memberSceneDeployment(policy, deployment) {
       if (item.isDirectory()) check(p);
       else if (!item.isFile() || !allowed.has(item.name) || statSync(p).size>4000000) throw Error('Member library includes non-runtime private evidence');
     } };
-    check(source); mounts.push({ source, target: '/app/motif-libraries' });
-    mappings.unshift({ source, target: '/app/motif-libraries' });
+    check(source); mounts.push({ source, target: '/app/private-motif-library' });
+    mappings.unshift({ source, target: '/app/private-motif-library' });
   }
   const translate = value => {
     if (typeof value !== 'string') return value;

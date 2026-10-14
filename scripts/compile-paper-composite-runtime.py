@@ -94,7 +94,7 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
     versions = {name: 'version_sha256' for name in contracts}
     manifest = exporter.export_manifest(library, contracts,
         {CITATION_PAIR[0]: {'case_id': 'current'}}, versions)
-    scene = {'id': 'paper-proofreading', 'mcp_rows': [{'config': {'args': []}}],
+    scene = {'id': 'paper-proofreading', 'mcp_rows': [{'config': {'serverName': 'paper_checks', 'args': []}}],
              'config_sha256': '0' * 64}
     configure_paper_renderer(scene, renderer_root)
     output.mkdir(parents=True, mode=0o700)
