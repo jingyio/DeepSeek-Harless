@@ -1,5 +1,7 @@
 # file-management 当前交接
 
+库提交 `02bcc21` 已推送到 `feature/rsi-research-agent`，GitHub分支引用和全部18个分发文件的blob哈希已核对；其余本地开发改动仍未提交。
+
 ## 最新 已学习 Motif 库公开分发 2026年10月14日
 
 - 用户明确授权将被忽略的已学习Motif库上传原 `feature/rsi-research-agent` 分支。本次分发目录 [file-management-v1](../../examples/motif-library/file-management-v1/README.md)，9库/策略、3manifest、3认证/冻结摘要原字节发布；原始SHA/签名、来源实验与历史版本保留。固定脚本库不在此目录。

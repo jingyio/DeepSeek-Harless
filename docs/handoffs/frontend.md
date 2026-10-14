@@ -1,5 +1,7 @@
 # 前端接入当前科研Agent分支
 
+库提交 `02bcc21` 已推送到 `feature/rsi-research-agent`，GitHub分支引用和全部18个分发文件的blob哈希已核对；其余本地开发改动仍未提交。
+
 ## 最新 Motif 库可下载 2026年10月14日
 
 - 用户恢复了本次库分发推送授权，目标 `feature/rsi-research-agent`。公开 [file-management-v1/catalog.json](../../examples/motif-library/file-management-v1/catalog.json) 提供9个已学习库/策略、3个manifest及来源/认证摘要，格式 `sss-public-file-management-library-v1`。
