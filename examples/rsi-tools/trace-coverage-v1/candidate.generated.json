@@ -1,0 +1,702 @@
+{
+  "schema_version": 1,
+  "name": "triage_catalog_coverage",
+  "description": "对比 triage.json 的参考文献清单与 catalog.json 的查询项/被引记录，检查键集合是否一致及 arxiv_id 是否与目录记录一致，并汇总引用问题的 kind 序列。",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "catalog_cited_records": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "arxiv_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 2000
+            },
+            "key": {
+              "type": "string"
+            },
+            "record_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "arxiv_ids",
+            "key",
+            "record_path"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 2000
+      },
+      "catalog_query_items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "item_id": {
+              "type": "string"
+            },
+            "source_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "item_id",
+            "source_path"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 2000
+      },
+      "citation_issues": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 2000
+      },
+      "triage_references": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "arxiv_id": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "arxiv_id",
+            "key"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 2000
+      }
+    },
+    "required": [
+      "catalog_cited_records",
+      "catalog_query_items",
+      "citation_issues",
+      "triage_references"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "arxiv_id_mismatches": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2000
+        },
+        "maxItems": 2000
+      },
+      "extra": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 2000
+      },
+      "issue_kinds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 2000
+      },
+      "keys_match_query_items": {
+        "type": "boolean"
+      },
+      "missing": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 2000
+      }
+    },
+    "required": [
+      "arxiv_id_mismatches",
+      "extra",
+      "issue_kinds",
+      "keys_match_query_items",
+      "missing"
+    ],
+    "additionalProperties": false
+  },
+  "program": [
+    "let",
+    "allrecs",
+    [
+      "map",
+      [
+        "get",
+        [
+          "var",
+          "input"
+        ],
+        [
+          "lit",
+          "catalog_cited_records"
+        ]
+      ],
+      "d",
+      [
+        "object",
+        {
+          "key": [
+            "get",
+            [
+              "var",
+              "d"
+            ],
+            [
+              "lit",
+              "key"
+            ]
+          ],
+          "catalog_arxiv_id": [
+            "at",
+            [
+              "get",
+              [
+                "var",
+                "d"
+              ],
+              [
+                "lit",
+                "arxiv_ids"
+              ]
+            ],
+            [
+              "lit",
+              0
+            ]
+          ],
+          "path_key": [
+            "at",
+            [
+              "split",
+              [
+                "get",
+                [
+                  "var",
+                  "d"
+                ],
+                [
+                  "lit",
+                  "record_path"
+                ]
+              ],
+              [
+                "lit",
+                "/"
+              ]
+            ],
+            [
+              "lit",
+              -1
+            ]
+          ]
+        }
+      ]
+    ],
+    [
+      "let",
+      "qraw",
+      [
+        "map",
+        [
+          "get",
+          [
+            "var",
+            "input"
+          ],
+          [
+            "lit",
+            "catalog_query_items"
+          ]
+        ],
+        "q",
+        [
+          "let",
+          "pk",
+          [
+            "at",
+            [
+              "split",
+              [
+                "get",
+                [
+                  "var",
+                  "q"
+                ],
+                [
+                  "lit",
+                  "source_path"
+                ]
+              ],
+              [
+                "lit",
+                "/"
+              ]
+            ],
+            [
+              "lit",
+              -1
+            ]
+          ],
+          [
+            "let",
+            "hits",
+            [
+              "filter",
+              [
+                "var",
+                "allrecs"
+              ],
+              "d",
+              [
+                "eq",
+                [
+                  "get",
+                  [
+                    "var",
+                    "d"
+                  ],
+                  [
+                    "lit",
+                    "path_key"
+                  ]
+                ],
+                [
+                  "var",
+                  "pk"
+                ]
+              ]
+            ],
+            [
+              "let",
+              "hk",
+              [
+                "get",
+                [
+                  "at",
+                  [
+                    "var",
+                    "hits"
+                  ],
+                  [
+                    "lit",
+                    0
+                  ]
+                ],
+                [
+                  "lit",
+                  "key"
+                ]
+              ],
+              [
+                "if",
+                [
+                  "eq",
+                  [
+                    "type",
+                    [
+                      "var",
+                      "hk"
+                    ]
+                  ],
+                  [
+                    "lit",
+                    "string"
+                  ]
+                ],
+                [
+                  "var",
+                  "hk"
+                ],
+                [
+                  "lit",
+                  ""
+                ]
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "let",
+        "rraw",
+        [
+          "map",
+          [
+            "get",
+            [
+              "var",
+              "input"
+            ],
+            [
+              "lit",
+              "triage_references"
+            ]
+          ],
+          "r",
+          [
+            "get",
+            [
+              "var",
+              "r"
+            ],
+            [
+              "lit",
+              "key"
+            ]
+          ]
+        ],
+        [
+          "let",
+          "qk",
+          [
+            "sort",
+            [
+              "var",
+              "qraw"
+            ]
+          ],
+          [
+            "let",
+            "rk",
+            [
+              "sort",
+              [
+                "var",
+                "rraw"
+              ]
+            ],
+            [
+              "let",
+              "pairs",
+              [
+                "map",
+                [
+                  "get",
+                  [
+                    "var",
+                    "input"
+                  ],
+                  [
+                    "lit",
+                    "triage_references"
+                  ]
+                ],
+                "r",
+                [
+                  "let",
+                  "cat",
+                  [
+                    "at",
+                    [
+                      "filter",
+                      [
+                        "var",
+                        "allrecs"
+                      ],
+                      "d",
+                      [
+                        "eq",
+                        [
+                          "get",
+                          [
+                            "var",
+                            "d"
+                          ],
+                          [
+                            "lit",
+                            "key"
+                          ]
+                        ],
+                        [
+                          "get",
+                          [
+                            "var",
+                            "r"
+                          ],
+                          [
+                            "lit",
+                            "key"
+                          ]
+                        ]
+                      ]
+                    ],
+                    [
+                      "lit",
+                      0
+                    ]
+                  ],
+                  [
+                    "let",
+                    "cid",
+                    [
+                      "get",
+                      [
+                        "var",
+                        "cat"
+                      ],
+                      [
+                        "lit",
+                        "catalog_arxiv_id"
+                      ]
+                    ],
+                    [
+                      "object",
+                      {
+                        "key": [
+                          "get",
+                          [
+                            "var",
+                            "r"
+                          ],
+                          [
+                            "lit",
+                            "key"
+                          ]
+                        ],
+                        "triage_arxiv_id": [
+                          "get",
+                          [
+                            "var",
+                            "r"
+                          ],
+                          [
+                            "lit",
+                            "arxiv_id"
+                          ]
+                        ],
+                        "catalog_arxiv_id": [
+                          "if",
+                          [
+                            "eq",
+                            [
+                              "type",
+                              [
+                                "var",
+                                "cid"
+                              ]
+                            ],
+                            [
+                              "lit",
+                              "string"
+                            ]
+                          ],
+                          [
+                            "var",
+                            "cid"
+                          ],
+                          [
+                            "lit",
+                            "(none)"
+                          ]
+                        ]
+                      }
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "let",
+                "bad",
+                [
+                  "filter",
+                  [
+                    "var",
+                    "pairs"
+                  ],
+                  "m",
+                  [
+                    "not",
+                    [
+                      "eq",
+                      [
+                        "get",
+                        [
+                          "var",
+                          "m"
+                        ],
+                        [
+                          "lit",
+                          "triage_arxiv_id"
+                        ]
+                      ],
+                      [
+                        "get",
+                        [
+                          "var",
+                          "m"
+                        ],
+                        [
+                          "lit",
+                          "catalog_arxiv_id"
+                        ]
+                      ]
+                    ]
+                  ]
+                ],
+                [
+                  "let",
+                  "badTups",
+                  [
+                    "map",
+                    [
+                      "var",
+                      "bad"
+                    ],
+                    "m",
+                    [
+                      "array",
+                      [
+                        "get",
+                        [
+                          "var",
+                          "m"
+                        ],
+                        [
+                          "lit",
+                          "key"
+                        ]
+                      ],
+                      [
+                        "get",
+                        [
+                          "var",
+                          "m"
+                        ],
+                        [
+                          "lit",
+                          "triage_arxiv_id"
+                        ]
+                      ],
+                      [
+                        "get",
+                        [
+                          "var",
+                          "m"
+                        ],
+                        [
+                          "lit",
+                          "catalog_arxiv_id"
+                        ]
+                      ]
+                    ]
+                  ],
+                  [
+                    "let",
+                    "kinds",
+                    [
+                      "map",
+                      [
+                        "get",
+                        [
+                          "var",
+                          "input"
+                        ],
+                        [
+                          "lit",
+                          "citation_issues"
+                        ]
+                      ],
+                      "i",
+                      [
+                        "get",
+                        [
+                          "var",
+                          "i"
+                        ],
+                        [
+                          "lit",
+                          "kind"
+                        ]
+                      ]
+                    ],
+                    [
+                      "object",
+                      {
+                        "keys_match_query_items": [
+                          "eq",
+                          [
+                            "var",
+                            "qk"
+                          ],
+                          [
+                            "var",
+                            "rk"
+                          ]
+                        ],
+                        "missing": [
+                          "difference",
+                          [
+                            "var",
+                            "qk"
+                          ],
+                          [
+                            "var",
+                            "rk"
+                          ]
+                        ],
+                        "extra": [
+                          "difference",
+                          [
+                            "var",
+                            "rk"
+                          ],
+                          [
+                            "var",
+                            "qk"
+                          ]
+                        ],
+                        "arxiv_id_mismatches": [
+                          "var",
+                          "badTups"
+                        ],
+                        "issue_kinds": [
+                          "var",
+                          "kinds"
+                        ]
+                      }
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ]
+  ]
+}

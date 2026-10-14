@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "kind": "documentation_summary_not_loadable",
+  "experiment": "paper-rsi-local-view-execute-20261012-v4",
+  "private_library_manifest_digest": "0b82bb4b26797fbb6cd7ae2d8b6cb2e0cb713656343710ca1cf41daa807a0771",
+  "graphs": [
+    {
+      "motif_id": "trace-rsi-batch-79c5b30d39c18952",
+      "anchor": "mcp__paper_trace_rsi__triage_revision_audit",
+      "batch": [
+        {
+          "tool": "mcp__paper_trace_rsi__export_revision_report",
+          "arguments_binding": {
+            "input_id": "/input_id"
+          },
+          "result_kind": "private_artifact_output",
+          "effect": "private_current_report_export"
+        }
+      ],
+      "normal_training_sessions": 4,
+      "next_text_blocks": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "motif_id": "trace-rsi-batch-a4745d7c241b8bd7",
+      "anchor": "mcp__paper_trace_rsi__apply_revision_plan",
+      "batch": [
+        {
+          "tool": "mcp__paper_trace_rsi__triage_revision_audit",
+          "arguments_binding": {
+            "input_id": "/input_id"
+          },
+          "result_kind": "candidate_output"
+        }
+      ],
+      "normal_training_sessions": 4,
+      "next_text_blocks": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "same_paper_controlled_recovery": true,
+  "strict_shadow": {
+    "matched": 6,
+    "actual_requests": 15
+  },
+  "execute": {
+    "actual_requests": 9,
+    "verified_skips": 6,
+    "unverified_skips": 0
+  },
+  "native_proxy_usd": 0.00838917,
+  "execute_proxy_usd": 0.00727815,
+  "full_paper_quality_verified": false,
+  "not_execution_authority": true
+}

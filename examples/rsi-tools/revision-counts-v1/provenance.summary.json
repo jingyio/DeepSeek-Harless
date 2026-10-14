@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "source_experiment": "paper-rsi-revision-shadow-20261011-v3",
+  "compilation_experiment": "paper-rsi-revision-counts-20261011-v5",
+  "source_candidate_sha256": "417d24ca94e34b9b45a165050e8a8bbb61748003dce704a6d351eb4344318dec",
+  "model_generated_branches_retained_verbatim": [
+    "before_count",
+    "after_count",
+    "before_duplicate_key_count",
+    "added_key_count",
+    "removed_key_count"
+  ],
+  "parent_auditor_certification": "failed_not_promoted",
+  "count_verification": "27_fresh_same_paper_mutations",
+  "synthetic_public_cases": 2,
+  "field_preservation_certified": false,
+  "loadable_frozen_library": false,
+  "rebound_output": "after_duplicate_key_count",
+  "input_aliases": {
+    "before_report": "after_report"
+  },
+  "duplicate_rebinding": {
+    "source_output": "before_duplicate_key_count",
+    "source_expression_sha256": "28e2469a0fa4f00c3a3eb9ed07cc168bee78356b9ca8ff9a9548ce1d4130a8f8",
+    "input_aliases": {
+      "before_report": "after_report"
+    },
+    "target_output": "after_duplicate_key_count",
+    "target_expression_sha256": "ec931d1ac7ffc141d1999f3dbea895681f7b42713804fb2b0ba122d4a3010758"
+  }
+}

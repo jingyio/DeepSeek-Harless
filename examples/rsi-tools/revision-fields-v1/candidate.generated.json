@@ -1,0 +1,682 @@
+{
+  "schema_version": 1,
+  "name": "revision_field_preservation",
+  "description": "模型生成的完整字段对比：按key保留已有非arxiv_id字段；references之外顶层字段完整对比。",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "before_report": {
+        "type": "object",
+        "properties": {
+          "citation_issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "explanation": {
+                  "type": "string"
+                },
+                "keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "explanation",
+                "keys",
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "arxiv_id": {
+                  "type": "string"
+                },
+                "differences": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "evidence_status": {
+                  "type": "string"
+                },
+                "formal_version": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "next_action": {
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "string"
+                },
+                "source_urls": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "status": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "arxiv_id",
+                "differences",
+                "evidence_status",
+                "formal_version",
+                "key",
+                "next_action",
+                "priority",
+                "source_urls",
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_issues",
+          "references",
+          "scope"
+        ],
+        "additionalProperties": false
+      },
+      "after_report": {
+        "type": "object",
+        "properties": {
+          "citation_issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "explanation": {
+                  "type": "string"
+                },
+                "keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "explanation",
+                "keys",
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          },
+          "diagnostic_note": {
+            "type": "string"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "arxiv_id": {
+                  "type": "string"
+                },
+                "differences": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "evidence_status": {
+                  "type": "string"
+                },
+                "formal_version": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "next_action": {
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "string"
+                },
+                "source_urls": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 2000
+                },
+                "status": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "arxiv_id",
+                "key",
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 2000
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_issues",
+          "references",
+          "scope"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "after_report",
+      "before_report"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "existing_fields_preserved": {
+        "type": "boolean"
+      },
+      "top_level_preserved": {
+        "type": "boolean"
+      },
+      "changed_existing_records": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "arxiv_id": {
+              "type": "string"
+            },
+            "differences": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 2000
+            },
+            "evidence_status": {
+              "type": "string"
+            },
+            "formal_version": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            },
+            "next_action": {
+              "type": "string"
+            },
+            "priority": {
+              "type": "string"
+            },
+            "source_urls": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 2000
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "arxiv_id",
+            "key",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 2000
+      }
+    },
+    "required": [
+      "existing_fields_preserved",
+      "top_level_preserved",
+      "changed_existing_records"
+    ],
+    "additionalProperties": false
+  },
+  "program": [
+    "let",
+    "beforeRefs",
+    [
+      "get",
+      [
+        "get",
+        [
+          "var",
+          "input"
+        ],
+        [
+          "lit",
+          "before_report"
+        ]
+      ],
+      [
+        "lit",
+        "references"
+      ]
+    ],
+    [
+      "let",
+      "afterRefs",
+      [
+        "get",
+        [
+          "get",
+          [
+            "var",
+            "input"
+          ],
+          [
+            "lit",
+            "after_report"
+          ]
+        ],
+        [
+          "lit",
+          "references"
+        ]
+      ],
+      [
+        "let",
+        "skip",
+        [
+          "array",
+          [
+            "lit",
+            "arxiv_id"
+          ]
+        ],
+        [
+          "let",
+          "scoped",
+          [
+            "filter",
+            [
+              "var",
+              "afterRefs"
+            ],
+            "ar",
+            [
+              "count",
+              [
+                "filter",
+                [
+                  "var",
+                  "beforeRefs"
+                ],
+                "bb",
+                [
+                  "eq",
+                  [
+                    "get",
+                    [
+                      "var",
+                      "bb"
+                    ],
+                    [
+                      "lit",
+                      "key"
+                    ]
+                  ],
+                  [
+                    "get",
+                    [
+                      "var",
+                      "ar"
+                    ],
+                    [
+                      "lit",
+                      "key"
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ],
+          [
+            "let",
+            "mismatched",
+            [
+              "filter",
+              [
+                "var",
+                "scoped"
+              ],
+              "am",
+              [
+                "eq",
+                [
+                  "count",
+                  [
+                    "filter",
+                    [
+                      "filter",
+                      [
+                        "var",
+                        "beforeRefs"
+                      ],
+                      "bb",
+                      [
+                        "eq",
+                        [
+                          "get",
+                          [
+                            "var",
+                            "bb"
+                          ],
+                          [
+                            "lit",
+                            "key"
+                          ]
+                        ],
+                        [
+                          "get",
+                          [
+                            "var",
+                            "am"
+                          ],
+                          [
+                            "lit",
+                            "key"
+                          ]
+                        ]
+                      ]
+                    ],
+                    "bc",
+                    [
+                      "eq",
+                      [
+                        "let",
+                        "_rsi_m0",
+                        [
+                          "var",
+                          "bc"
+                        ],
+                        [
+                          "map",
+                          [
+                            "sort",
+                            [
+                              "difference",
+                              [
+                                "keys",
+                                [
+                                  "var",
+                                  "_rsi_m0"
+                                ]
+                              ],
+                              [
+                                "var",
+                                "skip"
+                              ]
+                            ]
+                          ],
+                          "_rsi_m1",
+                          [
+                            "array",
+                            [
+                              "var",
+                              "_rsi_m1"
+                            ],
+                            [
+                              "get",
+                              [
+                                "var",
+                                "_rsi_m0"
+                              ],
+                              [
+                                "var",
+                                "_rsi_m1"
+                              ]
+                            ]
+                          ]
+                        ]
+                      ],
+                      [
+                        "let",
+                        "_rsi_m2",
+                        [
+                          "var",
+                          "am"
+                        ],
+                        [
+                          "map",
+                          [
+                            "sort",
+                            [
+                              "difference",
+                              [
+                                "keys",
+                                [
+                                  "var",
+                                  "_rsi_m2"
+                                ]
+                              ],
+                              [
+                                "var",
+                                "skip"
+                              ]
+                            ]
+                          ],
+                          "_rsi_m3",
+                          [
+                            "array",
+                            [
+                              "var",
+                              "_rsi_m3"
+                            ],
+                            [
+                              "get",
+                              [
+                                "var",
+                                "_rsi_m2"
+                              ],
+                              [
+                                "var",
+                                "_rsi_m3"
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ],
+                [
+                  "lit",
+                  0
+                ]
+              ]
+            ],
+            [
+              "let",
+              "topPreserved",
+              [
+                "eq",
+                [
+                  "let",
+                  "_rsi_m4",
+                  [
+                    "get",
+                    [
+                      "var",
+                      "input"
+                    ],
+                    [
+                      "lit",
+                      "before_report"
+                    ]
+                  ],
+                  [
+                    "map",
+                    [
+                      "sort",
+                      [
+                        "difference",
+                        [
+                          "keys",
+                          [
+                            "var",
+                            "_rsi_m4"
+                          ]
+                        ],
+                        [
+                          "array",
+                          [
+                            "lit",
+                            "references"
+                          ]
+                        ]
+                      ]
+                    ],
+                    "_rsi_m5",
+                    [
+                      "array",
+                      [
+                        "var",
+                        "_rsi_m5"
+                      ],
+                      [
+                        "get",
+                        [
+                          "var",
+                          "_rsi_m4"
+                        ],
+                        [
+                          "var",
+                          "_rsi_m5"
+                        ]
+                      ]
+                    ]
+                  ]
+                ],
+                [
+                  "let",
+                  "_rsi_m6",
+                  [
+                    "get",
+                    [
+                      "var",
+                      "input"
+                    ],
+                    [
+                      "lit",
+                      "after_report"
+                    ]
+                  ],
+                  [
+                    "map",
+                    [
+                      "sort",
+                      [
+                        "difference",
+                        [
+                          "keys",
+                          [
+                            "var",
+                            "_rsi_m6"
+                          ]
+                        ],
+                        [
+                          "array",
+                          [
+                            "lit",
+                            "references"
+                          ]
+                        ]
+                      ]
+                    ],
+                    "_rsi_m7",
+                    [
+                      "array",
+                      [
+                        "var",
+                        "_rsi_m7"
+                      ],
+                      [
+                        "get",
+                        [
+                          "var",
+                          "_rsi_m6"
+                        ],
+                        [
+                          "var",
+                          "_rsi_m7"
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "object",
+                {
+                  "existing_fields_preserved": [
+                    "eq",
+                    [
+                      "count",
+                      [
+                        "var",
+                        "mismatched"
+                      ]
+                    ],
+                    [
+                      "lit",
+                      0
+                    ]
+                  ],
+                  "top_level_preserved": [
+                    "var",
+                    "topPreserved"
+                  ],
+                  "changed_existing_records": [
+                    "var",
+                    "mismatched"
+                  ]
+                }
+              ]
+            ]
+          ]
+        ]
+      ]
+    ]
+  ]
+}
