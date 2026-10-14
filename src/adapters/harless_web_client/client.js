@@ -143,13 +143,26 @@ window.__ModuleLoader__.load({
             ...value.scenes.map(scene => ({ id: `scene:${scene.id}`, label: '/' + shortcut(scene),
               detail: scene.available === false ? `暂不可用：${scene.unavailable_reason}` : scene.label,
               active: value.selection.scene === scene.id })),
+            ...(!value.scene_locked ? (value.scene_option_fields || []).flatMap(field => field.values.map(choice => ({
+              id: `option:${field.key}=${JSON.stringify(choice.value)}`, label: choice.label,
+              detail: choice.detail || field.label, active: (value.scene_options?.[field.key] ?? field.default) === choice.value,
+            }))) : []),
             ...['baseline', 'shadow', 'execute'].map(mode => ({ id: `mode:${mode}`, label: modeLabel(mode), detail: 'Mode', active: value.selection.mode === mode })),
             ...[true, false].map(rsi => ({ id: `rsi:${rsi ? 'on' : 'off'}`, label: `RSI ${rsi ? 'On' : 'Off'}`, active: value.selection.rsi === rsi })),
           ];
         },
         onSelect: async (option, session) => {
-          const [kind, id] = option.id.split(':', 2);
+          const separator = option.id.indexOf(':'), kind = option.id.slice(0, separator), id = option.id.slice(separator + 1);
           if (kind === 'scene') return chooseScene(session, id, leadingSpan(session.sessionId));
+          if (kind === 'option') {
+            const current = await settings(session), split = id.indexOf('='), key = id.slice(0, split);
+            if (current.scene_locked) throw Error('当前任务已固定选项，请在新会话中设置');
+            const selected = JSON.parse(id.slice(split + 1)), field = current.scene_option_fields?.find(row => row.key === key);
+            if (!field || !field.values.some(row => row.value === selected)) throw Error('未知任务选项');
+            publish(session.sessionId, await request(session, { action: 'set_scene_options', session_id: session.sessionId,
+              options: { ...current.scene_options, [key]: selected } }));
+            return;
+          }
           const patch = kind === 'mode' ? { mode: id } : kind === 'rsi' ? { rsi: id === 'on' } : undefined;
           if (!patch) throw Error('未知设置');
           publish(session.sessionId, await request(session, { action: 'select', session_id: session.sessionId, selection: patch }));
