@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "scene": "paper-proofreading",
+  "runtime_kind": "paper_shadow_v1",
+  "mode": "shadow",
+  "origin_sha256": "1159cfcfb428e3d14215d8ec0f202488315195a23bc9d58ce42fac822cd04bf2",
+  "files": {
+    "audit-program.json": "94fb613036b0450ec893853b929b12a782f1c5cd722d693add81c59f5bdf3407",
+    "library.json": "d2dc24b2720335afbea0b095fe83fefc963f8ce5a889d00085d5704d4c81e4ad",
+    "patch-program.json": "0eb7527ba697c787ce2ebc1843f50ff339865e301f97a6349ce138db3760d333"
+  },
+  "new_training": false,
+  "scientific_quality_reviewed": false
+}

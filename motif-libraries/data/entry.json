@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "scene": "research-data-analysis",
+  "runtime_kind": "data_receipts_v3",
+  "mode": "execute",
+  "origin_sha256": "6a199f143a7a86928d08ee20effd6959ac068f374566a267435a5441ebb9906d",
+  "files": {
+    "library.json": "6a199f143a7a86928d08ee20effd6959ac068f374566a267435a5441ebb9906d"
+  },
+  "new_training": false,
+  "scientific_quality_reviewed": false
+}

@@ -1,0 +1,2085 @@
+[
+  {
+    "id": "heldout-0-empty",
+    "input": {
+      "rows": [],
+      "rows_reverse": [],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-0-mixed",
+    "input": {
+      "rows": [],
+      "rows_reverse": [],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [],
+        "add_records": [
+          {
+            "key": "fresh-added",
+            "arxiv_id": "fresh-id",
+            "status": "待进一步核验"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [],
+      "additions": [
+        {
+          "key": "fresh-added",
+          "arxiv_id": "fresh-id",
+          "status": "待进一步核验"
+        }
+      ]
+    }
+  },
+  {
+    "id": "heldout-0-remove-all",
+    "input": {
+      "rows": [],
+      "rows_reverse": [],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-1-empty",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-1-mixed",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [
+          {
+            "key": "fresh-0",
+            "arxiv_id": "new-0"
+          }
+        ],
+        "keep_once_keys": [
+          "fresh-0"
+        ],
+        "remove_keys": [],
+        "add_records": [
+          {
+            "key": "fresh-added",
+            "arxiv_id": "fresh-id",
+            "status": "待进一步核验"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "replacements": [
+        {
+          "path": "/references/0/arxiv_id",
+          "value": "new-0"
+        }
+      ],
+      "removals": [],
+      "additions": [
+        {
+          "key": "fresh-added",
+          "arxiv_id": "fresh-id",
+          "status": "待进一步核验"
+        }
+      ]
+    }
+  },
+  {
+    "id": "heldout-1-remove-all",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [
+          "fresh-0"
+        ],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [
+        "/references/0"
+      ],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-2-empty",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-2-mixed",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [
+          {
+            "key": "fresh-0",
+            "arxiv_id": "new-0"
+          }
+        ],
+        "keep_once_keys": [
+          "fresh-0"
+        ],
+        "remove_keys": [],
+        "add_records": [
+          {
+            "key": "fresh-added",
+            "arxiv_id": "fresh-id",
+            "status": "待进一步核验"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "replacements": [
+        {
+          "path": "/references/0/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/1/arxiv_id",
+          "value": "new-0"
+        }
+      ],
+      "removals": [
+        "/references/1"
+      ],
+      "additions": [
+        {
+          "key": "fresh-added",
+          "arxiv_id": "fresh-id",
+          "status": "待进一步核验"
+        }
+      ]
+    }
+  },
+  {
+    "id": "heldout-2-remove-all",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [
+          "fresh-0"
+        ],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [
+        "/references/1",
+        "/references/0"
+      ],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-5-empty",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-5-mixed",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [
+          {
+            "key": "fresh-0",
+            "arxiv_id": "new-0"
+          },
+          {
+            "key": "fresh-1",
+            "arxiv_id": "new-1"
+          }
+        ],
+        "keep_once_keys": [
+          "fresh-0",
+          "fresh-1"
+        ],
+        "remove_keys": [],
+        "add_records": [
+          {
+            "key": "fresh-added",
+            "arxiv_id": "fresh-id",
+            "status": "待进一步核验"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "replacements": [
+        {
+          "path": "/references/0/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/1/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/2/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/3/arxiv_id",
+          "value": "new-1"
+        },
+        {
+          "path": "/references/4/arxiv_id",
+          "value": "new-1"
+        }
+      ],
+      "removals": [
+        "/references/4",
+        "/references/2",
+        "/references/1"
+      ],
+      "additions": [
+        {
+          "key": "fresh-added",
+          "arxiv_id": "fresh-id",
+          "status": "待进一步核验"
+        }
+      ]
+    }
+  },
+  {
+    "id": "heldout-5-remove-all",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [
+          "fresh-0",
+          "fresh-1"
+        ],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [
+        "/references/4",
+        "/references/3",
+        "/references/2",
+        "/references/1",
+        "/references/0"
+      ],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-12-empty",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-12-mixed",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [
+          {
+            "key": "fresh-0",
+            "arxiv_id": "new-0"
+          },
+          {
+            "key": "fresh-1",
+            "arxiv_id": "new-1"
+          },
+          {
+            "key": "fresh-2",
+            "arxiv_id": "new-2"
+          },
+          {
+            "key": "fresh-3",
+            "arxiv_id": "new-3"
+          }
+        ],
+        "keep_once_keys": [
+          "fresh-0",
+          "fresh-1",
+          "fresh-2",
+          "fresh-3"
+        ],
+        "remove_keys": [],
+        "add_records": [
+          {
+            "key": "fresh-added",
+            "arxiv_id": "fresh-id",
+            "status": "待进一步核验"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "replacements": [
+        {
+          "path": "/references/0/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/1/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/2/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/3/arxiv_id",
+          "value": "new-1"
+        },
+        {
+          "path": "/references/4/arxiv_id",
+          "value": "new-1"
+        },
+        {
+          "path": "/references/5/arxiv_id",
+          "value": "new-1"
+        },
+        {
+          "path": "/references/6/arxiv_id",
+          "value": "new-2"
+        },
+        {
+          "path": "/references/7/arxiv_id",
+          "value": "new-2"
+        },
+        {
+          "path": "/references/8/arxiv_id",
+          "value": "new-2"
+        },
+        {
+          "path": "/references/9/arxiv_id",
+          "value": "new-3"
+        },
+        {
+          "path": "/references/10/arxiv_id",
+          "value": "new-3"
+        },
+        {
+          "path": "/references/11/arxiv_id",
+          "value": "new-3"
+        }
+      ],
+      "removals": [
+        "/references/11",
+        "/references/10",
+        "/references/8",
+        "/references/7",
+        "/references/5",
+        "/references/4",
+        "/references/2",
+        "/references/1"
+      ],
+      "additions": [
+        {
+          "key": "fresh-added",
+          "arxiv_id": "fresh-id",
+          "status": "待进一步核验"
+        }
+      ]
+    }
+  },
+  {
+    "id": "heldout-12-remove-all",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [
+          "fresh-0",
+          "fresh-1",
+          "fresh-2",
+          "fresh-3"
+        ],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [
+        "/references/11",
+        "/references/10",
+        "/references/9",
+        "/references/8",
+        "/references/7",
+        "/references/6",
+        "/references/5",
+        "/references/4",
+        "/references/3",
+        "/references/2",
+        "/references/1",
+        "/references/0"
+      ],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-23-empty",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/12",
+          "id_path": "/references/12/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/13",
+          "id_path": "/references/13/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/14",
+          "id_path": "/references/14/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/15",
+          "id_path": "/references/15/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/16",
+          "id_path": "/references/16/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/17",
+          "id_path": "/references/17/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/18",
+          "id_path": "/references/18/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/19",
+          "id_path": "/references/19/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/20",
+          "id_path": "/references/20/arxiv_id"
+        },
+        {
+          "key": "fresh-7",
+          "path": "/references/21",
+          "id_path": "/references/21/arxiv_id"
+        },
+        {
+          "key": "fresh-7",
+          "path": "/references/22",
+          "id_path": "/references/22/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-7",
+          "path": "/references/22",
+          "id_path": "/references/22/arxiv_id"
+        },
+        {
+          "key": "fresh-7",
+          "path": "/references/21",
+          "id_path": "/references/21/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/20",
+          "id_path": "/references/20/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/19",
+          "id_path": "/references/19/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/18",
+          "id_path": "/references/18/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/17",
+          "id_path": "/references/17/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/16",
+          "id_path": "/references/16/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/15",
+          "id_path": "/references/15/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/14",
+          "id_path": "/references/14/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/13",
+          "id_path": "/references/13/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/12",
+          "id_path": "/references/12/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [],
+      "additions": []
+    }
+  },
+  {
+    "id": "heldout-23-mixed",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/12",
+          "id_path": "/references/12/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/13",
+          "id_path": "/references/13/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/14",
+          "id_path": "/references/14/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/15",
+          "id_path": "/references/15/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/16",
+          "id_path": "/references/16/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/17",
+          "id_path": "/references/17/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/18",
+          "id_path": "/references/18/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/19",
+          "id_path": "/references/19/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/20",
+          "id_path": "/references/20/arxiv_id"
+        },
+        {
+          "key": "fresh-7",
+          "path": "/references/21",
+          "id_path": "/references/21/arxiv_id"
+        },
+        {
+          "key": "fresh-7",
+          "path": "/references/22",
+          "id_path": "/references/22/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-7",
+          "path": "/references/22",
+          "id_path": "/references/22/arxiv_id"
+        },
+        {
+          "key": "fresh-7",
+          "path": "/references/21",
+          "id_path": "/references/21/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/20",
+          "id_path": "/references/20/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/19",
+          "id_path": "/references/19/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/18",
+          "id_path": "/references/18/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/17",
+          "id_path": "/references/17/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/16",
+          "id_path": "/references/16/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/15",
+          "id_path": "/references/15/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/14",
+          "id_path": "/references/14/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/13",
+          "id_path": "/references/13/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/12",
+          "id_path": "/references/12/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [
+          {
+            "key": "fresh-0",
+            "arxiv_id": "new-0"
+          },
+          {
+            "key": "fresh-1",
+            "arxiv_id": "new-1"
+          },
+          {
+            "key": "fresh-2",
+            "arxiv_id": "new-2"
+          },
+          {
+            "key": "fresh-3",
+            "arxiv_id": "new-3"
+          },
+          {
+            "key": "fresh-4",
+            "arxiv_id": "new-4"
+          },
+          {
+            "key": "fresh-5",
+            "arxiv_id": "new-5"
+          },
+          {
+            "key": "fresh-6",
+            "arxiv_id": "new-6"
+          },
+          {
+            "key": "fresh-7",
+            "arxiv_id": "new-7"
+          }
+        ],
+        "keep_once_keys": [
+          "fresh-0",
+          "fresh-1",
+          "fresh-2",
+          "fresh-3",
+          "fresh-4",
+          "fresh-5",
+          "fresh-6",
+          "fresh-7"
+        ],
+        "remove_keys": [],
+        "add_records": [
+          {
+            "key": "fresh-added",
+            "arxiv_id": "fresh-id",
+            "status": "待进一步核验"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "replacements": [
+        {
+          "path": "/references/0/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/1/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/2/arxiv_id",
+          "value": "new-0"
+        },
+        {
+          "path": "/references/3/arxiv_id",
+          "value": "new-1"
+        },
+        {
+          "path": "/references/4/arxiv_id",
+          "value": "new-1"
+        },
+        {
+          "path": "/references/5/arxiv_id",
+          "value": "new-1"
+        },
+        {
+          "path": "/references/6/arxiv_id",
+          "value": "new-2"
+        },
+        {
+          "path": "/references/7/arxiv_id",
+          "value": "new-2"
+        },
+        {
+          "path": "/references/8/arxiv_id",
+          "value": "new-2"
+        },
+        {
+          "path": "/references/9/arxiv_id",
+          "value": "new-3"
+        },
+        {
+          "path": "/references/10/arxiv_id",
+          "value": "new-3"
+        },
+        {
+          "path": "/references/11/arxiv_id",
+          "value": "new-3"
+        },
+        {
+          "path": "/references/12/arxiv_id",
+          "value": "new-4"
+        },
+        {
+          "path": "/references/13/arxiv_id",
+          "value": "new-4"
+        },
+        {
+          "path": "/references/14/arxiv_id",
+          "value": "new-4"
+        },
+        {
+          "path": "/references/15/arxiv_id",
+          "value": "new-5"
+        },
+        {
+          "path": "/references/16/arxiv_id",
+          "value": "new-5"
+        },
+        {
+          "path": "/references/17/arxiv_id",
+          "value": "new-5"
+        },
+        {
+          "path": "/references/18/arxiv_id",
+          "value": "new-6"
+        },
+        {
+          "path": "/references/19/arxiv_id",
+          "value": "new-6"
+        },
+        {
+          "path": "/references/20/arxiv_id",
+          "value": "new-6"
+        },
+        {
+          "path": "/references/21/arxiv_id",
+          "value": "new-7"
+        },
+        {
+          "path": "/references/22/arxiv_id",
+          "value": "new-7"
+        }
+      ],
+      "removals": [
+        "/references/22",
+        "/references/20",
+        "/references/19",
+        "/references/17",
+        "/references/16",
+        "/references/14",
+        "/references/13",
+        "/references/11",
+        "/references/10",
+        "/references/8",
+        "/references/7",
+        "/references/5",
+        "/references/4",
+        "/references/2",
+        "/references/1"
+      ],
+      "additions": [
+        {
+          "key": "fresh-added",
+          "arxiv_id": "fresh-id",
+          "status": "待进一步核验"
+        }
+      ]
+    }
+  },
+  {
+    "id": "heldout-23-remove-all",
+    "input": {
+      "rows": [
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/12",
+          "id_path": "/references/12/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/13",
+          "id_path": "/references/13/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/14",
+          "id_path": "/references/14/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/15",
+          "id_path": "/references/15/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/16",
+          "id_path": "/references/16/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/17",
+          "id_path": "/references/17/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/18",
+          "id_path": "/references/18/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/19",
+          "id_path": "/references/19/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/20",
+          "id_path": "/references/20/arxiv_id"
+        },
+        {
+          "key": "fresh-7",
+          "path": "/references/21",
+          "id_path": "/references/21/arxiv_id"
+        },
+        {
+          "key": "fresh-7",
+          "path": "/references/22",
+          "id_path": "/references/22/arxiv_id"
+        }
+      ],
+      "rows_reverse": [
+        {
+          "key": "fresh-7",
+          "path": "/references/22",
+          "id_path": "/references/22/arxiv_id"
+        },
+        {
+          "key": "fresh-7",
+          "path": "/references/21",
+          "id_path": "/references/21/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/20",
+          "id_path": "/references/20/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/19",
+          "id_path": "/references/19/arxiv_id"
+        },
+        {
+          "key": "fresh-6",
+          "path": "/references/18",
+          "id_path": "/references/18/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/17",
+          "id_path": "/references/17/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/16",
+          "id_path": "/references/16/arxiv_id"
+        },
+        {
+          "key": "fresh-5",
+          "path": "/references/15",
+          "id_path": "/references/15/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/14",
+          "id_path": "/references/14/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/13",
+          "id_path": "/references/13/arxiv_id"
+        },
+        {
+          "key": "fresh-4",
+          "path": "/references/12",
+          "id_path": "/references/12/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/11",
+          "id_path": "/references/11/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/10",
+          "id_path": "/references/10/arxiv_id"
+        },
+        {
+          "key": "fresh-3",
+          "path": "/references/9",
+          "id_path": "/references/9/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/8",
+          "id_path": "/references/8/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/7",
+          "id_path": "/references/7/arxiv_id"
+        },
+        {
+          "key": "fresh-2",
+          "path": "/references/6",
+          "id_path": "/references/6/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/5",
+          "id_path": "/references/5/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/4",
+          "id_path": "/references/4/arxiv_id"
+        },
+        {
+          "key": "fresh-1",
+          "path": "/references/3",
+          "id_path": "/references/3/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/2",
+          "id_path": "/references/2/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/1",
+          "id_path": "/references/1/arxiv_id"
+        },
+        {
+          "key": "fresh-0",
+          "path": "/references/0",
+          "id_path": "/references/0/arxiv_id"
+        }
+      ],
+      "plan": {
+        "set_ids": [],
+        "keep_once_keys": [],
+        "remove_keys": [
+          "fresh-0",
+          "fresh-1",
+          "fresh-2",
+          "fresh-3",
+          "fresh-4",
+          "fresh-5",
+          "fresh-6",
+          "fresh-7"
+        ],
+        "add_records": []
+      }
+    },
+    "expected": {
+      "replacements": [],
+      "removals": [
+        "/references/22",
+        "/references/21",
+        "/references/20",
+        "/references/19",
+        "/references/18",
+        "/references/17",
+        "/references/16",
+        "/references/15",
+        "/references/14",
+        "/references/13",
+        "/references/12",
+        "/references/11",
+        "/references/10",
+        "/references/9",
+        "/references/8",
+        "/references/7",
+        "/references/6",
+        "/references/5",
+        "/references/4",
+        "/references/3",
+        "/references/2",
+        "/references/1",
+        "/references/0"
+      ],
+      "additions": []
+    }
+  }
+]

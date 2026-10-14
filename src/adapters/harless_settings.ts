@@ -7,15 +7,28 @@ export type Scene = {
   embedding_endpoint?: string; embedding_model?: string;
   diagnostic?: boolean; tool_schemas?: string; certified_tool_schemas?: any[]; certified_tool_schemas_sha256?: string;
   scenario?: string; scenario_version?: number; instructions_sha256?: string;
-  unavailable_reason?: string; adapter?: 'ppt' | 'workspace' | 'files';
+  unavailable_reason?: string; adapter?: 'ppt' | 'workspace' | 'files' | 'literature' | 'data-report';
   mcp_rows?: any[]; environment_references?: Record<string, string>;
-  rsi_unavailable_reason?: string; matching_policy?: 'structural_only'; binding_policy?: 'ppt_uploaded_sources_v1' | 'approved_uploaded_reads_v1';
+  rsi_unavailable_reason?: string; matching_policy?: 'structural_only'; binding_policy?: 'ppt_uploaded_sources_v1' | 'uploaded_source_handles_v1' | 'approved_uploaded_reads_v1';
   certification_path?: string; certification_sha256?: string; certified_code_locks?: Record<string,string>;
   certification_scope?: string; quality_cost_promoted?: boolean;
   output_unavailable_reason?: string; renderer_root?: string; font_root?: string; runtime_file_locks?: Record<string,string>;
   paper_renderer_root?: string;
+  pdf_toolchain_root?: string;
+  certified_tool_schema_variants?: any[][];
+  runtime_kind?: 'ppt_read_v1' | 'data_receipts_v3' | 'paper_shadow_v1';
+  runtime_library?: string; runtime_library_sha256?: string; runtime_mode?: string; runtime_manifest_digest?: string;
 };
 export type Selection = { scene: string; mode: ExecutionMode; rsi: boolean };
+const shortcutNames: Record<string, string> = { ppt: 'ppt', 'paper-proofreading': 'paper',
+  'research-data-analysis': 'data', 'new-scene': 'chat' };
+export function sceneShortcut(scene: Scene): string { return shortcutNames[scene.id] ?? scene.id; }
+/** Only a leading, complete scene token is a control; paths and prose stay text. */
+export function parseSceneShortcut(text: string, scenes: readonly Scene[]) {
+  const match = /^\s*\/([a-z][a-z0-9_-]*)(?=\s|$)/i.exec(text);
+  const scene = match && scenes.find(row => sceneShortcut(row) === match[1].toLowerCase());
+  return scene ? { scene: scene.id, text: text.slice(match![0].length).trimStart() } : undefined;
+}
 export class SettingsError extends Error {
   code: string;
   constructor(code: string, message: string) { super(message); this.code = code; }
@@ -31,7 +44,7 @@ export function sceneCatalog(rows: unknown): Scene[] {
         row.allowed_tools.some((tool: unknown) => typeof tool !== 'string' || !/^mcp__[a-z0-9_]+__[a-zA-Z0-9_]+$/.test(tool as string)) ||
         new Set(row.allowed_tools).size !== row.allowed_tools.length ||
         (row.unavailable_reason !== undefined && !/^[a-z][a-z0-9_]{0,127}$/.test(row.unavailable_reason)) ||
-        (row.adapter !== undefined && (!['ppt', 'workspace', 'files'].includes(row.adapter) || !Array.isArray(row.mcp_rows))) ||
+        (row.adapter !== undefined && (!['ppt', 'workspace', 'files', 'literature', 'data-report'].includes(row.adapter) || !Array.isArray(row.mcp_rows))) ||
         (row.instructions !== undefined && (typeof row.instructions !== 'string' || row.instructions.length > 100000))) {
       throw new SettingsError('invalid_registry', '场景 ID、工具或 preset 无效');
     }

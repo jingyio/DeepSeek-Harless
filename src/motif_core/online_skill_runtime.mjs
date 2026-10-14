@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { validateContinuationManifest, validateTaskContinuation, closedContinuation }
+import { validateContinuationManifest, validateTaskContinuation, closedContinuation as approvedContinuation }
   from './approved_plan_continuation.generated.mjs';
 import { validateSourceDereferences, isSourceDereferenceName }
   from './source_dereference.generated.mjs';
@@ -76,6 +76,13 @@ export function validateOnlineManifest(manifest) {
     throw new TypeError('invalid or changed certified online Motif manifest');
   }
   const ids = new Set();
+  if (manifest.tool_schema_hashes !== undefined &&
+      (!manifest.tool_schema_hashes || typeof manifest.tool_schema_hashes !== 'object' ||
+       Array.isArray(manifest.tool_schema_hashes) ||
+       Object.entries(manifest.tool_schema_hashes).some(([tool, hash]) =>
+         !manifest.contracts[tool] || !/^[a-f0-9]{64}$/.test(hash)))) {
+    throw new TypeError('invalid frozen tool schema hashes');
+  }
   for (const contract of Object.values(manifest.contracts)) {
     if (!contract || contract.read_only !== true ||
         !Array.isArray(contract.required_params) ||
@@ -388,7 +395,8 @@ export async function proposeNext({ manifest, task, history, availableTools,
       const nextTool = artifact.tools[length];
       const offered = availableTools.get(nextTool);
       const required = manifest.contracts[nextTool].required_params;
-      if (!offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool])) {
+      if (!offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool],
+          manifest.tool_schema_hashes?.[nextTool])) {
         continue;
       }
       const args = await bindNext(artifact, nextTool, prefix, task, manifest);
@@ -489,10 +497,11 @@ function matchingPrefixes(artifact, history, length, task, manifest) {
     }));
 }
 
-export function offeredSchemaMatches(availableTools, tool, contract) {
+export function offeredSchemaMatches(availableTools, tool, contract, schemaHash) {
   const offered = availableTools.get(tool);
   const required = contract.required_params;
   return offered?.parameters?.type === 'object' &&
+    (schemaHash === undefined || digest(offered.parameters) === schemaHash) &&
     Array.isArray(offered.parameters.required ?? []) &&
     // A witnessed operator can require an explicit target even when the API
     // permits an implicit front document. We always supply that bound target.
@@ -558,7 +567,8 @@ function sourceKindMatches(tool, prefix) {
 /** Find independent, provenance-bound continuations in interleaved tool history. */
 export async function proposeReadyBatch({ manifest, task, history, availableTools,
                                          similarity, minSimilarity, minMargin,
-                                         usedPrefixes = new Set(), maxBatch = 8 }) {
+                                         usedPrefixes = new Set(), maxBatch = 8,
+                                         closedContinuation = () => false }) {
   const barrier = history.findLastIndex((row) => row.barrier === true);
   history = history.slice(barrier + 1);
   if (!history.length || typeof similarity !== 'function' ||
@@ -571,14 +581,15 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     for (let length = 1; length < artifact.tools.length; length++) {
       const nextTool = artifact.tools[length];
       if (!manifest.version_fields[nextTool] ||
-          !offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool])) continue;
+          !offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool],
+            manifest.tool_schema_hashes?.[nextTool])) continue;
       for (const prefix of matchingPrefixes(artifact, history, length, task, manifest)) {
         if (!sourceKindMatches(nextTool, prefix)) continue;
         if (artifact.code_nodes?.length && ++codeAttempts > 8) return [];
         const args = await bindNext(artifact, nextTool, prefix, task, manifest);
         if (!args) continue;
         const hasGrantPolicy = manifest.contracts[artifact.tools[0]]?.continuation_policy !== undefined;
-        const continuation = hasGrantPolicy ? closedContinuation({ artifact, prefix, task,
+        const continuation = hasGrantPolicy ? approvedContinuation({ artifact, prefix, task,
           manifest, availableTools, args, nextTool }) : null;
         // An invalid permission must never be rescued by semantic similarity.
         if (hasGrantPolicy && !continuation) continue;
@@ -640,7 +651,8 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     .filter(([, rows]) =>
       (new Set(rows.map((row) => digest([row.tool, row.arguments]))).size === 1 &&
         rows.every((row) => isClosedSourceRead(row, manifest) ||
-          isClosedUniqueMessageRead(row, manifest) || row.continuation_expected)))
+          isClosedUniqueMessageRead(row, manifest) || row.continuation_expected ||
+          closedContinuation(row, manifest) === true)))
     .map(([root]) => root));
   const query = `${task.intent}\nRecent tools: ${history.slice(-4)
     .map((row) => row.name).join(', ')}`;

@@ -40,7 +40,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             continue
         if type(row.get('diagnostic', False)) is not bool: raise ValueError('diagnostic must be boolean')
         scene['diagnostic'] = row.get('diagnostic', False)
-        if row.get('adapter') not in (None, 'ppt', 'workspace', 'files'): raise ValueError('unsupported scene adapter')
+        if row.get('adapter') not in (None, 'ppt', 'workspace', 'files', 'literature', 'data-report'): raise ValueError('unsupported scene adapter')
         path = (root / row['scenario']).resolve(strict=True)
         prepared = (prepared_default if row['id'] == default_id else
                     prepare_scenario(path, case=row.get('case', ''), session_workspace=WORKSPACE if row.get('adapter') else None))
@@ -49,6 +49,16 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                      embedding_endpoint=embedding_endpoint, embedding_model=embedding_model)
         if row.get('adapter'):
             scene.update(adapter=row['adapter'], mcp_rows=prepared['mcp_rows'], environment_references=prepared['environment_references'])
+        if row.get('adapter')=='data-report' or row['id']=='paper-proofreading':
+            for mcp in scene['mcp_rows']:
+                if mcp['config']['serverName'] in ('research_report','paper_trace_rsi'):
+                    mcp['config'].setdefault('env',{})['HARLESS_PRIVATE_ROOT']=str(output.resolve())
+        if row.get('adapter') == 'literature':
+            from .harless_pdf_deployment import configure_pdf_parser
+            try: configure_pdf_parser(scene)
+            except (OSError, ValueError): scene['unavailable_reason'] = 'literature_pdf_dependencies_missing'
+        if row.get('adapter') == 'data-report' and any(importlib.util.find_spec(module) is None for module in ('numpy','pandas','scipy','matplotlib','statsmodels')):
+            scene['unavailable_reason'] = 'data_report_python_dependencies_missing'
         if row.get('adapter') == 'ppt':
             from .harless_ppt_deployment import configure_ppt_rendering
             try:configure_ppt_rendering(scene)
@@ -73,6 +83,12 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             scene.update(instructions=instructions, instructions_sha256=hashlib.sha256(instructions.encode()).hexdigest())
         if row.get('rsi'):
             rsi = row['rsi']
+            if isinstance(rsi, dict) and set(rsi) == {'runtime_bundle'}:
+                from .harless_rsi_bundle import load_product_bundle
+                bundle = (root / rsi['runtime_bundle']).resolve(strict=True)
+                try: scene.update(load_product_bundle(root, bundle, row['id']))
+                except (ValueError, OSError, KeyError): scene['rsi_unavailable_reason'] = 'existing_runtime_bundle_incompatible'
+                rsi = None
             if isinstance(rsi, dict) and set(rsi)=={'bundle_from_env'}:
                 if rsi['bundle_from_env']!=BUNDLE_ENVS.get(row['id']):raise ValueError('invalid trusted runtime bundle reference')
                 value=os.environ.get(rsi['bundle_from_env'])
@@ -87,7 +103,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             else:
                 _bind_legacy_rsi(root, rsi, scene, prepared)
         if row['id'] != default_id:
-            preset = output / 'presets' / scene['preset']; preset.mkdir(parents=True, mode=0o700)
+            preset = output / 'presets' / scene['preset']; preset.mkdir(parents=True, mode=0o700, exist_ok=True)
             rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
                 'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
                 'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}},

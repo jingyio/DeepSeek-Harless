@@ -1,5 +1,6 @@
 # Harless 场景、模式与 RSI
 
+登录 Harness Web，在 `/harless` 原生菜单选择 Scene、Mode、RSI，或在输入开头使用 `/ppt`、`/paper`、`/data`、`/chat`。每次输入字符都按前缀筛选场景；选择后在原生编辑器中显示蓝色场景标识，输入框底部保留当前场景。目录来自服务端，未部署项说明原因并拒绝选择，不保存假选择。选择本身不注册任务、不调用模型。原生聊天仍直接发送，任务 API 保留 preview / submit。
 在原生 `/harless` 菜单选择 Scene、Mode、RSI。选择只影响后续任务；已预览、确认、运行的任务保持冻结配置。菜单不调用模型。前端只传登记 ID 和配置值，不传服务器路径、启动命令或工具调用。
 
 | Scene ID | 后端配置 | 能力与边界 |
@@ -40,7 +41,16 @@ Files 的 Word/Excel XML 单成员读取上限 4 MiB，Excel 最多解析 10,000
 
 ## 用户、Session 与任务冻结
 
-沿用已完成的账号网关和 bwrap 隔离。管理员在私有网关配置增加 `memberSceneDeployment:{projectRoot,pythonExecutable,pythonRoots,libraryRoot?,rendererRoot?,fontRoot?,paperRendererRoot?}`。它只挂载只读公共代码/安装依赖、纯 Runtime 库及审阅过的论文渲染包；拒绝整个用户目录、继承凭证、原始轨迹、私人输入和任意启动命令。每名成员的输入、设置、Session、输出和预算路由仍属自己的环境；没有该部署字段的旧配置继续明确使用 chat-only 策略，不继承所有者资料。
+GET 另返回 `conversation_only:boolean`：经管理员从其他旧运行目录迁入的历史会话为 `true`，允许保留上下文的文字续聊，继续使用逐轮预算，但不加载新版场景工具或修改已锁定的旧 preset。向此类会话提交附件返回 `409 new_session_required`；文件任务或新版工具需要新会话。普通会话及当前目录内正常重启的会话为 `false`。
+
+GET 中的场景行含 `shortcut`，另返回 `scene_locked`。设置首次访问允许认领该 Home 下、使用已登记 preset 且没有历史/来源继承的普通空会话；未知历史继续返回 404。已绑定会话切换场景返回 `409 scene_requires_new_session`，在保存或改工具之前拒绝，不让界面假选择影响普通续聊。Mode/RSI 的修改只用于后续任务，不改变正在执行的配置。
+
+`new_session` 可带可选 `selection:{scene,mode,rsi}` 和 `inherit_session`，验证归属后创建新会话并继承所属工作区。浏览器选择新场景时，如果原会话已锁定，会创建对应场景会话并转移未被改写的草稿及附件；原聊天保留，发生编辑竞争则保留原输入而不覆盖。界面使用原生 span/revision 守卫和 reference chip，不修改上游编辑器。迟到的设置请求不会覆盖刚保存的选择。
+
+网关模式下，原生 `workspaceId` 由同一账号的 Harness 注册表验证，并只以该 ID 创建会话，不再同时传入 `cwd`。独立非网关模式仍拒绝客户端位置字段。未指定工作区时登记服务器分配的位置；场景 MCP 输入与 job 继续在服务器分配的 Session 私有目录中。有逐轮预算 broker 时，通用和 PPT 对话可在相同场景、相同已批准输入与权限下连续多轮。新增文件或改变 PPT `scene_options` 要求新 Session，不能借后续文字提高输出权限。
+
+完整前导 `/ppt` 等别名在发送时由服务端核验并去除控制词，再用所属场景处理剩余文字；只有控制词时不调用模型。路径（如 `/ppt/file`）和普通文字不当作场景指令。已有会话直接输入另一个场景并发送仍会明确要求新会话；从候选中选择会完成上述新建和草稿交接。
+沿用已完成的账号网关和 bwrap 隔离。管理员在私有网关配置增加 `memberSceneDeployment:{projectRoot,pythonExecutable,pythonRoots,libraryRoot?,rendererRoot?,fontRoot?,paperRendererRoot?}`。它只挂载只读公共代码/安装依赖、纯 Runtime 库和审阅过的论文渲染包；拒绝整个用户目录、继承凭证、原始轨迹、私人输入和任意启动命令。每名成员的输入、设置、Session、输出和预算路由仍属自己的环境；没有该部署字段的旧配置继续明确使用 chat-only 策略，不继承所有者资料。
 Files 的成员部署白名单仅接受固定 `scenarios/file-management/plan_tools.py` 与由服务端 Session 工作区生成的 `FM_WEB_WORKSPACE/FM_TASK_FILE/FM_OUTPUT` 三项路径；不会把用户输入转换成 MCP 启动命令或主机文件路径。
 
 任务冻结 Scene/配置版本、选择与实际模式、RSI、Prompt、完整工具 Schema/权限、库/Manifest/认证及动态绑定摘要、软件文件摘要、Provider/输出 cap、任务及启动预算、用户/Session/Task、上传/job 摘要。确认后变化拒绝。库、配置切换不修改运行中的任务；费用、请求上限和错误恢复沿用原代理。旧会话迁移由另一协作者处理，本次不改归属校验。

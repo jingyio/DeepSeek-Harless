@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import net from 'node:net';
+import { once } from 'node:events';
 import { createHash, createHmac } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -58,6 +60,19 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 const close = server => new Promise(resolve => server.close(resolve));
 const origin = 'https://app.example.test';
+
+test('gateway shutdown closes an idle browser connection and finishes promptly', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'harless-gateway-close-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const gateway = createGateway({dataDir:dir,publicOrigin:origin});
+  const port = await listen(gateway.server), socket = net.connect(port,'127.0.0.1');
+  t.after(() => socket.destroy()); await once(socket,'connect');
+  const stopped=once(gateway.server,'close'), disconnected=once(socket,'close');
+  gateway.close();gateway.close();
+  await Promise.race([Promise.all([stopped,disconnected]),new Promise((_,reject)=>{
+    const timer=setTimeout(()=>reject(Error('gateway shutdown remained blocked by browser socket')),1000);timer.unref();
+  })]);
+});
 async function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), 'harless-gateway-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -88,9 +103,26 @@ async function fixture(t) {
       ...(cookie ? { cookie } : {}), ...(body ? { 'content-type': 'application/json', origin: requestOrigin } : {}),
     }, body: body ? JSON.stringify(body) : undefined,
   });
-  return { dir, seen, config, request, get gateway() { return gateway; },
+  return { dir, seen, config, request, upstream, base, get gateway() { return gateway; },
     async restart() { await close(gateway.server); gateway = createGateway(config); port = await listen(gateway.server); } };
 }
+
+test('gateway shutdown closes both sides of an upgraded browser connection',async t=>{
+ const f=await fixture(t);let backendSocket;
+ f.upstream.on('upgrade',(_req,socket)=>{backendSocket=socket;socket.resume();socket.once('end',()=>socket.end());socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');});
+ const code=createOwnerClaim(f.gateway);
+ const response=await f.request('/api/account/claim',{method:'POST',body:{claimCode:code,username:'owner',displayName:'Owner',password:'long-enough-test-password'}});
+ assert.equal(response.status,200);const cookie=response.headers.get('set-cookie').split(';')[0];
+ const socket=net.connect(new URL(f.base()).port,'127.0.0.1');
+ try {
+  await once(socket,'connect',{signal:AbortSignal.timeout(2000)});
+  socket.write('GET /api/$stream HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nCookie: '+cookie+'\r\n\r\n');
+  const [reply]=await once(socket,'data',{signal:AbortSignal.timeout(2000)});assert.match(reply.toString(),/101 Switching/);assert.ok(backendSocket);
+  const stopped=once(f.gateway.server,'close'),downstream=once(socket,'close'),upstream=once(backendSocket,'close');
+  f.gateway.close();
+  await Promise.race([Promise.all([stopped,downstream,upstream]),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('upgraded connection prevented gateway shutdown')),1000);timer.unref();})]);
+ } finally {socket.destroy();backendSocket?.destroy();f.gateway.close();}
+});
 
 test('owner claim, login, profile, password, logout and persistence', async t => {
   const f = await fixture(t);

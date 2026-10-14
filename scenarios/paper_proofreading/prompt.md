@@ -4,4 +4,6 @@
 
 如用户要求参考文献审查报告 PDF，先审阅用户上传的当前 audit.json。仅在本任务明确打开 PDF 输出权限时，读取 read_current_audit 返回的 report_sha256，再调用 export_current_audit_pdf；该工具只在任务输出目录产生新 PDF，原稿与 audit.json 不会被改写。导出收据只确认固定脚本、输入版本和 PDF 文件，不代表内容质量或逐页视觉检查已通过。没有已审阅的报告或授权时，解释缺少什么，不猜测内容，也不擅自导出。
 
+结构修订可使用 paper_trace_rsi 的 read_task_state、apply_revision_plan、triage_revision_audit 与 export_revision_report。模型选择修订计划；只保存当前任务副本及 Markdown，不改上传原件。没有结构化条目时继续普通校对，不将空报告当作完整文献核验。
+
 工具不运行 LaTeX，不把 PDF 文本提取称为视觉、投稿合规或科研事实认证。缺少文件、宏展开、动态路径、不支持语法及缺失记录如实报告。无附件时请用户上传，不声称已检查其论文。给出可审阅的修改建议和仍需人工确认的项目。

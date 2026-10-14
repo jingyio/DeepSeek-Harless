@@ -23,7 +23,7 @@ export function memberSceneDeployment(policy, deployment) {
   const binary = realpathSync(executable);
   if (!pythonRoots.some(p => inside(p, binary)) || !pythonRoots.some(p=>inside(p,executable)) || !statSync(binary).isFile())
     throw Error('Member Python executable is outside mounted dependencies');
-  const mappings = ['src', 'scripts', 'scenarios'].map(name => {
+  const mappings = ['src', 'scripts', 'scenarios', 'benchmarks', 'motif-libraries'].filter(name=>existsSync(join(root,name))).map(name => {
     const source = realpathSync(join(root, name));
     if (!inside(root, source)) throw Error('Member code directory escapes the project');
     return { source, target: '/app/' + name };
@@ -31,6 +31,14 @@ export function memberSceneDeployment(policy, deployment) {
   const mounts = [...mappings, ...pythonRoots.map(source => ({ source, target: source }))];
   const renderer=deployment.rendererRoot ? realpathSync(deployment.rendererRoot) : null;
   const fonts=deployment.fontRoot ? realpathSync(deployment.fontRoot) : null;
+  const pdf=deployment.pdfToolchainRoot ? realpathSync(deployment.pdfToolchainRoot) : null;
+  if(pdf){
+    if(pdf==='/' || !['pdfinfo','pdftotext'].every(name=>existsSync(join(pdf,'bin',name))) ||
+       !existsSync(join(pdf,'lib/x86_64-linux-gnu')) ||
+       readdirSync(pdf).some(name=>!['bin','lib','share','include'].includes(name)))
+      throw Error('Member PDF parser must be a fixed Poppler installation');
+    mounts.push({source:pdf,target:pdf});
+  }
   if(renderer){
     if(!existsSync(join(renderer,'program/soffice.bin')) || !existsSync(join(renderer,'share')))
       throw Error('Member renderer must be a LibreOffice installation');
@@ -63,7 +71,7 @@ export function memberSceneDeployment(policy, deployment) {
     const source = realpathSync(deployment.libraryRoot);
     if(source==='/')throw Error('Invalid member runtime library root');
     // Deploy only sanitized runtime artifacts; never mount historical raw traces or inputs.
-    const allowed = new Set(['online-manifest.json','library.json','tool-schemas.json','task.json','certification.json']);
+    const allowed = new Set(['online-manifest.json','library.json','tool-schemas.json','task.json','certification.json','tool-schema-variants.json']);
     let count=0;
     const check = path => { for (const item of readdirSync(path, { withFileTypes: true })) {
       if(++count>128)throw Error('Member runtime library is too large');
@@ -73,7 +81,7 @@ export function memberSceneDeployment(policy, deployment) {
       else if (!item.isFile() || !allowed.has(item.name) || statSync(p).size>4000000) throw Error('Member library includes non-runtime private evidence');
     } };
     check(source); mounts.push({ source, target: '/app/motif-libraries' });
-    mappings.push({ source, target: '/app/motif-libraries' });
+    mappings.unshift({ source, target: '/app/motif-libraries' });
   }
   const translate = value => {
     if (typeof value !== 'string') return value;
@@ -84,16 +92,16 @@ export function memberSceneDeployment(policy, deployment) {
   };
   const scenes = policy.scenes.map(scene => {
     if (scene.unavailable_reason) return structuredClone(scene);
-    if (!['ppt','workspace','files'].includes(scene.adapter) || Object.keys(scene.environment_references ?? {}).length)
+    if (!['ppt','workspace','files','literature','data-report'].includes(scene.adapter) || Object.keys(scene.environment_references ?? {}).length)
       throw Error('Member scene requires a local Session adapter without inherited credentials');
     const rows = structuredClone(scene.mcp_rows);
     if (!Array.isArray(rows) || !rows.length) throw Error('Member scene has no MCP deployment');
     for (const row of rows) {
       const cfg=row.config;
       if (row.name !== '@deepseek-ai/dsh-mcp-client' || cfg?.transport !== 'stdio' || cfg.cwd !== root ||
-          !['ppt','workspace','paper_checks','data_analysis','file_management'].includes(cfg.serverName) ||
+          !['ppt','workspace','paper_checks','paper_trace_rsi','data_analysis','research_report','file_management','literature_web'].includes(cfg.serverName) ||
           !(cfg.command === 'node' || cfg.command === deployment.pythonExecutable || realpathSync(cfg.command) === binary) ||
-          !Array.isArray(cfg.args) || !cfg.args.length || !inside(join(root,'scenarios'), cfg.args[0]))
+          !Array.isArray(cfg.args) || !cfg.args.length || !inside(join(root,'scenarios'), cfg.args[cfg.args[0]==='--experimental-strip-types'?1:0]))
         throw Error('Member MCP deployment is outside approved scene code');
       if(scene.adapter==='files' && (cfg.serverName!=='file_management' || cfg.args.length!==1 ||
           cfg.args[0]!==join(root,'scenarios/file-management/plan_tools.py') ||
@@ -102,26 +110,43 @@ export function memberSceneDeployment(policy, deployment) {
           cfg.env?.FM_OUTPUT!=='__HARLESS_SESSION_WORKSPACE__/file-results' ||
           Object.keys(cfg.env).length!==3))
         throw Error('Member Files MCP must use the server-bound task workspace');
-      if(scene.id==='paper-proofreading' &&
+      if(scene.id==='paper-proofreading' && cfg.serverName==='paper_checks' &&
          (cfg.args.length !== (paperRenderer ? 3 : 2) ||
           (paperRenderer && (scene.paper_renderer_root!==paperRenderer || cfg.args[2]!==paperRenderer))))
         throw Error('Member paper renderer is outside approved deployment');
+      if(scene.adapter==='literature' && (cfg.serverName!=='literature_web' || cfg.args.length!==1 ||
+          cfg.args[0]!==join(root,'scenarios/literature-notes/session_tools.py') ||
+          cfg.env?.SSS_PDF_WEB_TASK!=='__HARLESS_SESSION_WORKSPACE__/literature'))
+        throw Error('Member literature MCP must use uploaded Session sources');
+      if(scene.adapter==='data-report' && (cfg.serverName!=='research_report' || cfg.args.length!==1 ||
+          cfg.args[0]!==join(root,'scenarios/data_analysis/report_session.py') || cfg.env?.HARLESS_REPORT_WORKSPACE!=='__HARLESS_SESSION_WORKSPACE__'))
+        throw Error('Member data report requires the registered Session adapter');
       cfg.command=cfg.command === 'node' ? 'node' : executable;
       cfg.cwd='/app'; cfg.args=cfg.args.map(translate);
       const env=cfg.env ?? {};
-      const permittedEnv=scene.adapter==='files' ? ['FM_WEB_WORKSPACE','FM_TASK_FILE','FM_OUTPUT'] :
+      const permittedEnv=scene.adapter==='data-report'?['HARLESS_REPORT_WORKSPACE','HARLESS_PRIVATE_ROOT']:scene.adapter==='literature' ? ['SSS_PDF_WEB_TASK','PATH','LD_LIBRARY_PATH'] :
+        scene.adapter==='files' ? ['FM_WEB_WORKSPACE','FM_TASK_FILE','FM_OUTPUT'] :
+        cfg.serverName==='paper_trace_rsi'?['HARLESS_PRIVATE_ROOT']:
         ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH'];
       if (Object.keys(env).some(k=>!permittedEnv.includes(k)))
         throw Error('Member scene environment contains unapproved authority');
-      if((env.PATH && (!renderer || scene.renderer_root!==renderer)) ||
+      if(scene.adapter==='literature'){
+        if((env.PATH || env.LD_LIBRARY_PATH) && (!pdf || scene.pdf_toolchain_root!==pdf ||
+            env.PATH!==join(pdf,'bin')+':/usr/bin:/bin' || env.LD_LIBRARY_PATH!==join(pdf,'lib/x86_64-linux-gnu')))
+          throw Error('Member literature parser environment requires the matching installation');
+      }else if((env.PATH && (!renderer || scene.renderer_root!==renderer)) ||
          (env.FONTCONFIG_FILE && (!fonts || env.FONTCONFIG_FILE!==join(fonts,'fonts-static.conf') || env.FONTCONFIG_PATH!==fonts)))
         throw Error('Member renderer/font environment requires explicit matching installations');
       cfg.env=Object.fromEntries(Object.entries(env).map(([k,v])=>[k,k==='SSS_PPT_DELIVERY_PYTHON'?executable:translate(v)]));
-      if(cfg.env.PATH)cfg.env.PATH=join(renderer,'program')+':/opt/node/bin:/usr/bin:/bin';
+      if(env.HARLESS_PRIVATE_ROOT){
+        if(env.HARLESS_PRIVATE_ROOT!==policy.output)throw Error('Member private root must be the server-owned task output');
+        cfg.env.HARLESS_PRIVATE_ROOT='/app/.local/web';
+      }
+      if(cfg.env.PATH && scene.adapter!=='literature')cfg.env.PATH=join(renderer,'program')+':/opt/node/bin:/usr/bin:/bin';
     }
     const next={...structuredClone(scene),mcp_rows:rows};
-    for(const key of ['manifest','task','tool_schemas','certification_path']) if(next[key]) {
-      if(!deployment.libraryRoot || !inside(realpathSync(deployment.libraryRoot),next[key]))
+    for(const key of ['manifest','task','tool_schemas','certification_path','runtime_library']) if(next[key]) {
+      if(!inside(join(root,'motif-libraries'),next[key]) && (!deployment.libraryRoot || !inside(realpathSync(deployment.libraryRoot),next[key])))
         throw Error('Member Motif library is outside sanitized runtime artifacts');
       next[key]=translate(next[key]);
     }

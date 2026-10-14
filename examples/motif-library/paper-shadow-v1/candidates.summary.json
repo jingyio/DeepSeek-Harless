@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "kind": "readable_candidate_summary_not_loadable_library",
+  "scope": "same-paper citation version triage",
+  "execution_authorized": false,
+  "library_digest": "06ebe76573610d1f201a79993061f3666401ed99a7e843af026d854ef0c990b4",
+  "candidates": [
+    {
+      "motif_id": "paper-flow-1254fc79a35f",
+      "graph": {
+        "anchor": [
+          "write"
+        ],
+        "anchor_result": "success",
+        "artifact": "triage.json",
+        "nodes": [
+          {
+            "tool": "check_paper_triage",
+            "bindings": {}
+          }
+        ]
+      },
+      "training_session_count": 3,
+      "status": "shadow_candidate_not_execution_certified"
+    },
+    {
+      "motif_id": "paper-flow-4c8e00cebdef",
+      "graph": {
+        "anchor": [
+          "mcp__paper_checks__fetch_pinned_cited_preprint_metadata"
+        ],
+        "anchor_result": "success",
+        "nodes": [
+          {
+            "tool": "mcp__paper_checks__fetch_pinned_formal_reference_metadata",
+            "bindings": {
+              "citation_id": {
+                "source_fields": [
+                  {
+                    "tool": "mcp__paper_checks__fetch_pinned_cited_preprint_metadata",
+                    "field": "citation_id"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "training_session_count": 2,
+      "status": "shadow_candidate_not_execution_certified"
+    },
+    {
+      "motif_id": "paper-flow-57fa980a154a",
+      "graph": {
+        "anchor": [
+          "mcp__paper_checks__read_pinned_citation_records"
+        ],
+        "anchor_result": "success",
+        "nodes": [
+          {
+            "tool": "mcp__paper_checks__fetch_pinned_cited_preprint_metadata",
+            "bindings": {
+              "citation_id": {
+                "source_fields": [
+                  {
+                    "tool": "mcp__paper_checks__read_pinned_citation_records",
+                    "field": "citation_id"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "training_session_count": 3,
+      "status": "shadow_candidate_not_execution_certified"
+    },
+    {
+      "motif_id": "paper-flow-6fa6cb4ccaf9",
+      "graph": {
+        "anchor": [
+          "mcp__paper_checks__fetch_pinned_formal_reference_metadata"
+        ],
+        "anchor_result": "success",
+        "nodes": [
+          {
+            "tool": "mcp__paper_checks__recover_pinned_formal_reference_queries",
+            "bindings": {
+              "citation_id": {
+                "source_fields": [
+                  {
+                    "tool": "mcp__paper_checks__fetch_pinned_formal_reference_metadata",
+                    "field": "citation_id"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "training_session_count": 2,
+      "status": "shadow_candidate_not_execution_certified"
+    },
+    {
+      "motif_id": "paper-flow-91670d314bd2",
+      "graph": {
+        "anchor": [
+          "mcp__paper_checks__read_pinned_paper_citations"
+        ],
+        "anchor_result": "success",
+        "nodes": [
+          {
+            "tool": "mcp__paper_checks__read_pinned_citation_records",
+            "bindings": {
+              "citation_id": {
+                "source_fields": [
+                  {
+                    "tool": "mcp__paper_checks__read_pinned_paper_citations",
+                    "field": "citation_id"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "training_session_count": 3,
+      "status": "shadow_candidate_not_execution_certified"
+    },
+    {
+      "motif_id": "paper-flow-c1dd056e6bcb",
+      "graph": {
+        "anchor": [],
+        "anchor_result": "task_start",
+        "nodes": [
+          {
+            "tool": "mcp__paper_checks__pin_paper_citations",
+            "bindings": {
+              "case_id": {
+                "task_field": "case_id"
+              }
+            }
+          }
+        ]
+      },
+      "training_session_count": 3,
+      "status": "shadow_candidate_not_execution_certified"
+    },
+    {
+      "motif_id": "paper-flow-d15aaf187eca",
+      "graph": {
+        "anchor": [
+          "mcp__paper_checks__pin_paper_citations"
+        ],
+        "anchor_result": "success",
+        "nodes": [
+          {
+            "tool": "mcp__paper_checks__read_pinned_paper_citations",
+            "bindings": {
+              "source_id": {
+                "source_fields": [
+                  {
+                    "tool": "mcp__paper_checks__pin_paper_citations",
+                    "field": "source_id"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "training_session_count": 3,
+      "status": "shadow_candidate_not_execution_certified"
+    },
+    {
+      "motif_id": "paper-flow-e4d6cba4afc9",
+      "graph": {
+        "anchor": [
+          "edit"
+        ],
+        "anchor_result": "success",
+        "artifact": "triage.json",
+        "nodes": [
+          {
+            "tool": "check_paper_triage",
+            "bindings": {}
+          }
+        ]
+      },
+      "training_session_count": 2,
+      "status": "shadow_candidate_not_execution_certified"
+    },
+    {
+      "motif_id": "paper-flow-f813f5b15671",
+      "graph": {
+        "anchor": [
+          "check_paper_triage"
+        ],
+        "anchor_result": "needs_repair",
+        "artifact": "triage.json",
+        "nodes": [
+          {
+            "tool": "read_current_triage",
+            "bindings": {}
+          }
+        ]
+      },
+      "training_session_count": 1,
+      "status": "shadow_candidate_not_execution_certified"
+    }
+  ]
+}

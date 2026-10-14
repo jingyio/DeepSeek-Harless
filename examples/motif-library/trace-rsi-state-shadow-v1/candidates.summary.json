@@ -1,0 +1,40 @@
+{
+  "kind": "readable_state_summary_no_execution",
+  "experiment_id": "paper-rsi-state-shadow-20261011-v1",
+  "state_feature": "prior_same_input_check",
+  "feature_scope": "current_session_same_input_report_source_candidate_catalog",
+  "conditions": [
+    {
+      "anchor": "mcp__paper_trace_rsi__read_task_state",
+      "status": "learned_condition",
+      "condition": {
+        "feature": "prior_same_input_check",
+        "equals": false
+      },
+      "positive_count": 2,
+      "negative_count": 2
+    },
+    {
+      "anchor": "mcp__paper_trace_rsi__write_report",
+      "status": "no_negative_evidence",
+      "condition": null,
+      "positive_count": 2,
+      "negative_count": 0
+    }
+  ],
+  "historical_replay": {
+    "correct_predictions_preserved": 4,
+    "incorrect_predictions_deferred": 2,
+    "new_model_requests": 0
+  },
+  "prospective_shadow": {
+    "actual_requests": 15,
+    "matching_complete_local_calls": 5,
+    "strict_whole_requests": 0,
+    "incomplete_predictions": 1,
+    "actual_model_skips": 0,
+    "terminal_guard_live_validation": "not_triggered"
+  },
+  "loadable": false,
+  "execution_authorized": false
+}

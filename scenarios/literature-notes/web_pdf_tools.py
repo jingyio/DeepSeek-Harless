@@ -13,12 +13,12 @@ from pdf_review_tools import numeric_gaps
 
 
 class WebPdfScene:
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, *, cache: Path | None = None):
         self.directory = directory.resolve()
         self.task = json.loads((self.directory / 'task.json').read_text())
         self.snapshot = json.loads((self.directory / 'input-snapshot.json').read_text())
         self.scene = PdfScene(Path(self.task['sources']['root']),
-                              ROOT / '.local/literature-notes/pdf-cache', self.task,
+                              cache if cache is not None else ROOT / '.local/literature-notes/pdf-cache', self.task,
                               delivery=self.directory / 'reading')
         self.phase = 'reading'
         self.round = 0

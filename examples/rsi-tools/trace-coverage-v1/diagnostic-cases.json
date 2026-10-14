@@ -1,0 +1,125 @@
+[
+  {
+    "id": "synthetic-consistent",
+    "input": {
+      "triage_references": [
+        {
+          "key": "ref_a",
+          "arxiv_id": "example_a"
+        },
+        {
+          "key": "ref_b",
+          "arxiv_id": "example_b"
+        }
+      ],
+      "catalog_query_items": [
+        {
+          "id": "q_a",
+          "item_id": "q_a",
+          "source_path": "records/ref_a.json"
+        },
+        {
+          "id": "q_b",
+          "item_id": "q_b",
+          "source_path": "records/ref_b.json"
+        }
+      ],
+      "catalog_cited_records": [
+        {
+          "key": "ref_a",
+          "record_path": "records/ref_a.json",
+          "arxiv_ids": [
+            "example_a"
+          ]
+        },
+        {
+          "key": "ref_b",
+          "record_path": "records/ref_b.json",
+          "arxiv_ids": [
+            "example_b"
+          ]
+        }
+      ],
+      "citation_issues": []
+    },
+    "expected": {
+      "keys_match_query_items": true,
+      "missing": [],
+      "extra": [],
+      "arxiv_id_mismatches": [],
+      "issue_kinds": []
+    }
+  },
+  {
+    "id": "synthetic-missing-extra-id-conflict",
+    "input": {
+      "triage_references": [
+        {
+          "key": "ref_a",
+          "arxiv_id": "wrong_a"
+        },
+        {
+          "key": "ref_c",
+          "arxiv_id": "example_c"
+        }
+      ],
+      "catalog_query_items": [
+        {
+          "id": "q_a",
+          "item_id": "q_a",
+          "source_path": "records/ref_a.json"
+        },
+        {
+          "id": "q_b",
+          "item_id": "q_b",
+          "source_path": "records/ref_b.json"
+        }
+      ],
+      "catalog_cited_records": [
+        {
+          "key": "ref_a",
+          "record_path": "records/ref_a.json",
+          "arxiv_ids": [
+            "example_a"
+          ]
+        },
+        {
+          "key": "ref_b",
+          "record_path": "records/ref_b.json",
+          "arxiv_ids": [
+            "example_b"
+          ]
+        }
+      ],
+      "citation_issues": [
+        {
+          "kind": "diagnostic_anomaly"
+        }
+      ]
+    },
+    "expected": {
+      "keys_match_query_items": false,
+      "missing": [
+        "ref_b"
+      ],
+      "extra": [
+        "ref_c"
+      ],
+      "arxiv_id_mismatches": [
+        [
+          "ref_a",
+          "wrong_a",
+          "example_a"
+        ],
+        [
+          "ref_c",
+          "example_c",
+          "(none)"
+        ]
+      ],
+      "issue_kinds": [
+        "diagnostic_anomaly"
+      ]
+    }
+  }
+]

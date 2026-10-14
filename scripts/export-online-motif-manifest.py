@@ -132,6 +132,19 @@ def export_manifest(library: dict, contract_rows: dict,
         "slot_rules": rules,
         "version_fields": versions,
     }
+    if "certification_scope" in library:
+        scope = library["certification_scope"]
+        if scope not in {"independent_decisions", "protocol_diagnostic"}:
+            raise ValueError("unsupported library certification scope")
+        manifest["certification_scope"] = scope
+    if "tool_schema_hashes" in library:
+        hashes = library["tool_schema_hashes"]
+        if (not isinstance(hashes, dict) or set(hashes) - approved_tools
+                or any(not isinstance(value, str) or len(value) != 64
+                       or any(c not in "0123456789abcdef" for c in value)
+                       for value in hashes.values())):
+            raise ValueError("invalid frozen tool schema hashes")
+        manifest["tool_schema_hashes"] = hashes
     manifest["manifest_digest"] = digest(manifest)
     return manifest
 

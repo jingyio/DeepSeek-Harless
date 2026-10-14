@@ -8,12 +8,20 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
+import { digest } from '../src/motif_core/online_skill_runtime.mjs';
+import {renderPrompt} from '@deepseek-ai/dsh-system-prompt';
+
+test('Scene instructions preserve report value tokens without treating them as Harness variables',()=>{
+ const text='Bind {{estimate}} and {{ci_low}} to verified report results.';
+ assert.equal(renderPrompt({sections:[{name:'harless-scene',order:10210,text:'{{harless_scene_literal}}'}],
+  variables:{harless_scene_literal:text},contexts:[],tools:[]}),text);
+});
 
 const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
-async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture_schemas, ...overrides } = {}) {
+async function fixture({ broker = false, dshHome = false, fixtureSchemas: schemaOverride, fixture_schemas, ...overrides } = {}) {
   const fixtureSchemas = schemaOverride ?? fixture_schemas ?? toolSchemas;
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
@@ -54,13 +62,19 @@ async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture
   mkdirSync(join(directory, 'tasks'));
   const policyPath = join(directory, 'policy.json'); writeFileSync(policyPath, JSON.stringify(policy));
   const previous = process.env.SSS_WEB_POLICY; process.env.SSS_WEB_POLICY = policyPath;
-  const listeners = new Map(), routes = new Map(), webRoutes = new Map(), agents = new Map();
+  const previousHome = process.env.DSH_HOME;
+  if (dshHome) { mkdirSync(join(directory, 'dsh')); process.env.DSH_HOME = join(directory, 'dsh'); }
+  else delete process.env.DSH_HOME;
+  const listeners = new Map(), routes = new Map(), webRoutes = new Map(), agents = new Map(), workspaceGroups = new Map();
   const receipts = new Map();
   const storedSessions = new Map();
   const storedHeaders = new Map();
   const promptCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
+    workspaceRegistry: { list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
+      async create(path, title) { const old = [...workspaceGroups.values()].find(row => row.path === path); if (old) return old;
+        const row = { id:'workspace-' + workspaceGroups.size, path, title, sessionIds:[] }; workspaceGroups.set(row.id,row); return row; } },
     commands: { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } },
     agentPresets: { async select(agent, preset) { presetCalls.push({ session_id: agent.session.id, preset }); agent.preset = preset; } },
     effect(factory) { factory(); },
@@ -85,16 +99,20 @@ async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture
     },
     sessionController: {
       async create(request) {
+        assert.ok(request.cwd === undefined || request.workspaceId === undefined, 'native create rejects workspaceId together with cwd');
         const id = request.sessionId ?? `mock-session-${agents.size + 1}`;
+        if (request.workspaceId) { const group = workspaceGroups.get(request.workspaceId); assert.ok(group); if (!group.sessionIds.includes(id)) group.sessionIds.push(id); }
         if (!agents.has(id)) {
           const guardFns = [];
           const events = storedSessions.get(id) ?? []; storedSessions.set(id, events);
-          if (!storedHeaders.has(id)) storedHeaders.set(id, { id, agentPreset: request.agentPreset });
+          if (!storedHeaders.has(id)) storedHeaders.set(id, { id, agentPreset: request.agentPreset,
+            cwd: request.workspaceId ? workspaceGroups.get(request.workspaceId).path : request.cwd });
           const agent = { preset: request.agentPreset, session: { id }, guards: guardFns, events, ctx: {
             tools: { restrict(value) { agent.allow = value; return () => {}; },
               guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
               schemas() { return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
-            systemPrompt: { section(row) { agent.instruction = row.text; return () => {}; } },
+            systemPrompt: { variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
+              section(row) { agent.instruction = row.text==='{{harless_scene_literal}}'?agent.variables.get('harless_scene_literal')():row.text; return () => {}; } },
             on() {},
           } };
           agents.set(id, agent); emit('agent/created', { agent });
@@ -124,7 +142,9 @@ async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture
     const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
   } catch (error) {
     if (previous === undefined) delete process.env.SSS_WEB_POLICY; else process.env.SSS_WEB_POLICY = previous;
+    if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+    if (brokerServer) { brokerServer.closeAllConnections(); await new Promise(resolve => brokerServer.close(resolve)); }
     rmSync(directory, { recursive: true }); throw error;
   }
   async function api(body, query = '') {
@@ -145,7 +165,7 @@ async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture
         content: event.data.content })), ...changes };
     return tagged ? markAgentLoopRequest(body) : body;
   }
-  return { ctx, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts,
+  return { ctx, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts, policy, policyPath,
     async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
     async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
     promptCalls, queueMutations, controlCalls, directory,
@@ -161,6 +181,7 @@ async function fixture({ broker = false, fixtureSchemas: schemaOverride, fixture
       await api(undefined, '?task_id=' + task.task_id); },
     async close() {
       if (previous === undefined) delete process.env.SSS_WEB_POLICY; else process.env.SSS_WEB_POLICY = previous;
+      if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
       server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
       if (brokerServer) { brokerServer.closeAllConnections(); await new Promise(resolve => brokerServer.close(resolve)); }
       rmSync(directory, { recursive: true });
@@ -397,6 +418,99 @@ test('Owned empty sessions survive restart while bound task identities cannot ge
   } finally { await f.close(); }
 });
 
+test('Completed chat survives a Web output change without adopting another user session or reusing its budget', options, async () => {
+  const f = await fixture({ broker: true, dshHome: true, provider_mode: 'real' });
+  try {
+    const home = process.env.DSH_HOME;
+    const { sessionId: id } = await f.ctx.sessionController.create({});
+    await f.ctx.sessionController.prompt({ sessionId: id, requestId: 'old-turn', mode: 'queue',
+      content: [{ type: 'text', text: '第一轮' }] }, new AbortController().signal);
+    const first = (await f.api()).value.tasks[0];
+    await f.complete(first);
+    await f.originalController.create({ sessionId: 'foreign-used', agentPreset: 'sss-task' });
+    f.agents.get('foreign-used').events.push({ type: 'user/message', data: { content: [] } });
+
+    // Simulate the old release: ownership lived only in the previous run output.
+    const stable = join(home, readdirSync(home).find(name => name.startsWith('harless-web-ownership-')));
+    const saved = JSON.parse(readFileSync(stable, 'utf8'));
+    const oldScope = digest({ output: f.directory, home });
+    writeFileSync(join(f.directory, 'session-ownership-' + oldScope + '.json'),
+      JSON.stringify({ ...saved, scope: oldScope }));
+    rmSync(stable);
+    const nextOutput = join(f.directory, 'next-run');
+    mkdirSync(join(nextOutput, 'tasks'), { recursive: true });
+    writeFileSync(f.policyPath, JSON.stringify({ ...f.policy, output: nextOutput,
+      ownership_legacy_outputs: [f.directory] }));
+    await f.restart();
+    assert.equal((await f.settings(undefined, '?session_id=' + id)).status, 200);
+    await assert.rejects(f.ctx.sessionController.prompt({ sessionId: 'foreign-used', requestId: 'foreign',
+      mode: 'queue', content: [{ type: 'text', text: '拒绝' }] }, new AbortController().signal), /outside/);
+    await f.ctx.sessionController.prompt({ sessionId: id, requestId: 'second-turn', mode: 'queue',
+      content: [{ type: 'text', text: '继续' }] }, new AbortController().signal);
+    const second = (await f.api()).value.tasks[0];
+    assert.equal(second.session_id, id);
+    assert.notEqual(second.task_id, first.task_id);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 2);
+    await f.complete(second);
+
+    // Future deployments use the stable per-home record without old output paths.
+    const laterOutput = join(f.directory, 'later-run');
+    mkdirSync(join(laterOutput, 'tasks'), { recursive: true });
+    writeFileSync(f.policyPath, JSON.stringify({ ...f.policy, output: laterOutput }));
+    await f.restart();
+    await f.ctx.sessionController.prompt({ sessionId: id, requestId: 'third-turn', mode: 'queue',
+      content: [{ type: 'text', text: '再次继续' }] }, new AbortController().signal);
+    const third = (await f.api()).value.tasks[0];
+    assert.equal(third.session_id, id);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 3);
+    await f.complete(third);
+
+    process.env.DSH_HOME = join(f.directory, 'other-user-dsh');
+    mkdirSync(process.env.DSH_HOME);
+    await f.restart();
+    await assert.rejects(f.ctx.sessionController.prompt({ sessionId: id, requestId: 'cross-user',
+      mode: 'queue', content: [{ type: 'text', text: '拒绝' }] }, new AbortController().signal), /outside/);
+    assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 3);
+  } finally { await f.close(); }
+});
+
+test('Imported legacy history continues without changing its locked preset or gaining new workspace tools', options, async () => {
+  const scene = { id: 'new-scene', label: 'Workspace', preset: 'sss-task', adapter: 'workspace',
+    mcp_rows: [], allowed_tools: ['mcp__workspace__read_file'], config_sha256: 'a'.repeat(64) };
+  const f = await fixture({ broker: true, dshHome: true, fixtureSchemas: [],
+    allowed_tools: scene.allowed_tools, scenes: [scene], capability_profile: scene.id });
+  try {
+    const id = 'session-11111111-1111-4111-8111-111111111111';
+    await f.originalController.create({ sessionId: id, agentPreset: 'sss-task' });
+    f.agents.get(id).events.push({ type: 'user/message', data: { id: 'legacy-human',
+      source: { kind: 'user' }, content: [{ type: 'text', text: '旧版第一轮' }] } });
+    const legacyOutput = join(f.directory, 'old-run'); mkdirSync(legacyOutput);
+    const scope = digest({ output: legacyOutput, home: process.env.DSH_HOME });
+    writeFileSync(join(legacyOutput, 'session-ownership-' + scope + '.json'), JSON.stringify({
+      scope, sessions: [id], bound: [id] }));
+    writeFileSync(f.policyPath, JSON.stringify({ ...f.policy, ownership_legacy_outputs: [legacyOutput] }));
+    // Official Harness locks the preset once a turn exists.
+    f.ctx.agentPresets.select = async () => { throw Error('preset is locked'); };
+    await f.restart();
+    assert.equal((await f.settings(undefined, '?session_id=' + id)).value.conversation_only, true);
+    for (let turn = 1; turn <= 2; turn++) {
+      await f.ctx.sessionController.prompt({ sessionId: id, requestId: 'legacy-followup-' + turn,
+        mode: 'queue', content: [{ type: 'text', text: '继续文字对话' }] }, new AbortController().signal);
+      const task = (await f.api()).value.tasks.find(row => row.request_id === 'legacy-followup-' + turn);
+      assert.deepEqual(f.agents.get(id).allow.allow, []);
+      const next = () => (async function* () { yield { type: 'fixture' }; })();
+      for await (const row of f.stream(f.modelRequest(task, { tools: [] }), next)) assert.equal(row.type, 'fixture');
+      await f.complete(task); await f.restart();
+    }
+    assert.equal(f.promptCalls.length, 2);
+    assert.equal(f.presetCalls.length, 0);
+    const denied = await f.api({ action: 'preview', session_id: id,
+      request: { content: [{ type: 'file', receiptId: 'some-receipt' }] } });
+    assert.equal(denied.value.error.code, 'new_session_required');
+    assert.equal(f.registrations.size, 2);
+  } finally { await f.close(); }
+});
+
 test('Real native chat keeps one DSH session across confirmed turns with distinct budget routes', options, async () => {
   const f = await fixture({ broker: true, provider_mode: 'real' });
   try {
@@ -537,6 +651,8 @@ test('Four product scenes x three modes x RSI: effective mode, missing backend a
       const { sessionId } = await f.ctx.sessionController.create({});
       const selected = await f.settings({ action: 'select', session_id: sessionId, selection: { scene: scene.id, mode, rsi } });
       if (mode === 'execute' && rsi) { assert.equal(selected.value.error.code, 'execute_unavailable'); continue; }
+      if (scene.unavailable_reason) { assert.equal(selected.value.error.code, 'scene_not_connected');
+        assert.equal((await f.settings(undefined, '?session_id=' + sessionId)).value.selection.scene, 'new-scene'); continue; }
       assert.equal(selected.status, 200); assert.equal(selected.value.selection.scene, scene.id);
       const draft = await f.api({ action: 'preview', session_id: sessionId, request: 'Bound task' });
       if (scene.unavailable_reason) { assert.equal(draft.value.error.code, 'scene_not_connected'); continue; }
@@ -558,10 +674,12 @@ test('Running task keeps frozen tools and mode while next-task choices are inher
   try {
     const first=await f.preview('首项任务');await f.submit(first);
     const next=await f.settings({action:'select',session_id:first.session_id,selection:{scene:'other',rsi:false}});
-    assert.equal(next.value.applies_to,'next_task');assert.equal(next.value.current_task.scene,'example');assert.equal(next.value.current_task.mode,'shadow');
+    assert.equal(next.value.error.code,'scene_requires_new_session');
+    const unchanged = (await f.settings(undefined, '?session_id=' + first.session_id)).value;
+    assert.equal(unchanged.selection.scene,'example');assert.equal(unchanged.current_task.mode,'shadow');
     assert.deepEqual(f.agents.get(first.session_id).allow.allow,['mcp__demo__read_note']);
     assert.equal(f.presetCalls.length,0);
-    const second=(await f.settings({action:'new_session',inherit_session:first.session_id})).value;
+    const second=(await f.settings({action:'new_session',inherit_session:first.session_id,selection:{scene:'other',rsi:false}})).value;
     assert.notEqual(second.session_id,first.session_id); assert.equal(second.selection.scene,'other');assert.equal(second.selection.mode,'shadow');
     await f.complete(first);
     const draft=await f.api({action:'preview',session_id:second.session_id,request:'独立任务'});
@@ -655,6 +773,24 @@ test('Workspace scene keeps one budgeted chat across text turns and requires a n
   } finally { await f.close(); }
 });
 
+test('Cold scene followup restores MCP schemas even when the selected model was persisted', options, async () => {
+  const scene = { ...multiScenes[0], id: 'new-scene', adapter: 'workspace', mcp_rows: [] };
+  const f = await fixture({ broker: true, dshHome: true, scenes: [scene], capability_profile: 'new-scene' });
+  try {
+    const { sessionId } = await f.ctx.sessionController.create({});
+    const prompt = id => f.ctx.sessionController.prompt({ sessionId, requestId: id, mode: 'queue',
+      content: [{ type: 'text', text: 'Restore this same scene and model' }] }, new AbortController().signal);
+    await prompt('before-cold');
+    const first = (await f.api()).value.tasks[0]; await f.complete(first);
+    await f.restart(); assert.equal(f.agents.size, 0);
+    await prompt('after-cold');
+    const second = (await f.api()).value.tasks.find(row => row.task_id !== first.task_id);
+    assert.equal(second.status, 'running'); assert.equal(second.session_id, sessionId);
+    assert.ok(f.agents.has(sessionId)); assert.equal(f.promptCalls.length, 2);
+    await f.complete(second);
+  } finally { await f.close(); }
+});
+
 test('Changed uploaded bytes invalidate the frozen task before budget activation', options, async () => {
   const scene = { ...multiScenes[0], adapter: 'workspace', mcp_rows: [] };
   const f = await fixture({ scenes: [scene] });
@@ -701,8 +837,8 @@ test('Member zero-tool policy cannot inherit owner scene MCP capabilities', opti
     const list = (await f.settings()).value.scenes;
     assert.equal(list.find(row => row.id === 'new-scene').available, true);
     assert.equal(list.find(row => row.id === 'ppt').unavailable_reason, 'scene_not_deployed_in_member_sandbox');
-    await f.settings({ action: 'select', selection: { scene: 'ppt', mode: 'baseline' } });
-    const denied = await f.api({ action: 'preview', request: 'PPT must not use ordinary chat as its backend' });
+    assert.equal((await f.settings({ action: 'select', selection: { scene: 'ppt', mode: 'baseline' } })).value.error.code, 'scene_not_connected');
+    const denied = await f.api({ action: 'preview', request: { content: [{type:'text',text:'PPT must not use ordinary chat as its backend'}], capability_profile:'ppt' } });
     assert.equal(denied.value.error.code, 'scene_not_connected');
     await f.settings({ action: 'select', selection: { scene: 'new-scene' } });
     const draft = await f.preview('Generic member task');
@@ -737,6 +873,71 @@ test('Restored terminal task retains its approved scene version and selected Off
     assert.equal(f.promptCalls.length, 1);
   } finally { await f.close(); }
 });
+
+test('Settings first touch safely admits an untouched local blank session before the picker fetch', options, async () => {
+  const f = await fixture({ broker:true });
+  try {
+    await f.originalController.create({ sessionId:'fresh-picker', agentPreset:'sss-task' });
+    const menu = await f.settings(undefined, '?session_id=fresh-picker');
+    assert.equal(menu.status,200); assert.equal(menu.value.selection.scene,'example');
+    assert.equal(f.registrations.size,0); assert.equal(f.promptCalls.length,0);
+    await f.originalController.create({ sessionId:'unknown-history', agentPreset:'sss-task' });
+    f.agents.get('unknown-history').events.push({ type:'user/message', data:{ content:[] } });
+    assert.equal((await f.settings(undefined,'?session_id=unknown-history')).status,404);
+  } finally { await f.close(); }
+});
+
+test('Native workspace creation uses one location and scene-switch sessions stay in the owning group', options, async () => {
+  const f=await fixture({broker:true,scenes:multiScenes});
+  try {
+    const group=await f.ctx.workspaceRegistry.create(f.directory,'课题组');
+    const created=await f.ctx.sessionController.create({workspaceId:group.id,sessionId:'native-workspace'});
+    assert.ok(group.sessionIds.includes(created.sessionId));
+    const child=await f.settings({action:'new_session',inherit_session:created.sessionId,selection:{scene:'other'}});
+    assert.equal(child.status,200);assert.ok(group.sessionIds.includes(child.value.session_id));
+    await assert.rejects(f.ctx.sessionController.create({workspaceId:group.id,cwd:f.directory}),/不能同时/);
+    await f.restart();assert.equal((await f.settings(undefined,'?session_id='+child.value.session_id)).status,200);
+    assert.equal(f.registrations.size,0);
+  } finally {await f.close();}
+});
+
+test('A scene switch on started history fails before mutation and restart repairs old planned-scene pollution', options, async () => {
+  const f = await fixture({ broker:true, scenes:multiScenes });
+  try {
+    const {sessionId}=await f.ctx.sessionController.create({});
+    const send = request_id => f.ctx.sessionController.prompt({ sessionId, requestId:request_id, mode:'queue', content:[{type:'text',text:'普通续聊'}] },new AbortController().signal);
+    await send('first'); await f.complete((await f.api()).value.tasks[0]);
+    const switched=await f.settings({action:'select',session_id:sessionId,selection:{scene:'other'}});
+    assert.equal(switched.status,409); assert.equal(switched.value.error.code,'scene_requires_new_session');
+    assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'example');
+    const path=join(f.directory,'harless-settings.json'), saved=JSON.parse(readFileSync(path));
+    saved.sessions[sessionId].scene='other'; writeFileSync(path,JSON.stringify(saved));
+    await f.restart(); assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'example');
+    await send('second'); const task=(await f.api()).value.tasks.find(row=>row.request_id==='second');
+    assert.equal(task.scene,'example'); await f.complete(task);
+  } finally { await f.close(); }
+});
+
+test('PPT shortcut selects the scene, strips only its control token, and preserves the job across followups and restart', options, async () => {
+  const ppt={ ...multiScenes[0],id:'ppt',label:'PPT',adapter:'ppt',mcp_rows:[] };
+  const f=await fixture({broker:true,scenes:[ppt],capability_profile:'ppt'});
+  try {
+    const {sessionId}=await f.ctx.sessionController.create({});
+    const prompt=(text,requestId)=>f.ctx.sessionController.prompt({sessionId,requestId,mode:'queue',content:[{type:'text',text}]},new AbortController().signal);
+    await prompt('/ppt','selection-only'); assert.equal(f.promptCalls.length,0); assert.equal(f.registrations.size,0);
+    await prompt('/ppt 先讨论结构','first-ppt'); let task=(await f.api()).value.tasks[0];
+    assert.equal(f.promptCalls[0].content[0].text,'先讨论结构'); await f.complete(task);
+    const jobPath=join(f.directory,'sessions',sessionId,'work','job.json'), jobBefore=readFileSync(jobPath,'utf8'), presetCount=f.presetCalls.length;
+    await prompt('接着讨论第二页','second-ppt'); task=(await f.api()).value.tasks.find(row=>row.request_id==='second-ppt');
+    assert.equal(task.scene,'ppt'); assert.equal(f.presetCalls.length,presetCount); assert.equal(readFileSync(jobPath,'utf8'),jobBefore);
+    await f.complete(task); await f.restart();
+    await prompt('继续第三页','third-ppt'); task=(await f.api()).value.tasks.find(row=>row.request_id==='third-ppt');
+    assert.equal(readFileSync(jobPath,'utf8'),jobBefore); await f.complete(task);
+    const denied=await f.api({action:'preview',session_id:sessionId,request:{content:[{type:'text',text:'变更权限'}],scene_options:{allow_output:true}}});
+    assert.equal(denied.value.error.code,'new_session_required');
+    assert.equal(f.registrations.size,3);
+  } finally { await f.close(); }
+});
 test('PPT menu options are scoped, model-free, persisted, and cannot modify a preview',options,async()=>{
   const rows=[{id:'ppt',label:'PPT',preset:'sss-task',allowed_tools:toolSchemas.map(t=>t.name),adapter:'ppt',mcp_rows:[]},
     {id:'new-scene',label:'New Scene',preset:'sss-general',allowed_tools:toolSchemas.map(t=>t.name)}];
@@ -750,17 +951,17 @@ test('PPT menu options are scoped, model-free, persisted, and cannot modify a pr
     const draft=await f.api({action:'preview',session_id:first.sessionId,request:'Read-only inspection'});
     assert.equal(draft.value.scene_options.slides,8);
     const changed=await call({action:'set_scene_options',session_id:first.sessionId,options:{slides:12,allow_output:true}});
-    assert.equal(changed.status,200);
+    assert.equal(changed.status,409); assert.equal(changed.value.error.code,'scene_requires_new_session');
     const existing=(await f.api(undefined,'?task_id='+draft.value.task_id)).value;
     assert.equal(existing.scene_options.slides,8);assert.equal(existing.scene_options.allow_output,false);
     assert.equal(existing.confirmation_digest,draft.value.confirmation_digest);
     assert.equal((await call({action:'set_scene_options',session_id:'foreign',options:{allow_output:true}})).status,404);
-    assert.equal((await call({action:'set_scene_options',session_id:first.sessionId,options:{command:'arbitrary'}})).status,400);
+    assert.equal((await call({action:'set_scene_options',session_id:first.sessionId,options:{command:'arbitrary'}})).status,409);
     assert.equal(f.promptCalls.length,0);
     await f.api({action:'cancel',task_id:draft.value.task_id});
     await f.api(undefined,'?task_id='+draft.value.task_id);
     await f.restart();
     const restored=await f.settings(undefined,'?session_id='+first.sessionId);
-    assert.equal(restored.value.scene_options.allow_output,true);
+    assert.equal(restored.value.scene_options.allow_output,false); assert.equal(restored.value.scene_options.slides,8);
   }finally{await f.close();}
 });

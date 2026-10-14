@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "kind": "public_program_example_not_executable_library",
+  "algorithm_origin": "real_harness_submitted_json_ast_no_host_code_evaluation",
+  "source_sessions": 2,
+  "development_cases": 4,
+  "independent_mutation_cases": 18,
+  "independent_papers": 1,
+  "generation_requests_including_failed_attempts": 49,
+  "manifest_digest": "b632f4556cb8237b48324b8110465a8cf90c28441525711af394f15d2b012607",
+  "source_relation": "observed_write_diff_to_parameterized_plan; existing_row_order_contract_not_full_bash_equivalence",
+  "actual_model_skips": 0
+}

@@ -26,3 +26,6 @@ office/papers/notes/
 docs/experiments/research-ppt-reports/**/*.pdf
 # Local experimental papers are user data; use tests/fixtures for public samples.
 /testpdf/
+
+# Private manuscript archives remain outside Git.
+/benchmarks/paper check/*.zip
