@@ -344,6 +344,9 @@ export function createGateway(config) {
       const env = { PATH: '/opt/node/bin:/usr/bin:/bin', HOME: '/user/workspace', DSH_HOME: '/user/dsh',
         SSS_WEB_POLICY: '/user/config/policy.json', DEEPSEEK_API_KEY: delegate(user, 'model'),
         HARLESS_GATEWAY_ENABLED: '1',
+        // Member profile trees are small. Polling avoids exhausting a shared
+        // server's per-UID inotify quota when several backends start together.
+        CHOKIDAR_USEPOLLING: '1', CHOKIDAR_INTERVAL: '1000',
         NO_PROXY: 'localhost,127.0.0.1,::1', no_proxy: 'localhost,127.0.0.1,::1',
         LANG: 'C.UTF-8', PYTHONUTF8: '1' };
       const child = spawn('/usr/bin/bwrap', args, { env, stdio: ['ignore', 'pipe', 'pipe'] });

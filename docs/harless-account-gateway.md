@@ -6,6 +6,10 @@
 
 部署需要 Linux、`/usr/bin/bwrap`、Node 22.18+、项目依赖和一个已有的真实模型预算代理。先用 `HARLESS_GATEWAY_ENABLED=1 npm run web:real -- --public-origin https://YOUR_HOST` 启动所有者 Harness Web，使账号入口显示在设置菜单。`--public-origin` 只设置 DSH 的可信主机和生成私有访问 URL，**不会**自动创建网关、账户或隧道。账号网关配置 JSON 放在 `.local/`，权限只给服务账号。其字段包括 `port`、`publicOrigin`、`dataDir`、`membersDir`、`accountHtml`、`ownerPort`、`ownerTokenFile`、`adminToken`、`scopedBudgetPort`、`upstreamControlPort`、`upstreamBrokerPort`、`memberPolicy`、`memberPatch`、`nodeRoot`、`nodeModules`、`sourceDir`。`memberPolicy` 来自服务器验证过的 Web policy，成员的工具和私有资料应按实际授权另行限定；`memberPatch` 必须从**同一代码检出**的本次 host patch 生成，旧检出的插件绝对路径会使网关在启动时拒绝配置。`sourceDir` 指向仓库 `src` 目录，`nodeModules` 指向仓库 `node_modules`，`nodeRoot` 指向 Node 安装根目录。这些路径及令牌只能放私有配置。部署前核对所有挂载路径与预算端口；不得把所有者的私有资料或配置复制进成员挂载目录。
 
+成员文件预览额外经过 `dsh_member_workspace.ts` 的公开 Fetch 路由检查：只允许会话工作区内的文件，解析符号链接后仍须位于该目录；拒绝 `../config`、`/proc` 等越界读取。工作区创建和目录选择只允许账号的 workspace 与 sessions 目录。`workspaceFileScope` 公开 Lookup 同时限制 HTTP 和 WebSocket changes feed 的会话根；原生 changes feed 继续按工作区过滤。上游桌面文件预览默认允许读取工作区之外，不能把独立 Home 或桌面默认行为视为此成员边界。所有者仍按其管理员权限使用原生文件 API。
+
+成员后端对小型配置/profile 树启用 Chokidar 轮询（`CHOKIDAR_USEPOLLING=1`，文本检查间隔 1000 ms），减少多人同时启动时对共享服务器 inotify 额度的依赖。它不改变原生工作区文件事件协议；轮询会增加少量文件检查，不能替代 CPU/内存容量监控。停止后端继续由 bubblewrap 的 PID 隔离与 `--die-with-parent` 结束子进程。
+
 通过 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json` 启动网关，它只监听 `127.0.0.1`。使用反向代理或 Cloudflare Tunnel 将 HTTPS 公网地址指向网关端口；在反向代理中转发 WebSocket，并限制只有网关可访问内部预算和控制端口。网关初次部署用 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json claim` 生成一次性所有者激活码；所有者登录后从账户页生成成员邀请码。不要在日志、PR 或聊天记录中公开激活码、邀请码、DSH token 或私有配置。临时 `trycloudflare.com` 隧道和手工 `tmux` 进程可能中断、重启或换地址；生产用途应由持久化服务管理器监控入口与后端。
 
 升级代码时保留每个账号的 `DSH_HOME`、工作区及任务 `output` 目录，不把持久化数据放进随代码版本删除的检出目录。会话归属现在保存在对应 `DSH_HOME` 中的 `harless-web-ownership-*.json`，因此前端进程重启不会丢失续聊权限。首次升级自动导入当前 `output` 的旧归属记录；如果所有者以前已更换过 `output`，可以在其私有 policy 中设置 `ownership_legacy_outputs`（旧目录的绝对路径列表）。只会导入与当前 DSH Home 匹配的归属文件，不能据聊天标题或浏览器传入的 ID 认领历史。成员后端清除此迁移列表，只访问自身挂载目录。迁移归属不会恢复旧任务额度或移动文件；场景的工作区、生成 preset 和任务记录仍须保留。没有逐轮预算 broker 的入口继续拒绝重用已绑定任务。
