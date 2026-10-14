@@ -2,7 +2,7 @@
  * this module supplies row addressing, permissions and bounded application.
  */
 import {canonical,digest} from './paper_rsi_program.ts';
-import {runTraceTool,validateTraceFrozen} from './trace_rsi_program.ts';
+import {runTraceTool,validateTraceFrozen,validateTraceCandidate} from './trace_rsi_program.ts';
 
 const object=(v:any)=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const clone=(v:any)=>JSON.parse(JSON.stringify(v));
@@ -65,8 +65,14 @@ export function revisionPatchInput(report:any,plan:any):any {
  * Fixed permissions allow ID replacement, row deletion and minimal append only.
  */
 export function applyGeneratedRevision(report:any,plan:any,frozen:any):any {
-  const input=revisionPatchInput(report,plan),tool=validateTraceFrozen(frozen);
-  const out=runTraceTool(tool.candidate,input);
+  const tool=validateTraceFrozen(frozen);
+  return applyPublishedRevision(report,plan,tool.candidate);
+}
+/** Only administrator-pinned published candidates reach this entry; permissions remain identical. */
+export function applyPublishedRevision(report:any,plan:any,candidate:any):any {
+  const input=revisionPatchInput(report,plan);
+  validateTraceCandidate(candidate);
+  const out=runTraceTool(candidate,input);
   exact(out,['replacements','removals','additions'],'invalid_generated_patch_output');
   for(const k of ['replacements','removals','additions'])if(!Array.isArray(out[k])||out[k].length>2000)throw Error('bounded_generated_patch_required');
   const current=clone(report),replaced=new Set(),removed=new Set();
@@ -91,7 +97,7 @@ export function applyGeneratedRevision(report:any,plan:any,frozen:any):any {
   for(const r of plan.set_ids)if(current.references.some((v:any)=>v.key===r.key&&v.arxiv_id!==r.arxiv_id))throw Error('generated_id_update_incomplete');
   for(const k of plan.keep_once_keys)if(current.references.filter((v:any)=>v.key===k).length!==1)throw Error('generated_dedup_incomplete');
   for(const k of plan.remove_keys)if(current.references.some((v:any)=>v.key===k))throw Error('generated_removal_incomplete');
-  bounded(current);return {report:current,patch_output:clone(out),plan_sha256:digest(plan),program_sha256:tool.candidate_sha256};
+  bounded(current);return {report:current,patch_output:clone(out),plan_sha256:digest(plan),program_sha256:digest(candidate)};
 }
 
 /** Complete structured contents remain in the artifact. No fact is synthesized. */

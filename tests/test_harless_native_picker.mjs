@@ -46,7 +46,8 @@ function fixture({ locked = false, beforePost, beforeGet } = {}) {
     get: name => ({ commandUi: { decorate(spec) { decoration = spec; return () => {}; }, popupFor: () => ({ dismiss() {} }) },
       inputTriggers: { registerSource(spec) { trigger = spec; return () => {}; } }, sessions,
       conversation: { input: { for: scope => inputs.get(scope.id) }, rebindDraftFiles: (id, ids) => rebinds.push({ id, ids }) } })[name],
-    effect: install => install(), slots: { inject(_name, install) { install(); }, register(_spec, component) { statusComponent = component; } },
+    uiConversation: { events: { register() { return () => {}; } } },
+    effect: install => install(), slots: { inject(_name, install) { install(); }, register(spec, component) { if(spec.name==='conversation.input.left')statusComponent = component; } },
   });
   const pick = async (id, scene = 'ppt', tokenLength = 2) => {
     const input = inputs.get(id), rev = input.state.getSnapshot().draftRev;

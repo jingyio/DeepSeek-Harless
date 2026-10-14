@@ -9,6 +9,13 @@ import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { digest } from '../src/motif_core/online_skill_runtime.mjs';
+import {renderPrompt} from '@deepseek-ai/dsh-system-prompt';
+
+test('Scene instructions preserve report value tokens without treating them as Harness variables',()=>{
+ const text='Bind {{estimate}} and {{ci_low}} to verified report results.';
+ assert.equal(renderPrompt({sections:[{name:'harless-scene',order:10210,text:'{{harless_scene_literal}}'}],
+  variables:{harless_scene_literal:text},contexts:[],tools:[]}),text);
+});
 
 const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
@@ -104,7 +111,8 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
             tools: { restrict(value) { agent.allow = value; return () => {}; },
               guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
               schemas() { return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
-            systemPrompt: { section(row) { agent.instruction = row.text; return () => {}; } },
+            systemPrompt: { variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
+              section(row) { agent.instruction = row.text==='{{harless_scene_literal}}'?agent.variables.get('harless_scene_literal')():row.text; return () => {}; } },
             on() {},
           } };
           agents.set(id, agent); emit('agent/created', { agent });
@@ -765,6 +773,24 @@ test('Workspace scene keeps one budgeted chat across text turns and requires a n
   } finally { await f.close(); }
 });
 
+test('Cold scene followup restores MCP schemas even when the selected model was persisted', options, async () => {
+  const scene = { ...multiScenes[0], id: 'new-scene', adapter: 'workspace', mcp_rows: [] };
+  const f = await fixture({ broker: true, dshHome: true, scenes: [scene], capability_profile: 'new-scene' });
+  try {
+    const { sessionId } = await f.ctx.sessionController.create({});
+    const prompt = id => f.ctx.sessionController.prompt({ sessionId, requestId: id, mode: 'queue',
+      content: [{ type: 'text', text: 'Restore this same scene and model' }] }, new AbortController().signal);
+    await prompt('before-cold');
+    const first = (await f.api()).value.tasks[0]; await f.complete(first);
+    await f.restart(); assert.equal(f.agents.size, 0);
+    await prompt('after-cold');
+    const second = (await f.api()).value.tasks.find(row => row.task_id !== first.task_id);
+    assert.equal(second.status, 'running'); assert.equal(second.session_id, sessionId);
+    assert.ok(f.agents.has(sessionId)); assert.equal(f.promptCalls.length, 2);
+    await f.complete(second);
+  } finally { await f.close(); }
+});
+
 test('Changed uploaded bytes invalidate the frozen task before budget activation', options, async () => {
   const scene = { ...multiScenes[0], adapter: 'workspace', mcp_rows: [] };
   const f = await fixture({ scenes: [scene] });
@@ -925,17 +951,17 @@ test('PPT menu options are scoped, model-free, persisted, and cannot modify a pr
     const draft=await f.api({action:'preview',session_id:first.sessionId,request:'Read-only inspection'});
     assert.equal(draft.value.scene_options.slides,8);
     const changed=await call({action:'set_scene_options',session_id:first.sessionId,options:{slides:12,allow_output:true}});
-    assert.equal(changed.status,200);
+    assert.equal(changed.status,409); assert.equal(changed.value.error.code,'scene_requires_new_session');
     const existing=(await f.api(undefined,'?task_id='+draft.value.task_id)).value;
     assert.equal(existing.scene_options.slides,8);assert.equal(existing.scene_options.allow_output,false);
     assert.equal(existing.confirmation_digest,draft.value.confirmation_digest);
     assert.equal((await call({action:'set_scene_options',session_id:'foreign',options:{allow_output:true}})).status,404);
-    assert.equal((await call({action:'set_scene_options',session_id:first.sessionId,options:{command:'arbitrary'}})).status,400);
+    assert.equal((await call({action:'set_scene_options',session_id:first.sessionId,options:{command:'arbitrary'}})).status,409);
     assert.equal(f.promptCalls.length,0);
     await f.api({action:'cancel',task_id:draft.value.task_id});
     await f.api(undefined,'?task_id='+draft.value.task_id);
     await f.restart();
     const restored=await f.settings(undefined,'?session_id='+first.sessionId);
-    assert.equal(restored.value.scene_options.allow_output,true);
+    assert.equal(restored.value.scene_options.allow_output,false); assert.equal(restored.value.scene_options.slides,8);
   }finally{await f.close();}
 });

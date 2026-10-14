@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "source_library_digest": "da5566d1219cbdb676bebf9cdc53a5fce523ac7df3be0d9a7d5a5a782d5e3dfb",
+  "artifacts": [
+    {
+      "motif_id": "edge_motif_397dc14cffaf",
+      "certified_digest": "ba2c4af017aa9b3730d470eb798cd45283caac4cf73e71b3a5d9d23fc5295ff8",
+      "tools": [
+        "mcp__ppt__pin_source",
+        "mcp__ppt__read_source"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt__pin_source",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__ppt__read_source",
+          "supporting_trace_ids": [
+            "5939fac0d0c04466ad74ec4008145ce3",
+            "fc35968fcbc34fd59877407817eb1986"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__ppt__read_source": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__ppt__read_source",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__ppt__pin_source",
+              "from_field": "source_id",
+              "to_param": "source_id"
+            }
+          ],
+          "program_digest": "fea56590d9bd841a98e957138cfd55e263d38ff28d851a8c9c6c59d6a65c0236"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "h1-clip"
+    }
+  ],
+  "contracts": {
+    "mcp__ppt__pin_source": {
+      "required_params": [
+        "document_id"
+      ],
+      "output_fields": [
+        "document_id",
+        "source_id",
+        "version_sha256",
+        "format",
+        "page_count",
+        "text_chars"
+      ],
+      "default_params": {},
+      "description": "Pin one approved PDF/PPTX to a versioned source handle.",
+      "read_only": true
+    },
+    "mcp__ppt__read_source": {
+      "required_params": [
+        "source_id"
+      ],
+      "output_fields": [
+        "source_id",
+        "document_id",
+        "version_sha256",
+        "pages",
+        "images"
+      ],
+      "default_params": {},
+      "description": "Read pinned document text and image inventory; reject changed source versions.",
+      "read_only": true
+    }
+  },
+  "slot_rules": {},
+  "version_fields": {
+    "mcp__ppt__pin_source": "version_sha256",
+    "mcp__ppt__read_source": "version_sha256"
+  },
+  "manifest_digest": "e6d44bca71238206bead4056f2c704de6be4218de233a23efe43f8d45f8cf518"
+}

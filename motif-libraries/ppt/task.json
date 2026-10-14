@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "ppt-runtime-admission",
+  "session_id": "ppt-runtime-admission",
+  "intent": "Read only sources approved for the current PPT task.",
+  "input_version": "0000000000000000000000000000000000000000000000000000000000000000",
+  "bindings": {},
+  "source_versions": {
+    "mcp__ppt__pin_source": "0000000000000000000000000000000000000000000000000000000000000000",
+    "mcp__ppt__read_source": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

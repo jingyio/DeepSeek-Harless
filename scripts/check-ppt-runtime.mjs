@@ -28,7 +28,10 @@ const payload=r=>{
 let toolCalls=0;
 const call=async(name,args)=>{toolCalls++;return client.callTool({name,arguments:args},undefined,{timeout:180000});};
 try{
-  await client.connect(transport);assert.equal((await client.listTools()).tools.length,19);
+  await client.connect(transport);
+  const offered=new Set((await client.listTools()).tools.map(tool=>tool.name));
+  const permitted=JSON.parse(readFileSync(join(root,'scenarios/research_ppt/web-scenario.json'),'utf8')).allowed_tools;
+  assert.ok(permitted.every(name=>offered.has(name.replace('mcp__ppt__',''))),'actual MCP must offer the complete registered surface');
   const args={document_id:'doc_1'},pin=await call('pin_source',args),source=payload(pin);
   const exec={name:'mcp__ppt__pin_source',callId:'observed-pin',arguments:args};
   const audits=[];let delegations=0;

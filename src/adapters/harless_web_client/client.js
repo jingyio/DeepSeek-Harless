@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   id: 'deepseek-harless-web-client',
   factory: (require) => {
     const React = require('react');
-    const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'slots'];
+    const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'uiConversation', 'slots'];
     const endpoint = '/api/harless/settings';
     const observers = new Map(), cache = new Map(), choosing = new Set(), revisions = new Map();
     const aliases = { ppt: 'ppt', 'paper-proofreading': 'paper', 'research-data-analysis': 'data', 'new-scene': 'chat' };
@@ -44,7 +44,7 @@ window.__ModuleLoader__.load({
       }, [sessionId]);
       const scene = value?.scenes.find(row => row.id === value.selection.scene);
       const name = scene ? '/' + shortcut(scene) : 'Harless';
-      const detail = value ? `${modeLabel(value.selection.mode)} · RSI ${value.selection.rsi ? 'On' : 'Off'}${value.conversation_only ? ' · 文字对话' : ''}` : '';
+      const detail = value ? value.paired_comparison ? 'Baseline / Motif 对照' : `${modeLabel(value.selection.mode)} · RSI ${value.selection.rsi ? 'On' : 'Off'}${value.conversation_only ? ' · 文字对话' : ''}` : '';
       return React.createElement('span', { role: 'status', 'aria-label': `${name} ${detail}`, title: `${name} ${detail}`,
         style: { display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: 'min(380px, 52vw)', overflow: 'hidden',
           whiteSpace: 'nowrap', borderRadius: '6px', padding: '2px 7px', fontSize: '13px', lineHeight: '20px',
@@ -55,6 +55,76 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       const command = ctx.get('commandUi'), triggers = ctx.get('inputTriggers');
       const sessions = ctx.get('sessions'), conversation = ctx.get('conversation');
+      const h = React.createElement;
+      const busyComparisons = new Map();
+      const busyReason = '左右两侧正在运行，请等待完成或取消本次对照。';
+      function updateBusy(session,id,busy){
+        const group=busyComparisons.get(session)||new Set();
+        busy?group.add(id):group.delete(id);
+        if(group.size)busyComparisons.set(session,group);else busyComparisons.delete(session);
+        const current=conversation.blocks.storeFor(session).getSnapshot();
+        if(group.size&&(!current||current.reason===busyReason))conversation.blocks.set(session,{reason:busyReason});
+        if(!group.size&&current?.reason===busyReason)conversation.blocks.set(session,undefined);
+      }
+      async function comparisonRequest(value, body, signal) {
+        const url = '/api/harless/comparisons?session_id=' + encodeURIComponent(value.session_id) + '&id=' + encodeURIComponent(value.id);
+        const response = await fetch(url, { method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', signal,
+          ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, session_id: value.session_id, id: value.id }) } : {}) });
+        const result = await response.json(); if (!response.ok) throw Error(result.error?.message || '无法读取对照结果'); return result;
+      }
+      function ComparisonNode({ node }) {
+        const [value, setValue] = React.useState(node.data), [error, setError] = React.useState(''), [saving, setSaving] = React.useState(false);
+        React.useEffect(() => { setValue(node.data); }, [node.data]);
+        React.useEffect(() => {
+          const abort = new AbortController(); let timer;
+          const poll = async () => {
+            try { const next = await comparisonRequest(node.data, undefined, abort.signal); if (!abort.signal.aborted) { setValue(next); setError(''); } }
+            catch (e) { if (!abort.signal.aborted) setError(e.message); }
+            if (!abort.signal.aborted) timer = setTimeout(poll, 1800);
+          };
+          poll(); return () => { abort.abort(); clearTimeout(timer); };
+        }, [node.data.id, node.data.session_id]);
+        React.useEffect(() => {
+          updateBusy(value.session_id,value.id,!['completed', 'failed', 'cancelled'].includes(value.status));
+          return () => updateBusy(value.session_id,value.id,false);
+        }, [value.session_id, value.id, value.status]);
+        const action = async body => {
+          if (saving) return; setSaving(true);
+          try { setValue(await comparisonRequest(value, body)); setError(''); } catch (e) { setError(e.message); }
+          finally { setSaving(false); }
+        };
+        const labels = { preparing: '准备中', queued: '等待执行', running: '运行中', completed: '已完成', failed: '失败', cancelled: '已取消' };
+        const pane = lane => {
+          const result = value.lanes[lane], title = lane === 'baseline' ? 'Baseline · DSH' : result.mode==='shadow'?'Motif · Shadow':'Motif · DSH';
+          return h('section', { key: lane, className: 'harless-paired-pane', 'aria-label': title },
+            h('header', null, h('strong', null, title), h('span', { role: 'status' }, labels[result.status] || result.status)),
+            result.fallback_reason && h('p', { className: 'harless-paired-notice' }, '优化未启用，已回退普通 DSH：' + result.fallback_reason),
+            result.failure && h('p', { role: 'alert', className: 'harless-paired-notice' }, result.failure),
+            h('div', { className: 'harless-paired-answer' }, result.answer || (result.status === 'queued' ? '等待当前任务结束后开始。' : '')),
+            result.artifacts?.length > 0 && h('ul', { className: 'harless-paired-files' }, ...result.artifacts.map(file => h('li', { key: file.id }, h('a', {
+              href: '/api/harless/comparisons?session_id=' + encodeURIComponent(value.session_id) + '&id=' + encodeURIComponent(value.id) + '&lane=' + lane + '&file=' + file.id,
+              download: file.name.split('/').pop(), rel: 'nofollow' }, file.name.split('/').pop())))),
+            h('footer', null, h('small', null, `模型请求 ${result.stats?.upstream_requests || 0} · ${result.mode==='shadow'?'预测候选 '+(result.stats?.shadow_candidates||0):'已验证跳过 '+(result.stats?.verified_skips||0)}`),
+              ['failed', 'cancelled'].includes(result.status) && ['completed', 'failed', 'cancelled'].includes(value.status) && h('button', { type: 'button', disabled: saving, onClick: () => action({ action: 'retry', lane }) }, '重试此侧'),
+              h('fieldset', { disabled: !value.scoring_available || saving, 'aria-label': title + '评分' }, h('legend', null, value.scoring_available ? '结果评分' : '两侧完成后评分'),
+                ...[1, 2, 3, 4, 5].map(score => h('label', { key: score, className: value.scores[lane] === score ? 'selected' : '' }, h('input', {
+                  type: 'radio', name: value.id + '-' + lane, value: score, checked: value.scores[lane] === score,
+                  onChange: () => action({ action: 'rate', lane, score, revision: value.score_revision, output_sha256: result.output_sha256 }) }), score)))));
+        };
+        return h('div', { className: 'harless-paired', 'data-comparison-id': value.id },
+          h('style', null, `.harless-paired{width:100%;margin:18px 0;color:var(--dsw-alias-label-primary,inherit)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.harless-paired-pane{min-width:0;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane header{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane header span,.harless-paired-pane small{font-size:12px;opacity:.7}.harless-paired-answer{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin:18px 0;max-height:70vh;overflow:auto}.harless-paired-notice{font-size:13px;border-left:3px solid #dba351;padding-left:10px}.harless-paired-pane footer{display:grid;gap:12px}.harless-paired-pane fieldset{display:flex;gap:8px;border:0;padding:0}.harless-paired-pane legend{font-size:12px;opacity:.7;margin-bottom:8px}.harless-paired-pane label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid #8885;border-radius:8px;padding:7px 10px;cursor:pointer}.harless-paired-pane label.selected{color:#729cf7;border-color:#729cf7;background:#729cf719}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer}.harless-paired button:disabled{opacity:.5}.harless-paired-pane fieldset:disabled{opacity:.45}.harless-paired-error{font-size:13px;color:#d66;margin-top:10px}.harless-paired-files{padding-left:20px;overflow-wrap:anywhere}.harless-paired-files a{color:#729cf7}@media(max-width:760px){.harless-paired-grid{grid-template-columns:1fr}}`),
+          h('div', { className: 'harless-paired-grid' }, pane('baseline'), pane('motif')),
+          !['completed', 'failed', 'cancelled'].includes(value.status) && h('button', { type: 'button', disabled: saving, onClick: () => action({ action: 'cancel' }), style: { marginTop: 12 } }, '取消本次对照'),
+          error && h('div', { role: 'alert', className: 'harless-paired-error' }, error));
+      }
+      ctx.effect(() => ctx.uiConversation.events.register({ kind: 'harless-comparison', target: 'chat',
+        match: event => event.type === 'user/message' && event.data.harless_comparison ? { id: event.data.harless_comparison.id, role: 'start' } : null,
+        start: (_context, match) => match.event.data.harless_comparison.value,
+        update: context => context.state,
+        buildViewNode: context => context.start && context.state ? { key: context.key, kind: 'harless-comparison', id: context.id, target: 'chat',
+          anchorSeq:context.start.event.seq,location:context.start.location,visibility:'visible',data: context.state } : null,
+      }), 'harless-comparison-definition');
+      ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'harless-comparison' }, ComparisonNode));
       function inputFor(id) {
         const scope = sessions.scope(id);
         if (!scope) throw Error('会话已关闭，请重新打开');
@@ -147,8 +217,8 @@ window.__ModuleLoader__.load({
               id: `option:${field.key}=${JSON.stringify(choice.value)}`, label: choice.label,
               detail: choice.detail || field.label, active: (value.scene_options?.[field.key] ?? field.default) === choice.value,
             }))) : []),
-            ...['baseline', 'shadow', 'execute'].map(mode => ({ id: `mode:${mode}`, label: modeLabel(mode), detail: 'Mode', active: value.selection.mode === mode })),
-            ...[true, false].map(rsi => ({ id: `rsi:${rsi ? 'on' : 'off'}`, label: `RSI ${rsi ? 'On' : 'Off'}`, active: value.selection.rsi === rsi })),
+            ...(!value.paired_comparison ? ['baseline', 'shadow', 'execute'].map(mode => ({ id: `mode:${mode}`, label: modeLabel(mode), detail: 'Mode', active: value.selection.mode === mode })) : []),
+            ...(!value.paired_comparison ? [true, false].map(rsi => ({ id: `rsi:${rsi ? 'on' : 'off'}`, label: `RSI ${rsi ? 'On' : 'Off'}`, active: value.selection.rsi === rsi })) : []),
           ];
         },
         onSelect: async (option, session) => {

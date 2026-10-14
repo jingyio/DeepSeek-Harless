@@ -54,7 +54,9 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['files']['mcp_rows'])
     assert 'examples/' not in rows['files']['scenario']
     for identity in ('paper-proofreading', 'research-data-analysis'):
-        assert 'unavailable_reason' not in rows[identity] and rows[identity]['allowed_tools']
-        assert rows[identity]['adapter'] == 'workspace'
+        assert rows[identity]['allowed_tools']
+        if identity == 'paper-proofreading': assert 'unavailable_reason' not in rows[identity]
+        else: assert rows[identity].get('unavailable_reason') in (None, 'data_report_python_dependencies_missing')
+        assert rows[identity]['adapter'] == ('data-report' if identity == 'research-data-analysis' else 'workspace')
         assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows[identity]['mcp_rows'])
         assert 'examples/' not in rows[identity]['scenario'] and 'portfolio' not in rows[identity]['scenario']
