@@ -17,7 +17,7 @@ function fixture(t){
     attachments:{readFileStream:async function*(){yield Buffer.from('pdf');},admitPromptContent:async c=>c},
     effect:fn=>effects.push(fn()),connection:{fetch:{register:r=>{ctx.route=r;return()=>{};}}}};
   const service={busy:()=>Boolean(row.execution_busy),view:async()=>structuredClone(row),importFile:async(name,stream,bytes)=>{for await(const _ of stream){}return{id:'imported',name,bytes};},
-    command:async raw=>{calls.push(raw);if(raw.action==='submit')row.status='running';if(raw.action==='message')row.feedback.push({request_id:raw.request_id,status:'running'});return structuredClone(row);}};
+    command:async raw=>{calls.push(raw);if(raw.action==='submit')row.status='running';if(raw.action==='message')row.feedback.push({request_id:raw.request_id,status:'running'});if(raw.action==='review')row.review={submitted:true,learning_consent:raw.learning_consent};return structuredClone(row);}};
   const api=installNativePptChat(ctx,{output},service,id=>id==='owner');
   t.after(()=>{for(const f of effects)if(typeof f==='function')f();rmSync(output,{recursive:true,force:true});});
   return{api,ctx,agent,row,events,calls,service,output};
@@ -42,6 +42,20 @@ test('发送即自动执行；内部冻结与重复请求守卫保留',async t=>
 test('官方回执必须属于当前会话；外来会话和任务拒绝',async t=>{
   const f=fixture(t);await assert.rejects(f.api.start(f.agent,{requestId:'foreign',content:[{type:'file',receiptId:'foreign'}]}));
   await assert.rejects(f.api.view('other'));assert.equal(f.calls.length,0);assert.equal(f.events.length,0);
+});
+test('独立质量评审绑定当前会话和冻结任务，不能覆盖任务ID',async t=>{
+  const f=fixture(t);await f.api.start(f.agent,prompt());
+  f.row.status='completed';f.row.results.optimized={mechanical_delivery_verified:true};
+  f.row.current_decks={optimized:{sha256:'deck-sha',version:0}};
+  const v=await f.api.view('owner');
+  const review={request_id:'review-001',quality:{scientific_facts:true,figures_and_citations:true,usable_presentation:true},
+    revision_minutes:3,learning_consent:true,feedback:'可用'};
+  await assert.rejects(f.api.review('other',v.id,review));
+  await assert.rejects(f.api.review('owner',v.id,{...review,task_id:'foreign'}));
+  assert.equal(f.calls.some(c=>c.action==='review'),false);
+  const saved=await f.api.review('owner',v.id,review);
+  assert.equal(f.calls.at(-1).action,'review');assert.equal(f.calls.at(-1).task_id,'ppt');
+  assert.equal(f.calls.at(-1).expected_version,'v0');assert.equal(saved.task.review.submitted,true);
 });
 test('同稿反馈发送即执行，携带版本；对照失败不阻断优化稿',async t=>{
   const f=fixture(t);await f.api.start(f.agent,prompt());
@@ -91,4 +105,11 @@ test('用户投影没有对照、费用、原始日志与脚本；只显示当�
     feedback:[{request_id:'turn',results:{optimized:{reply:'第4页已修改。\n使用 mcp__ppt__revise_deck\n费用 $0.01',accounting:{upstream_requests:2}},baseline:{reply:'内部结果'}}}]}});
   assert.equal(result.reply,'第4页已修改。');assert.deepEqual(result.delivery.artifacts.map(a=>a.id),['o']);
   for(const word of ['baseline','accounting','budget','proxy','private','mcp__'])assert.equal(JSON.stringify(result).includes(word),false);
+});
+test('已交付的反馈只显示简洁结果，不泄露内部交付标识和路径',()=>{
+  const value=publicPptTurn({id:'turn',kind:'feedback',status:'completed',task:{slides:15,
+    current_decks:{optimized:{version:1}},artifacts:[],feedback:[{request_id:'turn',results:{optimized:{status:'delivered',
+      reply:'修改已交付。\n- deck_id: private-id\n- PDF: /mnt/private/validation/presentation.pdf\n- PPTX sha256: secret-hash'}}}]}});
+  assert.equal(value.reply,'修订已完成，请查看新稿。');
+  for(const word of ['deck_id','/mnt/','sha256'])assert.equal(JSON.stringify(value).includes(word),false);
 });

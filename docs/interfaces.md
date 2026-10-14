@@ -443,6 +443,12 @@ pin/read 的 `version_sha256` 是任务输入 SHA 列表按 Python 默认 JSON �
 
 V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英寸, 满正文区等比容纳原图的面积×0.5)`。完整文字可容纳但所有候选低于该值时返回公开可恢复的 `text_overflow`（`role=image`）；不删除原图或科学内容、不进一步缩小正文。极窄长图适用比例自适应阈值；仅面积守卫不能认证图字可读。`plan_expectations` 独立保留完整可见 `label [source_index]`、说明、出处及 notes 关联；只改可见索引而 notes 不变也拒绝。`_check_scientific_footer` 检查真实 PDF 的绘制字形，要求大于 12pt 的正文距来源栏至少 3pt，缺失实际绘制出处也拒绝。它不覆盖全部重叠或科学含义，未 opt-in 的旧页不应用该新增来源栏检查。真实结果及边界见 [V11 记录](experiments/research-ppt-v11-scientific-design-20261012.md)。
 
+### 科研 PPT 单用户双路交付与反馈学习
+
+服务器显式以 `npm run web:real -- --scenario ppt --ppt-native --ppt-run-budget-usd 3` 启动时，`local-operator` 的 PPT 主聊天使用场景内的配对生成、下载和同稿反馈后台。`--ppt-native` 不能用于 mock、成员预算 broker 或其他 principal；未启用时保持 main 的统一场景任务与配对比较。该专用路径固定 DeepSeek Flash、15 页默认值及原有双路预算，不继承普通 Mode/RSI 菜单。成员统一 PPT 路径不调用此专用学习器。
+
+`GET /api/harless/ppt/chat?session_id=...&turn_id=...` 只投影当前优化稿的进度与交付文件；`POST` 接受 `cancel`、`review` 和兼容 `confirm`。`review` 包含三项明确布尔质量判断、人工修改分钟、意见和 `learning_consent`，服务端从 Session 反查任务并冻结原稿 SHA、trial SHA；用户不能指定任意路径或 task ID。评价写入私有 `FeedbackStore`，授权后异步运行无模型结构学习检查；三个独立训练/留出任务和两个后续新任务达到质量、verified skip、请求及代理费用门槛才可能晋级。普通组只凭机械交付进入结构发现，尚不代表双组科学质量等价。完整接口见 [PPT 前端接入](../scenarios/research_ppt/frontend-integration.md) 与 [反馈学习](../scenarios/research_ppt/feedback-learning.md)。
+
 ## Harless 多场景任务桥接（2026-10-13）
 
 生产菜单从 `config/harless-scenes.json` 获取 `ppt/paper-proofreading/research-data-analysis/files/new-scene`；通过 `POST /api/harless/settings` 的 `selection` 选择实际场景。`selected_mode/rsi/mode` 分别记录模式选择、独立开关和实际模式。RSI Off 即实际 baseline，不抹去模式选择。缺正式后端拒绝任务；生产 Execute 缺完整认证 schema、manifest/任务绑定或可用匹配服务拒绝准入。

@@ -2,7 +2,7 @@
 
 用户任务只收集显式授权的数据。合格正常轨迹进入待学习队列，失败用于
 诊断。编译复用已有 motif_v6，认证成功仍是 candidate；后续独立任务的
-配对质量/费用审阅通过后，才允许人工明确启用。此模块不修改在线规则。
+配对质量/费用审阅通过后，人工或只读自动路径才能晋级。此模块不修改在线规则。
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ VERSION_FIELDS = ('model', 'provider', 'reasoning_effort', 'tool_schema_sha256',
 COMPATIBILITY_FIELDS = ('model', 'provider', 'reasoning_effort', 'tool_schema_sha256',
                         'prompt_prefix_sha256', 'template_sha256', 'runtime_sha256')
 QUALITY_FIELDS = ('delivery', 'scientific', 'visual')
-LEARNING_SCOPES = ('production_reviewed', 'evaluation_only')
+LEARNING_SCOPES = ('production_reviewed', 'evaluation_only', 'auto_structural')
 TASK_PROMPT_MARKER = '\n本次任务：\n'
 EXECUTION_PROMPT_MARKER = '\n本次执行方式：'
 STRATEGY_SUFFIXES = {
@@ -355,6 +355,13 @@ def _validate_record(record: dict) -> dict:
         if not isinstance(evidence, dict) or not _sha(evidence.get('sha256')) or not isinstance(evidence.get('path'), str):
             raise ValueError('评审证据需要实际私有 path 和 sha256')
         record = {**record, 'review_evidence': {**evidence, 'path': str(_private(evidence['path'], exists=True))}}
+    if record.get('post_review_revision') is not None:
+        evidence = record['post_review_revision']
+        if (not isinstance(evidence, dict) or not _sha(evidence.get('sha256'))
+                or not isinstance(evidence.get('path'), str)):
+            raise ValueError('原稿后续修订需要真实结果文件与摘要')
+        record = {**record, 'post_review_revision': {
+            **evidence, 'path': str(_private(evidence['path'], exists=True))}}
     if record.get('execution_policy_evidence') is not None:
         evidence = record['execution_policy_evidence']
         if (not isinstance(evidence, dict) or any(not _sha(evidence.get(field))
@@ -525,13 +532,16 @@ class FeedbackStore:
         return sums
 
     @staticmethod
-    def _eligibility(row: dict, *, evaluation_only=False) -> tuple[bool, str]:
+    def _eligibility(row: dict, *, evaluation_only=False, auto_structural=False) -> tuple[bool, str]:
         if not row['consent']['learn']:
             return False, 'learning_not_authorized'
         if row['group'] != 'baseline':
             return False, 'optimized_trace_not_normal_training'
-        qualified = (all(row['quality'][key] == 'passed' for key in QUALITY_FIELDS)
-                     and row['quality']['reviewer'] in ('human', 'user', 'ai-assisted')) if evaluation_only else FeedbackStore._qualified(row)
+        qualified = (row['quality']['delivery'] == 'passed' and row['quality']['scientific'] == 'pending'
+                     and row['quality']['visual'] == 'pending' and row['quality']['reviewer'] == 'unreviewed') \
+            if auto_structural else ((all(row['quality'][key] == 'passed' for key in QUALITY_FIELDS)
+                     and row['quality']['reviewer'] in ('human', 'user', 'ai-assisted'))
+                     if evaluation_only else FeedbackStore._qualified(row))
         if not qualified:
             return False, 'quality_failed_or_not_human_reviewed'
         if not row.get('identity_confirmed') or not row.get('run_dir'):
@@ -549,8 +559,60 @@ class FeedbackStore:
                 _review_binding(row)
         except (ValueError, OSError, json.JSONDecodeError):
             return False, 'real_trace_cost_or_delivery_evidence_changed_or_missing'
-        return True, ('evaluation_only_ai_assisted_frozen_trace' if evaluation_only
-                      else 'normal_quality_reviewed_frozen_trace')
+        return True, ('auto_structural_normal_trace_unreviewed' if auto_structural else
+                      'evaluation_only_ai_assisted_frozen_trace' if evaluation_only else
+                      'normal_quality_reviewed_frozen_trace')
+
+    @staticmethod
+    def _auto_task_key(row: dict) -> str:
+        task = _prompt_binding(row)['task']
+        return _digest({'instruction': ' '.join(task['instruction'].split()).casefold(),
+                        'slides': task['slides'], 'template': task['template'],
+                        'operation': task['operation'],
+                        'sources': sorted(item['sha256'] for item in row['source_evidence'])})
+
+    def _auto_training_pair(self, baseline: dict) -> dict:
+        matches = [row for row in self._records() if row['pair_id'] == baseline['pair_id']
+                   and row['group'] == 'optimized']
+        if len(matches) != 1:
+            raise ValueError('自动结构学习需要同任务已审阅的优化稿')
+        optimized = matches[0]
+        if (optimized['task_identity'] != baseline['task_identity']
+                or optimized['source_evidence'] != baseline['source_evidence']
+                or optimized.get('candidate_version') is not None
+                or not optimized['consent']['learn'] or not self._qualified(optimized)
+                or not optimized.get('identity_confirmed')):
+            raise ValueError('自动结构学习需要用户认可且授权的同任务优化稿')
+        self._web_user_review(optimized)
+        _require_compatible_prompts([baseline, optimized], paired=True)
+        self._evidence(optimized)
+        return optimized
+
+    @staticmethod
+    def _web_user_review(row: dict) -> None:
+        evidence = row.get('review_evidence')
+        if not isinstance(evidence, dict):
+            raise ValueError('自动晋级必须绑定真实用户原稿评价')
+        path = _private(evidence['path'], exists=True)
+        if (_hash(path) != evidence['sha256']
+                or row.get('evidence_lock', {}).get(str(path)) != evidence['sha256']):
+            raise ValueError('用户评价字节或收集时证据锁变化')
+        review = _read(path)
+        quality = review.get('quality', {})
+        trial = _private(review.get('trial', ''), exists=True)
+        delivery = _read(_private(row['delivery_evidence']['path'], exists=True))
+        if (review.get('learning_consent') is not True
+                or trial.name != 'trial.json' or trial.parent.name != row['pair_id']
+                or _hash(trial) != review.get('trial_sha256')
+                or not any(item.get('kind') == 'pptx' and item.get('sha256') == review.get('pptx_sha256')
+                           for item in delivery.get('files', []))
+                or row['consent']['learn'] is not True
+                or row['quality']['reviewer'] != 'user'
+                or row['quality']['scientific'] != ('passed' if quality.get('scientific_facts')
+                    and quality.get('figures_and_citations') else 'failed')
+                or row['quality']['visual'] != ('passed' if quality.get('usable_presentation') else 'failed')
+                or row['quality']['revision_minutes'] != review.get('revision_minutes')):
+            raise ValueError('用户评价与冻结质量或学习授权不一致')
 
     def collect(self, record: dict) -> dict:
         """append-only feedback revision; never starts learning or model calls."""
@@ -574,6 +636,8 @@ class FeedbackStore:
                 paths.append(Path(row['prompt_evidence']['path']))
             if row.get('review_evidence'):
                 paths.append(Path(row['review_evidence']['path']))
+            if row.get('post_review_revision'):
+                paths.append(Path(row['post_review_revision']['path']))
             if row.get('execution_policy_evidence'):
                 paths += [Path(row['execution_policy_evidence'][field]) for field in ('job_path', 'audit_path')]
             if row.get('run_dir'):
@@ -592,10 +656,13 @@ class FeedbackStore:
                 'queue': 'learning' if eligible else 'diagnostic_only', 'reason': reason,
                 'model_requests': 0, 'learning_started': False}
 
-    def queue(self, *, evaluation_only=False) -> dict:
+    def queue(self, *, evaluation_only=False, auto_structural=False) -> dict:
+        if evaluation_only and auto_structural:
+            raise ValueError('学习范围不能同时为 evaluation_only 和 auto_structural')
         seen_tasks, seen_pairs, rows = set(), set(), []
         for row in self._records():
-            eligible, reason = self._eligibility(row, evaluation_only=evaluation_only)
+            eligible, reason = self._eligibility(row, evaluation_only=evaluation_only,
+                                                 auto_structural=auto_structural)
             if eligible and (row['task_identity'] in seen_tasks or row['pair_id'] in seen_pairs):
                 eligible, reason = False, 'same_task_or_pair_already_counted'
             if eligible:
@@ -603,19 +670,29 @@ class FeedbackStore:
             rows.append({'record_id': row['record_id'], 'run_id': row['run_id'], 'task_identity': row['task_identity'],
                          'eligible': eligible, 'reason': reason})
         return {'records': rows, 'independent_eligible_tasks': len(seen_tasks), 'automatic_learning': False,
-                'learning_scope': 'evaluation_only' if evaluation_only else 'production_reviewed'}
+                'learning_scope': 'auto_structural' if auto_structural else
+                                  'evaluation_only' if evaluation_only else 'production_reviewed'}
 
     def preview(self, train: list[str], heldout: list[str], *, contracts: Path, version_fields: Path,
-                tool_schema: Path, mining='sequence', evaluation_only=False) -> dict:
+                tool_schema: Path, mining='sequence', evaluation_only=False,
+                auto_structural=False) -> dict:
+        if evaluation_only and auto_structural:
+            raise ValueError('学习范围不能同时为 evaluation_only 和 auto_structural')
         if len(train) != 2 or len(heldout) != 1 or len(set(train + heldout)) != 3:
             raise ValueError('最小预览需两个 train 和一个独立 heldout 记录')
         if mining not in ('sequence', 'witnessed_edges'):
             raise ValueError('未知现有编译入口')
         rows = [self._record(item) for item in train + heldout]
-        if any(not self._eligibility(row, evaluation_only=evaluation_only)[0] for row in rows):
+        if any(not self._eligibility(row, evaluation_only=evaluation_only,
+                                     auto_structural=auto_structural)[0] for row in rows):
             raise ValueError('只有授权、合格、正常、已冻结的轨迹可进入学习')
+        if auto_structural:
+            for row in rows:
+                self._auto_training_pair(row)
         if len({row['pair_id'] for row in rows}) != 3 or len({row['task_identity'] for row in rows}) != 3:
             raise ValueError('同一任务的双组或续写不能算独立训练/认证任务')
+        if auto_structural and len({self._auto_task_key(row) for row in rows}) != 3:
+            raise ValueError('相同来源和要求的重跑不能算独立自动学习任务')
         from src.adapters.task_identity import load_trace_identity, require_distinct_decisions
         identities = [load_trace_identity(Path(row['run_dir']) / 'task-identity.json',
                                          Path(row['run_dir']) / 'agent-events.jsonl', ROOT / '.local') for row in rows]
@@ -633,7 +710,8 @@ class FeedbackStore:
                 'records': [{'id': row['record_id'], 'sha256': _hash(self.path / 'records' / (row['record_id'] + '.json'))}
                             for row in rows], 'identities': identities, 'config': config, 'mining': mining,
                 'impact': 'offline_compilation_only_candidate_not_enabled', 'model_requests': 0,
-                'learning_scope': 'evaluation_only' if evaluation_only else 'production_reviewed',
+                'learning_scope': 'auto_structural' if auto_structural else
+                                  'evaluation_only' if evaluation_only else 'production_reviewed',
                 'production_eligible': not evaluation_only,
                 'runtime_sha256': runtime_snapshot['sha256'],
                 'training_task_count': 2, 'heldout_task_count': 1}
@@ -661,8 +739,12 @@ class FeedbackStore:
                     raise ValueError('预览后的反馈证据变化')
                 row = self._record(item['id'])
                 latest = next(record for record in self._records() if record['run_id'] == row['run_id'])
-                if latest['record_id'] != row['record_id'] or not self._eligibility(latest, evaluation_only=scope == 'evaluation_only')[0]:
+                if latest['record_id'] != row['record_id'] or not self._eligibility(
+                        latest, evaluation_only=scope == 'evaluation_only',
+                        auto_structural=scope == 'auto_structural')[0]:
                     raise ValueError('反馈已更新或授权/质量/身份失效，请重新预览')
+                if scope == 'auto_structural':
+                    self._auto_training_pair(latest)
                 rows.append(row)
             for item in plan['config'].values():
                 if _hash(Path(item['path'])) != item['sha256']:
@@ -688,6 +770,13 @@ class FeedbackStore:
                     guard_paths=(Path(plan['config']['tool_schema']['path']), *runtime_files),
                     out_dir=self.path / 'compiled' / plan['plan_id'], mining=plan['mining'])
                 motif_v6.validate_compilation(manifest)
+                if scope == 'auto_structural':
+                    compiled = _read(manifest)
+                    compatible = motif_v6.structural_candidates(compiled)
+                    if (not compiled.get('artifacts') or
+                            {item['motif_id'] for item in compatible} !=
+                            {item['motif_id'] for item in compiled['artifacts']}):
+                        raise ValueError('自动学习只允许完整可认证的只读参数边 Motif')
             except Exception as exc:
                 _new(self.path / 'outcomes' / (plan['plan_id'] + '.json'),
                      {'status': 'not_promoted', 'error_type': type(exc).__name__, 'elapsed_seconds': time.monotonic() - start,
@@ -695,7 +784,7 @@ class FeedbackStore:
                 raise
             version = uuid4().hex
             candidate = {'schema_version': 1, 'version': version, 'created_at': _now(), 'status': 'candidate',
-                         'learning_scope': scope, 'production_eligible': scope == 'production_reviewed',
+                         'learning_scope': scope, 'production_eligible': scope != 'evaluation_only',
                          'manifest': str(manifest), 'manifest_sha256': _hash(manifest), 'plan_path': str(path),
                          'plan_sha256': _hash(path), 'training_task_identities': [row['task_identity'] for row in rows],
                          'training_pair_ids': [row['pair_id'] for row in rows],
@@ -718,7 +807,7 @@ class FeedbackStore:
         plan = _read(Path(row['plan_path']))
         scope = _learning_scope(plan)
         if (row.get('learning_scope', 'production_reviewed') != scope
-                or row.get('production_eligible', True) is not (scope == 'production_reviewed')):
+                or row.get('production_eligible', True) is not (scope != 'evaluation_only')):
             raise ValueError('候选 scope 与冻结学习计划不同，不能贴标签绕过人评准入')
         latest_by_run = {item['run_id']: item for item in self._records()}
         for item in plan['records']:
@@ -726,8 +815,12 @@ class FeedbackStore:
             if _hash(path) != item['sha256']:
                 raise ValueError('学习反馈证据变化')
             original = self._record(item['id'])
-            if not self._eligibility(latest_by_run[original['run_id']], evaluation_only=scope == 'evaluation_only')[0]:
+            if not self._eligibility(latest_by_run[original['run_id']],
+                                     evaluation_only=scope == 'evaluation_only',
+                                     auto_structural=scope == 'auto_structural')[0]:
                 raise ValueError('学习授权已撤回或最新质量/版本不合格')
+            if scope == 'auto_structural':
+                self._auto_training_pair(latest_by_run[original['run_id']])
         validate_compilation(Path(row['manifest']))
         return row
 
@@ -737,7 +830,7 @@ class FeedbackStore:
         return {'version': version, 'manifest': candidate['manifest'],
                 'manifest_sha256': candidate['manifest_sha256'], 'stage': 'candidate_evaluation',
                 'learning_scope': candidate.get('learning_scope', 'production_reviewed'),
-                'production_eligible': candidate.get('learning_scope', 'production_reviewed') == 'production_reviewed',
+                'production_eligible': candidate.get('learning_scope', 'production_reviewed') != 'evaluation_only',
                 'quality_cost_promoted': False}
 
     @staticmethod
@@ -769,13 +862,15 @@ class FeedbackStore:
         releases = [_read(path) for path in (self.path / 'releases').glob('*.json')]
         releases.sort(key=lambda row: row['sequence'], reverse=True)
         approved = next((row for row in releases if row.get('active_version') == version
-                         and row.get('reason') == 'explicit_quality_cost_reviewed_activation'), None)
+                         and row.get('reason') in ('explicit_quality_cost_reviewed_activation',
+                                                   'automatic_user_reviewed_read_only_activation')), None)
         if approved is None:
-            raise ValueError('缺少此版本明确授权的质量/成本晋级记录')
+            raise ValueError('缺少此版本合格的质量/成本晋级记录')
         old = approved['evidence']
-        current = self.activate(version, [pair['pair_id'] for pair in old['pairs']], confirm=False)['gate']
+        method = self.activate_auto if approved['reason'] == 'automatic_user_reviewed_read_only_activation' else self.activate
+        current = method(version, [pair['pair_id'] for pair in old['pairs']], confirm=False)['gate']
         if current != old:
-            raise ValueError('发布后评审、授权或收益证据已变化；重新核验并明确晋级')
+            raise ValueError('发布后评审、授权或收益证据已变化；重新核验晋级')
         return current
 
     def active_manifest(self) -> dict | None:
@@ -784,7 +879,10 @@ class FeedbackStore:
         if version is None:
             return None
         candidate = self._candidate(version)
-        _require_production_candidate(candidate)
+        if candidate.get('learning_scope', 'production_reviewed') == 'production_reviewed':
+            _require_production_candidate(candidate)
+        elif candidate.get('learning_scope') != 'auto_structural':
+            raise ValueError('evaluation_only 隔离评测候选不能在线继承')
         self._release_gate(version)
         return {'version': version, 'manifest': candidate['manifest'],
                 'manifest_sha256': candidate['manifest_sha256'],
@@ -805,7 +903,9 @@ class FeedbackStore:
                            'learning_scope': row.get('learning_scope', 'production_reviewed'),
                            'valid': valid, 'manifest': row['manifest'], 'learning_cost': row['learning_cost']})
         return {'active_version': active, 'candidates': states, 'last_release': events[-1] if events else None,
-                'automatic_activation': False, 'online_entry_must_explicitly_load_valid_active_manifest': True}
+                'automatic_activation': bool(events and events[-1]['reason'] ==
+                                             'automatic_user_reviewed_read_only_activation'),
+                'online_entry_must_explicitly_load_valid_active_manifest': True}
 
     def _release(self, active: str | None, reason: str, evidence: dict) -> dict:
         current = self.status()
@@ -890,13 +990,115 @@ class FeedbackStore:
                 raise ValueError('晋级预览后用户反馈变化；重新核验')
             return self._release(version, 'explicit_quality_cost_reviewed_activation', gate)
 
+    def activate_auto(self, version: str, pairs: list[str], *, confirm=False) -> dict:
+        """Promote only a certified read-only motif after unseen, user-approved canaries."""
+        candidate = self._candidate(version)
+        if candidate.get('learning_scope') != 'auto_structural':
+            raise ValueError('自动晋级只接受冻结的只读结构学习候选')
+        if len(pairs) < 2 or len(set(pairs)) != len(pairs):
+            raise ValueError('自动晋级需要两个独立新任务')
+        records, evidence, identities, task_keys = self._records(), [], [], set()
+        for row in records:
+            if row.get('candidate_version') != version or row['group'] != 'optimized':
+                continue
+            if any(row['quality'][key] == 'failed' for key in QUALITY_FIELDS):
+                raise ValueError('候选已有用户质量反例，停止自动晋级')
+            if row['quality']['reviewer'] != 'user':
+                continue
+            baseline = next((base for base in records if base['pair_id'] == row['pair_id']
+                             and base['group'] == 'baseline'), None)
+            if (baseline is None or row['quality']['revision_minutes'] != 0
+                    or any(row['cost'][key] is None or baseline['cost'][key] is None
+                           or row['cost'][key] > baseline['cost'][key]
+                           for key in ('requests', 'proxy_usd'))):
+                raise ValueError('候选已有修订或费用反例，不能挑选成功任务晋级')
+            self._candidate_execution(row, candidate)
+        from src.adapters.task_identity import load_trace_identity, require_distinct_decisions
+        for pair in pairs:
+            rows = [row for row in records if row['pair_id'] == pair]
+            baseline = [row for row in rows if row['group'] == 'baseline']
+            optimized = [row for row in rows if row['group'] == 'optimized'
+                         and row.get('candidate_version') == version]
+            if len(baseline) != 1 or len(optimized) != 1:
+                raise ValueError('自动晋级需要同任务普通组与候选组的完整反馈')
+            base, opt = baseline[0], optimized[0]
+            if (pair in candidate['training_pair_ids']
+                    or base['task_identity'] in candidate['training_task_identities']
+                    or base['task_identity'] != opt['task_identity']
+                    or base['source_evidence'] != opt['source_evidence']
+                    or _compatibility(base) != _compatibility(opt)):
+                raise ValueError('候选评测必须为与训练不同且配置匹配的新任务')
+            _require_compatible_prompts([base, opt], paired=True)
+            if (base['quality']['delivery'] != 'passed' or not self._qualified(opt)
+                    or not base['consent']['learn'] or not opt['consent']['learn']
+                    or not base.get('identity_confirmed') or not opt.get('identity_confirmed')
+                    or opt['quality']['revision_minutes'] != 0):
+                raise ValueError('用户未认可候选稿，或它仍需人工修订')
+            self._web_user_review(opt)
+            self._evidence(base, require_normal=True)
+            self._evidence(opt)
+            execution = self._candidate_execution(opt, candidate)
+            base_dir, opt_dir = (_private(row['run_dir'], exists=True) for row in (base, opt))
+            identity = load_trace_identity(base_dir / 'task-identity.json',
+                                           base_dir / 'agent-events.jsonl', ROOT / '.local')
+            opt_identity = load_trace_identity(opt_dir / 'task-identity.json',
+                                               opt_dir / 'agent-events.jsonl', ROOT / '.local')
+            if (identity['research_decision_id'] != base['task_identity']
+                    or opt_identity['research_decision_id'] != base['task_identity']):
+                raise ValueError('候选评测身份与冻结轨迹不符')
+            identities.append(identity)
+            task_key = self._auto_task_key(base)
+            if task_key in task_keys:
+                raise ValueError('相同来源与要求的重跑不能累计为新任务')
+            task_keys.add(task_key)
+            if (base['cost']['proxy_usd'] is None or opt['cost']['proxy_usd'] is None
+                    or base['cost']['requests'] is None or opt['cost']['requests'] is None
+                    or opt['cost']['proxy_usd'] > base['cost']['proxy_usd']
+                    or opt['cost']['requests'] > base['cost']['requests']):
+                raise ValueError('候选在新任务上没有保持模型费用和请求上限')
+            evidence.append({'pair_id': pair, 'task_identity': base['task_identity'],
+                             'task_key': task_key, 'candidate_execution': execution,
+                             'records': [{'id': row['record_id'],
+                                          'sha256': _hash(self.path / 'records' / (row['record_id'] + '.json'))}
+                                         for row in (base, opt)],
+                             'baseline_proxy_usd': base['cost']['proxy_usd'],
+                             'optimized_proxy_usd': opt['cost']['proxy_usd'],
+                             'baseline_requests': base['cost']['requests'],
+                             'optimized_requests': opt['cost']['requests'],
+                             'optimized_revision_minutes': 0})
+        require_distinct_decisions([*candidate['identities'], *identities])
+        train_keys = {self._auto_task_key(row) for row in records
+                      if row['pair_id'] in candidate['training_pair_ids'] and row['group'] == 'baseline'}
+        if task_keys & train_keys:
+            raise ValueError('候选新任务不能重跑训练来源与要求')
+        baseline_cost = sum(row['baseline_proxy_usd'] for row in evidence)
+        optimized_cost = sum(row['optimized_proxy_usd'] for row in evidence)
+        baseline_requests = sum(row['baseline_requests'] for row in evidence)
+        optimized_requests = sum(row['optimized_requests'] for row in evidence)
+        if optimized_cost >= baseline_cost or optimized_requests >= baseline_requests:
+            raise ValueError('候选没有同时降低实际请求数与代理模型费用')
+        gate = {'pairs': evidence, 'baseline_proxy_usd': baseline_cost,
+                'optimized_proxy_usd': optimized_cost, 'baseline_requests': baseline_requests,
+                'optimized_requests': optimized_requests, 'learning_cost': candidate['learning_cost'],
+                'scope': 'user_approved_optimized_zero_revision_read_only_motif_baseline_mechanical_only',
+                'baseline_scientific_quality': 'not_reviewed',
+                'invoice_compute_maintenance_total_cost': 'not_established'}
+        if not confirm:
+            return {'preview': True, 'version': version, 'gate': gate, 'production_changed': False}
+        with self._lock():
+            if self.activate_auto(version, pairs, confirm=False)['gate'] != gate:
+                raise ValueError('自动晋级前反馈、授权或费用已经变化')
+            return self._release(version, 'automatic_user_reviewed_read_only_activation', gate)
+
     def rollback(self, *, confirm=False) -> dict:
         state = self.status()
         if state['last_release'] is None:
             raise ValueError('暂无发布可回滚')
         previous = state['last_release']['previous_active_version']
         if previous is not None:
-            _require_production_candidate(self._candidate(previous))
+            candidate = self._candidate(previous)
+            if candidate.get('learning_scope') == 'evaluation_only':
+                raise ValueError('evaluation_only 隔离评测候选不能回滚为 active')
             self._release_gate(previous)
         if not confirm:
             return {'preview': True, 'active_version': state['active_version'], 'rollback_to': previous}

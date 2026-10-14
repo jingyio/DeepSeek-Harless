@@ -105,11 +105,31 @@ def validate_options(budget: float, max_steps: int, max_output: int) -> None:
         raise ValueError('双路总预算应在 (0,20] 美元，每路步数 [1,60]、输出上限 [1,8000]')
 
 
+def preview_invocation(args: list[str], env: dict, directory: Path, group: str,
+                       *, active_fallback=False) -> tuple[list[str], subprocess.CompletedProcess, str | None, Path | None]:
+    job = Path(args[args.index('--job') + 1])
+    before = set(job.parent.glob('invocation-*.json'))
+    result = subprocess.run(args, cwd=ROOT, env=env, capture_output=True, text=True, encoding='utf-8')
+    created = set(job.parent.glob('invocation-*.json')) - before
+    fallback = None
+    if result.returncode and active_fallback:
+        (directory / 'optimized-active-preview.log').write_text(result.stdout + result.stderr, encoding='utf-8')
+        args = args[:args.index('--mode') + 1] + ['baseline']
+        fallback = '已晋级版本不适用于当前任务，继续普通工程执行；详见私有预览日志'
+        result = subprocess.run(args, cwd=ROOT, env=env, capture_output=True, text=True, encoding='utf-8')
+        created = set(job.parent.glob('invocation-*.json')) - before - created
+    (directory / (group + '-preview.log')).write_text(result.stdout + result.stderr, encoding='utf-8')
+    if result.returncode == 0 and len(created) != 1:
+        raise ValueError('公共cli预览没有唯一有效运行配置，拒绝冻结')
+    return args, result, fallback, next(iter(created)) if created else None
+
+
 def prepare_trial(inputs: list[Path], instruction: str, slides: int, *, budget=3.0,
                   max_steps=60, max_output=8000, template='lab', operation='generate',
                   allow_output=False, order='baseline-first', collect_feedback=False,
                   use_active_learning=False, feedback_store: Path = DEFAULT_STORE,
-                  candidate_version: str | None = None, document_cache=False,
+                  candidate_version: str | None = None, use_auto_candidate=False,
+                  document_cache=False,
                   execution_policy='controlled', minimum_original_figures: int = 0) -> Path:
     validate_options(budget, max_steps, max_output)
     validate_minimum_original_figures(minimum_original_figures, slides, operation)
@@ -117,6 +137,8 @@ def prepare_trial(inputs: list[Path], instruction: str, slides: int, *, budget=3
         raise ValueError('无效运行顺序')
     if use_active_learning and candidate_version:
         raise ValueError('active 与候选评测不能同时启用')
+    if use_auto_candidate and not use_active_learning:
+        raise ValueError('自动候选需要同时读取已晋级版本')
     if type(document_cache) is not bool or execution_policy not in ('controlled', 'legacy_model_selected'):
         raise ValueError('需明确document_cache布尔值和controlled/legacy_model_selected策略')
     # 源文件必须已由用户上传私有目录，不把用户原件写回或作为共享学习资料。
@@ -126,8 +148,22 @@ def prepare_trial(inputs: list[Path], instruction: str, slides: int, *, budget=3
     directory.mkdir(parents=True, exist_ok=False, mode=0o700)
     feedback_store = private_path(feedback_store)
     store = FeedbackStore(feedback_store)
-    active = (store.candidate_manifest(candidate_version) if candidate_version else
-              store.active_manifest() if use_active_learning else None)
+    active, active_fallback, auto_candidate_version = None, None, None
+    if candidate_version:
+        active = store.candidate_manifest(candidate_version)
+    elif use_active_learning:
+        try:
+            active = store.active_manifest()
+        except (ValueError, OSError) as exc:
+            active_fallback = '已晋级版本校验失败，维持普通工程执行: ' + type(exc).__name__
+        if active is None and active_fallback is None:
+            active_fallback = '没有已晋级版本，继续普通工程对照'
+        if active is None and use_auto_candidate:
+            from .auto_learning import candidate_for_next_trial
+            auto_candidate_version = candidate_for_next_trial(store)
+            if auto_candidate_version:
+                active = store.candidate_manifest(auto_candidate_version)
+                active_fallback = None
     groups = {}
     for group in GROUPS:
         strategy = (('baseline_steps' if group == 'baseline' else 'host_delivery')
@@ -145,14 +181,33 @@ def prepare_trial(inputs: list[Path], instruction: str, slides: int, *, budget=3
         if requested_mode == 'execute':
             args.extend(['--manifest', str(active['manifest'])])
         env = dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
-        result = subprocess.run(args, cwd=ROOT, env=env, capture_output=True, text=True, encoding='utf-8')
-        (directory / (group + '-preview.log')).write_text(result.stdout + result.stderr, encoding='utf-8')
+        args, result, fallback, invocation_path = preview_invocation(
+            args, env, directory, group,
+            active_fallback=bool(group == 'optimized' and use_active_learning and active))
+        if fallback:
+            active = None
+            requested_mode = 'baseline'
+            active_fallback = fallback
+            auto_candidate_version = None
         if result.returncode:
             raise ValueError('公共cli预览/证书守卫失败；详见本次私有preview.log，无付费请求')
-        invocations = sorted(job.parent.glob('invocation-*.json'))
-        if len(invocations) != 1:
-            raise ValueError('新job没有唯一公共运行配置，拒绝冻结')
-        invocation = read_json(invocations[0])
+        if invocation_path is None:
+            raise ValueError('新job没有有效公共运行配置，拒绝冻结')
+        invocation = read_json(invocation_path)
+        if group == 'optimized' and invocation['effective_mode'] != 'execute' and active:
+            if candidate_version:
+                raise ValueError('隔离候选未进入 execute，拒绝将候选评测记为普通运行')
+            active_fallback = invocation.get('fallback_reason') or '当前任务不适用已晋级结构'
+            active = None
+            auto_candidate_version = None
+            args = args[:args.index('--mode') + 1] + ['baseline']
+            args, result, _, invocation_path = preview_invocation(args, env, directory, group)
+            if result.returncode or invocation_path is None:
+                raise ValueError('Motif 回退后普通模式预览失败，拒绝冻结')
+            invocation = read_json(invocation_path)
+            if invocation['effective_mode'] != 'baseline':
+                raise ValueError('Motif 回退后普通模式未生效，拒绝冻结')
+            requested_mode = 'baseline'
         scenario = job.parent / 'scenario.json'
         spec = read_json(scenario)
         prompt = Path(spec['prompt'])
@@ -166,7 +221,7 @@ def prepare_trial(inputs: list[Path], instruction: str, slides: int, *, budget=3
                          'output_directory': str(job.parent / 'outputs'),
                          'execution': strategy,
                          'mode': requested_mode, 'effective_mode': invocation['effective_mode'],
-                         'invocation': str(invocations[0]), 'invocation_sha256': file_hash(invocations[0]),
+                         'invocation': str(invocation_path), 'invocation_sha256': file_hash(invocation_path),
                          'guard_digest': invocation.get('guard_digest'), 'fallback_reason': invocation.get('fallback_reason'),
                          'budget_cap_usd': budget / 2, 'run_arguments': args}
     if (groups['baseline']['configured_tool_order'] != groups['optimized']['configured_tool_order']
@@ -185,12 +240,13 @@ def prepare_trial(inputs: list[Path], instruction: str, slides: int, *, budget=3
             'rsi_enabled': groups['optimized']['effective_mode'] == 'execute',
             'collect_feedback': bool(collect_feedback),
             'feedback_store': str(feedback_store), 'use_active_learning': bool(use_active_learning),
-            'candidate_evaluation': bool(candidate_version),
+            'candidate_evaluation': bool(candidate_version or auto_candidate_version),
+            'auto_candidate_selection': bool(auto_candidate_version),
             'active_learning': active,
-            'active_learning_fallback': '没有已晋级版本，继续普通工程对照' if use_active_learning and not active else None,
+            'active_learning_fallback': active_fallback,
             'comparison': ('普通DSH逐步 vs 同schema宿主固定交付脚本；两组禁止模型直接选组合工具'
                            if execution_policy == 'controlled' else '历史普通DSH逐步 vs 同底座模型选择普通工程组合') +
-                          ('＋隔离认证候选Motif；差额不能全归因RSI' if candidate_version else
+                          ('＋隔离认证候选Motif；差额不能全归因RSI' if candidate_version or auto_candidate_version else
                            '＋显式晋级Motif；差额不能全归因RSI' if groups['optimized']['effective_mode'] == 'execute'
                            else '；不是RSI对照'),
             'code': code_snapshot(), 'environment': environment_snapshot(),

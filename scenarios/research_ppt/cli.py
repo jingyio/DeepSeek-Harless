@@ -222,7 +222,12 @@ def run(job: Path, *, call_model=False, budget=1.5, max_steps=60, improve=False,
             suffix = ('\n本次执行方式：计划确定后使用 ' + composed_tool + ' 一次调用完成生成、检查、预览和交付。'
                       if execution == 'composed' else
                       '\n本次执行方式：分别调用 render_deck、inspect_deck、validate_deck、deliver_deck，保持真实核验。')
-        prompt_path.write_text(prompt_path.read_text(encoding='utf-8')+suffix,encoding='utf-8')
+        prompt = prompt_path.read_text(encoding='utf-8')
+        if '\n本次执行方式：' in prompt:
+            if prompt.count('\n本次执行方式：') != 1 or not prompt.endswith(suffix):
+                raise ValueError('任务提示中的执行策略已冻结且与本次调用不同')
+        else:
+            prompt_path.write_text(prompt + suffix, encoding='utf-8')
     args = [sys.executable, str(ROOT / 'scripts/run-scenario.py'), '--scenario', str(scenario),
             '--budget-usd', str(budget), '--max-steps', str(max_steps), '--max-output', str(max_output)]
     if call_model:
@@ -272,13 +277,13 @@ def run(job: Path, *, call_model=False, budget=1.5, max_steps=60, improve=False,
             parsed = parse_document(Path(row['path']))
             facts.append({k: parsed[k] for k in ('format','page_count','text_chars')})
         active = private_path(Path(data.get('rsi_dir',ROOT / '.local/research-ppt/rsi'))) / 'active-guard.json'
-        if not active.exists():
-            raise ValueError('需要先验证并启用一个准入程序，再尝试 Motif 模式')
-        frozen = json.loads(active.read_text(encoding='utf-8'))
+        frozen = json.loads(active.read_text(encoding='utf-8')) if active.exists() else node(
+            'guard-cli.js', {'action': 'default'})
         checked = node('guard-cli.js', frozen['program'])
         if not checked.get('accepted') or checked['program_digest'] != frozen.get('program_digest'):
             raise ValueError('准入程序版本或认证结果失效')
         effective['guard_digest'] = checked['program_digest']
+        effective['guard_source'] = 'user_certified' if active.exists() else 'built_in_certified'
         decision = node('guard-cli.js', {'action':'evaluate','program':frozen['program'],'facts':facts})
         if not decision.get('allowed'):
             effective['fallback_reason'] = 'rsi_guard_rejected_current_inputs'

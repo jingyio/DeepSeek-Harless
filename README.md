@@ -91,7 +91,7 @@ npm run web -- --scenario portfolio-v1 --mode execute
 
 Mode 菜单显示 Origin、Shadow、Execute；Origin 在协议中仍为 `baseline`。RSI 默认 On，切换模式不改变开关；Off 保留所选模式，但下一任务按 Origin 执行。没有认证库或本地匹配服务时 Execute 会被服务端拒绝；Shadow 可以运行并明确记录普通 Harness 回退。菜单选择本身不调用模型，默认用于之后创建的会话。一个 Session 仍只绑定一个 Task，不复用旧预算或证据。
 
-目前登记 `example`、`portfolio-v1`、`portfolio-v2` 三个合成资料场景；新增场景由服务器维护登记表和 MCP 配置。PPT MCP 与自动持续学习发布尚未实现。可选的 Linux 账号网关提供邀请码注册、独立 Harness Home/工作区及按账号隔离的预算路由；它需要单独配置并通过反向代理公开，直接运行 `npm run web` 仍是单用户开发入口。配置与限制见[账号网关部署说明](docs/harless-account-gateway.md)，任务接口见 [Harless 控制接口](docs/harless-controls.md)。
+生产场景由 `config/harless-scenes.json` 登记，合成诊断样例单列在 `config/harless-diagnostics.json`。统一场景聊天已接通 PPT MCP 与配对比较；科研 PPT 专用双路交付、同稿改页和用户授权后的自动结构学习可在单用户真实模型入口显式启用，见[前端接入说明](scenarios/research_ppt/frontend-integration.md)。成员统一入口不调用这条专用学习链路，其已有 PPT 认证读链和配对评分单独运行。可选 Linux 账号网关提供独立 Home/工作区及账号预算路由，配置见[账号网关部署说明](docs/harless-account-gateway.md)。
 
 后台保留双层预算：每任务默认 0.25 美元/24 次，全启动默认 0.25 美元/256 次，每请求最多 1000 输出 token；新任务不重置全局限制。任务上限用 `--budget-usd/--request-limit` 配置，全启动用 `--run-budget-usd/--run-request-limit` 配置。固定 `reasoning_effort="off"`，默认关闭压缩；请求、缓存输入/输出 token、费用和 verified skips 仍完整记录，代理估值需与账单核对。免费模拟不展示额度表单，实际支出为零。
 
@@ -144,9 +144,9 @@ node scripts/project.mjs python scripts/stop-harness-web.py RUN_ID
 
 科研 PPT 场景的安装与最短入口见 [research_ppt](scenarios/research_ppt/README.md)：接收 PDF/PPTX、生成可编辑 PPTX，并在 Linux 服务器通过 LibreOffice 输出真实预览。其渲染、字体和场景依赖需另外安装；PPT 场景的真实 Windows 运行尚未验证。来源读取 Motif 与普通组合生成脚本的边界见接口契约，不把脚本执行计为 Motif 收益。
 
-科研 PPT 试用统一使用 `npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output`：默认准备普通 DSH／组合优化两路预览，双路总上限 $3、每路 $1.50，不调用模型。确认预览后用 `npm run ppt -- --trial <实际trial.json> --call-model` 执行；完整命令、评审与费用范围见[双路试用](scenarios/research_ppt/trial.md)。朴素 `lab` 保留科研原图与可编辑数据，不强迫填满卡片；原生模板实验服务仍属历史隔离试用，不是此默认入口。
+科研 PPT 独立试用使用 `npm run ppt -- --input .local/inputs/paper.pdf --slides 6 --template lab --allow-output` 准备双路预览，确认后用 `npm run ppt -- --trial <实际trial.json> --call-model` 执行。单用户主聊天专用入口使用 `npm run web:real -- --scenario ppt --ppt-native --ppt-run-budget-usd 3`，选择 PPT 并上传 PDF/PPTX 后直接生成；只向用户返回优化稿，普通组在后台留账本。该入口固定 DeepSeek Flash，不继承统一场景 Mode/RSI 菜单；没有显式 `--ppt-native` 时仍使用 main 的统一场景任务。完整范围见[双路试用](scenarios/research_ppt/trial.md)及[前端接入说明](scenarios/research_ppt/frontend-integration.md)。
 
-部署反馈与离线学习见[使用说明](scenarios/research_ppt/feedback-learning.md)。仅显式授权时收集，质量未审阅不进入训练；独立认证生成候选，后续真实任务验证收益后才可受控晋级。`--use-active-learning` 显式继承当前有效版本，没有已晋级版本时走普通流程并记录原因。不能仅因工具生成或测试通过宣称自进化收益。
+部署反馈与离线学习见[使用说明](scenarios/research_ppt/feedback-learning.md)。仅显式授权时用于学习；普通组的结构轨迹可在机械交付合格后进入只读参数边发现，优化稿还需用户确认科学、图件引用与可用性。独立认证和后续两项真实任务通过后才可晋级；当前没有本轮新晋级或真实跨任务降本证据。
 
 ## 随仓库分发的 Motif 库
 

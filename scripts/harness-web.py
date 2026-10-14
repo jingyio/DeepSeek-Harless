@@ -148,6 +148,9 @@ def prepare(args, output, endpoint):
             control_endpoint=args.control_endpoint, control_token=args.control_token,
             certified_input_sha256=canonical_prompt_sha, resources=resources,
             embedding_model=args.embedding_model)
+        if args.ppt_native:
+            policy['ppt_run_budget_usd'] = args.ppt_run_budget_usd
+            policy['ppt_state_directory'] = str(ROOT / '.local/research-ppt/web')
         policy['models'] = ([{'provider': 'deepseek-official', 'model': 'deepseek-flash',
                               'label': 'DeepSeek Flash', 'available': True}]
                             if not args.real_model or os.environ.get('DEEPSEEK_API_KEY', '').strip() else [])
@@ -204,6 +207,9 @@ def prepare(args, output, endpoint):
                 'paid_calls': None if args.real_model else 0, 'entry': 'frozen' if args.frozen else 'dynamic',
                 'run_budget_usd': args.run_budget_usd, 'run_request_limit': args.run_request_limit}
     snapshot['configured_models'] = policy.get('models', [])
+    if args.ppt_native:
+        snapshot['ppt_native'] = True
+        snapshot['ppt_run_budget_usd'] = args.ppt_run_budget_usd
     if args.glm:
         snapshot['glm_price_basis'] = {'input_usd_per_million': args.glm['rates'][0],
                                        'output_usd_per_million': args.glm['rates'][1]}
@@ -255,6 +261,8 @@ def main():
     parser.add_argument('--request-limit', type=int, default=defaults['request_limit'])
     parser.add_argument('--run-request-limit', type=int, default=256, help='whole-launch request cap across all tasks')
     parser.add_argument('--run-budget-usd', type=float, default=defaults['budget_usd'], help='whole-launch budget, never reset by a new task')
+    parser.add_argument('--ppt-native', action='store_true', help='enable the local-operator PPT delivery, revision and feedback loop')
+    parser.add_argument('--ppt-run-budget-usd', type=float, default=3.0, help='separate cumulative cap for the local PPT paired runner')
     parser.add_argument('--fixture', choices=['normal', 'stale', 'tool-failure', 'provider-failure', 'outside-tool', 'delay'],
                         default='normal', help='mock-only failure injection for diagnostics')
     args = parser.parse_args()
@@ -272,6 +280,10 @@ def main():
         parser.error('invalid port, request limit or budget')
     if not math.isfinite(args.run_budget_usd) or not args.budget_usd <= args.run_budget_usd <= 100 or args.run_request_limit < 1:
         parser.error('whole-launch budget must cover task cap and be <=100; request limit must be positive')
+    if not math.isfinite(args.ppt_run_budget_usd) or not 0 < args.ppt_run_budget_usd <= 100:
+        parser.error('PPT cumulative budget must be in (0,100] USD')
+    if args.ppt_native and (not args.real_model or args.frozen or args.user_id != 'local-operator'):
+        parser.error('--ppt-native requires the local real-model operator')
     if bool(args.manifest) != bool(args.task): parser.error('--manifest and --task must be supplied together')
     if args.real_model and (args.frozen or args.fixture != 'normal'):
         parser.error('real provider cannot use frozen/failure fixtures')

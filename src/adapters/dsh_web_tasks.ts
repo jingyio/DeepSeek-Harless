@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
 import { isAgentLoopRequest, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
@@ -29,6 +30,8 @@ type Policy = {
   budget_broker_endpoint?: string;
   budget_task_prefix?: string;
   comparison_scenes?: string[];
+  ppt_run_budget_usd?: number;
+  ppt_state_directory?: string;
   ownership_legacy_outputs?: string[];
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
@@ -77,6 +80,10 @@ export function apply(ctx: any) {
   const tasks = new Map<string, Task>(), sessions = new Map<string, string>();
   const brokerMode = config.budget_broker_endpoint !== undefined;
   if (config.comparison_scenes && (!brokerMode || !Array.isArray(config.comparison_scenes) || config.comparison_scenes.some(id => !['ppt', 'paper-proofreading', 'research-data-analysis', 'literature'].includes(id)))) throw Error('Invalid comparison policy');
+  if (config.ppt_state_directory !== undefined && (brokerMode || (config.user_id ?? 'local-operator') !== 'local-operator' ||
+      config.provider_mode !== 'real' || !Number.isFinite(config.ppt_run_budget_usd) || config.ppt_run_budget_usd! <= 0))
+    throw Error('PPT native policy is restricted to the local real-model operator');
+  const pptService = config.ppt_state_directory ? createRequire(import.meta.url)('../../scenarios/research_ppt/ts/web-tasks.ts').installPptWeb(ctx, config) : null;
   let comparisons: ReturnType<typeof createComparisonService> | undefined;
   const modelOptions = config.models ?? [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }];
   const defaultModel = modelOptions.find(option => option.available);
@@ -92,6 +99,10 @@ export function apply(ctx: any) {
   const schemas = new Map<string, any[]>(), requests = new Map<string, string>();
   const ownedSessions = new Set<string>();
   const legacyChatSessions = new Set<string>();
+  const pptNative = pptService ? createRequire(import.meta.url)('../../scenarios/research_ppt/ts/native-chat.ts')
+    .installNativePptChat(ctx, config, pptService, (id: string) => ownedSessions.has(id), () => {
+      if (active) throw new TaskError('task_busy', '其他任务正在执行，请稍候', 409);
+    }) : null;
   const memberRestricted = brokerMode && config.allowed_tools.length === 0;
   const registeredScenes = config.scenes?.map(row => {
     if (!memberRestricted) return row;
@@ -180,6 +191,7 @@ export function apply(ctx: any) {
     const task = sessionId ? forSession(sessionId) : undefined;
     return { selection: selected, applies_to: task ? 'next_task' : 'next_prompt',
       conversation_only: sessionId ? legacyChatSessions.has(sessionId) : false,
+      ppt_native_chat: Boolean(pptNative), ppt_web_url: pptNative ? '/ppt' : null,
       scene_locked: sessionId ? boundSessions.has(sessionId) || legacyChatSessions.has(sessionId) || Boolean(comparisons?.hasSession(sessionId)) : false,
       paired_comparison: Boolean(config.comparison_scenes?.includes(selected.scene)),
       motif_library: sceneFor(selected.scene).runtime_kind ? {kind:sceneFor(selected.scene).runtime_kind,
@@ -192,7 +204,7 @@ export function apply(ctx: any) {
         available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason,
         execute_available: !executeUnavailable(scene), execute_unavailable_reason: executeUnavailable(scene) })),
       scene_options:sessionId ? optionSelections.get(sessionId)?.[selected.scene] ?? {} : {},
-      scene_option_fields:sceneFor(selected.scene).adapter==='files' ? [
+      scene_option_fields: selected.scene === 'ppt' && pptNative ? [] : sceneFor(selected.scene).adapter==='files' ? [
         {key:'allow_output',label:'整理权限',default:false,values:[
           {value:false,label:'只读盘点与检索'},
           {value:true,label:'允许整理任务副本',detail:'仅限已上传副本，最多 6 步；需预览、授权并留收据'},
@@ -211,6 +223,8 @@ export function apply(ctx: any) {
     settingsView(sessionId); // ownership before mutation
     const current = sessionId ? selections.get(sessionId) ?? defaults : defaults;
     const next = changeSelection(current, patch, scenes, executeUnavailable);
+    if (sessionId && pptNative?.hasSession(sessionId) && next.scene !== current.scene)
+      throw new TaskError('new_session_required', '此会话已绑定PPT稿件，请新建会话使用其他场景', 409);
     if (next.scene !== current.scene && sceneFor(next.scene).unavailable_reason)
       throw new TaskError('scene_not_connected', '该场景暂不可用：' + sceneFor(next.scene).unavailable_reason, 409);
     if (sessionId) {
@@ -470,7 +484,7 @@ export function apply(ctx: any) {
     record(task); return view(task, true);
   }
   function requireIdle() {
-    if (active) throw new TaskError('task_busy', 'Another task is running; wait or cancel it', 409);
+    if (active || pptNative?.busy()) throw new TaskError('task_busy', 'Another task is running; wait or cancel it', 409);
   }
   function finish(task: Task, status: string, failure: string | null = null) {
     if (terminal.has(task.status)) return;
@@ -846,6 +860,13 @@ export function apply(ctx: any) {
       firstText.text = shortcut.text;
     }
     const selected = selections.get(request.sessionId)!;
+    if (pptNative && selected.scene === 'ppt') {
+      if (active) throw new TaskError('task_busy', '其他任务正在执行，请稍候', 409);
+      if ((modelSelections.get(request.sessionId) ?? defaultModel).model !== 'deepseek-flash')
+        throw new TaskError('model_not_allowed', 'PPT生成与修订当前仅验证DeepSeek Flash，请先选择该模型');
+      if (!agents.has(request.sessionId)) await controller.create({ sessionId: request.sessionId });
+      return pptNative.start(agents.get(request.sessionId), { ...request, content });
+    }
     if (comparisons && config.comparison_scenes?.includes(selected.scene) && !legacyChatSessions.has(request.sessionId)) {
       if (forSession(request.sessionId)) throw new TaskError('comparison_requires_new_session', '已有普通任务的会话请保留，新建会话开始双路对照。', 409);
       const scene = sceneFor(selected.scene), parent = agents.get(request.sessionId);
@@ -875,6 +896,11 @@ export function apply(ctx: any) {
   });
   controller.cancel = async (request: any) => {
     if (!ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
+    if (pptNative?.hasSession(request.sessionId)) {
+      const turn = await pptNative.view(request.sessionId);
+      await pptNative.cancel(request.sessionId, turn.id);
+      return {};
+    }
     const task = forSession(request.sessionId);
     const result = await original.cancel(request); if (task) finish(task, 'cancelled', 'user_cancelled'); return result;
   };

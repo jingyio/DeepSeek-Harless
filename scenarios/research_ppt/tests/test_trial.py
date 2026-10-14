@@ -81,6 +81,111 @@ class TrialAccountingTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '不能同时'):
             trial.prepare_trial([], '科研汇报', 4, use_active_learning=True, candidate_version='a' * 32)
 
+    def test_invalid_active_version_falls_back_before_model_calls(self):
+        (trial.ROOT / '.local').mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=trial.ROOT / '.local') as temporary:
+            area = Path(temporary)
+            source = area / 'active-source.pdf'
+            source.write_bytes(b'diagnostic source')
+            with patch.object(trial, 'ROOT', area), \
+                    patch.object(trial.FeedbackStore, 'active_manifest', side_effect=ValueError('stale certificate')), \
+                    patch.object(trial.cli, 'prepare', side_effect=RuntimeError('reached ordinary preparation')) as prepare:
+                with self.assertRaisesRegex(RuntimeError, 'reached ordinary preparation'):
+                    trial.prepare_trial([source], '科研汇报', 4, use_active_learning=True,
+                                        feedback_store=area / 'feedback')
+            self.assertTrue(prepare.called)
+
+    def test_active_preview_failure_retries_plain_mode_without_manifest(self):
+        from subprocess import CompletedProcess
+
+        (trial.ROOT / '.local').mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=trial.ROOT / '.local') as temporary:
+            area = Path(temporary)
+            job = area / 'job.json'
+            job.write_text('{}', encoding='utf-8')
+            args = ['python', '-m', 'scenarios.research_ppt.cli', 'run', '--job', str(job), '--mode',
+                    'execute', '--manifest', 'approved.json']
+            failures = [CompletedProcess(args, 2, '', 'certificate rejected'),
+                        CompletedProcess(args, 0, 'plain preview', '')]
+            def invoke(*_args, **_kwargs):
+                index = invoke.calls
+                invoke.calls += 1
+                (area / f'invocation-{index}.json').write_text(
+                    json.dumps({'effective_mode': 'execute' if index == 0 else 'baseline'}), encoding='utf-8')
+                return failures[index]
+            invoke.calls = 0
+            with patch.object(trial.subprocess, 'run', side_effect=invoke) as run:
+                actual, result, fallback, selected = trial.preview_invocation(
+                    args, {}, area, 'optimized', active_fallback=True)
+            self.assertEqual(actual[-2:], ['--mode', 'baseline'])
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(selected, area / 'invocation-1.json')
+            self.assertIn('不适用于当前任务', fallback)
+            self.assertIn('certificate rejected', (area / 'optimized-active-preview.log').read_text())
+            self.assertIn('plain preview', (area / 'optimized-preview.log').read_text())
+
+    def test_failed_motif_preflight_keeps_one_prompt_suffix_and_delivers_plain_preview(self):
+        import fitz
+
+        (trial.ROOT / '.local').mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=trial.ROOT / '.local') as temporary:
+            area = Path(temporary)
+            source = area / 'source.pdf'
+            with fitz.open() as pdf:
+                page = pdf.new_page()
+                page.insert_text((50, 70), 'A real document for a no-model Motif fallback check.')
+                pdf.save(source)
+            with patch.object(trial.FeedbackStore, 'active_manifest', return_value={
+                    'version': 'a' * 32, 'manifest': str(area / 'missing-manifest.json'),
+                    'manifest_sha256': 'b' * 64}):
+                prepared = trial.prepare_trial([source], 'Summarize this paper', 3,
+                                               use_active_learning=True, feedback_store=area / 'feedback')
+            data = trial.read_json(prepared)
+            optimized = data['groups']['optimized']
+            self.assertEqual(optimized['effective_mode'], 'baseline')
+            self.assertFalse(data['rsi_enabled'])
+            self.assertTrue(data['active_learning_fallback'])
+            self.assertEqual(Path(optimized['prompt']).read_text(encoding='utf-8').count('\n本次执行方式：'), 1)
+            self.assertEqual(len(list(Path(optimized['job']).parent.glob('invocation-*.json'))), 1)
+
+    def test_successful_preview_fallback_freezes_plain_execution_arguments(self):
+        import fitz
+
+        (trial.ROOT / '.local').mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=trial.ROOT / '.local') as temporary:
+            area = Path(temporary)
+            source = area / 'source.pdf'
+            with fitz.open() as pdf:
+                page = pdf.new_page()
+                page.insert_text((50, 70), 'A real document for the frozen fallback check.')
+                pdf.save(source)
+
+            calls = []
+            actual_preview = trial.preview_invocation
+            def preview(args, env, directory, group, **kwargs):
+                calls.append(args)
+                if args[args.index('--mode') + 1] == 'execute':
+                    plain = args[:args.index('--mode') + 1] + ['baseline']
+                    _, result, _, invocation = actual_preview(plain, env, directory, group)
+                    return args, result, None, invocation
+                return actual_preview(args, env, directory, group, **kwargs)
+
+            with patch.object(trial.FeedbackStore, 'active_manifest', return_value={
+                    'version': 'a' * 32, 'manifest': str(area / 'approved.json'),
+                    'manifest_sha256': 'b' * 64}), \
+                    patch.object(trial, 'preview_invocation', side_effect=preview):
+                prepared = trial.prepare_trial([source], 'Summarize this paper', 3,
+                                               use_active_learning=True, feedback_store=area / 'feedback')
+            data = trial.read_json(prepared)
+            optimized = data['groups']['optimized']
+            self.assertEqual(len(calls), 3)
+            self.assertEqual(optimized['mode'], 'baseline')
+            self.assertEqual(optimized['effective_mode'], 'baseline')
+            self.assertEqual(optimized['run_arguments'][-2:], ['--mode', 'baseline'])
+            self.assertFalse(data['rsi_enabled'])
+            self.assertIsNone(data['active_learning'])
+
     def test_invalid_explicit_figure_contract_is_rejected_before_preparing_jobs(self):
         for minimum in (True, -1, 1.5, '2', 5):
             with self.subTest(minimum=minimum), self.assertRaisesRegex(ValueError, 'minimum_original_figures'):

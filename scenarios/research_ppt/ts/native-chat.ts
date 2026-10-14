@@ -22,7 +22,10 @@ export function publicPptTurn(value:any){
   const descriptions:Record<string,string>={reading:'正在读取资料，确认论文内容与来源。',planning:'正在梳理方法和实验结果，安排汇报内容。',checking:'正在检查页面排版、引用和文件预览。',revising:'正在结合这条反馈检查当前稿件。',queued:'已收到你的反馈，正在等待当前处理完成。',complete:value.kind==='feedback'?'已完成本条反馈。':'PPT 已生成并通过文件与渲染检查。'};
   return {id:value.id,kind:value.kind,status:value.status,failure:publicFailure(value.failure),
     progress:{stage,summary:descriptions[stage]??descriptions.reading},
-    reply:visibleReply(result?.reply??value.response??''),
+    reply:result?.status==='delivered'?'修订已完成，请查看新稿。':visibleReply(result?.reply??value.response??''),
+    review:value.kind==='generate'&&current?.version===0?task?.review??null:null,
+    review_available:value.kind==='generate'&&current?.version===0&&
+      ['completed','failed','cancelled','interrupted'].includes(task?.status)&&task?.results?.optimized?.mechanical_delivery_verified===true,
     delivery:artifacts.length?{slides:task.slides,version:current.version,artifacts}:null};
 }
 export function nativePptOptions(message:string,names:string[]) {
@@ -144,6 +147,16 @@ export function installNativePptChat(ctx:any,config:{output:string},service:Serv
       if(t.status!=='preview')return refresh(t);
       return confirmTurn(t);
     });},
+    async review(sessionId:string,id:string,review:any){return admit(async()=>{
+      const t=get(sessionId,id);
+      if(t.kind!=='generate'||!t.task_id||t.status!=='completed')throw Error('只能评审已完成的原稿');
+      if(!review||typeof review!=='object'||Array.isArray(review)||
+         Object.keys(review).some(key=>!['request_id','quality','revision_minutes','learning_consent','feedback'].includes(key)))throw Error('无效评审');
+      if(!ctx.agents.get(sessionId))await ctx.sessionController.create({sessionId});
+      const task=await service.view(t.task_id);
+      await service.command({...review,action:'review',task_id:t.task_id,expected_version:task.current_version});
+      return refresh(t);
+    });},
     async cancel(sessionId:string,id:string){return admit(async()=>{
       const t=get(sessionId,id);if(!['preview','running','queued'].includes(t.status))return refresh(t);
       if(t.status==='running'||t.kind==='generate')await service.command({action:'cancel',task_id:t.task_id});
@@ -157,8 +170,9 @@ export function installNativePptChat(ctx:any,config:{output:string},service:Serv
   ctx.effect(()=>ctx.connection.fetch.register({path:'/api/harless/ppt/chat',methods:['GET','POST'],requestBody:'buffered',fetch:async(request:Request)=>{
     try{let value:any;
       if(request.method==='GET'){const url=new URL(request.url);value=await api.view(url.searchParams.get('session_id')??'',url.searchParams.get('turn_id')??undefined);}
-      else {const raw=await request.json() as any;if(Object.keys(raw).some(k=>!['action','session_id','turn_id','preview_digest'].includes(k)))throw Error('无效聊天操作');
-        value=raw.action==='confirm'?await api.confirm(raw.session_id,raw.turn_id,raw.preview_digest):raw.action==='cancel'?await api.cancel(raw.session_id,raw.turn_id):(()=>{throw Error('无效操作');})();}
+      else {const raw=await request.json() as any;if(Object.keys(raw).some(k=>!['action','session_id','turn_id','preview_digest','review'].includes(k)))throw Error('无效聊天操作');
+        value=raw.action==='confirm'?await api.confirm(raw.session_id,raw.turn_id,raw.preview_digest):raw.action==='cancel'?await api.cancel(raw.session_id,raw.turn_id):
+          raw.action==='review'?await api.review(raw.session_id,raw.turn_id,raw.review):(()=>{throw Error('无效操作');})();}
       return Response.json(publicPptTurn(value),{headers:{'Cache-Control':'no-store'}});
     }catch(e){return Response.json({error:publicFailure(String((e as Error).message))},{status:400});}
   }}),'research-ppt-native-api');

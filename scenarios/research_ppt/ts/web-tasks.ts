@@ -10,7 +10,8 @@ const MAX_FILE = 100 * 1024 * 1024, MAX_TOTAL = 256 * 1024 * 1024;
 type Receipt = { id: string; name: string; path: string; sha256: string; bytes: number };
 type Task = { id: string; status: string; digest: string; trial: string; trial_sha256: string; created_at: string;
   budget_usd: number; instruction: string; slides: number; template: string; operation: string;
-  files: Receipt[]; failure?: string; finished_at?: string; version?: string; feedback?: FeedbackTurn[]; budget_hold_usd?: number; settled?: boolean; };
+  files: Receipt[]; failure?: string; finished_at?: string; version?: string; feedback?: FeedbackTurn[]; budget_hold_usd?: number; settled?: boolean;
+  review?: {request_id:string;fingerprint:string;learning_consent:boolean;reviewed_pptx_sha256:string}; };
 type FeedbackTurn = {id:string;request_id:string;message:string;status:string;created_at:string;parent_version:string;groups?:string[];
   budget_usd:number;budget_hold_usd:number;settled?:boolean;results?:any;failure?:string;finished_at?:string};
 export function normalizePptRequest(raw: any, receipts: Map<string, Receipt>) {
@@ -43,12 +44,41 @@ export function installPptWeb(ctx: any, config: { output: string; provider_mode:
   let admission=Promise.resolve();
   const serial=<T>(fn:()=>Promise<T>):Promise<T>=>{const p=admission.then(fn);admission=p.then(()=>undefined,()=>undefined);return p;};
   const running=new Map<string,ReturnType<typeof spawn>>();
+  const learningRuns=new Set<ReturnType<typeof spawn>>();
   function stop(child:ReturnType<typeof spawn>|undefined){if(!child?.pid)return;try{if(process.platform==='win32')child.kill();else process.kill(-child.pid,'SIGTERM');}catch{}}
   function python(args:string[],input?:any,log?:string){
     const child=spawn(process.env.SSS_PYTHON||'python',args,{cwd:root,env:{...process.env,PYTHONUTF8:'1',PYTHONIOENCODING:'utf-8'},detached:process.platform!=='win32',stdio:['pipe','pipe','pipe']});let output='';
     const stream=(chunk:Buffer)=>{if(log)writeFileSync(log,chunk,{flag:'a',mode:0o600});else{output+=chunk.toString();if(output.length>1024*1024)stop(child);}};
     child.stdout.on('data',stream);child.stderr.on('data',log?stream:()=>{});child.stdin.end(input===undefined?undefined:JSON.stringify(input));
     const done=new Promise<{code:number;output:string}>((ok,fail)=>{child.on('error',fail);child.on('close',code=>ok({code:code??-1,output}));});return{child,done};
+  }
+  function startAutoLearning(trial?:string){
+    if(learningRuns.size)return;
+    const log=trial?join(resolve(trial,'..'),'auto-learning.log'):join(directory,'auto-learning.log');
+    const run=python(['-m','scenarios.research_ppt.auto_learning'],undefined,log);
+    learningRuns.add(run.child);
+    const timer=setTimeout(()=>stop(run.child),300000);
+    run.done.then(({code})=>{if(code!==0)writeFileSync(log,`\nauto-learning exited ${code}\n`,{flag:'a',mode:0o600});})
+      .catch(error=>writeFileSync(log,String(error),{flag:'a',mode:0o600}))
+      .finally(()=>{clearTimeout(timer);learningRuns.delete(run.child);});
+  }
+  async function markDeliveredRevision(task:Task,turn:FeedbackTurn){
+    if(!task.review?.learning_consent||turn.results?.optimized?.status!=='delivered')return;
+    try{
+      const resultPath=join(directory,turn.id,'optimized','result.json');
+      if(!existsSync(resultPath))return;
+      const run=python(['-m','scenarios.research_ppt.web_rsi_review'],{
+        action:'revision',trial:task.trial,review_request_id:task.review.request_id,
+        result_path:resultPath,result_sha256:await fileHash(resultPath)});
+      const timer=setTimeout(()=>stop(run.child),30000);
+      try{
+        const result=await run.done;
+        if(result.code!==0)writeFileSync(join(directory,'auto-learning-revisions.log'),
+          `revision check failed for ${turn.id}: ${result.code}\n`,{flag:'a',mode:0o600});
+        else if(JSON.parse(result.output.trim()).status==='invalidated')startAutoLearning(task.trial);
+      }finally{clearTimeout(timer);}
+    }catch(error){writeFileSync(join(directory,'auto-learning-revisions.log'),
+      `revision check failed for ${turn.id}: ${String(error)}\n`,{flag:'a',mode:0o600});}
   }
   function get(id:unknown){if(typeof id!=='string'||!tasks.has(id))throw Error('任务不存在');return tasks.get(id)!;}
   function settle(record: {budget_usd:number;budget_hold_usd?:number;settled?:boolean}, results:any){
@@ -88,6 +118,7 @@ export function installPptWeb(ctx: any, config: { output: string; provider_mode:
       if(kinds.includes('source_pinned'))progress='planning';if(kinds.includes('render_passed'))progress='checking';
     }catch{}
     return{task_id:t.id,status:t.status,execution_busy:Boolean(active),progress,confirmation_digest:t.digest,current_version:t.version,current_decks:data.current,feedback_budget_usd:0.5,
+    review:t.review?{submitted:true,learning_consent:t.review.learning_consent,reviewed_pptx_sha256:t.review.reviewed_pptx_sha256}:null,
     feedback:(t.feedback??[]).map(turn=>({...turn,results:turn.results?Object.fromEntries(Object.entries(turn.results).map(([g,r]:any)=>[g,{status:r.status,reply:r.reply,accounting:r.accounting,target_pages:r.target_pages,failure:r.failure}])):undefined})),
     cumulative:{proxy_model_usd:known?all.reduce((n,a)=>n+a.observed_proxy_usd,0):null,requests:known?all.reduce((n,a)=>n+a.upstream_requests,0):null,scope:'生成和全部反馈，包括失败；代理估费，不是账单实付'},
     created_at:t.created_at,finished_at:t.finished_at,failure:t.failure??null,instruction:t.instruction,slides:t.slides,template:t.template,operation:t.operation,budget_usd_total:t.budget_usd,budget_usd_per_group:t.budget_usd/2,model:'deepseek-flash',reasoning_effort:'off',max_steps_per_group:60,max_output_tokens:8000,rsi_candidate_generation:false,compression:false,files:t.files.map(({id,name,bytes,sha256})=>({id,name,bytes,sha256})),results:data.results,artifacts:data.artifacts.map(({path,...a})=>({...a,download_url:'/api/harless/ppt/download?task_id='+t.id+'&artifact_id='+a.id})),impact:'串行生成普通DSH与优化Agent两套新文件，不覆盖输入；两路支出合计另报。',budget_scope:{reserved_usd:reserved,launch_cap_usd:cap,note:'持久累计PPT额度；付费前预留上限，只有完整结算后释放未使用额度。失败/未知费用保守留账，重启不归零。'}};}
@@ -120,6 +151,31 @@ export function installPptWeb(ctx: any, config: { output: string; provider_mode:
   };
   // 主聊天与备用页共用准入、预算、版本和运行器，不能另建付费循环。
   const command=(raw:any)=>serial(async()=>{
+        if(raw.action==='review'){
+          if(Object.keys(raw).some(k=>!['action','task_id','request_id','expected_version','quality','revision_minutes','learning_consent','feedback'].includes(k))
+             ||typeof raw.request_id!=='string'||!/^[A-Za-z0-9_-]{8,80}$/.test(raw.request_id)
+             ||!raw.quality||typeof raw.quality!=='object'||Array.isArray(raw.quality)
+             ||Object.keys(raw.quality).sort().join(',')!=='figures_and_citations,scientific_facts,usable_presentation'
+             ||Object.values(raw.quality).some(value=>typeof value!=='boolean')
+             ||typeof raw.revision_minutes!=='number'||!Number.isFinite(raw.revision_minutes)||raw.revision_minutes<0||raw.revision_minutes>10000
+             ||typeof raw.learning_consent!=='boolean'||typeof raw.feedback!=='string'||raw.feedback.length>1000)throw Error('请填写完整的质量评审、修改时间和学习许可');
+          const t=get(raw.task_id),fingerprint=hash(JSON.stringify({expected_version:raw.expected_version,quality:raw.quality,
+            revision_minutes:raw.revision_minutes,learning_consent:raw.learning_consent,feedback:raw.feedback}));
+          if(t.review){if(t.review.request_id!==raw.request_id||t.review.fingerprint!==fingerprint)throw Error('本版评审已经提交');return view(t);}
+          const data=await files(t),current=data.current?.optimized;
+          if(!['completed','failed','cancelled','interrupted'].includes(t.status)||!data.results.optimized?.mechanical_delivery_verified
+             ||!current?.sha256||current.version!==0||raw.expected_version!==t.version)throw Error('只能评审当前未修订的已交付稿件');
+          const run=python(['-m','scenarios.research_ppt.web_rsi_review'],{trial:t.trial,trial_sha256:t.trial_sha256,
+            request_id:raw.request_id,pptx_sha256:current.sha256,quality:raw.quality,
+            revision_minutes:raw.revision_minutes,learning_consent:raw.learning_consent,feedback:raw.feedback});
+          const timer=setTimeout(()=>stop(run.child),30000);let result;try{result=await run.done;}finally{clearTimeout(timer);}
+          if(result.code!==0)throw Error('评审保存失败，原稿未受影响');
+          const receipt=JSON.parse(result.output.trim());
+          if(receipt.reviewed_pptx_sha256!==current.sha256||receipt.learning_consent!==raw.learning_consent)throw Error('评审回执与稿件不一致');
+          t.review={request_id:raw.request_id,fingerprint,learning_consent:raw.learning_consent,reviewed_pptx_sha256:current.sha256};persist();
+          if(raw.learning_consent)startAutoLearning(t.trial);
+          return view(t);
+        }
         if(raw.action==='message'){
           if(Object.keys(raw).some(k=>!['action','task_id','message','request_id','expected_version'].includes(k))||typeof raw.message!=='string'||!raw.message.trim()||raw.message.length>10000||typeof raw.request_id!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(raw.request_id))throw Error('反馈需要有效消息、请求ID和当前版本');
           const t=get(raw.task_id);const duplicate=t.feedback?.find(turn=>turn.request_id===raw.request_id);
@@ -138,7 +194,7 @@ export function installPptWeb(ctx: any, config: { output: string; provider_mode:
           const log=join(area,'runner.log');run.stdout.on('data',b=>writeFileSync(log,b,{flag:'a',mode:0o600}));run.stderr.on('data',b=>writeFileSync(log,b,{flag:'a',mode:0o600}));
           const timer=setTimeout(()=>stop(run),1800000);
           const done=new Promise<number>((ok,fail)=>{run.on('error',fail);run.on('close',code=>ok(code??-1));});
-          done.then(code=>{const resultPath=join(area,'result.json');if(existsSync(resultPath)){turn.results=JSON.parse(readFileSync(resultPath,'utf8')).results;settle(turn,turn.results);}if(turn.status==='running'){turn.status=code===0&&turn.results&&Object.values(turn.results).every((r:any)=>r.status!=='failed')?'completed':'failed';if(turn.status==='failed')turn.failure='本条反馈未全部完成，原稿与全部费用保留';}turn.finished_at=new Date().toISOString();persist();})
+          done.then(async code=>{const resultPath=join(area,'result.json');if(existsSync(resultPath)){turn.results=JSON.parse(readFileSync(resultPath,'utf8')).results;settle(turn,turn.results);}if(turn.status==='running'){turn.status=code===0&&turn.results&&Object.values(turn.results).every((r:any)=>r.status!=='failed')?'completed':'failed';if(turn.status==='failed')turn.failure='本条反馈未全部完成，原稿与全部费用保留';}turn.finished_at=new Date().toISOString();persist();await markDeliveredRevision(t,turn);})
             .catch(()=>{turn.status='failed';turn.failure='反馈运行或结果核验失败，原稿保留';persist();}).finally(()=>{clearTimeout(timer);running.delete(t.id);active=null;});
           return view(t);
         }
@@ -157,7 +213,16 @@ export function installPptWeb(ctx: any, config: { output: string; provider_mode:
         run.done.then(async({code})=>{const data=await files(t);if(t.status==='running'){t.status=code===0&&['baseline','optimized'].every(g=>data.results[g]?.mechanical_delivery_verified&&data.results[g]?.strategy_adherence!==false)?'completed':'failed';if(t.status==='failed')t.failure='规划或交付未全部通过，保留已验收成品和失败账本';}t.finished_at=new Date().toISOString();persist();}).catch(()=>{t.status='failed';t.failure='运行器或结果读取失败';persist();}).finally(()=>{clearTimeout(timer);running.delete(t.id);active=null;});return view(t);
       });
   for(const[path,kind]of[['/ppt','page'],['/api/harless/ppt','task'],['/api/harless/ppt/upload','upload'],['/api/harless/ppt/download','download']])ctx.effect(()=>ctx.webServer.register({kind:'exact',path,handler:handler(kind)}),'research-ppt-'+kind);
-  ctx.effect(()=>()=>{for(const child of running.values())stop(child);},'research-ppt-cleanup');
+  ctx.effect(()=>{
+    const resume=async()=>{
+      for(const task of tasks.values())for(const turn of task.feedback??[])await markDeliveredRevision(task,turn);
+      if(existsSync(join(root,'.local/research-ppt/feedback-learning/records')))startAutoLearning();
+    };
+    const boot=setTimeout(()=>{void resume();},1000);
+    const interval=setInterval(()=>{void resume();},300000);
+    interval.unref();
+    return()=>{clearTimeout(boot);clearInterval(interval);for(const child of running.values())stop(child);for(const child of learningRuns)stop(child);};
+  },'research-ppt-cleanup');
   return { command, view: (id:string)=>view(get(id)), busy:()=>Boolean(active),
     async importFile(name:string,stream:AsyncIterable<Uint8Array>,expectedBytes:number) {
       if(receipts.size>=32||[...receipts.values()].reduce((n,r)=>n+r.bytes,0)+expectedBytes>512*1024*1024)throw Error('上传留存额度已满，请管理员归档');

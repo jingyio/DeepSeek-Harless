@@ -58,6 +58,80 @@ window.__ModuleLoader__.load({
       const h = React.createElement;
       const busyComparisons = new Map();
       const busyReason = '左右两侧正在运行，请等待完成或取消本次对照。';
+      function PptChatCard({ node, sessionId }) {
+        const [value, setValue] = React.useState(null), [error, setError] = React.useState('');
+        const [pending, setPending] = React.useState(false);
+        const [quality, setQuality] = React.useState({ scientific_facts: '', figures_and_citations: '', usable_presentation: '' });
+        const [minutes, setMinutes] = React.useState(''), [feedback, setFeedback] = React.useState('');
+        const [consent, setConsent] = React.useState(false), reviewId = React.useRef(null);
+        const url = `/api/harless/ppt/chat?session_id=${encodeURIComponent(sessionId)}&turn_id=${encodeURIComponent(node.commandId)}`;
+        React.useEffect(() => {
+          let live = true, timer;
+          const pull = async () => {
+            try {
+              const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+              const data = await response.json();
+              if (!response.ok) throw Error(data.error || '暂时无法读取PPT状态');
+              if (live) { setValue(data); setError(''); }
+            } catch (cause) { if (live) setError(cause.message); }
+            if (live) timer = setTimeout(pull, 2000);
+          };
+          pull(); return () => { live = false; clearTimeout(timer); };
+        }, [url]);
+        const post = async body => {
+          if (pending) return;
+          setPending(true); setError('');
+          try {
+            const response = await fetch('/api/harless/ppt/chat', { method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, session_id: sessionId, turn_id: node.commandId }) });
+            const data = await response.json();
+            if (!response.ok) throw Error(data.error || '操作未完成');
+            setValue(data);
+          } catch (cause) { setError(cause.message); } finally { setPending(false); }
+        };
+        const submitReview = () => {
+          if (Object.values(quality).some(item => !['passed', 'failed'].includes(item)) || minutes === '' ||
+              !Number.isFinite(Number(minutes)) || Number(minutes) < 0) {
+            setError('请完成三项评价并填写修改时间。'); return;
+          }
+          reviewId.current ||= window.crypto.randomUUID();
+          void post({ action: 'review', review: { request_id: reviewId.current,
+            quality: Object.fromEntries(Object.entries(quality).map(([key, result]) => [key, result === 'passed'])),
+            revision_minutes: Number(minutes), learning_consent: consent, feedback } });
+        };
+        const files = value?.delivery?.artifacts || [], pptx = files.find(row => row.kind === 'pptx');
+        const pdf = files.find(row => row.kind === 'pdf'), previews = files.filter(row => ['png', 'preview'].includes(row.kind));
+        const active = !value || ['preparing', 'preview', 'queued', 'running'].includes(value.status);
+        const rating = (label, key) => h('label', { key }, label, h('select', { value: quality[key],
+          onChange: event => setQuality({ ...quality, [key]: event.target.value }) },
+          h('option', { value: '' }, '请选择'), h('option', { value: 'passed' }, '符合'), h('option', { value: 'failed' }, '需修改')));
+        return h('section', { className: 'ppt-chat-result', 'aria-label': 'PPT 工作进度' },
+          h('style', null, `.ppt-chat-result{max-width:760px;margin:12px 0;color:var(--dsw-alias-label-primary,#222);font:inherit}.ppt-chat-result *{box-sizing:border-box}.ppt-chat-result header{display:flex;gap:12px;align-items:center}.ppt-chat-result header span{font-size:12px;color:var(--dsw-alias-label-secondary,#72757b)}.ppt-chat-result p{line-height:1.6}.ppt-chat-result .ppt-files{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}.ppt-chat-result a,.ppt-chat-result button{display:inline-flex;align-items:center;border:1px solid #8885;border-radius:6px;background:transparent;color:inherit;padding:7px 11px;font:inherit;font-size:13px;text-decoration:none;cursor:pointer}.ppt-chat-result button:disabled{opacity:.5}.ppt-chat-result .ppt-previews{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.ppt-chat-result .ppt-previews img{width:100%;aspect-ratio:16/9;object-fit:contain;border:1px solid #8885}.ppt-chat-result .ppt-review{margin-top:16px;border-top:1px solid #8885;padding-top:12px}.ppt-chat-result .ppt-review-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.ppt-chat-result label{display:grid;gap:5px;font-size:13px}.ppt-chat-result input,.ppt-chat-result select,.ppt-chat-result textarea{width:100%;min-height:34px;padding:6px;border:1px solid #8885;border-radius:4px;background:transparent;color:inherit;font:inherit}.ppt-chat-result .ppt-consent{display:flex;align-items:center}.ppt-chat-result .ppt-consent input{width:auto}.ppt-chat-result .ppt-error{color:#b25148}@media(max-width:520px){.ppt-chat-result .ppt-review-fields{grid-template-columns:1fr}}`),
+          h('header', null, h('strong', null, '科研汇报 PPT'), h('span', { role: 'status' }, value?.status === 'completed' ? '已完成' : active ? '处理中' : '未完成')),
+          h('p', { role: 'status', 'aria-live': 'polite' }, value?.progress?.summary || '正在准备资料。'),
+          value?.reply && h('p', null, value.reply), value?.failure && h('p', { className: 'ppt-error' }, value.failure),
+          active && h('button', { type: 'button', disabled: pending, onClick: () => void post({ action: 'cancel' }) }, '停止'),
+          pptx && h('div', { className: 'ppt-files' },
+            h('a', { href: pptx.download_url, download: 'research-ppt.pptx' }, '下载 PPTX'),
+            pdf && h('a', { href: pdf.download_url + '&inline=1', target: '_blank', rel: 'noopener' }, '查看 PDF')),
+          previews.length > 0 && h('details', null, h('summary', null, `预览全部 ${previews.length} 页`),
+            h('div', { className: 'ppt-previews' }, ...previews.map((row, index) => h('a', { key: row.id,
+              href: row.download_url + '&inline=1', target: '_blank', rel: 'noopener' },
+              h('img', { loading: 'lazy', src: row.download_url + '&inline=1', alt: `第 ${index + 1} 页` }))))),
+          value?.review_available && pptx && value.delivery?.version === 0 &&
+            (value.review?.submitted ? h('p', null, '评审已记录。') : h('details', { className: 'ppt-review' },
+              h('summary', null, '评价这份 PPT'), h('div', { className: 'ppt-review-fields' },
+                rating('科学内容', 'scientific_facts'), rating('图件与引用', 'figures_and_citations'),
+                rating('汇报可用性', 'usable_presentation'),
+                h('label', null, '修改用时（分钟）', h('input', { type: 'number', min: 0, max: 10000, value: minutes,
+                  onChange: event => setMinutes(event.target.value) }))),
+              h('label', null, '补充意见', h('textarea', { maxLength: 1000, value: feedback,
+                onChange: event => setFeedback(event.target.value) })),
+              h('label', { className: 'ppt-consent' }, h('input', { type: 'checkbox', checked: consent,
+                onChange: event => setConsent(event.target.checked) }), '允许将本次记录用于后续改进'),
+              h('button', { type: 'button', disabled: pending, onClick: submitReview }, pending ? '正在保存' : '提交评价'))),
+          error && h('p', { role: 'alert', className: 'ppt-error' }, error));
+      }
       function updateBusy(session,id,busy){
         const group=busyComparisons.get(session)||new Set();
         busy?group.add(id):group.delete(id);
@@ -240,6 +314,8 @@ window.__ModuleLoader__.load({
       } }), 'harless: native command picker');
       ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
         { name: 'conversation.input.left', id: 'harless-status', order: 40, inject: sessionId => ({ sessionId }) }, HarlessStatus));
+      ctx.slots.inject('conversation.chat.commandview', () => ctx.slots.register(
+        { name: 'conversation.chat.commandview', key: 'ppt-agent', inject: sessionId => ({ sessionId }) }, PptChatCard));
     }
     return { inject, apply };
   },
