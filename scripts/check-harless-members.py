@@ -152,13 +152,14 @@ def main():
                 else:raise RuntimeError('member startup timeout')
             tasks=[];ppt_tasks=[]
             for client in clients:
-                for identity in ['new-scene','ppt','paper-proofreading','research-data-analysis']:
+                for identity in ['new-scene','ppt','paper-proofreading','research-data-analysis','files']:
                     result=scenes.settings(client,base,{'action':'select','selection':{'scene':identity,'mode':'shadow','rsi':True}})
                     assert all(s['available'] for s in result['scenes'])
                     draft=web.api(client,base,{'action':'preview','request':'Inspect the approved input only; no output writing.'})
                     name,data={'new-scene':('note.txt',b'Private diagnostic text'),
                                'ppt':('source.pdf',None),'paper-proofreading':('main.tex',b'\\cite{missing}'),
-                               'research-data-analysis':('data.csv',b'x,y\n1,2\n2,4\n')}[identity]
+                               'research-data-analysis':('data.csv',b'x,y\n1,2\n2,4\n'),
+                               'files':('note.txt',b'Private file inventory input')}[identity]
                     if data is None:
                         import io
                         from reportlab.pdfgen.canvas import Canvas
@@ -171,7 +172,7 @@ def main():
                     assert web.request(foreign,base,'/api/harless/tasks?task_id='+draft['task_id'])[0]==404
                     assert scenes.settings(foreign,base,session=draft['session_id'],expected=404)['error']['code']=='session_not_owned'
                     web.api(client,base,{'action':'cancel','task_id':draft['task_id']})
-            assert len({task['session_id'] for _,task in tasks})==8
+            assert len({task['session_id'] for _,task in tasks})==10
             assert all(web.api(c,base)['aggregate'].get('upstream_requests',0)==0 for c in clients)
             rendered=[]
             if args.render_ppt:
@@ -179,7 +180,7 @@ def main():
                     user_dir=area/'members'/user_id
                     assert user_dir.is_dir()
                     rendered.append(render_in_member(user_dir,task['task_id']))
-            report={'status':'passed','users':2,'scene_drafts':8,'actual_bwrap':True,'actual_mcp':True,
+            report={'status':'passed','users':2,'scene_drafts':10,'actual_bwrap':True,'actual_mcp':True,
                     'model_requests':0,'member_ppt_deliveries':len(rendered),'browser_verified':False,'quality_reviewed':False}
             (area/'result.json').write_text(json.dumps(report,indent=2)+'\n')
             print(json.dumps(report))

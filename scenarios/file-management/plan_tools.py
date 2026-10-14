@@ -21,7 +21,10 @@ def atomic(path,value):
 class PlanScene(FileScene):
  def __init__(self,spec,output):
   original=copy.deepcopy(spec);out=Path(output).resolve();state_path=out/'plan-state.json'
-  if not out.is_relative_to((ROOT/'.local').resolve()):raise ValueError('private output required')
+  web_workspace=os.environ.get('FM_WEB_WORKSPACE')
+  if web_workspace and original.get('scope_kind')=='harless_web_task':
+   if out != (Path(web_workspace).resolve()/'file-results'/(str(original.get('task_id',''))+'-'+digest(original)[:16])):raise ValueError('web output outside task scope')
+  elif not out.is_relative_to((ROOT/'.local').resolve()):raise ValueError('private output required')
   state=json.loads(state_path.read_text()) if state_path.exists() else None
   if state:
    unsigned={k:v for k,v in state.items() if k!='state_sha256'}
@@ -29,10 +32,13 @@ class PlanScene(FileScene):
    spec=copy.deepcopy(spec);spec['initial_snapshot']=snapshot(spec['workspace'])
   super().__init__(spec,output);self.spec=original;self.input_digest=digest(original)
   grant=self.spec.get('write_grant',{})
-  if grant.get('schema_version')!=1 or not 1<=grant.get('max_actions',0)<=6 or not isinstance(grant.get('allow_restore'),bool):raise ValueError('bounded task write grant required')
-  if not set(grant.get('allowed_ops',[]))<=set(('copy','move','quarantine')) or not grant.get('allowed_ops'):raise ValueError('only byte preserving grant operations')
-  if not grant.get('source_paths') or any(n not in original['initial_snapshot'] or n=='.experiment-copy' for n in grant['source_paths']):raise ValueError('grant sources must be original files')
-  if not grant.get('destination_prefixes') or any(not p.endswith('/') or str(self.path(p.rstrip('/')))==str(self.root) for p in grant['destination_prefixes']):raise ValueError('relative destination prefixes required')
+  read_only=(original.get('scope_kind')=='harless_web_task' and grant.get('max_actions')==0 and
+             grant.get('allow_restore') is False and grant.get('allowed_ops')==[] and
+             grant.get('source_paths')==[] and grant.get('destination_prefixes')==[])
+  if grant.get('schema_version')!=1 or not isinstance(grant.get('allow_restore'),bool) or not (read_only or 1<=grant.get('max_actions',0)<=6):raise ValueError('bounded task write grant required')
+  if not set(grant.get('allowed_ops',[]))<=set(('copy','move','quarantine')) or not (read_only or grant.get('allowed_ops')):raise ValueError('only byte preserving grant operations')
+  if not read_only and (not grant.get('source_paths') or any(n not in original['initial_snapshot'] or n=='.experiment-copy' for n in grant['source_paths'])):raise ValueError('grant sources must be original files')
+  if not read_only and (not grant.get('destination_prefixes') or any(not p.endswith('/') or str(self.path(p.rstrip('/')))==str(self.root) for p in grant['destination_prefixes'])):raise ValueError('relative destination prefixes required')
   self.grant=grant;self.authorizations={};self.journals={};self.restored={};self.state_path=state_path
   if state:
    self.plans=state['plans'];self.authorizations=state['authorizations'];self.receipts=state['receipts'];self.journals=state['journals'];self.restored=state['restored']
@@ -168,7 +174,9 @@ class PlanScene(FileScene):
   self.restored[plan_id]=receipt;self.receipts[plan_id]=receipt;self.persist();return copy.deepcopy(receipt)
 
 def serve():
- scene=PlanScene(json.loads(Path(os.environ['FM_TASK_FILE']).read_text()),os.environ['FM_OUTPUT']);server=MCPServer('file_management')
+ spec=json.loads(Path(os.environ['FM_TASK_FILE']).read_text())
+ output=Path(os.environ['FM_OUTPUT'])/(spec['task_id']+'-'+digest(spec)[:16]) if spec.get('scope_kind')=='harless_web_task' else os.environ['FM_OUTPUT']
+ scene=PlanScene(spec,output);server=MCPServer('file_management')
  for n in ('read_task','list_files','pin_file','read_file','hash_files','build_index','search_index','compare_snapshot','preview_actions','authorize_plan','execute_plan','restore_plan','submit_report'):
   server.tool(name=n,annotations=ToolAnnotations(readOnlyHint=n not in ('build_index','execute_plan','restore_plan','submit_report'),destructiveHint=False,openWorldHint=False))(getattr(scene,n))
  server.run()

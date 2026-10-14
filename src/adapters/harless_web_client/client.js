@@ -42,7 +42,7 @@ window.__ModuleLoader__.load({
           { id: 'page:scenes', label: 'Scenes', detail: `${scene?.label || 'Current runtime'}  ›` },
           { id: 'page:modes', label: 'Mode', detail: `${modeLabel(current.mode)}  ›` },
           { id: 'page:rsi', label: 'RSI', detail: `${current.rsi ? 'On' : 'Off'}  ›` },
-          ...(value.scene_option_fields?.length ? [{id:'page:options',label:'PPT 任务选项',detail:'仅用于下一项任务  ›'}] : []),
+          ...(value.scene_option_fields?.length ? [{id:'page:options',label:'任务选项',detail:'仅用于下一项任务  ›'}] : []),
         ];
       }
       if (page === 'scenes') return [

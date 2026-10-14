@@ -1,5 +1,12 @@
 # file-management 当前交接
 
+## 2026-10-14：Files Web 产品接入（待审）
+
+- 分支 `codex/harless-research-branches-20261014` 的 PR #14 增加 `Files` 前后端场景。菜单只发送服务器 ID `files` 与 `allow_output` 选项；Registry 绑定 `web-scenario.json` 的 13 MCP 工具和 `web-prompt.md`。用户/Session/Task 工作目录、上传收据、预算与既有 RSI Runtime 继续使用公共路径。
+- `PlanScene` 保留实验原有限制，同时新增 `FM_WEB_WORKSPACE` 服务器绑定的 Web 任务副本范围；只读任务以空写授权启动，写任务须有批准上传文件。任务配置摘要隔开预览前后状态，避免持久化计划串扰。Web 只允许受限复制、移动、隔离及同授权恢复，最多 6 步，不接通任意主机文件或实验库。
+- V100 三项新单测已验证只读拒绝、跨工作区拒绝、预览后来源变化隔离、授权复制/恢复和 4 MiB Office XML 上限；含 Registry 共 9 项通过。完整五场景免费 Harness 检查通过 30 组合/25 冻结草稿、5 场景实际 MCP/上传、空文件可写提交拒绝与双用户隔离。两名 bwrap 成员共 10 个五场景草稿及隔离通过。真实 DeepSeek Flash 只读任务 4 请求/4 MCP/0 工具错误/0 Verified Skip，预算代理估费 USD 0.001964256，账单未核对。人工办公材料质量、浏览器交互与认证库发布未验收。
+- 入口：`npm run web:scenes:check`；定向：`$SSS_PYTHON -m pytest -q tests/test_file_web_scene.py tests/test_harless_scenarios.py`。公共契约见 `docs/interfaces.md`、`docs/harless-controls.md`。私有输入、凭证、原始日志和历史库留 `.local/`，未进 Git。回退 Files Registry 项及 Web scope 适配，不改旧实验记录。
+
 ## 最新：重命名/转换/空文本契约修复及新留出完成（2026-10-13）
 
 - 当前feature/rsi-research-agent；本轮新增TaskScene/task_contract固定工具和验收、新实验控制/独立审计、11项契约回归、前端结构Schema。具体共享变化docs/changes/file-management-task-contract.md；旧File/Collection/ReportScene、原22基准失败和库证书不改。
