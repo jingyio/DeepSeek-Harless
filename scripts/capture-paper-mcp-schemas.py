@@ -39,7 +39,7 @@ async def capture(output: Path):
                     row = tool.model_dump(mode='json')
                     rows.append({'name': f'mcp__{name}__{row["name"]}',
                                  'description': row['description'],
-                                 'parameters': row['inputSchema']})
+                                 'parameters': row.get('inputSchema', row.get('input_schema'))})
     rows.sort(key=lambda row: row['name'])
     scenario = json.loads((ROOT / 'scenarios/paper_proofreading/scenario.json').read_text())
     if [row['name'] for row in rows] != sorted(scenario['allowed_tools']):

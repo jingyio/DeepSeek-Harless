@@ -31,8 +31,10 @@ def configure_paper_renderer(scene: dict, root: Path) -> None:
         review.get('manifest_sha256') != cert['manifest_sha256'] or
         any(sha(package / name) != manifest.get('files', {}).get(name) for name in files - {'manifest.json'})):
         raise ValueError('renderer_deployment_version_mismatch')
-    if scene.get('id') != 'paper-proofreading' or len(scene.get('mcp_rows', [])) != 1:
+    paper_rows = [row for row in scene.get('mcp_rows', [])
+                  if row.get('config', {}).get('serverName') == 'paper_checks']
+    if scene.get('id') != 'paper-proofreading' or len(paper_rows) != 1:
         raise ValueError('paper_scene_mcp_required')
-    scene['mcp_rows'][0]['config']['args'].append(str(root))
+    paper_rows[0]['config']['args'].append(str(root))
     scene['paper_renderer_root'] = str(root)
     scene['config_sha256'] = hashlib.sha256((scene['config_sha256'] + cert['manifest_sha256'] + cert['review_sha256']).encode()).hexdigest()
