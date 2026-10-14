@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import pytest
+from test_literature_pdf import make_pdf
 
 ROOT = Path(__file__).resolve().parents[1]
 HERE = ROOT / 'scenarios/literature-notes'
@@ -18,13 +19,12 @@ pytestmark = pytest.mark.skipif(not shutil.which('pdfinfo') or not shutil.which(
 
 @pytest.fixture
 def scope():
-    from reportlab.pdfgen.canvas import Canvas
     parent = ROOT / '.local/literature-session-tests'; parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=parent) as raw:
         work = Path(raw) / 'work'; sources = work / 'inputs'; sources.mkdir(parents=True)
         binding = work / 'literature'; binding.mkdir()
         pdf = sources / 'doc_1-paper.pdf'
-        canvas = Canvas(str(pdf)); canvas.drawString(40, 700, 'Independent public fixture: experiment A uses 2 seeds and requires replication.'); canvas.save()
+        make_pdf(pdf, ['Independent public fixture: experiment A uses 2 seeds and requires replication.'])
         task = {'schema_version': 1, 'question': 'Inspect the fixture evidence.', 'sources': module.inventory(sources)}
         module.save_private(binding / 'task.json', task)
         module.save_private(work / 'approved-inputs.json', {'files': {pdf.name: hashlib.sha256(pdf.read_bytes()).hexdigest()}})
