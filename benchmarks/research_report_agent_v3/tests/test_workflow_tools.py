@@ -229,6 +229,51 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(result['capacity_preflight']['fits_one_page'])
         self.assertTrue(w.submit_report_text(packet['packet_id'], example_text(packet['packet_id']))['ok'])
 
+    def test_regression_metrics_preserved_with_stsong_fallback(self):
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+
+        # The member sandbox can lack the optional embedded CJK TrueType fonts.
+        pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+        os.environ['RRA_CASE'] = 'v2_cert_environment'
+        evidence, *_ = to_evidence('regression')
+        plan = example_presentation('regression')
+        plan['report'].update(style='brief', page_mode='max', pages=2)
+        plan['tables'] = [{'kind': 'key_metrics', 'metrics': ['estimate', 'ci_low', 'ci_high',
+            'p_value', 'n', 'excluded_rows', 'r_squared', 'residual_sd', 'intercept', 'shapiro_p'],
+            'reason': 'Report the verified slope, uncertainty, sample accounting and fit diagnostics.'}]
+        presentation = w.approve_presentation(evidence['evidence_id'], plan)
+        self.assertTrue(presentation['ok'], presentation)
+        bundle = w.render_figures(presentation['presentation_id'])
+        packet = w.verify_figures(bundle['figure_bundle_id'])
+        with patch.object(w.document_engine, '_font', return_value='STSong-Light'):
+            delivered, _, draft, layout, _ = to_delivery(packet['packet_id'])
+            self.assertTrue(delivered['delivered'])
+            self.assertTrue(layout['quality_passed'])
+            engine = c.get_record(layout['layout_id'])['payload']['engine']
+            self.assertTrue(engine['audit']['checks']['all_text_preserved'])
+            self.assertEqual(engine['audit']['missing_text'], [])
+
+            # Scientific glyphs in free text and tables retain their original
+            # Unicode, including the formerly unsupported superscript.
+            document = copy.deepcopy(c.get_record(draft['draft_id'])['payload']['document'])
+            metric = next(item for item in document['metrics'] if item['label'] == 'R-squared')
+            metric['label'] = 'R²'
+            document['sections'][2]['paragraphs'].append('Scientific glyphs: R² α β ± ≤ −.')
+            rendered = w.document_engine.render_document(document, c.get_run_dir()/'scientific-text.pdf')
+            accepted = w.document_engine.audit_document(rendered['path'], rendered['layout_manifest'])
+            self.assertTrue(accepted['quality_passed'], accepted)
+            self.assertEqual(accepted['missing_text'], [])
+            self.assertEqual(layout['missing_text'], [])
+
+            # A genuinely missing glyph must remain in the manifest and fail.
+            metric['label'] = 'Unsupported \u0378'
+            rendered = w.document_engine.render_document(document, c.get_run_dir()/'unsupported-label.pdf')
+            rejected = w.document_engine.audit_document(rendered['path'], rendered['layout_manifest'])
+            self.assertFalse(rejected['checks']['all_text_preserved'])
+            self.assertIn('metric-6-label', rejected['missing_text'])
+            self.assertFalse(rejected['quality_passed'])
+
     def test_failed_layout_is_cached_without_deleting_body_or_padding(self):
         packet, *_ = to_packet()
         old_packet = c.get_record(packet['packet_id'])['payload']

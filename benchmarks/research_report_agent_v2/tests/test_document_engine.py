@@ -5,9 +5,11 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image, ImageDraw
 
+from benchmarks.research_report_agent_v2 import document_engine
 from benchmarks.research_report_agent_v2.document_engine import CONTENT_RECT, PAGE_WIDTH, PAGE_HEIGHT, audit_document, build_document, measure_capacity, render_document
 
 
@@ -138,6 +140,57 @@ class DocumentEngineTests(unittest.TestCase):
         self.assertTrue(audit["checks"]["no_content_overflow"], audit["overflow"])
         self.assertTrue(audit["checks"]["all_text_preserved"], audit["missing_text"])
         self.assertAlmostEqual(rendered["layout_manifest"]["content_rect"][2], 551.275590551)
+
+    def test_stsong_fallback_preserves_scientific_text_in_every_text_block(self):
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+        scientific = "中文 R² x₂ α β ± − ≤ ≥"
+        for style in ("brief", "technical", "paper"):
+            with self.subTest(style=style), patch.object(document_engine, "_font", return_value="STSong-Light"):
+                payload = self.payload()
+                payload["requirements"]["style"] = style
+                payload["title"] = scientific
+                payload["subtitle"] = scientific
+                payload["sections"][0]["heading"] = scientific
+                payload["sections"][0]["paragraphs"] = [
+                    (scientific + " preserves the original scientific text. ") * 3,
+                    'Literal <font name="Helvetica">R² & α</font>\n< > " \' stay literal.']
+                payload["figures"][0]["caption"] = scientific
+                payload["metrics"] = [{"label": scientific, "value": scientific}]
+                payload["provenance"] = scientific
+                measurement = measure_capacity(payload)
+                rendered = render_document(payload, self.root / f"fallback-{style}.pdf", measurement["selected_config"])
+                manifest = rendered["layout_manifest"]
+                audit = audit_document(rendered["path"], manifest)
+                self.assertTrue(audit["quality_passed"], audit)
+                self.assertEqual(audit["missing_text"], [])
+                expected = {item["id"]: item["text"] for item in manifest["expected_text"]}
+                for block_id in ("title", "subtitle", "metric-0-label", "metric-0-value", "provenance"):
+                    self.assertEqual(expected[block_id], scientific)
+                self.assertEqual(expected["section-0-heading"], ("1  " if style == "paper" else "") + scientific)
+                self.assertEqual(expected["caption-0"], "图 1 | " + scientific)
+                self.assertEqual(expected["section-0-paragraph-1"], payload["sections"][0]["paragraphs"][1])
+                blocks = manifest["blocks"]
+                height = max(x["bbox"][3] for x in blocks) - min(x["bbox"][1] for x in blocks)
+                self.assertAlmostEqual(measurement["height_pt"], height, places=2)
+
+    def test_stsong_fallback_keeps_unsupported_character_for_strict_audit(self):
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+        with patch.object(document_engine, "_font", return_value="STSong-Light"):
+            unsupported = "\u0378"  # Reserved BMP codepoint, absent from both fonts.
+            self.assertFalse(document_engine._fallback_font("STSong-Light").face.charToGlyph.get(ord(unsupported), 0))
+            payload = self.payload()
+            payload["sections"][0]["paragraphs"] = [f"Original unsupported {unsupported} sentinel."]
+            rendered = render_document(payload, self.root / "unsupported-glyph.pdf")
+            expected = next(item for item in rendered["layout_manifest"]["expected_text"] if item["id"] == "section-0-paragraph-0")
+            self.assertIn(unsupported, expected["text"])
+            audit = audit_document(rendered["path"], rendered["layout_manifest"])
+            self.assertFalse(audit["quality_passed"])
+            self.assertFalse(audit["checks"]["all_text_preserved"])
+            self.assertIn("section-0-paragraph-0", audit["missing_text"])
 
     def _margin_fixture(self, overhang, footer=""):
         from reportlab.pdfgen.canvas import Canvas

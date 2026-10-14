@@ -72,3 +72,47 @@ export function verifiedReportFiles(workspace:string){
   }
   return allowed;
 }
+
+/** A later model-summary failure does not revoke a verified report delivery.
+ * Incomplete drafts and other scenes still require normal task completion. */
+export function captureComparisonDeliveries(service: ReturnType<typeof comparisonArtifacts>, context: {
+  turn: string; lane: string; attempt: number; workspace: string; adapter?: string; status: string;
+  eventsPath?: string; startedAt?: string; finishedAt?: string;
+}) {
+  const approved = context.adapter === 'data-report' ? verifiedReportFiles(context.workspace) : undefined;
+  if (context.status !== 'completed' && !(approved?.size && ['failed', 'budget_exhausted', 'cancelled'].includes(context.status))) return [];
+  if (context.status !== 'completed') {
+    // The Session can contain later successful turns. Only this failed task's
+    // own bounded tool events may grant a recovered download.
+    const delivered = taskReportDeliveries(context);
+    for (const path of approved!) if (delivered.get(path) !== sha(readFileSync(path))) approved!.delete(path);
+    if (!approved!.size) return [];
+  }
+  return service.snapshot(context.turn, context.lane, context.attempt, context.workspace, approved);
+}
+
+function taskReportDeliveries(context: { eventsPath?: string; startedAt?: string; finishedAt?: string }) {
+  const found = new Map<string, string>(), calls = new Set<string>();
+  const start = Date.parse(context.startedAt ?? ''), end = Date.parse(context.finishedAt ?? '');
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || !context.eventsPath || !existsSync(context.eventsPath)) return found;
+  const file = lstatSync(context.eventsPath);
+  if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1 || file.size > 32 * 1024 * 1024) return found;
+  for (const line of readFileSync(context.eventsPath, 'utf8').split('\n')) {
+    try {
+      const event = JSON.parse(line);
+      if (!Number.isFinite(event.time) || event.time < start || event.time > end) continue;
+      if (event.type === 'tool/call' && event.data?.name === 'mcp__research_report__deliver_report' && typeof event.data.callId === 'string') calls.add(event.data.callId);
+      if (event.type !== 'tool/result') continue;
+      for (const part of event.data?.message?.content ?? []) {
+        if (part.type !== 'tool-result' || part.isError || !calls.has(part.toolCallId)) continue;
+        for (const content of part.content ?? []) {
+          if (content.type !== 'text') continue;
+          const receipt = JSON.parse(content.text);
+          if (receipt.ok === true && receipt.delivered === true && receipt.quality_passed === true &&
+            typeof receipt.path === 'string' && /^[a-f0-9]{64}$/.test(receipt.sha256)) found.set(receipt.path, receipt.sha256);
+        }
+      }
+    } catch { /* Invalid historical events never authorize a file. */ }
+  }
+  return found;
+}

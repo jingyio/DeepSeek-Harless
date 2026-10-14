@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync,symlinkSync} from 'node:fs';
 import {join,resolve,sep} from 'node:path';
 import {tmpdir} from 'node:os';
-import {comparisonArtifacts,verifiedReportFiles} from '../src/adapters/harless_comparison_artifacts.ts';
+import {comparisonArtifacts,verifiedReportFiles,captureComparisonDeliveries} from '../src/adapters/harless_comparison_artifacts.ts';
 import {createHash} from 'node:crypto';
 test('Only derived results are copied; prior results survive edits and mutated copies fail closed',()=>{
  const root=mkdtempSync(join(tmpdir(),'paired-artifact-'));try {
@@ -26,10 +26,26 @@ test('Unverified layout PDFs are withheld; delivery grants require matching PDF 
   mkdirSync(join(output,'records'),{recursive:true});writeFileSync(path,'diagnostic PDF bytes');
   const service=comparisonArtifacts(root);
   assert.equal(service.snapshot('failed-draft','motif',0,work,verifiedReportFiles(work)).length,0);
+  const eventsPath=join(root,'task-events.jsonl');
+  const context={turn:'budget-final-summary',lane:'motif',attempt:0,workspace:work,adapter:'data-report',status:'budget_exhausted',
+    eventsPath,startedAt:new Date(1000).toISOString(),finishedAt:new Date(2000).toISOString()};
+  assert.equal(captureComparisonDeliveries(service,context).length,0);
   const receipt={kind:'delivery',payload:{delivered:true,quality_passed:true,path,sha256:createHash('sha256').update('diagnostic PDF bytes').digest('hex')}};
   writeFileSync(join(output,'records/delivery.json'),JSON.stringify(receipt));
   assert.equal(service.snapshot('delivered-report','motif',0,work,verifiedReportFiles(work)).length,1);
+  const events=time=>[
+    {type:'tool/call',time,data:{callId:'delivery-call',name:'mcp__research_report__deliver_report'}},
+    {type:'tool/result',time:time+1,data:{message:{content:[{type:'tool-result',toolCallId:'delivery-call',isError:false,
+      content:[{type:'text',text:JSON.stringify({ok:true,...receipt.payload})}]}]}}},
+  ].map(e=>JSON.stringify(e)).join('\n');
+  writeFileSync(eventsPath,events(100)+'\n'+events(3000));
+  assert.equal(captureComparisonDeliveries(service,context).length,0,'prior or later turns cannot grant the failed turn a file');
+  writeFileSync(eventsPath,events(1500));
+  assert.equal(captureComparisonDeliveries(service,context).length,1);
+  assert.equal(captureComparisonDeliveries(service,{...context,turn:'still-running',status:'running'}).length,0);
+  assert.equal(captureComparisonDeliveries(service,{...context,turn:'unverified-scene',adapter:'ppt'}).length,0);
   writeFileSync(path,'modified PDF');assert.equal(verifiedReportFiles(work).size,0);
+  assert.equal(captureComparisonDeliveries(service,{...context,turn:'changed-delivery'}).length,0);
  }finally{const p=resolve(root);assert.ok(p.startsWith(resolve(tmpdir())+sep)&&p.includes('paired-report-proof-'));rmSync(p,{recursive:true,force:true});}
 });
 test('Result symlinks cannot expose files outside the Session', {skip:process.platform==='win32'},()=>{

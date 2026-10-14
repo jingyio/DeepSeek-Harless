@@ -60,6 +60,23 @@ test('Budget exhaustion is terminal and never leaves the other lane polling inde
  try{const a=await f.send();const v=await f.wait(a.comparison_id);assert.equal(v.status,'failed');assert.equal(f.submitted.length,2);assert.match(v.lanes.baseline.failure,/预算/);assert.equal(v.scoring_available,false);}finally{f.close();}
 });
 
+test('Old budget failure recovers only verified downloads without rerunning or allowing scores',async()=>{
+ const f=fixture({submit:async id=>{f.submitted.push(id);f.tasks.get(id).status='budget_exhausted';}});
+ try{
+  const a=await f.send(),first=await f.wait(a.comparison_id);assert.equal(first.status,'failed');
+  f.service.dispose();let inspected=0;
+  const host={...f.host,inspect:async(id,context)=>{inspected++;if(inspected<=2)throw Error('temporary availability failure');assert.equal(context.turn.id,a.comparison_id);return{...f.tasks.get(id),deliveries:[{id:'verified-pdf',sha256:'a'.repeat(64)}]};}};
+  const resumed=createComparisonService(f.root,'account-a',host,{pollMs:1});
+  await assert.rejects(resumed.view('foreign',a.comparison_id),/foreign/);assert.equal(inspected,0);
+  assert.equal((await resumed.view('a',a.comparison_id)).lanes.motif.artifacts.length,0);
+  const recovered=await resumed.view('a',a.comparison_id);assert.equal(recovered.status,'failed');assert.equal(recovered.scoring_available,false);
+  assert.equal(recovered.lanes.motif.artifacts.length,1);assert.match(recovered.lanes.motif.failure,/交付校验/);
+  await resumed.view('a',a.comparison_id);assert.equal(inspected,4);assert.equal(f.submitted.length,2);
+  await assert.rejects(resumed.rate('a',a.comparison_id,'motif',5,0,recovered.lanes.motif.output_sha256),/两侧都完成/);
+  resumed.dispose();
+ }finally{f.close();}
+});
+
 test('Admitted upload references survive receipt retirement without being exposed or crossing requests',async()=>{
  const f=fixture();try{
   const file={name:'study.csv',bytes:12,sha256:'diagnostic-source'};
