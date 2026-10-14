@@ -1,5 +1,5 @@
 /** Cross-platform entry point. No shell scripts or platform-specific venv paths. */
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
@@ -33,7 +33,8 @@ if (action === 'setup') {
   if (nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 18)) {
     run(process.execPath, ['scripts/build-continuation-policy.mjs', '--check']);
   }
-  run(process.execPath, ['--test', ...(ci ? ['--test-reporter=tap', '--test-reporter-destination=stdout', '--test-reporter=junit', '--test-reporter-destination=.local/ci/node-results.xml'] : []), 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_approved_plan_continuation.mjs', 'tests/test_dsh_web_policy.mjs', 'tests/test_web_task_request.mjs', 'tests/test_dsh_web_tasks.mjs', 'tests/test_dsh_completion_guard.mjs', 'tests/test_code_container.mjs', 'tests/test_entry_motif.mjs', 'tests/test_terminal_motif.mjs', 'tests/test_collection_motif.mjs', 'tests/test_collection_script.mjs', 'tests/test_plan_motif.mjs', 'tests/test_collection_reentry.mjs', 'tests/test_acceptance_guard.mjs', 'tests/test_harless_settings.mjs', 'tests/test_harless_native_picker.mjs', 'tests/test_harless_gateway.mjs', 'tests/test_web_budget_broker.mjs', 'tests/test_member_file_scope.mjs', 'tests/test_paper_motif.mjs', 'tests/test_dsh_native_motif.mjs', 'tests/test_paper_shadow_runtime.mjs', 'tests/test_paper_rsi_program.mjs', 'tests/test_trace_rsi_program.mjs', 'tests/test_trace_rsi_learning.mjs', 'tests/test_trace_rsi_task_server.mjs', 'tests/test_trace_rsi_shadow.mjs', 'tests/test_trace_rsi_state_shadow.mjs', 'tests/test_trace_rsi_batch_shadow.mjs', 'tests/test_revision_rsi_learning.mjs', 'tests/test_revision_rsi_macros.mjs', 'tests/test_report_patch_protocol.mjs', 'tests/test_patch_rsi_task_server.mjs', 'tests/test_trace_rsi_effect_guard.mjs']);
+  const nodeTests = readdirSync(join(root, 'tests')).filter(name => /^test_.*\.mjs$/.test(name)).sort().map(name => 'tests/' + name);
+  run(process.execPath, ['--test', ...(ci ? ['--test-reporter=tap', '--test-reporter-destination=stdout', '--test-reporter=junit', '--test-reporter-destination=.local/ci/node-results.xml'] : []), ...nodeTests]);
 } else if (action === 'scenario') {
   run(python, ['scripts/run-scenario.py', ...args]);
 } else if (action === 'web') {
