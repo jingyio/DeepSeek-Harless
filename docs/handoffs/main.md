@@ -3,8 +3,9 @@
 ## 2026-10-14：四功能分支兼容整合（当前）
 
 - 用户本次明确授权兼容检查通过后合并到 main，覆盖旧交接里的“只提交、不合并”。来源为 PPT、论文、数据分析、文献处理四分支，另保留 PR #15 成员边界修复。
-- 集成分支 `codex/four-scenario-merge`，实现 `003e115`、`60e1cf0`、`9e8ea7e`，新增组合权限/Schema 回归及冻结会话控制验收。当前测试与合并结果在 [本轮记录](../experiments/four-scenario-main-integration-20261014-v1.md) 更新。
-- 正式 Web 进程、用户数据与累计预算暂不切换；隔离检出进行完整依赖复验。文献产品上传绑定、四场景双栏比较/评分尚未上线，不以研究分支合并替代该验收。
+- 主线整合入口：[PR #16](https://github.com/jingyio/DeepSeek-Harless/pull/16)，集成实现 `003e115`、`60e1cf0`、`9e8ea7e` 至 `53bd67b`；#14 已合入 #13，#15 已合入 main，全部相关来源包含在整合历史中。最终 main commit 与合并状态以 PR 实际记录为准。
+- 服务器完整依赖通过：根 856 Python / 436 Node（3 Docker 跳过），PPT 291 Python / 118 Node，smoke、motif、控制/真实 MCP 上传/双 principal 越权检查；代码快照的四项 Windows/Ubuntu CI 成功。详情见 [本轮记录](../experiments/four-scenario-main-integration-20261014-v1.md)。无新增云模型费用，不作为新的科学质量或节省证据。
+- 正式 Web 进程、用户数据与累计预算不切换；服务器隔离检出同步 main 复验。文献产品上传绑定、四场景双栏比较/评分尚未上线，不以研究分支合并替代该验收。
 - 以下记录保留各历史版本的权限与结论；其“当前/待审/未合并”是当时状态，以本节和 GitHub 实际状态为准。
 
 ## 2026-10-14：斜杠场景与成员边界（当前）
