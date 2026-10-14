@@ -143,11 +143,16 @@ class FileScene:
                         rows.append(values)
                         if self.spec.get('scope_kind') == 'harless_web_task' and len(rows) > 10000:
                             raise ValueError('Excel exceeds Web task row parsing limit')
-                stream=io.StringIO(); csv.writer(stream).writerows(rows)
                 if self.spec.get('scope_kind') == 'harless_web_task':
+                    stream = io.StringIO(); writer = csv.writer(stream)
+                    for row in rows:
+                        writer.writerow(row)
+                        if stream.tell() > 6000:
+                            break
                     preview = [[str(value)[:200] for value in row[:32]] for row in rows[:50]]
                     return 'readable', stream.getvalue(), {'rows': preview, 'row_count': len(rows),
                                                             'rows_truncated': len(rows) > 50}
+                stream=io.StringIO(); csv.writer(stream).writerows(rows)
                 return 'readable', stream.getvalue(), {'rows': rows}
         if ext == '.pdf':
             cmd = [os.environ.get('FM_PDFTOTEXT', 'pdftotext'), '-f', '1', '-l', '2', str(path), '-']

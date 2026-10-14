@@ -97,7 +97,8 @@ def test_web_file_scene_bounds_excel_metadata(tmp_path, monkeypatch):
     task = 'task_excel_preview'
     monkeypatch.setenv('FM_WEB_WORKSPACE', str(work))
     row = spec(work, task, False)
-    cells = ''.join(f'<row><c t="inlineStr"><is><t>entry-{number}</t></is></c></row>' for number in range(60))
+    cells = ''.join(f'<row><c t="inlineStr"><is><t>entry-{number}-' + 'x' * 1000 +
+                    '</t></is></c></row>' for number in range(60))
     with zipfile.ZipFile(work / 'inputs' / 'sheet.xlsx', 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('xl/worksheets/sheet1.xml', '<worksheet><sheetData>' + cells + '</sheetData></worksheet>')
     row['initial_snapshot'] = snapshot(work / 'inputs')
@@ -108,3 +109,4 @@ def test_web_file_scene_bounds_excel_metadata(tmp_path, monkeypatch):
     assert result['status'] == 'readable'
     assert result['metadata']['row_count'] == 60
     assert len(result['metadata']['rows']) == 50 and result['metadata']['rows_truncated'] is True
+    assert len(scene.parse(work / 'inputs' / 'sheet.xlsx')[1]) < 8000
