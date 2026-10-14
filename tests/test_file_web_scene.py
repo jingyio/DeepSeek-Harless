@@ -90,3 +90,21 @@ def test_web_file_scene_rejects_compressed_office_xml_bomb(tmp_path, monkeypatch
     handle = scene.pin_file(file_id)['source_id']
     result = scene.read_file(handle)
     assert result['status'] == 'unreadable' and result['diagnostic'] == 'ValueError'
+
+
+def test_web_file_scene_bounds_excel_metadata(tmp_path, monkeypatch):
+    work = tmp_path / 'member-a' / 'work'
+    task = 'task_excel_preview'
+    monkeypatch.setenv('FM_WEB_WORKSPACE', str(work))
+    row = spec(work, task, False)
+    cells = ''.join(f'<row><c t="inlineStr"><is><t>entry-{number}</t></is></c></row>' for number in range(60))
+    with zipfile.ZipFile(work / 'inputs' / 'sheet.xlsx', 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('xl/worksheets/sheet1.xml', '<worksheet><sheetData>' + cells + '</sheetData></worksheet>')
+    row['initial_snapshot'] = snapshot(work / 'inputs')
+    scene = PlanScene(row, work / 'file-results' / (task + '-' + digest(row)[:16]))
+    scene.read_task()
+    file_id = next(item['file_id'] for item in scene.list_files()['files'] if item['path'] == 'sheet.xlsx')
+    result = scene.read_file(scene.pin_file(file_id)['source_id'])
+    assert result['status'] == 'readable'
+    assert result['metadata']['row_count'] == 60
+    assert len(result['metadata']['rows']) == 50 and result['metadata']['rows_truncated'] is True

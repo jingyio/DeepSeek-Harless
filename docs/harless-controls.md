@@ -32,7 +32,7 @@ PPT 通过服务器 `HARLESS_PPT_RUNTIME_BUNDLE` 加载 `online-manifest.json/li
 PPT 的原生菜单增加下一任务页数、模板、输出权限。默认 6 页、academic、只读；明确选择“允许生成 PPT 新副本”后，下一次发送仍须附批准 PDF/PPTX。发送确认只授权所属任务的新产物，不授权修改原稿。任务 API 的显式 `scene_options` 覆盖菜单值；改变菜单不改变已预览任务。`set_scene_options` 和继承 Session 均复用现有认证及隔离设置。
 
 Files 的菜单增加“整理权限”，默认只读。选择“允许整理任务副本”并确认任务后，最多 6 步，只允许原始上传文件作为来源，目标限制在 `organized/`、`copies/`、`quarantine/`，不可覆盖；MCP 必须先预览，再取得同计划授权回执，执行与恢复留下私有日志。结果和备份均属于当前用户的 Task/Session。普通文本检索不需要整理权限；内容解析有格式与长度边界。
-Files 的 Word/Excel XML 单成员读取上限 4 MiB，超过时返回不可读诊断；图片只读取元数据，PDF 仅提取前两页。整理权限不包含转换、归档、删除原件或跨目录读取。
+Files 的 Word/Excel XML 单成员读取上限 4 MiB，Excel 最多解析 10,000 行，工具元数据只预览前 50 行/每行 32 列/每格 200 字符；超过解析边界返回不可读诊断。图片只读取元数据，PDF 仅提取前两页。整理权限不包含转换、归档、删除原件或跨目录读取。
 
 服务器设置 `HARLESS_PPT_RENDERER_ROOT` 为固定 LibreOffice 安装根，`HARLESS_PPT_FONT_ROOT` 为固定静态字体配置目录。只在对应 MCP 子进程传递 PATH 与 Fontconfig；不改变全局 cwd/env。缺依赖时 PPT 仍能只读，输出任务明确返回 `scene_output_unavailable`。转换使用独立任务 profile 和 CPU/无界面设置，PDF/PNG/验收报告归所属任务。渲染、文字、字形、来源或产物哈希失败不标记已交付。
 
