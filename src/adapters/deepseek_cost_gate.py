@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import threading
@@ -130,7 +131,8 @@ class State:
     def __init__(self, *, cap_usd: float, output_cap: int, record: Path,
                  request_limit: int | None = None,
                  rates: dict[str, tuple[float, float]] | None = None,
-                 cache_rates: dict[str, float] | None = None):
+                 cache_rates: dict[str, float] | None = None,
+                 checkpoint: Path | None = None):
         if request_limit is not None and (type(request_limit) is not int or request_limit < 1):
             raise ValueError('request_limit must be a positive integer')
         self.request_limit = request_limit
@@ -143,6 +145,29 @@ class State:
         self.request_count = 0
         self.pending: dict[int, float] = {}
         self.lock = threading.Lock()
+        self.checkpoint = checkpoint
+        if checkpoint is not None:
+            value = json.loads(checkpoint.read_text(encoding='utf-8'))
+            count, cost = value.get('request_count'), value.get('reserved_usd')
+            if (type(count) is not int or count < 0 or
+                    not isinstance(cost, (int, float)) or isinstance(cost, bool) or
+                    not math.isfinite(cost) or cost < 0):
+                raise ValueError('invalid cumulative budget checkpoint')
+            # Unknown/in-flight usage remains charged after a restart.
+            self.request_count, self.reserved_usd = count, float(cost)
+
+    def checkpoint_locked(self) -> None:
+        """Persist reservations before upstream I/O; caller holds this State lock."""
+        if self.checkpoint is None:
+            return
+        temporary = self.checkpoint.with_suffix('.pending')
+        raw = json.dumps({'request_count': self.request_count, 'reserved_usd': self.reserved_usd})
+        with temporary.open('w', encoding='utf-8') as stream:
+            os.chmod(temporary, 0o600)
+            stream.write(raw + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, self.checkpoint)
 
     def book(self, body: bytes) -> tuple[int, str, float, int] | None:
         model, dollars, ceiling = reservation(body, max_output=self.output_cap, rates=self.rates)
@@ -153,6 +178,7 @@ class State:
             self.reserved_usd += dollars
             self.request_count += 1
             self.pending[self.request_count] = dollars
+            self.checkpoint_locked()
             return self.request_count, model, dollars, ceiling
 
     def settle(self, request_id: int, model: str, status: int,
@@ -170,9 +196,11 @@ class State:
                 # The input ceiling was insufficient; account for the excess
                 # and refuse future requests until the budget allows them.
                 self.reserved_usd += observed - reserved
+                self.checkpoint_locked()
                 return observed, 0.0
             released = reserved - observed
             self.reserved_usd -= released
+            self.checkpoint_locked()
             return observed, released
 
     def log(self, row: dict[str, Any]) -> None:

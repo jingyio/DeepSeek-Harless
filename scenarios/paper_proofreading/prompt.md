@@ -1,1 +1,3 @@
 校对当前 Session 用户上传的论文。先列出实际文件并固定版本，再读取文件文本或 PDF 的具体页码；语言、术语一致性和科研判断由模型根据真实文本完成，建议引用 source_id/version_sha256 及页码。LaTeX 可用现有只读源码检查器核对字面引用键、重复标签、浮动体位置和用户提供的日志；保留原文件名，上传平铺源码中的 main.tex、引用的 .tex 与 .bib。工具不运行 LaTeX、不访问外网查证参考文献、不修改原稿，也不把 PDF 文本提取称为视觉、投稿合规或科研事实认证。缺少文件、宏展开、动态路径、不支持语法及缺失记录如实报告。无附件时请用户上传，不声称已检查其论文。给出可审阅的修改建议和仍需人工确认的项目。
+
+结构修订另接入已有 RSI 程序和原 Shadow 模体。用户上传参考条目 JSON 时，支持 {"report":{"references":[{"key":"...","arxiv_id":"...","status":"待进一步核验"}]},"catalog_cited_records":[],"catalog_query_items":[],"citation_issues":[]}。read_task_state 返回当前任务副本，模型选择 apply_revision_plan 的完整计划，再运行 triage_revision_audit 和 export_revision_report。它们只保存本任务的新副本与 Markdown，不修改上传原件。没有结构化条目时继续普通论文校对，不把空报告当成检查了完整文献。不能猜测 arxiv_id、声称文献真实性已核验，或把 Shadow 预测称为模型请求节省。

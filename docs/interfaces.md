@@ -591,3 +591,12 @@ Python 从正常基线编译 `source_bound_readonly_batch_shadow` v1：当前任
 `src/adapters/trace_paths.py::relative_trace_path(value, roots)`按轨迹路径自身风格做词法绑定，输出正斜杠依赖键；Windows编译机可解析Linux历史轨迹，POSIX编译机可检查Windows绝对路径。外部根/盘符、上级跳转或盘符相对路径不绑定；真实文件/来源/版本守卫仍是授权必要条件。native参数中的file_path/workdir只有成功根绑定才替换为`${WORK}`，不能通过相似目录前缀伪造依赖。预算授权path用正斜杠作为跨平台协议字段。
 
 固定当前revision-report.md导出在所有平台先拒绝已有符号链接/硬链接/非普通文件，使用私有随机临时文件O_EXCL写入、当前报告版本复核和rename替换，不依赖Windows缺失的O_NOFOLLOW，最终清理临时文件。catalog绑定使用平台basename，仍要求源目录文件及SHA完全匹配。上述保护不扩大Runtime写入权限或自动迁移旧manifest。
+# 已有三库的原生双路对照
+
+成员 policy 的 `comparison_scenes` 为管理员白名单，默认关闭；只在既有 scoped budget broker 的账户进程内启用。`session/prompt` 对指定场景返回 `{accepted:true, comparison_id}`，仍使用现有 DSH Session、任务提交和模型循环。每个父 Session 固定两个独立子 Session；后续文字分别追加到各自历史，换资料或场景需新会话。同一 requestId 的相同发送幂等，变更内容拒绝。
+
+`GET /api/harless/comparisons?session_id=...&id=...` 返回两侧状态、回答、实际模式、库哈希、统计、结果文件及评分。加 `lane` 和 `file` 下载已冻结且哈希复核的结果副本。所有操作先校验当前账号归属，文件列表不暴露上传内容、配置、模型凭证或原始日志。
+
+`POST /api/harless/comparisons` 支持 `rate`、`retry`、`cancel`。评分需 `{session_id,id,lane,score,revision,output_sha256}`，两侧完成才接受 1–5 整数，以结果哈希和 revision 防止过期覆盖；评分与修改记录落在账号私有目录。重试仅重跑失败一侧，成功结果保持；重启把未完成任务标为中断，不自动启动新付费请求。原生 `user/message` 的 `harless_comparison` 元数据及标准 `turn/start/end` 定位双栏，持久化 GET 提供实时状态并支持刷新恢复；不写入当前 Harness 无法恢复的未知事件类型。
+
+PPT 复用已有只读库；数据通过 `report_session.py` 绑定上传 CSV/TSV 和可选研究 JSON，沿用已有 V3 工具及许可回执；论文通过 `revision_session.ts` 调用已有程序，保留所有上传字段并对窄审计 schema 做结构投影，Shadow 不授权模型跳过。

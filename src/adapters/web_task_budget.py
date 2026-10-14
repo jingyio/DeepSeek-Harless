@@ -69,6 +69,7 @@ class RoutedState:
                 state.reserved_usd += dollars
                 state.request_count += 1
                 state.pending[state.request_count] = dollars
+                state.checkpoint_locked()
             request_id = self.state.request_count
             self._global_ids[request_id] = run.request_count
             return request_id, model, dollars, ceiling

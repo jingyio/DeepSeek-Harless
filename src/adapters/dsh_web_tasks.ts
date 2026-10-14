@@ -4,18 +4,21 @@ import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeF
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
-import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
+import { isAgentLoopRequest, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
 import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, sceneShortcut, parseSceneShortcut, SettingsError } from './harless_settings.ts';
-import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest } from './harless_task_scope.ts';
+import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest, prepareSceneRuntimeInputs } from './harless_task_scope.ts';
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
-import {bindUploadedPptTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
+import {bindUploadedPptTask,bindUploadedSourceTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
+import {createComparisonService} from './harless_comparison.ts';
+import {comparisonArtifacts,verifiedReportFiles} from './harless_comparison_artifacts.ts';
+import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
 
 export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry'];
@@ -25,6 +28,7 @@ type Policy = {
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   budget_broker_endpoint?: string;
   budget_task_prefix?: string;
+  comparison_scenes?: string[];
   ownership_legacy_outputs?: string[];
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
@@ -44,6 +48,7 @@ type Task = {
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
   model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; scope_sha256: string | null;
   budget_session_id: string;
+  source_task_id?: string;
   bound_binding_sha256?: string | null;
 };
 class TaskError extends Error {
@@ -68,8 +73,11 @@ export function apply(ctx: any) {
       !config.control_token || !Array.isArray(config.allowed_tools) ||
       !['baseline', 'shadow', 'execute'].includes(config.mode) ||
       !['mock', 'real'].includes(config.provider_mode)) throw Error('Invalid dynamic Web policy');
+  mkdirSync(join(config.output, 'tasks'), { recursive: true, mode: 0o700 });
   const tasks = new Map<string, Task>(), sessions = new Map<string, string>();
   const brokerMode = config.budget_broker_endpoint !== undefined;
+  if (config.comparison_scenes && (!brokerMode || !Array.isArray(config.comparison_scenes) || config.comparison_scenes.some(id => !['ppt', 'paper-proofreading', 'research-data-analysis', 'literature'].includes(id)))) throw Error('Invalid comparison policy');
+  let comparisons: ReturnType<typeof createComparisonService> | undefined;
   const modelOptions = config.models ?? [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }];
   const defaultModel = modelOptions.find(option => option.available);
   if (!defaultModel || modelOptions.some(option => !/^[a-z][a-z0-9-]*$/.test(option.provider) || !/^[A-Za-z0-9._-]+$/.test(option.model) ||
@@ -113,6 +121,13 @@ export function apply(ctx: any) {
   function executeUnavailable(scene: Scene): string | null {
     if (scene.unavailable_reason) return scene.unavailable_reason;
     if (scene.rsi_unavailable_reason) return scene.rsi_unavailable_reason;
+    if(scene.runtime_kind==='paper_shadow_v1')return 'existing_paper_library_shadow_only';
+    if(scene.runtime_kind==='data_receipts_v3'){
+      try{
+        if(fileSha(scene.runtime_library)!==scene.runtime_library_sha256)return 'existing_data_library_changed';
+        validateExistingData(JSON.parse(readFileSync(scene.runtime_library!,'utf8')));return null;
+      }catch{return 'existing_data_library_invalid';}
+    }
     if (!scene.manifest || !scene.task) return 'no_certified_library';
     if (!scene.diagnostic && !scene.certified_tool_schemas) return 'no_certified_tool_schemas';
     const structural=scene.matching_policy==='structural_only';
@@ -120,7 +135,8 @@ export function apply(ctx: any) {
     if (!structural && !/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
     try {
       if(structural){
-        if(scene.id!=='ppt' || scene.binding_policy!=='ppt_uploaded_sources_v1' ||
+        if(!(['ppt','paper-proofreading','research-data-analysis','literature'].includes(scene.id)) ||
+           scene.binding_policy!==(scene.id==='ppt'?'ppt_uploaded_sources_v1':'uploaded_source_handles_v1') ||
            scene.certification_scope!=='independent_trace_structure' || !scene.certification_path ||
            fileSha(scene.certification_path)!==scene.certification_sha256 || !scene.certified_code_locks ||
            Object.entries(scene.certified_code_locks).some(([path,expected])=>fileSha(path)!==expected))return 'runtime_bundle_certification_invalid';
@@ -148,7 +164,12 @@ export function apply(ctx: any) {
     const allowed = new Set(scene.allowed_tools);
     const disposers = [agent.ctx.tools.restrict({ allow: scene.allowed_tools }),
       agent.ctx.tools.guard((call: any) => allowed.has(call.name) ? undefined : 'Tool is outside the configured capability profile')];
-    if (scene.instructions) disposers.push(agent.ctx.systemPrompt.section({ name: 'harless-scene', order: 10210, text: scene.instructions }));
+    if (scene.instructions) {
+      // Report value tokens such as {{estimate}} are literal instructions, not
+      // Harness prompt variables. Substitution values are not interpolated again.
+      disposers.push(agent.ctx.systemPrompt.variable('harless_scene_literal',()=>scene.instructions));
+      disposers.push(agent.ctx.systemPrompt.section({ name: 'harless-scene', order: 10210, text: '{{harless_scene_literal}}' }));
+    }
     if (config.fixture === 'tool-failure') disposers.push(agent.ctx.tools.guard((call: any) => call.name.endsWith('__read_pinned') ? 'injected mock tool failure' : undefined));
     guards.set(agent.session.id, disposers.filter(dispose => typeof dispose === 'function'));
     schemas.set(agent.session.id, agent.ctx.tools.schemas(scopeOf(agent.ctx)).sort((a: any, b: any) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -159,7 +180,11 @@ export function apply(ctx: any) {
     const task = sessionId ? forSession(sessionId) : undefined;
     return { selection: selected, applies_to: task ? 'next_task' : 'next_prompt',
       conversation_only: sessionId ? legacyChatSessions.has(sessionId) : false,
-      scene_locked: sessionId ? boundSessions.has(sessionId) || legacyChatSessions.has(sessionId) : false,
+      scene_locked: sessionId ? boundSessions.has(sessionId) || legacyChatSessions.has(sessionId) || Boolean(comparisons?.hasSession(sessionId)) : false,
+      paired_comparison: Boolean(config.comparison_scenes?.includes(selected.scene)),
+      motif_library: sceneFor(selected.scene).runtime_kind ? {kind:sceneFor(selected.scene).runtime_kind,
+        mode:sceneFor(selected.scene).runtime_mode,sha256:sceneFor(selected.scene).runtime_library_sha256,loaded:!sceneFor(selected.scene).rsi_unavailable_reason}:null,
+      comparison_child: sessionId ? Boolean(comparisons?.isLane(sessionId)) : false,
       preview_scene: selected.scene, // compatibility alias; now an actual registered selection
       preview_scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason })),
       current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status } : null,
@@ -179,6 +204,8 @@ export function apply(ctx: any) {
       ] : [],
       session_id: sessionId ?? null, model_calls: 0 };
   }
+  const certifiedSchemaMatches = (scene: Scene, tools: any[]) =>
+    [scene.certified_tool_schemas, ...(scene.certified_tool_schema_variants ?? [])].some(row => row && digest(row) === digest(tools));
   async function setSelection(sessionId: string | undefined, patch: unknown) {
     if (sessionId) await ensureOwned(sessionId);
     settingsView(sessionId); // ownership before mutation
@@ -190,7 +217,7 @@ export function apply(ctx: any) {
       if (next.scene !== current.scene) {
         // A started preset is immutable. Refuse before changing saved/UI state.
         const snapshot = await controller.inspect(sessionId);
-        if (boundSessions.has(sessionId) || legacyChatSessions.has(sessionId) || snapshot.events.some((event: any) =>
+        if (boundSessions.has(sessionId) || comparisons?.hasSession(sessionId) || legacyChatSessions.has(sessionId) || snapshot.events.some((event: any) =>
             ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)))
           throw new TaskError('scene_requires_new_session', '当前会话已开始，切换场景需要新建会话；原聊天会保留。', 409);
         if (!agents.has(sessionId)) await original.selectModel({ sessionId,
@@ -265,13 +292,22 @@ export function apply(ctx: any) {
     models: Object.fromEntries([...modelSelections].map(([id, option]) => [id, option.model])) });
   try {
     const saved = JSON.parse(readFileSync(join(config.output, 'harless-settings.json'), 'utf8'));
-    if (saved.defaults) defaults = changeSelection(defaults, saved.defaults, scenes, executeUnavailable);
+    const restoreSelection = (selection:any,id?:string) => {
+      if(!scenes.some(scene=>scene.id===selection?.scene)){
+        if(id)legacyChatSessions.add(id);
+        return {...defaults};
+      }
+      try{return changeSelection(defaults, selection, scenes, executeUnavailable);}
+      catch(error:any){if(error.code!=='execute_unavailable')throw error;
+        return changeSelection(defaults,{...selection,mode:'baseline',rsi:false},scenes,executeUnavailable);}
+    };
+    if (saved.defaults) defaults = restoreSelection(saved.defaults);
     for (const [id, selection] of Object.entries(saved.sessions ?? {})) {
-      if (ownedSessions.has(id)) selections.set(id, changeSelection(defaults, selection, scenes, executeUnavailable));
+      if (ownedSessions.has(id)) selections.set(id, restoreSelection(selection,id));
     }
     for(const [id, values] of Object.entries(saved.scene_options ?? {}))if(ownedSessions.has(id)){
       const scoped:Record<string,SceneOptions>={};
-      for(const [sceneId,value] of Object.entries(values as Record<string,unknown>))scoped[sceneId]=sceneOptions(value,sceneFor(sceneId));
+      for(const [sceneId,value] of Object.entries(values as Record<string,unknown>))if(scenes.some(scene=>scene.id===sceneId))scoped[sceneId]=sceneOptions(value,sceneFor(sceneId));
       optionSelections.set(id,scoped);
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
@@ -346,11 +382,12 @@ export function apply(ctx: any) {
     return { task_id: request.task_id, session_id: request.session_id, request_id: request.request_id,
       capability_profile: request.capability_profile, scene: task.scene.id, scene_sha256: task.scene.config_sha256,
       user_id: principal, selected_mode: task.selection.mode, rsi: task.selection.rsi, mode: request.mode, budget_usd: request.budget_usd,
-      entrypoint: task.entrypoint, status: task.status, failure: task.failure, fallback_reason: task.fallback_reason,
+      entrypoint: task.entrypoint, source_task_id: task.source_task_id, status: task.status, failure: task.failure, fallback_reason: task.fallback_reason,
       created_at: task.created_at, started_at: task.started_at, finished_at: task.finished_at,
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
       request_sha256: request.request_sha256, confirmation_digest: task.confirmation_digest,
       provider_mode: config.provider_mode, provider: task.model_option.provider, model: task.model_option.model,
+      motif_library:task.scene.runtime_kind??null,library_sha256:task.scene.runtime_library_sha256??null,
       paid_calls_enabled: config.provider_mode === 'real',
       scene_options: task.scene_options, scene_inputs: task.scene_inputs,
       effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
@@ -373,12 +410,16 @@ export function apply(ctx: any) {
         !ownedSessions.has(request.session_id) || typeof route.budget_session_id !== 'string' ||
         state.task_id !== taskId || state.session_id !== request.session_id) throw Error('Web task index identity mismatch');
     const effective = JSON.parse(readFileSync(join(output, 'effective-config.json'), 'utf8'));
-    const restoredScene = sessionScene(request.session_id, sceneFor(state.scene ?? request.capability_profile));
+    const configuredScene = scenes.find(scene=>scene.id===(state.scene??request.capability_profile))??sceneFor(defaults.scene);
+    if(!scenes.some(scene=>scene.id===(state.scene??request.capability_profile))||
+      (effective.allowed_tools&&digest(effective.allowed_tools)!==digest(configuredScene.allowed_tools)))legacyChatSessions.add(request.session_id);
+    const restoredScene = sessionScene(request.session_id, configuredScene);
     const task: Task = { request, delivery: request.content, confirmation_digest: state.confirmation_digest,
       status: state.status, created_at: state.created_at, started_at: state.started_at,
       finished_at: state.finished_at, failure: state.failure, fallback_reason: state.fallback_reason,
       answer: '', output, stats: state.stats, humans: new Map(), current_humans: new Set(),
       sources: state.sources, entrypoint: state.entrypoint, budget_session_id: route.budget_session_id,
+      source_task_id: state.source_task_id ?? request.task_id,
       scene: { ...restoredScene, config_sha256: effective.scene_sha256 ?? restoredScene.config_sha256,
         instructions: effective.instructions ?? restoredScene.instructions, instructions_sha256: effective.instructions_sha256,
         allowed_tools: effective.allowed_tools ?? restoredScene.allowed_tools },
@@ -599,7 +640,9 @@ export function apply(ctx: any) {
     if (previousTask && !terminal.has(previousTask.status)) throw new TaskError('session_busy', '请等待本轮完成或取消，再发送下一条消息。', 409);
     await previousTask?.closing;
     if (!brokerMode && (sessions.has(request.session_id) || boundSessions.has(request.session_id))) throw new TaskError('session_already_bound', 'This session already has a task；请点击“新会话”后发送新的任务。', 409);
-    if (modelSelections.get(request.session_id)?.model !== chosenModel.model) await controller.selectModel({
+    // Saved model selections survive process restarts; live Agents and their
+    // MCP schemas do not. Restore the native Agent before checking its tools.
+    if (!agents.has(request.session_id) || modelSelections.get(request.session_id)?.model !== chosenModel.model) await controller.selectModel({
       sessionId: request.session_id, provider: chosenModel.provider, model: chosenModel.model,
       ...(chosenModel.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' })
     }, new AbortController().signal);
@@ -618,8 +661,8 @@ export function apply(ctx: any) {
     const tools = structuredClone(schemas.get(request.session_id) ?? []);
     if (tools.length !== scene.allowed_tools.length || tools.some((tool: any) => !scene.allowed_tools.includes(tool.name)))
       throw new TaskError('scene_tools_unavailable', 'Configured MCP tool surface did not load', 409);
-    if (request.mode === 'execute') {
-      if (scene.certified_tool_schemas && digest(tools) !== digest(scene.certified_tool_schemas))
+    if (request.mode === 'execute' && scene.runtime_kind!=='data_receipts_v3') {
+      if (scene.certified_tool_schemas && !certifiedSchemaMatches(scene, tools))
         throw new TaskError('execute_unavailable', 'certified_tool_schema_mismatch', 409);
       const manifest = JSON.parse(readFileSync(scene.manifest!, 'utf8'));
       const offered = new Map(tools.map((tool: any) => [tool.name, tool]));
@@ -645,6 +688,7 @@ export function apply(ctx: any) {
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output,
       humans: priorHumans, current_humans: new Set(), sources,
       model_option: chosenModel, budget_session_id: budgetSessionId,
+      source_task_id: previousTask?.source_task_id ?? previousTask?.request.task_id ?? taskId,
       stats: { tool_calls: 0, tool_errors: 0, llm_decisions: 0, motif_attempts: 0, shadow_candidates: 0, verified_skips: 0,
         upstream_requests: 0, model_requests: 0, actual_paid_usd: config.provider_mode === 'mock' ? 0 : null } };
     for (const filename of ['events.jsonl', 'motif-audit.jsonl']) writeFileSync(join(output, filename), '', { mode: 0o600 });
@@ -659,8 +703,10 @@ export function apply(ctx: any) {
     indexedTasks.push(taskId); saveTaskIndex(); return task;
   }
   function updateDraft(task: Task) {
-    if(task.scene.binding_policy==='ppt_uploaded_sources_v1' && task.request.mode!=='baseline' && task.scene_inputs.length){
-      const binding=bindUploadedPptTask(task.workspace,task.scene_inputs,task.request,JSON.parse(readFileSync(task.scene.manifest!,'utf8')));
+    if(task.scene.binding_policy && task.request.mode!=='baseline' && task.scene_inputs.length){
+      const manifest=JSON.parse(readFileSync(task.scene.manifest!,'utf8'));
+      const binding=task.scene.binding_policy==='ppt_uploaded_sources_v1' ? bindUploadedPptTask(task.workspace,task.scene_inputs,task.request,manifest,task.source_task_id)
+        : bindUploadedSourceTask(task.workspace,task.scene_inputs,task.request,manifest);
       json(join(task.output,'bound-motif-task.json'),binding);
       task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
     }
@@ -693,20 +739,31 @@ export function apply(ctx: any) {
   function configureMotif(task: Task) {
     if (task.request.mode === 'baseline') return;
     const parts = task.request.content, scene = task.scene;
+    if(scene.runtime_kind==='data_receipts_v3'||scene.runtime_kind==='paper_shadow_v1'){
+      try{
+        if(fileSha(scene.runtime_library)!==scene.runtime_library_sha256)throw Error('existing_library_changed');
+        const library=JSON.parse(readFileSync(scene.runtime_library!,'utf8'));
+        task.interceptor=scene.runtime_kind==='data_receipts_v3'
+          ? dataInterceptor(library,task.workspace,task.request.mode,row=>audit(task,row))
+          : paperShadowInterceptor(library,task.tools,row=>audit(task,row));
+        audit(task,{kind:'existing_library_loaded',runtime_kind:scene.runtime_kind,sha256:scene.runtime_library_sha256,mode:task.request.mode,new_training:false});
+      }catch(error:any){task.fallback_reason=error.message;audit(task,{kind:'motif_fallback',reason:error.message});}
+      return;
+    }
     const availableTools = new Map(task.tools.map(tool => [tool.name, tool]));
     const pinned = (path: string, expected: string | null) => { const bytes = readFileSync(path); if (sha(bytes) !== expected) throw Error('Motif binding version changed'); return JSON.parse(bytes.toString('utf8')); };
     if (!scene.manifest || !scene.task) task.fallback_reason = scene.rsi_unavailable_reason ?? 'no_certified_library';
     else if (!scene.diagnostic && !scene.certified_tool_schemas) task.fallback_reason = 'no_certified_tool_schemas';
-    else if (scene.certified_tool_schemas && digest(task.tools) !== digest(scene.certified_tool_schemas)) task.fallback_reason = 'certified_tool_schema_mismatch';
+    else if (scene.certified_tool_schemas && !certifiedSchemaMatches(scene, task.tools)) task.fallback_reason = 'certified_tool_schema_mismatch';
     else if (scene.matching_policy==='structural_only' && executeUnavailable(scene))task.fallback_reason='runtime_bundle_certification_invalid';
     else if (scene.matching_policy!=='structural_only' && !scene.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
-    else if (scene.binding_policy==='ppt_uploaded_sources_v1' && !task.bound_binding_sha256)task.fallback_reason='ppt_rsi_requires_approved_sources';
-    else if (scene.binding_policy!=='ppt_uploaded_sources_v1' && (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
+    else if (scene.binding_policy && !task.bound_binding_sha256)task.fallback_reason='rsi_requires_approved_sources';
+    else if (!scene.binding_policy && (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
         sha(parts[0].text.trim()) !== scene.certified_input_sha256)) task.fallback_reason = 'input_not_certified_for_library';
     else try {
       const manifest = pinned(scene.manifest, task.manifest_sha256);
       if (Object.entries(manifest.contracts).some(([name, contract]) => !offeredSchemaMatches(availableTools, name, contract))) throw Error('library_tool_schema_mismatch');
-      const binding = scene.binding_policy==='ppt_uploaded_sources_v1' ? pinned(join(task.output,'bound-motif-task.json'),task.bound_binding_sha256!) : pinned(scene.task, task.binding_sha256);
+      const binding = scene.binding_policy ? pinned(join(task.output,'bound-motif-task.json'),task.bound_binding_sha256!) : pinned(scene.task, task.binding_sha256);
       binding.session_id = task.request.session_id; binding.task_id = task.request.task_id;
       json(join(task.output, 'bound-motif-task.json'), binding);
       task.interceptor = createOnlineInterceptor({ manifest,
@@ -724,22 +781,28 @@ export function apply(ctx: any) {
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
     if (task.scene.adapter === 'files' && task.scene_options.allow_output && !task.scene_inputs.length)
       throw new TaskError('files_requires_input_for_output', 'Files 整理权限需要先上传本任务的来源文件', 409);
+    if (task.scene.adapter === 'literature' && !task.scene_inputs.length)
+      throw new TaskError('literature_requires_pdf', '请先上传本次任务的 PDF，再开始文献处理。', 409);
+    if(task.scene.adapter==='data-report'&&!task.scene_inputs.some(row=>/\.(csv|tsv)$/i.test(row.name)))
+      throw new TaskError('data_requires_source','请先上传一份 CSV/TSV 数据表。',409);
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
         scopeDigest(task.workspace, task.scene) !== task.scope_sha256 ||
         (task.scene.runtime_file_locks && Object.entries(task.scene.runtime_file_locks).some(([path,expected])=>fileSha(path)!==expected)) ||
         (task.scene.tool_schemas && fileSha(task.scene.tool_schemas) !== task.scene.certified_tool_schemas_sha256) ||
-        fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256) {
+        fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256 ||
+        (task.scene.runtime_library && fileSha(task.scene.runtime_library)!==task.scene.runtime_library_sha256)) {
       throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
     }
     if (task.request.mode === 'execute') {
       const reason = executeUnavailable(task.scene);
       if (reason) throw new TaskError('execute_unavailable', reason, 409);
-      if(task.scene.binding_policy==='ppt_uploaded_sources_v1'){
+      if(task.scene.binding_policy){
         if(!task.bound_binding_sha256)throw new TaskError('execute_unavailable','ppt_rsi_requires_approved_sources',409);
         if(fileSha(join(task.output,'bound-motif-task.json'))!==task.bound_binding_sha256)
           throw new TaskError('confirmation_changed','bound_motif_task_changed',409);
       }
     }
+    await prepareSceneRuntimeInputs(task.workspace, task.scene);
     requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
     try {
       configureMotif(task);
@@ -752,6 +815,7 @@ export function apply(ctx: any) {
   }
   controller.prompt = (request: any, signal: AbortSignal) => serialize(async () => {
     await ensureOwned(request.sessionId);
+    if (comparisons?.isLane(request.sessionId)) throw new TaskError('comparison_child', '请回到原对照会话继续发送，左右两侧会分别保留历史。', 409);
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
     if (!selections.has(request.sessionId)) {
       const snapshot = await controller.inspect(request.sessionId);
@@ -781,6 +845,30 @@ export function apply(ctx: any) {
       await setSelection(request.sessionId, { scene: shortcut.scene });
       firstText.text = shortcut.text;
     }
+    const selected = selections.get(request.sessionId)!;
+    if (comparisons && config.comparison_scenes?.includes(selected.scene) && !legacyChatSessions.has(request.sessionId)) {
+      if (forSession(request.sessionId)) throw new TaskError('comparison_requires_new_session', '已有普通任务的会话请保留，新建会话开始双路对照。', 409);
+      const scene = sceneFor(selected.scene), parent = agents.get(request.sessionId);
+      if (!Array.isArray(content) || !content.length || content.some((part: any) => !['text', 'file'].includes(part.type)) ||
+          content.filter((part: any) => part.type === 'file').length > 8) throw new TaskError('unsupported_input', '请发送文字和最多 8 份场景资料。');
+      const text = content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n');
+      if (!text.trim() || text.length > 10000) throw new TaskError('invalid_request', '请填写不超过 10000 字的任务。');
+      const sourceFiles:Record<string,any>={};
+      const files = content.filter((part: any) => part.type === 'file').map((part: any) => {
+        const ref = ctx.fileUploads.resolve(parent, part.receiptId)??comparisons.sourceFor(request.sessionId,request.requestId,part.receiptId);
+        if (!ref || ref.bytes > 20 * 1024 * 1024) throw new TaskError('file_receipt_not_owned', '资料回执不属于当前会话或文件过大。');
+        sourceFiles[part.receiptId]=structuredClone(ref);
+        return { name: ref.name, bytes: ref.bytes, digest: digest(ref) };
+      });
+      if (!comparisons.hasSession(request.sessionId) && ((scene.adapter === 'literature' && !files.length) ||
+          (scene.adapter==='data-report'&&!files.some((row:any)=>/\.(csv|tsv)$/i.test(row.name))) ||
+          (scene.adapter === 'ppt' && optionSelections.get(request.sessionId)?.[selected.scene]?.allow_output && !files.length)))
+        throw new TaskError('scene_requires_files', '请先上传本次任务的来源资料再发送。', 409);
+      return comparisons.admit(request.sessionId, { ...request, content }, {
+        scene: selected.scene, options: optionSelections.get(request.sessionId)?.[selected.scene] ?? {},
+        model: (modelSelections.get(request.sessionId) ?? defaultModel).model, input_sha256: digest([text, files]),source_files:sourceFiles,
+      });
+    }
     const task = await preview({ content, request_id: request.requestId }, request.sessionId, 'native_chat');
     await submit(task, task.confirmation_digest, signal);
     return { accepted: true };
@@ -790,6 +878,117 @@ export function apply(ctx: any) {
     const task = forSession(request.sessionId);
     const result = await original.cancel(request); if (task) finish(task, 'cancelled', 'user_cancelled'); return result;
   };
+  if (config.comparison_scenes?.length) {
+    const artifacts = comparisonArtifacts(config.output), taskParents = new Map<string, any>();
+    comparisons = createComparisonService(config.output, principal, {
+      owns: ensureOwned,
+      ready: () => active === null,
+      async createLane(parent, scene, lane) {
+        const group = ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(parent));
+        const created = await controller.create({ agentPreset: sceneFor(scene).preset, ...(group ? { workspaceId: group.id } : {}) });
+        // Only the comparison Host admits child turns. Native prompt rejects direct child mutation.
+        await controller.rename({ sessionId: created.sessionId, title: lane === 'baseline' ? 'Baseline DSH' : 'Motif DSH' });
+        return created.sessionId;
+      },
+      async prepare(turn, lane, requestId) { return serialize(async () => {
+        requireIdle(); const child = turn.lanes[lane].session_id;
+        await ensureOwned(turn.session_id); await ensureOwned(child);
+        const previous = forSession(child), content: any[] = [];
+        for (const part of turn.input) {
+          if (part.type === 'text') { content.push(part); continue; }
+          // A failed initial attempt already froze these same parent inputs.
+          // Retrying keeps that snapshot; it must not rebind upload receipts.
+          if (previous) continue;
+          const ref = turn.source_files?.[part.receiptId]??ctx.fileUploads.resolve(agents.get(turn.session_id), part.receiptId);
+          if (!ref || ref.bytes > 20 * 1024 * 1024) throw new TaskError('file_receipt_not_owned', '资料回执不属于原会话。');
+          const uploaded = await ctx.fileUploads.uploadStream({ sessionId: child, name: ref.name,
+            data: ctx.attachments.readFileStream(ref), signal: new AbortController().signal });
+          content.push({ type: 'file', receiptId: uploaded.receiptId });
+        }
+        const configured=sceneFor(turn.scene);
+        const reason = executeUnavailable(configured)??(configured.binding_policy&&!content.some(part=>part.type==='file')&&!previous?.scene_inputs.length?'rsi_requires_approved_sources':null);
+        const mode = lane === 'baseline' ? 'baseline' : sceneFor(turn.scene).runtime_kind==='paper_shadow_v1'?'shadow':reason ? 'baseline' : 'execute';
+        selections.set(child, { scene: turn.scene, mode, rsi: mode !== 'baseline' });
+        optionSelections.set(child, { [turn.scene]: turn.options }); saveSettings();
+        const task = await preview({ content, request_id: requestId, model: turn.model, budget_usd: config.budget_usd / 2, mode }, child, 'native_chat');
+        // Unavailable or invalid research libraries must be visible; never label a Baseline run as optimized.
+        if (lane === 'motif' && reason && mode==='baseline') task.fallback_reason = reason;
+        taskParents.set(task.request.task_id, { turn, lane });
+        try { await submit(task, task.confirmation_digest, new AbortController().signal); }
+        catch (error) { finish(task, 'failed', 'comparison_admission_failed'); await task.closing; throw error; }
+        return { task_id: task.request.task_id };
+      }); },
+      async submit(_id) { /* prepare+submit is atomic within the existing admission lock. */ },
+      async inspect(id) {
+        const task = get(id), result = await refresh(task), meta = taskParents.get(id);
+        if (meta && task.status === 'completed') return { ...result,
+          deliveries: artifacts.snapshot(meta.turn.id, meta.lane, meta.turn.lanes[meta.lane].attempt, task.workspace,
+            task.scene.adapter==='data-report'?verifiedReportFiles(task.workspace):undefined) };
+        return result;
+      },
+      async cancel(id) { const task = get(id); await controller.cancel({ sessionId: task.request.session_id }); },
+      async publish(parent, turn, request) {
+        await ensureOwned(parent);
+        if (!agents.has(parent)) {
+          const option = modelSelections.get(parent) ?? defaultModel;
+          await original.selectModel({ sessionId: parent, provider: option.provider, model: option.model, reasoningEffort: 'off' });
+        }
+        const agent = agents.get(parent);
+        const events=agent.session.snapshotEvents();
+        const priorComparison=events.find((e:any)=>e.type==='user/message'&&e.data.harless_comparison?.id===turn.id);
+        let parentTurn=priorComparison?.data.harless_comparison.turn;
+        if(request&&!priorComparison){
+          parentTurn=1+Math.max(0,...events.filter((e:any)=>e.type==='turn/start').map((e:any)=>e.data.turn));
+          // Public durable turn events make this app-owned result a native chat
+          // turn. The two child Sessions perform all actual model execution.
+          agent.session.append('turn/start',{turn:parentTurn});
+          if(!events.some((e:any)=>e.type==='user/message'))await controller.rename({sessionId:parent,
+            title:request.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join(' ').slice(0,80)});
+        }
+        if (request && !agent.session.snapshotEvents().some((e: any) => e.type === 'user/message' && e.data.source?.rpcId === request.requestId)) {
+          const ids: string[] = [], content: any[] = [];
+          for (const part of request.content) if (part.type === 'text') content.push(part); else {
+            const ref = ctx.fileUploads.resolve(agent, part.receiptId); if (!ref) throw new TaskError('file_receipt_not_owned', '上传回执不属于当前会话。');
+            ids.push(part.receiptId); content.push({ type: 'file', attachment: ref });
+          }
+          const message = createUserMessage({ content: await ctx.attachments.admitPromptContent(content), source: { kind: 'user', rpcId: request.requestId },
+            harless_comparison:{id:turn.id,turn:parentTurn,value:turn} } as any);
+          const binding = ctx.fileUploads.bindPrompt(agent, ids, request.requestId);
+          try { agent.session.append('user/message', message, { surfaceOp: 'append' }); binding.commit(); }
+          finally { binding[Symbol.dispose](); }
+        }
+        // Use extensible metadata on a standard UserMessage. Out-of-vocabulary
+        // log events cannot be resumed by this pinned Harness; GET supplies live
+        // progress and final results without requiring an upstream change.
+        if(parentTurn&&['completed','failed','cancelled'].includes(turn.status)&&
+          !agent.session.snapshotEvents().some((e:any)=>e.type==='turn/end'&&e.data.turn===parentTurn))
+          agent.session.append('turn/end',{turn:parentTurn,reason:{kind:'completed'}});
+      },
+    });
+    ctx.effect(() => () => comparisons?.dispose(), 'harless-comparison-lifetime');
+    ctx.effect(() => ctx.connection.fetch.register({ path: '/api/harless/comparisons', methods: ['GET', 'POST'], requestBody: 'buffered', async fetch(request: Request) {
+      const rejected = ctx.connection.requestRejection(request); if (rejected) return new Response('Unauthorized', { status: rejected });
+      try {
+        const url = new URL(request.url), session = url.searchParams.get('session_id')!, id = url.searchParams.get('id')!;
+        if (request.method === 'GET') {
+          const value: any = await comparisons!.view(session, id), lane = url.searchParams.get('lane'), file = url.searchParams.get('file');
+          if (file) {
+            const row = lane && value.lanes[lane]?.artifacts.find((item: any) => item.id === file);
+            if (!row) throw new TaskError('artifact_not_found', '找不到这个结果文件。', 404);
+            return new Response(artifacts.read(id, lane!, row), { headers: { 'Content-Type': 'application/octet-stream',
+              'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(row.name.split('/').pop()), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+          }
+          return Response.json(value, { headers: { 'Cache-Control': 'no-store' } });
+        }
+        const body: any = await request.json();
+        const result = body.action === 'rate' ? await comparisons!.rate(body.session_id, body.id, body.lane, body.score, body.revision, body.output_sha256)
+          : body.action === 'retry' ? await comparisons!.retry(body.session_id, body.id, body.lane)
+          : body.action === 'cancel' ? await comparisons!.cancel(body.session_id, body.id)
+          : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })();
+        return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
+      } catch (error: any) { return Response.json({ error: { code: error.code ?? 'comparison_failed', message: error.message } }, { status: error.status ?? 400 }); }
+    } }), 'harless-comparison-api');
+  }
   const options = resolveAdapterOptions({ baseURL: brokerMode ? config.budget_broker_endpoint + '/v1' : config.endpoint,
     thinking: 'disabled', reasoningEffort: 'off', maxTokens: config.max_output_tokens } as any);
   ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new DeepSeekAdapter({ options: () => options,
@@ -867,6 +1066,7 @@ export function apply(ctx: any) {
         const result = await serialize(async () => {
           if (body.action === 'preview') {
             if (body.session_id && !ownedSessions.has(body.session_id)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
+            if (body.session_id && (comparisons?.isLane(body.session_id) || comparisons?.hasSession(body.session_id))) throw new TaskError('comparison_session', '请在原对照会话的聊天输入框发送任务。', 409);
             return view(await preview(body.request, body.session_id), true);
           }
           const task = get(body.task_id);
@@ -927,6 +1127,7 @@ export function apply(ctx: any) {
           if(body.action==='set_scene_options'){
             const current=settingsView(body.session_id);
             if(typeof body.session_id!=='string')throw new SettingsError('session_required','请选择所属 Session');
+            if (current.scene_locked) throw new TaskError('scene_requires_new_session', '场景选项已固定，请在新会话中设置。', 409);
             const options=sceneOptions(body.options,sceneFor(current.selection.scene));
             optionSelections.set(body.session_id,{...(optionSelections.get(body.session_id)??{}),[current.selection.scene]:options});
             saveSettings();return settingsView(body.session_id);
