@@ -1,6 +1,17 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-14：跨部署续聊恢复（已部署，PR 待审）
+## 2026-10-14：斜杠场景与成员边界（当前）
+
+- 更新时间与交接人：2026-10-14，Codex；用户授权修复、真实受限测试、部署与提交 PR，继续不代替用户合并。
+- 范围/版本：PR #11 的历史续聊与原生场景引用 `0fb57ad` 已合入 main `2ad349a`。新增分支 `codex/member-workspace-hardening`，实现 `a47f76e`/`0b5955c`；后续仅文档。[PR #15](https://github.com/jingyio/DeepSeek-Harless/pull/15) 已创建，待审、未合并。
+- 已完成：`harless_web_client/client.js` 原生前缀候选/蓝色引用与草稿保护；`dsh_web_tasks.ts` 工作区 ID 创建、冷会话恢复、场景锁定与同场景续聊；`dsh_member_workspace.ts`/`harless_member_file_scope.ts` 公开文件 Fetch/Lookup 边界；账号网关成员 profile 轮询、关闭浏览器连接和启动中后端。
+- 已验证：最终 Linux 165 Python / 93 Node、smoke、motif:check 全通过。三组双账号各三轮真实对话，重启与隔离通过；PPT 浏览器两轮、截图对应的早期会话两轮；真实成员同名文件独立、6 类 API 越界拒绝、工作区与字节重启恢复。见 [本轮记录](../experiments/slash-member-recovery-20261014-v1.md)。
+- 部署/数据：正式检出 `0b5955c`，owner 33102 / gateway 33101 保持；3080 原模型预算服务未重启。保留所有正式账号、Home、工作区、output 和迁移核验备份。原论文工作区没有覆盖；测试账户和凭证只在私有 `.local/`，结束清理测试后端，不清空历史日志。
+- 权限/预算：有效 deepseek-flash、Origin、off、输出 1000；本轮 22 请求估费 0.004509264 美元。观测累计 46 请求/0.008586282 美元，上限 0.23 美元/250 请求保持，账单未核对；公共说明 `docs/harless-account-gateway.md` 与 `docs/interfaces.md` 已同步。
+- 限制/下一步：未做大规模容量压测或 PPT 成品质量验收；Paper/Data 仍由部署可用性拒绝。迁入的锁定历史为文字兼容，新工具需新会话。审阅新 PR 后由用户合并；后续升级保持同 Home/output，并验证新增工具的账号文件边界。
+- 回退：保留私有启动规格、policy 与访问 URL 文件；可回退 `2ad349a`，但会恢复较宽成员文件预览和旧连接退出行为。回退不删除用户文件、归属/任务索引，不重置预算，不改写私人原件。
+
+## 2026-10-14：跨部署续聊恢复（历史，PR #11 已合并）
 
 - 范围与版本：分支 `codex/persistent-chat-recovery` 基于 main `6ade286`；实现提交 `373eadd`（含 `5e1ecbe`），后续为文档。修复历史可见但升级后发送被拒绝，以及旧锁定 preset 无新版工具导致的二次失败。
 - 接口：归属持久化至账号 `DSH_HOME`，按 Home/principal 隔离；私有 `ownership_legacy_outputs` 只导入同 Home 的明确旧目录，成员清空此配置。外部旧目录迁入的会话为文字续聊，`conversation_only:true`；附件及新版工具需新会话。正常重启不移除当前会话工具。

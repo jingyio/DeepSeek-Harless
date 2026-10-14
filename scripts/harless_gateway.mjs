@@ -92,6 +92,8 @@ export function createGateway(config) {
   if (db.version !== 1 || !Array.isArray(db.users) || !Array.isArray(db.invites) || !Array.isArray(db.sessions)) throw Error('Invalid account database');
   const save = () => store(dbPath, db);
   const backends = new Map(), pending = new Map(), failures = new Map(), startupErrors = new Map();
+  const memberChildren = new Set(), sockets = new Set();
+  let closing = false;
   const origin = new URL(config.publicOrigin).origin;
   // Reject a stale host patch before anybody can register into a backend that
   // cannot start. The patch must be generated from the same source checkout.
@@ -305,6 +307,7 @@ export function createGateway(config) {
     server.listen(0, '127.0.0.1', () => { const port = server.address().port; server.close(() => resolve(port)); });
   });
   const memberBackend = async user => {
+    if (closing) throw Error('网关正在重启，请稍后重试');
     if (backends.has(user.id)) return backends.get(user.id);
     if (pending.has(user.id)) return pending.get(user.id);
     if (pending.size >= 8) throw Error('当前启动人数较多，请稍后重试');
@@ -344,9 +347,15 @@ export function createGateway(config) {
       const env = { PATH: '/opt/node/bin:/usr/bin:/bin', HOME: '/user/workspace', DSH_HOME: '/user/dsh',
         SSS_WEB_POLICY: '/user/config/policy.json', DEEPSEEK_API_KEY: delegate(user, 'model'),
         HARLESS_GATEWAY_ENABLED: '1',
+        // Member profile trees are small. Polling avoids exhausting a shared
+        // server's per-UID inotify quota when several backends start together.
+        CHOKIDAR_USEPOLLING: '1', CHOKIDAR_INTERVAL: '1000',
         NO_PROXY: 'localhost,127.0.0.1,::1', no_proxy: 'localhost,127.0.0.1,::1',
         LANG: 'C.UTF-8', PYTHONUTF8: '1' };
       const child = spawn('/usr/bin/bwrap', args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+      memberChildren.add(child);
+      child.once('exit', () => memberChildren.delete(child));
+      child.once('error', () => memberChildren.delete(child));
       let output = '';
       const login = await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(Error('User backend startup timed out')), 30000);
@@ -357,7 +366,7 @@ export function createGateway(config) {
           if (match) done(null, match[1]);
         };
         child.stdout.on('data', collect); child.stderr.on('data', collect);
-        child.once('error', done); child.once('exit', code => done(Error(`User backend exited (${code}); ${output.replace(/token=[^\\s]+/g, 'token=[redacted]').slice(-400)}`)));
+        child.once('error', done); child.once('exit', code => done(Error(`User backend exited (${code}); ${output.replace(/token=[^\s]+/g, 'token=[redacted]').slice(-400)}`)));
       }).catch(error => { child.kill(); throw error; });
       const response = await requestOnce(port, '/?token=' + encodeURIComponent(login));
       if (response.status !== 303) { child.kill(); throw Error('User backend authentication failed'); }
@@ -448,6 +457,7 @@ export function createGateway(config) {
       const user = sessionFor(req);
       if (!user) { socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); return; }
       const backend = await backendFor(user);
+      if (closing || socket.destroyed) { socket.destroy(); return; }
       const upstream = net.connect(backend.port, '127.0.0.1');
       upstream.once('connect', () => {
         const headers = proxyHeaders(req, backend);
@@ -457,10 +467,19 @@ export function createGateway(config) {
         socket.pipe(upstream).pipe(socket);
       });
       upstream.on('error', () => socket.destroy()); socket.on('error', () => upstream.destroy());
+      upstream.once('close', () => socket.destroy()); socket.once('close', () => upstream.destroy());
     } catch { socket.destroy(); }
   });
+  server.on('connection', socket => {
+    sockets.add(socket); socket.once('close', () => sockets.delete(socket));
+  });
   return { server, scopedBudget, db, save, backends, close: () => {
-    for (const backend of backends.values()) if (backend.child) backend.child.kill();
+    if (closing) return;
+    closing = true;
+    // Include booting children, and upgraded/idle browser connections that
+    // server.close() otherwise keeps alive during an ordinary SIGTERM restart.
+    for (const child of memberChildren) child.kill();
+    for (const socket of sockets) socket.destroy();
     server.close(); scopedBudget?.close();
   } };
 }
