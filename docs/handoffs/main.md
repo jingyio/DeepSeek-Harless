@@ -1,8 +1,8 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-14：论文旧能力复用与复合 Motif（待 PR 审阅）
+## 2026-10-15：论文旧能力复用与复合 Motif（PR #19 待审）
 
-- 分支 `codex/harless-motif-libraries-20261014` 整合 main `1ee0bf4`，在 V100 隔离检出重新抓取论文 17 个真实 MCP Schema，复用旧引用库和当前上传读取轨迹编译两条只读 Motif；旧 PDF 排版程序接入同一论文场景的任务授权工具。共用既有 Harness/RSI Runtime，未改账号管理或上游核心，公网进程未切换。
+- [PR #19](https://github.com/jingyio/DeepSeek-Harless/pull/19) 的分支 `codex/harless-motif-libraries-20261014` 已整合 main `67e8445`，在 V100 隔离检出重新抓取论文 17 个真实 MCP Schema，复用旧引用库和当前上传读取轨迹编译两条只读 Motif；旧 PDF 排版程序接入同一论文场景的任务授权工具。共用既有 Harness/RSI Runtime，未改账号管理或上游核心，公网进程未切换。
 - 免费验收：论文场景矩阵 27 个有效冻结预览、双用户拒绝、实际 MCP/上传/PDF 授权通过；两个实际 bwrap 成员共 10 个五场景草稿通过；smoke 和 controls 通过。真实 Execute 引用链 4 请求/1 Verified Skip，PDF 基线 3 请求/1 个 75,162 字节文件，0 工具错误；质量未盲评、代理估费合计 $0.00509706，账单未知。细节见 [论文交接](paper-proofreading.md)与[实验记录](../experiments/paper-legacy-reuse-audit-20261014.md)。
 - V100 根 `npm test` 为 861 Python 通过、4 个文献 PDF 解析/句柄用例失败，Node 阶段被入口跳过；单独按项目 Python 环境运行 Node 全量 450 通过、3 条件跳过。生产发布前需解决或明确隔离文献 PDF 回归。私有 v5 库、渲染包、轨迹不进 Git；代码变更后必须重编译认证。旧历史 Shadow 比例与 PDF 工具采用结果不能相加为新节省率。
 - 合并后完整五场景 `web:scenes:check` 通过 27 个有效冻结草稿、五组真实 MCP/上传、Files/PDF 授权预览及双用户越权拒绝，0 模型请求。
