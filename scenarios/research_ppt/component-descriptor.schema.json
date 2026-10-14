@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "科研 PPT 长期组件登记请求（只登记，不执行）",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["kind", "script_id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "fixed_script"},
+        "script_id": {"enum": ["render_delivery", "direct_edit", "document_parse"]}
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "certificate_path", "certificate_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "certified_generated_tool"},
+        "certificate_path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "certificate_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "manifest_path", "manifest_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "certified_motif"},
+        "manifest_path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  ]
+}

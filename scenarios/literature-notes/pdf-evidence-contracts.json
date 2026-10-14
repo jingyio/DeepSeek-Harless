@@ -1,0 +1,162 @@
+{
+  "mcp__literature_evidence__list_pdfs": {
+    "required_params": [],
+    "read_only": true,
+    "replay_stable": false,
+    "description": "List frozen task sources and the version required by the reading plan; no relevance ranking."
+  },
+  "mcp__literature_evidence__prepare_pdf": {
+    "required_params": [
+      "paper_id"
+    ],
+    "read_only": true,
+    "replay_stable": false,
+    "description": "Prepare versioned page text and a navigation index; low-text pages need inspection, not automatic OCR."
+  },
+  "mcp__literature_evidence__search_pdf_text": {
+    "required_params": [
+      "paper_id",
+      "query"
+    ],
+    "default_params": [
+      [
+        "limit",
+        8
+      ]
+    ],
+    "read_only": true,
+    "replay_stable": false,
+    "description": "Find literal words across all extracted pages; snippets are navigation, not verified evidence."
+  },
+  "mcp__literature_evidence__register_reading_plan": {
+    "required_params": [
+      "plan"
+    ],
+    "read_only": true,
+    "replay_stable": false,
+    "description": "Freeze an explicitly approved reading plan into a short, versioned receipt; no automatic relevance judgment."
+  },
+  "mcp__literature_evidence__extract_evidence_windows": {
+    "required_params": [
+      "plan"
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": [
+      "extraction_id",
+      "execution_version_sha256"
+    ],
+    "description": "Extract only the model-selected, explicitly approved reading plan; return a bounded source receipt.",
+    "continuation_policy": {
+      "schema_version": 1,
+      "kind": "approved_plan_continuation",
+      "steps": [
+        {
+          "tool": "mcp__literature_evidence__extract_evidence_windows",
+          "param": "plan",
+          "receipt_field": "extraction_id",
+          "success_status": "extracted",
+          "input_schema_sha256": "ce7c7a2fe32b589701cc34335b611318b93e106d68e438ea93098b38ec93db90"
+        },
+        {
+          "tool": "mcp__literature_evidence__verify_evidence_windows",
+          "param": "extraction_id",
+          "receipt_field": "verification_id",
+          "success_status": "verified",
+          "input_schema_sha256": "2a14c7462626ad4d734c499c1994c6d8544f38348c7c9965c6494a9726acba56"
+        },
+        {
+          "tool": "mcp__literature_evidence__build_evidence_packet",
+          "param": "verification_id",
+          "receipt_field": "packet_id",
+          "success_status": "packet_ready",
+          "input_schema_sha256": "6084a81aa881ab2da68bb1e2fcf988e18bce6d2016fd99119ec11abe5b2ce15f"
+        }
+      ]
+    }
+  },
+  "mcp__literature_evidence__verify_evidence_windows": {
+    "required_params": [
+      "extraction_id"
+    ],
+    "provenance_params": [
+      "extraction_id"
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": [
+      "verification_id",
+      "execution_version_sha256"
+    ],
+    "description": "Replay exact source windows and check basic text availability; do not certify relevance or entailment.",
+    "continuation_policy": {
+      "schema_version": 1,
+      "kind": "approved_plan_continuation",
+      "steps": [
+        {
+          "tool": "mcp__literature_evidence__extract_evidence_windows",
+          "param": "plan",
+          "receipt_field": "extraction_id",
+          "success_status": "extracted",
+          "input_schema_sha256": "ce7c7a2fe32b589701cc34335b611318b93e106d68e438ea93098b38ec93db90"
+        },
+        {
+          "tool": "mcp__literature_evidence__verify_evidence_windows",
+          "param": "extraction_id",
+          "receipt_field": "verification_id",
+          "success_status": "verified",
+          "input_schema_sha256": "2a14c7462626ad4d734c499c1994c6d8544f38348c7c9965c6494a9726acba56"
+        },
+        {
+          "tool": "mcp__literature_evidence__build_evidence_packet",
+          "param": "verification_id",
+          "receipt_field": "packet_id",
+          "success_status": "packet_ready",
+          "input_schema_sha256": "6084a81aa881ab2da68bb1e2fcf988e18bce6d2016fd99119ec11abe5b2ce15f"
+        }
+      ]
+    }
+  },
+  "mcp__literature_evidence__build_evidence_packet": {
+    "required_params": [
+      "verification_id"
+    ],
+    "provenance_params": [
+      "verification_id"
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": [
+      "packet_id",
+      "execution_version_sha256"
+    ],
+    "description": "Assemble mechanically verified windows for the model; stop before scientific interpretation.",
+    "continuation_policy": {
+      "schema_version": 1,
+      "kind": "approved_plan_continuation",
+      "steps": [
+        {
+          "tool": "mcp__literature_evidence__extract_evidence_windows",
+          "param": "plan",
+          "receipt_field": "extraction_id",
+          "success_status": "extracted",
+          "input_schema_sha256": "ce7c7a2fe32b589701cc34335b611318b93e106d68e438ea93098b38ec93db90"
+        },
+        {
+          "tool": "mcp__literature_evidence__verify_evidence_windows",
+          "param": "extraction_id",
+          "receipt_field": "verification_id",
+          "success_status": "verified",
+          "input_schema_sha256": "2a14c7462626ad4d734c499c1994c6d8544f38348c7c9965c6494a9726acba56"
+        },
+        {
+          "tool": "mcp__literature_evidence__build_evidence_packet",
+          "param": "verification_id",
+          "receipt_field": "packet_id",
+          "success_status": "packet_ready",
+          "input_schema_sha256": "6084a81aa881ab2da68bb1e2fcf988e18bce6d2016fd99119ec11abe5b2ce15f"
+        }
+      ]
+    }
+  }
+}

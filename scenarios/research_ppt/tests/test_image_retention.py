@@ -112,11 +112,16 @@ class ImageRetentionTests(unittest.TestCase):
             page = pdf.new_page()
             page.insert_text((40, 40), 'Public synthetic original figure source.')
             page.insert_image(fitz.Rect(40, 80, 400, 320), stream=self.images[0])
+            page.insert_text((40, 340), 'Figure 1: Synthetic figure for original-image retention checks.')
             pdf.save(source)
         service = PPTService(prepare([source], '保留原图', 1, True))
         handle = service.pin_source('doc_1')['source_id']
-        parsed = service.read_source(handle)
-        image_id = parsed['images'][0]['image_id']
+        service.read_source(handle)
+        candidates = service.read_page(handle, 1)['figure_candidates']
+        self.assertEqual(len(candidates), 1)
+        figure = service.extract_figure(handle, 1, candidate_id=candidates[0]['candidate_id'])
+        self.assertEqual(figure['evidence_scope'], 'caption_geometry_candidate')
+        image_id = figure['image_id']
         plan = {'title': 'Original figure', 'slides': [
             {'title': 'Original figure', 'bullets': [], 'image': {'source_id': handle, 'image_id': image_id},
              'sources': [{'source_id': handle, 'page': 1}]}]}

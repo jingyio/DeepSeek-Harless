@@ -152,7 +152,12 @@ export function apply(ctx: any) {
         available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason,
         execute_available: !executeUnavailable(scene), execute_unavailable_reason: executeUnavailable(scene) })),
       scene_options:sessionId ? optionSelections.get(sessionId)?.[selected.scene] ?? {} : {},
-      scene_option_fields:sceneFor(selected.scene).adapter==='ppt' ? [
+      scene_option_fields:sceneFor(selected.scene).adapter==='files' ? [
+        {key:'allow_output',label:'整理权限',default:false,values:[
+          {value:false,label:'只读盘点与检索'},
+          {value:true,label:'允许整理任务副本',detail:'仅限已上传副本，最多 6 步；需预览、授权并留收据'},
+        ]},
+      ] : sceneFor(selected.scene).adapter==='ppt' ? [
         {key:'slides',label:'页数',default:6,values:[1,6,8,10,12].map(value=>({value,label:`${value} 页`}))},
         {key:'template',label:'模板',default:'academic',values:[{value:'academic',label:'学术模板'},{value:'lab',label:'组会模板'}]},
         {key:'allow_output',label:'输出权限',default:false,values:[{value:false,label:'只读检查'},{value:true,label:'允许生成 PPT 新副本',detail:sceneFor(selected.scene).output_unavailable_reason ?? '仅生成本任务的新文件'}]},
@@ -640,6 +645,8 @@ export function apply(ctx: any) {
   async function submit(task: Task, confirmation: unknown, signal: AbortSignal) {
     if (confirmation !== task.confirmation_digest) throw new TaskError('confirmation_changed', 'Input/configuration changed; preview and confirm again', 409);
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
+    if (task.scene.adapter === 'files' && task.scene_options.allow_output && !task.scene_inputs.length)
+      throw new TaskError('files_requires_input_for_output', 'Files 整理权限需要先上传本任务的来源文件', 409);
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
         scopeDigest(task.workspace, task.scene) !== task.scope_sha256 ||
         (task.scene.runtime_file_locks && Object.entries(task.scene.runtime_file_locks).some(([path,expected])=>fileSha(path)!==expected)) ||

@@ -1,0 +1,134 @@
+{
+  "train_seed": {
+    "schema_version": 1,
+    "change_id": "change:train_seed",
+    "question": "整理合成材料中关于“重复实验的样本量”的新增批注，更新指定笔记的证据区预览；保留个人观点，不判断论文结论正确性。",
+    "selected_note_id": "note:train_seed",
+    "annotation": {
+      "annotation_id": "annotation:train_seed",
+      "paper_id": "paper:train_seed",
+      "page": 2,
+      "quote": "The study reports results from two random seeds.",
+      "comment": "不要把两次实验解读为充分的稳定性验证。"
+    },
+    "paper": {
+      "paper_id": "paper:train_seed",
+      "title": "合成示例：重复实验的样本量",
+      "pages": [
+        {
+          "page": 1,
+          "text": "Synthetic research fixture; not a real publication."
+        },
+        {
+          "page": 2,
+          "text": "Methods and limitations. The study reports results from two random seeds."
+        }
+      ]
+    },
+    "notes": [
+      {
+        "note_id": "note:train_seed",
+        "text": "# 重复实验的样本量\n\n个人观点：此段由用户维护，不能改写。\n\n<!-- literature-evidence:start -->\n<!-- literature-evidence:end -->\n\n下一步：由研究者审阅新增证据。\n"
+      }
+    ]
+  },
+  "train_protocol": {
+    "schema_version": 1,
+    "change_id": "change:train_protocol",
+    "question": "整理合成材料中关于“跨论文实验协议”的新增批注，更新指定笔记的证据区预览；保留个人观点，不判断论文结论正确性。",
+    "selected_note_id": "note:train_protocol",
+    "annotation": {
+      "annotation_id": "annotation:train_protocol",
+      "paper_id": "paper:train_protocol",
+      "page": 2,
+      "quote": "Protocol B uses a different evaluation split.",
+      "comment": "比较结果之前需要核对评测协议。"
+    },
+    "paper": {
+      "paper_id": "paper:train_protocol",
+      "title": "合成示例：跨论文实验协议",
+      "pages": [
+        {
+          "page": 1,
+          "text": "Synthetic research fixture; not a real publication."
+        },
+        {
+          "page": 2,
+          "text": "Methods and limitations. Protocol B uses a different evaluation split."
+        }
+      ]
+    },
+    "notes": [
+      {
+        "note_id": "note:train_protocol",
+        "text": "# 跨论文实验协议\n\n个人观点：此段由用户维护，不能改写。\n\n<!-- literature-evidence:start -->\n<!-- literature-evidence:end -->\n\n下一步：由研究者审阅新增证据。\n"
+      }
+    ]
+  },
+  "certify_cost": {
+    "schema_version": 1,
+    "change_id": "change:certify_cost",
+    "question": "整理合成材料中关于“实验费用统计”的新增批注，更新指定笔记的证据区预览；保留个人观点，不判断论文结论正确性。",
+    "selected_note_id": "note:certify_cost",
+    "annotation": {
+      "annotation_id": "annotation:certify_cost",
+      "paper_id": "paper:certify_cost",
+      "page": 2,
+      "quote": "The reported cost excludes compilation and validation.",
+      "comment": "总成本应包含编译和验证。"
+    },
+    "paper": {
+      "paper_id": "paper:certify_cost",
+      "title": "合成示例：实验费用统计",
+      "pages": [
+        {
+          "page": 1,
+          "text": "Synthetic research fixture; not a real publication."
+        },
+        {
+          "page": 2,
+          "text": "Methods and limitations. The reported cost excludes compilation and validation."
+        }
+      ]
+    },
+    "notes": [
+      {
+        "note_id": "note:certify_cost",
+        "text": "# 实验费用统计\n\n个人观点：此段由用户维护，不能改写。\n\n<!-- literature-evidence:start -->\n<!-- literature-evidence:end -->\n\n下一步：由研究者审阅新增证据。\n"
+      }
+    ]
+  },
+  "eval_leakage": {
+    "schema_version": 1,
+    "change_id": "change:eval_leakage",
+    "question": "整理合成材料中关于“研究评测的数据泄漏”的新增批注，更新指定笔记的证据区预览；保留个人观点，不判断论文结论正确性。",
+    "selected_note_id": "note:eval_leakage",
+    "annotation": {
+      "annotation_id": "annotation:eval_leakage",
+      "paper_id": "paper:eval_leakage",
+      "page": 2,
+      "quote": "Training and evaluation must use disjoint research decisions.",
+      "comment": "检查独立研究决定，避免同一任务续写造成泄漏。"
+    },
+    "paper": {
+      "paper_id": "paper:eval_leakage",
+      "title": "合成示例：研究评测的数据泄漏",
+      "pages": [
+        {
+          "page": 1,
+          "text": "Synthetic research fixture; not a real publication."
+        },
+        {
+          "page": 2,
+          "text": "Methods and limitations. Training and evaluation must use disjoint research decisions."
+        }
+      ]
+    },
+    "notes": [
+      {
+        "note_id": "note:eval_leakage",
+        "text": "# 研究评测的数据泄漏\n\n个人观点：此段由用户维护，不能改写。\n\n<!-- literature-evidence:start -->\n<!-- literature-evidence:end -->\n\n下一步：由研究者审阅新增证据。\n"
+      }
+    ]
+  }
+}

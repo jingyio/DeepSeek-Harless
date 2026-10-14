@@ -36,7 +36,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             continue
         if type(row.get('diagnostic', False)) is not bool: raise ValueError('diagnostic must be boolean')
         scene['diagnostic'] = row.get('diagnostic', False)
-        if row.get('adapter') not in (None, 'ppt', 'workspace'): raise ValueError('unsupported scene adapter')
+        if row.get('adapter') not in (None, 'ppt', 'workspace', 'files'): raise ValueError('unsupported scene adapter')
         path = (root / row['scenario']).resolve(strict=True)
         prepared = (prepared_default if row['id'] == default_id else
                     prepare_scenario(path, case=row.get('case', ''), session_workspace=WORKSPACE if row.get('adapter') else None))

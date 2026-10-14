@@ -47,6 +47,12 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert rows['ppt']['instructions'].startswith('完成科研 PPT 任务。')
     assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['ppt']['mcp_rows'])
     assert rows['new-scene']['allowed_tools'] == ['mcp__workspace__list_files', 'mcp__workspace__read_file']
+    assert rows['files']['scenario'] == 'scenarios/file-management/web-scenario.json'
+    assert rows['files']['adapter'] == 'files'
+    assert len(rows['files']['allowed_tools']) == 13
+    assert 'FM_WEB_WORKSPACE' in json.dumps(rows['files']['mcp_rows'])
+    assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['files']['mcp_rows'])
+    assert 'examples/' not in rows['files']['scenario']
     for identity in ('paper-proofreading', 'research-data-analysis'):
         assert 'unavailable_reason' not in rows[identity] and rows[identity]['allowed_tools']
         assert rows[identity]['adapter'] == 'workspace'

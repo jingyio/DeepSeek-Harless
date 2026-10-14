@@ -74,21 +74,30 @@ export function memberSceneDeployment(policy, deployment) {
   };
   const scenes = policy.scenes.map(scene => {
     if (scene.unavailable_reason) return structuredClone(scene);
-    if (!['ppt','workspace'].includes(scene.adapter) || Object.keys(scene.environment_references ?? {}).length)
+    if (!['ppt','workspace','files'].includes(scene.adapter) || Object.keys(scene.environment_references ?? {}).length)
       throw Error('Member scene requires a local Session adapter without inherited credentials');
     const rows = structuredClone(scene.mcp_rows);
     if (!Array.isArray(rows) || !rows.length) throw Error('Member scene has no MCP deployment');
     for (const row of rows) {
       const cfg=row.config;
       if (row.name !== '@deepseek-ai/dsh-mcp-client' || cfg?.transport !== 'stdio' || cfg.cwd !== root ||
-          !['ppt','workspace','paper_checks','data_analysis'].includes(cfg.serverName) ||
+          !['ppt','workspace','paper_checks','data_analysis','file_management'].includes(cfg.serverName) ||
           !(cfg.command === 'node' || cfg.command === deployment.pythonExecutable || realpathSync(cfg.command) === binary) ||
           !Array.isArray(cfg.args) || !cfg.args.length || !inside(join(root,'scenarios'), cfg.args[0]))
         throw Error('Member MCP deployment is outside approved scene code');
+      if(scene.adapter==='files' && (cfg.serverName!=='file_management' || cfg.args.length!==1 ||
+          cfg.args[0]!==join(root,'scenarios/file-management/plan_tools.py') ||
+          cfg.env?.FM_WEB_WORKSPACE!=='__HARLESS_SESSION_WORKSPACE__' ||
+          cfg.env?.FM_TASK_FILE!=='__HARLESS_SESSION_WORKSPACE__/file-task.json' ||
+          cfg.env?.FM_OUTPUT!=='__HARLESS_SESSION_WORKSPACE__/file-results' ||
+          Object.keys(cfg.env).length!==3))
+        throw Error('Member Files MCP must use the server-bound task workspace');
       cfg.command=cfg.command === 'node' ? 'node' : executable;
       cfg.cwd='/app'; cfg.args=cfg.args.map(translate);
       const env=cfg.env ?? {};
-      if (Object.keys(env).some(k=>!['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH'].includes(k)))
+      const permittedEnv=scene.adapter==='files' ? ['FM_WEB_WORKSPACE','FM_TASK_FILE','FM_OUTPUT'] :
+        ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH'];
+      if (Object.keys(env).some(k=>!permittedEnv.includes(k)))
         throw Error('Member scene environment contains unapproved authority');
       if((env.PATH && (!renderer || scene.renderer_root!==renderer)) ||
          (env.FONTCONFIG_FILE && (!fonts || env.FONTCONFIG_FILE!==join(fonts,'fonts-static.conf') || env.FONTCONFIG_PATH!==fonts)))

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "literature_evidence",
+  "prompt": "pdf-evidence-task.md",
+  "servers": [{
+    "server_name": "literature_evidence", "transport": "stdio", "command": "${PYTHON}",
+    "args": ["${PROJECT_ROOT}/scenarios/literature-notes/pdf_evidence_tools.py"], "cwd": "${PROJECT_ROOT}",
+    "env": {
+      "SSS_PDF_ROOT": {"from_env": "SSS_PDF_ROOT"},
+      "SSS_PDF_TASK_FILE": {"from_env": "SSS_PDF_TASK_FILE"},
+      "SSS_PDF_CACHE": {"from_env": "SSS_PDF_CACHE"},
+      "SSS_PDF_CACHE_POLICY": {"from_env": "SSS_PDF_CACHE_POLICY"},
+      "SSS_PDF_DELIVERY": {"from_env": "SSS_PDF_DELIVERY"},
+      "SSS_EVIDENCE_SCRIPT_CHAIN": {"from_env": "SSS_EVIDENCE_SCRIPT_CHAIN"}
+    }
+  }],
+  "allowed_tools": [
+    "mcp__literature_evidence__list_pdfs", "mcp__literature_evidence__prepare_pdf",
+    "mcp__literature_evidence__search_pdf_text", "mcp__literature_evidence__register_reading_plan",
+    "mcp__literature_evidence__extract_evidence_windows",
+    "mcp__literature_evidence__verify_evidence_windows", "mcp__literature_evidence__build_evidence_packet"
+  ]
+}

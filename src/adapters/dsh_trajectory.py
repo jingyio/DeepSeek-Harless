@@ -32,6 +32,7 @@ class ToolContract:
     witness_default_only: tuple[str, ...] = ()
     replay_stable: bool = True
     observed_anchor: bool = False
+    continuation_policy: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

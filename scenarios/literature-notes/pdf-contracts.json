@@ -1,0 +1,88 @@
+{
+  "mcp__literature_pdf__list_pdfs": {
+    "required_params": [],
+    "read_only": true,
+    "replay_stable": false,
+    "description": "List the task-selected PDFs and their frozen content versions; no relevance ranking."
+  },
+  "mcp__literature_pdf__prepare_pdf": {
+    "required_params": [
+      "paper_id"
+    ],
+    "read_only": true,
+    "replay_stable": false,
+    "description": "Prepare versioned page text and a navigation index; low-text pages need inspection, not automatic OCR."
+  },
+  "mcp__literature_pdf__search_pdf_text": {
+    "required_params": [
+      "paper_id",
+      "query"
+    ],
+    "default_params": [
+      [
+        "limit",
+        8
+      ]
+    ],
+    "read_only": true,
+    "replay_stable": false,
+    "description": "Find literal words across all extracted pages; snippets are navigation, not verified evidence."
+  },
+  "mcp__literature_pdf__pin_pdf_context": {
+    "required_params": [
+      "paper_id",
+      "page"
+    ],
+    "default_params": [
+      [
+        "start",
+        0
+      ],
+      [
+        "length",
+        3500
+      ]
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": [
+      "source_id",
+      "version_sha256",
+      "document_version_sha256"
+    ],
+    "description": "Bind an explicitly selected physical page text window to the PDF and parser versions."
+  },
+  "mcp__literature_pdf__read_pinned_pdf_context": {
+    "required_params": [
+      "source_id"
+    ],
+    "provenance_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": [
+      "version_sha256",
+      "document_version_sha256"
+    ],
+    "description": "Read only a service-issued PDF window; reject changed content and expose continuation offsets."
+  },
+  "mcp__literature_pdf__preview_research_notes": {
+    "required_params": [
+      "draft"
+    ],
+    "read_only": true,
+    "replay_stable": false,
+    "description": "Validate a complete per-paper draft against read source windows and render notes; no claim entailment or user-file writes."
+  },
+  "mcp__literature_pdf__read_pdf_evidence_plan": {
+    "required_params": [
+      "paper_id",
+      "document_version_sha256",
+      "windows"
+    ],
+    "read_only": true,
+    "replay_stable": false,
+    "description": "Execute selected coverage once; normalize overlap and page ends, replay source guards."
+  }
+}

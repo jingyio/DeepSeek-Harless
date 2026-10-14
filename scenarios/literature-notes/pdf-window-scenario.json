@@ -1,0 +1,10 @@
+{
+  "schema_version":1,"name":"literature_workflow_probe","prompt":"pdf-window-task.md",
+  "servers":[{"server_name":"literature_workflow_probe","transport":"stdio","command":"${PYTHON}",
+    "args":["${PROJECT_ROOT}/scenarios/literature-notes/pdf_window_tools.py"],"cwd":"${PROJECT_ROOT}",
+    "env":{"SSS_WORKFLOW_PROBE_FILE":{"from_env":"SSS_WORKFLOW_PROBE_FILE"},"SSS_WORKFLOW_PROBE_OUTPUT":{"from_env":"SSS_WORKFLOW_PROBE_OUTPUT"}}}],
+  "allowed_tools":["mcp__literature_workflow_probe__read_workflow_input","mcp__literature_workflow_probe__search_pdf_text",
+    "mcp__literature_workflow_probe__pin_pdf_context","mcp__literature_workflow_probe__read_pinned_pdf_context",
+    "mcp__literature_workflow_probe__submit_workflow_report"],
+  "completion_guard":{"tool":"mcp__literature_workflow_probe__submit_workflow_report","statuses":["preview","needs_review"],"max_continuations":2}
+}

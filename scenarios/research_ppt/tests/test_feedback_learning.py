@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -295,6 +296,203 @@ class FeedbackLearningTests(unittest.TestCase):
             staged = self.store.candidate_manifest('a' * 32)
         self.assertFalse(staged['quality_cost_promoted'])
         self.assertEqual(staged['stage'], 'candidate_evaluation')
+        self.assertIsNone(self.store.status()['active_version'])
+
+    def test_host_execution_policy_uses_same_task_and_frozen_prefix(self):
+        baseline = self.prompt_record('host-pair-base', strategy='baseline_steps')
+        optimized = self.prompt_record('host-pair-opt', strategy='host_delivery')
+        binding = learning._require_compatible_prompts([baseline, optimized], paired=True)
+        self.assertEqual(binding[0]['shared_prompt_sha256'], binding[1]['shared_prompt_sha256'])
+        self.assertEqual(binding[0]['execution_strategy'], 'baseline_steps')
+        learning._require_compatible_prompts([baseline])
+        with self.assertRaisesRegex(ValueError, '逐步策略'):
+            learning._require_compatible_prompts([optimized])
+
+    def test_actual_cli_preview_binds_generate_and_restyle_controlled_suffixes(self):
+        from scenarios.research_ppt import cli
+        # Only prompt/protocol assembly is exercised. No provider is simulated
+        # and no cloud call/render is used to claim actual task quality.
+        source = self.area / 'prompt-fixture.pptx'
+        source.write_bytes(b'not-real-pptx-prompt-assembly-only')
+        for operation in ('generate', 'restyle'):
+            rows = []
+            for strategy in ('baseline_steps', 'host_delivery'):
+                with self.subTest(operation=operation, strategy=strategy), \
+                        patch.object(cli.subprocess, 'call', return_value=0), patch('builtins.print'):
+                    job = cli.prepare([source], '同一实际入口题面，核验提示和策略绑定', 3,
+                                      template='lab', operation=operation, persistent_library=False,
+                                      execution_policy=strategy)
+                    self.addCleanup(shutil.rmtree, job.parent, True)
+                    self.assertEqual(cli.run(job, call_model=False, execution=strategy), 0)
+                prompt = job.parent / 'prompt.md'
+                text = prompt.read_text(encoding='utf-8')
+                prefix, _ = text.split(learning.TASK_PROMPT_MARKER, 1)
+                shared, suffix = text.split(learning.EXECUTION_PROMPT_MARKER, 1)
+                self.assertEqual(suffix, learning.STRATEGY_SUFFIXES[(operation, strategy)])
+                directory = self.area / (operation + '-' + strategy)
+                directory.mkdir()
+                full_sha = learning._hash(prompt)
+                shared_sha = learning.hashlib.sha256(shared.encode()).hexdigest()
+                prefix_sha = learning.hashlib.sha256(prefix.encode()).hexdigest()
+                learning._new(directory / 'manifest.json', {'question': text, 'prompt_sha256': full_sha, 'fixture': True})
+                versions = {field: 'a' * 64 for field in learning.VERSION_FIELDS}
+                versions.update(model='deepseek-flash', provider='deepseek-official', reasoning_effort='off',
+                                prompt_sha256=full_sha, prompt_prefix_sha256=prefix_sha)
+                rows.append(self.record(versions=versions, run_dir=str(directory), execution_strategy=strategy,
+                                        shared_prompt_sha256=shared_sha,
+                                        prompt_evidence={'path': str(prompt), 'sha256': full_sha,
+                                                         'prefix_sha256': prefix_sha, 'shared_prompt_sha256': shared_sha}))
+            bindings = learning._require_compatible_prompts(rows, paired=True)
+            self.assertEqual(bindings[0]['task']['operation'], operation)
+            self.assertEqual(bindings[0]['shared_prompt_sha256'], bindings[1]['shared_prompt_sha256'])
+
+    def test_evaluation_scope_requires_real_evidence_and_complete_ai_review(self):
+        record = self.prompt_record('ai-evaluation')
+        record.update(consent={'collect': True, 'learn': True}, identity_confirmed=True)
+        record['quality'].update(scientific='passed', visual='passed', reviewer='ai-assisted')
+        self.assertEqual(self.store._eligibility(record)[1], 'quality_failed_or_not_human_reviewed')
+        # Even explicit evaluation-only cannot turn this incomplete fixture
+        # into a successful real trace; all identity/ledger/receipt guards stay.
+        eligible, reason = self.store._eligibility(record, evaluation_only=True)
+        self.assertFalse(eligible)
+        self.assertEqual(reason, 'real_trace_cost_or_delivery_evidence_changed_or_missing')
+        record['quality']['scientific'] = 'pending'
+        self.assertEqual(self.store._eligibility(record, evaluation_only=True)[1], 'quality_failed_or_not_human_reviewed')
+        record['quality']['scientific'] = 'failed'
+        self.assertFalse(self.store._eligibility(record, evaluation_only=True)[0])
+
+    def test_evaluation_scope_never_changes_default_learning_queue(self):
+        record = self.record(consent={'collect': True, 'learn': True})
+        record['quality'].update(scientific='passed', visual='passed', reviewer='ai-assisted')
+        self.store.collect(record)
+        self.assertEqual(self.store.queue()['learning_scope'], 'production_reviewed')
+        self.assertEqual(self.store.queue()['independent_eligible_tasks'], 0)
+        self.assertEqual(self.store.queue(evaluation_only=True)['learning_scope'], 'evaluation_only')
+        self.assertEqual(self.store.queue(evaluation_only=True)['independent_eligible_tasks'], 0)
+
+    def test_ai_review_file_is_bound_to_run_source_delivery_quality_and_bytes(self):
+        record = self.record()
+        record['quality'].update(scientific='passed', visual='passed', reviewer='ai-assisted')
+        record['delivery_evidence'] = {'sha256': 'd' * 64}
+        review = {'schema_version': 1, 'reviewer': 'ai-assisted', 'scope': 'ai_assisted_not_independent_human',
+                  'run_id': record['run_id'], 'source_evidence': record['source_evidence'],
+                  'delivery_evidence_sha256': 'd' * 64,
+                  'quality': {field: record['quality'][field] for field in learning.QUALITY_FIELDS},
+                  'review_seconds': 12.5, 'notes': '合成证据绑定诊断，不是实际质量评审。'}
+        path = self.area / 'ai-review.json'
+        learning._new(path, review)
+        record['review_evidence'] = {'path': str(path), 'sha256': learning._hash(path)}
+        record['evidence_lock'] = {str(path): learning._hash(path)}
+        self.assertEqual(learning._review_binding(record)['reviewer'], 'ai-assisted')
+        self.assertFalse(self.store._qualified(record))
+        wrong_source = copy.deepcopy(record)
+        wrong_source['source_evidence'][0]['sha256'] = 'e' * 64
+        with self.assertRaisesRegex(ValueError, '同一真实运行'):
+            learning._review_binding(wrong_source)
+        path.write_text('{}', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, '字节变化'):
+            learning._review_binding(record)
+
+    def policy_record(self, strategy='host_delivery'):
+        row = self.prompt_record('controlled-' + strategy, strategy=strategy)
+        directory = Path(row['run_dir'])
+        job = directory / 'job.json'
+        config = {'schema_version': 1, 'strategy': strategy}
+        learning._new(job, {'execution_policy': config})
+        value = {'schema_version': 1, 'strategy': strategy, 'config_sha256': learning._digest(config),
+                 'disabled_tools': sorted(learning.COMPOSED_TOOLS), 'automatic_retry': False,
+                 'automatic_content_change': False, 'scope': 'fixed_host_execution_policy_not_learned_rsi'}
+        policy_sha = learning._digest(value)
+        audit = directory / 'delivery-adapter-audit.jsonl'
+        events = [{'kind': 'adapter_started', 'job_sha256': learning._hash(job)},
+                  {'kind': 'execution_policy_loaded', **value, 'policy_sha256': policy_sha}]
+        audit.write_text(''.join(json.dumps(event) + '\n' for event in events), encoding='utf-8')
+        row['execution_policy_evidence'] = {'job_path': str(job), 'job_sha256': learning._hash(job),
+                                           'audit_path': str(audit), 'audit_sha256': learning._hash(audit),
+                                           'policy_sha256': policy_sha}
+        row['evidence_lock'] = {str(path): learning._hash(path) for path in (job, audit)}
+        return row, learning._prompt_binding(row), audit
+
+    def test_controlled_strategy_needs_real_job_and_frozen_loaded_policy(self):
+        row, binding, audit = self.policy_record('baseline_steps')
+        policy = learning._execution_policy_binding(row, binding)
+        self.assertEqual(policy['strategy'], 'baseline_steps')
+        unbound = {**row, 'execution_policy_evidence': None}
+        with self.assertRaisesRegex(ValueError, '实际 job'):
+            learning._execution_policy_binding(unbound, binding)
+        audit.write_text('{}\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, '字节变化'):
+            learning._execution_policy_binding(row, binding)
+
+    def test_host_primitive_receipt_must_match_original_args_and_script_audit(self):
+        row, binding, audit = self.policy_record()
+        policy = learning._execution_policy_binding(row, binding)
+        args = {'plan': {'title': '合成协议计划', 'slides': []}}
+        execution = {'schema_version': 1, 'strategy': 'host_delivery', 'policy_sha256': policy['policy_sha256'],
+                     'script_execution_id': 'diagnostic-script', 'request_tool': 'render_deck', 'host_script': 'render_delivery',
+                     'arguments_sha256': learning._digest(args), 'mechanism': 'ordinary_bounded_host_script',
+                     'model_selected_script': False}
+        result = {'delivered': True, 'file_sha256': 'e' * 64}
+        receipt = {**result, 'execution_policy': execution}
+        self.assertFalse(learning._host_receipt(receipt, 'mcp__ppt__render_deck', args, policy))
+        policy['events'] += [{'kind': 'host_script_started', **execution},
+                             {'kind': 'host_script_completed', **execution, 'delivered': True,
+                              'result_sha256': learning._digest(result)}]
+        self.assertTrue(learning._host_receipt(receipt, 'mcp__ppt__render_deck', args, policy))
+        self.assertFalse(learning._host_receipt(receipt, 'mcp__ppt__render_deck', {'plan': {}}, policy))
+        self.assertFalse(learning._host_receipt({**receipt, 'file_sha256': 'f' * 64}, 'mcp__ppt__render_deck', args, policy))
+
+    def test_current_product_snapshot_is_required_for_learning(self):
+        row = self.record()
+        row['versions']['runtime_sha256'] = 'a' * 64
+        snapshot = {'sha256': 'b' * 64, 'files': {}}
+        with patch('scenarios.research_ppt.trial.code_snapshot', return_value=snapshot):
+            with self.assertRaisesRegex(ValueError, '当前源码'):
+                learning._current_runtime_files([row])
+        snapshot['sha256'] = 'a' * 64
+        with patch('scenarios.research_ppt.trial.code_snapshot', return_value=snapshot):
+            actual, paths = learning._current_runtime_files([row])
+        self.assertEqual(actual['sha256'], 'a' * 64)
+        self.assertEqual(paths, ())
+
+    def scoped_candidate(self):
+        # A scope/byte-lock protocol fixture, not a real compiled candidate.
+        version = 'c' * 32
+        plan = self.area / 'scope-plan.json'
+        plan.write_text(json.dumps({'learning_scope': 'evaluation_only', 'records': []}), encoding='utf-8')
+        manifest = self.area / 'scope-manifest.json'
+        manifest.write_text('{}', encoding='utf-8')
+        candidate = {'schema_version': 1, 'version': version, 'learning_scope': 'evaluation_only',
+                     'production_eligible': False, 'manifest': str(manifest), 'manifest_sha256': learning._hash(manifest),
+                     'plan_path': str(plan), 'plan_sha256': learning._hash(plan)}
+        path = self.store.path / 'candidates' / (version + '.json')
+        learning._new(path, candidate)
+        return version, candidate, path
+
+    def test_candidate_scope_cannot_be_relabelled_to_production(self):
+        version, candidate, path = self.scoped_candidate()
+        for field, value in [('learning_scope', 'production_reviewed'), ('production_eligible', True)]:
+            altered = {**candidate, field: value}
+            path.write_text(json.dumps(altered), encoding='utf-8')
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, '冻结学习计划'):
+                self.store._candidate(version)
+
+    def test_evaluation_candidate_cannot_activate_inherit_or_rollback_as_active(self):
+        candidate = {'learning_scope': 'evaluation_only', 'production_eligible': False,
+                     'manifest': 'unused', 'manifest_sha256': 'b' * 64}
+        with patch.object(self.store, '_candidate', return_value=candidate):
+            staged = self.store.candidate_manifest('a' * 32)
+            self.assertEqual(staged['learning_scope'], 'evaluation_only')
+            self.assertFalse(staged['production_eligible'])
+            with self.assertRaisesRegex(ValueError, 'evaluation_only'):
+                self.store.activate('a' * 32, ['new-one', 'new-two'], confirm=True)
+            with patch.object(self.store, 'status', return_value={'active_version': 'a' * 32}):
+                with self.assertRaisesRegex(ValueError, 'evaluation_only'):
+                    self.store.active_manifest()
+            with patch.object(self.store, 'status', return_value={
+                    'last_release': {'previous_active_version': 'a' * 32}, 'active_version': 'b' * 32}):
+                with self.assertRaisesRegex(ValueError, 'evaluation_only'):
+                    self.store.rollback(confirm=True)
         self.assertIsNone(self.store.status()['active_version'])
 
 

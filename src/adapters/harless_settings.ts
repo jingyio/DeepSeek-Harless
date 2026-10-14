@@ -7,7 +7,7 @@ export type Scene = {
   embedding_endpoint?: string; embedding_model?: string;
   diagnostic?: boolean; tool_schemas?: string; certified_tool_schemas?: any[]; certified_tool_schemas_sha256?: string;
   scenario?: string; scenario_version?: number; instructions_sha256?: string;
-  unavailable_reason?: string; adapter?: 'ppt' | 'workspace';
+  unavailable_reason?: string; adapter?: 'ppt' | 'workspace' | 'files';
   mcp_rows?: any[]; environment_references?: Record<string, string>;
   rsi_unavailable_reason?: string; matching_policy?: 'structural_only'; binding_policy?: 'ppt_uploaded_sources_v1';
   certification_path?: string; certification_sha256?: string; certified_code_locks?: Record<string,string>;
@@ -30,7 +30,7 @@ export function sceneCatalog(rows: unknown): Scene[] {
         row.allowed_tools.some((tool: unknown) => typeof tool !== 'string' || !/^mcp__[a-z0-9_]+__[a-zA-Z0-9_]+$/.test(tool as string)) ||
         new Set(row.allowed_tools).size !== row.allowed_tools.length ||
         (row.unavailable_reason !== undefined && !/^[a-z][a-z0-9_]{0,127}$/.test(row.unavailable_reason)) ||
-        (row.adapter !== undefined && (!['ppt', 'workspace'].includes(row.adapter) || !Array.isArray(row.mcp_rows))) ||
+        (row.adapter !== undefined && (!['ppt', 'workspace', 'files'].includes(row.adapter) || !Array.isArray(row.mcp_rows))) ||
         (row.instructions !== undefined && (typeof row.instructions !== 'string' || row.instructions.length > 100000))) {
       throw new SettingsError('invalid_registry', '场景 ID、工具或 preset 无效');
     }

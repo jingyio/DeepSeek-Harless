@@ -38,6 +38,21 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   assert.throws(()=>memberSceneDeployment({...policy,scenes:[{...scene,manifest:join(root,'private-manifest.json')}]},deployment),/sanitized/);
   const library=join(root,'library');mkdirSync(library);writeFileSync(join(library,'agent-events.jsonl'),'private raw trace');
   assert.throws(()=>memberSceneDeployment(policy,{...deployment,libraryRoot:library}),/private evidence/);
+  const files={id:'files',preset:'sss-scene-files',label:'Files',adapter:'files',
+    allowed_tools:['mcp__file_management__read_task'],environment_references:{},
+    mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',config:{serverName:'file_management',transport:'stdio',
+      command:python,cwd:root,args:[join(root,'scenarios/file-management/plan_tools.py')],env:{
+        FM_WEB_WORKSPACE:'__HARLESS_SESSION_WORKSPACE__',
+        FM_TASK_FILE:'__HARLESS_SESSION_WORKSPACE__/file-task.json',
+        FM_OUTPUT:'__HARLESS_SESSION_WORKSPACE__/file-results'}}}]};
+  const withFiles=memberSceneDeployment({...policy,scenes:[scene,files]},deployment);
+  assert.equal(withFiles.scenes[1].mcp_rows[0].config.args[0],'/app/scenarios/file-management/plan_tools.py');
+  assert.equal(withFiles.scenes[1].mcp_rows[0].config.env.FM_TASK_FILE,
+    '__HARLESS_SESSION_WORKSPACE__/file-task.json');
+  assert.deepEqual(withFiles.allowed_tools,[...scene.allowed_tools,...files.allowed_tools]);
+  const unsafeFiles=structuredClone(files);
+  unsafeFiles.mcp_rows[0].config.env.FM_OUTPUT='/owner/private';
+  assert.throws(()=>memberSceneDeployment({...policy,scenes:[unsafeFiles]},deployment),/server-bound task workspace/);
 });
 
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));

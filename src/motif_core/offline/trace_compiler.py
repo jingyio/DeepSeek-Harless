@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 from typing import Any, Mapping
+from .continuation_policy import validate_policy, valid_granted_record, same_grant, policy_digest
 
 
 _FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*$")
@@ -49,6 +50,13 @@ def contract_signature(tools: list[str], contracts: Mapping[str, Any]) -> str:
                "read_only": True, "output_fields": fields}
         if contract.observed_anchor:
             row["observed_anchor"] = True
+        if contract.continuation_policy is not None:
+            row['continuation_policy'] = validate_policy(contract.continuation_policy)
+            step = next((s for s in contract.continuation_policy['steps'] if s['tool'] == name), None)
+            if (not step or list(contract.required_params) != [step['param']]
+                    or step['receipt_field'] not in fields or contract.default_params
+                    or contract.parameter_shapes):
+                raise ValueError('continuation policy conflicts with bounded tool contract')
         if collections:
             row["collection_params"] = collections
         shapes = dict(contract.parameter_shapes)
@@ -168,6 +176,17 @@ def compile_read_motif(candidate: dict[str, Any], traces: list[Any],
     if any(not value for value in fingerprints) or len(set(fingerprints)) != len(fingerprints):
         raise ValueError("support must come from distinct identified tasks")
     occurrences = [_occurrence(trace, tools) for trace in selected]
+    for rows in occurrences:
+        for row in rows:
+            policy = contracts[row.name].continuation_policy
+            if policy and not valid_granted_record(row, policy):
+                raise ValueError('training observation lacks a valid continuation grant')
+        if any(contracts[t].continuation_policy for t in tools):
+            policy = contracts[tools[0]].continuation_policy
+            if (not policy or [s['tool'] for s in policy['steps']] != tools
+                    or any(contracts[t].continuation_policy != policy for t in tools)
+                    or any(not same_grant(rows[0], row) for row in rows[1:])):
+                raise ValueError('training continuation needs one complete consistent grant')
     operators: dict[str, dict[str, Any]] = {}
     transfer_evidence = []
     for index, name in enumerate(tools):
@@ -218,6 +237,8 @@ def compile_read_motif(candidate: dict[str, Any], traces: list[Any],
         "source_trace_ids": trace_ids,
         "source_task_fingerprints": fingerprints,
         "contract_signature": signature,
+        **({'continuation_policy_digest': policy_digest(contracts[tools[0]].continuation_policy)}
+           if contracts[tools[0]].continuation_policy else {}),
         "dependencies": {"required_evidence": tools, "operators": operators},
         "transfer_evidence": transfer_evidence,
     }
@@ -234,6 +255,13 @@ def certify_read_motif(compiled: dict[str, Any], heldout_trace: Any,
             or heldout_trace.task_fingerprint in compiled.get("source_task_fingerprints", [])):
         raise ValueError("held-out Motif certification has stale or reused provenance")
     rows = _occurrence(heldout_trace, tools)
+    for row in rows:
+        policy = contracts[row.name].continuation_policy
+        if policy and not valid_granted_record(row, policy):
+            raise ValueError('held-out observation lacks a valid continuation grant')
+    if any(contracts[t].continuation_policy for t in tools) and any(
+            not same_grant(rows[0], row) for row in rows[1:]):
+        raise ValueError('held-out continuation grants disagree')
     for index, name in enumerate(tools):
         arguments = rows[index].arguments
         if not isinstance(arguments, dict) or any(

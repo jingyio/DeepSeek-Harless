@@ -17,12 +17,14 @@ test('Native /harless picker opens Scenes and Mode submenus and saves choices', 
       { id: 'ppt', label: 'PPT' },
       { id: 'paper-proofreading', label: 'Paper Proofreading' },
       { id: 'research-data-analysis', label: 'Research Data Analysis' },
+      { id: 'files', label: 'Files' },
       { id: 'new-scene', label: 'New Scene' },
     ],
     scenes: [
       { id: 'ppt', label: 'PPT', available: true },
       { id: 'paper-proofreading', label: 'Paper Proofreading', available: false, unavailable_reason: 'missing_backend' },
       { id: 'research-data-analysis', label: 'Research Data Analysis', available: false, unavailable_reason: 'missing_backend' },
+      { id: 'files', label: 'Files', available: true },
       { id: 'new-scene', label: 'New Scene', available: true },
     ],
   };
@@ -50,7 +52,7 @@ test('Native /harless picker opens Scenes and Mode submenus and saves choices', 
   await decoration.ui.onSelect(rows[0], session);
   const sceneRows = await popup.ui.options(session, new AbortController().signal);
   assert.deepEqual(Array.from(sceneRows.slice(1), row => row.label),
-    ['PPT', 'Paper Proofreading', 'Research Data Analysis', 'New Scene']);
+    ['PPT', 'Paper Proofreading', 'Research Data Analysis', 'Files', 'New Scene']);
   assert.equal(sceneRows.some(row => row.label === 'Sample'), false);
   await popup.ui.onSelect(sceneRows[1], session);
   assert.deepEqual(posts[0], { action: 'select', session_id: 'session-1', selection: { scene: 'ppt' } });
@@ -67,4 +69,13 @@ test('Native /harless picker opens Scenes and Mode submenus and saves choices', 
   const outputRows=await popup.ui.options(session,new AbortController().signal);
   await popup.ui.onSelect(outputRows.find(row=>row.id==='option:allow_output=true'),session);
   assert.deepEqual(posts[2],{action:'set_scene_options',session_id:'session-1',options:{allow_output:true}});
+  value.selection.scene='files';value.scene_options={};
+  value.scene_option_fields=[{key:'allow_output',label:'整理权限',default:false,
+    values:[{value:false,label:'只读盘点与检索'},{value:true,label:'允许整理任务副本'}]}];
+  const filesRows=await decoration.ui.options(session,new AbortController().signal);
+  assert.equal(filesRows.find(row=>row.id==='page:options').label,'任务选项');
+  await decoration.ui.onSelect(filesRows.find(row=>row.id==='page:options'),session);
+  const filePermissionRows=await popup.ui.options(session,new AbortController().signal);
+  await popup.ui.onSelect(filePermissionRows.find(row=>row.id==='option:allow_output=true'),session);
+  assert.deepEqual(posts[3],{action:'set_scene_options',session_id:'session-1',options:{allow_output:true}});
 });

@@ -22,9 +22,13 @@ export const object = (value: unknown): value is Obj => value !== null && typeof
 const text = (value: unknown, maximum = 500, empty = false): value is string => typeof value === 'string'
   && (empty || value.trim().length > 0) && value.length <= maximum && !/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value);
 const hash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
-const keys = (value: Obj, required: string[], allowed = required): void => {
+const keys = (value: Obj, required: string[], allowed = required, location: Obj = {}): void => {
   if (required.some(key => !Object.hasOwn(value, key)) || Object.keys(value).some(key => !allowed.includes(key)))
-    throw new AdapterRejected('invalid_arguments', '参数字段不完整或包含不支持字段。');
+    throw new AdapterRejected('invalid_arguments', '参数字段不完整或包含不支持字段。', {
+      ...location, missing_fields: required.filter(key => !Object.hasOwn(value, key)),
+      unsupported_field_count: Object.keys(value).filter(key => !allowed.includes(key)).length,
+      allowed_fields: allowed, no_automatic_content_change: true,
+    });
 };
 function fail(code: string, message: string, details: Obj = {}): never { throw new AdapterRejected(code, message, details); }
 async function fileHash(path: string): Promise<string> { return createHash('sha256').update(await readFile(path)).digest('hex'); }
@@ -40,7 +44,8 @@ export async function privateFile(root: string, path: string): Promise<string> {
 
 type Job = Obj & { slides: number; allow_output: boolean; inputs: Obj[] };
 type Pinned = { deck_id: string; file_sha256: string; pages: number[]; result_sha256: string; version_sha256: string };
-const SLIDE_KEYS = ['title','bullets','sources','notes','image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes'];
+export const SLIDE_KEYS = ['title','bullets','sources','notes','image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes'];
+export const SLIDE_REMOVABLE_FIELDS = ['image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes'];
 const ARCHETYPES = ['evidence-focus','result-summary','method-map'];
 const LAYOUTS = ['title','content','image','table','chart','section','comparison','process'];
 
@@ -57,7 +62,7 @@ export function preflightArchetype(slide: Obj, page: number): void {
       fail('invalid_plan','evidence_notes 最多3项且仅用于科研页型。',{page});
     for (const note of notes) {
       if (!object(note)) fail('invalid_plan','evidence_notes 每项必须是对象。',{page});
-      keys(note,['label','text','source_index']);
+      keys(note,['label','text','source_index'],undefined,{page,field:'evidence_notes'});
       if (!text(note.label,24) || !text(note.text,110) || !Number.isSafeInteger(note.source_index) || Number(note.source_index)<1
         || !Array.isArray(slide.sources) || Number(note.source_index)>slide.sources.length)
         fail('invalid_plan','证据说明需要短 label/text 和原 sources 的合法1-based索引。',{page});
@@ -74,7 +79,7 @@ export function validateEvidenceRebind(before: Obj, after: Obj, changes: Obj, pa
 /** 仅检查可执行计划形状与容量；不补页、不删页、不改科学内容。后端仍执行独立全部守卫。 */
 export function preflightPlan(plan: unknown, expectedSlides: number): Obj {
   if (!object(plan)) return fail('invalid_plan', 'plan 必须是一个对象。');
-  keys(plan, ['title','slides'], ['title','slides','template']);
+  keys(plan, ['title','slides'], ['title','slides','template'], {field:'plan'});
   if (!text(plan.title, 100) || !Array.isArray(plan.slides)) return fail('invalid_plan', 'plan 需要 title 和 slides 数组；不能再嵌套 plan。');
   if (plan.slides.length !== expectedSlides) return fail('slide_count_mismatch', '提交页数必须精确等于任务页数，封面计算在内。',
     { expected_slides: expectedSlides, submitted_slides: plan.slides.length, no_automatic_content_change: true });
@@ -82,12 +87,12 @@ export function preflightPlan(plan: unknown, expectedSlides: number): Obj {
   for (const [index, slide] of plan.slides.entries()) {
     const page = index + 1;
     if (!object(slide)) return fail('invalid_plan', '页面必须是对象。', { page });
-    keys(slide, ['title','sources'], SLIDE_KEYS);
+    keys(slide, ['title','sources'], SLIDE_KEYS, {page,field:'slide'});
     if (!text(slide.title, 70) || !Array.isArray(slide.sources) || !slide.sources.length || slide.sources.length > 20)
       return fail('invalid_plan', '每页需要短标题和1–20个实际来源。', { page });
     for (const cite of slide.sources) {
       if (!object(cite)) return fail('invalid_plan', 'sources 每项需要 source_id 和 page。', { page });
-      keys(cite, ['source_id','page']);
+      keys(cite, ['source_id','page'],undefined,{page,field:'sources'});
       if (!text(cite.source_id) || !Number.isSafeInteger(cite.page) || Number(cite.page) < 1)
         return fail('invalid_plan', '来源句柄和页号不合法。', { page });
     }
@@ -103,7 +108,7 @@ export function preflightPlan(plan: unknown, expectedSlides: number): Obj {
     if (slide.layout !== undefined && !LAYOUTS.includes(String(slide.layout))) return fail('invalid_plan', '未知 layout。', { page });
     if (slide.image !== undefined) {
       if (!object(slide.image)) return fail('invalid_image', '图片必须引用真实素材句柄。', { page });
-      keys(slide.image, ['source_id','image_id']);
+      keys(slide.image, ['source_id','image_id'],undefined,{page,field:'image'});
       if (!text(slide.image.source_id) || !text(slide.image.image_id)) return fail('invalid_image', '图片素材句柄不合法。', { page });
     }
     if (slide.table !== undefined && (!Array.isArray(slide.table) || slide.table.length < 2 || slide.table.length > 6
@@ -113,7 +118,7 @@ export function preflightPlan(plan: unknown, expectedSlides: number): Obj {
     if (slide.chart !== undefined) {
       const c=slide.chart;
       if (!object(c)) return fail('invalid_plan','chart必须为已核对来源的显式数据对象。',{page});
-      keys(c,['type','categories','series'],['type','categories','series','x_label','y_label','unit']);
+      keys(c,['type','categories','series'],['type','categories','series','x_label','y_label','unit'],{page,field:'chart'});
       if (!['bar','line'].includes(String(c.type)) || !Array.isArray(c.categories) || c.categories.length<2 || c.categories.length>10
         || c.categories.some(x=>!text(x,25)) || new Set(c.categories).size!==c.categories.length
         || !Array.isArray(c.series) || c.series.length<1 || c.series.length>3
@@ -122,7 +127,7 @@ export function preflightPlan(plan: unknown, expectedSlides: number): Obj {
       const categories=c.categories;
       for (const series of c.series) {
         if (!object(series)) return fail('invalid_plan','chart数据序列必须是对象。',{page});
-        keys(series,['name','values']);
+        keys(series,['name','values'],undefined,{page,field:'chart'});
         if (!text(series.name,30) || !Array.isArray(series.values) || series.values.length!==categories.length
           || series.values.some(x=>typeof x!=='number'||!Number.isFinite(x)))
           return fail('invalid_plan','chart序列必须与分类等长，且只有有限数值。',{page});
@@ -181,6 +186,11 @@ export class DeliveryAdapter {
   }
   async audit(kind: string, data: Obj): Promise<void> {
     await appendFile(this.auditPath, JSON.stringify({kind, utc: new Date().toISOString(), ...data}) + '\n', { encoding:'utf8', mode:0o600 });
+  }
+  versionEvidence(schemaDigest:string) {
+    return {job_sha256:this.jobHash,input_version:this.inputVersion,schema_sha256:schemaDigest,
+      implementation_sha256:digest(Object.fromEntries(this.dependencies)),
+      permission_sha256:digest({allow_output:this.job.allow_output,execution_policy:this.job.execution_policy??null})};
   }
   async guard(): Promise<void> {
     if (await fileHash(this.jobPath) !== this.jobHash) fail('job_version_changed', '任务、预算或权限版本变化，停止使用旧进程。');
@@ -242,6 +252,14 @@ export class DeliveryAdapter {
     const rendered = await this.call('render_deck', {plan}); await this.checkedDeck(rendered);
     return this.finish(String(rendered.deck_id), 'render_delivery');
   }
+  async restyleDelivery(sourceId: string, template: string): Promise<Obj> {
+    this.outputAllowed();
+    if (!text(sourceId) || !['academic','lab'].includes(template))
+      fail('invalid_arguments','风格转换需要真实来源句柄与公开模板名，不接受额外内容修订。');
+    const restyled=await this.call('restyle_deck',{source_id:sourceId,template});
+    await this.checkedDeck(restyled);
+    return this.finish(String(restyled.deck_id),'restyle_delivery');
+  }
   async reviseDelivery(deckId: string, updates: unknown): Promise<Obj> {
     this.outputAllowed();
     if (!text(deckId) || !Array.isArray(updates) || !updates.length || updates.length > this.job.slides)
@@ -266,7 +284,7 @@ export class DeliveryAdapter {
       for (const update of updates) {
         const page=Number(update.page), changes=update.changes as Obj, before=structuredClone(slides[page-1]);
         for (const [key,value] of Object.entries(changes)) {
-          if (value===null && ['image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes'].includes(key)) delete slides[page-1][key];
+          if (value===null && SLIDE_REMOVABLE_FIELDS.includes(key)) delete slides[page-1][key];
           else slides[page-1][key]=structuredClone(value);
         }
         validateEvidenceRebind(before,slides[page-1],changes,page);
@@ -318,11 +336,12 @@ export class DeliveryAdapter {
 export async function dependencyFiles(root: string, backendServer: string, adapterDirectory: string): Promise<string[]> {
   const scene=resolve(root,'scenarios/research_ppt');
   const runtimeFiles=['service.py','server.py','delivery_server.py','recovery.py','documents.py','revision.py',
-    'validation.py','restyle.py','generated_tools.py','figure_catalog.py','document_cache.py','layout_learning.py',
+    'validation.py','restyle.py','generated_tools.py','figure_catalog.py','document_cache.py','knowledge_library.py','layout_learning.py',
     'contracts.json','version-fields.json','delivery-contracts.json','delivery-version-fields.json','package-lock.json',
     'dist/render.js','dist/layout-policy.js','dist/layout-policy-cli.js',
     'ts/render.ts','ts/layout-policy.ts','ts/layout-policy-cli.ts','ts/guard.ts','ts/guard-cli.ts',
-    'dist/guard.js','dist/guard-cli.js','ts/delivery-adapter.ts','ts/mcp-adapter.ts'];
+    'dist/guard.js','dist/guard-cli.js','ts/delivery-adapter.ts','ts/mcp-adapter.ts','ts/execution-policy.ts',
+    'ts/pending-plan.ts','ts/plan-recovery.ts','dist/pending-plan.js','dist/plan-recovery.js'];
   return [...new Set([backendServer,...runtimeFiles.map(name=>resolve(scene,name)),
-    resolve(adapterDirectory,'delivery-adapter.js'),resolve(adapterDirectory,'mcp-adapter.js')])];
+    resolve(adapterDirectory,'delivery-adapter.js'),resolve(adapterDirectory,'mcp-adapter.js'),resolve(adapterDirectory,'execution-policy.js')])];
 }

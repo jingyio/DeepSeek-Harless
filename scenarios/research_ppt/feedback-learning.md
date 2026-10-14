@@ -97,6 +97,32 @@ python -m scenarios.research_ppt.feedback_learning --store .local/research-ppt/f
 
 此门槛支持人工审核质量、代理API费用和人工修订分钟范围的观察。账单实付、计算、维护和学习人工费用未完整采集时，不宣称完整总成本下降或达到盈亏平衡；学习成本与后续任务费用分别保留。每任务独立目录，写入锁防并发覆盖，异常终止遗留 `.write-lock` 时先确认无写入者再人工移除。
 
+## V16：AI 辅助审阅的隔离学习评测
+
+真实试用尚无人评时，允许明确走 `evaluation_only` 学习范围，但不能填造 `human/user`。记录的三项质量均需 AI 辅助逐项核验后为 `passed`、`reviewer="ai-assisted"`，并保留审阅证据；`pending`、`failed` 和未审阅不能进入本路径。真实正常组、学习授权、完整账本、交付文件、来源/配置字节、冻结身份、两个训练/一个独立留出以及公共编译认证门槛与人评路径一致。
+
+```sh
+python -m scenarios.research_ppt.feedback_learning --store .local/research-ppt/feedback queue --evaluation-only
+python -m scenarios.research_ppt.feedback_learning --store .local/research-ppt/feedback preview \
+  --evaluation-only --mining witnessed_edges \
+  --train TRAIN_RECORD_1 TRAIN_RECORD_2 --heldout HELDOUT_RECORD \
+  --tool-schema .local/实际schema快照.json
+python -m scenarios.research_ppt.feedback_learning --store .local/research-ppt/feedback learn \
+  --plan .local/research-ppt/feedback/plans/PLAN_ID.json --confirm
+```
+
+范围由冻结学习计划与候选共同绑定为 `learning_scope="evaluation_only"`、`production_eligible=false`。候选可以通过 `--candidate-version` 在独立新任务隔离执行，测量真实旁路和费用；不能 `activate`、作为 active 继承或回滚为 active。只修改候选标签无法改变学习计划范围。以后收到人工通过，也不能把同一候选重贴生产标签；生产学习仍需新的人评训练/认证计划，保留旧证据和失败，不偷换留出。
+
+这条路径证明范围仅限“AI 辅助审阅条件下的结构参数流认证与后续隔离观察”，不能称独立人评、生产准入、科研质量已被认证或稳定降本。生成/认证成本与后续测试成本分开记录，失败、重试、辅助修订和维护不得从对照费用中删除。
+
+AI辅助记录还需 `review_evidence={path,sha256}`，实际私有JSON固定字段为 `schema_version=1`、`reviewer="ai-assisted"`、`scope="ai_assisted_not_independent_human"`、同一 `run_id/source_evidence`、`delivery_evidence_sha256`、`quality={delivery,scientific,visual}`、实际非负 `review_seconds` 和非空 `notes`。入口将评审文件冻结进反馈证据锁；只贴AI标签、审了另一份PPT或追改文件均拒绝。AI时间不能替代人工修订分钟。
+
+新的宿主控制策略使用 `execution_strategy="baseline_steps"` 和 `"host_delivery"`：前者禁用组合入口，仍由模型逐步调用；后者在合法计划提交后由宿主执行固定交付脚本。两者继续共用实际来源、模型、固定前缀、工具 schema/顺序和质量要求，以实际运行的执行策略差异为实验因素。旧 `steps/composed` 记录仍可被核验，但不追改为新策略。学习正常组允许 `steps` 或 `baseline_steps`；配对优化组允许 `composed` 或 `host_delivery`，完整题面和字节仍独立核验。宿主固定脚本是普通工程优化，候选 Motif 是否额外跳过整次模型请求须以真实在线审计另证。
+
+受控轨迹需 `execution_policy_evidence={job_path,job_sha256,audit_path,audit_sha256,policy_sha256}`，由真实job和同目录 `delivery-adapter-audit.jsonl` 导出并冻结。除完整原始工具结果外，宿主primitive的成功交付还须绑定同一实际参数摘要、策略、脚本执行ID、started/completed审计和结果摘要；`render_deck`这个名字本身不能证明交付。baseline禁用组合的规则也核实际加载审计。编译前核当前产品源码/构建摘要与三份正常轨迹相符，并将实际源文件集锁入编译证据；编译后修改产品实现不会继续沿用旧候选认证。
+
 ## 验证边界
 
 `tests/test_feedback_learning.py` 仅为合成机制诊断，覆盖授权、未知费用、不可变修订、双组去重、失败不晋级、私有路径、并发锁、证据字节变化，以及实际提示文件导出的固定前缀、不同题面、双路策略差异和旧记录拒绝。训练／留出身份和真实账本门槛继续独立检查；配置可比不等于任务已经通过认证。根负责在服务器运行并保留日志。测试通过不代表真实用户质量、完全自主学习或稳定费用下降；真实试用先记录 `pending`，待用户反馈再形成结论。
+
+V16 增加宿主策略字节绑定、AI 辅助隔离scope、未完成真实证据拒绝、候选scope重贴拒绝及生产/继承/回滚隔离回归。`motif_v6.structural_candidates` 只补充现有 Runtime 支持的 `pin_source(document_id)→read_source(source_id)` 窄结构报告；不生成新在线规则，不模拟或替代真实工具。

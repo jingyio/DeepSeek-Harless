@@ -26,7 +26,7 @@ class ServiceCacheTests(unittest.TestCase):
 
     def service(self, path=None, allow_output=True):
         job = prepare([path or self.path], '检查缓存不继承任务授权', 1, allow_output,
-                      document_cache=True)
+                      document_cache=True, persistent_library=False)
         return PPTService(job)
 
     def cache_events(self, service):

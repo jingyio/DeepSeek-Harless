@@ -46,7 +46,8 @@ class RevisionServiceTests(unittest.TestCase):
                                         'The table and chart are independent checks.'])
         write_source(self.secondary_file, ['Updated result is measured on the heldout split.'])
         self.job_path = prepare([self.primary_file, self.secondary_file],
-            'Only revise the requested page and retain original delivery evidence.', 3, True)
+            'Only revise the requested page and retain original delivery evidence.', 3, True,
+            persistent_library=False)
         self.service = PPTService(self.job_path)
         self.service.rsi = self.directory / 'rsi'
         self.service.rsi.mkdir()

@@ -22,6 +22,20 @@ def readable_source_name(value: str) -> str:
     return name[:34] + '…' + name[-21:]
 
 
+def source_note_label(row: dict, page: int) -> str:
+    """宿主生成的来源定位；文件名只作显示，document_id 与完整摘要回指原文。"""
+    return (f"{readable_source_name(row['name'])} 第 {page} 页; SHA256 {row['version_sha256']}"
+            f"; 文档 {row['document_id']}")
+
+
+def validate_minimum_original_figures(value, slides: int, operation: str) -> None:
+    """显式任务验收合同；不从用户说明推断，也不等于科研质量认证。"""
+    if type(value) is not int or type(slides) is not int or not 0 <= value <= slides:
+        raise ValueError('minimum_original_figures 必须为不超过页数的非负整数')
+    if value and operation != 'generate':
+        raise ValueError('完整原图最低要求仅适用于 generate 任务，restyle 请保持默认 0')
+
+
 def private_path(path: Path) -> Path:
     resolved = path.resolve()
     if not resolved.is_relative_to((ROOT / '.local').resolve()):
@@ -62,8 +76,24 @@ class PPTService:
     def __init__(self, job_path: Path):
         self.job_path = private_path(job_path)
         self.job = json.loads(self.job_path.read_text(encoding='utf-8'))
+        validate_minimum_original_figures(self.job.get('minimum_original_figures', 0),
+                                         self.job['slides'], self.job.get('operation', 'generate'))
         if type(self.job.get('document_cache', False)) is not bool:
             raise ValueError('document_cache 必须是明确布尔配置')
+        if type(self.job.get('persistent_library', False)) is not bool:
+            raise ValueError('persistent_library 必须是明确布尔配置')
+        self.library = None
+        if self.job.get('persistent_library'):
+            from .knowledge_library import PersistentLibrary
+            if (self.job.get('library_schema_version') != 1 or
+                    not isinstance(self.job.get('library_tenant'), str) or
+                    any(not row.get('library_resource_id') for row in self.job.get('inputs', []))):
+                raise ValueError('长期库任务缺少身份、协议版本或资源绑定')
+            self.library = PersistentLibrary()
+        elif any(row.get('library_resource_id') for row in self.job.get('inputs', [])):
+            raise ValueError('不能去掉长期库配置后绕过资源授权')
+        from .knowledge_library import validate_job_components
+        self.component_descriptors = validate_job_components(self.job, library=self.library)
         self.output = self.job_path.parent / 'outputs'
         self.handles, self.decks = {}, {}
         self.deck_records, self.validations = {}, {}
@@ -75,24 +105,33 @@ class PPTService:
         with (self.job_path.parent / 'feedback.jsonl').open('a', encoding='utf-8') as f:
             f.write(json.dumps({'kind': kind, **data}, ensure_ascii=False) + '\n')
 
-    def document_cache(self):
-        return ROOT / '.local/research-ppt/document-cache' if self.job.get('document_cache', False) else None
+    def document_cache(self, row: dict | None = None):
+        if not self.job.get('document_cache', False):
+            return None
+        if row is not None and self.library is not None:
+            return self.library.cache_directory(row['library_resource_id'],
+                tenant_id=self.job['library_tenant'], job_id=self.job['job_id'])
+        return ROOT / '.local/research-ppt/document-cache'
 
     def page_geometry(self, row: dict, page: int):
         self.current(row)
-        cache = self.document_cache()
+        cache = self.document_cache(row)
         if cache is None:
-            return pdf_page_geometry(Path(row['path']), page, row['version_sha256'])
-        from .document_cache import cached_pdf_page_geometry
-        return cached_pdf_page_geometry(Path(row['path']), page, row['version_sha256'], cache,
-                                        audit=lambda result: self.record('document_cache', result))
+            result = pdf_page_geometry(Path(row['path']), page, row['version_sha256'])
+        else:
+            from .document_cache import cached_pdf_page_geometry
+            result = cached_pdf_page_geometry(Path(row['path']), page, row['version_sha256'], cache,
+                                             audit=lambda result: self.record('document_cache', result))
+        self.current(row)
+        return result
 
     def list_inputs(self) -> dict:
         return {'inputs': [{k: row[k] for k in ('document_id', 'name', 'version_sha256')}
                            for row in self.job['inputs']], 'instruction': self.job['instruction'],
                 'slide_count': self.job['slides'], 'output_enabled': self.job['allow_output'],
                 'template': self.job.get('template', 'academic'),
-                'operation': self.job.get('operation', 'generate')}
+                'operation': self.job.get('operation', 'generate'),
+                'minimum_original_figures': self.job.get('minimum_original_figures', 0)}
 
     def list_templates(self) -> dict:
         return {'templates': [
@@ -172,6 +211,15 @@ class PPTService:
                          '图注和可见图形几何支持的裁图候选；图件含义与完整性仍需审阅')}
 
     def current(self, row: dict):
+        from .knowledge_library import validate_job_components
+        self.component_descriptors = validate_job_components(self.job, library=self.library)
+        if self.library is not None:
+            resolved = self.library.resolve_document(row['library_resource_id'],
+                tenant_id=self.job['library_tenant'], job_id=self.job['job_id'],
+                expected_sha256=row['version_sha256'])
+            if Path(row['path']).resolve() != Path(resolved['path']).resolve():
+                raise ValueError('输入路径与长期库资源绑定不一致')
+            return  # resolve_document 已核持久副本字节，避免此处重复整文件 hash。
         if file_hash(Path(row['path'])) != row['version_sha256']:
             raise ValueError('输入版本已变化，请重新准备任务')
 
@@ -185,8 +233,13 @@ class PPTService:
         if handle in self.handles:
             parsed = self.handles[handle]['parsed']
         else:
-            cache = self.document_cache()
-            if cache is None:
+            cache = self.document_cache(row)
+            if self.library is not None:
+                parsed = self.library.parse_document(row['library_resource_id'],
+                    tenant_id=self.job['library_tenant'], job_id=self.job['job_id'],
+                    expected_sha256=row['version_sha256'], use_cache=cache is not None,
+                    audit=lambda result: self.record('document_cache', result))
+            elif cache is None:
                 parsed = parse_document(Path(row['path']))
             else:
                 from .document_cache import cached_parse_document
@@ -220,7 +273,9 @@ class PPTService:
         item['read'] = True
         return {'source_id': source_id, 'document_id': item['row']['document_id'],
                 'version_sha256': item['row']['version_sha256'], 'pages': pages,
-                'images': [{k: v for k, v in img.items() if k != 'data'} for img in parsed['images']],
+                'images': [{**{k: v for k, v in img.items() if k != 'data'},
+                            'evidence_scope': img.get('evidence_scope', 'embedded_asset_only')}
+                           for img in parsed['images']],
                 'warnings': parsed['warnings'], 'read_page_for_truncated_text': any(p['truncated'] for p in pages)}
 
     def read_page(self, source_id: str, page: int) -> dict:
@@ -270,7 +325,7 @@ class PPTService:
             raise ValueError('生成工具认证版本已变化，请重新准备任务')
         item = self.source(source_id)
         payload = catalog_input(Path(item['row']['path']), source_id, bound['version_sha256'],
-                                cache_dir=self.document_cache(),
+                                cache_dir=self.document_cache(item['row']),
                                 audit=lambda result: self.record('document_cache', result))
         if self.job.get('catalog_execution') == 'manual':
             from .figure_catalog import expected_catalog
@@ -318,6 +373,9 @@ class PPTService:
             if checked.get('valid') is not True or checked.get('policy_digest') != self.job['layout_policy_digest']:
                 raise ValueError('布局策略摘要或协议无效')
             deck['layout_policy'] = checked['policy']
+        original_figures = set()
+        source_metadata = []
+        minimum_original_figures = self.job.get('minimum_original_figures', 0)
         for slide in deck['slides']:
             if not isinstance(slide, dict) or set(slide) - {'title','bullets','sources','notes','image','table','chart','layout','comparison','process','takeaway','archetype','evidence_notes'}:
                 raise ValueError('幻灯片包含不支持的字段')
@@ -327,6 +385,7 @@ class PPTService:
             if not isinstance(citations, list) or not citations:
                 raise ValueError('每页必须声明 sources: [{source_id, page}]')
             resolved = []
+            provenance = {'citations': [], 'figures': []}
             visible = []
             previous_visible_source_id = None
             for index, cite in enumerate(citations, 1):
@@ -335,7 +394,11 @@ class PPTService:
                 item = self.source(cite['source_id'])
                 if not item['read'] or type(cite['page']) is not int or not 1 <= cite['page'] <= item['parsed']['page_count']:
                     raise ValueError('来源尚未读取或页码越界')
-                resolved.append(f"{item['row']['name']} 第 {cite['page']} 页; SHA256 {item['row']['version_sha256']}")
+                resolved.append(source_note_label(item['row'], cite['page']))
+                provenance['citations'].append({
+                    'document_id': item['row']['document_id'], 'name': item['row']['name'],
+                    'format': item['parsed']['format'], 'page': cite['page'],
+                    'source_sha256': item['row']['version_sha256']})
                 if 'archetype' in slide:
                     if cite['source_id'] == previous_visible_source_id:
                         visible.append(f"[{index}] p.{cite['page']}")
@@ -354,32 +417,70 @@ class PPTService:
                 if not item['read']:
                     raise ValueError('图片来源尚未读取')
                 matches = [x for x in item['parsed']['images'] if x['image_id'] == image['image_id']]
+                if ((self.job.get('figure_evidence_policy') == 'caption-geometry-v1' or minimum_original_figures)
+                        and item['parsed']['format'] == 'pdf' and len(matches) == 1):
+                    figure = matches[0]
+                    if figure.get('evidence_scope') != 'caption_geometry_candidate':
+                        raise ValueError('科研图件须使用 read_page 返回的真实 figure_candidates 和 extract_figure；嵌入素材或整页不能冒充完整原图')
+                    if not any(cite['source_id'] == image['source_id'] and cite['page'] == figure['page']
+                               for cite in citations):
+                        raise ValueError('科研图件的真实来源页必须列入本页 sources，不能引用其它页代替')
+                    stated = re.findall(r'(?:Figure|Fig\.?|图)\s*(\d+[A-Za-z]?)(?!\d)', slide['title'], re.I)
+                    located = re.match(r'\s*(?:Figure|Fig\.?|图)\s*(\d+[A-Za-z]?)', figure.get('caption', ''), re.I)
+                    if stated and (located is None or any(label.lower() != located[1].lower() for label in stated)):
+                        raise ValueError('标题声明的图号与真实定位图注不一致，请核对原图而不是改写来源')
                 if len(matches) != 1:
                     raise ValueError('图片标识不存在')
+                figure = matches[0]
+                if (item['parsed']['format'] == 'pdf'
+                        and figure.get('evidence_scope') == 'caption_geometry_candidate'
+                        and isinstance(figure.get('candidate_id'), str) and figure['candidate_id']):
+                    # image_id 每次裁取都变；同图反复提取或同字节来源的别名不增加数量。
+                    original_figures.add((item['row']['version_sha256'], figure['page'], figure['candidate_id']))
                 slide['image'] = {k: matches[0][k] for k in ('data','width','height')}
-                slide['sources'].append(f"{item['row']['name']} 图片 {image['image_id']} 第 {matches[0]['page']} 页")
-                if matches[0].get('caption'):
-                    slide['sources'].append('原图定位图注（几何候选，语义未认证）：' + matches[0]['caption'][:180])
-                elif matches[0].get('evidence_scope') == 'page_evidence':
-                    slide['sources'].append('整页页面证据；未定位或认证任何特定图件')
+                # 裁图句柄/原始图注是工具证据，不能混入交付给讲者的来源文字。
+                # 不触碰用户notes，也不从notes自由文字猜测遗漏的语义来源。
+                caption = figure.get('caption')
+                label = (re.match(r'\s*((?:Figure|Fig\.?|图)\s*\d+[A-Za-z]?)\b', caption, re.I)
+                         if isinstance(caption, str) else None)
+                figure_label = (' · 图注候选 ' + label[1] if label else
+                                ' · 整页页面证据' if figure.get('evidence_scope') == 'page_evidence' else
+                                ' · 图件（未确定图号）')
+                match_index = next((i for i, cite in enumerate(citations)
+                                    if cite['source_id'] == image['source_id'] and
+                                    cite['page'] == figure['page']), None)
+                if match_index is not None:
+                    slide['sources'][match_index] += figure_label
+                else:
+                    slide['sources'].append(source_note_label(item['row'], figure['page']) + figure_label)
+                provenance['figures'].append({
+                    'document_id': item['row']['document_id'], 'name': item['row']['name'],
+                    'format': item['parsed']['format'], 'page': figure['page'],
+                    'source_sha256': item['row']['version_sha256'],
+                    'image_id': image['image_id'], 'candidate_id': figure.get('candidate_id'),
+                    'caption': figure.get('caption'), 'evidence_scope': figure.get('evidence_scope'),
+                    'figure_label': label[1] if label else None})
                 if 'archetype' in slide:
-                    figure_label = ''
-                    if isinstance(matches[0].get('caption'), str):
-                        label = re.match(r'\s*((?:Figure|Fig\.?|图)\s*\d+[A-Za-z]?)\b',
-                                         matches[0]['caption'], re.I)
-                        if label:
-                            figure_label = ' · 图注候选 ' + label[1]
-                    match_index = next((i for i, cite in enumerate(citations)
-                                        if cite['source_id'] == image['source_id'] and
-                                        cite['page'] == matches[0]['page']), None)
                     if match_index is not None:
                         visible[match_index] += figure_label
                     else:
                         # 不新增索引，不让图件附加notes改变 evidence_notes 对原sources的绑定。
                         visible[-1] += (f" | 图件：{readable_source_name(item['row']['name'])}"
                                         f" · p.{matches[0]['page']}" + figure_label)
+            source_metadata.append(provenance)
+        if self.job.get('operation', 'generate') == 'generate':
+            self.record('original_figure_requirement_checked', {
+                'minimum_original_figures': minimum_original_figures,
+                'distinct_original_figures': len(original_figures),
+                'passed': len(original_figures) >= minimum_original_figures,
+                'scope': 'caption_geometry_only_scientific_review_required'})
+            if len(original_figures) < minimum_original_figures:
+                raise ValueError('计划完整原图数量未达到任务要求')
         run_dir = self.output / uuid4().hex
         run_dir.mkdir(parents=True, exist_ok=False)
+        (run_dir / 'source-provenance.json').write_text(json.dumps({
+            'schema_version': 1, 'scope': 'tool_metadata_not_scientific_certification',
+            'pages': source_metadata}, ensure_ascii=False, indent=2), encoding='utf-8')
         encoded = json.dumps(deck, ensure_ascii=False)
         (run_dir / 'plan.json').write_text(encoded, encoding='utf-8')
         target = run_dir / 'presentation.pptx'
@@ -396,6 +497,9 @@ class PPTService:
                 deck.pop('layout_policy',None)
                 run_dir = self.output / uuid4().hex
                 run_dir.mkdir(parents=True,exist_ok=False)
+                (run_dir / 'source-provenance.json').write_text(json.dumps({
+                    'schema_version': 1, 'scope': 'tool_metadata_not_scientific_certification',
+                    'pages': source_metadata}, ensure_ascii=False, indent=2), encoding='utf-8')
                 (run_dir/'plan.json').write_text(json.dumps(deck,ensure_ascii=False),encoding='utf-8')
                 target = run_dir/'presentation.pptx'
                 result = node('render.js', {}, str(run_dir/'plan.json'), str(target))
@@ -499,6 +603,7 @@ class PPTService:
             expected_images=expected['images'] if expected else None,
             expected_visible_sources=[slide.get('visible_sources', []) for slide in record['plan']['slides']]
                 if expected and any('archetype' in slide for slide in record['plan']['slides']) else None,
+            expected_notes=expected['speaker_notes'] if expected else None,
             expected_sources=expected_sources)
         self.checked_deck(deck_id)
         validation_id = 'validation-'+uuid4().hex
