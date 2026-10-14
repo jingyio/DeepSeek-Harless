@@ -3,7 +3,7 @@
 ## 2026-10-14：斜杠场景与成员边界（当前）
 
 - 更新时间与交接人：2026-10-14，Codex；用户授权修复、真实受限测试、部署与提交 PR，继续不代替用户合并。
-- 范围/版本：PR #11 的历史续聊与原生场景引用 `0fb57ad` 已合入 main `2ad349a`。新增分支 `codex/member-workspace-hardening`，实现 `a47f76e`/`0b5955c`；后续仅文档，具体 PR 状态以 GitHub 为准。
+- 范围/版本：PR #11 的历史续聊与原生场景引用 `0fb57ad` 已合入 main `2ad349a`。新增分支 `codex/member-workspace-hardening`，实现 `a47f76e`/`0b5955c`；后续仅文档。[PR #15](https://github.com/jingyio/DeepSeek-Harless/pull/15) 已创建，待审、未合并。
 - 已完成：`harless_web_client/client.js` 原生前缀候选/蓝色引用与草稿保护；`dsh_web_tasks.ts` 工作区 ID 创建、冷会话恢复、场景锁定与同场景续聊；`dsh_member_workspace.ts`/`harless_member_file_scope.ts` 公开文件 Fetch/Lookup 边界；账号网关成员 profile 轮询、关闭浏览器连接和启动中后端。
 - 已验证：最终 Linux 165 Python / 93 Node、smoke、motif:check 全通过。三组双账号各三轮真实对话，重启与隔离通过；PPT 浏览器两轮、截图对应的早期会话两轮；真实成员同名文件独立、6 类 API 越界拒绝、工作区与字节重启恢复。见 [本轮记录](../experiments/slash-member-recovery-20261014-v1.md)。
 - 部署/数据：正式检出 `0b5955c`，owner 33102 / gateway 33101 保持；3080 原模型预算服务未重启。保留所有正式账号、Home、工作区、output 和迁移核验备份。原论文工作区没有覆盖；测试账户和凭证只在私有 `.local/`，结束清理测试后端，不清空历史日志。
