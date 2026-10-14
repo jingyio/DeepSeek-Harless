@@ -1,0 +1,44 @@
+{
+  "repository": "https://github.com/K-Dense-AI/scientific-agent-skills",
+  "commit": "92ace75ac21efe19a620434e0ca4e356081fe807",
+  "license": "MIT; see LICENSE.md and per-skill metadata",
+  "files": [
+    {
+      "upstream_path": "LICENSE.md",
+      "local_path": "LICENSE.md",
+      "sha256": "09b02a3c9df3053c55531d503357a9c7cde275970e6c3ceaa1ddf5f0e90b40c1",
+      "url": "https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/92ace75ac21efe19a620434e0ca4e356081fe807/LICENSE.md"
+    },
+    {
+      "upstream_path": "skills/literature-review/SKILL.md",
+      "local_path": "skills/literature-review/UPSTREAM.md",
+      "sha256": "16a9e85bcdcb9bb859e1646bf836e51b22900445ba2e367d8d75be05b5a5cba8",
+      "url": "https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/92ace75ac21efe19a620434e0ca4e356081fe807/skills/literature-review/SKILL.md"
+    },
+    {
+      "upstream_path": "skills/citation-management/SKILL.md",
+      "local_path": "skills/citation-management/UPSTREAM.md",
+      "sha256": "dc79fe1e8438dcf598040615d5323360c6a7ed0b868fc3ffc82512c871a1e3ff",
+      "url": "https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/92ace75ac21efe19a620434e0ca4e356081fe807/skills/citation-management/SKILL.md"
+    },
+    {
+      "upstream_path": "skills/scientific-critical-thinking/SKILL.md",
+      "local_path": "skills/scientific-critical-thinking/UPSTREAM.md",
+      "sha256": "563af70571b7dcd6a96bf2e303bedfdcba623b4e9f082d58f04aacbc961fdae4",
+      "url": "https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/92ace75ac21efe19a620434e0ca4e356081fe807/skills/scientific-critical-thinking/SKILL.md"
+    },
+    {
+      "upstream_path": "skills/citation-management/scripts/_common.py",
+      "local_path": "skills/citation-management/scripts/_common.py",
+      "sha256": "87540160163671b972c2fccb4d0a42db3cca2603c664d26d5da3ca5dbc7dfdd2",
+      "url": "https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/92ace75ac21efe19a620434e0ca4e356081fe807/skills/citation-management/scripts/_common.py"
+    },
+    {
+      "upstream_path": "skills/citation-management/scripts/format_bibtex.py",
+      "local_path": "skills/citation-management/scripts/format_bibtex.py",
+      "sha256": "cc74fdc4d5819df8db3999e59f96469cebfb353ecf406a49a5a0fc60896707cb",
+      "url": "https://raw.githubusercontent.com/K-Dense-AI/scientific-agent-skills/92ace75ac21efe19a620434e0ca4e356081fe807/skills/citation-management/scripts/format_bibtex.py"
+    }
+  ],
+  "adaptation": "Checklist only; upstream instructions are not automatically activated. Formatter used for private previews; no input overwrite."
+}

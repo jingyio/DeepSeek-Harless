@@ -1,6 +1,8 @@
 /** DSH adapter: replace one model decision with certified read-only calls. */
 
 import { randomUUID, createHash } from 'node:crypto';
+import { validGrant, verifyContinuationResult } from '../motif_core/approved_plan_continuation.generated.mjs';
+import { sourceDereferenceHistoryCapacity } from '../motif_core/source_dereference.generated.mjs';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
@@ -70,11 +72,12 @@ export function loopbackSimilarity(endpoint, model, fetcher = fetch) {
 /** Injectable for protocol tests; the production entry point is apply(). */
 export function createOnlineInterceptor({ manifest, task, similarity, mode = 'shadow',
                                            minSimilarity = 0.8, minMargin = 0.1,
-                                           audit = () => {} }) {
+                                           audit = () => {}, closedContinuation = () => false }) {
   validateOnlineManifest(manifest);
   const parsedTask = parseStructuredTask(task, manifest);
+  const historyCapacity = sourceDereferenceHistoryCapacity(parsedTask, manifest);
   if (!['shadow', 'execute'].includes(mode) ||
-      typeof similarity !== 'function' || typeof audit !== 'function') {
+      typeof similarity !== 'function' || typeof audit !== 'function' || typeof closedContinuation !== 'function') {
     throw new TypeError('invalid online Motif policy');
   }
   const states = new Map();
@@ -94,7 +97,12 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     const version = outputField(output, manifest.version_fields[exec.name]);
     const pending = current.pending.get(exec.callId);
     const ok = result?.isError !== true && output !== null;
-    const barrier = !ok || manifest.contracts[exec.name]?.read_only !== true ||
+    const policy = manifest.contracts[exec.name]?.continuation_policy;
+    const permissionValid = !policy || validGrant(output, policy,
+      policy.steps.findIndex(step => step.tool === exec.name), parsedTask);
+    if (policy && !permissionValid) audit({ kind: 'motif_continuation_rejected',
+      session_id: sessionId, tool: exec.name, reason: 'missing_stale_or_revoked_grant' });
+    const barrier = !ok || !permissionValid || manifest.contracts[exec.name]?.read_only !== true ||
       (!!manifest.version_fields[exec.name] &&
        !versionWithinTask(parsedTask, manifest, exec.name, version, pending));
     if (barrier) audit({ kind: 'motif_deferred', session_id: sessionId, tool: exec.name,
@@ -102,12 +110,14 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     current.history.push({ name: exec.name, callId: exec.callId, ok,
       barrier, arguments: exec.arguments, output, sourceVersion: version,
       inputVersion: parsedTask.input_version });
-    current.history.splice(0, Math.max(0, current.history.length - 12));
+    current.history.splice(0, Math.max(0, current.history.length - historyCapacity));
     if (pending) {
       const verified = ok && exec.name === pending.tool &&
         exec.arguments && typeof exec.arguments === 'object' &&
         digest(exec.arguments) === digest(pending.arguments) &&
-        version === pending.expected_version;
+        version === pending.expected_version &&
+        (!pending.continuation_expected || verifyContinuationResult(
+          pending.continuation_expected, output, parsedTask));
       const batch = current.batches.get(pending.batch_id);
       batch.remaining.delete(exec.callId);
       batch.failed ||= !verified;
@@ -128,6 +138,11 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     if (sessionId !== parsedTask.session_id) return next();
     const current = state(sessionId);
     if (current.halted || current.pending.size) return next();
+    if ((options.messages ?? []).some(message => message.source?.kind === 'task-acceptance-repair')) {
+      current.halted = true;
+      audit({ kind: 'motif_deferred', session_id: sessionId, reason: 'acceptance_repair_requires_ordinary_harness' });
+      return next();
+    }
     const availableTools = new Map((options.tools ?? [])
       .filter((tool) => typeof tool?.name === 'string')
       .map((tool) => [tool.name, tool]));
@@ -135,7 +150,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     try {
       proposals = await proposeReadyBatch({ manifest, task: parsedTask,
         history: current.history, availableTools, similarity,
-        minSimilarity, minMargin, usedPrefixes: current.usedPrefixes });
+        minSimilarity, minMargin, usedPrefixes: current.usedPrefixes, closedContinuation });
     } catch (error) {
       audit({ kind: 'motif_deferred', session_id: sessionId,
         reason: error?.name ?? 'candidate_error' });
@@ -170,6 +185,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
       certified_digests: proposals.map((row) => row.certified_digest),
       tools: proposals.map((row) => row.tool),
       selection_bases: proposals.map((row) => row.selection_basis),
+      continuation_policy_digests: proposals.map(row => row.continuation_expected?.root.policy_sha256 ?? null),
       code_node_ids: proposals.flatMap((row) => row.code_node_ids),
       code_program_digests: proposals.flatMap((row) => row.code_program_digests),
       similarities: proposals.map((row) => row.similarity) });
@@ -185,13 +201,18 @@ function privateAudit(root, sessionId, row) {
   appendFileSync(file, JSON.stringify(row) + '\n', { mode: 0o600 });
 }
 
-export function apply(ctx) {
+/** Shared installer; specialised TS adapters may supply a stricter matcher. */
+export function installOnlineMotif(ctx, { similarity: suppliedSimilarity,
+  certificationScope = 'independent_decisions', closedContinuation } = {}) {
   const manifestPath = process.env.SSS_ONLINE_MOTIF_MANIFEST;
   const taskPath = process.env.SSS_ONLINE_MOTIF_TASK;
   if (!manifestPath || !taskPath) return;
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   const task = JSON.parse(readFileSync(taskPath, 'utf8'));
-  const similarity = loopbackSimilarity(
+  if ((manifest.certification_scope ?? 'independent_decisions') !== certificationScope) {
+    throw new TypeError('Motif certification scope is not approved by this adapter');
+  }
+  const similarity = suppliedSimilarity ?? loopbackSimilarity(
     process.env.SSS_MOTIF_EMBEDDING_ENDPOINT ?? '',
     process.env.SSS_MOTIF_EMBEDDING_MODEL ?? '');
   const mode = process.env.SSS_ONLINE_MOTIF_MODE ?? 'shadow';
@@ -199,13 +220,18 @@ export function apply(ctx) {
   if (mode === 'execute' && !/^[a-f0-9]{64}$/.test(promptHash ?? '')) {
     throw new TypeError('execute mode needs the frozen research prompt digest');
   }
-  const interceptor = createOnlineInterceptor({ manifest, task, similarity, mode,
+  const interceptor = createOnlineInterceptor({ manifest, task, similarity, mode, closedContinuation,
     minSimilarity: Number(process.env.SSS_MOTIF_MIN_SIMILARITY ?? 0.8),
     minMargin: Number(process.env.SSS_MOTIF_MIN_MARGIN ?? 0.1),
     audit: (row) => privateAudit(process.cwd(), row.session_id, row) });
   const audit = (kind, reason) => privateAudit(process.cwd(), task.session_id,
     { kind, session_id: task.session_id, reason });
   audit('motif_plugin_loaded', 'manifest_validated');
+  attachMotifInterceptor(ctx, { task, promptHash, interceptor, audit });
+}
+
+/** Common Harness lifecycle/prompt gate for certified structural protocols. */
+export function attachMotifInterceptor(ctx, { task, promptHash, interceptor, audit }) {
   const live = new Set();
   let trustedUserEnvelope = null;
   ctx.on('agent/created', ({ agent }) => {
@@ -256,3 +282,5 @@ export function apply(ctx) {
     })();
   }, { global: true });
 }
+
+export function apply(ctx) { installOnlineMotif(ctx); }

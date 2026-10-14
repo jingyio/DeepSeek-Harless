@@ -67,10 +67,12 @@ def main():
             draft = web.api(opener, base, {'action':'preview', 'session_id':session, 'request':'仅检查场景工具快照，不运行模型。'})
             snapshot = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())
             assert snapshot['tools'] and all(tool['name'].startswith('mcp__research_portfolio_fixture__') for tool in snapshot['tools'])
-            changed = settings({'action':'select', 'session_id':session, 'selection':{'scene':'example','rsi':False}})
-            assert changed['applies_to'] == 'next_task' and changed['current_task']['scene'] == 'portfolio-v1'
+            changed = settings({'action':'select', 'session_id':session, 'selection':{'scene':'example','rsi':False}}, expected=409)
+            assert changed['error']['code'] == 'scene_requires_new_session'
+            assert settings(session=session)['selection']['scene'] == 'portfolio-v1'
             assert web.api(opener, base, task_id=draft['task_id'])['confirmation_digest'] == draft['confirmation_digest']
-            inherited = settings({'action':'new_session','inherit_session':session})
+            inherited = settings({'action':'new_session','inherit_session':session,
+                                  'selection':{'scene':'example','rsi':False}})
             assert inherited['session_id'] != session and inherited['selection']['scene'] == 'example'
             web.api(opener, base, {'action':'cancel','task_id':draft['task_id']})
             assert not web.api(opener, base)['aggregate'].get('upstream_requests')

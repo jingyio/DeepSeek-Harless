@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "literature_catalog",
+  "prompt": "pdf-catalog-task.md",
+  "servers": [{"server_name": "literature_catalog", "transport": "stdio", "command": "${PYTHON}",
+    "args": ["${PROJECT_ROOT}/scenarios/literature-notes/pdf_catalog_tools.py"], "cwd": "${PROJECT_ROOT}",
+    "env": {"SSS_PDF_TASK_FILE": {"from_env": "SSS_PDF_TASK_FILE"},
+      "SSS_PDF_CATALOG_OUTPUT": {"from_env": "SSS_PDF_CATALOG_OUTPUT"},
+      "SSS_PDF_CATALOG_PREVIOUS": {"from_env": "SSS_PDF_CATALOG_PREVIOUS"}}}],
+  "allowed_tools": ["mcp__literature_catalog__read_catalog_plan", "mcp__literature_catalog__read_catalog_packet", "mcp__literature_catalog__submit_catalog"],
+  "completion_guard": {"tool": "mcp__literature_catalog__submit_catalog", "statuses": ["preview", "needs_review"], "max_continuations": 2}
+}

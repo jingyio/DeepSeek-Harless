@@ -1,0 +1,9 @@
+{
+  "mcp__literature_pdf__read_update_plan": {
+    "required_params": [],
+    "read_only": true,
+    "replay_stable": false,
+    "output_fields": ["task_sha256", "plan_sha256", "work"],
+    "description": "Fresh dependency plan; read-only but never replay-stable. Bind complete actual result and current PDF/parser versions before traversing work. Does not certify scientific truth."
+  }
+}

@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scenarios.research_ppt import trial
 
@@ -70,14 +71,86 @@ class TrialAccountingTest(unittest.TestCase):
 
     def test_budget_must_be_finite_and_output_bounded(self):
         for budget, steps, output in ((float('nan'), 40, 8000), (0, 40, 8000),
-                                      (21, 40, 8000), (3, 41, 8000), (3, 40, 8001)):
+                                      (21, 40, 8000), (3, 61, 8000), (3, 40, 8001)):
             with self.subTest(budget=budget, steps=steps, output=output):
                 with self.assertRaises(ValueError):
                     trial.validate_options(budget, steps, output)
+        trial.validate_options(3, 60, 8000)
 
     def test_candidate_and_active_are_mutually_exclusive_before_preparing_jobs(self):
         with self.assertRaisesRegex(ValueError, '不能同时'):
             trial.prepare_trial([], '科研汇报', 4, use_active_learning=True, candidate_version='a' * 32)
+
+    def test_invalid_explicit_figure_contract_is_rejected_before_preparing_jobs(self):
+        for minimum in (True, -1, 1.5, '2', 5):
+            with self.subTest(minimum=minimum), self.assertRaisesRegex(ValueError, 'minimum_original_figures'):
+                trial.prepare_trial([], '科研汇报', 4, minimum_original_figures=minimum)
+
+    def test_host_delivery_is_counted_only_with_matching_script_audit(self):
+        name = 'mcp__ppt__render_deck'
+        args = {'plan': {'title': '合成回执守卫诊断', 'slides': []}}
+        execution = {'schema_version': 1, 'strategy': 'host_delivery', 'policy_sha256': 'a' * 64,
+                     'script_execution_id': 'diagnostic-host-call', 'request_tool': 'render_deck',
+                     'host_script': 'render_delivery', 'arguments_sha256': trial.digest(args),
+                     'mechanism': 'ordinary_bounded_host_script', 'model_selected_script': False}
+        value = {'delivered': True, 'validation_id': 'diagnostic', 'path': '/private/deck.pptx',
+                 'file_sha256': '0' * 64}
+        receipt = {**value, 'execution_policy': execution}
+        events = [{'type': 'tool/call', 'data': {'callId': 'call-1', 'name': name, 'arguments': json.dumps(args)}},
+                  {'type': 'tool/result', 'data': {'message': {'source': {'callId': 'call-1'},
+                   'content': [{'type': 'tool-result', 'isError': False,
+                                'content': [{'type': 'text', 'text': json.dumps(receipt)}]}]}}}]
+        summary, receipts = trial.summarize_tools(events, [name])
+        self.assertEqual(receipts, [])
+        policy = {'strategy': 'host_delivery', 'policy_sha256': 'a' * 64,
+                  'events': [{'kind': 'host_script_started', **execution},
+                             {'kind': 'host_script_completed', **execution,
+                              'delivered': True, 'result_sha256': trial.digest(value)}]}
+        summary, receipts = trial.summarize_tools(events, [name], policy)
+        self.assertEqual(receipts, [receipt])
+        self.assertEqual(summary['host_script_delivered_count'], 1)
+        self.assertEqual(summary['successful_model_selected_composed_calls'], 0)
+
+    def test_repaired_delivery_binds_both_host_and_final_adapter_receipts(self):
+        import copy
+        name = 'mcp__ppt__repair_pending_plan'
+        args = {'draft_id': 'diagnostic-draft', 'version_sha256': 'b' * 64,
+                'updates': [{'page': 2, 'changes': {'title': '明确局部修改'}}]}
+        execution = {'schema_version': 1, 'strategy': 'host_delivery', 'policy_sha256': 'a' * 64,
+                     'script_execution_id': 'diagnostic-repair', 'request_tool': 'repair_pending_plan',
+                     'host_script': 'render_delivery', 'arguments_sha256': trial.digest(args),
+                     'mechanism': 'ordinary_bounded_host_script', 'model_selected_script': False}
+        host_result = {'delivered': True, 'validation_id': 'diagnostic', 'path': '/private/deck.pptx',
+                       'file_sha256': '0' * 64}
+        receipt = {**host_result, 'execution_policy': execution,
+                   'pending_plan': {'draft_id': args['draft_id'], 'status': 'delivered'},
+                   'local_repair': {'changed_pages': [2]}, 'automatic_retry': False}
+        events = [{'type': 'tool/call', 'data': {'callId': 'repair-1', 'name': name, 'arguments': json.dumps(args)}},
+                  {'type': 'tool/result', 'data': {'message': {'source': {'callId': 'repair-1'},
+                   'content': [{'type': 'tool-result', 'isError': False,
+                                'content': [{'type': 'text', 'text': json.dumps(receipt)}]}]}}}]
+        policy = {'strategy': 'host_delivery', 'policy_sha256': 'a' * 64,
+                  'events': [{'kind': 'host_script_started', **execution},
+                             {'kind': 'host_script_completed', **execution, 'delivered': True,
+                              'result_sha256': trial.digest(host_result)}]}
+        self.assertEqual(trial.summarize_tools(events, [name], policy)[1], [])
+        policy['events'].append({'kind': 'adapter_tool', 'name': 'repair_pending_plan',
+                                 'arguments': copy.deepcopy(args), 'result': copy.deepcopy(receipt)})
+        summary, receipts = trial.summarize_tools(events, [name], policy)
+        self.assertEqual(receipts, [receipt])
+        self.assertEqual(summary['host_script_delivered_count'], 1)
+        for field, changed in [('file_sha256', 'f' * 64), ('pending_plan', {'status': 'pending'}),
+                               ('local_repair', {'changed_pages': [3]}), ('automatic_retry', True)]:
+            with self.subTest(field=field):
+                altered = {**receipt, field: changed}
+                self.assertFalse(trial._host_receipt(altered, name, args, policy))
+        for kind in ('host_script_started', 'host_script_completed', 'adapter_tool'):
+            with self.subTest(missing=kind):
+                incomplete = {**policy, 'events': [row for row in policy['events'] if row['kind'] != kind]}
+                self.assertFalse(trial._host_receipt(receipt, name, args, incomplete))
+        forged_policy = copy.deepcopy(policy)
+        forged_policy['events'][-1]['result']['file_sha256'] = 'f' * 64
+        self.assertFalse(trial._host_receipt({**receipt, 'file_sha256': 'f' * 64}, name, args, forged_policy))
 
 
 class TrialQualityTest(unittest.TestCase):
@@ -90,6 +163,36 @@ class TrialQualityTest(unittest.TestCase):
     def test_existing_ppt_file_is_not_delivery_evidence(self):
         (self.directory / 'orphan.pptx').write_bytes(b'existing-but-not-delivered')
         self.assertEqual(trial.verified_artifacts([], self.directory), [])
+
+    def test_explicit_figure_contract_is_shared_frozen_and_prompt_schema_stays_compatible(self):
+        import fitz
+        source = self.directory / 'figure-contract.pdf'
+        with fitz.open() as pdf:
+            page = pdf.new_page()
+            page.insert_text((50, 70), 'Real PDF bytes for a no-model contract preview.')
+            pdf.save(source)
+        path = trial.prepare_trial([source], '不从这句话猜图数', 2,
+                                   feedback_store=self.directory / 'figure-contract-feedback',
+                                   minimum_original_figures=2)
+        _, data = trial.checked_trial(path)
+        self.assertEqual(data['task']['minimum_original_figures'], 2)
+        for group in trial.GROUPS:
+            row = data['groups'][group]
+            self.assertEqual(trial.read_json(Path(row['job']))['minimum_original_figures'], 2)
+            self.assertEqual(trial.read_json(Path(row['invocation']))['minimum_original_figures'], 2)
+            prompt = Path(row['prompt']).read_text(encoding='utf-8')
+            task_text = prompt.split('\n本次任务：\n', 1)[1].split('\n本次执行方式：', 1)[0]
+            task = json.loads(task_text)
+            self.assertEqual(set(task), {'instruction', 'slides', 'template', 'operation', 'inputs'})
+            self.assertIn('至少 2 张不同完整原图', task['instruction'])
+        changed = trial.read_json(Path(data['groups']['optimized']['job']))
+        changed['minimum_original_figures'] = 0
+        trial.cli.save(Path(data['groups']['optimized']['job']), changed)
+        data['groups']['optimized']['job_sha256'] = trial.file_hash(Path(data['groups']['optimized']['job']))
+        changed_path = self.directory / 'changed-contract-trial.json'
+        trial.save_new(changed_path, data)
+        with self.assertRaisesRegex(ValueError, '冻结值'):
+            trial.checked_trial(changed_path)
 
     def prompt_row(self, filename, task, strategy):
         path = self.directory / filename
@@ -191,6 +294,56 @@ class TrialQualityTest(unittest.TestCase):
         self.assertAlmostEqual(result['same_quality_model_cost_comparison']['proxy_cost_reduction_fraction'], .2)
         self.assertEqual(original, trial.file_hash(self.directory / 'comparison.json'))
         self.assertIsNone(result['manual_revision_minutes']['baseline'])
+
+    def test_ai_review_comparison_cannot_be_labelled_independent_human(self):
+        path, review_path = self.prepared_review()
+        review = trial.read_json(review_path)
+        review.update(reviewer='ai-assisted', reviewer_kind='ai-assisted')
+        review_path.write_text(json.dumps(review), encoding='utf-8')
+        result = trial.read_json(trial.review_trial(path, review_path))
+        self.assertFalse(result['independent_human_review'])
+        self.assertIn('AI辅助', result['same_quality_model_cost_comparison']['scope'])
+        self.assertFalse(result['automatic_rsi_promotion'])
+
+    def test_ai_reviewer_cannot_override_kind_to_human(self):
+        path, review_path = self.prepared_review()
+        review = trial.read_json(review_path)
+        review.update(reviewer='ai-assisted', reviewer_kind='human')
+        review_path.write_text(json.dumps(review), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, '改称独立人评'):
+            trial.review_trial(path, review_path)
+
+    def test_candidate_checked_preview_uses_staging_not_active(self):
+        # Private protocol fixtures check bootstrap only, never cloud quality.
+        source = self.directory / 'source.pdf'; source.write_bytes(b'fixture-not-a-real-pdf')
+        candidate = {'version': 'a' * 32, 'manifest': 'unused', 'manifest_sha256': 'b' * 64,
+                     'stage': 'candidate_evaluation', 'quality_cost_promoted': False}
+        groups = {}
+        for group, execution in [('baseline', 'baseline_steps'), ('optimized', 'host_delivery')]:
+            folder = self.directory / group; folder.mkdir()
+            job = folder / 'job.json'
+            trial.save_new(job, {'allow_output': True, 'allow_rsi': False,
+                                'document_cache': True, 'execution_policy': {'schema_version': 1, 'strategy': execution},
+                                'inputs': [{'path': str(source), 'version_sha256': trial.file_hash(source)}]})
+            scenario = folder / 'scenario.json'; trial.save_new(scenario, {'allowed_tools': []})
+            prompt = folder / 'prompt.md'; prompt.write_text('fixture', encoding='utf-8')
+            invocation = folder / 'invocation.json'; trial.save_new(invocation, {})
+            groups[group] = {'budget_cap_usd': 1.5, 'execution': execution, 'configured_tool_order': []}
+            for key, file in [('job', job), ('scenario', scenario), ('prompt', prompt), ('invocation', invocation)]:
+                groups[group].update({key: str(file), key + '_sha256': trial.file_hash(file)})
+        data = {'schema_version': 1, 'groups': groups, 'order': list(trial.GROUPS), 'rsi_enabled': True,
+                'reasoning_effort': 'off', 'context_compression': 'off', 'budget_cap_usd_total': 3,
+                'max_agent_steps_per_group': 60, 'max_output_tokens_per_request': 8000,
+                'allow_output': True, 'document_cache': True, 'execution_policy': 'controlled',
+                'code': {'sha256': 'c' * 64}, 'active_learning': candidate,
+                'feedback_store': str(self.directory / 'feedback'), 'candidate_evaluation': True}
+        path = self.directory / 'candidate-trial.json'; trial.save_new(path, data)
+        with patch.object(trial, 'code_snapshot', return_value={'sha256': 'c' * 64}), \
+                patch.object(trial.FeedbackStore, 'candidate_manifest', return_value=candidate) as staging, \
+                patch.object(trial.FeedbackStore, 'active_manifest', side_effect=AssertionError('must not load active')):
+            _, frozen = trial.checked_trial(path)
+            self.assertTrue(frozen['candidate_evaluation'])
+            staging.assert_called_once_with('a' * 32)
 
 
 if __name__ == '__main__':

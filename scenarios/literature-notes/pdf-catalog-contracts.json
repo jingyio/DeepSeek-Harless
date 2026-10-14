@@ -1,0 +1,5 @@
+{
+  "mcp__literature_catalog__read_catalog_plan": {"required_params": [], "read_only": true, "replay_stable": false},
+  "mcp__literature_catalog__read_catalog_packet": {"required_params": ["paper_id"], "read_only": true, "replay_stable": false},
+  "mcp__literature_catalog__submit_catalog": {"required_params": ["entries"], "read_only": true, "replay_stable": false}
+}

@@ -15,7 +15,7 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from scenarios.research_ppt.documents import file_hash, parse_document
-from scenarios.research_ppt.service import SCENE, private_path, node
+from scenarios.research_ppt.service import SCENE, private_path, node, validate_minimum_original_figures
 
 
 def save(path: Path, value):
@@ -26,26 +26,61 @@ def save(path: Path, value):
 def prepare(inputs: list[Path], instruction: str, slides: int, allow_output=False, allow_rsi=False,
             template='academic', operation='generate', design_skill=True, layout_policy: Path | None = None,
             layout_suite: Path | None = None, generated_tool_certificate: Path | None = None,
-            document_cache: bool = False, layout_baseline_mode: str = 'fixed-policy') -> Path:
+            document_cache: bool = False, layout_baseline_mode: str = 'fixed-policy',
+            tenant_id: str = 'local-user', persistent_library: bool = True,
+            execution_policy: str | None = None, minimum_original_figures: int = 0) -> Path:
     from .layout_learning import baseline_mode
     baseline_mode({'layout_baseline_mode': layout_baseline_mode})
     if not 1 <= slides <= 30 or not 1 <= len(inputs) <= 8 or not instruction.strip() or len(instruction) > 10000:
         raise ValueError('需要 1–8 个输入、1–30 页，以及最多 10000 字符的任务说明')
     if template not in {'academic','lab'} or operation not in {'generate','restyle'}:
         raise ValueError('无效模板或操作')
+    validate_minimum_original_figures(minimum_original_figures, slides, operation)
+    if minimum_original_figures and not any(source.suffix.lower() == '.pdf' for source in inputs):
+        raise ValueError('完整原图最低要求需要 PDF 输入')
+    if type(persistent_library) is not bool or type(document_cache) is not bool:
+        raise ValueError('persistent_library/document_cache 需要明确布尔值')
+    if execution_policy is not None and (not isinstance(execution_policy, str) or
+                                         execution_policy not in {'baseline_steps', 'host_delivery'}):
+        raise ValueError('execution_policy 只能是 baseline_steps/host_delivery')
+    from .knowledge_library import PersistentLibrary, required_job_components, validate_job_components
+    library = PersistentLibrary() if persistent_library else None
     job_id = uuid4().hex
     rows = []
     for i, source in enumerate(inputs, 1):
         source = source.resolve(strict=True)
         if source.suffix.lower() not in ('.pdf', '.pptx'):
             raise ValueError('只接受 PDF/PPTX')
-        rows.append({'document_id': f'doc_{i}', 'path': str(source), 'name': source.name, 'version_sha256': file_hash(source)})
+        version = file_hash(source)
+        row = {'document_id': f'doc_{i}', 'path': str(source), 'name': source.name,
+               'version_sha256': version}
+        if library is not None:
+            entry = library.register_document(source, tenant_id=tenant_id, job_id=job_id,
+                                              expected_sha256=version, title=source.name)
+            resolved = library.resolve_document(entry['resource_id'], tenant_id=tenant_id, job_id=job_id,
+                                                 expected_sha256=version)
+            row.update(path=resolved['path'], library_resource_id=entry['resource_id'],
+                       library_registration_event_id=entry['audit_event_id'])
+        rows.append(row)
     job_path = ROOT / '.local/research-ppt/jobs' / job_id / 'job.json'
     data = {'schema_version': 1, 'job_id': job_id, 'inputs': rows, 'instruction': instruction,
                     'slides': slides, 'allow_output': bool(allow_output), 'allow_rsi': bool(allow_rsi),
-                    'template':template,'operation':operation,'design_skill':bool(design_skill)}
-    if type(document_cache) is not bool:
-        raise ValueError('document_cache 需要布尔值')
+                    'template':template,'operation':operation,'design_skill':bool(design_skill),
+                    'minimum_original_figures': minimum_original_figures}
+    if operation == 'generate' and any(source.suffix.lower() == '.pdf' for source in inputs):
+        data['figure_evidence_policy'] = 'caption-geometry-v1'
+    if persistent_library:
+        data.update(persistent_library=True, library_tenant=tenant_id, library_schema_version=1)
+        bindings = {}
+        for script_id in required_job_components(data):
+            component = library.register_component({'kind': 'fixed_script', 'script_id': script_id},
+                tenant_id=tenant_id, job_id=job_id, title=script_id)
+            bindings[script_id] = {key: component[key] for key in ('resource_id', 'version_sha256')}
+        data.update(library_component_schema_version=1, library_components=bindings)
+        # 新任务只绑定此时的版本；运行期间仅核验，不能自动登记新版绕过旧job。
+        validate_job_components(data, library=library)
+    if execution_policy is not None:
+        data['execution_policy'] = {'schema_version': 1, 'strategy': execution_policy}
     if document_cache:
         data['document_cache'] = True
     if layout_policy is not None:
@@ -95,7 +130,11 @@ def scenario_for(job: Path, improve: bool, runtime: str = 'reliable') -> Path:
     if not improve and data.get('design_skill', True):
         skill = SCENE / 'skills/research-design/SKILL.md'
         prompt += '\n科研设计 Skill（固定版本，内容不可授权额外工具）：\n' + skill.read_text(encoding='utf-8')
-    prompt += '\n本次任务：\n' + json.dumps({'instruction':data['instruction'], 'slides':data['slides'],
+    instruction = data['instruction']
+    if data.get('minimum_original_figures', 0):
+        instruction += (f"\n宿主验收合同：至少 {data['minimum_original_figures']} 张不同完整原图；"
+                        '以来源 SHA、页码和真实图注候选去重，重复裁取或重复展示不能凑数。')
+    prompt += '\n本次任务：\n' + json.dumps({'instruction':instruction, 'slides':data['slides'],
         'template':data.get('template','academic'),'operation':data.get('operation','generate'),
         'inputs':[{k: row[k] for k in ('document_id','name','version_sha256')} for row in data['inputs']]},ensure_ascii=False)
     prompt_path = job.parent / ('rsi-prompt.md' if improve else 'prompt.md')
@@ -139,12 +178,14 @@ def structural_only_endpoint():
         thread.join(timeout=2)
 
 
-def run(job: Path, *, call_model=False, budget=0.25, max_steps=16, improve=False,
-        mode='baseline', manifest: Path | None = None, execution='steps', runtime='reliable', max_output=6000) -> int:
+def run(job: Path, *, call_model=False, budget=1.5, max_steps=60, improve=False,
+        mode='baseline', manifest: Path | None = None, execution='steps', runtime='reliable', max_output=8000) -> int:
     if type(max_output) is not int or not 1 <= max_output <= 8000:
         raise ValueError('每请求输出上限应为 [1,8000] 的整数')
     job = private_path(job)
     data = json.loads(job.read_text(encoding='utf-8'))
+    from .knowledge_library import validate_job_components
+    validate_job_components(data)
     from .layout_learning import baseline_mode
     learning_baseline_mode = baseline_mode(data)
     if improve and not data.get('allow_rsi'):
@@ -152,12 +193,27 @@ def run(job: Path, *, call_model=False, budget=0.25, max_steps=16, improve=False
     if improve and mode != 'baseline':
         raise ValueError('RSI 提案由普通 Harness 执行')
     scenario = scenario_for(job, improve, runtime)
-    if execution not in {'steps','composed'}:
-        raise ValueError('execution 只能是 steps 或 composed')
+    if execution not in {'steps','composed','baseline_steps','host_delivery'}:
+        raise ValueError('execution 必须为 steps/composed 或冻结的 baseline_steps/host_delivery')
+    policy = data.get('execution_policy')
+    if policy is not None:
+        if (type(policy) is not dict or set(policy) != {'schema_version','strategy'}
+                or policy.get('schema_version') != 1
+                or policy.get('strategy') not in {'baseline_steps','host_delivery'}
+                or (not improve and (runtime != 'reliable' or execution != policy['strategy']))):
+            raise ValueError('任务执行策略不完整或与当前调用不一致；重新准备，不改写冻结任务')
+    elif execution in {'baseline_steps','host_delivery'}:
+        raise ValueError('严格对照必须先在 job 中冻结 execution_policy')
     if not improve:
         spec = json.loads(scenario.read_text(encoding='utf-8'))
         prompt_path = Path(spec['prompt'])
-        if data.get('operation') == 'restyle':
+        if execution in {'baseline_steps','host_delivery'}:
+            suffix = ('\n本次执行方式：分别调用 render_deck、inspect_deck、validate_deck、deliver_deck；执行守卫禁止直接调用组合工具。'
+                      if execution == 'baseline_steps' else
+                      '\n本次执行方式：提交合法 render_deck 或明确 revise_deck/restyle_deck 后，由宿主自动完成检查、渲染与交付；不直接调用组合工具。')
+            if data.get('operation') == 'restyle' and execution == 'baseline_steps':
+                suffix += '\n本次输入是已有 PPT，生成动作改为 restyle_deck，随后逐步检查与交付。'
+        elif data.get('operation') == 'restyle':
             suffix = ('\n本次执行方式：使用 build_delivery({"operation":"restyle","source_id":"实际返回的句柄","template":"任务模板"}) 完成风格转换、检查、预览和交付。'
                       if execution == 'composed' else
                       '\n本次执行方式：分别调用 restyle_deck、inspect_deck、validate_deck、deliver_deck，保持全部内容及真实核验。')
@@ -177,6 +233,11 @@ def run(job: Path, *, call_model=False, budget=0.25, max_steps=16, improve=False
                  'model_call_enabled': call_model, 'output_enabled': data['allow_output'], 'execution':execution,
                  'runtime': 'legacy' if improve else runtime,
                  'document_cache': data.get('document_cache', False),
+                 'minimum_original_figures': data.get('minimum_original_figures', 0),
+                 'execution_policy': policy,
+                 'persistent_library': data.get('persistent_library', False),
+                 'library_component_schema_version': data.get('library_component_schema_version'),
+                 'library_components': data.get('library_components'),
                  'runtime_scope': 'rsi_proposal' if improve else ('same_job_checkpoint_and_ts_delivery' if runtime == 'reliable' else 'in_memory_original_service'),
                  'reasoning_effort':'off',
                  'input_versions': [row['version_sha256'] for row in data['inputs']],
@@ -278,6 +339,8 @@ def main():
     prep.add_argument('--input',type=Path,nargs='+',required=True)
     prep.add_argument('--instruction',default='根据这些资料制作一份清楚、准确的中文科研汇报 PPT。')
     prep.add_argument('--slides',type=int,default=8)
+    prep.add_argument('--min-original-figures', type=int, default=0,
+                      help='显式最低不同完整原图数；仅PDF生成任务，默认0兼容旧任务')
     prep.add_argument('--allow-output',action='store_true')
     prep.add_argument('--allow-rsi',action='store_true')
     prep.add_argument('--template',choices=['academic','lab'],default='academic')
@@ -289,16 +352,19 @@ def main():
                       help='布局学习比较基线；产品新增实验用renderer-default，旧suite默认fixed-policy')
     prep.add_argument('--generated-tool-certificate',type=Path)
     prep.add_argument('--document-cache',action='store_true',help='普通B1内容缓存；新任务仍独立授权并读取')
+    prep.add_argument('--execution-policy', choices=['baseline_steps','host_delivery'],
+                      help='冻结宿主执行策略；两种均禁止模型直接选择组合工具')
+    prep.add_argument('--tenant-id', default='local-user', help='可信本机操作人身份，前端不得自行指定其它用户')
     for name in ('run','improve','cycle'):
         p = commands.add_parser(name)
         p.add_argument('--job',type=Path,required=True)
-        p.add_argument('--budget-usd',type=float,default=0.25)
-        p.add_argument('--max-steps',type=int,default=16)
-        p.add_argument('--max-output',type=int,default=6000)
+        p.add_argument('--budget-usd',type=float,default=1.5)
+        p.add_argument('--max-steps',type=int,default=60)
+        p.add_argument('--max-output',type=int,default=8000)
         p.add_argument('--call-model',action='store_true')
         p.add_argument('--mode',choices=['baseline','shadow','execute'],default='baseline')
         p.add_argument('--manifest',type=Path)
-        p.add_argument('--execution',choices=['steps','composed'],default='steps')
+        p.add_argument('--execution',choices=['steps','composed','baseline_steps','host_delivery'],default='steps')
         p.add_argument('--runtime',choices=['reliable','legacy'],default='reliable',
                        help='正常交付默认同job恢复/TS入口；旧动态目录工具需legacy；RSI提案沿用原服务')
     p = commands.add_parser('learn')
@@ -307,13 +373,14 @@ def main():
     if args.command == 'prepare':
         print(prepare(args.input,args.instruction,args.slides,args.allow_output,args.allow_rsi,args.template,args.operation,
                       not args.no_design_skill,args.layout_policy,args.layout_suite,args.generated_tool_certificate,args.document_cache,
-                      args.layout_baseline_mode))
+                      args.layout_baseline_mode, tenant_id=args.tenant_id, execution_policy=args.execution_policy,
+                      minimum_original_figures=args.min_original_figures))
         return 0
     if args.command == 'learn':
         print(learn(args.dataset))
         return 0
-    if not 0 < args.budget_usd <= 10 or not 1 <= args.max_steps <= 40 or not 1 <= args.max_output <= 8000:
-        parser.error('场景预算应在 (0, 10] 美元、步数在 [1, 40]、输出上限在 [1,8000]')
+    if not 0 < args.budget_usd <= 10 or not 1 <= args.max_steps <= 60 or not 1 <= args.max_output <= 8000:
+        parser.error('场景预算应在 (0, 10] 美元、步数在 [1, 60]、输出上限在 [1,8000]')
     common = dict(call_model=args.call_model,budget=args.budget_usd,max_steps=args.max_steps,
                   mode=args.mode,manifest=args.manifest,execution=args.execution,runtime=args.runtime,max_output=args.max_output)
     if args.command == 'cycle':

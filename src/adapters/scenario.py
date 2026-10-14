@@ -11,10 +11,15 @@ NAME = re.compile(r'^[a-z][a-z0-9_]{0,31}$')
 ENV_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
 
-def prepare_scenario(path: Path, *, case: str = '', session_workspace: str | None = None) -> dict:
+def prepare_scenario(path: Path, *, case: str = '', session_workspace: str | None = None,
+                     tool_presentation: str = 'native', entry_motif: bool = False) -> dict:
+    if type(entry_motif) is not bool or entry_motif and tool_presentation != 'native':
+        raise ValueError('entry Motif requires native tool presentation')
+    if tool_presentation not in ('native', 'ptc'):
+        raise ValueError('invalid tool presentation')
     path = path.resolve(strict=True)
     scenario = json.loads(path.read_text(encoding='utf-8'))
-    if set(scenario) - {'schema_version', 'name', 'prompt', 'servers', 'allowed_tools'}:
+    if set(scenario) - {'schema_version', 'name', 'prompt', 'servers', 'allowed_tools', 'completion_guard', 'acceptance_guard'}:
         raise ValueError('unknown scenario field')
     if scenario.get('schema_version') != 1 or not NAME.fullmatch(scenario.get('name', '')):
         raise ValueError('invalid scenario version/name')
@@ -82,6 +87,39 @@ def prepare_scenario(path: Path, *, case: str = '', session_workspace: str | Non
     base = (ROOT / 'config/semantic-sdk.patch.yml').read_text(encoding='utf-8')
     insert = {'insert': [*clients, {'id': 'sss-scenario-guard',
                   'name': (ROOT / 'src/adapters/dsh_scenario_guard.mjs').as_uri()}]}
+    agent_plugins = []
+    if entry_motif:
+        entry_plugin = {'id': 'sss-entry-motif', 'name': (ROOT / 'src/adapters/dsh_entry_motif.ts').as_uri()}
+        insert['insert'].append(entry_plugin)
+    policy = scenario.get('completion_guard')
+    if policy is not None:
+        if (not isinstance(policy, dict) or set(policy) != {'tool', 'statuses', 'max_continuations'}
+                or policy['tool'] not in allowed or not isinstance(policy['statuses'], list)
+                or not 1 <= len(policy['statuses']) <= 4
+                or any(not isinstance(s, str) or re.fullmatch(r'[a-z_]{1,40}', s) is None for s in policy['statuses'])
+                or type(policy['max_continuations']) is not int or not 0 <= policy['max_continuations'] <= 2):
+            raise ValueError('invalid bounded completion guard')
+        agent_plugins.append({'id': 'sss-completion-guard',
+            'name': (ROOT / 'src/adapters/dsh_completion_guard.ts').as_uri(),
+            'config': {**policy, 'artifact_root': str(ROOT / '.local')}})
+    acceptance = scenario.get('acceptance_guard')
+    if acceptance is not None:
+        if (not isinstance(acceptance, dict) or set(acceptance) != {'kind', 'max_repairs'}
+                or acceptance['kind'] != 'file_management' or type(acceptance['max_repairs']) is not int
+                or not 0 <= acceptance['max_repairs'] <= 2 or tool_presentation != 'native'
+                or 'mcp__file_management__submit_report' not in allowed):
+            raise ValueError('invalid bounded file acceptance guard')
+        agent_plugins = [{'id': 'sss-acceptance-guard',
+            'name': (ROOT / 'src/adapters/dsh_acceptance_guard.ts').as_uri(),
+            'config': {**acceptance, 'project_root': str(ROOT), 'python': sys.executable,
+                'task_file': value({'from_env': 'FM_TASK_FILE'}),
+                'delivery_root': value({'from_env': 'FM_OUTPUT'}),
+                'archive_root': str(ROOT / '.local/task-acceptance')}}]
+    insert['insert'].extend(agent_plugins)
+    if tool_presentation == 'ptc':
+        base += '\n- id: tools\n  config:\n    mode: ptc\n- id: code-runtime\n  disabled: true\n'
+        insert['insert'].append({'id': 'sss-container-code-runtime',
+            'name': (ROOT / 'src/adapters/dsh_code_container.ts').as_uri()})
     base += '\n- id: system-prompt\n  config:\n    personaPrefix: You complete the requested task using the permitted MCP evidence.\n    personaSuffix: Cite source IDs and versions. Do not invent evidence or perform unapproved writes.\n'
     # JSON is valid YAML; environment tags contain quoted JS expressions.
     rendered = base + '\n- ' + json.dumps(insert, ensure_ascii=False, indent=2).replace('\n', '\n  ') + '\n'
@@ -101,6 +139,7 @@ def prepare_scenario(path: Path, *, case: str = '', session_workspace: str | Non
     return {'name': scenario['name'], 'patch': str(target), 'patch_sha256': digest,
             'config_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
             'prompt': prompt, 'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest(),
+            'tool_presentation': tool_presentation,
             'server_names': [client['config']['serverName'] for client in clients], 'allowed_tools': allowed,
-            'mcp_rows': clients, 'environment_references': references,
-            'required_env': sorted(set(required_env)), 'case': case}
+            'mcp_rows': clients, 'agent_plugins': agent_plugins, 'environment_references': references,
+            'required_env': sorted(set(required_env)), 'case': case, 'acceptance_guard': acceptance}

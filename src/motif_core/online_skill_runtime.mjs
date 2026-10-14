@@ -3,6 +3,10 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { validateContinuationManifest, validateTaskContinuation, closedContinuation as approvedContinuation }
+  from './approved_plan_continuation.generated.mjs';
+import { validateSourceDereferences, isSourceDereferenceName }
+  from './source_dereference.generated.mjs';
 
 const PURE_CODE_WORKER = fileURLToPath(new URL('./pure_code.py', import.meta.url));
 
@@ -61,7 +65,7 @@ const field = (value, path) => path.split('.').reduce((item, part) =>
   item && typeof item === 'object' ? item[part] : undefined, value);
 
 export function validateOnlineManifest(manifest) {
-  if (!manifest || manifest.schema_version !== 1 ||
+  if (!manifest || ![1, 2].includes(manifest.schema_version) ||
       !/^[a-f0-9]{64}$/.test(manifest.source_library_digest ?? '') ||
       !Array.isArray(manifest.artifacts) || !manifest.artifacts.length ||
       !manifest.contracts || typeof manifest.contracts !== 'object' ||
@@ -72,6 +76,13 @@ export function validateOnlineManifest(manifest) {
     throw new TypeError('invalid or changed certified online Motif manifest');
   }
   const ids = new Set();
+  if (manifest.tool_schema_hashes !== undefined &&
+      (!manifest.tool_schema_hashes || typeof manifest.tool_schema_hashes !== 'object' ||
+       Array.isArray(manifest.tool_schema_hashes) ||
+       Object.entries(manifest.tool_schema_hashes).some(([tool, hash]) =>
+         !manifest.contracts[tool] || !/^[a-f0-9]{64}$/.test(hash)))) {
+    throw new TypeError('invalid frozen tool schema hashes');
+  }
   for (const contract of Object.values(manifest.contracts)) {
     if (!contract || contract.read_only !== true ||
         !Array.isArray(contract.required_params) ||
@@ -192,6 +203,8 @@ export function validateOnlineManifest(manifest) {
       throw new TypeError('version guard is not an approved output field');
     }
   }
+  validateContinuationManifest(manifest);
+  validateSourceDereferences(manifest);
   return manifest;
 }
 
@@ -256,6 +269,7 @@ export function parseStructuredTask(raw, manifest) {
            !/^[a-f0-9]{64}$/.test(version))))) {
     throw new TypeError('invalid approved lookup version scope');
   }
+  validateTaskContinuation(task, manifest);
   return task;
 }
 
@@ -348,6 +362,10 @@ function witnessedPrefix(artifact, prefix, task, manifest) {
 
 export async function proposeNext({ manifest, task, history, availableTools,
                                     similarity, minSimilarity, minMargin }) {
+  if (manifest.artifacts.some(a => a.continuation_policy_digest !== undefined)) {
+    return (await proposeReadyBatch({ manifest, task, history, availableTools,
+      similarity, minSimilarity, minMargin, maxBatch: 1 }))[0] ?? null;
+  }
   if (!history.length || typeof similarity !== 'function' ||
       !(minSimilarity >= 0 && minSimilarity <= 1) ||
       !(minMargin >= 0 && minMargin <= 1)) return null;
@@ -366,7 +384,8 @@ export async function proposeNext({ manifest, task, history, availableTools,
       const nextTool = artifact.tools[length];
       const offered = availableTools.get(nextTool);
       const required = manifest.contracts[nextTool].required_params;
-      if (!offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool])) {
+      if (!offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool],
+          manifest.tool_schema_hashes?.[nextTool])) {
         continue;
       }
       const args = await bindNext(artifact, nextTool, prefix, task, manifest);
@@ -458,10 +477,11 @@ function matchingPrefixes(artifact, history, length, task, manifest) {
     }));
 }
 
-export function offeredSchemaMatches(availableTools, tool, contract) {
+export function offeredSchemaMatches(availableTools, tool, contract, schemaHash) {
   const offered = availableTools.get(tool);
   const required = contract.required_params;
   return offered?.parameters?.type === 'object' &&
+    (schemaHash === undefined || digest(offered.parameters) === schemaHash) &&
     Array.isArray(offered.parameters.required ?? []) &&
     // A witnessed operator can require an explicit target even when the API
     // permits an implicit front document. We always supply that bound target.
@@ -481,11 +501,9 @@ function isClosedSourceRead(row, manifest) {
   const contract = manifest.contracts[row.tool];
   const sourceContract = manifest.contracts[artifact?.tools?.[0]];
   const edges = artifact.transfer_evidence.filter((edge) => edge.to_tool === row.tool);
-  // A PPT/document pin is a structural source selection already frozen by
-  // the task's file hash. Reading the returned source handle is therefore a
-  // closed continuation, provided the contract exposes the same provenance
-  // fields as the witnessed edge. Keep the naming and shape checks narrow so
-  // an arbitrary read tool cannot bypass semantic matching.
+  // Legacy PPT pin/read certificates freeze the document hash in the task.
+  // Keep their existing narrow read-only continuation while v2 adds an
+  // explicit source_dereference capability for newly compiled libraries.
   const documentPinRead = /(?:^|__)pin_source$/.test(artifact?.tools?.[0] ?? '') &&
     /(?:^|__)read_source$/.test(row.tool) &&
     sourceContract?.required_params?.length === 1 &&
@@ -500,7 +518,7 @@ function isClosedSourceRead(row, manifest) {
     Object.keys(contract.default_params).length === 0 &&
     edges.length === 1 && edges[0].to_param === 'source_id' &&
     edges[0].from_field === 'source_id' &&
-    (/(?:^|__)read_pinned_[a-z0-9_]+$/.test(row.tool) || documentPinRead);
+    (isSourceDereferenceName(row.tool, contract) || documentPinRead);
 }
 
 function isClosedUniqueMessageRead(row, manifest) {
@@ -529,7 +547,8 @@ function sourceKindMatches(tool, prefix) {
 /** Find independent, provenance-bound continuations in interleaved tool history. */
 export async function proposeReadyBatch({ manifest, task, history, availableTools,
                                          similarity, minSimilarity, minMargin,
-                                         usedPrefixes = new Set(), maxBatch = 8 }) {
+                                         usedPrefixes = new Set(), maxBatch = 8,
+                                         closedContinuation = () => false }) {
   const barrier = history.findLastIndex((row) => row.barrier === true);
   history = history.slice(barrier + 1);
   if (!history.length || typeof similarity !== 'function' ||
@@ -542,12 +561,18 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     for (let length = 1; length < artifact.tools.length; length++) {
       const nextTool = artifact.tools[length];
       if (!manifest.version_fields[nextTool] ||
-          !offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool])) continue;
+          !offeredSchemaMatches(availableTools, nextTool, manifest.contracts[nextTool],
+            manifest.tool_schema_hashes?.[nextTool])) continue;
       for (const prefix of matchingPrefixes(artifact, history, length, task, manifest)) {
         if (!sourceKindMatches(nextTool, prefix)) continue;
         if (artifact.code_nodes?.length && ++codeAttempts > 8) return [];
         const args = await bindNext(artifact, nextTool, prefix, task, manifest);
         if (!args) continue;
+        const hasGrantPolicy = manifest.contracts[artifact.tools[0]]?.continuation_policy !== undefined;
+        const continuation = hasGrantPolicy ? approvedContinuation({ artifact, prefix, task,
+          manifest, availableTools, args, nextTool }) : null;
+        // An invalid permission must never be rescued by semantic similarity.
+        if (hasGrantPolicy && !continuation) continue;
         const edges = artifact.transfer_evidence.filter((edge) => edge.to_tool === nextTool);
         const codeNodes = artifact.code_nodes?.filter((node) =>
           node.to_tool === nextTool) ?? [];
@@ -587,6 +612,7 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
           prefix_length: length, supporting_task_count: artifact.supporting_task_count,
           code_node_ids: codeNodes.map((node) => node.node_id),
           code_program_digests: codeNodes.map((node) => node.program_digest),
+          ...(continuation ? { continuation_expected: continuation } : {}),
           // Match the task against the certified remaining path. A navigation
           // step alone may say little about the purpose of the read it enables.
           description: artifact.tools.slice(length)
@@ -605,7 +631,8 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     .filter(([, rows]) =>
       (new Set(rows.map((row) => digest([row.tool, row.arguments]))).size === 1 &&
         rows.every((row) => isClosedSourceRead(row, manifest) ||
-          isClosedUniqueMessageRead(row, manifest))))
+          isClosedUniqueMessageRead(row, manifest) || row.continuation_expected ||
+          closedContinuation(row, manifest) === true)))
     .map(([root]) => root));
   const query = `${task.intent}\nRecent tools: ${history.slice(-4)
     .map((row) => row.name).join(', ')}`;
@@ -619,7 +646,7 @@ export async function proposeReadyBatch({ manifest, task, history, availableTool
     const closed = closedRoots.has(row.root_key);
     const similarityScore = closed ? null : scores[scoreIndex++];
     return { ...row, similarity: similarityScore,
-    selection_basis: closed ? (isClosedUniqueMessageRead(row, manifest)
+    selection_basis: closed ? (row.continuation_expected ? 'closed_approved_plan_continuation' : isClosedUniqueMessageRead(row, manifest)
       ? 'closed_unique_message_read' : 'closed_source_read') : 'semantic_score',
     score: (closed ? 0.8 : similarityScore * 0.8) +
       Math.min(row.supporting_task_count, 5) / 5 * 0.1 +

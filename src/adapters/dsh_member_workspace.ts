@@ -1,5 +1,5 @@
 /** Bootstrap one durable workspace inside each member's isolated DSH home. */
-import { guardMemberFileRpc } from './harless_member_file_scope.ts';
+import { guardMemberFileRpc, memberTaskRoots } from './harless_member_file_scope.ts';
 import { clientRequestSchema } from '@deepseek-ai/dsh-client-connection';
 export const name = 'harless-member-workspace';
 export const inject = ['workspaceRegistry', 'workspaceFiles', 'connection', 'typertGateway', 'typert'];
@@ -7,7 +7,7 @@ export const inject = ['workspaceRegistry', 'workspaceFiles', 'connection', 'typ
 export async function apply(ctx: any) {
   const guard = guardMemberFileRpc(ctx.typertGateway,
     async id => ctx.typert.lookups.get('workspaceFileScope')?.resolve(id),
-    ['/user/workspace', '/user/tasks/sessions']);
+    ['/user/workspace', ...memberTaskRoots()]);
   // The public lookup resolver is shared by unary HTTP and the WebSocket
   // changes feed. Refuse old/foreign scopes before either carrier opens.
   const resolveScope = ctx.typert.lookups.get('workspaceFileScope').resolve;

@@ -148,6 +148,22 @@ class MotifV6Tests(unittest.TestCase):
             {'harness_tool_name': PIN, 'mcp_tool': {**raw, 'name': 'pin_figure_catalog'}}]})
         self.assertEqual(converted['tools'][0]['name'], PIN)
 
+    def test_document_pin_read_report_uses_the_existing_closed_runtime_shape(self):
+        pin, read = 'mcp__ppt__pin_source', 'mcp__ppt__read_source'
+        manifest = {'contracts': {
+            pin: {'required_params': ['document_id'], 'read_only': True,
+                  'output_fields': ['source_id', 'version_sha256']},
+            read: {'required_params': ['source_id'], 'default_params': {}, 'read_only': True}},
+            'version_fields': {pin: 'version_sha256', read: 'version_sha256'},
+            'artifacts': [{'motif_id': 'diagnostic-edge', 'tools': [pin, read],
+                           'transfer_evidence': [{'from_tool': pin, 'to_tool': read,
+                                                  'from_field': 'source_id', 'to_param': 'source_id'}]}]}
+        rows = motif_v6.structural_candidates(manifest)
+        self.assertEqual([(row['from_tool'], row['tool']) for row in rows], [(pin, read)])
+        self.assertEqual(rows[0]['status'], 'compatible_candidate_not_observed_bypass')
+        manifest['contracts'][pin]['required_params'] = ['semantic_query']
+        self.assertEqual(motif_v6.structural_candidates(manifest), [])
+
     def test_public_witnessed_edges_learn_across_unrelated_read_interleaving(self):
         extra = 'mcp__ppt__list_sources'
         self.contracts[extra] = {'required_params': [], 'read_only': True,

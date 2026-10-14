@@ -1,5 +1,7 @@
 # DeepSeek Harless：Motif × DeepSeek Harness × 自定义 MCP
 
+四场景研究代码的分支整合与兼容验收见 [当前整合记录](docs/experiments/four-scenario-main-integration-20261014-v1.md)。论文生成工具/轨迹 RSI 的显式实验入口在 [论文场景](scenarios/paper-submission/README.md)，文献处理在 [文献场景](scenarios/literature-notes/README.md)。研究 CLI 与统一 Web 的工具契约不同，分支合并不会自动赋予旧实验库产品 Execute 权限；文献的任务级 Web 绑定和双栏评分仍需单独验收。
+
 Web 场景快捷入口支持 `/ppt`、`/paper`、`/data`、`/chat`，输入前缀即可选择并显示有色标识；`/harless` 同时列出场景、模式和 RSI。可用性由当前账号的实际部署决定。已有会话切换场景会新建对应会话并保留原聊天与未改写的草稿；同一场景的文字续聊保留上下文。详见 [场景与账号控制](docs/harless-controls.md)。
 
 DeepSeek Harless 是本项目统一的产品名称；当前仓库是供场景开发使用的最小主线。MotifAgent 的迁移内核负责有证据支持的结构执行；DeepSeek Harness（DSH）负责 Agent 循环、语义判断、工具派发和会话。场景通过 MCP 扩展。历史环境变量、协议标识和目录保持兼容，不因产品更名修改其含义。
@@ -51,7 +53,9 @@ npm run web
 ssh -N -L 3080:127.0.0.1:3080 -p SSH_PORT USER@SERVER
 ```
 
-默认运行时仍使用 `scenarios/example/`，免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据；主机名和端口保持 `127.0.0.1:3080`。原生 `/harless` 菜单分为 Scenes、Mode、RSI 二级选择，输入框显示当前 Harless 状态。Scenes 包含英文的 PPT、Paper Proofreading、Research Data Analysis 和 New Scene。前三项当前只完成界面选择，选中后发送任务会明确拒绝且不会误用 `example` 工具；New Scene 使用服务器当前运行时探索，尚无独立的新场景工具。免费和真实模式的已接通任务都直接提交，真实模式会调用所选模型的 API，服务端仍执行任务与全局预算限制。任务 API 仍支持结构化输入、来源和附件；旧 `/tasks`、`/sss`、`/harless` 页面地址跳回聊天首页，`/api/sss/tasks` 兼容 API 保留。
+默认动态运行时使用 `scenarios/general/`（New Scene），免费模拟模型、Shadow（RSI On），监听 `127.0.0.1:3080`。从本次 `.local/web/runs/<RUN_ID>/access-url.txt` 复制官方认证地址到本地浏览器，打开聊天首页即可。认证地址/token 为私有数据。原生 `/harless` 菜单的 PPT、Paper Proofreading、Research Data Analysis、Files 和 New Scene 分别加载服务器登记的 MCP、白名单与 Prompt：PPT 使用既有19工具；论文提供PDF/文本与静态LaTeX检查；数据提供CSV/TSV描述统计与Pearson相关；Files 盘点、读取、查重和索引任务上传文件，可显式授权整理副本；New Scene读取本Session上传文本。模式和RSI独立，菜单不调用模型，选择影响下一任务。PPT菜单可设置页数、模板及生成新副本权限；Files 菜单可设置只读或整理任务副本。免费和真实任务从聊天直接发送，服务端保留费用、请求上限与工具权限；旧页面跳回聊天，任务 API 保留。
+
+PPT先安装 `scenarios/research_ppt/requirements.txt`，在该目录 `npm ci && npm run build`；需要兼容的LibreOffice、中文字体与静态Fontconfig才能输出。仅部署论文PDF读取时安装 `scenarios/paper_proofreading/requirements.txt`，纯文本校对/数据CSV分析不需渲染依赖。管理员在私有环境设置 `HARLESS_PPT_RENDERER_ROOT/HARLESS_PPT_FONT_ROOT`，缺失时只读可用、输出明确拒绝。`HARLESS_PPT_RUNTIME_BUNDLE` 指向已认证且代码锁有效的五文件包，当前仅接管闭合pin/read；没有库的场景可用Origin/Shadow，Execute On拒绝。部署成员能力只增加网关 `memberSceneDeployment` 只读挂载，输入、Session、产物和预算继续隔离。完整配置、范围与诊断见 [控制协议](docs/harless-controls.md)、[账号网关](docs/harless-account-gateway.md) 和 [上线准备记录](docs/experiments/harless-launch-readiness-20261014-v1.md)。V100 Ubuntu18/Node22.23.3/Python3.10.21已验证；完整模型自主PPT生成与科研质量未在本轮验收。
 
 原生模型选择可切换服务器已启用的 DeepSeek Flash 与 GLM；默认免费模拟仍使用 DeepSeek。真实 Web 可在服务器私有 `.env` 配置 GLM 模型、密钥和价格。选定模型会绑定任务和预算账本；GLM 当前只接文字输入，真实 GLM 请求仍待验收。Codex 登录入口已撤销，当前不提供 GPT 登录。
 
@@ -171,6 +175,8 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 
 ### Harless 多场景 Web
 
-`npm run web` / `web:real` 默认打开 `new-scene` 普通 Harness + Session 文件工具；`/harless` 的场景菜单直接选择服务端登记配置。PPT 连接现有19工具交付后端（需按 `scenarios/research_ppt/README.md` 安装依赖并构建）；论文校对和数据分析尚缺 main 正式后端，明确拒绝启动。没有认证生产 Library 时 Shadow 记录回退，Execute 拒绝；RSI Off 保留模式选择并实际采用 Origin。
+`npm run web` / `web:real` 默认打开 `new-scene` 普通 Harness + Session 文件工具；`/harless` 的场景菜单直接选择服务端登记配置。PPT 连接现有19工具交付后端（需按 `scenarios/research_ppt/README.md` 安装依赖并构建），论文校对5工具、数据分析4工具及通用场景2工具均有正式后端。当前仅PPT的冻结只读来源链有生产认证库；其他场景 Shadow 记录无库回退，Execute On 明确拒绝。RSI Off 保留模式选择并实际采用 Origin。PPT 代码或Prompt变化会使旧部署包的版本锁失效，须重新认证后才可恢复 Execute。
 
 任务与用户启动实例分别隔离；菜单不调用模型，已确认任务不随菜单变化。PPT 默认只读，生成页数/模板/输出权限经任务 API 设置后确认；原生聊天尚无该参数编辑界面。完整配置、用户入口依赖和验收见 [Harless 控制协议](docs/harless-controls.md)。`npm run web:scenes:check` 检查实际 Harness/MCP 与两用户实例隔离；`-- --real-model` 明确启用最多0.06美元的只读模型验收。历史样例工具只用 `--scene-registry config/harless-diagnostics.json --scenario example` 等显式诊断配置，默认产品菜单不映射样例。
+
+`feature/rsi-research-agent` 的文献与文件管理实验入口和 `feature/research-ppt-agent` 的 V16/V17 场景代码已在独立后续集成分支整合。它们不自动成为四个产品菜单场景；PPT 旧双路主聊天不继承 Mode/RSI，故未注册到默认 Web 任务入口。集成状态与尚需的固定字体复验见[主线交接](docs/handoffs/main.md)。

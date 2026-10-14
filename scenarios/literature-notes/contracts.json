@@ -1,0 +1,24 @@
+{
+  "mcp__literature_notes__pin_annotation_change": {
+    "required_params": ["change_id"],
+    "read_only": true,
+    "output_fields": ["source_id", "version_sha256"],
+    "replay_stable": true,
+    "description": "Pin the explicitly selected annotation change and its paper/note snapshot; no relevance selection."
+  },
+  "mcp__literature_notes__read_pinned_annotation_context": {
+    "required_params": ["source_id"],
+    "provenance_params": ["source_id"],
+    "read_only": true,
+    "output_fields": ["version_sha256"],
+    "replay_stable": true,
+    "description": "Read the pinned annotation, extracted page and selected note; reject any dependency version change."
+  },
+  "mcp__literature_notes__preview_note_update": {
+    "required_params": ["source_id"],
+    "read_only": true,
+    "output_fields": ["version_sha256"],
+    "replay_stable": false,
+    "description": "Preview an attributed quote in the selected note; return semantic gaps without writing files or apps."
+  }
+}

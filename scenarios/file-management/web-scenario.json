@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "name": "file_management",
+  "prompt": "web-prompt.md",
+  "servers": [{
+    "server_name": "file_management",
+    "transport": "stdio",
+    "command": "${PYTHON}",
+    "args": ["${PROJECT_ROOT}/scenarios/file-management/plan_tools.py"],
+    "cwd": "${PROJECT_ROOT}",
+    "env": {
+      "FM_WEB_WORKSPACE": "${SESSION_WORKSPACE}",
+      "FM_TASK_FILE": "${SESSION_WORKSPACE}/file-task.json",
+      "FM_OUTPUT": "${SESSION_WORKSPACE}/file-results"
+    }
+  }],
+  "allowed_tools": [
+    "mcp__file_management__read_task",
+    "mcp__file_management__list_files",
+    "mcp__file_management__pin_file",
+    "mcp__file_management__read_file",
+    "mcp__file_management__hash_files",
+    "mcp__file_management__build_index",
+    "mcp__file_management__search_index",
+    "mcp__file_management__compare_snapshot",
+    "mcp__file_management__preview_actions",
+    "mcp__file_management__authorize_plan",
+    "mcp__file_management__execute_plan",
+    "mcp__file_management__restore_plan",
+    "mcp__file_management__submit_report"
+  ]
+}

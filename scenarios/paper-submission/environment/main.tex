@@ -1,0 +1,40 @@
+% 公共环境夹具；不含真实论文内容，不代表任何会议的合规模板。
+\documentclass[sigplan,10pt,screen]{acmart}
+\usepackage{tabularx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{multirow}
+\setcopyright{none}
+\settopmatter{printacmref=false}
+\title{Paper Environment Check}
+\author{Environment Tester}
+\affiliation{\institution{Test Institution}\city{Test City}\country{Test Country}}
+\begin{document}
+\begin{abstract}
+This public fixture checks compilation, bibliography, mathematics and fonts.
+\end{abstract}
+\maketitle
+\section{Environment}
+The bibliography pipeline must resolve this synthetic entry~\cite{env2026}.
+Equation~\ref{eq:check} and Table~\ref{tab:check} check cross-references.
+\begin{equation}\label{eq:check}
+  y = \sum_{i=1}^{3} i^2
+\end{equation}
+\begin{table}[h]
+\caption{Synthetic data}\label{tab:check}
+\begin{tabular}{lr}\toprule
+Item & Value \\\midrule
+\multirow{2}{*}{Test} & 1 \\
+ & 2 \\\bottomrule
+\end{tabular}
+\end{table}
+\begin{algorithm}[h]
+\caption{Synthetic verification}
+\begin{algorithmic}
+\State $x \gets 1$
+\State \textbf{return} $x$
+\end{algorithmic}
+\end{algorithm}
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+\end{document}

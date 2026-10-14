@@ -19,3 +19,19 @@ test('scenario tools are restricted and the execution guard rejects other calls'
     else process.env.SSS_SCENARIO_TOOLS = old;
   }
 });
+
+test('PTC permits only its native transport plus the same MCP bindings, never a shell', () => {
+  const previous=process.env.SSS_SCENARIO_TOOLS, mode=process.env.SSS_SCENARIO_PRESENTATION;
+  process.env.SSS_SCENARIO_TOOLS='["mcp__demo__pin_note"]';process.env.SSS_SCENARIO_PRESENTATION='ptc';
+  try {
+    let handler,guard,presentation='ptc';
+    apply({on(_event,fn){handler=fn;}});
+    handler({agent:{ctx:{tools:{restrict(){},guard(fn){guard=fn;},modeFor(){return presentation;}}}}});
+    assert.equal(guard({name:'run_code'}),undefined);assert.equal(guard({name:'mcp__demo__pin_note'}),undefined);
+    assert.match(guard({name:'bash'}),/outside/);assert.match(guard({name:'mcp__other__read'}),/outside/);
+    presentation='native';assert.match(guard({name:'run_code'}),/outside/);
+  } finally {
+    if(previous===undefined)delete process.env.SSS_SCENARIO_TOOLS;else process.env.SSS_SCENARIO_TOOLS=previous;
+    if(mode===undefined)delete process.env.SSS_SCENARIO_PRESENTATION;else process.env.SSS_SCENARIO_PRESENTATION=mode;
+  }
+});

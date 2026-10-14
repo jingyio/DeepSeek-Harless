@@ -1,0 +1,27 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {digest} from '../src/motif_core/online_skill_runtime.mjs';
+import {validatePlanPolicy,validatePlanTask,createPlanController,planEffects} from '../src/motif_core/authorized_plan_policy.ts';
+const names=['preview_actions','authorize_plan','execute_plan'].map(n=>'mcp__test__'+n),obs=v=>({value:{structuredContent:v}});
+function fixture(){
+ const tools=names.map(name=>({name,parameters:{}})),graph={preview_tool:names[0],authorize_tool:names[1],execute_tool:names[2],max_actions:6,allowed_ops:['copy','move','quarantine'],stop:'after_verified_execution_or_semantic_recovery'};
+ const artifact={kind:'authorized_copy_plan_chain',status:'trace_validated_effectful',tools:names,graph,source_task_fingerprints:['a','b'],validation_task_fingerprint:'c',tool_schema_sha256:Object.fromEntries(names.map(n=>[n,digest({})])),transfer_evidence:[{from:names[0]+'.plan_id',to:names[1]+'.plan_id'},{from:names[0]+'.plan_id',to:names[2]+'.plan_id'},{from:names[1]+'.authorization_id',to:names[2]+'.authorization_id'}]};artifact.certified_digest=digest(artifact);
+ const policy={schema_version:1,format:'sss-authorized-plan-v1',execution_version_sha256:'a'.repeat(64),artifact};policy.policy_digest=digest(policy);
+ const inventory=[{file_id:'fid',path:'a.txt',sha256:digest('bytes')}],grant={schema_version:1,max_actions:6,allowed_ops:['copy','move'],source_paths:['a.txt'],destination_prefixes:['processed/'],allow_restore:true};
+ const task={schema_version:1,task_id:'t',session_id:'s',input_version:'b'.repeat(64),execution_version_sha256:policy.execution_version_sha256,inventory,inventory_sha256:digest(inventory),grant,grant_sha256:digest(grant),initial_snapshot:{'a.txt':inventory[0].sha256}};task.snapshot_sha256=digest(task.initial_snapshot);
+ const actions=[{op:'move',file_ids:['fid'],destination:'processed/a.txt',format:'none'}];
+ const base={input_sha256:task.input_version,execution_version_sha256:task.execution_version_sha256,grant_sha256:task.grant_sha256,copy_only:true};
+ const preview={...base,plan_id:'plan-real',plan_sha256:'c'.repeat(64),snapshot_sha256:task.snapshot_sha256,status:'validated_copy_plan',permission_status:'within_task_grant',actions};preview.preview_sha256=digest(preview);
+ const auth={...base,plan_id:preview.plan_id,plan_sha256:preview.plan_sha256,preview_sha256:preview.preview_sha256,snapshot_sha256:task.snapshot_sha256,authorization_id:'auth-real',operation_count:1,single_plan:true,status:'task_grant_authorized'};auth.authorization_sha256=digest(auth);
+ const receipt={...base,plan_id:preview.plan_id,plan_sha256:preview.plan_sha256,authorization_id:auth.authorization_id,authorization_sha256:auth.authorization_sha256,status:'executed_verified',operation_count:1,snapshot_sha256:digest(planEffects(task,actions)),journal_sha256:'d'.repeat(64)};
+ return {policy,task,tools,preview,auth,receipt};
+}
+function select(c,f,preview=f.preview){c.observe({name:names[0],callId:'model-preview',arguments:{actions:f.preview.actions}},obs(preview));}
+function respond(c,call,out){c.observe({callId:call.callId,name:call.proposal.tool,arguments:call.proposal.arguments},obs(out));}
+test('effect only after exact actual authorization, then handoff; never proposes restore or retries',()=>{const f=fixture(),log=[],c=createPlanController(f.policy,f.task,r=>log.push(r));let i=0;assert.deepEqual(c.propose(f.tools,()=>''),[]);select(c,f);const a=c.propose(f.tools,()=>String(++i))[0];assert.equal(a.proposal.tool,names[1]);respond(c,a,f.auth);const x=c.propose(f.tools,()=>String(++i))[0];assert.deepEqual(x.proposal.arguments,{plan_id:'plan-real',authorization_id:'auth-real'});respond(c,x,f.receipt);assert.equal(c.done,true);assert.deepEqual(c.propose(f.tools,()=>''),[]);assert.equal(log.filter(r=>r.kind==='plan_model_request_bypassed_verified').length,2);});
+for(const kind of ['grant','version','snapshot','path','schema','interleave','authorization','receipt','failure'])test('effect gate defers on '+kind,()=>{
+ const f=fixture(),c=createPlanController(f.policy,f.task,()=>{});let i=0;
+ if(['grant','version','snapshot','path'].includes(kind)){const p=structuredClone(f.preview);if(kind==='grant')p.grant_sha256='f'.repeat(64);if(kind==='version')p.execution_version_sha256='f'.repeat(64);if(kind==='snapshot')p.snapshot_sha256='f'.repeat(64);if(kind==='path')p.actions[0].destination='../../secret';delete p.preview_sha256;p.preview_sha256=digest(p);select(c,f,p);}
+ else{select(c,f);if(kind==='schema')c.propose(f.tools.map(t=>({...t,parameters:{changed:true}})),()=>String(++i));else if(kind==='interleave')c.observe({name:'mcp__test__write',callId:'other'},obs({}));else{const a=c.propose(f.tools,()=>String(++i))[0];respond(c,a,kind==='authorization'?{...f.auth,authorization_id:'other'}:f.auth);if(kind!=='authorization'){const x=c.propose(f.tools,()=>String(++i))[0];if(kind==='failure')c.observe({name:x.proposal.tool,callId:x.callId,arguments:x.proposal.arguments},{isError:true});else respond(c,x,{...f.receipt,operation_count:9});}}}
+ assert.equal(c.halted,true);assert.equal(c.done,false);assert.deepEqual(c.propose(f.tools,()=>''),[]);
+});
+test('policy shape and task grant are runtime validated',()=>{const f=fixture();assert.throws(()=>validatePlanPolicy({...f.policy,policy_digest:'x'}));assert.throws(()=>validatePlanTask({...f.task,grant:{...f.task.grant,max_actions:99}},f.policy));assert.throws(()=>planEffects(f.task,[{op:'archive',file_ids:['fid'],destination:'processed/x',format:'none'}]));});

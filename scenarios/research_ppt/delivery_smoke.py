@@ -30,7 +30,9 @@ BASE_NAMES = ['list_inputs', 'list_templates', 'pin_source', 'read_source', 'rea
               'extract_figure', 'inspect_deck', 'deliver_deck', 'read_deck_plan',
               'list_restorable_decks', 'render_deck', 'restyle_deck', 'revise_deck',
               'validate_deck', 'build_delivery']
-ADAPTER_NAMES = ['render_delivery', 'revise_delivery', 'pin_deck_pages', 'read_pinned_deck_pages']
+ADAPTER_NAMES = ['render_delivery', 'revise_delivery', 'pin_deck_pages', 'read_pinned_deck_pages',
+                 'read_pending_plan', 'repair_pending_plan']
+READ_ONLY_ADAPTER_NAMES = {'pin_deck_pages', 'read_pinned_deck_pages', 'read_pending_plan'}
 
 
 def write(path, value):
@@ -123,8 +125,8 @@ async def exercise(job, denied_job, diag):
         diag.check('fixed_real_schema_order', [tool.name for tool in tools] == BASE_NAMES + ADAPTER_NAMES)
         by_name = {row['name']: row for row in schema}
         diag.check('new_tools_read_only_annotations', all(
-            by_name[name].get('annotations', {}).get('readOnlyHint') is (i >= 2)
-            for i, name in enumerate(ADAPTER_NAMES)))
+            by_name[name].get('annotations', {}).get('readOnlyHint') is (name in READ_ONLY_ADAPTER_NAMES)
+            for name in ADAPTER_NAMES))
         inputs = await diag.call(client, 'list_inputs', {})
         pin = await diag.call(client, 'pin_source', {'document_id': inputs['inputs'][0]['document_id']})
         source = await diag.call(client, 'read_source', {'source_id': pin['source_id']})
@@ -134,10 +136,28 @@ async def exercise(job, denied_job, diag):
              'sources': citation, 'notes': source['pages'][0]['text'][:150]}
             for i in range(1, data['slides'] + 1)]}
         if data['slides'] >= 3:
-            image = await diag.call(client, 'extract_figure', {'source_id': pin['source_id'], 'page': 1, 'bbox': [0, 0, 1, 1]})
+            geometry = await diag.call(client, 'read_page', {'source_id': pin['source_id'], 'page': 1})
+            candidates = geometry.get('figure_candidates', [])
+            diag.check('real_caption_geometry_candidate_available', bool(candidates)
+                       and all(isinstance(row.get('candidate_id'), str) for row in candidates))
+            if data.get('figure_evidence_policy') == 'caption-geometry-v1':
+                whole = await diag.call(client, 'extract_figure',
+                    {'source_id': pin['source_id'], 'page': 1, 'bbox': [0, 0, 1, 1]})
+                whole_plan = copy.deepcopy(plan)
+                whole_plan['slides'][1].update(layout='image', bullets=[],
+                    image={'source_id': pin['source_id'], 'image_id': whole['image_id']},
+                    notes='Whole page evidence must not satisfy an original-figure delivery contract.')
+                rejected = await diag.call(client, 'render_delivery', {'plan': whole_plan},
+                                           rejected={'backend_tool_failed'})
+                diag.check('whole_page_rejected_as_original_figure',
+                           rejected.get('backend_report', {}).get('error') == 'invalid_image')
+            image = await diag.call(client, 'extract_figure',
+                {'source_id': pin['source_id'], 'page': 1, 'candidate_id': candidates[0]['candidate_id']})
+            diag.check('real_figure_candidate_extracted', image.get('evidence_scope') == 'caption_geometry_candidate'
+                       and image.get('candidate_id') == candidates[0]['candidate_id'])
             plan['slides'][1].update(layout='image', bullets=[],
                 image={'source_id': pin['source_id'], 'image_id': image['image_id']},
-                notes='Whole source page evidence only; not a scientifically identified figure.')
+                notes='Synthetic caption-geometry figure for delivery diagnostics; no scientific quality claim.')
         bad = copy.deepcopy(plan)
         bad['slides'].append(copy.deepcopy(bad['slides'][0]))
         await diag.call(client, 'render_delivery', {'plan': bad}, rejected={'slide_count_mismatch'})
@@ -170,8 +190,9 @@ async def exercise(job, denied_job, diag):
         if data['slides'] >= 3:
             checkpoint_state = read(job.parent / 'service-checkpoint.json')['state']
             restored_images = checkpoint_state['handles'][pin['source_id']]['parsed']['images']
-            diag.check('real_source_page_image_persisted_after_restart', any(
+            diag.check('real_caption_figure_persisted_after_restart', any(
                 row['image_id'] == plan['slides'][1]['image']['image_id'] and row['data'].startswith('image/png;base64,')
+                and row.get('evidence_scope') == 'caption_geometry_candidate'
                 for row in restored_images))
         await diag.call(client, 'read_pinned_deck_pages', {'source_id': page_pin['source_id']}, rejected={'invalid_source'})
         repin = await diag.call(client, 'pin_deck_pages', {'deck_id': rendered['deck_id'], 'pages_csv': str(data['slides'])})
@@ -261,6 +282,9 @@ async def run(args):
         with fitz.open() as document:
             page = document.new_page()
             page.insert_text((72, 72), 'Synthetic engineering source.\nThis PDF checks real editable delivery and restart.\nIt is not research quality evidence.')
+            page.draw_rect(fitz.Rect(100, 180, 420, 340), color=(0, 0, 0), width=2)
+            page.draw_line(fitz.Point(120, 310), fitz.Point(380, 210), color=(0, 0, 1), width=3)
+            page.insert_text((100, 365), 'Figure 1: Synthetic delivery diagnostic diagram.')
             document.save(pdf)
         inputs, slides = [pdf], 3
         job = prepare(inputs, '合成来源工程诊断：三页真实可编辑交付与MCP重启，非科研质量结论。', slides, allow_output=True)

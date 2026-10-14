@@ -69,6 +69,17 @@ class CLIRuntimeTests(unittest.TestCase):
         self.assertEqual(invocation['max_output'], 8000)
         self.assertFalse(invocation['model_call_enabled'])
 
+    def test_release_defaults_are_forwarded_without_enabling_model(self):
+        save(self.job, {**self.data, 'job_id': 'release-defaults', 'allow_output': False})
+        with patch('scenarios.research_ppt.cli.subprocess.call', return_value=0) as launcher:
+            self.assertEqual(run(self.job), 0)
+        args = launcher.call_args.args[0]
+        for option, expected in (('--max-steps', '60'), ('--max-output', '8000'), ('--budget-usd', '1.5')):
+            self.assertEqual(args[args.index(option) + 1], expected)
+        self.assertNotIn('--call-model', args)
+        spec = json.loads(scenario_for(self.job, False).read_text(encoding='utf-8'))
+        self.assertEqual(spec['servers'][0]['tool_call_timeout_ms'], 300000)
+
     def test_invalid_output_limit_rejected_before_starting_or_reading_job(self):
         with patch('scenarios.research_ppt.cli.subprocess.call') as launcher:
             for limit in (0, 8001, True, 5000.0):

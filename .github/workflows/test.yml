@@ -16,8 +16,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install PDF parser for Linux integration checks
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: npm ci
       - run: npm run setup
       - run: npm test
+      - name: Annotate test failures
+        if: failure()
+        run: python scripts/annotate-ci-failures.py .local/ci/python-results.xml .local/ci/node-results.xml
       - run: npm run smoke
       - run: npm run motif:check

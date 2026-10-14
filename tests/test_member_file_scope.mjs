@@ -4,6 +4,16 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, resolve, basename, sep } from 'node:path';
 const options={skip:!process.features?.typescript};
+test('Scene task mount alias is allowed only for the same directory identity',options,async()=>{
+ const {memberTaskRoots}=await import('../src/adapters/harless_member_file_scope.ts');
+ const directory=mkdtempSync(join(tmpdir(),'harless-member-files-alias-'));
+ try{
+  const own=join(directory,'own'),foreign=join(directory,'foreign');mkdirSync(own);mkdirSync(foreign);
+  assert.deepEqual(memberTaskRoots(own,join(directory,'absent')),[join(own,'sessions')]);
+  assert.deepEqual(memberTaskRoots(own,own),[join(own,'sessions'),join(own,'sessions')]);
+  assert.throws(()=>memberTaskRoots(own,foreign),/只允许/);
+ }finally{assert.ok(resolve(directory).startsWith(resolve(tmpdir())+sep));rmSync(directory,{recursive:true,force:true});}
+});
 async function fixture(){
  const {guardMemberFileRpc}=await import('../src/adapters/harless_member_file_scope.ts');
  const directory=mkdtempSync(join(tmpdir(),'harless-member-files-')),work=join(directory,'workspace'),sessions=join(directory,'sessions'),config=join(directory,'config');

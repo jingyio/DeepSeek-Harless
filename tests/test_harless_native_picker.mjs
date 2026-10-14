@@ -37,6 +37,7 @@ function fixture({ locked = false, beforePost, beforeGet } = {}) {
       return { ok: false, json: async () => ({ error: { code: 'scene_requires_new_session', message: '新建会话' } }) };
     if (body?.action === 'new_session') { makeInput('fresh', ''); value = values.get('fresh'); value.session_id = 'fresh'; }
     if (body) value.selection = { ...value.selection, ...body.selection };
+    if (body?.action === 'set_scene_options') value.scene_options = body.options;
     return { ok: true, json: async () => structuredClone(value) };
   };
   runInNewContext(source, { window: { __ModuleLoader__: { load(spec) { registered = spec; } } }, fetch, AbortController });
@@ -80,6 +81,23 @@ test('Choosing PPT from /harless retains a visible token and preserves other dra
   assert.equal(f.inputs.get('alice').inserts.length, 1);
   await f.decoration.ui.onSelect(rows.find(row => row.id === 'mode:shadow'), session);
   assert.equal(f.values.get('alice').selection.mode, 'shadow');
+});
+test('Flat native task options preserve other options and refuse frozen or unoffered choices', async () => {
+  const f=fixture(),session={sessionId:'alice'},current=f.values.get('alice');
+  current.selection.scene='ppt';current.scene_options={slides:6,template:'academic'};
+  current.scene_option_fields=[{key:'slides',label:'页数',default:6,values:[{value:6,label:'6 页'},{value:12,label:'12 页'}]}];
+  const before=f.inputs.get('alice').state.getSnapshot().draft;
+  const rows=await f.decoration.ui.options(session,new AbortController().signal);
+  const choice=rows.find(row=>row.id==='option:slides=12');assert.ok(choice);
+  await f.decoration.ui.onSelect(choice,session);
+  assert.equal(current.scene_options.slides,12);assert.equal(current.scene_options.template,'academic');
+  assert.equal(f.inputs.get('alice').state.getSnapshot().draft,before);
+  const count=f.posts.length;
+  await assert.rejects(f.decoration.ui.onSelect({id:'option:slides=999'},session),/未知/);
+  current.scene_locked=true;
+  assert.ok(!(await f.decoration.ui.options(session,new AbortController().signal)).some(row=>row.id.startsWith('option:')));
+  await assert.rejects(f.decoration.ui.onSelect(choice,session),/已固定/);
+  assert.equal(f.posts.length,count);
 });
 test('Changing a locked scene creates a separate session and hands off the draft and attachments', async () => {
   const f = fixture({ locked:true }), old = f.inputs.get('alice'); old.addAttachments(['receipt']);

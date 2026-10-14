@@ -1,5 +1,5 @@
 /** Cross-platform entry point. No shell scripts or platform-specific venv paths. */
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
@@ -26,8 +26,15 @@ if (action === 'setup') {
   run(python, ['-m', 'venv', '.venv-sss']);
   run(join(root, '.venv-sss', suffix), ['-m', 'pip', 'install', '-r', 'requirements.txt']);
 } else if (action === 'test') {
-  run(python, ['-m', 'pytest', 'tests', '-q']);
-  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_dsh_web_policy.mjs', 'tests/test_web_task_request.mjs', 'tests/test_dsh_web_tasks.mjs', 'tests/test_harless_settings.mjs', 'tests/test_harless_native_picker.mjs', 'tests/test_harless_gateway.mjs', 'tests/test_web_budget_broker.mjs', 'tests/test_member_file_scope.mjs']);
+  const ci = process.env.CI === 'true';
+  if (ci) mkdirSync(join(root, '.local/ci'), { recursive: true });
+  run(python, ['-m', 'pytest', 'tests', '-q', ...(ci ? ['--junitxml=.local/ci/python-results.xml'] : [])]);
+  const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+  if (nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 18)) {
+    run(process.execPath, ['scripts/build-continuation-policy.mjs', '--check']);
+  }
+  const nodeTests = readdirSync(join(root, 'tests')).filter(name => /^test_.*\.mjs$/.test(name)).sort().map(name => 'tests/' + name);
+  run(process.execPath, ['--test', ...(ci ? ['--test-reporter=tap', '--test-reporter-destination=stdout', '--test-reporter=junit', '--test-reporter-destination=.local/ci/node-results.xml'] : []), ...nodeTests]);
 } else if (action === 'scenario') {
   run(python, ['scripts/run-scenario.py', ...args]);
 } else if (action === 'web') {
