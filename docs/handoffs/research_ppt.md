@@ -2,7 +2,7 @@
 
 ## 2026-10-14 自动结构学习与 main 同步
 
-- 分支：`feature/research-ppt-agent` 从 `7375185` 快进到 `origin/main@67e8445` 后恢复本轮改动；本次改动尚未提交或推送。main 的统一成员场景和配对比较保持原入口；另以 `--ppt-native` 显式启用单用户科研 PPT 的 V17 双路交付与反馈学习。其他未合并分支 `feature/rsi-research-agent` 和邮件日历演示与本次 PPT 代码无直接依赖。
+- 分支：`feature/research-ppt-agent` 从 `7375185` 快进到 `origin/main@67e8445` 后恢复本轮改动；主体提交 `f7ee910` 已推送，尚未创建 PR。main 的统一成员场景和配对比较保持原入口；另以 `--ppt-native` 显式启用单用户科研 PPT 的 V17 双路交付与反馈学习。其他未合并分支 `feature/rsi-research-agent` 和邮件日历演示与本次 PPT 代码无直接依赖。
 - 已完成：主聊天原稿评价绑定 Session、trial、PPTX SHA，三项质量、人工时间与学习许可写入私有反馈库。授权后后台无模型检查三个独立任务，认证只读参数边；后续两个合格新任务验证实际旁路、请求和代理费用后才自动晋级。active 或有界候选仅在新 PPT 任务中使用，不在每次调用模型生成工具。
 - 入口：在已安装 PPT 场景依赖、真实 DeepSeek 私有配置的单用户服务器执行 `npm run web:real -- --scenario ppt --ppt-native --ppt-run-budget-usd 3`。未加开关时走 main 的统一场景路径；成员预算 broker 明确拒绝此专用入口。`/ppt` 保留备用，原生聊天只返回优化稿和评价表，普通组账本后台保存。
 - 已验证：最新 main 合并后的服务器隔离副本根仓库 Python 668 通过/193 跳过、Node 449 通过/3 跳过；PPT Python 312 通过/1 跳过、Node 120 通过；`npm run smoke` 通过且 0 付费请求，日志在隔离副本 `.local/test-logs/*-2f4c8d2.log`。单用户 `--ppt-native` 在隔离副本以无效占位密钥完成无模型启动，鉴权接口返回预期 401；尚未做合并后带真实密钥的主聊天路由验收。Motif 预检回退现在重新冻结普通模式参数，定向 26 项测试通过。旧基点的真实 15 页生成、下载与第 4 页同稿修改记录见 `docs/experiments/research-ppt-frontend-rsi-20261014.md`；该任务优化组总费用比普通组高 6.2%，没有新增 verified skip 或人工质量评价，不能宣称新 RSI 降本。
