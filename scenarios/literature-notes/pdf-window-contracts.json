@@ -1,0 +1,7 @@
+{
+  "mcp__literature_workflow_probe__read_workflow_input":{"required_params":[],"read_only":true,"replay_stable":true,"description":"Read the frozen research task and current PDF selection."},
+  "mcp__literature_workflow_probe__search_pdf_text":{"required_params":["paper_id","query"],"default_params":[["limit",4]],"read_only":true,"replay_stable":true,"description":"Find literal words on frozen source pages; no hit never proves absence."},
+  "mcp__literature_workflow_probe__pin_pdf_context":{"required_params":["paper_id","page","start","length"],"read_only":true,"replay_stable":true,"output_fields":["source_id","version_sha256","document_version_sha256"],"description":"Pin one explicitly selected bounded source window using canonical locators."},
+  "mcp__literature_workflow_probe__read_pinned_pdf_context":{"required_params":["source_id"],"provenance_params":["source_id"],"read_only":true,"replay_stable":true,"output_fields":["version_sha256","document_version_sha256"],"description":"Read only a tool-issued, current PDF window; scientific interpretation stays with the model."},
+  "mcp__literature_workflow_probe__submit_workflow_report":{"required_params":["rows"],"read_only":true,"replay_stable":false,"description":"Deliver full target coverage with actually read source references and explicit gaps."}
+}

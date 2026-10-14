@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "purpose": "接口示例，不是自动加载的运行配置",
+  "private_document_registration": {
+    "tenant_id": "authenticated-user-01",
+    "job_id": "job-01",
+    "visibility": "private",
+    "public_consent": null
+  },
+  "public_document_share": {
+    "visibility": "public",
+    "public_consent": {
+      "confirmed": true,
+      "source_url": "https://example.org/public-paper",
+      "license": "按来源实际许可填写，不能用本示例代替核验",
+      "consent_reference": "上传者明确公开复用授权的记录 ID"
+    }
+  },
+  "fixed_component_descriptor": {
+    "kind": "fixed_script",
+    "script_id": "render_delivery"
+  }
+}

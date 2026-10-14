@@ -912,3 +912,30 @@ test('PPT shortcut selects the scene, strips only its control token, and preserv
     assert.equal(f.registrations.size,3);
   } finally { await f.close(); }
 });
+test('PPT menu options are scoped, model-free, persisted, and cannot modify a preview',options,async()=>{
+  const rows=[{id:'ppt',label:'PPT',preset:'sss-task',allowed_tools:toolSchemas.map(t=>t.name),adapter:'ppt',mcp_rows:[]},
+    {id:'new-scene',label:'New Scene',preset:'sss-general',allowed_tools:toolSchemas.map(t=>t.name)}];
+  const f=await fixture({scenes:rows,capability_profile:'ppt'});
+  try{
+    const first=await f.ctx.sessionController.create({});
+    const route=f.routes.get('/api/harless/settings');
+    const call=async body=>{const r=await route.fetch(new Request('http://local/api/harless/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));return {status:r.status,value:await r.json()};};
+    const saved=await call({action:'set_scene_options',session_id:first.sessionId,options:{slides:8,template:'lab',allow_output:false}});
+    assert.equal(saved.status,200);assert.equal(saved.value.model_calls,0);
+    const draft=await f.api({action:'preview',session_id:first.sessionId,request:'Read-only inspection'});
+    assert.equal(draft.value.scene_options.slides,8);
+    const changed=await call({action:'set_scene_options',session_id:first.sessionId,options:{slides:12,allow_output:true}});
+    assert.equal(changed.status,200);
+    const existing=(await f.api(undefined,'?task_id='+draft.value.task_id)).value;
+    assert.equal(existing.scene_options.slides,8);assert.equal(existing.scene_options.allow_output,false);
+    assert.equal(existing.confirmation_digest,draft.value.confirmation_digest);
+    assert.equal((await call({action:'set_scene_options',session_id:'foreign',options:{allow_output:true}})).status,404);
+    assert.equal((await call({action:'set_scene_options',session_id:first.sessionId,options:{command:'arbitrary'}})).status,400);
+    assert.equal(f.promptCalls.length,0);
+    await f.api({action:'cancel',task_id:draft.value.task_id});
+    await f.api(undefined,'?task_id='+draft.value.task_id);
+    await f.restart();
+    const restored=await f.settings(undefined,'?session_id='+first.sessionId);
+    assert.equal(restored.value.scene_options.allow_output,true);
+  }finally{await f.close();}
+});

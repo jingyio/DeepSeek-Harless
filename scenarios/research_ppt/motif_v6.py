@@ -108,7 +108,16 @@ def structural_candidates(manifest: dict) -> list[dict]:
         for tool in artifact['tools'][1:]:
             contract = manifest['contracts'][tool]
             edges = [edge for edge in artifact['transfer_evidence'] if edge['to_tool'] == tool]
-            if (re.search(r'(?:^|__)read_pinned_[a-z0-9_]+$', tool)
+            source_contract = manifest['contracts'].get(edges[0]['from_tool'], {}) if len(edges) == 1 else {}
+            document_read = (len(edges) == 1
+                             and re.search(r'(?:^|__)pin_source$', edges[0]['from_tool'])
+                             and re.search(r'(?:^|__)read_source$', tool)
+                             and source_contract.get('required_params') == ['document_id']
+                             and source_contract.get('read_only') is True
+                             and 'source_id' in source_contract.get('output_fields', [])
+                             and 'version_sha256' in source_contract.get('output_fields', []))
+            if ((re.search(r'(?:^|__)read_pinned_[a-z0-9_]+$', tool) or document_read)
+                    and contract.get('read_only') is True
                     and contract['required_params'] == ['source_id']
                     and not contract['default_params'] and not artifact.get('code_nodes')
                     and len(edges) == 1 and edges[0]['from_field'] == 'source_id'

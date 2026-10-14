@@ -101,13 +101,14 @@ def prepare(args, output, endpoint):
     if not scenario.is_absolute():
         scenario = ROOT / scenario
     if scenario.suffix != '.json':
-        scenario = ROOT / ({'new-scene': 'scenarios/general/scenario.json', 'ppt': 'scenarios/research_ppt/web-scenario.json'}.get(args.scenario, f'scenarios/{args.scenario}/scenario.json'))
+        scenario = ROOT / ({'new-scene': 'scenarios/general/scenario.json', 'ppt': 'scenarios/research_ppt/web-scenario.json',
+                            'files': 'scenarios/file-management/web-scenario.json'}.get(args.scenario, f'scenarios/{args.scenario}/scenario.json'))
     prepared = prepare_scenario(scenario, session_workspace='__HARLESS_SESSION_WORKSPACE__', case=args.case or ('l_retrieval_persistence' if args.scenario == 'portfolio-v1' else ''))
     preset = output / 'presets/sss-task'
     preset.mkdir(parents=True, mode=0o700)
     rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
         'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
-        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *([] if args.scenario in ('new-scene', 'ppt') else prepared['mcp_rows'])]
+        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *([] if args.scenario in ('new-scene', 'ppt', 'files') else prepared['mcp_rows'])]
     rendered = json.dumps(rows, ensure_ascii=False, indent=2)
     for token, expression in prepared['environment_references'].items():
         rendered = rendered.replace(json.dumps(token), expression)

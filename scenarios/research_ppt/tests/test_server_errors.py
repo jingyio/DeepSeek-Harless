@@ -16,6 +16,26 @@ from scenarios.research_ppt.tests.test_service import write_pdf
 
 
 class SafeErrorTests(unittest.TestCase):
+    def test_scientific_figure_guards_are_actionable_without_relaxing_or_leaking(self):
+        cases = (
+            ('科研图件须使用 read_page 返回的真实 figure_candidates 和 extract_figure；嵌入素材或整页不能冒充完整原图',
+             'invalid_image', 'candidate_id'),
+            ('科研图件的真实来源页必须列入本页 sources，不能引用其它页代替',
+             'invalid_plan', 'sources'),
+            ('标题声明的图号与真实定位图注不一致，请核对原图而不是改写来源',
+             'invalid_plan', '图号'),
+        )
+        for message, code, guidance in cases:
+            with self.subTest(code=code, message=message):
+                response = _safe_failure(ValueError(message))
+                self.assertEqual(response['error'], code)
+                self.assertEqual(response['message'], message)
+                self.assertIn(guidance, response['next_action'])
+                private = _safe_failure(ValueError(message + ' /private/input.pdf private-value'))
+                self.assertEqual(private['error'], 'internal_processing_failed')
+                self.assertNotIn('/private', json.dumps(private))
+                self.assertNotIn('private-value', json.dumps(private))
+
     def test_revision_fields_are_recoverable_but_arbitrary_text_is_private(self):
         for message in ('修订页码重复', 'changes 必须包含合法的幻灯片字段，不能有未知字段',
                         '修订字段 notes 的类型或结构无效'):
@@ -38,15 +58,18 @@ class SafeErrorTests(unittest.TestCase):
                 self.assertEqual(response['error'], code)
                 self.assertEqual(response['page'], 5)
                 self.assertEqual(response['role'], 'process_3_detail')
+                self.assertEqual(response['field'], 'process')
                 self.assertTrue(response['next_action'])
-                self.assertEqual(set(response), {'error', 'message', 'next_action', 'page', 'role'})
+                self.assertIn('不重写全稿', response['next_action'])
+                self.assertEqual(set(response), {'error', 'message', 'next_action', 'page', 'role', 'field'})
                 encoded = json.dumps(response)
                 for secret in ('/private', 'credential', 'private-value', 'private-input'):
                     self.assertNotIn(secret, encoded)
 
     def test_structured_layout_errors_reject_unsafe_metadata(self):
         for page, role in ((True, '/private/render.js'), (0, 'body credential=private-value'),
-                           (31, 'private-value'), ('1', 'x' * 65)):
+                           (31, 'private-value'), ('1', 'x' * 65),
+                           (31, 'private_token'), (False, 'evidence_note_4')):
             with self.subTest(page=page, role=role):
                 response = _safe_failure(RenderFailure({'ok': False, 'code': 'text_overflow',
                     'page': page, 'role': role, 'error': '/private/key.env'}))
@@ -55,6 +78,58 @@ class SafeErrorTests(unittest.TestCase):
                 self.assertNotIn('role', response)
                 self.assertNotIn('/private', json.dumps(response))
                 self.assertNotIn('private-value', json.dumps(response))
+
+    def test_scientific_roles_map_to_exact_editable_fields_without_input_text(self):
+        for role, field in (('evidence_note_2', 'evidence_notes'),
+                            ('evidence_note_3_heading', 'evidence_notes'),
+                            ('body_2', 'bullets'), ('title', 'title'),
+                            ('footer', 'sources'), ('left_heading', 'comparison')):
+            with self.subTest(role=role):
+                response = _safe_failure(RenderFailure({'ok': False, 'code': 'text_overflow',
+                    'page': 11, 'role': role, 'field': 'private_token',
+                    'error': 'private-input /private/paper.pdf'}))
+                self.assertEqual(response['page'], 11)
+                self.assertEqual(response['role'], role)
+                self.assertEqual(response['field'], field)
+                self.assertNotIn('fields', response)
+                self.assertIn('事实条件', response['next_action'])
+                self.assertNotIn('private', json.dumps(response))
+
+    def test_aggregate_image_and_body_failures_do_not_guess_or_crop_content(self):
+        for role in ('body', 'image'):
+            with self.subTest(role=role):
+                response = _safe_failure(RenderFailure({'ok': False, 'code': 'text_overflow',
+                    'page': 12, 'role': role, 'error': 'private-input'}))
+                self.assertNotIn('field', response)
+                self.assertEqual(response['fields'], ['bullets', 'evidence_notes'])
+                self.assertIn('不重写全稿', response['next_action'])
+                if role == 'image':
+                    self.assertIn('完整原图', response['next_action'])
+                    self.assertIn('不能裁图', response['next_action'])
+
+    def test_legacy_scientific_overflow_keeps_safe_page_and_field(self):
+        response = _safe_failure(ValueError('场景 Node 工具执行失败: /private/render.js\n'
+            'Error: 第 11 页：evidence_note_2 完整文本超出科研页容量，请拆页；不会删改条件或缩小正文\n'
+            '    at /private/render.js:123 credential=private-value'))
+        self.assertEqual(response['error'], 'text_overflow')
+        self.assertEqual(response['page'], 11)
+        self.assertEqual(response['role'], 'evidence_note_2')
+        self.assertEqual(response['field'], 'evidence_notes')
+        self.assertNotIn('/private', json.dumps(response))
+        self.assertNotIn('private-value', json.dumps(response))
+        unsafe = _safe_failure(ValueError('场景 Node 工具执行失败: '
+            '第 11 页：private_token 完整文本超出科研页容量，请拆页；不会删改条件或缩小正文'))
+        self.assertEqual(unsafe['error'], 'internal_processing_failed')
+
+    def test_expected_slide_count_feedback_is_exact_and_does_not_request_rewrite(self):
+        response = _safe_failure(ValueError('任务要求总共 15 页'))
+        self.assertEqual(response['error'], 'invalid_plan')
+        self.assertEqual(response['expected_slides'], 15)
+        self.assertEqual(response['field'], 'slides')
+        self.assertIn('不重写全稿', response['next_action'])
+        for private_message in ('任务要求总共 15 页 /private/input.pdf',
+                                '任务要求总共 True 页', '任务要求总共 31 页'):
+            self.assertEqual(_safe_failure(ValueError(private_message))['error'], 'internal_processing_failed')
 
     def test_unknown_structured_layout_error_remains_private(self):
         response = _safe_failure(RenderFailure({'ok': False, 'code': 'private_error',

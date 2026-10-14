@@ -16,6 +16,7 @@ from src.adapters.tool_contract_loader import parse_tool_contracts
 from src.motif_core.offline.library_builder import validate_read_motif_library
 from src.motif_core.read_executor import _validate_artifact
 from src.motif_core.offline.local_programs import compile_local_programs
+from src.motif_core.offline.continuation_policy import policy_digest
 
 
 def digest(value: dict) -> str:
@@ -26,7 +27,8 @@ def digest(value: dict) -> str:
 
 def export_manifest(library: dict, contract_rows: dict,
                     slot_rules: dict | None = None,
-                    version_fields: dict | None = None) -> dict:
+                    version_fields: dict | None = None, *,
+                    source_dereferences: tuple[str, ...] = ()) -> dict:
     """Only a certified library may produce a model-bypass manifest."""
     validate_read_motif_library(library)
     contracts = parse_tool_contracts(contract_rows)
@@ -42,6 +44,13 @@ def export_manifest(library: dict, contract_rows: dict,
             continue
         if len(tools) < 2:
             continue
+        policy = contracts[tools[0]].continuation_policy
+        if any(contracts[t].continuation_policy is not None for t in tools):
+            # Partial chains carry no autonomous continuation permission.
+            if (not policy or [s['tool'] for s in policy['steps']] != tools
+                    or any(contracts[t].continuation_policy != policy for t in tools)
+                    or artifact.get('continuation_policy_digest') != policy_digest(policy)):
+                continue
         for index, tool in enumerate(tools):
             contract = contracts[tool]
             if not contract.read_only or not (contract.replay_stable or
@@ -63,6 +72,7 @@ def export_manifest(library: dict, contract_rows: dict,
             "code_dag": artifact.get("code_dag"),
             "supporting_task_count": len(artifact["source_task_fingerprints"]),
             "validation_task_fingerprint": artifact["validation_task_fingerprint"],
+            **({'continuation_policy_digest': policy_digest(policy)} if policy else {}),
         })
     if not artifacts:
         raise ValueError("library has no online-eligible read Motif")
@@ -83,8 +93,27 @@ def export_manifest(library: dict, contract_rows: dict,
     approved_tools = {name for name, contract in contracts.items()
                       if contract.read_only and
                       (contract.replay_stable or contract.observed_anchor)}
+    dereferences = set(source_dereferences)
+    if len(dereferences) != len(source_dereferences) or dereferences - used_tools:
+        raise ValueError('source dereference must name a certified tool once')
+    for tool in dereferences:
+        contract = contracts[tool]
+        paths = [a for a in artifacts if tool in a['tools']]
+        if (contract.required_params != ('source_id',) or contract.default_params
+                or 'source_id' not in contract.output_fields
+                or versions.get(tool) != 'source_version' or rules.get(tool)
+                or any(len(a['tools']) != 2 or a['tools'][1] != tool or a['code_nodes']
+                       or len(a['transfer_evidence']) != 1
+                       or a['transfer_evidence'][0]['from_tool'] != a['tools'][0]
+                       or a['transfer_evidence'][0]['to_tool'] != tool
+                       or a['transfer_evidence'][0]['from_field'] != 'source_id'
+                       or a['transfer_evidence'][0]['to_param'] != 'source_id'
+                       or a['transfer_evidence'][0].get('version_relation', 'same_source') != 'same_source'
+                       or versions.get(a['tools'][0]) != 'source_version'
+                       for a in paths)):
+            raise ValueError('source dereference requires one certified versioned handle edge')
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2 if any(a.get('continuation_policy_digest') for a in artifacts) else 1,
         "source_library_digest": library["library_digest"],
         "artifacts": artifacts,
         "contracts": {
@@ -94,7 +123,10 @@ def export_manifest(library: dict, contract_rows: dict,
                 "default_params": dict(contracts[tool].default_params),
                 "description": contracts[tool].description,
                 "read_only": True,
+                **({'source_dereference': True} if tool in dereferences else {}),
                 **({"observed_anchor": True} if contracts[tool].observed_anchor else {}),
+                **({'continuation_policy': contracts[tool].continuation_policy}
+                   if contracts[tool].continuation_policy is not None else {}),
             } for tool in sorted(approved_tools)
         },
         "slot_rules": rules,
@@ -110,6 +142,7 @@ def main() -> None:
     parser.add_argument("--contracts", required=True, type=Path)
     parser.add_argument("--slot-rules", type=Path)
     parser.add_argument("--version-fields", type=Path)
+    parser.add_argument("--source-dereference", action='append', default=[])
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     library = json.loads(args.library.read_text(encoding="utf-8"))
@@ -118,7 +151,8 @@ def main() -> None:
              if args.slot_rules else {})
     versions = (json.loads(args.version_fields.read_text(encoding="utf-8"))
                 if args.version_fields else {})
-    manifest = export_manifest(library, contracts, rules, versions)
+    manifest = export_manifest(library, contracts, rules, versions,
+                               source_dereferences=tuple(args.source_dereference))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
                            encoding="utf-8")

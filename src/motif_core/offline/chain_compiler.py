@@ -13,6 +13,7 @@ from typing import Any, Mapping
 
 from .edge_compiler import _check_candidate, _witnesses, compile_witnessed_edge_motif
 from .trace_compiler import artifact_signature, contract_signature
+from .continuation_policy import policy_digest
 
 
 def _chains(trace: Any, first: dict[str, Any], second: dict[str, Any],
@@ -77,6 +78,10 @@ def compile_witnessed_chain_motif(first: dict[str, Any], second: dict[str, Any],
     binding_b = {"from_tool": middle, "from_field": second["from_field"],
                  "to_tool": target, "to_param": second["to_param"],
                  "supporting_trace_ids": trace_ids}
+    policy = contracts[source].continuation_policy
+    if policy and ([s['tool'] for s in policy['steps']] != tools
+                   or any(contracts[t].continuation_policy != policy for t in tools)):
+        raise ValueError('continuation policy must cover exactly the witnessed chain')
     return {
         "schema_version": 1,
         "motif_id": "chain_motif_" + hashlib.sha256(key.encode()).hexdigest()[:12],
@@ -85,6 +90,7 @@ def compile_witnessed_chain_motif(first: dict[str, Any], second: dict[str, Any],
         "source_trace_ids": trace_ids,
         "source_task_fingerprints": fingerprints,
         "contract_signature": contract_signature(tools, contracts),
+        **({'continuation_policy_digest': policy_digest(policy)} if policy else {}),
         "dependencies": {"required_evidence": tools, "operators": {
             source: _operator(source, contracts),
             middle: _operator(middle, contracts, parent=source,

@@ -1,0 +1,2 @@
+# 先安装根 requirements.txt；仅 PDF 文本提取需要此额外依赖。
+pypdf==6.19.0

@@ -96,3 +96,14 @@ node in a two-tool Motif skill. `dependencies.py` and the online skill runtime
 execute it before the dependent read. This extension is SSS code, not a copy
 of the frozen MotifAgent artifact; it currently handles one scalar result
 and does not authorize general Python programs.
+
+2026-10-12 SSS扩展：`offline/entry_compiler.py`、`entry_read_policy.ts`和
+`inventory_entry_policy.ts`为本项目实现，支持真实原生任务的受限集合入口。
+增量变体单独认证`read_update_plan -> work[].paper_id -> prepare_pdf`，冻结完整计划、
+PDF/解析版本并在结构读完后语义交接；不是复制上游全局规划器或科研判断。
+旧协议保留，冻结来源、原commit和Apache-2.0 LICENSE未改。
+
+2026-10-12 SSS新增`offline/terminal_compiler.py`和`terminal_receipt_policy.ts`：
+从独立原生提交/收据/末尾模型stop轨迹认证受限终止关系；状态渲染为本项目手写的
+有界字段复制，不声称从模型学到任意总结程序。源/范围/版本/真实回调守卫后才停止，
+未修改冻结上游、LICENSE或来源commit。

@@ -15,6 +15,7 @@ import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDi
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
+import {bindUploadedPptTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
 
 export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry'];
@@ -43,6 +44,7 @@ type Task = {
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
   model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; scope_sha256: string | null;
   budget_session_id: string;
+  bound_binding_sha256?: string | null;
 };
 class TaskError extends Error {
   code: string; status: number;
@@ -97,10 +99,11 @@ export function apply(ctx: any) {
   const defaultSceneId = memberRestricted && scenes.some(scene => scene.id === 'new-scene') ? 'new-scene' : config.capability_profile;
   let defaults = initialSelection(defaultSceneId, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
+  const optionSelections = new Map<string,Record<string,SceneOptions>>();
   const workspaces = new Map<string, string>();
   const principal = brokerMode && config.budget_task_prefix ? 'member-' + config.budget_task_prefix : config.user_id ?? 'local-operator';
   const saveSettings = () => json(join(config.output, 'harless-settings.json'),
-    { defaults, sessions: Object.fromEntries(selections) });
+    { defaults, sessions: Object.fromEntries(selections),scene_options:Object.fromEntries(optionSelections) });
   const guards = new Map<string, (() => void)[]>();
   const sceneFor = (id: string) => {
     const scene = scenes.find(scene => scene.id === id);
@@ -109,12 +112,19 @@ export function apply(ctx: any) {
   };
   function executeUnavailable(scene: Scene): string | null {
     if (scene.unavailable_reason) return scene.unavailable_reason;
+    if (scene.rsi_unavailable_reason) return scene.rsi_unavailable_reason;
     if (!scene.manifest || !scene.task) return 'no_certified_library';
     if (!scene.diagnostic && !scene.certified_tool_schemas) return 'no_certified_tool_schemas';
-    if (!scene.embedding_endpoint) return 'no_embedding_service';
-    if (!/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
+    const structural=scene.matching_policy==='structural_only';
+    if (!structural && !scene.embedding_endpoint) return 'no_embedding_service';
+    if (!structural && !/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
     try {
-      loopbackSimilarity(scene.embedding_endpoint, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model');
+      if(structural){
+        if(scene.id!=='ppt' || scene.binding_policy!=='ppt_uploaded_sources_v1' ||
+           scene.certification_scope!=='independent_trace_structure' || !scene.certification_path ||
+           fileSha(scene.certification_path)!==scene.certification_sha256 || !scene.certified_code_locks ||
+           Object.entries(scene.certified_code_locks).some(([path,expected])=>fileSha(path)!==expected))return 'runtime_bundle_certification_invalid';
+      }else loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model');
       const manifest = JSON.parse(readFileSync(scene.manifest, 'utf8'));
       if (Object.keys(manifest.contracts ?? {}).some(tool => !scene.allowed_tools.includes(tool))) return 'library_tools_outside_scene';
       createOnlineInterceptor({ manifest, task: JSON.parse(readFileSync(scene.task, 'utf8')), mode: 'execute',
@@ -156,6 +166,17 @@ export function apply(ctx: any) {
       scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, shortcut: sceneShortcut(scene), config_sha256: scene.config_sha256,
         available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason,
         execute_available: !executeUnavailable(scene), execute_unavailable_reason: executeUnavailable(scene) })),
+      scene_options:sessionId ? optionSelections.get(sessionId)?.[selected.scene] ?? {} : {},
+      scene_option_fields:sceneFor(selected.scene).adapter==='files' ? [
+        {key:'allow_output',label:'整理权限',default:false,values:[
+          {value:false,label:'只读盘点与检索'},
+          {value:true,label:'允许整理任务副本',detail:'仅限已上传副本，最多 6 步；需预览、授权并留收据'},
+        ]},
+      ] : sceneFor(selected.scene).adapter==='ppt' ? [
+        {key:'slides',label:'页数',default:6,values:[1,6,8,10,12].map(value=>({value,label:`${value} 页`}))},
+        {key:'template',label:'模板',default:'academic',values:[{value:'academic',label:'学术模板'},{value:'lab',label:'组会模板'}]},
+        {key:'allow_output',label:'输出权限',default:false,values:[{value:false,label:'只读检查'},{value:true,label:'允许生成 PPT 新副本',detail:sceneFor(selected.scene).output_unavailable_reason ?? '仅生成本任务的新文件'}]},
+      ] : [],
       session_id: sessionId ?? null, model_calls: 0 };
   }
   async function setSelection(sessionId: string | undefined, patch: unknown) {
@@ -247,6 +268,11 @@ export function apply(ctx: any) {
     if (saved.defaults) defaults = changeSelection(defaults, saved.defaults, scenes, executeUnavailable);
     for (const [id, selection] of Object.entries(saved.sessions ?? {})) {
       if (ownedSessions.has(id)) selections.set(id, changeSelection(defaults, selection, scenes, executeUnavailable));
+    }
+    for(const [id, values] of Object.entries(saved.scene_options ?? {}))if(ownedSessions.has(id)){
+      const scoped:Record<string,SceneOptions>={};
+      for(const [sceneId,value] of Object.entries(values as Record<string,unknown>))scoped[sceneId]=sceneOptions(value,sceneFor(sceneId));
+      optionSelections.set(id,scoped);
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   const taskIndexPath = join(config.output, 'task-index-' + runScope + '.json');
@@ -361,6 +387,7 @@ export function apply(ctx: any) {
       tools: effective.tools ?? [],
       manifest_sha256: effective.manifest_sha256 ?? null,
       binding_sha256: effective.binding_sha256 ?? null,
+      bound_binding_sha256: effective.bound_binding_sha256 ?? null,
       model_option: modelOptions.find(option => option.model === state.model && option.provider === state.provider) ?? defaultModel };
     try { task.answer = readFileSync(join(output, 'answer.md'), 'utf8'); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
@@ -557,7 +584,8 @@ export function apply(ctx: any) {
       throw new TaskError('new_session_required', '历史会话可以继续文字对话；使用文件或场景工具请新建会话。', 409);
     if (scene.unavailable_reason) throw new TaskError('scene_not_connected', scene.unavailable_reason, 409);
     const previousTask = existingSession ? forSession(existingSession) : undefined;
-    const options = sceneOptions(supplied.scene_options ?? (scene.adapter === 'ppt' && previousTask?.scene.id === scene.id ? previousTask.scene_options : undefined), scene);
+    const options = sceneOptions(supplied.scene_options ?? (existingSession ? optionSelections.get(existingSession)?.[scene.id] : undefined) ?? (scene.adapter === 'ppt' && previousTask?.scene.id === scene.id ? previousTask.scene_options : undefined), scene);
+    if(options.allow_output && scene.output_unavailable_reason)throw new TaskError('scene_output_unavailable',scene.output_unavailable_reason,409);
     const selection = changeSelection(selected, { scene: scene.id, mode: requestedMode }, scenes, executeUnavailable);
     request.request_sha256 = digest({ request: request.request_sha256, selection, scene_options: options, user_id: principal });
     const previous = requests.get(request.request_id);
@@ -597,7 +625,7 @@ export function apply(ctx: any) {
       const offered = new Map(tools.map((tool: any) => [tool.name, tool]));
       if (Object.entries(manifest.contracts).some(([name, contract]) => !offeredSchemaMatches(offered, name, contract)))
         throw new TaskError('execute_unavailable', 'library_tool_schema_mismatch', 409);
-      try {
+      if(scene.matching_policy!=='structural_only')try {
         const binding = JSON.parse(readFileSync(scene.task!, 'utf8'));
         await loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model!)(binding.intent, ['Runtime admission probe']);
       } catch { throw new TaskError('execute_unavailable', 'embedding_service_unavailable', 409); }
@@ -631,11 +659,17 @@ export function apply(ctx: any) {
     indexedTasks.push(taskId); saveTaskIndex(); return task;
   }
   function updateDraft(task: Task) {
+    if(task.scene.binding_policy==='ppt_uploaded_sources_v1' && task.request.mode!=='baseline' && task.scene_inputs.length){
+      const binding=bindUploadedPptTask(task.workspace,task.scene_inputs,task.request,JSON.parse(readFileSync(task.scene.manifest!,'utf8')));
+      json(join(task.output,'bound-motif-task.json'),binding);
+      task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
+    }
     task.confirmation_digest = digest({ task_id: task.request.task_id, request: task.request.request_sha256,
       delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
       scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256,
+      bound_binding_sha256: task.bound_binding_sha256, certification_sha256:task.scene.certification_sha256,
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, scope_sha256: task.scope_sha256, user_id: principal,
       provider_mode: config.provider_mode, max_output_tokens: config.max_output_tokens });
     task.confirmation_digest = digest({ confirmation: task.confirmation_digest,
@@ -645,7 +679,11 @@ export function apply(ctx: any) {
       scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
       instructions: task.scene.instructions, instructions_sha256: task.scene.instructions_sha256,
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256, diagnostic: task.scene.diagnostic ?? false,
+      bound_binding_sha256:task.bound_binding_sha256,certification_sha256:task.scene.certification_sha256,
+      binding_policy:task.scene.binding_policy,matching_policy:task.scene.matching_policy,
+      certification_scope:task.scene.certification_scope,quality_cost_promoted:task.scene.quality_cost_promoted,
       allowed_tools: task.scene.allowed_tools, workspace: task.workspace, scope_sha256: task.scope_sha256,
+      runtime_file_locks:task.scene.runtime_file_locks,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
       budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit,
         run_usd: config.run_budget_usd, run_requests: config.run_request_limit, reset_history: false },
@@ -657,21 +695,23 @@ export function apply(ctx: any) {
     const parts = task.request.content, scene = task.scene;
     const availableTools = new Map(task.tools.map(tool => [tool.name, tool]));
     const pinned = (path: string, expected: string | null) => { const bytes = readFileSync(path); if (sha(bytes) !== expected) throw Error('Motif binding version changed'); return JSON.parse(bytes.toString('utf8')); };
-    if (!scene.manifest || !scene.task) task.fallback_reason = 'no_certified_library';
+    if (!scene.manifest || !scene.task) task.fallback_reason = scene.rsi_unavailable_reason ?? 'no_certified_library';
     else if (!scene.diagnostic && !scene.certified_tool_schemas) task.fallback_reason = 'no_certified_tool_schemas';
     else if (scene.certified_tool_schemas && digest(task.tools) !== digest(scene.certified_tool_schemas)) task.fallback_reason = 'certified_tool_schema_mismatch';
-    else if (!scene.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
-    else if (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
-        sha(parts[0].text.trim()) !== scene.certified_input_sha256) task.fallback_reason = 'input_not_certified_for_library';
+    else if (scene.matching_policy==='structural_only' && executeUnavailable(scene))task.fallback_reason='runtime_bundle_certification_invalid';
+    else if (scene.matching_policy!=='structural_only' && !scene.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
+    else if (scene.binding_policy==='ppt_uploaded_sources_v1' && !task.bound_binding_sha256)task.fallback_reason='ppt_rsi_requires_approved_sources';
+    else if (scene.binding_policy!=='ppt_uploaded_sources_v1' && (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
+        sha(parts[0].text.trim()) !== scene.certified_input_sha256)) task.fallback_reason = 'input_not_certified_for_library';
     else try {
       const manifest = pinned(scene.manifest, task.manifest_sha256);
       if (Object.entries(manifest.contracts).some(([name, contract]) => !offeredSchemaMatches(availableTools, name, contract))) throw Error('library_tool_schema_mismatch');
-      const binding = pinned(scene.task, task.binding_sha256);
+      const binding = scene.binding_policy==='ppt_uploaded_sources_v1' ? pinned(join(task.output,'bound-motif-task.json'),task.bound_binding_sha256!) : pinned(scene.task, task.binding_sha256);
       binding.session_id = task.request.session_id; binding.task_id = task.request.task_id;
       json(join(task.output, 'bound-motif-task.json'), binding);
       task.interceptor = createOnlineInterceptor({ manifest,
         task: binding, mode: task.request.mode, minSimilarity: 0.8, minMargin: 0.1,
-        similarity: loopbackSimilarity(scene.embedding_endpoint, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
+        similarity: scene.matching_policy==='structural_only' ? structuralOnlySimilarity : loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
         audit: (row: unknown) => audit(task, row) });
     } catch (error) {
       task.interceptor = undefined; task.fallback_reason = (error as Error).message === 'library_tool_schema_mismatch' ? 'library_tool_schema_mismatch' : 'no_valid_certified_library';
@@ -682,8 +722,11 @@ export function apply(ctx: any) {
   async function submit(task: Task, confirmation: unknown, signal: AbortSignal) {
     if (confirmation !== task.confirmation_digest) throw new TaskError('confirmation_changed', 'Input/configuration changed; preview and confirm again', 409);
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
+    if (task.scene.adapter === 'files' && task.scene_options.allow_output && !task.scene_inputs.length)
+      throw new TaskError('files_requires_input_for_output', 'Files 整理权限需要先上传本任务的来源文件', 409);
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
         scopeDigest(task.workspace, task.scene) !== task.scope_sha256 ||
+        (task.scene.runtime_file_locks && Object.entries(task.scene.runtime_file_locks).some(([path,expected])=>fileSha(path)!==expected)) ||
         (task.scene.tool_schemas && fileSha(task.scene.tool_schemas) !== task.scene.certified_tool_schemas_sha256) ||
         fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256) {
       throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
@@ -691,6 +734,11 @@ export function apply(ctx: any) {
     if (task.request.mode === 'execute') {
       const reason = executeUnavailable(task.scene);
       if (reason) throw new TaskError('execute_unavailable', reason, 409);
+      if(task.scene.binding_policy==='ppt_uploaded_sources_v1'){
+        if(!task.bound_binding_sha256)throw new TaskError('execute_unavailable','ppt_rsi_requires_approved_sources',409);
+        if(fileSha(join(task.output,'bound-motif-task.json'))!==task.bound_binding_sha256)
+          throw new TaskError('confirmation_changed','bound_motif_task_changed',409);
+      }
     }
     requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
     try {
@@ -876,13 +924,22 @@ export function apply(ctx: any) {
           if (body.action === 'select') return setSelection(body.session_id, body.selection);
           if (body.action === 'select_preview_scene') return setSelection(body.session_id, { scene: body.scene_id });
           if (body.action === 'clear_preview_scene') return setSelection(body.session_id, { scene: defaultSceneId });
+          if(body.action==='set_scene_options'){
+            const current=settingsView(body.session_id);
+            if(typeof body.session_id!=='string')throw new SettingsError('session_required','请选择所属 Session');
+            const options=sceneOptions(body.options,sceneFor(current.selection.scene));
+            optionSelections.set(body.session_id,{...(optionSelections.get(body.session_id)??{}),[current.selection.scene]:options});
+            saveSettings();return settingsView(body.session_id);
+          }
           if (body.action === 'new_session') {
             if (body.inherit_session) await ensureOwned(body.inherit_session);
             const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const next = body.selection === undefined ? chosen : changeSelection(chosen, body.selection, scenes, executeUnavailable);
             const group = body.inherit_session && ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(body.inherit_session));
             const created = await controller.create({ agentPreset: sceneFor(next.scene).preset, ...(group && brokerMode ? { workspaceId: group.id } : {}) });
-            selections.set(created.sessionId, { ...next }); saveSettings();
+            selections.set(created.sessionId, { ...next });
+            if(body.inherit_session && optionSelections.has(body.inherit_session))optionSelections.set(created.sessionId,structuredClone(optionSelections.get(body.inherit_session)));
+            saveSettings();
             return { session_id: created.sessionId, ...settingsView(created.sessionId) };
           }
           throw new SettingsError('unknown_action', 'Supported actions: select, select_preview_scene, clear_preview_scene, new_session');

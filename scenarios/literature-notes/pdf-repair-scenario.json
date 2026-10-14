@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "name": "literature_pdf_repair",
+  "prompt": "pdf-repair-task.md",
+  "servers": [
+    {
+      "server_name": "literature_pdf_repair",
+      "transport": "stdio",
+      "command": "${PYTHON}",
+      "args": [
+        "${PROJECT_ROOT}/scenarios/literature-notes/pdf_repair_tools.py"
+      ],
+      "cwd": "${PROJECT_ROOT}",
+      "env": {
+        "SSS_PDF_REPAIR_RUN": {
+          "from_env": "SSS_PDF_REPAIR_RUN"
+        },
+        "SSS_PDF_REPAIR_OUTPUT": {
+          "from_env": "SSS_PDF_REPAIR_OUTPUT"
+        }
+      }
+    }
+  ],
+  "allowed_tools": [
+    "mcp__literature_pdf_repair__read_claim_repair_packet",
+    "mcp__literature_pdf_repair__search_claim_evidence",
+    "mcp__literature_pdf_repair__read_claim_evidence",
+    "mcp__literature_pdf_repair__submit_claim_repair",
+    "mcp__literature_pdf_repair__read_claim_evidence_plan"
+  ],
+  "completion_guard": {
+    "tool": "mcp__literature_pdf_repair__submit_claim_repair",
+    "statuses": [
+      "preview",
+      "needs_review"
+    ],
+    "max_continuations": 2
+  }
+}
