@@ -43,11 +43,24 @@ function fixture() {
     arguments: argumentsFor(i), output: outputs[i], sourceVersion: 'd'.repeat(64), inputVersion: task.input_version });
   return { manifest, task, offered, names, outputs, row, argumentsFor, seal };
 }
-async function propose(f, history = [f.row(0)]) {
+async function propose(f, history = [f.row(0)], options = {}) {
   return proposeReadyBatch({ manifest: f.manifest, task: f.task, history,
     availableTools: new Map(f.offered.map(t => [t.name, t])), minSimilarity: 0.8, minMargin: 0.1,
-    similarity: async () => { throw new Error('approved chain must not invoke embeddings'); } });
+    similarity: async () => { throw new Error('approved chain must not invoke embeddings'); }, ...options });
 }
+test('Paper structural callback cannot replace or rescue an approved plan grant', async () => {
+  const f = fixture();
+  assert.equal((await propose(f, undefined, { closedContinuation: () => false })).length, 1);
+  f.outputs[0].continuation_grant.task_input_version = 'foreign';
+  assert.deepEqual(await propose(f, undefined, { closedContinuation: () => true }), []);
+});
+test('Frozen tool schema hashes remain enforced together with approved plan schemas', async () => {
+  const f = fixture();
+  f.manifest.tool_schema_hashes = { [f.names[1]]: digest(f.offered[1].parameters) }; f.seal();
+  assert.equal((await propose(f)).length, 1);
+  f.manifest.tool_schema_hashes[f.names[1]] = 'f'.repeat(64); f.seal();
+  assert.deepEqual(await propose(f), []);
+});
 async function calls(stream) {
   const assembler = new BlockAssembler();
   for await (const chunk of stream) assembler.push(chunk);
