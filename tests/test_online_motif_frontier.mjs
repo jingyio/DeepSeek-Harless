@@ -33,6 +33,36 @@ test('Gmail structured metadata survives the DSH merged text envelope only for s
   assert.equal(observation(malicious, name), null);
 });
 
+test('approved uploaded source pin permits only a versioned handle read', async () => {
+  const pin='mcp__paper_checks__pin_paper_sources';
+  const read='mcp__paper_checks__read_pinned_paper_sources';
+  const version='a'.repeat(64),source='source-'+'b'.repeat(32);
+  const manifest=sealManifest({schema_version:1,source_library_digest:'c'.repeat(64),
+    artifacts:[{motif_id:'paper-uploaded-read',certified_digest:'d'.repeat(64),
+      tools:[pin,read],supporting_task_count:2,validation_task_fingerprint:'independent-paper',
+      transfer_evidence:[{from_tool:pin,from_field:'source_id',to_tool:read,to_param:'source_id'}]}],
+    contracts:{
+      [pin]:{read_only:true,observed_anchor:true,required_params:['main'],default_params:{},
+        output_fields:['source_id','version_sha256'],description:'Pin the approved LaTeX source'},
+      [read]:{read_only:true,required_params:['source_id'],default_params:{},
+        output_fields:['source_id','version_sha256'],description:'Read the pinned source checks'},
+    },slot_rules:{},version_fields:{[pin]:'version_sha256',[read]:'version_sha256'}});
+  validateOnlineManifest(manifest);
+  const task=parseStructuredTask({schema_version:1,task_id:'paper-a',session_id:'s-paper',
+    intent:'Review uploaded LaTeX',input_version:'scope-a',bindings:{},
+    source_versions:{[pin]:'@observed',[read]:'@from_anchor'}},manifest);
+  const row={name:pin,callId:'model-pin',ok:true,arguments:{main:'paper.tex'},
+    output:{source_id:source,version_sha256:version},sourceVersion:version,inputVersion:'scope-a'};
+  const args={manifest,task,history:[row],availableTools:new Map([[read,offered(read,['source_id'])]]),
+    similarity:async()=>{throw Error('closed read must not call embeddings');},minSimilarity:0.8,minMargin:0.1};
+  const candidates=await proposeReadyBatch(args);
+  assert.equal(candidates.length,1);
+  assert.equal(candidates[0].selection_basis,'closed_source_read');
+  assert.deepEqual(candidates[0].arguments,{source_id:source});
+  assert.deepEqual(await proposeReadyBatch({...args,history:[{...row,output:{...row.output,version_sha256:'0'.repeat(64)}}]}),[]);
+  assert.deepEqual(await proposeReadyBatch({...args,history:[{...row,output:{...row.output,source_id:'other'}}]}),[]);
+});
+
 test('fresh unique Gmail search can anchor one model-free read, but ambiguous results defer', async () => {
   const search = 'mcp__scoped_gmail_request__search_emails';
   const read = 'mcp__scoped_gmail_request__read_email';

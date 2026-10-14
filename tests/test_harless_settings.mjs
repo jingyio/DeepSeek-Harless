@@ -44,3 +44,34 @@ test('PPT binding uses approved current versions and never guesses a source hand
     await assert.rejects(structuralOnlySimilarity(),/semantic_matching_disabled/);
   }finally{rmSync(root,{recursive:true,force:true});}
 });
+test('paper upload binding freezes admitted bytes and an observed read continuation', {skip:!process.features?.typescript}, async()=>{
+  const {bindApprovedUploadedReadTask}=await import('../src/adapters/harless_rsi_binding.ts');
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'paper-binding-')));mkdirSync(join(root,'inputs'));
+  try{
+    const data=Buffer.from('\\documentclass{article}');
+    writeFileSync(join(root,'inputs','paper.tex'),data);
+    const version=createHash('sha256').update(data).digest('hex');
+    writeFileSync(join(root,'approved-inputs.json'),JSON.stringify({files:{'paper.tex':version}}));
+    const pin='mcp__paper_checks__pin_paper_sources',read='mcp__paper_checks__read_pinned_paper_sources';
+    const manifest={version_fields:{[pin]:'version_sha256',[read]:'version_sha256'},
+      artifacts:[{tools:[pin,read],transfer_evidence:[{from_tool:pin,to_tool:read,from_field:'source_id',to_param:'source_id'}]}]};
+    const request={task_id:'task-a',session_id:'session-a',content:[{type:'text',text:'Check citations'}]};
+    const inputs=[{file:'paper.tex',version_sha256:version}];
+    const binding=bindApprovedUploadedReadTask(root,inputs,request,manifest,'paper-proofreading');
+    assert.deepEqual(binding.source_versions,{[pin]:'@observed',[read]:'@from_anchor'});
+    assert.equal(binding.intent,'Check citations');
+    const cite='mcp__paper_checks__pin_paper_citations';
+    const cited='mcp__paper_checks__read_pinned_paper_citations';
+    const composite={version_fields:{...manifest.version_fields,[cite]:'version_sha256',[cited]:'version_sha256'},
+      artifacts:[...manifest.artifacts,{tools:[cite,cited],transfer_evidence:[
+        {from_tool:cite,to_tool:cited,from_field:'source_id',to_param:'source_id'}]}]};
+    assert.deepEqual(bindApprovedUploadedReadTask(root,inputs,request,composite,'paper-proofreading').source_versions,
+      {[pin]:'@observed',[read]:'@from_anchor',[cite]:'@observed',[cited]:'@from_anchor'});
+    assert.throws(()=>bindApprovedUploadedReadTask(root,inputs,request,{...composite,
+      artifacts:[...composite.artifacts,{tools:[cited,'mcp__paper_checks__export_current_audit_pdf'],
+        transfer_evidence:[]}]},'paper-proofreading'),/tools_unsupported/);
+    writeFileSync(join(root,'inputs','paper.tex'),'changed');
+    assert.throws(()=>bindApprovedUploadedReadTask(root,inputs,request,manifest,'paper-proofreading'),/source_version/);
+    assert.throws(()=>bindApprovedUploadedReadTask(root,inputs,request,manifest,'new-scene'),/requires_approved/);
+  }finally{rmSync(root,{recursive:true,force:true});}
+});

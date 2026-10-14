@@ -3,6 +3,8 @@ from pathlib import Path
 import hashlib
 import io
 import json
+import os
+import re
 import sys
 from uuid import uuid4
 
@@ -10,8 +12,15 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from src.adapters.session_files import SessionFiles
 from src.adapters import paper_static_checks
+from src.adapters.paper_query_recovery import validate_queries
+from src.adapters.paper_renderer import render_renderer, validate_audit
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
+
+# Reuse the paper-submission evidence implementation, with a Web task's
+# approved input directory as its only case root.
+sys.path.insert(0, str(ROOT / 'scenarios' / 'paper-submission'))
+from checks import PaperEvidence as CitationEvidence
 
 
 class PaperEvidence(SessionFiles):
@@ -72,8 +81,25 @@ class PaperEvidence(SessionFiles):
                 'coverage': 'extracted_text_for_model_review_not_fact_or_venue_certification'}
 
 
-def create_server(directory):
+def create_server(directory, renderer_root=None):
     files = PaperEvidence(directory)
+    output = PaperOutput(files, renderer_root)
+    citation_state = {'epoch': None, 'service': None}
+    def citations():
+        # The preset may start before task admission. Read the live admission
+        # manifest on each call and discard handles at every task boundary.
+        workspace = files.root.parent
+        approved = json.loads((workspace / 'approved-inputs.json').read_text())['files']
+        grant = json.loads((workspace / 'paper-output-grant.json').read_text())
+        rows = files.list_files()['files']
+        if {row['name']: row['sha256'] for row in rows} != approved:
+            raise ValueError('paper_citation_approval_changed')
+        epoch = (grant.get('task_id'), tuple(sorted(approved.items())))
+        if not isinstance(epoch[0], str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', epoch[0]):
+            raise ValueError('paper_citation_task_invalid')
+        if epoch != citation_state['epoch']:
+            citation_state.update(epoch=epoch, service=create_citation_evidence(files))
+        return citation_state['service']
     server = MCPServer('Harless uploaded paper evidence')
     annotation = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 
@@ -104,7 +130,129 @@ def create_server(directory):
         """Use the existing static checker for literal citations, duplicate labels, floats and supplied logs; no compilation or authenticity claim."""
         return files.read_sources(source_id)
 
+    @server.tool(annotations=annotation)
+    def pin_paper_citations(case_id: str) -> dict:
+        """Pin the approved current manuscript's active citations to a versioned Session handle."""
+        if case_id != 'current': raise ValueError('paper_case_not_approved')
+        return citations().pin(case_id, 'sources')
+
+    @server.tool(annotations=annotation)
+    def read_pinned_paper_citations(source_id: str) -> dict:
+        """Inspect active literal citations and bind a fresh citation batch; no factual judgment."""
+        return citations().inspect_citations(source_id)
+
+    @server.tool(annotations=annotation)
+    def read_pinned_citation_records(citation_id: str) -> dict:
+        """Read original BibTeX entries for the bound active citation batch."""
+        return citations().read_citation_records(citation_id)
+
+    @server.tool(annotations=annotation)
+    def fetch_pinned_cited_preprint_metadata(citation_id: str) -> dict:
+        """Fetch official arXiv metadata for the bound citations; it does not certify publication."""
+        return citations().read_preprints(citation_id)
+
+    @server.tool(annotations=annotation)
+    def fetch_pinned_formal_reference_metadata(citation_id: str) -> dict:
+        """Fetch Crossref candidates for bound source identifiers or titles; model reviews identity."""
+        return citations().read_formal_metadata(citation_id)
+
+    @server.tool(annotations=annotation)
+    def recover_pinned_formal_reference_queries(citation_id: str) -> dict:
+        """Use only an administrator-registered bounded query library for this citation batch."""
+        path = os.environ.get('HARLESS_PAPER_QUERY_LIBRARY')
+        if not path: raise ValueError('paper_query_library_not_deployed')
+        path_ref = Path(path)
+        candidate = path_ref.resolve(strict=True)
+        if (not candidate.is_relative_to((ROOT / '.local').resolve()) or
+            path_ref.is_symlink() or candidate.stat().st_size > 1000000):
+            raise ValueError('paper_query_library_scope_invalid')
+        library = json.loads(candidate.read_text(encoding='utf-8'))
+        validate_queries(library)
+        return citations().recover_formal_queries(citation_id, library)
+
+    @server.tool(annotations=annotation)
+    def read_current_audit() -> dict:
+        """Read the task's approved audit.json with its exact SHA256 for model review."""
+        return output.read_audit()
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+    def export_current_audit_pdf(report_sha256: str) -> dict:
+        """Export only a new task PDF from the approved, versioned audit.json and reviewed renderer."""
+        return output.export(report_sha256)
+
     return server
 
 
-if __name__ == '__main__': create_server(Path(sys.argv[1])).run(transport='stdio')
+def create_citation_evidence(files: PaperEvidence):
+    rows = files.list_files()['files']
+    names = {row['name'] for row in rows}
+    tex = [name for name in names if Path(name).suffix.lower() == '.tex']
+    main = 'main.tex' if 'main.tex' in names else tex[0] if len(tex) == 1 else None
+    if main is None:
+        # The scene may also be used for PDF/text proofreading. Citation tools
+        # remain visible but explicitly reject tasks without an unambiguous main.
+        return UnavailableCitationEvidence()
+    return CitationEvidence({'current': {'root': str(files.root), 'source_dir': '.', 'main': main}}, files.root)
+
+
+class UnavailableCitationEvidence:
+    def __getattr__(self, _name):
+        def unavailable(*_args, **_kwargs): raise ValueError('paper_main_tex_not_unambiguous')
+        return unavailable
+
+
+class PaperOutput:
+    def __init__(self, files: PaperEvidence, renderer_root):
+        self.files = files
+        self.renderer_root = Path(renderer_root).resolve(strict=True) if renderer_root else None
+
+    def _audit(self, writable=False):
+        workspace = self.files.root.parent
+        raw, digest = self.files.read('audit.json', limit=256*1024)
+        approved = json.loads((workspace / 'approved-inputs.json').read_text())
+        grant = json.loads((workspace / 'paper-output-grant.json').read_text())
+        if (approved.get('files', {}).get('audit.json') != digest or
+            grant.get('schema_version') != 1 or grant.get('audit_sha256') != digest or
+            not isinstance(grant.get('task_id'), str) or
+            not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',grant['task_id'])):
+            raise ValueError('paper_audit_approval_changed')
+        if writable and grant.get('allow_output') is not True:
+            raise ValueError('paper_pdf_output_not_authorized')
+        report = json.loads(raw)
+        validate_audit(report)
+        return workspace, grant, raw, digest, report
+
+    def read_audit(self):
+        _, _, _, digest, report = self._audit()
+        return {'report_sha256': digest, 'report': report,
+                'semantic_quality_accepted': False, 'source_scope': 'current_approved_task_upload'}
+
+    def export(self, report_sha256):
+        workspace, grant, raw, digest, _ = self._audit(writable=True)
+        if report_sha256 != digest: raise ValueError('stale_audit_export')
+        if self.renderer_root is None: raise ValueError('paper_renderer_not_deployed')
+        cert = json.loads((self.renderer_root / 'deployment.json').read_text())
+        package = self.renderer_root / 'package'
+        review = self.renderer_root / 'review.json'
+        if (cert.get('schema_version') != 1 or
+            hashlib.sha256((package / 'manifest.json').read_bytes()).hexdigest() != cert.get('manifest_sha256') or
+            hashlib.sha256(review.read_bytes()).hexdigest() != cert.get('review_sha256')):
+            raise ValueError('paper_renderer_deployment_changed')
+        outputs = workspace / 'outputs'
+        outputs.mkdir(mode=0o700, exist_ok=True)
+        if sum(1 for p in outputs.iterdir() if p.is_dir()) >= 3:
+            raise ValueError('paper_export_attempt_limit')
+        target = outputs / (grant['task_id'] + '-' + uuid4().hex)
+        target.mkdir(mode=0o700)
+        with (target / 'audit.json').open('xb') as stream: stream.write(raw)
+        receipt = render_renderer(package, cert['manifest_sha256'], target, digest,
+                                  Path(sys.executable), review_path=review,
+                                  expected_review_sha256=cert['review_sha256'])
+        if self.files.read('audit.json', limit=256*1024)[1] != digest:
+            raise ValueError('paper_audit_changed_during_export')
+        receipt['artifact_file'] = str((target / 'reference-check-report.pdf').relative_to(workspace))
+        (target / 'export-receipt.json').write_text(json.dumps(receipt, ensure_ascii=False) + '\n')
+        return receipt
+
+
+if __name__ == '__main__': create_server(Path(sys.argv[1]), sys.argv[2] if len(sys.argv)>2 else None).run(transport='stdio')

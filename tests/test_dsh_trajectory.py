@@ -45,6 +45,34 @@ CONTRACTS = {
 
 
 class DshTrajectoryTests(unittest.TestCase):
+    def test_single_approved_workspace_file_provenance_requires_exact_list_result(self):
+        listed = 'mcp__workspace__list_files'
+        read = 'mcp__workspace__read_file'
+        version = 'a' * 64
+        contracts = {
+            listed: ToolContract((), True, ('files.0.name', 'files.0.sha256'),
+                                 replay_stable=False, observed_anchor=True),
+            read: ToolContract(('name', 'sha256'), True, ('name', 'sha256'),
+                               provenance_params=('name', 'sha256')),
+        }
+        events = (event_pair(1, listed, {}, {'files': [{'name': 'note.txt', 'sha256': version}]})
+                  + event_pair(2, read, {'name': 'note.txt', 'sha256': version},
+                               {'name': 'note.txt', 'sha256': version, 'text': 'example'}))
+        expected = {'name': {'from_call_id': 'c1', 'from_field': 'files.0.name'},
+                    'sha256': {'from_call_id': 'c1', 'from_field': 'files.0.sha256'}}
+        self.assertEqual(infer_dsh_provenance(events, contracts)['c2'], expected)
+        altered = deepcopy(events)
+        altered[2]['data']['arguments'] = json.dumps({'name': 'note.txt', 'sha256': 'b' * 64})
+        self.assertNotIn('c2', infer_dsh_provenance(altered, contracts))
+        multiple = deepcopy(events)
+        multiple[1]['data']['message']['content'][0]['content'][0]['text'] = json.dumps({
+            'files': [{'name': 'note.txt', 'sha256': version},
+                      {'name': 'other.txt', 'sha256': 'b' * 64}]})
+        self.assertNotIn('c2', infer_dsh_provenance(multiple, contracts))
+        duplicate = deepcopy(events)
+        duplicate[2:2] = event_pair(3, listed, {}, {'files': [{'name': 'note.txt', 'sha256': version}]})
+        self.assertNotIn('c2', infer_dsh_provenance(duplicate, contracts))
+
     def test_observed_gmail_anchor_can_certify_without_replaying_search(self):
         root = Path(__file__).resolve().parents[1]
         contracts = parse_tool_contracts(json.loads((

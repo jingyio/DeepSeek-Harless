@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import base64
+import hashlib
 from contextlib import contextmanager
 import importlib.util
 import io
@@ -180,6 +181,21 @@ def main():
             assert web.api(alice,base,task_id=writable['task_id'])['confirmation_digest'] == writable['confirmation_digest']
             web.api(alice,base,{'action':'cancel','task_id':writable['task_id']})
             groups.append({'group':'files-bounded-write-grant-preview', 'model_requests':0})
+        if not args.real_model and 'paper-proofreading' in args.scenes:
+            settings(alice, base, {'action':'select','selection':{'scene':'paper-proofreading','mode':'baseline','rsi':True}})
+            export = web.api(alice,base,{'action':'preview','request':{
+                'instruction':'Export only this task audit.', 'scene_options':{'allow_output':True}}})
+            status,denied=web.request(alice,base,'/api/harless/tasks',{'action':'submit',
+                'task_id':export['task_id'],'confirmation_digest':export['confirmation_digest']})
+            assert status==409 and denied['error']['code']=='paper_export_requires_audit_json'
+            audit=b'{"schema_version":1,"scope":"diagnostic","reference_count":0,"references":[],"sources":[],"issues":[],"citation_checks":{},"notes":""}'
+            export=web.api(alice,base,{'action':'upload','task_id':export['task_id'],
+                'name':'audit.json','data':base64.b64encode(audit).decode()})
+            grant=json.loads((output/'sessions'/export['session_id']/'work'/'paper-output-grant.json').read_text())
+            assert grant['task_id']==export['task_id'] and grant['allow_output'] is True
+            assert grant['audit_sha256']==hashlib.sha256(audit).hexdigest()
+            web.api(alice,base,{'action':'cancel','task_id':export['task_id']})
+            groups.append({'group':'paper-pdf-output-grant-preview', 'model_requests':0})
         assert len({draft['session_id'] for draft in drafts}) == len(drafts)
         web.api(bob, bob_base, {'action': 'cancel', 'task_id': bob_draft['task_id']})
         groups.append({'group': 'two-principal-processes-and-foreign-session-task-receipt-denial', 'model_requests': 0})

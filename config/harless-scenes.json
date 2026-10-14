@@ -2,9 +2,9 @@
   "schema_version": 1,
   "scenes": [
     {"id":"ppt", "label":"PPT", "scenario":"scenarios/research_ppt/web-scenario.json", "instructions":"scenarios/research_ppt/prompt.md", "adapter":"ppt", "rsi":{"bundle_from_env":"HARLESS_PPT_RUNTIME_BUNDLE"}},
-    {"id":"paper-proofreading", "label":"Paper Proofreading", "scenario":"scenarios/paper_proofreading/scenario.json", "instructions":"scenarios/paper_proofreading/prompt.md", "adapter":"workspace"},
-    {"id":"research-data-analysis", "label":"Research Data Analysis", "scenario":"scenarios/data_analysis/scenario.json", "instructions":"scenarios/data_analysis/prompt.md", "adapter":"workspace"},
+    {"id":"paper-proofreading", "label":"Paper Proofreading", "scenario":"scenarios/paper_proofreading/scenario.json", "instructions":"scenarios/paper_proofreading/prompt.md", "adapter":"workspace", "rsi":{"bundle_from_env":"HARLESS_PAPER_RUNTIME_BUNDLE"}},
+    {"id":"research-data-analysis", "label":"Research Data Analysis", "scenario":"scenarios/data_analysis/scenario.json", "instructions":"scenarios/data_analysis/prompt.md", "adapter":"workspace", "rsi":{"bundle_from_env":"HARLESS_DATA_RUNTIME_BUNDLE"}},
     {"id":"files", "label":"Files", "scenario":"scenarios/file-management/web-scenario.json", "instructions":"scenarios/file-management/web-prompt.md", "adapter":"files"},
-    {"id":"new-scene", "label":"New Scene", "scenario":"scenarios/general/scenario.json", "instructions":"scenarios/general/prompt.md", "adapter":"workspace"}
+    {"id":"new-scene", "label":"New Scene", "scenario":"scenarios/general/scenario.json", "instructions":"scenarios/general/prompt.md", "adapter":"workspace", "rsi":{"bundle_from_env":"HARLESS_GENERAL_RUNTIME_BUNDLE"}}
   ]
 }

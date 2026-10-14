@@ -1,4 +1,4 @@
-"""Load an administrator-selected, byte-bound runtime bundle, not raw experiments."""
+"""Load administrator-selected, byte-bound scene bundles, not raw experiments."""
 import hashlib
 import json
 import re
@@ -8,13 +8,18 @@ from pathlib import Path
 def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def load_ppt_bundle(root: Path, directory: Path):
+READ_SCENES = {'paper-proofreading', 'research-data-analysis', 'new-scene'}
+
+
+def load_scene_bundle(root: Path, directory: Path, scene_id: str):
+    if scene_id not in {'ppt', *READ_SCENES}: raise ValueError('unsupported Motif scene')
     base=directory.resolve(strict=True)
     cert_path=base/'certification.json'
     if cert_path.is_symlink() or cert_path.stat().st_size>1000000: raise ValueError('invalid certification')
     cert=json.loads(cert_path.read_text())
-    if (not isinstance(cert,dict) or cert.get('schema_version')!=1 or cert.get('scene')!='ppt' or
-        cert.get('binding_policy')!='ppt_uploaded_sources_v1' or cert.get('matching_policy')!='structural_only' or
+    policy='ppt_uploaded_sources_v1' if scene_id=='ppt' else 'approved_uploaded_reads_v1'
+    if (not isinstance(cert,dict) or cert.get('schema_version')!=1 or cert.get('scene')!=scene_id or
+        cert.get('binding_policy')!=policy or cert.get('matching_policy')!='structural_only' or
         cert.get('certification_scope')!='independent_trace_structure' or not isinstance(cert.get('code_locks'),dict) or
         not 1<=len(cert['code_locks'])<=512 or not isinstance(cert.get('file_locks'),dict) or
         any(not isinstance(v,str) or not re.fullmatch(r'[a-f0-9]{64}',v) for v in
@@ -40,3 +45,8 @@ def load_ppt_bundle(root: Path, directory: Path):
             'certification_path':str(cert_path),'certification_sha256':sha(cert_path),
             'certified_code_locks':code_locks,'certification_scope':cert['certification_scope'],
             'quality_cost_promoted':False}
+
+
+def load_ppt_bundle(root: Path, directory: Path):
+    """Keep the existing PPT loader API for callers and certificate tests."""
+    return load_scene_bundle(root,directory,'ppt')

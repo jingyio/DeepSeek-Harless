@@ -10,6 +10,10 @@ from .scenario import prepare_scenario
 
 IDENTITY = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
 WORKSPACE = '__HARLESS_SESSION_WORKSPACE__'
+BUNDLE_ENVS = {'ppt':'HARLESS_PPT_RUNTIME_BUNDLE',
+               'paper-proofreading':'HARLESS_PAPER_RUNTIME_BUNDLE',
+               'research-data-analysis':'HARLESS_DATA_RUNTIME_BUNDLE',
+               'new-scene':'HARLESS_GENERAL_RUNTIME_BUNDLE'}
 
 
 def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, prepared_default: dict,
@@ -53,6 +57,16 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 scene['unavailable_reason'] = 'ppt_adapter_not_built'
             elif any(importlib.util.find_spec(module) is None for module in ('pypdf', 'fitz', 'pptx', 'reportlab', 'PIL')):
                 scene['unavailable_reason'] = 'ppt_python_dependencies_missing'
+        if row['id'] == 'paper-proofreading':
+            value = os.environ.get('HARLESS_PAPER_RENDERER_ROOT')
+            if value:
+                try:
+                    from .harless_paper_renderer import configure_paper_renderer
+                    configure_paper_renderer(scene, Path(value))
+                except (ValueError, OSError, KeyError):
+                    scene['output_unavailable_reason'] = 'paper_renderer_deployment_invalid'
+            else:
+                scene['output_unavailable_reason'] = 'paper_renderer_not_deployed'
         if row.get('instructions'):
             instructions = (root / row['instructions']).read_text(encoding='utf-8')
             if not instructions.strip() or len(instructions) > 100000: raise ValueError('invalid scene instructions')
@@ -60,11 +74,11 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
         if row.get('rsi'):
             rsi = row['rsi']
             if isinstance(rsi, dict) and set(rsi)=={'bundle_from_env'}:
-                if row['id']!='ppt' or not re.fullmatch(r'[A-Z][A-Z0-9_]{0,100}',rsi['bundle_from_env']):raise ValueError('invalid trusted runtime bundle reference')
+                if rsi['bundle_from_env']!=BUNDLE_ENVS.get(row['id']):raise ValueError('invalid trusted runtime bundle reference')
                 value=os.environ.get(rsi['bundle_from_env'])
                 if value:
-                    from .harless_rsi_bundle import load_ppt_bundle
-                    try:scene.update(load_ppt_bundle(root,Path(value)))
+                    from .harless_rsi_bundle import load_scene_bundle
+                    try:scene.update(load_scene_bundle(root,Path(value),row['id']))
                     except (ValueError,OSError,KeyError):scene['rsi_unavailable_reason']='runtime_bundle_certification_invalid'
                 else:scene['rsi_unavailable_reason']='runtime_bundle_not_deployed'
                 rsi = None

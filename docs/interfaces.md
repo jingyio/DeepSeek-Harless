@@ -333,6 +333,8 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 
 ## Harless 多场景任务桥接（2026-10-13）
 
+2026-10-14 论文扩展：`paper-proofreading` 的 `paper_checks` MCP 从 5 个扩至 13 个工具，当前 Session 的 `inputs/` 和 `approved-inputs.json` 是引用取证的唯一来源；`case_id` 只能为 `current`，任务变更或字节版本变化使旧句柄失效。服务端可选配置 `HARLESS_PAPER_RUNTIME_BUNDLE` 加载两条已认证的只读 Motif；运行时仍共用 `online_skill_runtime.mjs`，任务绑定 `@observed/@from_anchor`，不自动调用有副作用工具。`scene_options.allow_output` 对论文默认 false；true 时需上传本任务 `audit.json`，冻结 `paper-output-grant.json` 的 task ID、权限和 SHA。`read_current_audit` 返回当前报告及 SHA；`export_current_audit_pdf(report_sha256)` 仅用管理员 `HARLESS_PAPER_RENDERER_ROOT` 指向的审核包输出新的任务 PDF，并返回带版本摘要的收据。旧引用原文后继与 PDF 导出仍由模型显式调用，不能计作 Motif 跳过。完整边界与配置见 [控制说明](harless-controls.md)。
+
 生产菜单从 `config/harless-scenes.json` 获取 `ppt/paper-proofreading/research-data-analysis/files/new-scene`；通过 `POST /api/harless/settings` 的 `selection` 选择实际场景。`selected_mode/rsi/mode` 分别记录模式选择、独立开关和实际模式。RSI Off 即实际 baseline，不抹去模式选择。缺正式后端拒绝任务；生产 Execute 缺完整认证 schema、manifest/任务绑定或可用匹配服务拒绝准入。
 
 `harless_task_scope.ts` 仅负责服务器分配的 Session cwd、私有 preset、批准上传文件、PPT job 与 Files 任务授权；共享匹配/执行仍由现有在线 Runtime 提供。PPT `{slides,template,allow_output}` 经任务 API `request.scene_options` 设置并冻结，默认6页/academic/只读；Web空 Session 只能只读初始化。任务响应含 `user_id/selected_mode/scene_options/scene_inputs`；完整有效配置与 scope/library/schema 摘要保存于私有任务目录。

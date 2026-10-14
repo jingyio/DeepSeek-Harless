@@ -1,0 +1,29 @@
+{
+  "mcp__paper_checks__pin_paper_sources": {
+    "required_params": [
+      "main"
+    ],
+    "read_only": true,
+    "replay_stable": false,
+    "observed_anchor": true,
+    "output_fields": [
+      "source_id",
+      "version_sha256"
+    ],
+    "description": "Bind only a model-selected source in this account-local uploaded task."
+  },
+  "mcp__paper_checks__read_pinned_paper_sources": {
+    "required_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "output_fields": [
+      "version_sha256"
+    ],
+    "provenance_params": [
+      "source_id"
+    ],
+    "description": "Dereference the exact issued versioned handle; no evidence selection or scientific decision."
+  }
+}

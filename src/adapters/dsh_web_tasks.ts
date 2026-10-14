@@ -15,7 +15,7 @@ import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDi
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
-import {bindUploadedPptTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
+import {bindUploadedPptTask,bindApprovedUploadedReadTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
 
 export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments'];
@@ -118,7 +118,9 @@ export function apply(ctx: any) {
     if (!structural && !/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
     try {
       if(structural){
-        if(scene.id!=='ppt' || scene.binding_policy!=='ppt_uploaded_sources_v1' ||
+        if(!((scene.id==='ppt' && scene.binding_policy==='ppt_uploaded_sources_v1') ||
+             (['paper-proofreading','research-data-analysis'].includes(scene.id) &&
+              scene.binding_policy==='approved_uploaded_reads_v1')) ||
            scene.certification_scope!=='independent_trace_structure' || !scene.certification_path ||
            fileSha(scene.certification_path)!==scene.certification_sha256 || !scene.certified_code_locks ||
            Object.entries(scene.certified_code_locks).some(([path,expected])=>fileSha(path)!==expected))return 'runtime_bundle_certification_invalid';
@@ -161,6 +163,11 @@ export function apply(ctx: any) {
         {key:'slides',label:'页数',default:6,values:[1,6,8,10,12].map(value=>({value,label:`${value} 页`}))},
         {key:'template',label:'模板',default:'academic',values:[{value:'academic',label:'学术模板'},{value:'lab',label:'组会模板'}]},
         {key:'allow_output',label:'输出权限',default:false,values:[{value:false,label:'只读检查'},{value:true,label:'允许生成 PPT 新副本',detail:sceneFor(selected.scene).output_unavailable_reason ?? '仅生成本任务的新文件'}]},
+      ] : selected.scene==='paper-proofreading' ? [
+        {key:'allow_output',label:'PDF 输出',default:false,values:[
+          {value:false,label:'只读校对'},
+          {value:true,label:'允许生成报告 PDF 新副本',detail:sceneFor(selected.scene).output_unavailable_reason ?? '需上传当前 audit.json；只写本任务输出目录'},
+        ]},
       ] : [],
       session_id: sessionId ?? null, model_calls: 0 };
   }
@@ -587,6 +594,12 @@ export function apply(ctx: any) {
       json(join(task.output,'bound-motif-task.json'),binding);
       task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
     }
+    if(task.scene.binding_policy==='approved_uploaded_reads_v1' && task.request.mode!=='baseline' && task.scene_inputs.length){
+      const binding=bindApprovedUploadedReadTask(task.workspace,task.scene_inputs,task.request,
+        JSON.parse(readFileSync(task.scene.manifest!,'utf8')),task.scene.id);
+      json(join(task.output,'bound-motif-task.json'),binding);
+      task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
+    }
     task.confirmation_digest = digest({ task_id: task.request.task_id, request: task.request.request_sha256,
       delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
       scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
@@ -623,13 +636,13 @@ export function apply(ctx: any) {
     else if (scene.certified_tool_schemas && digest(task.tools) !== digest(scene.certified_tool_schemas)) task.fallback_reason = 'certified_tool_schema_mismatch';
     else if (scene.matching_policy==='structural_only' && executeUnavailable(scene))task.fallback_reason='runtime_bundle_certification_invalid';
     else if (scene.matching_policy!=='structural_only' && !scene.embedding_endpoint) task.fallback_reason = 'no_embedding_service';
-    else if (scene.binding_policy==='ppt_uploaded_sources_v1' && !task.bound_binding_sha256)task.fallback_reason='ppt_rsi_requires_approved_sources';
-    else if (scene.binding_policy!=='ppt_uploaded_sources_v1' && (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
+    else if (['ppt_uploaded_sources_v1','approved_uploaded_reads_v1'].includes(scene.binding_policy??'') && !task.bound_binding_sha256)task.fallback_reason='rsi_requires_approved_sources';
+    else if (!['ppt_uploaded_sources_v1','approved_uploaded_reads_v1'].includes(scene.binding_policy??'') && (parts.length !== 1 || parts[0].type !== 'text' || task.sources.length ||
         sha(parts[0].text.trim()) !== scene.certified_input_sha256)) task.fallback_reason = 'input_not_certified_for_library';
     else try {
       const manifest = pinned(scene.manifest, task.manifest_sha256);
       if (Object.entries(manifest.contracts).some(([name, contract]) => !offeredSchemaMatches(availableTools, name, contract))) throw Error('library_tool_schema_mismatch');
-      const binding = scene.binding_policy==='ppt_uploaded_sources_v1' ? pinned(join(task.output,'bound-motif-task.json'),task.bound_binding_sha256!) : pinned(scene.task, task.binding_sha256);
+      const binding = ['ppt_uploaded_sources_v1','approved_uploaded_reads_v1'].includes(scene.binding_policy??'') ? pinned(join(task.output,'bound-motif-task.json'),task.bound_binding_sha256!) : pinned(scene.task, task.binding_sha256);
       binding.session_id = task.request.session_id; binding.task_id = task.request.task_id;
       json(join(task.output, 'bound-motif-task.json'), binding);
       task.interceptor = createOnlineInterceptor({ manifest,
@@ -647,6 +660,9 @@ export function apply(ctx: any) {
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
     if (task.scene.adapter === 'files' && task.scene_options.allow_output && !task.scene_inputs.length)
       throw new TaskError('files_requires_input_for_output', 'Files 整理权限需要先上传本任务的来源文件', 409);
+    if (task.scene.id === 'paper-proofreading' && task.scene_options.allow_output &&
+        !task.scene_inputs.some(row => row.file === 'audit.json'))
+      throw new TaskError('paper_export_requires_audit_json', '论文 PDF 导出需要先上传本任务的 audit.json', 409);
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
         scopeDigest(task.workspace, task.scene) !== task.scope_sha256 ||
         (task.scene.runtime_file_locks && Object.entries(task.scene.runtime_file_locks).some(([path,expected])=>fileSha(path)!==expected)) ||
@@ -657,8 +673,8 @@ export function apply(ctx: any) {
     if (task.request.mode === 'execute') {
       const reason = executeUnavailable(task.scene);
       if (reason) throw new TaskError('execute_unavailable', reason, 409);
-      if(task.scene.binding_policy==='ppt_uploaded_sources_v1'){
-        if(!task.bound_binding_sha256)throw new TaskError('execute_unavailable','ppt_rsi_requires_approved_sources',409);
+      if(['ppt_uploaded_sources_v1','approved_uploaded_reads_v1'].includes(task.scene.binding_policy??'')){
+        if(!task.bound_binding_sha256)throw new TaskError('execute_unavailable','rsi_requires_approved_sources',409);
         if(fileSha(join(task.output,'bound-motif-task.json'))!==task.bound_binding_sha256)
           throw new TaskError('confirmation_changed','bound_motif_task_changed',409);
       }

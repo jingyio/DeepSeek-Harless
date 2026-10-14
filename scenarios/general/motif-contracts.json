@@ -1,0 +1,18 @@
+{
+  "mcp__workspace__list_files": {
+    "required_params": [],
+    "read_only": true,
+    "output_fields": ["files.0.name", "files.0.sha256"],
+    "replay_stable": false,
+    "observed_anchor": true,
+    "description": "List only approved Session files with exact content versions."
+  },
+  "mcp__workspace__read_file": {
+    "required_params": ["name", "sha256"],
+    "read_only": true,
+    "provenance_params": ["name", "sha256"],
+    "output_fields": ["name", "sha256", "text"],
+    "replay_stable": true,
+    "description": "Read one approved UTF-8 text file by exact filename and SHA256."
+  }
+}

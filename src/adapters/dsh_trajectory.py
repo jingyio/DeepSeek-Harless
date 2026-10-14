@@ -62,6 +62,9 @@ GMAIL_MESSAGE_ID_PATTERN = re.compile(r"^[0-9a-f]{16,32}$")
 GMAIL_SEARCH = "mcp__scoped_gmail_request__search_emails"
 GMAIL_READ = "mcp__scoped_gmail_request__read_email"
 GMAIL_METADATA_MARKER = "SSS_STRUCTURED_METADATA_V1 "
+WORKSPACE_LIST = "mcp__workspace__list_files"
+WORKSPACE_READ = "mcp__workspace__read_file"
+SHA256_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 
 
 def _field_value(value: Any, path: str) -> Any:
@@ -86,6 +89,7 @@ def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
     """
     call_names: dict[str, str] = {}
     producers: dict[str, tuple[str, str] | None] = {}
+    listed_files: dict[tuple[str, str], tuple[str, str] | None] = {}
     inferred: dict[str, dict[str, dict[str, str]]] = {}
     for event in events:
         data = event.get("data")
@@ -105,7 +109,17 @@ def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
                 continue
             if not isinstance(arguments, dict):
                 continue
+            if name == WORKSPACE_READ and {'name', 'sha256'} <= set(contract.provenance_params):
+                filename, version = arguments.get('name'), arguments.get('sha256')
+                if isinstance(filename, str) and isinstance(version, str):
+                    listed = listed_files.get((filename, version))
+                    if listed is not None:
+                        inferred.setdefault(call_id, {}).update({
+                            'name': {'from_call_id': listed[0], 'from_field': listed[1] + '.name'},
+                            'sha256': {'from_call_id': listed[0], 'from_field': listed[1] + '.sha256'}})
             for param in contract.provenance_params:
+                if name == WORKSPACE_READ and param in {'name', 'sha256'}:
+                    continue
                 value = arguments.get(param)
                 if not isinstance(value, str) or not (
                     HANDLE_PATTERN.fullmatch(value) or
@@ -127,6 +141,15 @@ def infer_dsh_provenance(events: Iterable[Mapping[str, Any]],
             success, _, observation = _observation_digest(event, name)
             if not success or not isinstance(observation, dict) or contract is None:
                 continue
+            if name == WORKSPACE_LIST and {'files.0.name', 'files.0.sha256'} <= set(contract.output_fields):
+                files = observation.get('files')
+                if isinstance(files, list) and len(files) == 1 and isinstance(files[0], dict):
+                    filename, version = files[0].get('name'), files[0].get('sha256')
+                    if (isinstance(filename, str) and filename not in ('', '.', '..')
+                            and '/' not in filename and '\\' not in filename
+                            and isinstance(version, str) and SHA256_PATTERN.fullmatch(version)):
+                        pair = (filename, version)
+                        listed_files[pair] = None if pair in listed_files else (call_id, 'files.0')
             for field in contract.output_fields:
                 value = _field_value(observation, field)
                 if not isinstance(value, str) or not (

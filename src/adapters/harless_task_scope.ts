@@ -13,7 +13,8 @@ function save(path: string, data: unknown) {
 }
 export function sceneOptions(value: unknown, scene: Scene): SceneOptions {
   if (value === undefined) return {};
-  const permitted = scene.adapter === 'ppt' ? ['slides', 'template', 'allow_output'] : scene.adapter === 'files' ? ['allow_output'] : [];
+  const permitted = scene.adapter === 'ppt' ? ['slides', 'template', 'allow_output'] :
+    (scene.adapter === 'files' || scene.id === 'paper-proofreading') ? ['allow_output'] : [];
   if (!permitted.length || !value || typeof value !== 'object' || Array.isArray(value) ||
       Object.keys(value).some(key => !permitted.includes(key))) throw Error('invalid_scene_options');
   const row = value as SceneOptions;
@@ -95,7 +96,7 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     if (bytes !== ref.bytes) throw Error('file_bytes_changed');
     const data = Buffer.concat(chunks), suffix = extname(ref.name).toLowerCase();
     if (scene.adapter === 'ppt' && !['.pdf', '.pptx'].includes(suffix)) throw Error('ppt_requires_pdf_or_pptx');
-    if (scene.id === 'paper-proofreading' && !['.pdf','.tex','.bib','.bbl','.log','.md','.txt'].includes(suffix)) throw Error('paper_input_format_unsupported');
+    if (scene.id === 'paper-proofreading' && !['.pdf','.tex','.bib','.bbl','.log','.md','.txt','.json'].includes(suffix)) throw Error('paper_input_format_unsupported');
     if (scene.id === 'research-data-analysis' && !['.csv','.tsv'].includes(suffix)) throw Error('data_requires_csv_or_tsv');
     // Literal LaTeX references resolve original flat filenames, not renamed doc_N files.
     const original = basename(ref.name);
@@ -112,6 +113,10 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
   if (scene.adapter === 'files') writeFileTask(workspace, taskId, instruction, options.allow_output === true,
     inputs.map(row => basename(row.path)));
   save(join(workspace,'approved-inputs.json'),{files:Object.fromEntries(inputs.map(row=>[basename(row.path),row.version_sha256]))});
+  if (scene.id === 'paper-proofreading') save(join(workspace,'paper-output-grant.json'),{
+    schema_version:1,task_id:taskId,allow_output:options.allow_output===true,
+    audit_sha256:inputs.find(row=>basename(row.path)==='audit.json')?.version_sha256??null,
+  });
   if (scene.adapter === 'ppt') save(join(workspace, 'job.json'), {
     schema_version: 1, job_id: taskId, inputs, instruction,
     slides: options.slides ?? 6, template: options.template ?? 'academic', operation: 'generate',
@@ -127,5 +132,6 @@ export function scopeDigest(workspace: string, scene: Scene): string | null {
   try{approvals=sha(readFileSync(join(workspace,'approved-inputs.json')));}catch{/* Empty pre-admission Session. */}
   return sha(JSON.stringify({ files, approvals,
     job: scene.adapter === 'ppt' ? sha(readFileSync(join(workspace, 'job.json'))) :
-      scene.adapter === 'files' ? sha(readFileSync(join(workspace, 'file-task.json'))) : null }));
+      scene.adapter === 'files' ? sha(readFileSync(join(workspace, 'file-task.json'))) :
+      scene.id === 'paper-proofreading' ? sha(readFileSync(join(workspace,'paper-output-grant.json'))) : null }));
 }

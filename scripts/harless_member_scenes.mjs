@@ -42,6 +42,16 @@ export function memberSceneDeployment(policy, deployment) {
       throw Error('Member fonts must contain only fixed public font resources');
     mounts.push({source:fonts,target:fonts});
   }
+  const paperRenderer=deployment.paperRendererRoot ? realpathSync(deployment.paperRendererRoot) : null;
+  if(paperRenderer){
+    const same=(path,names)=>new Set(readdirSync(path)).size===names.length &&
+      readdirSync(path).every(name=>names.includes(name));
+    if(!same(paperRenderer,['deployment.json','review.json','package']) ||
+       !same(join(paperRenderer,'package'),['manifest.json','generated-original.py','generated-bound.py','font.ttf','input-schema.json']))
+      throw Error('Member paper renderer must contain only reviewed deployment files');
+    mounts.push({source:paperRenderer,target:'/app/paper-renderer'});
+    mappings.push({source:paperRenderer,target:'/app/paper-renderer'});
+  }
   const pptModules=join(root,'scenarios/research_ppt/node_modules');
   if(existsSync(pptModules)){
     const source=realpathSync(pptModules);
@@ -92,6 +102,10 @@ export function memberSceneDeployment(policy, deployment) {
           cfg.env?.FM_OUTPUT!=='__HARLESS_SESSION_WORKSPACE__/file-results' ||
           Object.keys(cfg.env).length!==3))
         throw Error('Member Files MCP must use the server-bound task workspace');
+      if(scene.id==='paper-proofreading' &&
+         (cfg.args.length !== (paperRenderer ? 3 : 2) ||
+          (paperRenderer && (scene.paper_renderer_root!==paperRenderer || cfg.args[2]!==paperRenderer))))
+        throw Error('Member paper renderer is outside approved deployment');
       cfg.command=cfg.command === 'node' ? 'node' : executable;
       cfg.cwd='/app'; cfg.args=cfg.args.map(translate);
       const env=cfg.env ?? {};
