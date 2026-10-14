@@ -14,10 +14,11 @@ import json
 import re
 import shutil
 from functools import partial
+from itertools import groupby
 from pathlib import Path
 from typing import Any
 
-ENGINE_VERSION = "streaming-pdf-v2.2"
+ENGINE_VERSION = "streaming-pdf-v2.3"
 AUDIT_POLICY_VERSION = "layout-audit-v2.2"
 # A frame is a planned text area, not the physical paper edge. Small glyph
 # overhangs into its otherwise empty margin are reportable, not lost content.
@@ -134,6 +135,34 @@ def _configuration(payload: dict, overrides: dict | None = None) -> dict:
     return config
 
 
+def _fallback_font(primary_font: str):
+    """Embed the existing plotting font for glyphs absent from the CID fallback."""
+    if primary_font != "STSong-Light":
+        return None
+    from matplotlib import get_data_path
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    name = "ResearchFallbackSans"
+    if name not in pdfmetrics.getRegisteredFontNames():
+        path = Path(get_data_path()) / "fonts" / "ttf" / "DejaVuSans.ttf"
+        pdfmetrics.registerFont(TTFont(name, str(path)))
+    return pdfmetrics.getFont(name)
+
+
+def _paragraph_markup(text: str, fallback_font) -> str:
+    """Escape original text, selecting only actual fallback glyphs; never rewrite it."""
+    if fallback_font is None:
+        return html.escape(text).replace("\n", "<br/>")
+    # A TTFont can emit ToUnicode for .notdef, falsely satisfying extraction.
+    # Unsupported characters stay in STSong so the strict audit still rejects them.
+    supported = lambda char: bool(fallback_font.face.charToGlyph.get(ord(char), 0))
+    runs = []
+    for use_fallback, characters in groupby(text, supported):
+        escaped = html.escape("".join(characters)).replace("\n", "<br/>")
+        runs.append(f'<font name="{fallback_font.fontName}">{escaped}</font>' if use_fallback else escaped)
+    return "".join(runs)
+
+
 def render_document(payload: dict, pdf_path: Path | None, config: dict | None = None,
                     *, _measure_only: bool = False) -> dict:
     """Render once without page padding; return a persisted block-level manifest.
@@ -154,6 +183,7 @@ def render_document(payload: dict, pdf_path: Path | None, config: dict | None = 
         pdf_path = Path(pdf_path).resolve()
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
     style, font = payload["requirements"]["style"], _font(payload["requirements"]["style"])
+    markup = partial(_paragraph_markup, fallback_font=_fallback_font(font))
     left, top, right, bottom = CONTENT_RECT
     usable = right - left
     accent = colors.HexColor(config["accent"])
@@ -208,7 +238,7 @@ def render_document(payload: dict, pdf_path: Path | None, config: dict | None = 
     def paragraph(text, kind, block_id, figure_index=None):
         text = str(text)
         expected.append({"id": block_id, "text": text})
-        return Tracked(Paragraph(html.escape(text).replace("\n", "<br/>"), styles[kind]), block_id, kind, text, figure_index)
+        return Tracked(Paragraph(markup(text), styles[kind]), block_id, kind, text, figure_index)
 
     story = []
     if style == "brief":
@@ -223,7 +253,7 @@ def render_document(payload: dict, pdf_path: Path | None, config: dict | None = 
         pairs = []
         for i, item in enumerate(payload["metrics"]):
             label, value = str(item["label"]), str(item["value"])
-            pairs.append([Paragraph(html.escape(label), styles["cell"]), Paragraph(html.escape(value), styles["cell"])])
+            pairs.append([Paragraph(markup(label), styles["cell"]), Paragraph(markup(value), styles["cell"])])
             expected.extend([{"id": f"metric-{i}-label", "text": label}, {"id": f"metric-{i}-value", "text": value}])
         if style == "brief":
             rows = [[Paragraph(label, styles["cell"]) for label in ("统计量", "计算结果", "统计量", "计算结果")]]

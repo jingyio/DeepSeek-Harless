@@ -35,7 +35,7 @@ METHODS = {'independent_groups': '双侧 Welch t 检验', 'paired': '双侧配�
            'regression': '带截距的一元 OLS 回归'}
 METRIC_LABELS = {'estimate': '效应估计', 'ci_low': 'CI 下界', 'ci_high': 'CI 上界',
     'p_value': '双侧 p', 'n': '有效样本', 'effect_size': '标准化效应/斜率',
-    'r_squared': 'R²', 'residual_sd': '残差 SD', 'standard_error': '标准误',
+    'r_squared': 'R-squared', 'residual_sd': '残差 SD', 'standard_error': '标准误',
     'input_rows': '原始行', 'excluded_rows': '排除行', 'shapiro_p': 'Shapiro p'}
 
 
@@ -664,6 +664,7 @@ def layout_report(draft_id: str) -> dict:
         'page_count': result.get('page_count'), 'attempt_count': len(result.get('attempts', [])),
         'warnings': audit.get('soft_warnings', audit.get('warnings', [])),
         'failed_checks': [k for k,v in audit.get('checks', {}).items() if not v],
+        'missing_text': audit.get('missing_text', []),
         'next_step': 'audit_layout(layout_id)' if result['quality_passed'] else
         'Hard layout failure: report failed constraints; revise report_text using its existing packet_id or explicitly revise presentation constraints. Do not retry this unchanged draft or rerun statistics.'})
 
@@ -679,6 +680,7 @@ def audit_layout(layout_id: str) -> dict:
         _text_authorization(draft, 'verify_report') if passed else [])
     return tool_response(identifier, 'report_id', {'quality_passed': passed,
         'warnings': audit.get('soft_warnings', []), 'failed_checks': [k for k,v in audit.get('checks', {}).items() if not v],
+        'missing_text': audit.get('missing_text', []),
         'next_step': 'verify_report(report_id)' if passed else 'Report the failed layout checks and obtain an explicit semantic revision.'})
 
 

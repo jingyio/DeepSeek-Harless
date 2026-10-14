@@ -23,7 +23,7 @@ export type ComparisonHost = {
   createLane(parent: string, scene: string, lane: LaneName): Promise<string>;
   prepare(turn: any, lane: LaneName, requestId: string): Promise<{ task_id: string }>;
   submit(taskId: string): Promise<void>;
-  inspect(taskId: string): Promise<any>;
+  inspect(taskId: string, context?: { turn: any; lane: LaneName }): Promise<any>;
   cancel(taskId: string): Promise<void>;
   publish(parent: string, turn: any, request?: any): Promise<void>;
   ready?(): boolean;
@@ -37,6 +37,7 @@ export function createComparisonService(output: string, principal: string, host:
     ? JSON.parse(readFileSync(path, 'utf8')) : { version: 1, principal, threads: {}, turns: [] };
   if (state.version !== 1 || state.principal !== principal || !Array.isArray(state.turns)) throw Error('comparison_store_scope_mismatch');
   const pending: Turn[] = [], inFlight = new Set<string>();
+  const reconciledDeliveries = new Set<string>();
   let running = false, disposed = false, admission = Promise.resolve();
   const save = () => { const tmp = path + '.' + randomUUID() + '.tmp'; writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 }); renameSync(tmp, path); };
   // Reconnect never starts a paid task. A stopped turn needs an explicit retry.
@@ -67,12 +68,14 @@ export function createComparisonService(output: string, principal: string, host:
     const lane = t.lanes[name];
     if (!lane.task_id) return;
     const previous = hash(view(t));
-    const task = await host.inspect(lane.task_id);
+    const task = await host.inspect(lane.task_id, { turn: t, lane: name });
     if (disposed) return;
     Object.assign(lane, { status: t.cancellation_requested ? 'cancelled' : task.status === 'budget_exhausted' ? 'failed' : task.status === 'awaiting_confirmation' ? 'queued' : task.status,
       answer: task.answer ?? lane.answer ?? '', stats: task.stats, fallback_reason: task.fallback_reason ?? null,
       mode:task.mode,library_sha256:task.library_sha256,
-      artifacts: task.deliveries ?? [], failure: task.status === 'budget_exhausted' ? '这一路达到预算或请求上限，结果与已有支出已保留。' : task.status === 'failed' ? '这一路运行失败，请查看状态后重试。' : undefined });
+      artifacts: task.deliveries ?? [], failure: task.status === 'budget_exhausted'
+        ? (task.deliveries?.length ? '已完成的文件通过交付校验，可下载；后续模型回复达到请求或预算上限，未完成的部分与支出均已保留。' : '这一路达到预算或请求上限，结果与已有支出已保留。')
+        : task.status === 'failed' ? '这一路运行失败，请查看状态后重试；已校验的交付文件仍可下载。' : undefined });
     if (terminal.has(lane.status)) lane.output_sha256 = hash([lane.answer, lane.artifacts]);
     summary(t); save();
     if (hash(view(t)) !== previous) await publish(t);
@@ -174,7 +177,26 @@ export function createComparisonService(output: string, principal: string, host:
       t.published = true; save();
       enqueue(t); return { accepted: true, comparison_id: t.id };
     }); },
-    async view(session: string, id: string) { const t = await get(session, id); return view(t); },
+    async view(session: string, id: string) {
+      const t = await get(session, id);
+      // Recover old hidden deliveries without submitting or charging a model
+      // call. Ownership is checked above; original failure status stays visible.
+      if (terminal.has(t.status)) for (const name of lanes) {
+        const lane = t.lanes[name], key = `${t.id}/${name}/${lane.attempt}`;
+        if (!['failed', 'cancelled'].includes(lane.status) || !lane.task_id || lane.artifacts?.length || reconciledDeliveries.has(key)) continue;
+        try {
+          const task = await host.inspect(lane.task_id, { turn: t, lane: name });
+          if (task.deliveries?.length && ['completed', 'failed', 'budget_exhausted', 'cancelled'].includes(task.status)) {
+            lane.artifacts = task.deliveries;
+            lane.failure = (lane.failure ?? '这一路未完成。') + ' 已完成的文件通过交付校验，可下载。';
+            lane.output_sha256 = hash([lane.answer, lane.artifacts]);
+            save(); await publish(t);
+          }
+          reconciledDeliveries.add(key);
+        } catch { /* Existing saved failure remains readable. */ }
+      }
+      return view(t);
+    },
     async rate(session: string, id: string, name: string, score: number, revision: number, outputHash: string) { return locked(async () => {
       const t = await get(session, id);
       if (!lanes.includes(name as LaneName) || !Number.isInteger(score) || score < 1 || score > 5) throw new ComparisonError('invalid_score', '请选择 1–5 分。', 400);
