@@ -17,7 +17,7 @@ import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
 import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
 import {createComparisonService} from './harless_comparison.ts';
-import {comparisonArtifacts,verifiedReportFiles} from './harless_comparison_artifacts.ts';
+import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
 import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
 
 export const name = 'sss-web-tasks';
@@ -936,11 +936,16 @@ export function apply(ctx: any) {
         return { task_id: task.request.task_id };
       }); },
       async submit(_id) { /* prepare+submit is atomic within the existing admission lock. */ },
-      async inspect(id) {
-        const task = get(id), result = await refresh(task), meta = taskParents.get(id);
-        if (meta && task.status === 'completed') return { ...result,
-          deliveries: artifacts.snapshot(meta.turn.id, meta.lane, meta.turn.lanes[meta.lane].attempt, task.workspace,
-            task.scene.adapter==='data-report'?verifiedReportFiles(task.workspace):undefined) };
+      async inspect(id, context) {
+        const task = get(id), meta = taskParents.get(id) ?? context;
+        let result;
+        try { result = await refresh(task); }
+        catch (error) { if (!terminal.has(task.status)) throw error; result = view(task, true); }
+        if (meta) return { ...result,
+          deliveries: captureComparisonDeliveries(artifacts, { turn: meta.turn.id, lane: meta.lane,
+            attempt: meta.turn.lanes[meta.lane].attempt, workspace: task.workspace,
+            adapter: task.scene.adapter, status: task.status, eventsPath: join(task.output, 'events.jsonl'),
+            startedAt: task.started_at, finishedAt: task.finished_at }) };
         return result;
       },
       async cancel(id) { const task = get(id); await controller.cancel({ sessionId: task.request.session_id }); },

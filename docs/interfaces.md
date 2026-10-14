@@ -599,6 +599,8 @@ Python 从正常基线编译 `source_bound_readonly_batch_shadow` v1：当前任
 
 `GET /api/harless/comparisons?session_id=...&id=...` 返回两侧状态、回答、实际模式、库哈希、统计、结果文件及评分。加 `lane` 和 `file` 下载已冻结且哈希复核的结果副本。所有操作先校验当前账号归属，文件列表不暴露上传内容、配置、模型凭证或原始日志。
 
+数据报告完成 `deliver_report` 后，后续模型总结仍可能失败或触达请求上限。此时保留失败状态和禁用评分，但成功交付回执、质量标志及文件 SHA 全部匹配的 PDF 仍可下载；布局草稿不开放。旧失败记录首次读取时可恢复这类已交付文件，不重跑任务、不产生模型费用，也不将失败伪装成成功。
+
 `POST /api/harless/comparisons` 支持 `rate`、`retry`、`cancel`。评分需 `{session_id,id,lane,score,revision,output_sha256}`，两侧完成才接受 1–5 整数，以结果哈希和 revision 防止过期覆盖；评分与修改记录落在账号私有目录。重试仅重跑失败一侧，成功结果保持；重启把未完成任务标为中断，不自动启动新付费请求。原生 `user/message` 的 `harless_comparison` 元数据及标准 `turn/start/end` 定位双栏，持久化 GET 提供实时状态并支持刷新恢复；不写入当前 Harness 无法恢复的未知事件类型。
 
 PPT 复用已有只读库；数据通过 `report_session.py` 绑定上传 CSV/TSV 和可选研究 JSON，沿用已有 V3 工具及许可回执；论文通过 `revision_session.ts` 调用已有程序，保留所有上传字段并对窄审计 schema 做结构投影，Shadow 不授权模型跳过。
