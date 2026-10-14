@@ -11,6 +11,15 @@ export type Scene = {
   mcp_rows?: any[]; environment_references?: Record<string, string>;
 };
 export type Selection = { scene: string; mode: ExecutionMode; rsi: boolean };
+const shortcutNames: Record<string, string> = { ppt: 'ppt', 'paper-proofreading': 'paper',
+  'research-data-analysis': 'data', 'new-scene': 'chat' };
+export function sceneShortcut(scene: Scene): string { return shortcutNames[scene.id] ?? scene.id; }
+/** Only a leading, complete scene token is a control; paths and prose stay text. */
+export function parseSceneShortcut(text: string, scenes: readonly Scene[]) {
+  const match = /^\s*\/([a-z][a-z0-9_-]*)(?=\s|$)/i.exec(text);
+  const scene = match && scenes.find(row => sceneShortcut(row) === match[1].toLowerCase());
+  return scene ? { scene: scene.id, text: text.slice(match![0].length).trimStart() } : undefined;
+}
 export class SettingsError extends Error {
   code: string;
   constructor(code: string, message: string) { super(message); this.code = code; }

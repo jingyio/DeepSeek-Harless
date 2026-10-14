@@ -1,6 +1,6 @@
 # Harless 场景、模式与 RSI
 
-登录 Harness Web，在 `/harless` 原生菜单选择 Scene、Mode、RSI。菜单使用服务端目录，不再维护另一套预览场景。选择只用于后续任务；已预览、确认或运行的任务保持原配置。菜单不注册任务、不触发 LLM。原生聊天保持当前直接发送行为，任务 API 保留 preview / submit。
+登录 Harness Web，在 `/harless` 原生菜单选择 Scene、Mode、RSI，或在输入开头使用 `/ppt`、`/paper`、`/data`、`/chat`。每次输入字符都按前缀筛选场景；选择后在原生编辑器中显示蓝色场景标识，输入框底部保留当前场景。目录来自服务端，未部署项说明原因并拒绝选择，不保存假选择。选择本身不注册任务、不调用模型。原生聊天仍直接发送，任务 API 保留 preview / submit。
 
 | Scene ID | 实际绑定 | 当前能力 |
 | --- | --- | --- |
@@ -36,7 +36,13 @@ PPT 未构建或缺 Python 依赖时目录返回 `ppt_adapter_not_built` / `ppt_
 
 GET 另返回 `conversation_only:boolean`：经管理员从其他旧运行目录迁入的历史会话为 `true`，允许保留上下文的文字续聊，继续使用逐轮预算，但不加载新版场景工具或修改已锁定的旧 preset。向此类会话提交附件返回 `409 new_session_required`；文件任务或新版工具需要新会话。普通会话及当前目录内正常重启的会话为 `false`。
 
-`new_session` 可继承已绑定 Session 的下一任务设置；不能改变现有任务。浏览器 `cwd/workspaceId` 被拒绝，服务器分配独立 cwd 与 preset。独立启动模式每 Session 绑定一项任务；网关的无工具通用对话保留同 Session 连续轮次与逐轮预算。切换场景或重新绑定文件/PPT任务要求新 Session，不修改历史任务。
+GET 中的场景行含 `shortcut`，另返回 `scene_locked`。设置首次访问允许认领该 Home 下、使用已登记 preset 且没有历史/来源继承的普通空会话；未知历史继续返回 404。已绑定会话切换场景返回 `409 scene_requires_new_session`，在保存或改工具之前拒绝，不让界面假选择影响普通续聊。Mode/RSI 的修改只用于后续任务，不改变正在执行的配置。
+
+`new_session` 可带可选 `selection:{scene,mode,rsi}` 和 `inherit_session`，验证归属后创建新会话并继承所属工作区。浏览器选择新场景时，如果原会话已锁定，会创建对应场景会话并转移未被改写的草稿及附件；原聊天保留，发生编辑竞争则保留原输入而不覆盖。界面使用原生 span/revision 守卫和 reference chip，不修改上游编辑器。迟到的设置请求不会覆盖刚保存的选择。
+
+网关模式下，原生 `workspaceId` 由同一账号的 Harness 注册表验证，并只以该 ID 创建会话，不再同时传入 `cwd`。独立非网关模式仍拒绝客户端位置字段。未指定工作区时登记服务器分配的位置；场景 MCP 输入与 job 继续在服务器分配的 Session 私有目录中。有逐轮预算 broker 时，通用和 PPT 对话可在相同场景、相同已批准输入与权限下连续多轮。新增文件或改变 PPT `scene_options` 要求新 Session，不能借后续文字提高输出权限。
+
+完整前导 `/ppt` 等别名在发送时由服务端核验并去除控制词，再用所属场景处理剩余文字；只有控制词时不调用模型。路径（如 `/ppt/file`）和普通文字不当作场景指令。已有会话直接输入另一个场景并发送仍会明确要求新会话；从候选中选择会完成上述新建和草稿交接。
 
 任务 API 新增可选 `request.scene_options`，只接受 PPT `{slides:1..30, template:"academic"|"lab", allow_output:boolean}`；默认 6 页、academic、只读。输出开启须先有已批准 PDF/PPTX，通过预览后明确 submit。原生聊天当前未提供页数、模板和输出权限编辑界面；需要生成交付的用户先用任务 API 设置这些字段，不能通过自然语言默提高 job 权限。
 

@@ -344,3 +344,11 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 Web 会话归属使用持久 `DSH_HOME` 与可信 `principal` 作为 scope，记录在该 Home 的 `harless-web-ownership-*.json`，不再随代码部署的 `output` 变化。未提供 Home 时保留旧 output scope。记录中的 `sessions/bound` 保持原义，新增可选 `chat_only_sessions` 必须是 `sessions` 的子集；任务索引与模型选择仍使用原运行 scope，不迁移预算或重放任务。
 
 私有 policy 可选 `ownership_legacy_outputs:string[]`，只接受管理员配置的绝对路径。自动迁移当前 output，另只导入与同一个 Home 匹配的旧 scope；不能按客户端 session ID 或标题认领。成员启动器将此列表清空。跨旧 output 导入的已锁定会话以无工具文字模式恢复，`GET /api/harless/settings` 返回 `conversation_only:true`，附件请求返回 `409 new_session_required`。没有逐轮预算 broker 的入口不因此获得多任务复用权限。操作说明见 [账号网关](harless-account-gateway.md)，验证见 [恢复实验](experiments/chat-session-recovery-20261014-v1.md)。
+
+### 场景快捷词、绑定和工作区（2026-10-14）
+
+场景目录行新增 `shortcut`，设置响应新增 `scene_locked:boolean`。客户端通过原生 input trigger source、reference chip 和 per-session input API 实现前缀候选与有色标识。`/ppt`、`/paper`、`/data`、`/chat` 分别绑定四个既有产品场景；只解析输入开头的完整控制词，剩余文字按普通任务处理。未部署场景拒绝选择；纯控制词不建立付费任务。
+
+`select` 在场景已绑定时返回 `409 scene_requires_new_session`，不改变持久选择。`new_session` 支持可选 selection 覆盖，inherit_session 必须属于当前账号；新会话沿用其本地工作区，界面只在 draft revision 未变时交接输入。设置 GET 会先经过归属验证，因此普通、未使用的本地空会话可直接打开菜单，而陌生历史仍被拒绝。旧客户端保存的“下次场景”与真实绑定不一致时，恢复为任务的实际场景；旧任务配置保持冻结。
+
+原生会话创建不再同时给出 workspaceId 和 cwd；网关中的工作区 ID 交给同账号注册表核验，未指定时创建服务器位置对应的记录。MCP workspace/input/job 仍是服务器分配的 Session 路径。相同 PPT job 与输入可跨文字轮次复用，不重新选择已锁定 preset；新增文件或改变输出/页数等 scene_options 仍要求新 Session。详见 [控制协议](harless-controls.md)。
