@@ -1,7 +1,7 @@
 /** Dynamic business tasks on the official Harness Web/Session lifecycle. */
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
@@ -10,20 +10,21 @@ import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
-import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, SettingsError } from './harless_settings.ts';
+import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, sceneShortcut, parseSceneShortcut, SettingsError } from './harless_settings.ts';
 import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest } from './harless_task_scope.ts';
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
 
 export const name = 'sss-web-tasks';
-export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments'];
+export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry'];
 type Policy = {
   output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number;
   mode: ExecutionMode; budget_usd: number; request_limit?: number; run_budget_usd?: number; run_request_limit?: number; capability_profile: string;
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   budget_broker_endpoint?: string;
   budget_task_prefix?: string;
+  ownership_legacy_outputs?: string[];
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string; fixture?: string;
   scenes?: Scene[]; scene_registry_sha256?: string;
@@ -80,6 +81,7 @@ export function apply(ctx: any) {
   };
   const schemas = new Map<string, any[]>(), requests = new Map<string, string>();
   const ownedSessions = new Set<string>();
+  const legacyChatSessions = new Set<string>();
   const memberRestricted = brokerMode && config.allowed_tools.length === 0;
   const registeredScenes = config.scenes?.map(row => {
     if (!memberRestricted) return row;
@@ -120,7 +122,18 @@ export function apply(ctx: any) {
     } catch { return 'no_valid_certified_library'; }
     return null;
   }
-  function bindScene(agent: any, scene: Scene) {
+  function sessionScene(id: string, scene: Scene): Scene {
+    if (!legacyChatSessions.has(id)) return scene;
+    // A started Harness session has an immutable preset. Imported history must
+    // not acquire a new MCP composition or reuse an obsolete tool surface.
+    const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas,
+      certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = scene;
+    const instructions = '此会话为升级前保留的历史对话，只支持继续文字问答。当前没有文件或场景工具，不要声称已读取文件或完成生成；需要工作区工具时请用户新建会话。';
+    return { ...safe, allowed_tools: [], instructions, instructions_sha256: sha(instructions),
+      config_sha256: digest({ scene: scene.id, parent: scene.config_sha256 ?? null, legacy_chat_only: true }) };
+  }
+  function bindScene(agent: any, configuredScene: Scene) {
+    const scene = sessionScene(agent.session.id, configuredScene);
     for (const dispose of guards.get(agent.session.id) ?? []) dispose();
     const allowed = new Set(scene.allowed_tools);
     const disposers = [agent.ctx.tools.restrict({ allow: scene.allowed_tools }),
@@ -135,21 +148,34 @@ export function apply(ctx: any) {
     const selected = sessionId ? selections.get(sessionId) ?? defaults : defaults;
     const task = sessionId ? forSession(sessionId) : undefined;
     return { selection: selected, applies_to: task ? 'next_task' : 'next_prompt',
+      conversation_only: sessionId ? legacyChatSessions.has(sessionId) : false,
+      scene_locked: sessionId ? boundSessions.has(sessionId) || legacyChatSessions.has(sessionId) : false,
       preview_scene: selected.scene, // compatibility alias; now an actual registered selection
       preview_scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason })),
       current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status } : null,
-      scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, config_sha256: scene.config_sha256,
+      scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, shortcut: sceneShortcut(scene), config_sha256: scene.config_sha256,
         available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason,
         execute_available: !executeUnavailable(scene), execute_unavailable_reason: executeUnavailable(scene) })),
       session_id: sessionId ?? null, model_calls: 0 };
   }
   async function setSelection(sessionId: string | undefined, patch: unknown) {
+    if (sessionId) await ensureOwned(sessionId);
     settingsView(sessionId); // ownership before mutation
-    const current = sessionId ? selections.get(sessionId)! : defaults;
+    const current = sessionId ? selections.get(sessionId) ?? defaults : defaults;
     const next = changeSelection(current, patch, scenes, executeUnavailable);
+    if (next.scene !== current.scene && sceneFor(next.scene).unavailable_reason)
+      throw new TaskError('scene_not_connected', '该场景暂不可用：' + sceneFor(next.scene).unavailable_reason, 409);
     if (sessionId) {
-      const agent = agents.get(sessionId);
-      if (!forSession(sessionId) && next.scene !== current.scene) {
+      if (next.scene !== current.scene) {
+        // A started preset is immutable. Refuse before changing saved/UI state.
+        const snapshot = await controller.inspect(sessionId);
+        if (boundSessions.has(sessionId) || legacyChatSessions.has(sessionId) || snapshot.events.some((event: any) =>
+            ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)))
+          throw new TaskError('scene_requires_new_session', '当前会话已开始，切换场景需要新建会话；原聊天会保留。', 409);
+        if (!agents.has(sessionId)) await original.selectModel({ sessionId,
+          provider: (modelSelections.get(sessionId) ?? defaultModel).provider,
+          model: (modelSelections.get(sessionId) ?? defaultModel).model, reasoningEffort: 'off' }, new AbortController().signal);
+        const agent = agents.get(sessionId);
         const scene = sceneFor(next.scene);
         if (!scene.unavailable_reason) {
           await selectPreset!(agent, sessionPreset(config.output, workspaceFor(sessionId), scene));
@@ -167,32 +193,54 @@ export function apply(ctx: any) {
     workspaces.set(id, path); return path;
   };
   const selectPreset = ctx.agentPresets?.select.bind(ctx.agentPresets);
-  // Ownership belongs to a persisted DSH home, not to one Node process.
-  const ownershipScope = digest({ output: config.output, home: process.env.DSH_HOME ?? null });
-  const ownershipPath = join(config.output, 'session-ownership-' + ownershipScope + '.json');
+  // DSH history persists across deployments, so its admission record must
+  // follow the same per-user DSH home instead of a disposable Web run output.
+  const home = process.env.DSH_HOME ?? null;
+  if (config.ownership_legacy_outputs !== undefined &&
+      (!Array.isArray(config.ownership_legacy_outputs) ||
+        config.ownership_legacy_outputs.some(path => typeof path !== 'string' || !isAbsolute(path))))
+    throw Error('Invalid legacy Web ownership outputs');
+  const runScope = digest({ output: config.output, home });
+  const ownershipScope = home ? digest({ home, principal }) : runScope;
+  const ownershipPath = home ? join(home, 'harless-web-ownership-' + ownershipScope + '.json')
+    : join(config.output, 'session-ownership-' + ownershipScope + '.json');
   const boundSessions = new Set<string>();
-  try {
-    const saved = JSON.parse(readFileSync(ownershipPath, 'utf8'));
-    if (saved.scope !== ownershipScope || !Array.isArray(saved.sessions) || !Array.isArray(saved.bound) ||
-        [...saved.sessions, ...saved.bound].some(id => typeof id !== 'string' || !id.length)) throw Error('Invalid Web session ownership record');
+  const readOwnership = (path: string, scope: string, legacy = false): boolean => {
+    let saved: any;
+    try { saved = JSON.parse(readFileSync(path, 'utf8')); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error; }
+    if (saved.scope !== scope || !Array.isArray(saved.sessions) || !Array.isArray(saved.bound) ||
+        [...saved.sessions, ...saved.bound].some(id => typeof id !== 'string' || !id.length) ||
+        saved.bound.some(id => !saved.sessions.includes(id)) ||
+        (saved.chat_only_sessions !== undefined && (!Array.isArray(saved.chat_only_sessions) ||
+          saved.chat_only_sessions.some(id => !saved.sessions.includes(id))))) throw Error('Invalid Web session ownership record');
     for (const id of saved.sessions) ownedSessions.add(id);
+    for (const id of legacy ? saved.sessions : saved.chat_only_sessions ?? []) legacyChatSessions.add(id);
     for (const id of saved.bound) {
       if (!ownedSessions.has(id)) throw Error('Unowned task session in ownership record');
       boundSessions.add(id);
     }
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    return true;
+  };
+  readOwnership(ownershipPath, ownershipScope);
+  let importedLegacy = false;
+  if (home) for (const output of new Set([config.output, ...(config.ownership_legacy_outputs ?? [])])) {
+    const scope = digest({ output, home });
+    importedLegacy = readOwnership(join(output, 'session-ownership-' + scope + '.json'), scope, output !== config.output) || importedLegacy;
+  }
   const saveOwnership = () => json(ownershipPath, { scope: ownershipScope,
-    sessions: [...ownedSessions], bound: [...boundSessions] });
-  const modelPath = join(config.output, 'session-models-' + ownershipScope + '.json');
+    sessions: [...ownedSessions], bound: [...boundSessions], chat_only_sessions: [...legacyChatSessions] });
+  if (importedLegacy) saveOwnership();
+  const modelPath = join(config.output, 'session-models-' + runScope + '.json');
   try {
     const saved = JSON.parse(readFileSync(modelPath, 'utf8'));
-    if (saved.scope !== ownershipScope || !saved.models || typeof saved.models !== 'object') throw Error('Invalid Web model selection record');
+    if (saved.scope !== runScope || !saved.models || typeof saved.models !== 'object') throw Error('Invalid Web model selection record');
     for (const [id, model] of Object.entries(saved.models)) {
       const option = modelOptions.find(row => row.model === model && row.available);
       if (ownedSessions.has(id) && option) modelSelections.set(id, option);
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  const saveModels = () => json(modelPath, { scope: ownershipScope,
+  const saveModels = () => json(modelPath, { scope: runScope,
     models: Object.fromEntries([...modelSelections].map(([id, option]) => [id, option.model])) });
   try {
     const saved = JSON.parse(readFileSync(join(config.output, 'harless-settings.json'), 'utf8'));
@@ -201,16 +249,16 @@ export function apply(ctx: any) {
       if (ownedSessions.has(id)) selections.set(id, changeSelection(defaults, selection, scenes, executeUnavailable));
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  const taskIndexPath = join(config.output, 'task-index-' + ownershipScope + '.json');
+  const taskIndexPath = join(config.output, 'task-index-' + runScope + '.json');
   let indexedTasks: string[] = [];
   try {
     const saved = JSON.parse(readFileSync(taskIndexPath, 'utf8'));
-    if (saved.scope !== ownershipScope || !Array.isArray(saved.tasks) ||
+    if (saved.scope !== runScope || !Array.isArray(saved.tasks) ||
         saved.tasks.some((id: unknown) => typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id)) ||
         new Set(saved.tasks).size !== saved.tasks.length) throw Error('Invalid Web task index');
     indexedTasks = saved.tasks;
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  const saveTaskIndex = () => json(taskIndexPath, { scope: ownershipScope, tasks: indexedTasks });
+  const saveTaskIndex = () => json(taskIndexPath, { scope: runScope, tasks: indexedTasks });
   // Earlier frontend versions wrote durable task files before they had a
   // scoped index. Recover only terminal tasks for sessions already proven to
   // belong to this DSH_HOME; the source run also contains other frontends.
@@ -299,7 +347,7 @@ export function apply(ctx: any) {
         !ownedSessions.has(request.session_id) || typeof route.budget_session_id !== 'string' ||
         state.task_id !== taskId || state.session_id !== request.session_id) throw Error('Web task index identity mismatch');
     const effective = JSON.parse(readFileSync(join(output, 'effective-config.json'), 'utf8'));
-    const restoredScene = sceneFor(state.scene ?? request.capability_profile);
+    const restoredScene = sessionScene(request.session_id, sceneFor(state.scene ?? request.capability_profile));
     const task: Task = { request, delivery: request.content, confirmation_digest: state.confirmation_digest,
       status: state.status, created_at: state.created_at, started_at: state.started_at,
       finished_at: state.finished_at, failure: state.failure, fallback_reason: state.fallback_reason,
@@ -328,6 +376,14 @@ export function apply(ctx: any) {
       })().catch(error => { task.failure = 'budget_close_failed: ' + String(error); record(task); });
     }
   }
+  // Older clients stored a planned scene on a locked conversation. Recover its
+  // actual binding so an unrelated next message cannot accidentally change it.
+  for (const id of ownedSessions) {
+    const actualScene = forSession(id)?.scene.id ?? (legacyChatSessions.has(id) ? defaults.scene : undefined);
+    const selected = selections.get(id);
+    if (actualScene && selected?.scene !== actualScene) selections.set(id, { ...(selected ?? defaults), scene: actualScene });
+  }
+  if (ownedSessions.size) saveSettings();
   function audit(task: Task, row: any) {
     appendFileSync(join(task.output, 'motif-audit.jsonl'), JSON.stringify({ ...row, task_id: task.request.task_id }) + '\n', { mode: 0o600 });
     if (row.kind === 'motif_bypass_attempt') task.stats.motif_attempts = Number(task.stats.motif_attempts) + 1;
@@ -364,12 +420,21 @@ export function apply(ctx: any) {
   const original = { create: controller.create.bind(controller), prompt: controller.prompt.bind(controller),
     cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller) };
   async function ensureOwned(id: string) {
-    if (ownedSessions.has(id)) return;
+    if (ownedSessions.has(id)) {
+      if (!selections.has(id)) {
+        const snapshot = await controller.inspect(id);
+        const scene = forSession(id)?.scene ?? scenes.find(row => row.preset === snapshot.meta.agentPreset) ??
+          (legacyChatSessions.has(id) ? sceneFor(defaults.scene) : undefined);
+        if (!scene) throw new TaskError('session_not_owned', 'Session scene binding cannot be recovered', 409);
+        selections.set(id, { ...defaults, scene: scene.id }); saveSettings();
+      }
+      return;
+    }
     let snapshot: any;
     try { snapshot = await controller.inspect(id); }
     catch (error) {
       if (!(error instanceof ApiSessionNotFound)) throw error;
-      throw new TaskError('session_not_owned', 'Session is outside this Web run; create a new session');
+      throw new TaskError('session_not_owned', 'Session is outside this Web run; create a new session', 404);
     }
     // Upgrade only an ordinary, untouched blank session from this instance's
     // configured preset. Official Web reuses these after a process restart.
@@ -377,7 +442,7 @@ export function apply(ctx: any) {
     if (!scenes.some(scene => scene.preset === snapshot.meta.agentPreset) || snapshot.meta.isSeeded || snapshot.meta.origin ||
         snapshot.inheritedEventCount || snapshot.events.some((event: any) =>
           ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type))) {
-      throw new TaskError('session_not_owned', 'Session is outside this Web run; create a new session');
+      throw new TaskError('session_not_owned', 'Session is outside this Web run; create a new session', 404);
     }
     const registration = await control('/tasks/stats?session_id=' + encodeURIComponent(id), undefined, true);
     if (registration !== null && !brokerMode) throw new TaskError('session_already_bound', 'This session already has a task；请在工作区菜单中归档此空会话，然后新建会话。', 409);
@@ -401,12 +466,21 @@ export function apply(ctx: any) {
       if (chosen.unavailable_reason) throw new TaskError('scene_not_connected', chosen.unavailable_reason, 409);
       if (!brokerMode && (request.cwd !== undefined || request.workspaceId !== undefined))
         throw new TaskError('workspace_not_allowed', 'The server allocates a private Session workspace');
+      if (request.cwd !== undefined && request.workspaceId !== undefined)
+        throw new TaskError('invalid_workspace', '请选择工作区或目录，不能同时指定两者');
       const id = request.sessionId ?? (brokerMode ? 'session-' + randomUUID() : 'sss-' + randomUUID().replaceAll('-', ''));
       const workspace = workspaceFor(id);
       const priorPreset = ownedSessions.has(id) ? (await controller.inspect(id)).meta.agentPreset : undefined;
-      const created = await original.create({ ...request, sessionId: id, ...(priorPreset ? { agentPreset: priorPreset } : {}),
-        ...(!ownedSessions.has(id) ? { agentPreset: sessionPreset(config.output, workspace, chosen),
-          ...(!brokerMode || chosen.adapter ? { cwd: workspace } : {}) } : {}) });
+      let location = request.workspaceId !== undefined ? { workspaceId: request.workspaceId } : { cwd: workspace };
+      if (request.workspaceId === undefined && ctx.workspaceRegistry) {
+        const group = await ctx.workspaceRegistry.create(priorPreset ? (await controller.inspect(id)).meta.cwd : workspace, chosen.label);
+        location = { workspaceId: group.id };
+      }
+      // Workspace IDs and cwd are mutually exclusive in the native API. A
+      // group is account-local; MCP input/work paths remain session-local.
+      const { cwd: _cwd, workspaceId: _workspaceId, ...identity } = request;
+      const created = await original.create({ ...identity, sessionId: id, ...location,
+        agentPreset: priorPreset ?? sessionPreset(config.output, workspace, chosen) });
       ownedSessions.add(created.sessionId); saveOwnership();
       if (!selections.has(created.sessionId)) {
         selections.set(created.sessionId, { ...defaults, scene: chosen.id });
@@ -478,9 +552,12 @@ export function apply(ctx: any) {
       delivery.push({ type: 'text', text: `\n\n[来源 ${reference.resource_id}；版本 ${resource.version}]\n${resource.text}` });
     }
     if (Buffer.byteLength(JSON.stringify(delivery)) > 768 * 1024) throw new TaskError('request_too_large', 'Resolved input exceeds byte limit', 413);
-    const scene = sceneFor(request.capability_profile);
+    const scene = sessionScene(existingSession ?? '', sceneFor(request.capability_profile));
+    if (existingSession && legacyChatSessions.has(existingSession) && request.content.some(part => part.type !== 'text'))
+      throw new TaskError('new_session_required', '历史会话可以继续文字对话；使用文件或场景工具请新建会话。', 409);
     if (scene.unavailable_reason) throw new TaskError('scene_not_connected', scene.unavailable_reason, 409);
-    const options = sceneOptions(supplied.scene_options, scene);
+    const previousTask = existingSession ? forSession(existingSession) : undefined;
+    const options = sceneOptions(supplied.scene_options ?? (scene.adapter === 'ppt' && previousTask?.scene.id === scene.id ? previousTask.scene_options : undefined), scene);
     const selection = changeSelection(selected, { scene: scene.id, mode: requestedMode }, scenes, executeUnavailable);
     request.request_sha256 = digest({ request: request.request_sha256, selection, scene_options: options, user_id: principal });
     const previous = requests.get(request.request_id);
@@ -491,7 +568,6 @@ export function apply(ctx: any) {
     }
     request.session_id = existingSession ?? (await controller.create({ agentPreset: scene.preset })).sessionId;
     if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', '预览前请先选择与当前会话一致的 Harless 场景', 409);
-    const previousTask = forSession(request.session_id);
     if (previousTask && !terminal.has(previousTask.status)) throw new TaskError('session_busy', '请等待本轮完成或取消，再发送下一条消息。', 409);
     await previousTask?.closing;
     if (!brokerMode && (sessions.has(request.session_id) || boundSessions.has(request.session_id))) throw new TaskError('session_already_bound', 'This session already has a task；请点击“新会话”后发送新的任务。', 409);
@@ -500,10 +576,11 @@ export function apply(ctx: any) {
       ...(chosenModel.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' })
     }, new AbortController().signal);
     const newFileInput = request.content.some(part => part.type === 'file');
-    if (previousTask && (previousTask.scene.id !== scene.id || (scene.adapter && (scene.adapter !== 'workspace' || newFileInput))))
+    if (previousTask && (previousTask.scene.id !== scene.id || (scene.adapter && newFileInput) ||
+        digest(previousTask.scene_options) !== digest(options)))
       throw new TaskError('new_session_required', 'Create a new Session to bind a scene or new file task', 409);
     const workspace = workspaceFor(request.session_id);
-    const reuseWorkspace = previousTask && scene.adapter === 'workspace';
+    const reuseWorkspace = previousTask && scene.adapter;
     const sceneInputs = reuseWorkspace ? previousTask.scene_inputs : scene.adapter ? await bindSceneInputs(ctx, agents.get(request.session_id), workspace, scene,
       request.content, options, delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), taskId) : [];
     if (scene.adapter && !reuseWorkspace) {
@@ -630,7 +707,8 @@ export function apply(ctx: any) {
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
     if (!selections.has(request.sessionId)) {
       const snapshot = await controller.inspect(request.sessionId);
-      const scene = scenes.find(row => row.preset === snapshot.meta.agentPreset);
+      const scene = scenes.find(row => row.preset === snapshot.meta.agentPreset) ??
+        (legacyChatSessions.has(request.sessionId) ? sceneFor(defaults.scene) : undefined);
       if (!scene) throw new TaskError('session_not_owned', 'Session is outside this Web run');
       selections.set(request.sessionId, { ...defaults, scene: scene.id });
       saveSettings();
@@ -644,7 +722,18 @@ export function apply(ctx: any) {
         ...(option.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' }) }, signal);
       modelSelections.set(request.sessionId, option);
     }
-    const task = await preview({ content: request.content, request_id: request.requestId }, request.sessionId, 'native_chat');
+    const content = structuredClone(request.content);
+    const firstText = content.find((part: any) => part.type === 'text');
+    const shortcut = firstText && parseSceneShortcut(firstText.text, scenes);
+    if (shortcut) {
+      if (!shortcut.text.trim() && content.length === 1) {
+        await setSelection(request.sessionId, { scene: shortcut.scene });
+        return { accepted: true }; // choosing a scene alone never calls the model
+      }
+      await setSelection(request.sessionId, { scene: shortcut.scene });
+      firstText.text = shortcut.text;
+    }
+    const task = await preview({ content, request_id: request.requestId }, request.sessionId, 'native_chat');
     await submit(task, task.confirmation_digest, signal);
     return { accepted: true };
   });
@@ -779,7 +868,8 @@ export function apply(ctx: any) {
       try {
         const url = new URL(request.url), sessionId = url.searchParams.get('session_id') ?? undefined;
         if (request.method === 'GET') {
-          return Response.json({ ...settingsView(sessionId), sessions: [...ownedSessions].map(session_id => ({ session_id, ...settingsView(session_id) })) }, { headers: { 'Cache-Control': 'no-store' } });
+          const value = await serialize(async () => { if (sessionId) await ensureOwned(sessionId); return settingsView(sessionId); });
+          return Response.json({ ...value, sessions: [...ownedSessions].map(session_id => ({ session_id, ...settingsView(session_id) })) }, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
         const result = await serialize(async () => {
@@ -787,10 +877,12 @@ export function apply(ctx: any) {
           if (body.action === 'select_preview_scene') return setSelection(body.session_id, { scene: body.scene_id });
           if (body.action === 'clear_preview_scene') return setSelection(body.session_id, { scene: defaultSceneId });
           if (body.action === 'new_session') {
+            if (body.inherit_session) await ensureOwned(body.inherit_session);
             const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
-            const created = await controller.create({ agentPreset: sceneFor(chosen.scene).preset });
-            selections.set(created.sessionId, { ...chosen });
-
+            const next = body.selection === undefined ? chosen : changeSelection(chosen, body.selection, scenes, executeUnavailable);
+            const group = body.inherit_session && ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(body.inherit_session));
+            const created = await controller.create({ agentPreset: sceneFor(next.scene).preset, ...(group && brokerMode ? { workspaceId: group.id } : {}) });
+            selections.set(created.sessionId, { ...next }); saveSettings();
             return { session_id: created.sessionId, ...settingsView(created.sessionId) };
           }
           throw new SettingsError('unknown_action', 'Supported actions: select, select_preview_scene, clear_preview_scene, new_session');
