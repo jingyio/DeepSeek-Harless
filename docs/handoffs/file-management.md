@@ -1,5 +1,11 @@
 # file-management 当前交接
 
+## 最新 已学习 Motif 库公开分发 2026年10月14日
+
+- 用户明确授权将被忽略的已学习Motif库上传原 `feature/rsi-research-agent` 分支。本次分发目录 [file-management-v1](../../examples/motif-library/file-management-v1/README.md)，9库/策略、3manifest、3认证/冻结摘要原字节发布；原始SHA/签名、来源实验与历史版本保留。固定脚本库不在此目录。
+- `node scripts/check-file-management-library.mjs` 验证原字节、独立认证指纹、真实TS加载校验器与G4来源锁；6项回归通过，HEAD+分发目录的无私有数据检查通过，两个来源不兼容的严格加载要求均拒绝。
+- `.local`继续忽略，原轨迹、费用、失败、私人文件未修改。0模型调用/费用0。G4部分源码仍本地未提交，下载后只完成库分发/完整性校验，默认SDK/Web与自动RSI保持原状态。后续接入须先确认认证源码版本和当前任务授权/预算。[共享分发契约](../changes/file-management-library-publication.md)。
+
 ## 最新：重命名/转换/空文本契约修复及新留出完成（2026-10-13）
 
 - 当前feature/rsi-research-agent；本轮新增TaskScene/task_contract固定工具和验收、新实验控制/独立审计、11项契约回归、前端结构Schema。具体共享变化docs/changes/file-management-task-contract.md；旧File/Collection/ReportScene、原22基准失败和库证书不改。

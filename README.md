@@ -1,5 +1,7 @@
 # SSS：Motif × DeepSeek Harness × 自定义 MCP
 
+[已学习的文件管理 Motif 库](examples/motif-library/file-management-v1/README.md)现以版本化分发目录保存：9个库/策略、3个在线 manifest 与3份原认证/冻结摘要，原始字节/签名保留；免费检查6项通过，公开副本无需 `.local` 即可校验。用户已授权将此次库分发推送 `feature/rsi-research-agent`；此前暂不推送的记录是历史状态。G4部分运行源码仍待发布，默认SDK/Web不自动激活，固定脚本库另存。[分发契约](docs/changes/file-management-library-publication.md)。
+
 前端开发请先阅读[当前分支接入说明](docs/handoffs/frontend.md)：已有任务HTTP契约、安装命令、模式/预算确认与新增有界验收修复。文件管理场景可显式启用acceptance_guard，原权限和总预算内最多2轮普通Harness修复，每轮失败证据保留；验证与限制见[实施记录](docs/changes/acceptance-repair.md)。
 
 普通文件管理新增 [跨流程实验入口](scenarios/file-management/README.md)：以三篇真实 PDF 和生成的五类文件，在独立副本中运行盘点、索引、检索、分类、重命名、去重、冲突处理、转换、增量、归档恢复等十二类任务，统一采集原始 Harness 轨迹并进行独立 Motif 认证。共享核心保持，副本写操作另有计划/收据/恢复检查；实验与界限见 [记录](docs/experiments/file-management-discovery-20261013.md)，接口与 GitHub 提交依据见 [变化说明](docs/changes/file-management-discovery.md)。

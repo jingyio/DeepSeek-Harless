@@ -1,5 +1,12 @@
 # 主线当前交接
 
+## 最新 文件管理 Motif 库分发 2026年10月14日
+
+- 用户已恢复此次库分发的GitHub推送授权，目标 `feature/rsi-research-agent`；此前暂停推送记录不适用于本次明确授权。范围仅已学习Motif库、索引、检查与说明；其他本地运行时/脚本实验开发保留未提交。
+- [公开库](../../examples/motif-library/file-management-v1/README.md)：9库/策略、3manifest、3认证/冻结摘要，原字节/摘要与重复副本索引保留。`.local`继续忽略，私人资料、密钥、原轨迹、费用和失败不上传且不删除。
+- 本地与无 `.local` 的 HEAD+分发副本加载检查通过；6项发布回归通过，源码不匹配的两组严格检查按预期拒绝。0云请求/费用0；没有重做付费学习或认证。
+- G4库依赖的部分MCP/任务源码尚未发布，公开索引报告版本差异；不可只凭库JSON执行G4流程，也未新增自动RSI。前端接入须另行发布兼容源码与新任务权限/预算绑定。[契约](../changes/file-management-library-publication.md)。
+
 ## 最新：普通文件任务质量修复与新留出完成（2026-10-13）
 
 TaskScene新契约修复全局重命名、明确转换原件/产物读取，以及空文本实际读取/无写操作交付；逐项接口/Schema/前端口径已记录。最终新12条件×H/L2为24/24，首轮4失败保留；本轮48任务/513HTTP/USD0.338547576，全文件系列495/4593/USD3.836167800。独立审计每个阶段、原输入/源码/库、实际HTTP/token/费用和最终字节，原三PDF不变。最终561Python/139Node通过、3Docker跳过，18smoke及三类免费真实Harness/MCP恢复检查通过。原读取图/L2证书不改，新效果验收另记版本，没有用留出学习；L2总体费用仅−1.43%，不支持普遍收益/生产或科学质量结论。见[完整记录](../experiments/file-management-task-quality-20261013.md)、[接口变化](../changes/file-management-task-contract.md)、[场景交接](file-management.md)。分支feature/rsi-research-agent，最终同步状态以本轮提交为准；旧commit/未提交记录为历史。

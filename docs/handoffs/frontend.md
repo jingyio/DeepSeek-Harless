@@ -1,5 +1,11 @@
 # 前端接入当前科研Agent分支
 
+## 最新 Motif 库可下载 2026年10月14日
+
+- 用户恢复了本次库分发推送授权，目标 `feature/rsi-research-agent`。公开 [file-management-v1/catalog.json](../../examples/motif-library/file-management-v1/catalog.json) 提供9个已学习库/策略、3个manifest及来源/认证摘要，格式 `sss-public-file-management-library-v1`。
+- 本次没有发布尚未提交的G4运行服务/持久化任务接入。索引是静态库清单，不是自动选择/执行接口；`default_activation=false`。前端下载库后须校验来源兼容，再通过当前任务权限与预算入口接入，不可沿用历史指纹授权。
+- 原SDK/Web默认与HTTP任务接口未改，固定脚本库另存；私人 `.local`、费用和失败完整保留。免费发布检查6项通过，云费用0。[分发说明](../../examples/motif-library/file-management-v1/README.md)。
+
 ## 最新文件任务契约（2026-10-13）
 
 重命名/转换/空文本的新TaskScene最终24次新留出均通过机器验收。使用既有分支更新后的`scenarios/file-management/task_tools.py`作为MCP入口，保持原14工具、stdio配置及`FM_TASK_FILE`/`FM_OUTPUT`变量；场景继续显式`acceptance_guard={"kind":"file_management","max_repairs":2}`。旧服务和旧任务不会自动升级口径。

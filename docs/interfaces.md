@@ -1,5 +1,9 @@
 # 场景、Motif 和 Harness 的接口
 
+## 已学习文件管理 Motif 分发索引（2026年10月14日）
+
+公开文件 `examples/motif-library/file-management-v1/catalog.json` 使用 `sss-public-file-management-library-v1` / schema 1。以包内相对路径和原始SHA列举学习库/在线manifest/认证摘要，通过 `paired_library` 关联manifest；`runtime_groups`提供冻结来源版本及依赖，`runtime_validators`绑定实际加载器字节。`default_activation=false`，不更改已有IR、Harness/MCP工具或任务授权接口。`node scripts/check-file-management-library.mjs [--require-group workflow14|recovery15]` 免费检查；严格要求不兼容来源时失败。G4部分源码仍未发布，不能以库上传代替运行时接入。[完整契约](changes/file-management-library-publication.md)。
+
 ## 普通文件管理探索场景（2026-10-13）
 
 新增 `scenarios/file-management/`，通过既有 SDK 和 stdio MCP 调用十二个文件工具。工具、参数、权限和恢复机制详见 [逐项变化](changes/file-management-discovery.md)。没有新增共享 ToolContract、IR、Runtime 或预算字段。
