@@ -3,9 +3,10 @@
 ## 2026-10-14：科研 RSI 与 PPT 场景分支集成（待审）
 
 - 集成基点为上线准备 PR #13 的 `77931ac`，科研 RSI 来源 `feature/rsi-research-agent@dfe4fcc` 已合并；PPT 来源 `feature/research-ppt-agent@7375185` 的场景实现与匿名 V16/V17 记录正在整合。此集成属于独立后续分支，不改变 PR #13 或当前公网服务。
-- 科研分支新增 `scenarios/literature-notes/`、`scenarios/file-management/`、有界完成/验收守卫及在线 manifest v2 认证能力。冲突的旧 Web/预算/Session 入口保留 PR #13 版本；`prepare_scenario` 同时保留逐 Session 工作区和新场景守卫参数。研究场景仍为显式 CLI/实验入口，未登记为四个产品菜单场景，也没有把私有旧库默认为 Execute。
+- 科研分支新增 `scenarios/literature-notes/`、`scenarios/file-management/`、有界完成/验收守卫及在线 manifest v2 认证能力。冲突的旧 Web/预算/Session 入口保留 PR #13 版本；`prepare_scenario` 同时保留逐 Session 工作区和新场景守卫参数。研究场景仍为显式 CLI/实验入口，未登记为四个产品菜单场景；旧 `web:literature` 因缺任务级来源绑定明确拒绝启动，防止加载错误场景或绕过隔离。私有旧库没有默认为 Execute。
 - PPT 分支新增持续知识库、显式执行策略、失败计划局部恢复、反馈及双路 Web 任务代码。双路 `native-chat` 不继承产品 Mode/RSI，故集成分支不在 `scripts/harness-web.py` 或 `dsh_web_tasks.ts` 注册这条旧入口；默认 `/harless` 仍经统一任务级配置和共享 Runtime。历轮 PDF 与私有数据未搬入 Git。
-- 免费验证：科研合并后根 `npm test` 为408 Python通过/190跳过、168 Node通过/3跳过；`npm run smoke`、`npm run web:controls:check`通过。PPT TypeScript 构建及118 Node通过；场景 Python 279通过/2跳过、10个真实 LibreOffice 渲染断言因本机 PDF 的 CJK 缺字/GID0 被严格拒绝，尚需在 V100 固定 Noto 字体环境复验，不得放松字形验收。
+- 免费验证：科研合并后根 `npm test` 为408 Python通过/190跳过、168 Node通过/3跳过；`npm run smoke`、`npm run web:controls:check`通过。PPT TypeScript 构建及118 Node通过；本机 Python 279通过/2跳过、10个真实 LibreOffice 渲染断言因本机 PDF 的 CJK 缺字/GID0 被严格拒绝。相同集成树在 V100 固定 Noto/LibreOffice 环境复验为 PPT 291 Python通过、118 Node通过；严格字形守卫保持。`npm run web:scenes:check`、`npm run motif:check`也通过，均0云模型。
+- CI 首次 Ubuntu 根测试597通过/1失败：旧文献 `run-web.py` 以已不存在的 `literature-pdf` 场景别名启动。该实验入口已改为显式拒绝并验证不启动监听；待新 CI 结果。不把缺失的文献任务绑定冒充上线能力。
 - 风险：PPT代码与Prompt版本已变，PR #13 私有 `deployment-v3/runtime` 代码锁在本集成分支失效；新包必须按实际 Schema/代码重新认证和发布，未做之前生产 Execute 应拒绝。本轮未发起真实模型请求，费用新增0；保持既有任务、成员和预算隔离。
 
 ## 2026-10-14：四场景上线准备（当前）

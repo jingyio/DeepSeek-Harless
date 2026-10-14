@@ -1,3 +1,5 @@
+> 2026-10-14 集成说明：本文的 `web:literature` 是旧实验入口，当前产品 Web 的四场景 Registry 尚未接入文献任务级 `papers_dir`/问题绑定。入口现在明确返回 `literature_web_not_integrated`，不会启动错误场景或消耗模型预算。文献 CLI/离线实验入口和原始结果仍保留；Web 化需单独实现并验收逐 Task 来源冻结、成员隔离与预算路由。
+
 ## 当前：多窗口读取已学习/认证并在线对照（2026-10-13）
 
 [新读取续接记录](../../docs/experiments/window-continuation-20261012-0bc4ddc5.md)：复用旧edge compiler和批量Runtime，无共享核心变化。两个真实训练9/10边、独立问题6边认证；模型仍选词/页窗/科学解释，Runtime只读已发source_id。独立场景使用有界十进制字符串位置，H/M相同接口，旧探针保持。`window-study.py`先预览，train --call-model→learn→免费check-window正负→evaluate --call-model；默认不启正式Agent/Web。

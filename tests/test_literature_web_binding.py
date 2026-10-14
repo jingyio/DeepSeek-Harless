@@ -129,33 +129,21 @@ def test_reading_tools_cannot_bypass_review_claim_quotas(binding):
             await server._tool_manager.call_tool('prepare_pdf', {'paper_id': papers[0]['paper_id']}, context=None)
     asyncio.run(run())
 
-@POPPLER
-def test_literature_web_launcher_forwards_shutdown_and_does_not_leave_a_listener(corpus):
-    import os
+def test_literature_web_launcher_fails_closed_without_task_binding(tmp_path):
     import socket
     import subprocess
     import sys
-    import time
-    directory, _ = corpus
+    directory = tmp_path / 'papers'
+    directory.mkdir()
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
     run_id = uuid4().hex
     output = ROOT / '.local/web/runs' / run_id
-    process = subprocess.Popen([sys.executable, str(ROOT / 'scenarios/literature-notes/run-web.py'),
+    result = subprocess.run([sys.executable, str(ROOT / 'scenarios/literature-notes/run-web.py'),
         '--papers-dir', str(directory), '--port', str(port), '--run-id', run_id],
-        cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
-        for _ in range(200):
-            if (output / 'access-url.txt').exists(): break
-            if process.poll() is not None: pytest.fail('Web launcher exited before startup')
-            time.sleep(.05)
-        else: pytest.fail('Web startup timeout')
-        ids = json.loads((output / 'process.json').read_text())
-        process.terminate(); process.wait(timeout=20)
-        for pid in (ids['launcher_pid'], ids['harness_pid']):
-            with pytest.raises(ProcessLookupError): os.kill(pid, 0)
-        with socket.socket() as sock:
-            assert sock.connect_ex(('127.0.0.1', port)) != 0
-    finally:
-        if process.poll() is None: process.terminate(); process.wait(timeout=20)
-        shutil.rmtree(output, ignore_errors=True)
+        cwd=ROOT, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 2
+    assert 'literature_web_not_integrated' in result.stderr
+    assert not output.exists()
+    with socket.socket() as sock:
+        assert sock.connect_ex(('127.0.0.1', port)) != 0

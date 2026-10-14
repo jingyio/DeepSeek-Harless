@@ -1,22 +1,12 @@
-"""Start the official Web literature profile; keep the existing private key loader."""
-import importlib.util
-import os
-from pathlib import Path
-import subprocess
+"""Reject the old Web launcher until its task-scoped binding is ported.
+
+The current product Web uses a server-owned Scene Registry. Passing the old
+--papers-dir to it would start an unrelated scene or fail after startup.
+"""
 import sys
-import signal
-HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[1]
+
 if __name__ == '__main__':
-    env = os.environ.copy()
-    if '--real-model' in sys.argv:
-        spec = importlib.util.spec_from_file_location('literature_web_key', HERE / 'run-live.py')
-        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-        env['DEEPSEEK_API_KEY'] = mod.load_key(mod.KEY_FILE, env)
-    child = subprocess.Popen([sys.executable, str(ROOT / 'scripts/harness-web.py'),
-        '--scenario', 'literature-pdf', '--request-limit', '90', '--run-request-limit', '180',
-        '--budget-usd', '3', '--run-budget-usd', '6', *sys.argv[1:]], cwd=ROOT, env=env)
-    def stop(number, _frame):
-        if child.poll() is None: child.send_signal(number)
-    for number in (signal.SIGTERM, signal.SIGINT): signal.signal(number, stop)
-    raise SystemExit(child.wait())
+    print('literature_web_not_integrated: the literature PDF Web task binding is '
+          'not registered in the current product Web; use the explicit '
+          'literature CLI until a task-scoped adapter is implemented.', file=sys.stderr)
+    raise SystemExit(2)
