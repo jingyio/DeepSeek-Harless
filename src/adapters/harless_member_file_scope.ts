@@ -1,5 +1,5 @@
 /** Explicit member RPC boundary; desktop file previews intentionally allow broader reads. */
-import { realpathSync } from 'node:fs';
+import { realpathSync, statSync, existsSync } from 'node:fs';
 import { dirname, basename, resolve, relative, isAbsolute, sep } from 'node:path';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 const denied = () => new RemoteError('gateway/forbidden', '只允许访问当前账号的会话工作区。', {});
@@ -14,6 +14,16 @@ function canonical(path: string): string {
     const parent = dirname(path); if (parent === path) throw denied();
     return resolve(canonical(parent), basename(path));
   }
+}
+/** The scene launcher mounts the same private task directory at two paths. */
+export function memberTaskRoots(taskRoot = '/user/tasks', sceneRoot = '/app/.local/web'): string[] {
+  const roots = [resolve(taskRoot, 'sessions')];
+  if (!existsSync(sceneRoot)) return roots;
+  const original = statSync(taskRoot), alias = statSync(sceneRoot);
+  if (!original.isDirectory() || !alias.isDirectory() ||
+      original.dev !== alias.dev || original.ino !== alias.ino) throw denied();
+  roots.push(resolve(sceneRoot, 'sessions'));
+  return roots;
 }
 export function guardMemberFileRpc(gateway: any, lookup: (id: string) => Promise<any>, roots: string[]) {
   const allowed = roots.map(root => canonical(resolve(root)));
