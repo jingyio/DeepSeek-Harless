@@ -6,8 +6,8 @@
 - 默认只读盘点、读取、查重、索引与检索；用户显式开启“允许整理任务副本”并上传文件后，任务才冻结最多 6 步 `copy/move/quarantine` 授权，目标限 `organized/`、`copies/`、`quarantine/`，复用 `PlanScene` 的预览、同计划授权、执行与恢复收据。预览后上传使用任务配置摘要分离持久状态；无文件的可写任务提交拒绝。用户原件、其他 Session 和其他用户目录不在范围内。
 - Files 当前没有产品认证 Motif Library。Origin 与 Shadow 使用普通 Harness；Execute On 拒绝，RSI Off 保留选择但实际 Origin。私有实验库与历史费用结果不算产品 Execute 认证或 Verified Skip。
 - 已验证：V100 四项 Files 范围/权限/恢复/压缩 XML 与 Excel 元数据边界单测及 Registry 共 10 项通过；五场景免费 Harness 检查完成 30 组合、25 冻结草稿、5 个实际 MCP/上传、Files 授权草稿与空文件可写提交拒绝及双用户拒绝，0 模型请求。`npm run web:controls:check`、`npm run smoke`、`npm run motif:check` 通过，均免费诊断。真实 DeepSeek Flash Files 只读 Harness 任务完成，4 实际请求/4 MCP/0 工具错误/0 Verified Skip，预算代理估费 USD 0.001964256，实付未知、质量未人工评审。V100 两名实际 bwrap 成员各自完成五场景草稿，共 10 个，MCP/跨账号隔离通过，0 模型请求；浏览器人工点击未完成。本机缺 `mcp`，本地完整 Web 检查不能启动，V100 隔离检出补足该验证。
-- 独立 V100 检出 `/home/jingyij/jjy/.local/integration/harless-research-branches-20261014` 保留了集成代码补丁与私有日志；原 V100 checkout、当前公网服务和 PR #13 未改。本次根 `npm test` 为 597 通过/4 个文献 PDF Harness 测试失败，触发点为该隔离环境的 PDF 解析，Node 阶段因 Python 失败未执行；该缺口尚未归因到 Files，也不能写成全量通过。此前 PR #14 的 Ubuntu/Windows CI 均通过，最新 Files 提交仍待 CI。
-- 接手顺序：1）完成最终免费检查并复核 PR/CI；2）按既有 Web 预算与授权做一项真实 Files 只读 Harness 任务及浏览器选择；3）独立归因文献 PDF 四项 V100 失败，再决定 PR 合并及公网切换。回退为撤销本 PR，旧四场景不受 Files 选项影响。
+- 独立 V100 检出 `/home/jingyij/jjy/.local/integration/harless-research-branches-20261014` 保留了集成代码补丁与私有日志；原 V100 checkout、当前公网服务和 PR #13 未改。本次根 `npm test` 为 597 通过/4 个文献 PDF Harness 测试失败，触发点为该隔离环境的 PDF 解析，Node 阶段因 Python 失败未执行；不能写成全量通过。空环境直接调用 V100 私有 `pdfinfo` 已复现缺少 `libpoppler.so.73`，MCP 子进程传递动态库路径仍需独立核验。PR #14 最新代码提交的 Ubuntu/Windows CI 四项均通过。
+- 接手顺序：1）审阅 PR #14 并在浏览器人工验证 Files 菜单与一次上传任务；2）修正/验证 V100 文献 PDF 子进程的私有工具链环境；3）用当前 PPT 代码与 Schema 重新认证运行包，再决定 PR 合并及公网切换。回退为撤销本 PR，旧四场景不受 Files 选项影响。
 
 ## 2026-10-14：科研 RSI 与 PPT 场景分支集成（待审）
 
