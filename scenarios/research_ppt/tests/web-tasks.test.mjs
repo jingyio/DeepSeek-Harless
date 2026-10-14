@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { normalizePptRequest } from '../dist/web-tasks.js';
+const receipts = new Map([['receipt', { id:'receipt', name:'paper.pdf', path:'/private/paper.pdf', bytes:100, sha256:'a'.repeat(64) }]]);
+test('未指定页数用15页，固定双路预算',()=>{const r=normalizePptRequest({action:'preview',receipt_ids:['receipt']},receipts);assert.equal(r.slides,15);assert.equal(r.budget_usd,3);});
+test('拒绝前端自行提供路径、执行策略和权限',()=>{for(const key of ['path','tenant','execution','allow_rsi','command'])assert.throws(()=>normalizePptRequest({receipt_ids:['receipt'],[key]:'override'},receipts));});
+test('拒绝未知、重复和过多回执',()=>{for(const ids of [[],['unknown'],['receipt','receipt'],Array(9).fill('receipt')])assert.throws(()=>normalizePptRequest({receipt_ids:ids},receipts));});
+test('拒绝非法页数和预算，保留有限上限',()=>{for(const slides of [0,31,1.5,'15'])assert.throws(()=>normalizePptRequest({receipt_ids:['receipt'],slides},receipts));for(const budget_usd of [0,4,Infinity,'3'])assert.throws(()=>normalizePptRequest({receipt_ids:['receipt'],budget_usd},receipts));});
+test('重排必须为单份PPTX',()=>{assert.throws(()=>normalizePptRequest({receipt_ids:['receipt'],operation:'restyle'},receipts));const r=new Map([['ppt',{...receipts.get('receipt'),name:'old.pptx'}]]);assert.equal(normalizePptRequest({receipt_ids:['ppt'],operation:'restyle'},r).operation,'restyle');});
+test('总上传量256MiB守卫',()=>{const r=new Map([['big',{...receipts.get('receipt'),bytes:257*1024*1024}]]);assert.throws(()=>normalizePptRequest({receipt_ids:['big']},r));});

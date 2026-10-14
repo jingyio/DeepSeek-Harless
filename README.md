@@ -171,6 +171,8 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 
 ### Harless 多场景 Web
 
-`npm run web` / `web:real` 默认打开 `new-scene` 普通 Harness + Session 文件工具；`/harless` 的场景菜单直接选择服务端登记配置。PPT 连接现有19工具交付后端（需按 `scenarios/research_ppt/README.md` 安装依赖并构建）；论文校对和数据分析尚缺 main 正式后端，明确拒绝启动。没有认证生产 Library 时 Shadow 记录回退，Execute 拒绝；RSI Off 保留模式选择并实际采用 Origin。
+`npm run web` / `web:real` 默认打开 `new-scene` 普通 Harness + Session 文件工具；`/harless` 的场景菜单直接选择服务端登记配置。PPT 连接现有19工具交付后端（需按 `scenarios/research_ppt/README.md` 安装依赖并构建），论文校对5工具、数据分析4工具及通用场景2工具均有正式后端。当前仅PPT的冻结只读来源链有生产认证库；其他场景 Shadow 记录无库回退，Execute On 明确拒绝。RSI Off 保留模式选择并实际采用 Origin。PPT 代码或Prompt变化会使旧部署包的版本锁失效，须重新认证后才可恢复 Execute。
 
 任务与用户启动实例分别隔离；菜单不调用模型，已确认任务不随菜单变化。PPT 默认只读，生成页数/模板/输出权限经任务 API 设置后确认；原生聊天尚无该参数编辑界面。完整配置、用户入口依赖和验收见 [Harless 控制协议](docs/harless-controls.md)。`npm run web:scenes:check` 检查实际 Harness/MCP 与两用户实例隔离；`-- --real-model` 明确启用最多0.06美元的只读模型验收。历史样例工具只用 `--scene-registry config/harless-diagnostics.json --scenario example` 等显式诊断配置，默认产品菜单不映射样例。
+
+`feature/rsi-research-agent` 的文献与文件管理实验入口和 `feature/research-ppt-agent` 的 V16/V17 场景代码已在独立后续集成分支整合。它们不自动成为四个产品菜单场景；PPT 旧双路主聊天不继承 Mode/RSI，故未注册到默认 Web 任务入口。集成状态与尚需的固定字体复验见[主线交接](docs/handoffs/main.md)。

@@ -1,5 +1,11 @@
 # 科研 PPT 当前交接
 
+## 2026-10-14 后续分支集成
+
+`feature/research-ppt-agent@7375185` 的 V16/V17 场景代码、反馈、局部恢复与持久库实验已纳入独立集成分支；历史真实实验仍按原记录解释。双路主聊天代码位于场景内，但未接入默认 `/harless`：其现有契约只支持本地操作人，且不继承 Mode/RSI，不能覆盖 PR #13 的统一 Runtime 与成员路径。匿名实验 Markdown 已复制；历轮 PDF 与私有产物不入 Git。
+
+本机 PPT Node 构建/118测试通过；Python 279通过、2跳过，10个真实渲染断言因 LibreOffice PDF CJK 字形缺失失败，需在 V100 固定字体环境复验。场景代码和 Prompt 改动使先前私有 PPT Runtime 包的代码锁过期；未重新认证前 Execute 应拒绝，不能靠重写旧摘要放行。本轮模型请求0。
+
 ## 2026-10-14 Web/成员部署（当前补记）
 
 - Codex在 `codex/harless-launch-readiness-20261014` 完成Web库绑定与成员依赖挂载；最终功能验证 `396e2cf`，[PR #13](https://github.com/jingyio/DeepSeek-Harless/pull/13) 已推送/未合并，未切换公网、未修改原PPT研究数据/论文协作者工作区。

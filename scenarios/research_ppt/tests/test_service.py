@@ -32,7 +32,7 @@ class ServiceTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=area)
         self.source = Path(self.temp.name)/'input.pdf'
         write_pdf(self.source)
-        self.job=prepare([self.source],'验证输入和可编辑产物',2,True,True)
+        self.job=prepare([self.source],'验证输入和可编辑产物',2,True,True,persistent_library=False)
         self.service=PPTService(self.job)
         self.service.rsi=Path(self.temp.name)/'rsi'
         self.service.rsi.mkdir()

@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 from defusedxml import ElementTree as ET
 
-MAX_BYTES = 30 * 1024 * 1024
+MAX_BYTES = 100 * 1024 * 1024
 NS = {'a': 'http://schemas.openxmlformats.org/drawingml/2006/main'}
 P = 'http://schemas.openxmlformats.org/presentationml/2006/main'
 R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -20,8 +20,15 @@ PACKAGE_R = 'http://schemas.openxmlformats.org/package/2006/relationships'
 
 def file_hash(path: Path) -> str:
     if not path.is_file() or path.stat().st_size > MAX_BYTES:
-        raise ValueError('输入必须是小于 30 MiB 的文件')
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+        raise ValueError('输入必须是大小不超过 100 MiB 的文件')
+    digest, total = hashlib.sha256(), 0
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            total += len(block)
+            if total > MAX_BYTES:
+                raise ValueError('输入必须是大小不超过 100 MiB 的文件')
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def safe_zip(path: Path):
@@ -151,8 +158,12 @@ def pdf_page_geometry(path: Path, page_number: int, version_sha256: str) -> dict
                   'text': clean_text('\n'.join(''.join(span['text'] for span in line['spans'])
                                              for line in block['lines']))}
                  for block in blocks if block['type'] == 0]
+        # Some publishers omit punctuation after the figure number. Treat the
+        # label only as an anchor; all graphical/prose/ambiguity guards below
+        # still apply before exposing a crop.
+        caption_label = r'(?:Figure|Fig\.?|图)\s*\d+[A-Za-z]?(?:\s*[:：.]|\s+(?=\S))'
         captions = [block for block in texts if re.match(
-            r'^\s*(?:Figure|Fig\.?|图)\s*\d+[A-Za-z]?\s*[:：.]', block['text'], re.I)]
+            r'^\s*' + caption_label, block['text'], re.I)]
         drawings = sheet.get_drawings()
         if len(drawings) > 5000 or len(captions) > 30:
             return {'geometry_version': 2, 'figure_candidates': [], 'figure_localization': 'abstained',
@@ -180,7 +191,7 @@ def pdf_page_geometry(path: Path, page_number: int, version_sha256: str) -> dict
             # PDF text extraction may join two side-by-side captions into one
             # block. Such a block is not evidence that both panels share one
             # figure identity; do not silently merge independent figures.
-            if len(re.findall(r'(?<![\w])(?:Figure|Fig\.?|图)\s*\d+[A-Za-z]?\s*[:：.]',
+            if len(re.findall(r'(?<![\w])' + caption_label,
                               cap['text'], re.I | re.M)) > 1:
                 rejected.append({'caption': cap['text'][:600], 'caption_bbox': normalized(caption),
                                  'reason': '同一文本块包含多个独立图注，无法确认图件归属'})
