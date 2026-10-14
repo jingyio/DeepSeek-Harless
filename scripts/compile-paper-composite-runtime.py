@@ -56,7 +56,7 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
     if output.exists(): raise FileExistsError(output)
     raw_schema = read(schemas_path)
     scenario = read(ROOT / 'scenarios/paper_proofreading/scenario.json')
-    if (not isinstance(raw_schema, list) or len(raw_schema) != 13 or
+    if (not isinstance(raw_schema, list) or len(raw_schema) != 17 or
             [row['name'] for row in raw_schema] != sorted(scenario['allowed_tools'])):
         raise ValueError('actual complete paper MCP schema required')
     schema = [{'name': row['name'], 'description': row['description'],

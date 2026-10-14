@@ -77,6 +77,7 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
         [citationEdge[0]]:'@observed',
         [citationEdge[1]]:'@from_anchor',
       }:{})}};
+}
 /** A model must choose and pin the source; certified reuse may only dereference that same handle. */
 export function bindUploadedSourceTask(workspace:string,inputs:any[],request:any,manifest:any){
   if (!inputs.length || inputs.length > 8) throw Error('rsi_requires_approved_sources');
