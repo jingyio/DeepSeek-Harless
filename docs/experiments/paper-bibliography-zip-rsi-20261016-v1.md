@@ -3,6 +3,8 @@
 - 实验 ID：`paper-bibliography-training-20261016`；状态：局部 Shadow 机会已观察，完整论文审查收益未验证。
 - 代码基点：`codex/harless-motif-libraries-20261014`，合并 `main` 后的 `2afad5c` 加本记录对应的分支改动。V100 隔离检出为 `/home/jingyij/jjy/.local/integration/paper-archive-20261016`。原始论文、运行事件、账本、编译库和认证报告均在该检出的忽略目录 `.local/paper-bibliography-training-20261016/` 或 `.local/web/runs/`，不进入 Git。
 
+2026-10-16 清晨公共分支又吸收远端 `main` 的 `b26142f`（统一真实对话轨迹前端）；上述付费论文轮次均早于这次合并，V100 真实费用结果不冒称为合并后重测。合并后的前端文件已送入同一隔离检出做无模型回归，场景服务和认证库仍按各轮记录的有效配置解释。
+
 ## 问题和任务边界
 
 此前 Web 将真实论文简化为平铺的部分源码，无法读取原 ZIP 的嵌套目录和完整书目；旧 Motif 预测的 pin/read 调用也与当前批量证据工具不一致。因此先验证一个明确的局部结构步骤：模型从当前任务的 `collect_current_local_citation_evidence` 返回的 `source_id`，继续调用 `read_pinned_bibliography_first_page`。若真实模型不重复该调用，或 Shadow 在当前任务来源上预测错误，这个局部库便不可用。
@@ -107,4 +109,4 @@ v20 在既有定稿工具返回中增加零模型调用的 `bibliography_coverag
 
 在这份真实论文的局部书目读取任务上，**已观察**两次完整工具请求级 Shadow 命中，说明参数化只读步骤在那种前 12 条读取任务可复用；当前来源保留报告任务的 v19 三轮严格整请求命中却是 0。脚本接管固定字段已在某些 34 条活动引用轮次减少输出和估费，但同版纯旧写入的低费用反例说明端到端收益尚不稳定；**未验证** Execute 守卫后的实付节省、不同论文的适用率、完整 315 条参考文献真实性核验，以及脚本与 Motif 合用后的完整任务净成本。PR 合并门槛仍按完整原题面、相同质量范围和总费用衡量；下一步需给完整书目显式覆盖约束，避免 34/315 的 PDF 被视为原题面完整交付，再按相同覆盖范围比较费用。不把本局部比例外推。
 
-V100 隔离检出的无模型回归：`npm run smoke`、`npm run web:controls:check`、`npm run web:scenes:check` 均通过；后者覆盖 28 个冻结菜单预览、五场景实际 MCP/上传、双用户隔离及论文输出授权。`pytest -q tests/test_harless_rsi_bundle.py tests/test_paper_proofreading_legacy.py` 为 23/23。根 `npm test` 为 **968 通过、4 失败**，四项均在未修改的旧文献 PDF 解析/MCP 启动用例，详细名称及日志留于私有 `npm-test-v20.log`；入口在 Python 失败后未进入 Node 阶段。补跑 `node scripts/build-continuation-policy.mjs --check` 和 `node --test tests/test_*.mjs`：712 通过、3 跳过、0 失败。当前 v20 包有 23 个真实 MCP schema、3 条认证只读 Motif；schema SHA-256 `ca86d0c184d386076bb17b4e9b1618faffa23c36488196598f43e42db0538e0d`，Manifest SHA-256 `d3be63dfb3ce2e162e162420f0988b7adc6d76c209044f0f7db4becd03d99742`。每轮 `summary-<label>.json` 保存任务、Prompt 和有效配置摘要，原始账本与产物留在 V100 忽略目录。全部无模型测试不计为真实质量或费用证明。
+V100 隔离检出的无模型回归：`npm run smoke`、`npm run web:controls:check`、`npm run web:scenes:check` 均通过；后者覆盖 28 个冻结菜单预览、五场景实际 MCP/上传、双用户隔离及论文输出授权。`pytest -q tests/test_harless_rsi_bundle.py tests/test_paper_proofreading_legacy.py` 为 23/23。根 `npm test` 为 **968 通过、4 失败**，四项均在未修改的旧文献 PDF 解析/MCP 启动用例，详细名称及日志留于私有 `npm-test-v20.log`；入口在 Python 失败后未进入 Node 阶段。补跑 `node scripts/build-continuation-policy.mjs --check` 和 `node --test tests/test_*.mjs`：合并最新 `main` 的前端文件后 716 通过、3 跳过、0 失败；其中统一轨迹相关两文件在本地另跑 58/58。当前 v20 包有 23 个真实 MCP schema、3 条认证只读 Motif；schema SHA-256 `ca86d0c184d386076bb17b4e9b1618faffa23c36488196598f43e42db0538e0d`，Manifest SHA-256 `d3be63dfb3ce2e162e162420f0988b7adc6d76c209044f0f7db4becd03d99742`。每轮 `summary-<label>.json` 保存任务、Prompt 和有效配置摘要，原始账本与产物留在 V100 忽略目录。全部无模型测试不计为真实质量或费用证明。
