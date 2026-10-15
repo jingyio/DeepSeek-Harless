@@ -192,24 +192,29 @@ def create_server(directory, renderer_root=None):
                             sources: list[dict] | None = None, issues: list[dict] | None = None,
                             citation_checks: dict[str, dict[str, str]] | None = None,
                             notes: list[str] | None = None,
+                            remove_reference_number: int | None = None,
                             expected_draft_sha256: str = '') -> dict:
-        """Append typed report fields to this task's private draft; use returned SHA for the next call.
+        """Append typed fields or remove one draft reference; use returned SHA for the next call.
 
         scope is text; notes is a list of strings. Each references/sources/issues field is
         a list of report rows (at most eight per call). citation_checks is an object keyed
         by check name, each value having result/evidence/limitation strings. A reference's
         source_ids must name rows in sources; uploaded names belong in evidence_files.
         Missing required fields return staged=false and exact field names without writing.
+        Duplicate reference keys return staged=false without writing. To repair an older
+        draft, pass only remove_reference_number and the current draft SHA; later rows
+        are renumbered. This cannot change a finalized report or uploaded original.
         """
         patch = {name: value for name, value in {
             'scope': scope, 'references': references, 'sources': sources,
             'issues': issues, 'citation_checks': citation_checks, 'notes': notes,
+            'remove_reference_number': remove_reference_number,
         }.items() if value is not None}
         return output.stage(patch, expected_draft_sha256)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
     def finalize_current_audit(expected_draft_sha256: str) -> dict:
-        """Validate and freeze the model's report for this task; return SHA for PDF export."""
+        """Validate and freeze the report; invalid draft content returns a repair reason."""
         return output.finalize(expected_draft_sha256)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
@@ -308,7 +313,8 @@ class PaperOutput:
         if not sources or sources.get('audit.json') is not None:
             raise ValueError('paper_generated_audit_requires_original_sources')
         if (not isinstance(patch, dict) or not patch or
-            set(patch) - {'scope', 'references', 'sources', 'issues', 'citation_checks', 'notes'} or
+            set(patch) - {'scope', 'references', 'sources', 'issues', 'citation_checks', 'notes',
+                          'remove_reference_number'} or
             len(json.dumps(patch, ensure_ascii=False).encode()) > 16000):
             raise ValueError('paper_audit_patch_invalid')
         directory = self._draft_dir(workspace, grant)
@@ -335,6 +341,49 @@ class PaperOutput:
                         'missing_fields': missing[:16], 'missing_field_count': len(missing),
                         'semantic_quality_accepted': False}
             report = draft['report']
+            if 'remove_reference_number' in patch:
+                number = patch['remove_reference_number']
+                if (len(patch) != 1 or type(number) is not int or
+                    not 1 <= number <= len(report['references'])):
+                    raise ValueError('paper_audit_reference_removal_invalid')
+                report['references'].pop(number - 1)
+                for index, row in enumerate(report['references'], 1):
+                    row['number'] = index
+                report['reference_count'] = len(report['references'])
+                self._save(draft_path, draft)
+                return {'staged': True, 'draft_sha256': hashlib.sha256(
+                    self._private_bytes(draft_path)).hexdigest(),
+                    'removed_reference_number': number,
+                    'reference_count': len(report['references']),
+                    'semantic_quality_accepted': False}
+            for name in ('references', 'sources', 'issues', 'notes', 'citation_checks'):
+                rows = patch.get(name)
+                if isinstance(rows, (list, dict)) and len(rows) > 8:
+                    return {'staged': False,
+                            'draft_sha256': current if draft_path.exists() else None,
+                            'validation_error': 'paper_audit_batch_limit',
+                            'field': name, 'limit': 8, 'received': len(rows),
+                            'semantic_quality_accepted': False}
+            if 'references' in patch:
+                positions = {}
+                for index, row in enumerate(report['references'], 1):
+                    if isinstance(row, dict) and isinstance(row.get('key'), str):
+                        positions.setdefault(row['key'], index)
+                duplicates = []
+                for index, row in enumerate(
+                        patch['references'] if isinstance(patch['references'], list) else [],
+                        len(report['references']) + 1):
+                    if isinstance(row, dict) and isinstance(row.get('key'), str):
+                        if row['key'] in positions:
+                            duplicates.append([positions[row['key']], index])
+                        else:
+                            positions[row['key']] = index
+                if duplicates:
+                    return {'staged': False,
+                            'draft_sha256': current if draft_path.exists() else None,
+                            'validation_error': 'paper_audit_duplicate_keys',
+                            'duplicate_reference_numbers': duplicates[:16],
+                            'semantic_quality_accepted': False}
             if 'scope' in patch:
                 if not isinstance(patch['scope'], str) or not 1 <= len(patch['scope']) <= 2000:
                     raise ValueError('paper_audit_scope_invalid')
@@ -373,7 +422,22 @@ class PaperOutput:
             if draft.get('task_id') != grant['task_id'] or draft.get('source_versions') != sources:
                 raise ValueError('paper_audit_source_changed')
             report = draft['report']
-            validate_audit(report)
+            try:
+                validate_audit(report)
+            except ValueError as error:
+                result = {'finalized': False, 'draft_sha256': expected_draft_sha256,
+                          'validation_error': str(error),
+                          'semantic_quality_accepted': False}
+                if str(error) == 'renderer_input_duplicate_keys':
+                    positions = {}
+                    duplicates = []
+                    for index, row in enumerate(report['references'], 1):
+                        key = row.get('key') if isinstance(row, dict) else None
+                        if isinstance(key, str):
+                            if key in positions: duplicates.append([positions[key], index])
+                            else: positions[key] = index
+                    result['duplicate_reference_numbers'] = duplicates[:16]
+                return result
             if not report['scope'].strip(): raise ValueError('paper_audit_scope_required')
             if (directory / 'audit.json').exists(): raise ValueError('paper_audit_already_finalized')
             digest = hashlib.sha256(json.dumps(report, ensure_ascii=False, sort_keys=True,

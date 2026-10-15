@@ -128,6 +128,11 @@ def test_model_generated_audit_is_bound_to_task_sources_and_grant(tmp_path):
     assert not list((workspace / 'outputs' / 'paper-audits').rglob('draft.json'))
     first = output.stage({'scope': 'Only the uploaded main.tex was checked.'})
     assert first['staged'] is True
+    too_many = output.stage({'notes': ['check'] * 10}, first['draft_sha256'])
+    assert too_many == {'staged': False, 'draft_sha256': first['draft_sha256'],
+                        'validation_error': 'paper_audit_batch_limit',
+                        'field': 'notes', 'limit': 8, 'received': 10,
+                        'semantic_quality_accepted': False}
     with pytest.raises(ValueError, match='stale_paper_audit_draft'):
         output.stage({'notes': ['stale writer']}, '0' * 64)
     checks = {key: {'result': 'not checked', 'evidence': 'main.tex',
@@ -166,6 +171,63 @@ def test_report_staging_mcp_schema_exposes_field_types(tmp_path):
     assert 'string' in {branch['type'] for branch in fields['scope']['anyOf']}
     assert 'array' in {branch['type'] for branch in fields['notes']['anyOf']}
     assert 'object' in {branch['type'] for branch in fields['citation_checks']['anyOf']}
+    assert 'integer' in {branch['type'] for branch in fields['remove_reference_number']['anyOf']}
+
+
+def test_generated_report_duplicate_key_can_be_rejected_and_repaired(tmp_path):
+    workspace = tmp_path / 'session'
+    inputs = workspace / 'inputs'
+    inputs.mkdir(parents=True)
+    manuscript = b'\\cite{alpha,beta}'
+    (inputs / 'main.tex').write_bytes(manuscript)
+    (workspace / 'approved-inputs.json').write_text(json.dumps({
+        'files': {'main.tex': hashlib.sha256(manuscript).hexdigest()}}))
+    (workspace / 'paper-output-grant.json').write_text(json.dumps({
+        'schema_version': 1, 'task_id': 'task-a', 'allow_output': True,
+        'audit_sha256': None}))
+    output = PaperOutput(PaperEvidence(inputs), None)
+    checks = {key: {'result': 'not checked', 'evidence': 'main.tex',
+                    'limitation': 'local source only'}
+              for key in INPUT_SCHEMA['citation_checks_required']}
+
+    def reference(number, key):
+        return {'number': number, 'key': key, 'short_title': key,
+                'status': '存疑', 'priority': 'P2', 'source_ids': [],
+                'explanation': 'Local reference only', 'evidence_files': ['main.tex']}
+
+    first = output.stage({'scope': 'Uploaded manuscript', 'citation_checks': checks,
+                          'references': [reference(1, 'alpha'), reference(2, 'beta')]})
+    rejected = output.stage({'references': [reference(3, 'alpha')]}, first['draft_sha256'])
+    assert rejected['staged'] is False
+    assert rejected['validation_error'] == 'paper_audit_duplicate_keys'
+    assert rejected['duplicate_reference_numbers'] == [[1, 3]]
+    assert rejected['draft_sha256'] == first['draft_sha256']
+
+    # A draft produced by the previous append-only protocol must also be repairable.
+    draft_path = workspace / 'outputs' / 'paper-audits' / 'task-a' / 'draft.json'
+    draft = json.loads(draft_path.read_text())
+    draft['report']['references'].append(reference(3, 'alpha'))
+    draft['report']['reference_count'] = 3
+    raw = json.dumps(draft, ensure_ascii=False, sort_keys=True,
+                     separators=(',', ':')).encode()
+    draft_path.write_bytes(raw)
+    legacy_sha = hashlib.sha256(raw).hexdigest()
+    invalid = output.finalize(legacy_sha)
+    assert invalid['finalized'] is False
+    assert invalid['validation_error'] == 'renderer_input_duplicate_keys'
+    assert invalid['duplicate_reference_numbers'] == [[1, 3]]
+    assert invalid['draft_sha256'] == legacy_sha
+    with pytest.raises(ValueError, match='stale_paper_audit_draft'):
+        output.stage({'remove_reference_number': 3}, first['draft_sha256'])
+    repaired = output.stage({'remove_reference_number': 3}, legacy_sha)
+    assert repaired['staged'] is True and repaired['reference_count'] == 2
+    with pytest.raises(ValueError, match='removal_invalid'):
+        output.stage({'remove_reference_number': True}, repaired['draft_sha256'])
+    finalized = output.finalize(repaired['draft_sha256'])
+    assert finalized['reference_count'] == 2
+    assert [row['number'] for row in output.read_audit()['report']['references']] == [1, 2]
+    with pytest.raises(ValueError, match='already_finalized'):
+        output.stage({'remove_reference_number': 1}, repaired['draft_sha256'])
 
 
 def test_local_citation_batch_is_read_only_mcp_tool(tmp_path):
