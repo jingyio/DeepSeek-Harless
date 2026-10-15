@@ -77,6 +77,8 @@
 
 私有发布收据位于 `live-workflow-hotfixes/20261015T105742Z-ce272476e0cd-5869ecde/receipt.json`；只读复核为 `postdeploy-live-workflow-acceptance-ce272476e0cd-20261015T105914Z-2e62eb62.json`。部署与复核新增模型请求 0。原始用户数据和日志不回滚、不替换。
 
+最后的分支只读审计确认只继承所选 Motif 历史及文件，排除另一侧和分支点之后的 PPT 回复，原三轮历史、八份产物与反馈保持。31 个 stage 任务、14 组对照均终态后，已关闭 8 个临时进程、验收浏览器和本机转发；未删除数据，正式预算进程保持，账本仍为 825 请求。关闭收据为 `paired-stage/stage-shutdown-live-workflow-4b089bfb13964185a4ecbd2d2eef46f9.json`。
+
 ## 结论与边界
 
 确定性检查支持目录与选择一致、正确的原生请求契约、Pro Off 预算兼容，以及真实事件驱动的消息/轨迹保存机制。真实 stage 验收补充验证 Pro Off 可完成请求、Flash Off 数据报告两侧可以持续流式展示并交付文件、同对话 Flash On 跨场景讨论及分支可用；正式代码、配置和数据保留已按上述只读复核确认。Pro On 继续受当前任务预算限制；不得为开放选项扩大预算、偷偷截断输出或循环新建任务。
