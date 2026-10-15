@@ -2,7 +2,7 @@
 
 - 更新时间与交接人：2026-10-15，Codex。
 - 目标与本次范围：把旧论文引用 Motif 与旧 PDF 排版程序绑定当前 Web Task，并保留 main 的结构修订程序；共用在线 RSI Runtime，不自动执行写工具。
-- 分支 / commit / 工作区：`codex/harless-motif-libraries-20261014` 当前 `7875dac` 已推送，已整合 main `67e8445`；[PR #19](https://github.com/jingyio/DeepSeek-Harless/pull/19) 待审。私有 V100 隔离检出 `/home/jingyij/jjy/.local/integration/harless-motif-20261014`；生产进程未切换。
+- 分支 / commit / 工作区：`codex/harless-motif-libraries-20261014` 的代码版本 `7875dac` 已推送，后续实验文档在同一分支，已整合 main `67e8445`；[PR #19](https://github.com/jingyio/DeepSeek-Harless/pull/19) 待审。私有 V100 隔离检出 `/home/jingyij/jjy/.local/integration/harless-motif-20261014`；生产进程未切换。
 - 已完成：`scenarios/paper_proofreading/` 的 `paper_checks` 增加旧引用取证与 PDF 工具，连同 main 的 `paper_trace_rsi` 共 17 工具。`src/adapters/harless_task_scope.ts` 冻结上传、任务与输出授权；`harless_paper_renderer.py` 校验审阅包；`scripts/compile-paper-composite-runtime.py` 从原引用库和当前上传读取库编译两条只读局部图。PDF 仍为模型显式调用，收据不代表内容审阅。
 - 已验证：V100 抓取 17 个实际 MCP Schema；私有 `.local/paper-composite-20261014-v5/runtime/` 编译通过，Schema SHA `9726f5aeb7d3bb8a74670180433008567143350e9dd3736621ae6bdbed95a7e7`。场景矩阵 27 个有效冻结草稿、论文 MCP/上传、PDF 授权及双用户拒绝通过，0 模型；两个实际 bwrap 成员共 10 个五场景任务通过。真实 `deepseek-flash`/reasoning off 的 Execute 引用链 4 请求、1 Verified Skip、0 工具错误，代理估费 $0.002676852；PDF 基线导出 3 请求、1 个 75,162 字节文件、0 工具错误，代理估费 $0.002420208；账单实付未知。详见 [实验记录](../experiments/paper-legacy-reuse-audit-20261014.md)。
 - 五场景完整 `web:scenes:check` 另通过五组实际 MCP/上传、Files/PDF 授权预览和双用户拒绝，0 模型请求。
