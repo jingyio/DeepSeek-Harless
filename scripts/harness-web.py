@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.adapters.scenario import prepare_scenario
 from src.adapters.harless_scenarios import prepare_scene_registry
+from src.adapters.harless_product_prompt import product_persona, product_system_prompt
 from src.adapters.deepseek_cost_gate import (State, create_server, normalize_request_limit,
     request_limit_argument, cost_cap_argument, PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION)
 from src.adapters.web_task_budget import TaskBudgetRegistry, create_control_server
@@ -104,16 +105,14 @@ def prepare(args, output, endpoint):
     if scenario.suffix != '.json':
         scenario = ROOT / ({'new-scene': 'scenarios/general/scenario.json', 'ppt': 'scenarios/research_ppt/web-scenario.json',
                             'files': 'scenarios/file-management/web-scenario.json'}.get(args.scenario, f'scenarios/{args.scenario}/scenario.json'))
-    prepared = prepare_scenario(scenario, session_workspace='__HARLESS_SESSION_WORKSPACE__', case=args.case or ('l_retrieval_persistence' if args.scenario == 'portfolio-v1' else ''))
+    prepared = prepare_scenario(scenario, session_workspace='__HARLESS_SESSION_WORKSPACE__', case=args.case or ('l_retrieval_persistence' if args.scenario == 'portfolio-v1' else ''), web_deployment=True)
     preset = output / 'presets/sss-task'
     preset.mkdir(parents=True, mode=0o700)
-    rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
-        'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
-        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *([] if args.scenario in ('new-scene', 'ppt', 'files') else prepared['mcp_rows'])]
+    rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': product_persona()}, *([] if args.scenario in ('new-scene', 'ppt', 'files') else prepared['mcp_rows'])]
     rendered = json.dumps(rows, ensure_ascii=False, indent=2)
     for token, expression in prepared['environment_references'].items():
         rendered = rendered.replace(json.dumps(token), expression)
-    (preset / 'agent.cordis.yml').write_text(rendered)
+    (preset / 'agent.cordis.yml').write_text(rendered, encoding='utf-8')
     (preset / 'agent.cordis.yml').chmod(0o600)
     save(preset / 'preset.yml', {'name': f'GeneLoop · {prepared["name"]}（{"真实模型" if args.real_model else "免费模拟"}）'})
     canonical_prompt_sha = hashlib.sha256(prepared['prompt'].strip().encode()).hexdigest()
@@ -170,6 +169,12 @@ def prepare(args, output, endpoint):
     disabled = ['llm-deepseek', 'session-title-llm', 'llm-retry',
                 'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']
     patch = [{'id': name, 'disabled': True} for name in disabled]
+    patch.extend([{'id': 'system-prompt', 'config': product_system_prompt()},
+                  # Upstream overlays replace the whole config, so preserve
+                  # this launcher's --no-open and exact trusted-host contract.
+                  {'id': 'web-runtime', 'config': {'openBrowser': False, 'printUrl': True,
+                    'surfaceContext': False,
+                    'trustedHosts': [urlsplit(args.public_origin).netloc] if args.public_origin else []}}])
     if args.glm:
         patch.append({'id': 'llm-pi-ai', 'config': {'providers': {'harless-glm': {
             'displayName': 'GLM', 'apiKeyEnv': 'HARLESS_GLM_API_KEY',
@@ -187,7 +192,7 @@ def prepare(args, output, endpoint):
         {'insert': [{'id': 'sss-web-policy', 'name': (ROOT / 'src/adapters/dsh_web_policy.ts' if args.frozen else
             ROOT / 'src/adapters/harless_web_client/index.mjs').as_uri()}]}]
     save(output / 'host.patch.yml', patch)
-    (output / 'prompt.md').write_text(prepared['prompt']); (output / 'prompt.md').chmod(0o600)
+    (output / 'prompt.md').write_text(prepared['prompt'], encoding='utf-8'); (output / 'prompt.md').chmod(0o600)
     snapshot = {**public, 'host': '127.0.0.1', 'port': args.port,
                 'public_origin': args.public_origin, 'mode': args.mode, 'scenario': args.scenario,
                 'budget_usd': args.budget_usd, 'request_limit': args.request_limit,
@@ -216,9 +221,10 @@ def prepare(args, output, endpoint):
         for path in [scenario, ROOT / 'config/harness-web.json', ROOT / 'src/adapters' /
                      ('dsh_web_policy.ts' if args.frozen else 'dsh_web_tasks.ts'),
                      ROOT / 'src/adapters/deepseek_cost_gate.py', ROOT / 'scripts/harness-web.py',
+                     ROOT / 'config/geneloop-persona.json', ROOT / 'src/adapters/harless_product_prompt.py',
                      ROOT / 'scripts/motif-example.py', ROOT / 'package-lock.json',
                      *([] if args.frozen else [ROOT / 'src/adapters/web_task_request.ts',
-                       ROOT / 'src/adapters/web_task_budget.py',
+                       ROOT / 'src/adapters/web_task_budget.py', ROOT / 'src/adapters/harless_product_prompt.ts',
                        ROOT / 'src/adapters/harless_settings.ts', ROOT / 'src/adapters/harless_scenarios.py',
                        ROOT / 'src/adapters/harless_web_client/index.mjs',
                        ROOT / 'src/adapters/harless_web_client/package.json',

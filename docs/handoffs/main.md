@@ -1,6 +1,16 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-15：场景流式、推理开关和 PDF/Word 附件（当前，已发布）
+## 2026-10-15：产品身份、消息隐私与过程折叠（当前，已验收待发布）
+
+- 分支/范围：`codex/geneloop-message-privacy`；最终提交、PR 和发布状态待主任务填写。只调整 Web 产品身份、浏览器公开输出和聊天展示，研究 CLI 提示默认不变，不修改上游 Harness。
+- 已完成：共享 `config/geneloop-persona.json`，新建/恢复 Web Agent 均绑定产品身份并抑制运行环境注入；Session page/follow/list/search/control 与任务/对照视图使用分离投影，原始 journal、用户消息、用户文件和执行上下文不改写；补原生 RPC 与 WS 错误/元信息投影。
+- 前端：普通聊天默认最终回答，过程按钮展开/收起工具、上下文、早期回复与推理文字，生成中保留真实增量和简明状态。复用原生最终正文 renderer，复制/分支等尾部动作保留；只接管 chat node 插槽，不改 trace。对照标题 Baseline / Motif，Shadow 标注“影子评估”，回退文案使用“普通模式”。
+- 已验证：Linux 全量 Python 755 通过/193 条件跳过，最终完整 Node 629 通过/3 条件跳过；本机最终 75 项前端/输出/传输/gateway 与 49 项任务回归通过。真实普通聊天默认最终答复、工具按钮反复开关、复制及历史恢复通过；数据双栏各 1 个 Off 请求，均为 GeneLoop，自结束前分别观察到 9/7 个增量正文长度。
+- 兼容：PPT 仅刷新共享 task scope 的产品身份代码锁及登记摘要；学习边、来源/权限守卫、工具契约与训练证书未变。新增直接依赖 `ws@8.21.3`；私有部署须同步共享 persona JSON，保留原 Home/output、账号与预算账本。
+- 接手下一步：完成 CI、发布切换与公网复核，填写发布/回退收据。已验证与待发布项集中在 [本轮记录](../experiments/geneloop-message-privacy-20261015-v1.md)。
+- 权限/预算与边界：沿用已授权真实验收及部署范围，每任务费用约束和原累计账本不变；数据双栏实际 2 请求估费 0.00236868 美元，普通聊天另有 3 个模型步骤。共享累计 798 请求/估费 0.548247474 美元，不能用总量变化推算本轮费用。显示过滤不是工具授权或全格式敏感信息检测，不将本轮作为科研质量、成本收益或全面安全审计结论。
+
+## 2026-10-15：场景流式、推理开关和 PDF/Word 附件（历史，已发布）
 
 - 发布：`codex/scene-stream-thinking` 经 [PR #27](https://github.com/jingyio/DeepSeek-Harless/pull/27) 合入 main `3bb96877f246aa418d5faf4b1577973cfa12e072`，正式 release `geneloop-workspace-trash` 已部署该提交；最终四项 Windows/Linux CI 全通过。此前线上 `b4712d6` 的切换收据与数据保持。
 - 已完成：SSE 只在收到有效快照后视为可用，始终保留只读恢复；真实 DeepSeek On/Off 选择和每轮冻结；取消场景级附件扩展名拒绝，补 PDF/DOC/DOCX 等只读正文提取及明确未解析状态；报告从混合附件中找数据表并保留其余资料。

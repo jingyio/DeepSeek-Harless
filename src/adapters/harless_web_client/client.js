@@ -338,7 +338,7 @@ window.__ModuleLoader__.load({
         };
         const labels = { preparing: '准备中', queued: '等待执行', running: '运行中', completed: '回复完成', failed: '失败', cancelled: '已取消' };
         const pane = lane => {
-          const result = value.lanes[lane], files = result.artifacts || [], title = lane === 'baseline' ? 'Baseline · DSH' : result.mode === 'shadow' ? 'Motif · Shadow' : 'Motif · DSH';
+          const result = value.lanes[lane], files = result.artifacts || [], title = lane === 'baseline' ? 'Baseline' : result.mode === 'shadow' ? 'Motif · 影子评估' : 'Motif';
           const single = value.presentation === 'single';
           const notStarted = result.delivery_status === 'not_started';
           const activity = Array.isArray(result.activity) ? result.activity : [];
@@ -361,7 +361,7 @@ window.__ModuleLoader__.load({
               h('summary', null, h('span', { role: 'status', 'aria-live': 'polite' }, progressLabel)),
               activity.length > 0 && h('ol', null, ...activity.map((entry, index) => h('li', { key: index, 'data-status': entry.status },
                 h('span', null, entry.label), h('small', null, ({ running: '进行中', completed: '完成', failed: '未完成' })[entry.status] || ''))))),
-            result.fallback_reason && h('p', { className: 'harless-paired-notice' }, '优化未启用，已回退普通 DSH：' + result.fallback_reason),
+            result.fallback_reason && h('p', { className: 'harless-paired-notice' }, '优化未启用，已回退普通模式：' + result.fallback_reason),
             result.failure && h('p', { role: 'alert', className: 'harless-paired-notice' }, result.failure),
             h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, (result.answer_display ?? result.answer)
               ? MarkdownText ? h(MarkdownText, { text: result.answer_display ?? result.answer, streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
@@ -404,6 +404,93 @@ window.__ModuleLoader__.load({
           anchorSeq:context.start.event.seq,location:context.start.location,visibility:'visible',data: context.state } : null,
       }), 'harless-comparison-definition');
       ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'harless-comparison' }, ComparisonNode));
+      // Keep the native event stream and safe assistant renderer. Product chat
+      // groups process evidence itself: native Compact deliberately expands open
+      // turns and incomplete history, which is unsuitable for this interface.
+      const processKinds = new Set(['context', 'assistant-step', 'tool-call', 'model-retry']);
+      const hiddenChatNode = () => null;
+      const turnOf = node => node.location?.turn?.turn ?? node.data?.turn;
+      const visibleBlocks = node => (node.data.blocks || []).filter(block => block.kind === 'text' || block.kind === 'image');
+      const hasAnswer = node => visibleBlocks(node).some(block => block.kind === 'image' || block.text?.trim());
+      const publicProcessText = text => String(text ?? '')
+        .replace(/@deepseek-ai\/dsh[\w./-]*/gi, 'GeneLoop')
+        .replace(/\bdsh(?:[-_][a-z0-9]+)+\b/gi, 'GeneLoop')
+        .replace(/\bDSH\b/gi, 'GeneLoop');
+      const contentText = content => (content || []).filter(block => block.type === 'text').map(block => publicProcessText(block.text)).join('\n');
+      const toolLabel = block => {
+        const name = (block.call?.name || block.name || '').split('__').pop();
+        return ({ list_files: '查看文件', read_file: '读取文件', inspect_study: '检查研究资料',
+          analyze_data: '分析数据', run_analysis: '分析数据', create_presentation: '生成演示文稿',
+          export_report: '生成报告', web_search: '搜索资料', search: '搜索资料' })[name] || '工具调用';
+      };
+      const toolCount = block => 1 + (block.subCalls || []).reduce((count, child) => count + toolCount(child), 0);
+      function ToolEvidence({ block }) {
+        const done = block.kind === 'tool-result', text = contentText(block.content);
+        return h('section', { className: 'geneloop-tool-evidence' },
+          h('div', { className: 'geneloop-process-label' }, toolLabel(block), ' · ', done ? block.isError ? '未完成' : '完成' : '进行中'),
+          (block.call?.argsRaw || block.argsRaw) && h('pre', null, publicProcessText(block.call?.argsRaw || block.argsRaw)),
+          text && h('pre', null, text),
+          ...(block.subCalls || []).map(child => h(ToolEvidence, { key: child.callId, block: child })));
+      }
+      function AssistantContent({ node, owner, process = false }) {
+        const original = ctx.slots.entries?.('conversation.chat.node').find(entry => entry.options.key === 'assistant-step' && entry.component !== ProductChatNode);
+        const blocks = process ? node.data.blocks.filter(block => ['text', 'image', 'reasoning'].includes(block.kind)) : visibleBlocks(node);
+        // A registered public renderer preserves authorized file mentions,
+        // images, Markdown and interruption presentation without private APIs.
+        if (original) return h(original.component, { ...owner, node: { ...node, data: { ...node.data, blocks } }, turnProcess: undefined });
+        return h('div', { 'data-streaming': node.data.status === 'running' }, ...blocks.map((block, i) =>
+          block.kind === 'text' || block.kind === 'reasoning' ? MarkdownText
+            ? h(MarkdownText, { key: i, text: block.text, streaming: node.data.status === 'running', labels: markdownLabels })
+            : h('p', { key: i }, block.text)
+            : block.kind === 'image' ? owner.renderMessageImages?.({ images: [{ attachment: block.attachment }], align: 'start' }) : null));
+      }
+      function ProductTurn({ owner, rows, answer, running }) {
+        const [open, setOpen] = React.useState(false);
+        const id = React.useId();
+        const evidence = rows.filter(row => row !== answer);
+        const reasoning = (answer?.data.blocks || []).filter(block => block.kind === 'reasoning' && block.text);
+        const tools = rows.filter(row => row.kind === 'tool-call');
+        const count = tools.reduce((total, row) => total + toolCount(row.data.root), 0);
+        const messageCount = evidence.filter(row => row.kind === 'assistant-step' && hasAnswer(row)).length;
+        const hasProcess = evidence.length > 0 || reasoning.length > 0;
+        const active = tools.findLast(row => row.data.root.kind !== 'tool-result');
+        const status = active ? '正在' + toolLabel(active.data.root) : answer?.data.status === 'running' && hasAnswer(answer) ? '正在回复' : '正在处理';
+        const label = count ? `${count} 次工具调用${messageCount ? ` · ${messageCount} 条过程消息` : ''}` : '查看处理过程';
+        return h('section', { className: 'geneloop-product-turn' },
+          h('style', null, `.geneloop-product-turn{min-width:0}.geneloop-process-toggle{display:flex;align-items:center;gap:8px;border:0;border-radius:8px;padding:7px 9px;margin:0 0 8px -9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer;text-align:left}.geneloop-process-toggle:hover{background:var(--dsw-alias-interactive-bg-hover)}.geneloop-process-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.geneloop-process-toggle svg{flex:none;transition:transform .15s}.geneloop-process-toggle[aria-expanded=true] svg{transform:rotate(90deg)}.geneloop-process-evidence{border-left:2px solid var(--dsw-alias-border-l2,#8885);padding-left:14px;margin:4px 0 18px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.geneloop-process-evidence>section{margin:12px 0}.geneloop-process-evidence pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.geneloop-process-label{font-weight:500}.geneloop-process-status{font-size:13px;color:var(--dsw-alias-label-secondary);margin:0 0 8px}@media(prefers-reduced-motion:reduce){.geneloop-process-toggle svg{transition:none}}`),
+          hasProcess && h('button', { type: 'button', className: 'geneloop-process-toggle', 'aria-expanded': open, 'aria-controls': id,
+            onClick: () => setOpen(value => !value) },
+            h('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, 'aria-hidden': true }, h('path', { d: 'm4 2 4 4-4 4' })), label),
+          running && h('p', { role: 'status', 'aria-live': 'polite', className: 'geneloop-process-status' }, status + '…'),
+          h('div', { id, className: 'geneloop-process-evidence', hidden: !open }, open && [
+            ...evidence.map(row => row.kind === 'assistant-step'
+              ? h('section', { key: row.key }, h('div', { className: 'geneloop-process-label' }, '过程消息'), h(AssistantContent, { node: row, owner, process: true }))
+              : row.kind === 'tool-call' ? h(ToolEvidence, { key: row.key, block: row.data.root })
+              : h('section', { key: row.key }, h('div', { className: 'geneloop-process-label' }, row.kind === 'model-retry' ? '请求重试' : '上下文'),
+                h('pre', null, row.kind === 'model-retry' ? '请求暂未完成，正在尝试恢复。' : contentText(row.data.content)))),
+            ...reasoning.map((block, i) => h('section', { key: 'reasoning-' + i }, h('div', { className: 'geneloop-process-label' }, '思考过程'), h('pre', null, publicProcessText(block.text))))]),
+          answer && h(AssistantContent, { node: answer, owner }));
+      }
+      function ProductChatNode(owner) {
+        const { node } = owner;
+        const snapshot = owner.useChat(value => value), turn = turnOf(node);
+        const rows = snapshot.order.map(key => snapshot.nodes.get(key)).filter(row => row && row.visibility !== 'hidden' && turnOf(row) === turn && processKinds.has(row.kind));
+        const assistants = rows.filter(row => row.kind === 'assistant-step');
+        const closed = (snapshot.timeline?.turns.get(turn)?.status ?? node.location?.turn?.status) === 'closed';
+        // While generating, show the latest real text delta. After completion,
+        // retain the final content-bearing message even if the tail is empty.
+        const answer = closed ? assistants.findLast(hasAnswer) : assistants.at(-1);
+        // Respect the public outer-seat boundary even when the last native
+        // assistant block is an extension type rather than visible prose.
+        const declaredAnswer = closed ? assistants.find(row => row.data.step === owner.turnProcess?.spec?.answerStep) : undefined;
+        const anchor = declaredAnswer || answer || rows.at(-1);
+        if (!anchor || anchor.key !== node.key) return hiddenChatNode();
+        return h(ProductTurn, { key: `${owner.sessionId}:${turn}`, owner, rows, answer, running: !closed });
+      }
+      for (const key of processKinds) ctx.slots.inject('conversation.chat.node', () =>
+        ctx.slots.register({ name: 'conversation.chat.node', key, priority: -100, locale: 'chat' }, ProductChatNode));
+      for (const key of ['system-prompt', 'turn-process']) ctx.slots.inject('conversation.chat.node', () =>
+        ctx.slots.register({ name: 'conversation.chat.node', key, priority: -100 }, hiddenChatNode));
       function inputFor(id) {
         const scope = sessions.scope(id);
         if (!scope) throw Error('会话已关闭，请重新打开');

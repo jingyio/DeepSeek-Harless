@@ -203,7 +203,7 @@ test('completed model text without delivery is visibly distinguished and cannot 
   const value = comparison(); value.lanes.motif.artifacts = []; value.lanes.motif.delivery_status = 'not_delivered';
   value.lanes.motif.delivery_message = '本轮未通过交付校验，没有可下载成品。';
   const f = fixture(undefined, value); await flush(); f.render();
-  const pane = f.all(row => row.type === 'section' && row.props['aria-label'] === 'Motif · DSH')[0];
+  const pane = f.all(row => row.type === 'section' && row.props['aria-label'] === 'Motif')[0];
   assert.match(f.content(pane), /回复完成/); assert.match(f.content(pane), /没有可下载成品/);
   assert.equal(f.all(row => row.type === 'a' && row.props.download, pane).length, 0);
   assert.equal(f.all(row => row.type === f.MarkdownText, pane)[0].props.fileMentions.resolve(artifact.name), undefined); f.dispose();
