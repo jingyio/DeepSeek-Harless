@@ -284,10 +284,10 @@ test('A failed native reference insertion cannot turn a retained draft into an a
   } }), input = f.inputs.get('alice'); input.setDraft('/ppt 保留草稿'); input.addAttachments(['paper']);
   const n = nativeController(f.trigger, input); await flush(); input.setPhase('adjudicating');
   assert.equal(await n.controller.adjudicate('/ppt 保留草稿', new AbortController().signal, { attachments: 1 }), 'handled');
-  input.setPhase('plain'); await flush();
-  assert.equal(selects, 2); assert.equal(f.submissions.length, 0); assert.equal(input.inserts.length, 0);
+  input.failInsert = true; input.setPhase('plain'); await flush();
+  assert.equal(selects, 1); assert.equal(f.submissions.length, 0); assert.equal(input.inserts.length, 0);
   assert.equal(input.state.getSnapshot().draft, '/ppt 保留草稿'); assert.deepEqual(input.state.getSnapshot().attachmentIds, ['paper']);
-  assert.match(input.notices.at(-1).text, /请确认后重新发送/); n.controller.dispose();
+  assert.match(input.notices.at(-1).text, /输入已改变/); n.controller.dispose();
 });
 
 test('A new attachment added to the target before auto-submit keeps the target draft unsent', async () => {
@@ -327,4 +327,34 @@ test('Leaving during typed select cancels adjudication without sending in either
   await posted; f.setCurrent('bob'); resume(); assert.equal(await attempt, 'handled');
   input.setPhase('plain'); await flush(); assert.equal(f.submissions.length, 0);
   assert.equal(input.state.getSnapshot().draft, '/ppt 论文报告'); assert.equal(input.notices.length, 0); n.controller.dispose();
+});
+
+test('Choosing a scene shows its native chip before a delayed backend responds', async()=>{
+  let release; const gate=new Promise(resolve=>release=resolve);
+  const f=fixture({allAvailable:true,beforePost:()=>gate}), input=f.inputs.get('alice'), session={sessionId:'alice'};
+  await f.trigger.candidates(session,{query:'d',position:'leading'}); input.setDraft('/d');
+  f.trigger.onPick({session,candidate:{value:'research-data-analysis'},span:{start:0,end:2,draftRev:input.state.getSnapshot().draftRev}});
+  assert.equal(input.inserts.at(-1).label,'/data');
+  assert.equal(input.state.getSnapshot().draft,'/data ');
+  assert.equal(f.values.get('alice').selection.scene,'new-scene');
+  release(); await flush(); assert.equal(f.values.get('alice').selection.scene,'research-data-analysis');
+});
+
+test('A rejected optimistic pick restores unchanged text and keeps attachments', async()=>{
+  const f=fixture({allAvailable:true,beforePost:()=>{throw Error('fixture unavailable');}}), input=f.inputs.get('alice'), session={sessionId:'alice'};
+  await f.trigger.candidates(session,{query:'d',position:'leading'}); input.setDraft('/d 计划');input.addAttachments(['data']);
+  await f.pick('alice','research-data-analysis');
+  assert.equal(input.state.getSnapshot().draft,'/d 计划'); assert.deepEqual(input.state.getSnapshot().attachmentIds,['data']);
+  assert.match(input.notices.at(-1).text,/fixture unavailable/);
+});
+
+test('Typing after an immediate scene chip is normal and never sends or loses those edits', async()=>{
+ let release;const gate=new Promise(resolve=>release=resolve);
+ const f=fixture({allAvailable:true,beforePost:()=>gate}),input=f.inputs.get('alice'),session={sessionId:'alice'};
+ await f.trigger.candidates(session,{query:'d',position:'leading'});input.setDraft('/d');
+ f.trigger.onPick({session,candidate:{value:'research-data-analysis'},span:{start:0,end:2,draftRev:input.state.getSnapshot().draftRev}});
+ input.setDraft('/data 请帮我规划分析');input.addAttachments(['latest']);release();await flush();
+ assert.equal(input.state.getSnapshot().draft,'/data 请帮我规划分析');assert.deepEqual(input.state.getSnapshot().attachmentIds,['latest']);
+ assert.equal(input.notices.length,0);assert.equal(f.submissions.length,0);
+ assert.equal(f.values.get('alice').selection.scene,'research-data-analysis');
 });

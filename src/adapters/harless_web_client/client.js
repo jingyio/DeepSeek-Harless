@@ -6,7 +6,7 @@ window.__ModuleLoader__.load({
     // Use the exact safe AST renderer used by native Harness assistant messages.
     const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
     const MarkdownText = primitives?.MarkdownText;
-    const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'uiConversation', 'slots'];
+    const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'uiConversation', 'slots', 'workspaces', 'uiWorkspace', 'layout'];
     const endpoint = '/api/harless/settings';
     const observers = new Map(), lexiconObservers = new Map(), cache = new Map(), choosing = new Map(), revisions = new Map();
     const aliases = { ppt: 'ppt', 'paper-proofreading': 'paper', 'research-data-analysis': 'data', 'new-scene': 'chat' };
@@ -66,6 +66,10 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       window.__installGeneLoopBrand?.(ctx, React);
       window.__installGeneLoopWorkspaces?.(ctx, React, primitives);
+      ctx.slots.inject('conversation.hero.agentPreset', () => ctx.slots.register(
+        { name: 'conversation.hero.agentPreset', priority: -100 }, () => null));
+      ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register(
+        { name: 'conversation.session.header.actions', id: 'agent-preset', priority: -100 }, () => null));
       const command = ctx.get('commandUi'), triggers = ctx.get('inputTriggers');
       const sessions = ctx.get('sessions'), conversation = ctx.get('conversation');
       const h = React.createElement;
@@ -313,7 +317,7 @@ window.__ModuleLoader__.load({
         return state.draftRev === span.draftRev && state.phase === 'plain'
           && (expectedAttachments === undefined || sameAttachments(state.attachmentIds, expectedAttachments));
       };
-      async function chooseScene(session, id, span, fromCommand = false) {
+      async function chooseScene(session, id, span, fromCommand = false, automatic = false) {
         // The current span, not a formerly highlighted menu row, owns the pick.
         const oldInput = inputFor(session.sessionId), initial = draftSnapshot(oldInput);
         if (!sameDraft(oldInput, span)) throw Error('输入已改变，请重新选择场景');
@@ -325,14 +329,22 @@ window.__ModuleLoader__.load({
           await choosing.get(session.sessionId);
           throw Error('场景刚刚更新，请按当前输入重新选择');
         }
+        // Commit the native chip synchronously. The backend may need to mount
+        // an MCP; that must not delay visual acknowledgement of a valid pick.
+        let expectedSpan = span, optimistic = false;
+        if (known && known.available !== false) {
+          if (!oldInput.insertReference(reference(known), span)) throw Error('输入已改变，请重新选择场景');
+          optimistic = true;
+          expectedSpan = { ...span, draftRev: oldInput.state.getSnapshot().draftRev };
+        }
         const guard = watchSession(session);
         const operation = (async () => {
           guard.check();
           const oldInput = inputFor(session.sessionId);
-          const value = await settings(session, guard.signal), scene = value.scenes.find(row => row.id === id);
+          const value = cache.get(session.sessionId) || await settings(session, guard.signal), scene = value.scenes.find(row => row.id === id);
           guard.check();
           if (!scene || scene.available === false) throw Error('该场景暂不可用：' + (scene?.unavailable_reason || '未部署'));
-          if (!sameDraft(oldInput, span, initial.attachmentIds)) throw Error('输入或附件已改变，请重新选择场景');
+          if (!sameDraft(oldInput, expectedSpan, initial.attachmentIds)) throw Error('输入或附件已改变，请重新选择场景');
           if (!fromCommand && !('/' + shortcut(scene)).startsWith(token)) throw Error('候选已更新，请按当前输入重新选择场景');
           let next;
           try {
@@ -342,14 +354,14 @@ window.__ModuleLoader__.load({
             if (error.code !== 'scene_requires_new_session') throw error;
             // A scene switch cannot rewrite an immutable started preset. Create
             // an addressed new session and hand off only the unchanged draft.
-            if (!sameDraft(oldInput, span, initial.attachmentIds)) throw Error('输入或附件已改变，请重新选择场景');
+            if (!sameDraft(oldInput, expectedSpan, initial.attachmentIds)) throw Error('输入或附件已改变，请重新选择场景');
             const draft = initial;
             next = await request(session, { action: 'new_session', inherit_session: session.sessionId, selection: { scene: id } }, guard.signal);
             guard.check();
             await sessions.refresh();
             guard.check();
             const fresh = inputFor(next.session_id);
-            if (!sameDraft(oldInput, span, draft.attachmentIds)) {
+            if (!sameDraft(oldInput, expectedSpan, draft.attachmentIds)) {
               fresh.notify('info', '新场景会话已创建；原输入有新修改，已保留在原会话。');
               throw Error('输入或附件已改变，原输入已保留；请在会话列表打开新场景。');
             }
@@ -368,12 +380,20 @@ window.__ModuleLoader__.load({
             return { input: fresh, state: draftSnapshot(fresh), sessionId: next.session_id };
           }
           publish(session.sessionId, next);
-          if (!sameDraft(oldInput, span, initial.attachmentIds) || !oldInput.insertReference(reference(scene), span))
+          // A manual pick only selects; typing while its mount completes is
+          // normal. Keep those edits. Automatic handoff still requires CAS.
+          if (optimistic && !automatic && !sameDraft(oldInput, expectedSpan, initial.attachmentIds))
+            return { input: oldInput, state: draftSnapshot(oldInput), sessionId: session.sessionId };
+          if (!sameDraft(oldInput, expectedSpan, initial.attachmentIds) || (!optimistic && !oldInput.insertReference(reference(scene), span)))
             throw Error('场景已选择，但输入或附件已改变；已保留草稿，请确认后重新发送。');
           return { input: oldInput, state: draftSnapshot(oldInput), sessionId: session.sessionId };
         })();
         choosing.set(session.sessionId, operation);
-        try { return await operation; } finally { guard.dispose(); if (choosing.get(session.sessionId) === operation) choosing.delete(session.sessionId); }
+        try { return await operation; }
+        catch (error) {
+          if (optimistic && sameDraft(oldInput, expectedSpan, initial.attachmentIds)) oldInput.setDraft(initial.draft);
+          throw error;
+        } finally { guard.dispose(); if (choosing.get(session.sessionId) === operation) choosing.delete(session.sessionId); }
       }
       const report = (session, error) => { if (!isCurrent(session) || error.name === 'AbortError') return; try { inputFor(session.sessionId).notify('error', error.message); } catch {} };
       function handOffAfterSubmit(session, scene, span, signal) {
@@ -386,7 +406,7 @@ window.__ModuleLoader__.load({
           if (done || input.state.getSnapshot().phase === 'adjudicating') return;
           stop();
           if (signal.aborted || !isCurrent(session) || !sameDraft(input, span, frozenAttachments)) return;
-          void chooseScene(session, scene.id, span).then(target => {
+          void chooseScene(session, scene.id, span, false, true).then(target => {
             // Submit exactly the explicitly requested draft once. A user edit
             // during handoff wins and remains unsent in its addressed session.
             if (!signal.aborted && isCurrent(target) && sameDraft(target.input, target.state, target.state.attachmentIds))

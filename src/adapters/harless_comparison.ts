@@ -10,12 +10,12 @@ const lanes = ['baseline', 'motif'] as const;
 type LaneName = typeof lanes[number];
 type Lane = { session_id: string; task_id?: string; status: string; answer?: string; failure?: string;
   answer_display?: string; answer_binding?: any;
-  mode?:string;library_sha256?:string;
+  mode?:string;library_sha256?:string;source_pending?:boolean;
   attempt: number; output_sha256?: string; stats?: any; fallback_reason?: string; artifacts?: any[] };
 type Turn = { id: string; session_id: string; request_id: string; fingerprint: string; scene: string;
   options: any; model: any; input_sha256: string; created_at: string; status: string;
   lanes: Record<LaneName, Lane>; scores: Partial<Record<LaneName, number>>; score_revision: number; input: any;
-  published?: boolean; cancellation_requested?: boolean; source_files?:Record<string,any> };
+  published?: boolean; cancellation_requested?: boolean; source_files?:Record<string,any>; prior_context?: Partial<Record<LaneName,string>> };
 export class ComparisonError extends Error {
   code: string; status: number;
   constructor(code: string, message: string, status = 409) { super(message); this.code = code; this.status = status; }
@@ -63,6 +63,7 @@ export function createComparisonService(output: string, principal: string, host:
       return [name, { ...lane, artifacts, delivery_status,
         delivery_message: delivery_status === 'available' ? '结果文件已保存，可下载到本地。'
           : delivery_status === 'pending' ? '结果文件会在生成并通过交付检查后显示。'
+          : lane.source_pending ? '本轮为场景问答；需要处理文件时，可在此对话中上传资料。'
           : t.scene === 'research-data-analysis' ? '本轮尚无通过交付校验的报告。模型回复结束不表示报告已成功生成。'
           : '本轮没有可下载的结果文件。' }];
     })) });
@@ -86,7 +87,7 @@ export function createComparisonService(output: string, principal: string, host:
     Object.assign(lane, { status: t.cancellation_requested ? 'cancelled' : task.status === 'budget_exhausted' ? 'failed' : task.status === 'awaiting_confirmation' ? 'queued' : task.status,
       answer: task.answer ?? lane.answer ?? '', stats: task.stats, fallback_reason: task.fallback_reason ?? null,
       answer_display: task.answer_display, answer_binding: task.answer_binding,
-      mode:task.mode,library_sha256:task.library_sha256,
+      mode:task.mode,library_sha256:task.library_sha256,source_pending:task.source_pending === true,
       artifacts: task.deliveries ?? [], failure: task.status === 'budget_exhausted'
         ? (task.deliveries?.length ? '已完成的文件通过交付校验，可下载；后续模型回复达到请求或预算上限，未完成的部分与支出均已保留。' : '这一路达到预算或请求上限，结果与已有支出已保留。')
         : task.status === 'failed' ? '这一路运行失败，请查看状态后重试；已校验的交付文件仍可下载。' : undefined });
@@ -149,8 +150,8 @@ export function createComparisonService(output: string, principal: string, host:
     // upload receipt. These server-minted references never appear in GET views.
     sourceFor: (session:string,requestId:string,receipt:string) =>
       state.turns.find(t=>t.session_id===session&&t.request_id===requestId)?.source_files?.[receipt],
-    isLane: (id: string) => Object.values(state.threads).some((thread: any) => Object.values(thread.lanes).includes(id)),
-    parentFor: (id: string) => Object.entries(state.threads).find(([, thread]: any) => Object.values(thread.lanes).includes(id))?.[0] ?? null,
+    isLane: (id: string) => state.turns.some(t => lanes.some(name => t.lanes[name].session_id === id)) || Object.values(state.threads).some((thread: any) => Object.values(thread.lanes).includes(id)),
+    parentFor: (id: string) => state.turns.find(t => lanes.some(name => t.lanes[name].session_id === id))?.session_id ?? Object.entries(state.threads).find(([, thread]: any) => Object.values(thread.lanes).includes(id))?.[0] ?? null,
     async admit(session: string, request: any, context: any) { return locked(async () => {
       await host.owns(session);
       if (disposed) throw new ComparisonError('comparison_stopping', '服务正在重启，请稍后再试。');
@@ -168,9 +169,19 @@ export function createComparisonService(output: string, principal: string, host:
       }
       if (state.turns.some(t => t.session_id === session && !terminal.has(t.status))) throw new ComparisonError('comparison_busy', '这条对照仍在运行，请等待或取消。');
       let thread = state.threads[session];
-      if (thread && request.content.some((part: any) => part.type === 'file')) throw new ComparisonError('new_session_required', '新增资料需要新会话，原对照与评分已保留。');
+      const history = state.turns.filter(t => t.session_id === session);
+      const withFiles = request.content.some((part: any) => part.type === 'file');
+      const firstUpload = Boolean(thread && withFiles && !history.some(t => t.input.some((part: any) => part.type === 'file')));
+      if (thread && withFiles && !firstUpload) throw new ComparisonError('new_session_required', '更换已绑定资料需要新会话，原对照与评分已保留。');
       if (thread && hash([thread.scene, thread.options]) !== hash([context.scene, context.options])) throw new ComparisonError('new_session_required', '更换场景或文件权限需要新会话，原对照已保留。');
-      if (!thread) {
+      // An initial discussion does not freeze an empty source set forever.
+      // Keep the visible parent and all prior ratings; new file-bound agents
+      // get the recent lane-specific discussion, never the other lane's output.
+      const priorContext = firstUpload ? Object.fromEntries(lanes.map(name => [name, JSON.stringify(history.slice(-6).map(t => ({
+        user: t.input.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n').slice(-2000),
+        assistant: (t.lanes[name].answer ?? '').slice(-3000),
+      })))])) : undefined;
+      if (!thread || firstUpload) {
         thread = { scene: context.scene, options: context.options, lanes: {} };
         for (const name of lanes) thread.lanes[name] = await host.createLane(session, context.scene, name);
         state.threads[session] = thread; save();
@@ -180,7 +191,7 @@ export function createComparisonService(output: string, principal: string, host:
         input_sha256: context.input_sha256, created_at: new Date().toISOString(), status: 'preparing',
         lanes: { baseline: { session_id: thread.lanes.baseline, status: 'preparing', attempt: 0 },
           motif: { session_id: thread.lanes.motif, status: 'preparing', attempt: 0 } },
-        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files };
+        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files, prior_context: priorContext };
       state.turns.push(t); save();
       for (const name of lanes) t.lanes[name].status = 'queued';
       summary(t); save();

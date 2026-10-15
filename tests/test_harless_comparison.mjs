@@ -30,7 +30,12 @@ test('Concurrent send is idempotent; each user/chat and lane keeps a distinct mu
   const other=await f.send('b','one');const bview=await f.wait(other.comparison_id,'b');assert.equal(bview.lanes.motif.answer,'b/motif');
   await assert.rejects(f.service.view('b',a.comparison_id),/找不到/);await assert.rejects(f.service.view('foreign',a.comparison_id),/foreign/);
   await assert.rejects(f.send('a','three','change scene',{...context,scene:'data'}),/需要新会话/);
-  await assert.rejects(f.service.admit('a',{requestId:'files',content:[{type:'file',receiptId:'new'}]},context),/新增资料需要/);
+  const uploaded = await f.service.admit('a',{requestId:'files',content:[{type:'file',receiptId:'new'}]},context);
+  assert.equal((await f.wait(uploaded.comparison_id)).status,'completed');
+  const stored = JSON.parse(readFileSync(join(f.root,'comparisons.json'))).turns.at(-1);
+  assert.match(stored.prior_context.baseline, /a\/baseline/);
+  assert.doesNotMatch(stored.prior_context.baseline, /a\/motif|b\/baseline/);
+  await assert.rejects(f.service.admit('a',{requestId:'changed-files',content:[{type:'file',receiptId:'other'}]},context),/更换已绑定资料需要/);
  }finally{f.close();}
 });
 test('Partial failure retry preserves the successful lane; scores bind output and revision and survive restart',async()=>{
@@ -48,6 +53,23 @@ test('Partial failure retry preserves the successful lane; scores bind output an
   f.service.dispose();const resumed=createComparisonService(f.root,'account-a',f.host,{pollMs:1});assert.deepEqual((await resumed.view('a',a.comparison_id)).scores,{baseline:4,motif:3});assert.equal(f.submitted.length,3);resumed.dispose();
   assert.throws(()=>createComparisonService(f.root,'another-account',f.host),/scope_mismatch/);
   assert.equal(readFileSync(join(f.root,'comparison-ratings.jsonl'),'utf8').trim().split('\n').length,2);
+ }finally{f.close();}
+});
+
+test('First uploads retain historical lane protection and bounded, valid per-lane context',async()=>{
+ let generation=0; const f=fixture({createLane:async(parent,scene,lane)=>parent+'-'+lane+'-'+(++generation)});
+ try {
+  const initial=await f.send('a','discuss','x'.repeat(40000)), before=await f.wait(initial.comparison_id);
+  const admitted=await f.service.admit('a',{requestId:'upload',content:[{type:'file',receiptId:'source'}]},context);
+  const after=await f.wait(admitted.comparison_id);
+  assert.notEqual(before.lanes.baseline.session_id,after.lanes.baseline.session_id);
+  for(const lane of Object.values(before.lanes)) {
+   assert.equal(f.service.isLane(lane.session_id),true);
+   assert.equal(f.service.parentFor(lane.session_id),'a');
+  }
+  const stored=JSON.parse(readFileSync(join(f.root,'comparisons.json'))).turns.at(-1);
+  assert.ok(stored.prior_context.baseline.length<32000);
+  assert.equal(JSON.parse(stored.prior_context.baseline)[0].assistant,'a/baseline');
  }finally{f.close();}
 });
 test('Cancelling during asynchronous preparation never submits a late task or revives a queued lane',async()=>{
