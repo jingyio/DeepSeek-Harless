@@ -483,6 +483,16 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 
 2026-10-16 论文原始工程输入扩展：上一段的“平铺文件、不能解释目录结构”仅描述旧版本。现在 `paper_checks` 新增 `read_pinned_bibliography_first_page(source_id)` 与 `read_pinned_bibliography_page(source_id, page)`，与原有 16 工具及 `paper_trace_rsi` 的 4 工具合计 22 个。固定第一页入口不接受页码，可由真正认证的来源句柄后继复用；分页入口仅接受第 2 页及后续页，仍由模型选择。两者只接受当前任务 `collect_current_local_citation_evidence` 或 `pin_paper_citations` 的引用来源句柄，拒绝 `pin_paper_sources` 的另一视图句柄。任务可批准一个 `.zip` 源文件，服务端拒绝路径穿越、符号链接、重复名称、超限内容和多个 `main.tex`，在当前 Session 私有目录按原相对路径展开；每次工具调用重验原 ZIP 与展开副本 SHA。ZIP 与另行上传的 `.tex` 同时存在时拒绝猜测源码范围。`collect_current_local_citation_evidence` 继续只覆盖正文活动引用；它返回的本任务 `source_id` 可传给新工具，按 `page_count` 读取全部活跃 `.bib` 的原始条目，12 条/页，保留重复键和来源哈希。`entry_count`/`index` 是 BibTeX 原始记录及其顺序，不是编译后文献编号，也不认证真实性。任务 API 对论文 `.zip` 允许 5 MiB，其余单文件仍为 256 KiB；原生附件入口仍按原有 20 MiB 检查。既有 Motif 包随完整工具 Schema、Prompt、代码锁变化失效，必须重新编译并按任务重新绑定；不把新增只读工具自动提升为 Execute。
 
+2026-10-16 论文报告写入压缩扩展：上述 22 工具为上一版本快照，现新增 `stage_current_bibliography_assessments(source_id, assessments, expected_draft_sha256?)`，论文共 23 工具。每批最多 40 个模型判断，各项提供 `key`、`status`、`priority`、`explanation`；唯一键由服务端在当前固定版本书目中定位原始序号，重复键必须另外提供同一分页记录的 `index`，可选已有外部 `source_ids`；服务端解析唯一键或核对 `index/key` 对应关系，再从当前任务批准且版本固定的 BibTeX 原文复制标题、来源文件与连续报告行号，再沿用 `stage_current_audit` 的草稿 SHA、输出许可及重复键拒绝。标题无法安全解析时才由模型补 `short_title`。复合本地证据另返回 `title_needs_review_keys`，模型可为含 TeX 命令等无法安全显示的标题提前补 `short_title`；超出六项固定 `citation_checks` 的键在暂存前拒绝。“已确认/已确认，但需修正”行如果没有外部 `source_ids`，两种暂存入口都返回 `staged=false`、违规键且不写草稿；这仍不代替对来源真实性的人工核验。此结构脚本不自动判定真实性；BibTeX 重复键仍须以问题项说明，未核验的条目不能伪装为完整审查。新增工具使旧认证包代码/完整 Schema 锁失效，必须按当前 23 工具重编。
+
+同日 PDF 字面覆盖校验补充：一个字段恰好跨相邻两页且页眉插在中间时，校验器只在字段的完整前后片段分别位于上一页末尾与下一页开头附近时算作保留；缺字、不同内容、非相邻页或仅部分重合仍不通过。此规则解决长 notes 跨页的误拒，不改变收据对真实性和视觉质量的限制。
+
+批量书目写入的 `expected_draft_sha256` 可省略：服务端仅从同一 Task 的私有草稿读取当前 SHA，再在原有排他锁下比较后追加；调用期间草稿被其他写入改变时仍拒绝，显式传入陈旧 SHA 也仍拒绝。普通 `stage_current_audit` 的显式 SHA 协议不变。
+
+报告文本写入与最终渲染现在拒绝 NUL、退格等不可打印控制字符；暂存返回 `staged=false`、`paper_audit_control_character` 和字段位置，旧的导入报告在渲染校验处拒绝。普通换行和制表符仍允许。该规则防止 PDF 文本层把控制字符变成别的字符而只在导出后才发现缺字段。
+
+`stage_current_audit` 保留 `remove_reference_number` 单行修复，同时增加 `remove_reference_numbers`（最多 40 个不同的一基原行号）；在同一草稿 SHA 和排他锁下从大到小删除并连续重编号。两参数互斥，陈旧 SHA、越界或重复行号拒绝；用于修复已暂存的多行范围，不改变已定稿报告或上传原件。
+
 论文组合包可选携带 `paper-flow-shadow.json`：离线编译器验证旧库/来源轨迹、当前六个工具参数 Schema 后生成仅供 Shadow 的候选与旧报告流程映射；`compile-paper-composite-runtime.py --flow-shadow` 将其纳入包文件锁。场景 Registry 只从已认证私有包读取该文件；任务预览冻结 `paper_flow_shadow_sha256`，确认前版本变化须重建草稿。Web 的统一在线拦截点仍由已认证 Runtime 执行；此观察器只从当前 Task/Session 工具结果生成 `legacy_paper_flow` 和报告流程审计，不调用工具或跳过模型。Origin 不加载观察器，Execute 也不提升旧候选权限。见[同包验证](experiments/paper-flow-unification-20261015-v1.md)。
 
 当前用户边界是一个可信 principal 一个独立 Harness 启动；启动器接受 `--user-id`，客户端不能指定 cwd/工作区、库或命令。上传收据通过官方 Agent scope 解析后复制，重新确认时验证字节摘要。多账号 gateway 仍需账户负责人接入并联合验收。场景安装、登记字段、限额、拒绝原因与已验证边界见 [Harless 控制协议](harless-controls.md)；本节更新旧“仅前端预览”描述，不改写旧实验结论。

@@ -13,7 +13,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from uuid import uuid4
-from src.adapters.paper_bibliography import bib_records
+from src.adapters.paper_bibliography import bib_records, title_query
 from src.adapters.arxiv_metadata import fetch_metadata
 from src.adapters.crossref_metadata import fetch_crossref, literal_field, DOI
 from src.adapters.paper_query_recovery import recover_queries
@@ -309,6 +309,8 @@ class PaperEvidence:
                   'scope': 'active_manuscript_literal_cite_keys_only',
                   'diagnostic': inspected['diagnostic'],
                   'references': records,
+                  'title_needs_review_keys': sorted({row['key'] for row in records['records']
+                                                      if title_query(row['raw_bibtex']) is None}),
                   'required_reference_pairs': records['required_reference_pairs'],
                   'internal_steps': ['pin_sources', 'inspect_active_citations',
                                      'read_original_bibliography'],
@@ -382,9 +384,8 @@ class PaperEvidence:
                     if file not in bibfiles: bibfiles.append(file)
         return bibfiles
 
-    def read_bibliography_page(self, source_id: str, page: int):
-        """Read every literal active BibTeX entry in bounded pages, preserving duplicates."""
-        if type(page) is not int or page < 1: raise ValueError('positive_bibliography_page_required')
+    def _bibliography_records(self, source_id: str):
+        """Parse the current pinned bibliography once for page reads or key binding."""
         if source_id not in self.handles: raise ValueError('unknown or expired source handle')
         case, kind, version = self.handles[source_id]
         if kind != 'sources' or self.version(case) != version:
@@ -409,6 +410,30 @@ class PaperEvidence:
                                 'record_sha256': hashlib.sha256(item['raw'].encode('utf-8')).hexdigest(),
                                 'raw_bibtex': item['raw']})
             if len(records) > 2000: raise ValueError('bibliography_entry_limit')
+        if self.version(case) != version: raise ValueError('source changed during read')
+        return records, version, diagnostic
+
+    def resolve_bibliography_keys(self, source_id: str, keys: list[str]):
+        """Bind unique literal keys to exact original indexes without an LLM page dump."""
+        if (not isinstance(keys, list) or not 1 <= len(keys) <= 40 or
+                any(not isinstance(key, str) or not key or len(key) > 256 for key in keys) or
+                len(set(keys)) != len(keys)):
+            raise ValueError('bibliography_lookup_keys_invalid')
+        records, version, _ = self._bibliography_records(source_id)
+        wanted = set(keys)
+        matches = {key: [] for key in keys}
+        for row in records:
+            if row['key'] in wanted: matches[row['key']].append(row)
+        return {'version_sha256': version,
+                'records': {key: rows[0] for key, rows in matches.items() if len(rows) == 1},
+                'missing_keys': [key for key in keys if not matches[key]],
+                'duplicate_keys': {key: [row['index'] for row in rows]
+                                   for key, rows in matches.items() if len(rows) > 1}}
+
+    def read_bibliography_page(self, source_id: str, page: int):
+        """Read every literal active BibTeX entry in bounded pages, preserving duplicates."""
+        if type(page) is not int or page < 1: raise ValueError('positive_bibliography_page_required')
+        records, version, diagnostic = self._bibliography_records(source_id)
         page_size = 12
         pages = max(1, (len(records) + page_size - 1) // page_size)
         if page > pages: raise ValueError('bibliography_page_out_of_range')
@@ -421,7 +446,8 @@ class PaperEvidence:
                   'authenticity_checked': False, 'rendered_numbering_checked': False}
         if len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > 128000:
             raise ValueError('bibliography_page_too_large')
-        if self.version(case) != version: raise ValueError('source changed during read')
+        if source_id not in self.handles or self.version(self.handles[source_id][0]) != version:
+            raise ValueError('source changed during read')
         return result
 
     def read(self, source_id: str, kind: str):

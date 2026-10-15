@@ -50,12 +50,21 @@ def test_historical_local_citation_sequence_reuses_bib_script_without_network(tm
     assert packet['references']['records'][0]['raw_bibtex'].startswith('@article{alpha')
     assert packet['references']['version_sha256'] == packet['version_sha256']
     assert 'metadata' not in packet and packet['formal_publication_confirmed'] is False
+    assert packet['title_needs_review_keys'] == []
     assert first.read_citation_records(packet['citation_id'])['version_sha256'] == packet['version_sha256']
     with pytest.raises(ValueError, match='unknown|expired'):
         second.read_citation_records(packet['citation_id'])
     (tmp_path / 'first' / 'references.bib').write_text('@article{alpha, title={Changed}}')
     with pytest.raises(ValueError, match='version changed'):
         first.read_citation_records(packet['citation_id'])
+
+
+def test_local_citation_packet_flags_titles_needing_model_display(tmp_path):
+    service = make_paper(tmp_path / 'paper')
+    (tmp_path / 'paper/references.bib').write_text(
+        r'@article{alpha, title={\tau-bench}, year={2024}}', encoding='utf-8')
+    packet = service.collect_local_citation_evidence('current')
+    assert packet['title_needs_review_keys'] == ['alpha']
 
 
 def test_complete_bibliography_is_bounded_and_source_versioned(tmp_path):
@@ -71,6 +80,9 @@ def test_complete_bibliography_is_bounded_and_source_versioned(tmp_path):
     assert [r['index'] for r in page1['records']] == list(range(1, 13))
     assert [r['key'] for r in page3['records']] == ['entry24', 'entry0']
     assert page3['authenticity_checked'] is False
+    resolved = first.resolve_bibliography_keys(pin['source_id'], ['entry12', 'entry0'])
+    assert resolved['records']['entry12']['index'] == 13
+    assert resolved['duplicate_keys']['entry0'] == [1, 26]
     with pytest.raises(ValueError, match='out_of_range'):
         first.read_bibliography_page(pin['source_id'], 4)
     bib.write_text(bib.read_text() + '\n@article{new, title={Later}}', encoding='utf-8')
@@ -156,6 +168,12 @@ def test_model_generated_audit_is_bound_to_task_sources_and_grant(tmp_path):
     assert extra['validation_error'] == 'paper_audit_patch_extra_record_fields'
     assert extra['extra_fields'] == ['issues[0].evidence']
     assert extra['draft_sha256'] == first['draft_sha256']
+    extra_check = output.stage({'citation_checks': {
+        'duplicate_entries_detail': {'result': 'extra', 'evidence': 'main.tex',
+                                     'limitation': 'none'}}}, first['draft_sha256'])
+    assert extra_check['staged'] is False
+    assert extra_check['validation_error'] == 'paper_audit_patch_extra_record_fields'
+    assert extra_check['extra_fields'] == ['citation_checks.duplicate_entries_detail']
     too_many = output.stage({'notes': ['check'] * 10}, first['draft_sha256'])
     assert too_many == {'staged': False, 'draft_sha256': first['draft_sha256'],
                         'validation_error': 'paper_audit_batch_limit',
@@ -202,6 +220,108 @@ def test_report_staging_mcp_schema_exposes_field_types(tmp_path):
     assert 'integer' in {branch['type'] for branch in fields['remove_reference_number']['anyOf']}
 
 
+def test_compact_bibliography_stage_copies_only_current_pinned_source(tmp_path):
+    workspace = tmp_path / 'session'
+    inputs = workspace / 'inputs'
+    inputs.mkdir(parents=True)
+    (inputs / 'main.tex').write_text(r'\cite{alpha}\bibliography{references}', encoding='utf-8')
+    (inputs / 'references.bib').write_text(
+        '@article{alpha, title={A {Current} Title}, year={2020}}\n'
+        '@article{beta, title={Another Title}, year={2021}}\n'
+        r'@article{gamma, title={\tau-bench}, year={2022}}', encoding='utf-8')
+    approved = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs.iterdir()}
+    (workspace / 'approved-inputs.json').write_text(json.dumps({'files': approved}))
+    (workspace / 'paper-output-grant.json').write_text(json.dumps({
+        'schema_version': 1, 'task_id': 'task-a', 'allow_output': True, 'audit_sha256': None}))
+    files = PaperEvidence(inputs)
+    output = PaperOutput(files, None)
+    citations = create_citation_evidence(files)
+    source_id = citations.pin('current', 'sources')['source_id']
+    decision = {'index': 1, 'key': 'alpha', 'status': '存疑', 'priority': 'P2',
+                'explanation': '尚未完成权威来源核验。'}
+    first = output.stage_bibliography(citations, source_id,
+                                      [{key: value for key, value in decision.items() if key != 'index'}])
+    assert first['staged'] is True and first['reference_count'] == 1
+    draft = json.loads((workspace / 'outputs/paper-audits/task-a/draft.json').read_text())
+    row = draft['report']['references'][0]
+    assert row == {'number': 1, 'key': 'alpha', 'short_title': 'A Current Title',
+                   'status': '存疑', 'priority': 'P2', 'source_ids': [],
+                   'explanation': '原始 BibTeX 条目 #1；尚未完成权威来源核验。',
+                   'evidence_files': ['references.bib']}
+    with pytest.raises(ValueError, match='stale_paper_audit_draft'):
+        output.stage_bibliography(citations, source_id,
+                                  [dict(decision, index=2, key='beta')], 'bad')
+    with pytest.raises(ValueError, match='assessment_invalid'):
+        output.stage_bibliography(citations, source_id,
+                                  [dict(decision, status='已确认', source_ids='invented')],
+                                  first['draft_sha256'])
+    wrong_key = output.stage_bibliography(citations, source_id,
+                                          [dict(decision, index=2)], first['draft_sha256'])
+    assert wrong_key['staged'] is False
+    assert wrong_key['validation_error'] == 'paper_bibliography_index_key_mismatch'
+    assert wrong_key['source_key'] == 'beta'
+    assert wrong_key['draft_sha256'] == first['draft_sha256']
+    missing = output.stage_bibliography(citations, source_id,
+                                        [dict((key, value) for key, value in decision.items()
+                                              if key != 'index') | {'key': 'not-in-bib'}],
+                                        first['draft_sha256'])
+    assert missing['validation_error'] == 'paper_bibliography_key_missing'
+    second = output.stage_bibliography(citations, source_id,
+                                       [dict(key='beta', status='存疑', priority='P2',
+                                             explanation='尚未完成权威来源核验。')])
+    assert second['reference_count'] == 2
+    with pytest.raises(ValueError, match='stale_paper_audit_draft'):
+        output.stage_bibliography(citations, source_id,
+                                  [dict(key='beta', status='存疑', priority='P2',
+                                        explanation='旧 SHA 不得自动绑定。')],
+                                  first['draft_sha256'])
+    needs_title = output.stage_bibliography(citations, source_id,
+                                            [dict(decision, index=3, key='gamma')],
+                                            second['draft_sha256'])
+    assert needs_title['staged'] is False
+    assert needs_title['validation_error'] == 'paper_bibliography_title_needs_review'
+    assert needs_title['missing_title_index'] == 3
+    assert needs_title['draft_sha256'] == second['draft_sha256']
+    third = output.stage_bibliography(citations, source_id,
+                                      [dict(decision, index=3, key='gamma', short_title='τ-bench')],
+                                      second['draft_sha256'])
+    assert third['staged'] is True and third['reference_count'] == 3
+    with pytest.raises(ValueError, match='version changed|version_changed'):
+        (inputs / 'references.bib').write_text('@article{changed, title={Wrong}}')
+        output.stage_bibliography(citations, source_id, [decision], third['draft_sha256'])
+
+
+def test_compact_bibliography_stages_many_unique_keys_in_one_request(tmp_path):
+    workspace = tmp_path / 'session'
+    inputs = workspace / 'inputs'
+    inputs.mkdir(parents=True)
+    (inputs / 'main.tex').write_text(r'\cite{k0}\bibliography{references}', encoding='utf-8')
+    (inputs / 'references.bib').write_text('\n'.join(
+        f'@article{{k{i}, title={{Real Title {i}}}}}' for i in range(34)), encoding='utf-8')
+    approved = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs.iterdir()}
+    (workspace / 'approved-inputs.json').write_text(json.dumps({'files': approved}))
+    (workspace / 'paper-output-grant.json').write_text(json.dumps({
+        'schema_version': 1, 'task_id': 'task-many', 'allow_output': True, 'audit_sha256': None}))
+    files = PaperEvidence(inputs)
+    citations = create_citation_evidence(files)
+    source_id = citations.pin('current', 'sources')['source_id']
+    output = PaperOutput(files, None)
+    unbacked = output.stage_bibliography(citations, source_id, [
+        {'key': 'k0', 'status': '已确认', 'priority': '—',
+         'explanation': '仅看上传原文。'}])
+    assert unbacked['staged'] is False
+    assert unbacked['validation_error'] == 'paper_audit_confirmed_without_source'
+    assert unbacked['keys'] == ['k0']
+    assert not (workspace / 'outputs/paper-audits/task-many/draft.json').exists()
+    result = output.stage_bibliography(citations, source_id, [
+        {'key': f'k{i}', 'status': '存疑', 'priority': 'P2',
+         'explanation': '需要权威来源核验。'} for i in range(34)])
+    assert result['staged'] is True and result['reference_count'] == 34
+    report = json.loads((workspace / 'outputs/paper-audits/task-many/draft.json').read_text())['report']
+    assert [r['number'] for r in report['references']] == list(range(1, 35))
+    assert report['references'][-1]['short_title'] == 'Real Title 33'
+
+
 def test_generated_report_duplicate_key_can_be_rejected_and_repaired(tmp_path):
     workspace = tmp_path / 'session'
     inputs = workspace / 'inputs'
@@ -223,6 +343,15 @@ def test_generated_report_duplicate_key_can_be_rejected_and_repaired(tmp_path):
                 'status': '存疑', 'priority': 'P2', 'source_ids': [],
                 'explanation': 'Local reference only', 'evidence_files': ['main.tex']}
 
+    unsupported = reference(1, 'alpha') | {'status': '已确认'}
+    unbacked = output.stage({'references': [unsupported]})
+    assert unbacked['staged'] is False
+    assert unbacked['validation_error'] == 'paper_audit_confirmed_without_source'
+    assert unbacked['keys'] == ['alpha']
+    control = output.stage({'notes': ['bad\bcontrol']})
+    assert control['staged'] is False
+    assert control['validation_error'] == 'paper_audit_control_character'
+    assert control['fields'] == ['notes[0]']
     first = output.stage({'scope': 'Uploaded manuscript', 'citation_checks': checks,
                           'references': [reference(1, 'alpha'), reference(2, 'beta')]})
     rejected = output.stage({'references': [reference(3, 'alpha')]}, first['draft_sha256'])
@@ -251,11 +380,18 @@ def test_generated_report_duplicate_key_can_be_rejected_and_repaired(tmp_path):
     assert repaired['staged'] is True and repaired['reference_count'] == 2
     with pytest.raises(ValueError, match='removal_invalid'):
         output.stage({'remove_reference_number': True}, repaired['draft_sha256'])
-    finalized = output.finalize(repaired['draft_sha256'])
+    extra = output.stage({'references': [reference(3, 'gamma'), reference(4, 'delta')]},
+                         repaired['draft_sha256'])
+    with pytest.raises(ValueError, match='removal_invalid'):
+        output.stage({'remove_reference_numbers': [3, 3]}, extra['draft_sha256'])
+    batch = output.stage({'remove_reference_numbers': [4, 3]}, extra['draft_sha256'])
+    assert batch['removed_reference_numbers'] == [3, 4]
+    assert batch['reference_count'] == 2
+    finalized = output.finalize(batch['draft_sha256'])
     assert finalized['reference_count'] == 2
     assert [row['number'] for row in output.read_audit()['report']['references']] == [1, 2]
     with pytest.raises(ValueError, match='already_finalized'):
-        output.stage({'remove_reference_number': 1}, repaired['draft_sha256'])
+        output.stage({'remove_reference_number': 1}, batch['draft_sha256'])
 
 
 def test_local_citation_batch_is_read_only_mcp_tool(tmp_path):
@@ -395,28 +531,44 @@ def test_pdf_export_receipt_can_check_literal_content_and_links_without_claiming
               'citation_checks': {key: {'result': 'not assessed', 'evidence': 'fixture',
                                         'limitation': 'human review'}
                                   for key in INPUT_SCHEMA['citation_checks_required']},
-              'notes': ['No scientific review']}
+              'notes': ['No scientific review ' + 'A' * 160 + ' remains pending ' +
+                        'B' * 160 + ' mechanically complete PDF receipt']}
     pdf = tmp_path / 'report.pdf'
     writer = PdfWriter()
     page = writer.add_blank_page(width=612, height=792)
-    page[NameObject('/Resources')] = DictionaryObject({
+    resources = DictionaryObject({
         NameObject('/Font'): DictionaryObject({NameObject('/F1'): DictionaryObject({
             NameObject('/Type'): NameObject('/Font'),
             NameObject('/Subtype'): NameObject('/Type1'),
             NameObject('/BaseFont'): NameObject('/Helvetica')})})})
+    page[NameObject('/Resources')] = resources
+    note = report['notes'][0]
+    split = len(note) // 2
     fields = ['Study A', report['references'][0]['status'], report['references'][0]['priority'],
               'Explanation preserved', 'source-1', 'Archive', 'not assessed',
-              'fixture', 'human review', 'No scientific review']
+              'fixture', 'human review', note[:split]]
     stream = DecodedStreamObject()
     stream.set_data(('BT /F1 12 Tf 50 760 Td ' + ' '.join(
         '(' + field + ') Tj 0 -24 Td' for field in fields) + ' ET').encode())
     page[NameObject('/Contents')] = stream
+    next_page = writer.add_blank_page(width=612, height=792)
+    next_page[NameObject('/Resources')] = resources
+    next_stream = DecodedStreamObject()
+    next_stream.set_data(('BT /F1 12 Tf 50 760 Td (Page header) Tj 0 -24 Td (' +
+                          note[split:] + ') Tj ET').encode())
+    next_page[NameObject('/Contents')] = next_stream
     writer.add_uri(0, 'https://example.org/study-a', (50, 500, 120, 515))
     with pdf.open('wb') as output:
         writer.write(output)
     coverage = audit_pdf_content_coverage(pdf, report)
     assert coverage['all_fields_present'] and coverage['checked_fields'] == coverage['present_fields']
-    assert coverage['pdf_pages'] == 1 and coverage['source_link_objects'] == 1
+    assert coverage['pdf_pages'] == 2 and coverage['source_link_objects'] == 1
     assert coverage['semantic_quality_accepted'] is False
+    report['notes'][0] = note.replace('mechanically', 'semantically')
+    assert audit_pdf_content_coverage(pdf, report)['all_fields_present'] is False
+    report['notes'][0] = 'bad\bcontrol'
+    with pytest.raises(ValueError, match='renderer_input_control_character'):
+        audit_pdf_content_coverage(pdf, report)
+    report['notes'][0] = note
     report['references'][0]['explanation'] = 'Missing explanation'
     assert audit_pdf_content_coverage(pdf, report)['all_fields_present'] is False

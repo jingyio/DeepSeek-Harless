@@ -15,8 +15,10 @@ from src.adapters.session_files import SessionFiles
 from src.adapters.file_lock import exclusive_lock
 from src.adapters import paper_static_checks
 from src.adapters.paper_archive import materialize_approved_archive
+from src.adapters.paper_bibliography import title_query
 from src.adapters.paper_query_recovery import validate_queries
-from src.adapters.paper_renderer import INPUT_SCHEMA, audit_pdf_content_coverage, render_renderer, validate_audit
+from src.adapters.paper_renderer import (INPUT_SCHEMA, audit_pdf_content_coverage,
+                                         control_character_fields, render_renderer, validate_audit)
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -143,7 +145,7 @@ def create_server(directory, renderer_root=None):
 
     @server.tool(annotations=annotation)
     def pin_document(name: str, sha256: str) -> dict:
-        """Pin a listed PDF or UTF-8 paper file to a fresh Session-local handle; no host paths."""
+        """Pin only a name/SHA from list_inputs for a standalone PDF or UTF-8 file; never a DSH spill path, ZIP member or host path."""
         if Path(name).suffix.lower() not in ('.pdf', '.tex', '.bib', '.bbl', '.log', '.md', '.txt'):
             raise ValueError('paper_document_format_unsupported')
         return files.pin(name, sha256)
@@ -193,8 +195,9 @@ def create_server(directory, renderer_root=None):
 
     @server.tool(annotations=annotation)
     def collect_current_local_citation_evidence() -> dict:
-        """Collect current LaTeX checks and active original BibTeX records in one bounded, versioned local read; no network or authenticity claim."""
-        return citations().collect_local_citation_evidence('current')
+        """Collect local citations; source_id for bibliography, citation_id for metadata. Returns title_needs_review_keys and query_recovery_available; no fact check."""
+        return {**citations().collect_local_citation_evidence('current'),
+                'query_recovery_available': bool(os.environ.get('HARLESS_PAPER_QUERY_LIBRARY'))}
 
     @server.tool(annotations=annotation)
     def fetch_pinned_cited_preprint_metadata(citation_id: str) -> dict:
@@ -208,7 +211,7 @@ def create_server(directory, renderer_root=None):
 
     @server.tool(annotations=annotation)
     def recover_pinned_formal_reference_queries(citation_id: str) -> dict:
-        """Use only an administrator-registered bounded query library for this citation batch."""
+        """Only call when collect reports query_recovery_available=true; pass its citation_id, never source_id. Uses administrator-registered query library."""
         path = os.environ.get('HARLESS_PAPER_QUERY_LIBRARY')
         if not path: raise ValueError('paper_query_library_not_deployed')
         path_ref = Path(path)
@@ -231,24 +234,59 @@ def create_server(directory, renderer_root=None):
                             citation_checks: dict[str, dict[str, str]] | None = None,
                             notes: list[str] | None = None,
                             remove_reference_number: int | None = None,
+                            remove_reference_numbers: list[int] | None = None,
                             expected_draft_sha256: str = '') -> dict:
-        """Append typed fields or remove one draft reference; use returned SHA for the next call.
+        """Append typed fields or remove draft references; use returned SHA for the next call.
+
+        For entries from the current BibTeX bibliography, use
+        stage_current_bibliography_assessments instead; it copies exact titles,
+        keys and file evidence without making the model repeat them.
 
         scope is text; notes is a list of strings. Each references/sources/issues field is
-        a list of report rows (at most eight per call). citation_checks is an object keyed
-        by check name, each value having result/evidence/limitation strings. A reference's
+        a list of report rows (at most eight per call). citation_checks accepts only
+        list_without_citation, citation_without_entry, duplicate_entries,
+        numbering_anomaly, unresolved_or_abnormal_citations, non_citation_brackets;
+        each value has result/evidence/limitation strings. A reference's
         source_ids must name rows in sources; uploaded names belong in evidence_files.
         Missing required fields return staged=false and exact field names without writing.
+        "已确认" or "已确认，但需修正" without a staged external source_id is
+        rejected; cite the source or mark the item 存疑 pending verification.
         Duplicate reference keys return staged=false without writing. To repair an older
-        draft, pass only remove_reference_number and the current draft SHA; later rows
-        are renumbered. This cannot change a finalized report or uploaded original.
+        draft, pass only remove_reference_number or remove_reference_numbers and the
+        current draft SHA. The latter removes up to forty distinct one-based rows
+        in one call; later rows are renumbered. Neither can change a finalized
+        report or uploaded original.
         """
         patch = {name: value for name, value in {
             'scope': scope, 'references': references, 'sources': sources,
             'issues': issues, 'citation_checks': citation_checks, 'notes': notes,
             'remove_reference_number': remove_reference_number,
+            'remove_reference_numbers': remove_reference_numbers,
         }.items() if value is not None}
         return output.stage(patch, expected_draft_sha256)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+    def stage_current_bibliography_assessments(source_id: str, assessments: list[dict],
+                                               expected_draft_sha256: str | None = None) -> dict:
+        """Append up to forty assessed BibTeX entries in one versioned draft write.
+
+        Each assessment supplies key, status, priority and explanation;
+        source_ids may name previously staged external sources. The server
+        resolves a unique key against this task's versioned bibliography and
+        copies its original index, literal title and evidence filename. For a
+        duplicate key, supply the one-based index from a bibliography page.
+        Never use entry_index_in_bib from the active-citation view as index.
+        An index/key mismatch rejects the whole batch without writing.
+        This does not verify authenticity or assign an unreviewed status. If
+        staged=false and validation_error=paper_bibliography_title_needs_review,
+        supply short_title for the returned missing_title_index and retry; no
+        draft was written. Duplicate BibTeX keys must be reported as an issue.
+        Pass the returned draft SHA for explicit compare-and-swap. If omitted,
+        the server binds the current task-local draft SHA at this call; an
+        explicit stale SHA still rejects without writing.
+        """
+        return output.stage_bibliography(citations(), source_id, assessments,
+                                         expected_draft_sha256)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
     def finalize_current_audit(expected_draft_sha256: str) -> dict:
@@ -355,19 +393,125 @@ class PaperOutput:
                                  if field not in INPUT_SCHEMA[schema_key])
         checks = patch.get('citation_checks', {})
         for name, row in (checks.items() if isinstance(checks, dict) else []):
+            if name not in INPUT_SCHEMA['citation_checks_required']:
+                extra.append(f'citation_checks.{name}')
             if isinstance(row, dict):
                 extra.extend(f'citation_checks.{name}.{field}' for field in row
                              if field not in INPUT_SCHEMA['citation_result_required'])
         return extra
 
-    def stage(self, patch, expected_draft_sha256=''):
+    def stage_bibliography(self, citation_evidence, source_id, assessments,
+                           expected_draft_sha256=None):
+        # Read via the same task/version-bound citation service as the public
+        # bibliography tool. No user-provided path or raw BibTeX enters the draft.
+        if (not isinstance(assessments, list) or not 1 <= len(assessments) <= 40 or
+            any(not isinstance(row, dict) or
+                set(row) - {'index', 'key', 'status', 'priority', 'explanation', 'source_ids',
+                            'short_title'} or
+                ('index' in row and (type(row['index']) is not int or row['index'] < 1)) or
+                not isinstance(row.get('key'), str) or not row['key'] or
+                not isinstance(row.get('status'), str) or
+                row['status'] not in INPUT_SCHEMA['status_enum'] or
+                not isinstance(row.get('priority'), str) or
+                row['priority'] not in INPUT_SCHEMA['priority_enum'] or
+                not isinstance(row.get('explanation'), str) or
+                not row['explanation'].strip() or
+                not isinstance(row.get('source_ids', []), list) or
+                any(not isinstance(value, str) for value in row.get('source_ids', []))
+                for row in assessments)):
+            raise ValueError('paper_bibliography_assessment_invalid')
+        indexes = [row['index'] for row in assessments if 'index' in row]
+        if len(set(indexes)) != len(indexes):
+            raise ValueError('paper_bibliography_assessment_duplicate_index')
+        keys = [row['key'] for row in assessments]
+        if len(set(keys)) != len(keys):
+            return {'staged': False, 'draft_sha256': expected_draft_sha256 or None,
+                    'validation_error': 'paper_bibliography_duplicate_assessment_key',
+                    'semantic_quality_accepted': False}
+        _, _, approved_files = self._task(writable=True)
+        archive_name = next((name for name in approved_files if name.lower().endswith('.zip')), None)
+        by_key = citation_evidence.resolve_bibliography_keys(
+            source_id, [row['key'] for row in assessments if 'index' not in row]
+        ) if any('index' not in row for row in assessments) else None
+        pages = {}
+        selected = []
+        for row in assessments:
+            if 'index' in row:
+                page = (row['index'] - 1) // 12 + 1
+                if page not in pages:
+                    pages[page] = citation_evidence.read_bibliography_page(source_id, page)
+                record = next((item for item in pages[page]['records']
+                               if item['index'] == row['index']), None)
+                if record is None:
+                    raise ValueError('paper_bibliography_assessment_index_invalid')
+                if row['key'] != record['key']:
+                    return {'staged': False, 'draft_sha256': expected_draft_sha256 or None,
+                            'validation_error': 'paper_bibliography_index_key_mismatch',
+                            'index': row['index'], 'submitted_key': row['key'],
+                            'source_key': record['key'],
+                            'semantic_quality_accepted': False}
+            else:
+                if row['key'] in by_key['duplicate_keys']:
+                    return {'staged': False, 'draft_sha256': expected_draft_sha256 or None,
+                            'validation_error': 'paper_bibliography_key_ambiguous',
+                            'key': row['key'], 'source_indexes': by_key['duplicate_keys'][row['key']],
+                            'semantic_quality_accepted': False}
+                if row['key'] in by_key['missing_keys']:
+                    return {'staged': False, 'draft_sha256': expected_draft_sha256 or None,
+                            'validation_error': 'paper_bibliography_key_missing',
+                            'key': row['key'], 'semantic_quality_accepted': False}
+                record = by_key['records'][row['key']]
+            title = title_query(record['raw_bibtex'])
+            if title is None:
+                title = row.get('short_title')
+                if not isinstance(title, str) or not title.strip() or len(title) > 512:
+                    return {'staged': False, 'draft_sha256': expected_draft_sha256 or None,
+                            'validation_error': 'paper_bibliography_title_needs_review',
+                            'missing_title_index': record['index'], 'key': record['key'],
+                            'semantic_quality_accepted': False}
+            elif 'short_title' in row and row['short_title'] != title:
+                return {'staged': False, 'draft_sha256': expected_draft_sha256 or None,
+                        'validation_error': 'paper_bibliography_title_conflicts_with_source',
+                        'index': record['index'], 'source_title': title,
+                        'semantic_quality_accepted': False}
+            evidence = (f'{archive_name} → {record["bib_file"]}' if archive_name else
+                        record['bib_file'])
+            selected.append({'key': record['key'], 'short_title': title,
+                             'status': row['status'], 'priority': row['priority'],
+                             'source_ids': row.get('source_ids', []),
+                             'explanation': f'原始 BibTeX 条目 #{record["index"]}；{row["explanation"].strip()}',
+                             'evidence_files': [evidence]})
+        # stage() owns the draft lock, source hash check, duplicate-key guard and
+        # monotonically numbered append. It must see the current draft SHA.
+        workspace, grant, _ = self._task(writable=True)
+        directory = self._draft_dir(workspace, grant)
+        draft_path = directory / 'draft.json'
+        if draft_path.exists():
+            draft_raw = self._private_bytes(draft_path)
+            draft = json.loads(draft_raw)
+            start = len(draft['report']['references'])
+            if expected_draft_sha256 is None:
+                expected_draft_sha256 = hashlib.sha256(draft_raw).hexdigest()
+        else:
+            start = 0
+            if expected_draft_sha256 is None:
+                expected_draft_sha256 = ''
+        if not isinstance(expected_draft_sha256, str):
+            raise ValueError('paper_audit_draft_sha_invalid')
+        for offset, row in enumerate(selected, 1):
+            row['number'] = start + offset
+        return self.stage({'references': selected}, expected_draft_sha256,
+                          reference_limit=40, patch_byte_limit=128000)
+
+    def stage(self, patch, expected_draft_sha256='', *, reference_limit=8,
+              patch_byte_limit=16000):
         workspace, grant, sources = self._task(writable=True)
         if not sources or sources.get('audit.json') is not None:
             raise ValueError('paper_generated_audit_requires_original_sources')
         if (not isinstance(patch, dict) or not patch or
             set(patch) - {'scope', 'references', 'sources', 'issues', 'citation_checks', 'notes',
-                          'remove_reference_number'} or
-            len(json.dumps(patch, ensure_ascii=False).encode()) > 16000):
+                          'remove_reference_number', 'remove_reference_numbers'} or
+            len(json.dumps(patch, ensure_ascii=False).encode()) > patch_byte_limit):
             raise ValueError('paper_audit_patch_invalid')
         directory = self._draft_dir(workspace, grant)
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -398,31 +542,55 @@ class PaperOutput:
                         'validation_error': 'paper_audit_patch_extra_record_fields',
                         'extra_fields': extra[:16], 'extra_field_count': len(extra),
                         'semantic_quality_accepted': False}
+            invalid_text = control_character_fields(patch)
+            if invalid_text:
+                return {'staged': False, 'draft_sha256': current if draft_path.exists() else None,
+                        'validation_error': 'paper_audit_control_character',
+                        'fields': invalid_text[:16], 'field_count': len(invalid_text),
+                        'semantic_quality_accepted': False}
             report = draft['report']
-            if 'remove_reference_number' in patch:
-                number = patch['remove_reference_number']
-                if (len(patch) != 1 or type(number) is not int or
-                    not 1 <= number <= len(report['references'])):
+            if 'remove_reference_number' in patch or 'remove_reference_numbers' in patch:
+                number = patch.get('remove_reference_number')
+                numbers = ([number] if number is not None else
+                           patch.get('remove_reference_numbers'))
+                if (len(patch) != 1 or not isinstance(numbers, list) or
+                    not 1 <= len(numbers) <= 40 or
+                    any(type(item) is not int or not 1 <= item <= len(report['references'])
+                        for item in numbers) or len(set(numbers)) != len(numbers)):
                     raise ValueError('paper_audit_reference_removal_invalid')
-                report['references'].pop(number - 1)
+                for item in sorted(numbers, reverse=True):
+                    report['references'].pop(item - 1)
                 for index, row in enumerate(report['references'], 1):
                     row['number'] = index
                 report['reference_count'] = len(report['references'])
                 self._save(draft_path, draft)
-                return {'staged': True, 'draft_sha256': hashlib.sha256(
+                result = {'staged': True, 'draft_sha256': hashlib.sha256(
                     self._private_bytes(draft_path)).hexdigest(),
-                    'removed_reference_number': number,
                     'reference_count': len(report['references']),
                     'semantic_quality_accepted': False}
+                result['removed_reference_number' if number is not None else
+                       'removed_reference_numbers'] = number if number is not None else sorted(numbers)
+                return result
             for name in ('references', 'sources', 'issues', 'notes', 'citation_checks'):
                 rows = patch.get(name)
-                if isinstance(rows, (list, dict)) and len(rows) > 8:
+                limit = reference_limit if name == 'references' else 8
+                if isinstance(rows, (list, dict)) and len(rows) > limit:
                     return {'staged': False,
                             'draft_sha256': current if draft_path.exists() else None,
                             'validation_error': 'paper_audit_batch_limit',
-                            'field': name, 'limit': 8, 'received': len(rows),
+                            'field': name, 'limit': limit, 'received': len(rows),
                             'semantic_quality_accepted': False}
             if 'references' in patch:
+                unbacked = [row.get('key') for row in patch['references']
+                            if isinstance(row, dict) and
+                            row.get('status') in ('已确认', '已确认，但需修正') and
+                            not row.get('source_ids')]
+                if unbacked:
+                    return {'staged': False,
+                            'draft_sha256': current if draft_path.exists() else None,
+                            'validation_error': 'paper_audit_confirmed_without_source',
+                            'keys': unbacked[:40], 'key_count': len(unbacked),
+                            'semantic_quality_accepted': False}
                 positions = {}
                 for index, row in enumerate(report['references'], 1):
                     if isinstance(row, dict) and isinstance(row.get('key'), str):
@@ -449,7 +617,8 @@ class PaperOutput:
             for name in ('references', 'sources', 'issues', 'notes'):
                 if name in patch:
                     rows = patch[name]
-                    if not isinstance(rows, list) or len(rows) > 8 or any(
+                    if not isinstance(rows, list) or len(rows) > (
+                            reference_limit if name == 'references' else 8) or any(
                         not isinstance(row, str if name == 'notes' else dict) for row in rows):
                         raise ValueError('paper_audit_rows_invalid')
                     report[name].extend(rows)

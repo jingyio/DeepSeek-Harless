@@ -128,10 +128,28 @@ INPUT_SCHEMA = {
 }
 
 
+_INVALID_TEXT_CONTROL = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
+
+
+def control_character_fields(value, path=''):
+    """Locate text the PDF cannot preserve literally; allow newline and tab."""
+    if isinstance(value, str):
+        return [path or '$'] if _INVALID_TEXT_CONTROL.search(value) else []
+    if isinstance(value, list):
+        return [field for index, item in enumerate(value)
+                for field in control_character_fields(item, f'{path}[{index}]')]
+    if isinstance(value, dict):
+        return [field for key, item in value.items()
+                for field in control_character_fields(item, f'{path}.{key}' if path else str(key))]
+    return []
+
+
 def validate_audit(audit: dict) -> None:
     """Data shape/identity admission only; does not decide reference truth."""
     if not isinstance(audit, dict) or not set(INPUT_SCHEMA["required_root"]) <= audit.keys():
         raise ValueError("renderer_input_missing_root_fields")
+    if control_character_fields(audit):
+        raise ValueError("renderer_input_control_character")
     refs, sources, issues = (audit[k] for k in ("references", "sources", "issues"))
     for rows, key, maximum in ((refs, "reference_required", 1000), (sources, "source_required", 2000), (issues, "issue_required", 2000)):
         if not isinstance(rows, list) or len(rows) > maximum:
@@ -182,7 +200,8 @@ def audit_pdf_content_coverage(pdf_path: Path, audit: dict) -> dict:
     reader = PdfReader(pdf_path)
     if reader.is_encrypted or not 1 <= len(reader.pages) <= 200:
         raise ValueError("renderer_pdf_pages_invalid")
-    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    page_texts = [page.extract_text() or "" for page in reader.pages]
+    text = "\n".join(page_texts)
     links = []
     for page in reader.pages:
         for annotation in page.get("/Annots", []):
@@ -194,13 +213,32 @@ def audit_pdf_content_coverage(pdf_path: Path, audit: dict) -> dict:
         return re.sub(r"\s+", "", unicodedata.normalize("NFKC", value)
                       .replace("\u00ad", "").replace("\u200b", ""))
 
+    normalized_pages = [normalized(page) for page in page_texts]
     body = normalized(text)
     linked = normalized(text + "\n" + "\n".join(links))
     checks = []
 
+    def crosses_page(value: str) -> bool:
+        # PDF text extraction inserts a page header between two contiguous
+        # parts of a paragraph. Require a substantial suffix at the very end
+        # of one page and the exact remaining text near the next page's start;
+        # a missing or merely repeated fragment must not count as preserved.
+        if len(value) < 32:
+            return False
+        for before, after in zip(normalized_pages, normalized_pages[1:]):
+            for split in range(16, len(value) - 15):
+                if not before.endswith(value[:split]):
+                    continue
+                offset = after.find(value[split:])
+                if 0 <= offset <= 128:
+                    return True
+        return False
+
     def check(value, *, link=False):
         if isinstance(value, str) and value.strip():
-            checks.append(normalized(value) in (linked if link else body))
+            literal = normalized(value)
+            checks.append(literal in (linked if link else body) or
+                          (not link and crosses_page(literal)))
 
     for row in audit["references"]:
         for field in ("short_title", "status", "priority", "explanation"):
