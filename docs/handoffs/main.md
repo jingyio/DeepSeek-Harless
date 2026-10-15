@@ -5,10 +5,12 @@
 - 范围/版本：基于 main `4442199`，分支 `codex/workspaces-scene-input-fixes`；修复用户本轮截图中的工作区目录浏览、场景输入/切换、PPT 挂载和统计占位符。已有三场景库不重训、上游 Harness 不修改。
 - 已完成：账号内命名工作区与幂等创建；严格场景前缀、手动短命令发送、蓝色原生标识、取消过期请求和文本/附件双重草稿校验；当前 job 范围的 PPT TS/Python 联动与精确旧检查点兼容；报告摘要证据绑定、终态恢复重审和过期评分失效。
 - 已验证：服务器根 Python 861 通过、Node 495 通过/3 Docker 条件跳过，smoke 18题/83来源；最新编辑器定向36项、报告15项通过。真实 PPT MCP→PDF读取→PPTX/PDF/PNG及SHA通过；实际旧检查点受限副本恢复通过，原件不动。双账号命名工作区/幂等/跨目录与ID拒绝通过；浏览器命名创建、`/d`筛选、手打`/ppt`空格蓝色标识通过。
-- 真实模型：首次两次503，第一次恢复中论文双路及数据baseline成功、数据motif仍503。用户随后明确要求继续付费重试，正在保留成功路、有界恢复失败路。**不能将未完成的三轮写成通过**。官方余额接口已返回可调用；保留累计1000次/$1限制，重试前累计437次/$0.26630493保守估值，实付未知。
+- 真实模型负例：首次两次503，第一次恢复中论文双路及数据baseline成功、数据motif仍503。用户随后明确授权付费重试并查询额度，官方余额接口返回可调用；成功路保留，有界恢复见下一条。上限1000次/$1不变，实付未知。
 - 最终恢复：只重试失败路并接续后两轮，两个账号各三轮Baseline/Motif、同一子会话续聊、旧成品下载SHA、评分持久化与异账号404全部通过。额外10次含失败尝试，累计447次/$0.291552966保守预约估值。先前503及失败轨迹保留，不重发成功结果，不重置预算。
 - 记录：[本轮实验](../experiments/geneloop-workspaces-scenes-20261015-v1.md)；私有验收结果位于测试服务器`paired-stage`和`geneloop-ppt-private-scope-*`，不提交日志、用户文件或凭证。中文紧接短命令在Enter时路由，空格或菜单选择在输入阶段生成蓝色标识。
-- 发布/风险：代码待本轮PR与发布核验；正式入口仍是上一版。发布保持原端口、账号、Home/output与预算；旧owner PPT bound preset绑定原job迁移。若新版已写检查点，旧版可能拒绝，优先前向恢复而不回滚用户文件。临时Cloudflare隧道和服务商503仍是外部限制。
+- 发布完成：[PR #21](https://github.com/jingyio/DeepSeek-Harless/pull/21) 四项Windows/Linux CI全部成功，合入main `a9aa9b493df5839be4a38649b7b4b8aa7381dee2`；正式release `geneloop-workspaces-scenes`运行该代码。owner33102/gateway33101、3原账号、Home/output及预算均保留。切换前38任务空闲；双账号8并发40项读取/下载SHA/评分持久与越权拒绝通过（0模型）。测试后端与本机转发已停止，累计预算进程保留。
+- 正式PPT复核：第一次实际initialize发现部署脚本以旧PATH生成子进程配置，调用Node16；已将owner policy、gateway memberPolicy和5份旧PPT preset的PATH固定到Node22，并重启验收。5份preset均返回21工具、原job SHA不变；相关3论文会话settings与login/logo正常，0模型且预算未变。这5份配置共用1个job，当前没有checkpoint；旧checkpoint恢复证据来自前述受限副本，不能冒称生产恢复。
+- 接手注意：生成PPT配置前必须继承已验证owner Node22的PATH；只给主服务Node22不保证MCP子进程版本。新bound preset的原生hero目录缓存首次可能短暂显示内部ID，刷新后恢复名称；本次未改上游Seat。若新版已写检查点，旧版可能拒绝，优先前向恢复而不回滚用户文件。临时Cloudflare隧道和服务商503仍是外部限制，未做大规模容量或科研质量评审。
 
 ## 2026-10-15：GeneLoop 品牌、双栏与下载修复（当前）
 
