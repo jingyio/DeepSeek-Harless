@@ -2,7 +2,7 @@
 
 Web 的 DeepSeek 模型提供推理 **Off / On**，默认 Off；On 对应官方 `thinking.enabled` 与 `reasoning_effort: high`，按会话保存，并应用到本轮两侧任务。附件入口不按场景限制扩展名，PDF、Word 和需求文本可随数据一起上传。平台会向模型提供可提取的正文和表格文本；未知二进制、损坏文件或未识别的扫描文字会明确标记，不能冒充已读。统计工具仍以真实数据表为依据，不从资料中臆造统计值。
 
-普通聊天默认展示最终回答，工具调用、上下文和早期回复收在可展开的过程区；生成中继续显示真实文字增量和简明状态。原生 Markdown、图片、文件入口以及最终回复的复制、分支操作保留。对照标题统一为 Baseline / Motif，影子模式另标“影子评估”。Web 共用 GeneLoop 产品身份；旧会话也在公开读取与实时输出时隐藏内部环境信息，原始 journal、用户消息和文件字节保持不变。代码行为、已完成的定向检查及待完成的浏览器/部署验收分别记录在 [本轮说明](docs/experiments/geneloop-message-privacy-20261015-v1.md)。
+普通聊天默认展示最终回答，工具调用、上下文和早期回复收在可展开的过程区；生成中继续显示真实文字增量和简明状态。原生 Markdown、图片、文件入口以及最终回复的复制、分支操作保留。对照标题统一为 Baseline / Motif，影子模式另标“影子评估”。Web 共用 GeneLoop 产品身份；旧会话也在公开读取与实时输出时隐藏内部环境信息，原始 journal、用户消息和文件字节保持不变。代码行为、定向检查、真实浏览器及正式部署验收记录在 [本轮说明](docs/experiments/geneloop-message-privacy-20261015-v1.md)。
 
 已有 PPT、论文、数据分析 Motif 库已统一到版本化的 [motif-libraries/](motif-libraries/README.md)。管理员在成员 Web policy 配置 `comparison_scenes: ["ppt", "paper-proofreading", "research-data-analysis"]` 后，原生 `/ppt`、`/paper`、`/data` 聊天分别执行 Baseline 与 Motif 两路，保留各自多轮历史、交付文件与 1–5 分评分；论文原库按其授权运行 Shadow。资料通过原生附件上传，账号隔离与预算沿用现有服务。库缺失或兼容锁失效会明确回退，不能把回退记为优化成功。
 
