@@ -63,7 +63,7 @@ export function createComparisonService(output: string, principal: string, host:
       return [name, { ...lane, artifacts, delivery_status,
         delivery_message: delivery_status === 'available' ? '结果文件已保存，可下载到本地。'
           : delivery_status === 'pending' ? '结果文件会在生成并通过交付检查后显示。'
-          : lane.source_pending ? '本轮为场景问答；需要处理文件时，可在此对话中上传资料。'
+          : lane.source_pending ? '本轮没有生成结果文件。你可以继续提问或上传资料。'
           : t.scene === 'research-data-analysis' ? '本轮尚无通过交付校验的报告。模型回复结束不表示报告已成功生成。'
           : '本轮没有可下载的结果文件。' }];
     })) });
@@ -171,17 +171,16 @@ export function createComparisonService(output: string, principal: string, host:
       let thread = state.threads[session];
       const history = state.turns.filter(t => t.session_id === session);
       const withFiles = request.content.some((part: any) => part.type === 'file');
-      const firstUpload = Boolean(thread && withFiles && !history.some(t => t.input.some((part: any) => part.type === 'file')));
-      if (thread && withFiles && !firstUpload) throw new ComparisonError('new_session_required', '更换已绑定资料需要新会话，原对照与评分已保留。');
+      const newSources = Boolean(thread && withFiles);
       if (thread && hash([thread.scene, thread.options]) !== hash([context.scene, context.options])) throw new ComparisonError('new_session_required', '更换场景或文件权限需要新会话，原对照已保留。');
-      // An initial discussion does not freeze an empty source set forever.
-      // Keep the visible parent and all prior ratings; new file-bound agents
+      // Each newly uploaded source set gets isolated task agents. Keep the
+      // visible conversation and all prior ratings; new file-bound agents
       // get the recent lane-specific discussion, never the other lane's output.
-      const priorContext = firstUpload ? Object.fromEntries(lanes.map(name => [name, JSON.stringify(history.slice(-6).map(t => ({
+      const priorContext = newSources ? Object.fromEntries(lanes.map(name => [name, JSON.stringify(history.slice(-6).map(t => ({
         user: t.input.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n').slice(-2000),
         assistant: (t.lanes[name].answer ?? '').slice(-3000),
       })))])) : undefined;
-      if (!thread || firstUpload) {
+      if (!thread || newSources) {
         thread = { scene: context.scene, options: context.options, lanes: {} };
         for (const name of lanes) thread.lanes[name] = await host.createLane(session, context.scene, name);
         state.threads[session] = thread; save();

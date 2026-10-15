@@ -11,7 +11,7 @@ import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
 import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, sceneShortcut, parseSceneShortcut, SettingsError } from './harless_settings.ts';
-import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest, prepareSceneRuntimeInputs } from './harless_task_scope.ts';
+import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest } from './harless_task_scope.ts';
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
@@ -161,13 +161,13 @@ export function apply(ctx: any) {
     return { ...safe, allowed_tools: [], instructions, instructions_sha256: sha(instructions),
       config_sha256: digest({ scene: scene.id, parent: scene.config_sha256 ?? null, legacy_chat_only: true }) };
   }
-  const instructionsFor = (scene: Scene, sourcePending = false) => sourcePending
-    ? `你正在 ${scene.label} 场景中与用户交谈。正常回应问候、讨论目标、解释方法、协助规划。当前用户尚未提供本次处理所需的资料，因此没有启用文件处理工具；只有需要实际分析、校对或生成交付时才自然询问所需资料。不要每句话都要求上传，不要编造数据、文件或处理结果，不要暴露内部配置或服务器路径。用户可在同一对话中随后上传资料。`
+  const instructionsFor = (scene: Scene, sourcePending = false) => scene.adapter && scene.id !== 'new-scene'
+    ? `${scene.instructions ?? ''}\n\n交互原则：以上工具流程仅在用户确实需要相应处理时适用。文字、附件及二者组合都走当前场景的正常执行流程，由你根据请求决定直接回答、询问资料或调用工具。正常回应问候、讨论目标、解释方法；不要为闲聊强制运行报告流程或要求上传。具体操作缺少必要来源时自然说明需要什么，不编造数据或交付，不暴露内部配置或服务器路径。${sourcePending ? '当前任务没有附件；这不限制正常问答或可用工具，也不代表用户必须上传。' : ''}`
     : scene.instructions;
   function bindScene(agent: any, configuredScene: Scene, sourcePending = false) {
     const scene = sessionScene(agent.session.id, configuredScene);
     for (const dispose of guards.get(agent.session.id) ?? []) dispose();
-    const allowedTools = sourcePending ? [] : scene.allowed_tools;
+    const allowedTools = scene.allowed_tools;
     const allowed = new Set(allowedTools);
     const instructions = instructionsFor(scene, sourcePending);
     const disposers = [agent.ctx.tools.restrict({ allow: allowedTools }),
@@ -688,14 +688,13 @@ export function apply(ctx: any) {
       await selectPreset!(agents.get(request.session_id), sessionPreset(config.output, workspace, scene));
       bindScene(agents.get(request.session_id), scene);
     }
-    // The general workspace remains usable without attachments (e.g. writing
-    // a new document). Only source-oriented scenes enter discussion mode.
+    // Source availability is metadata, never a different chat/tool pipeline.
     const sourcePending = Boolean(scene.adapter && scene.id !== 'new-scene' && !sceneInputs.length);
     bindScene(agents.get(request.session_id), scene, sourcePending);
     const tools = structuredClone(schemas.get(request.session_id) ?? []);
-    if (tools.length !== (sourcePending ? 0 : scene.allowed_tools.length) || tools.some((tool: any) => !scene.allowed_tools.includes(tool.name)))
+    if (tools.length !== scene.allowed_tools.length || tools.some((tool: any) => !scene.allowed_tools.includes(tool.name)))
       throw new TaskError('scene_tools_unavailable', 'Configured MCP tool surface did not load', 409);
-    if (!sourcePending && request.mode === 'execute' && scene.runtime_kind!=='data_receipts_v3') {
+    if (request.mode === 'execute' && scene.runtime_kind!=='data_receipts_v3') {
       if (scene.certified_tool_schemas && !certifiedSchemaMatches(scene, tools))
         throw new TaskError('execute_unavailable', 'certified_tool_schema_mismatch', 409);
       const manifest = JSON.parse(readFileSync(scene.manifest!, 'utf8'));
@@ -762,7 +761,7 @@ export function apply(ctx: any) {
       bound_binding_sha256:task.bound_binding_sha256,certification_sha256:task.scene.certification_sha256,
       binding_policy:task.scene.binding_policy,matching_policy:task.scene.matching_policy,
       certification_scope:task.scene.certification_scope,quality_cost_promoted:task.scene.quality_cost_promoted,
-      allowed_tools: task.scene.allowed_tools, offered_allowed_tools: task.source_pending ? [] : task.scene.allowed_tools,
+      allowed_tools: task.scene.allowed_tools, offered_allowed_tools: task.scene.allowed_tools,
       workspace: task.workspace, scope_sha256: task.scope_sha256,
       runtime_file_locks:task.scene.runtime_file_locks,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
@@ -772,7 +771,6 @@ export function apply(ctx: any) {
     record(task);
   }
   function configureMotif(task: Task) {
-    if (task.source_pending) return; // Conversational turns have no executable file trajectory.
     if (task.request.mode === 'baseline') return;
     const parts = task.request.content, scene = task.scene;
     if(scene.runtime_kind==='data_receipts_v3'||scene.runtime_kind==='paper_shadow_v1'){
@@ -815,8 +813,6 @@ export function apply(ctx: any) {
   async function submit(task: Task, confirmation: unknown, signal: AbortSignal) {
     if (confirmation !== task.confirmation_digest) throw new TaskError('confirmation_changed', 'Input/configuration changed; preview and confirm again', 409);
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
-    if(!task.source_pending && task.scene.adapter==='data-report'&&!task.scene_inputs.some(row=>/\.(csv|tsv)$/i.test(row.name)))
-      throw new TaskError('data_requires_source','请先上传一份 CSV/TSV 数据表。',409);
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
         scopeDigest(task.workspace, task.scene) !== task.scope_sha256 ||
         (task.scene.runtime_file_locks && Object.entries(task.scene.runtime_file_locks).some(([path,expected])=>fileSha(path)!==expected)) ||
@@ -825,16 +821,17 @@ export function apply(ctx: any) {
         (task.scene.runtime_library && fileSha(task.scene.runtime_library)!==task.scene.runtime_library_sha256)) {
       throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
     }
-    if (!task.source_pending && task.request.mode === 'execute') {
+    if (task.request.mode === 'execute') {
       const reason = executeUnavailable(task.scene);
       if (reason) throw new TaskError('execute_unavailable', reason, 409);
-      if(task.scene.binding_policy){
+      if(task.scene.binding_policy && !task.source_pending){
         if(!task.bound_binding_sha256)throw new TaskError('execute_unavailable','ppt_rsi_requires_approved_sources',409);
         if(fileSha(join(task.output,'bound-motif-task.json'))!==task.bound_binding_sha256)
           throw new TaskError('confirmation_changed','bound_motif_task_changed',409);
       }
     }
-    if (!task.source_pending) await prepareSceneRuntimeInputs(task.workspace, task.scene);
+    // Source materialization/validation belongs to the selected tool call.
+    // A greeting, explanation or planning turn need not prepare a report.
     requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
     try {
       configureMotif(task);
@@ -934,16 +931,15 @@ export function apply(ctx: any) {
           content.push({ type: 'file', receiptId: uploaded.receiptId });
         }
         if (!previous && turn.prior_context?.[lane]) content.unshift({ type: 'text', text:
-          '以下是此对话上传资料前的交流记录，仅用于承接用户目标，不是工具结果或已验证证据：\n' + turn.prior_context[lane] });
+          '以下是此对话此前的交流记录，仅用于承接用户目标，不是当前资料的工具结果或已验证证据：\n' + turn.prior_context[lane] });
         const configured=sceneFor(turn.scene);
-        const reason = executeUnavailable(configured)??(configured.binding_policy&&!content.some(part=>part.type==='file')&&!previous?.scene_inputs.length?'rsi_requires_approved_sources':null);
-        const sourcePending = !content.some(part => part.type === 'file') && !previous?.scene_inputs.length;
-        const mode = lane === 'baseline' || sourcePending ? 'baseline' : sceneFor(turn.scene).runtime_kind==='paper_shadow_v1'?'shadow':reason ? 'baseline' : 'execute';
+        const reason = executeUnavailable(configured);
+        const mode = lane === 'baseline' ? 'baseline' : configured.runtime_kind==='paper_shadow_v1'?'shadow':reason ? 'baseline' : 'execute';
         selections.set(child, { scene: turn.scene, mode, rsi: mode !== 'baseline' });
         optionSelections.set(child, { [turn.scene]: turn.options }); saveSettings();
         const task = await preview({ content, request_id: requestId, model: turn.model, budget_usd: config.budget_usd / 2, mode }, child, 'native_chat');
         // Unavailable or invalid research libraries must be visible; never label a Baseline run as optimized.
-        if (lane === 'motif' && !sourcePending && reason && mode==='baseline') task.fallback_reason = reason;
+        if (lane === 'motif' && reason && mode==='baseline') task.fallback_reason = reason;
         taskParents.set(task.request.task_id, { turn, lane });
         try { await submit(task, task.confirmation_digest, new AbortController().signal); }
         catch (error) { finish(task, 'failed', 'comparison_admission_failed'); await task.closing; throw error; }
@@ -1129,6 +1125,7 @@ export function apply(ctx: any) {
             if (task.scene.adapter) {
               task.scene_inputs = await bindSceneInputs(ctx, agents.get(task.request.session_id), task.workspace, task.scene,
                 task.request.content, task.scene_options, task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), task.request.task_id);
+              task.source_pending = task.scene.id !== 'new-scene' && !task.scene_inputs.length;
               await selectPreset!(agents.get(task.request.session_id), sessionPreset(config.output, task.workspace, task.scene));
               bindScene(agents.get(task.request.session_id), task.scene);
               task.scope_sha256 = scopeDigest(task.workspace, task.scene);

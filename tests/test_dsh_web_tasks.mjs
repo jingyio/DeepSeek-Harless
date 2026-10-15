@@ -1046,7 +1046,7 @@ test('PPT menu options are scoped, model-free, persisted, and cannot modify a pr
   }finally{await f.close();}
 });
 
-test('Empty file scenes admit normal conversation with no file tools across turns and restart', options, async () => {
+test('Empty file scenes keep normal scene tools and model routing across turns and restart', options, async () => {
   for (const [id, adapter] of [['ppt','ppt'], ['paper-proofreading','workspace'], ['research-data-analysis','data-report'], ['literature','literature'], ['files','files']]) {
     const scene = {...multiScenes[0], id, label:id, adapter, mcp_rows:[]};
     const f = await fixture({ broker:true, scenes:[scene], capability_profile:id });
@@ -1058,7 +1058,7 @@ test('Empty file scenes admit normal conversation with no file tools across turn
         const result=await f.api({action:'preview',session_id:sessionId,request:{instruction:'你好，请介绍你能帮我做什么',request_id:`empty-${round}`}});
         assert.equal(result.status,200,JSON.stringify(result.value));
         const task=result.value; assert.equal(task.source_pending,true); assert.deepEqual(task.scene_inputs,[]);
-        assert.deepEqual(f.agents.get(sessionId).allow.allow,[]);
+        assert.deepEqual(f.agents.get(sessionId).allow.allow,scene.allowed_tools);
         assert.match(f.agents.get(sessionId).instruction,/正常回应问候/);
         assert.equal((await f.submit(task)).status,200);
         await f.complete(task);

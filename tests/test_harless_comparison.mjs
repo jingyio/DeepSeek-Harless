@@ -35,7 +35,8 @@ test('Concurrent send is idempotent; each user/chat and lane keeps a distinct mu
   const stored = JSON.parse(readFileSync(join(f.root,'comparisons.json'))).turns.at(-1);
   assert.match(stored.prior_context.baseline, /a\/baseline/);
   assert.doesNotMatch(stored.prior_context.baseline, /a\/motif|b\/baseline/);
-  await assert.rejects(f.service.admit('a',{requestId:'changed-files',content:[{type:'file',receiptId:'other'}]},context),/更换已绑定资料需要/);
+  const replaced=await f.service.admit('a',{requestId:'changed-files',content:[{type:'file',receiptId:'other'}]},context);
+  assert.equal((await f.wait(replaced.comparison_id)).status,'completed');
  }finally{f.close();}
 });
 test('Partial failure retry preserves the successful lane; scores bind output and revision and survive restart',async()=>{
@@ -70,6 +71,14 @@ test('First uploads retain historical lane protection and bounded, valid per-lan
   const stored=JSON.parse(readFileSync(join(f.root,'comparisons.json'))).turns.at(-1);
   assert.ok(stored.prior_context.baseline.length<32000);
   assert.equal(JSON.parse(stored.prior_context.baseline)[0].assistant,'a/baseline');
+  await f.service.rate('a',admitted.comparison_id,'baseline',4,0,after.lanes.baseline.output_sha256);
+  const another=await f.service.admit('a',{requestId:'replacement',content:[{type:'file',receiptId:'new-source'}]},context);
+  const replaced=await f.wait(another.comparison_id);
+  assert.notEqual(replaced.lanes.baseline.session_id,after.lanes.baseline.session_id);
+  assert.equal((await f.service.view('a',admitted.comparison_id)).scores.baseline,4);
+  assert.equal(f.service.isLane(after.lanes.baseline.session_id),true);
+  const followup=await f.send('a','after-upload','explain');
+  assert.equal((await f.wait(followup.comparison_id)).lanes.baseline.session_id,replaced.lanes.baseline.session_id);
  }finally{f.close();}
 });
 test('Cancelling during asynchronous preparation never submits a late task or revives a queued lane',async()=>{
