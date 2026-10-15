@@ -10,7 +10,7 @@
 
 ## 检查与浏览器证据
 
-- 无模型组件诊断覆盖最新/历史（包括后续普通 Chat）、未知轮次、原生图标身份、复制迟到回调/一秒复原、未知指标省略、真实计数/时间、弹层和 Escape/外点关闭。相关前端测试通过。
+- 无模型组件诊断覆盖最新/历史（包括后续普通 Chat）、未知轮次、原生图标身份、复制迟到回调/一秒复原、未知指标省略、真实计数/时间、弹层和 Escape/外点关闭。最终相关前端测试 93/93 通过（paired、chat presentation、native picker、trajectory、managed workspaces 五个文件）。
 - 隔离 stage 复用既有真实 Chat → data → ppt 三轮，旧 data 两侧 reveal=hover/opacity=0，最新 ppt 两侧 reveal=always/opacity=1；鼠标进入历史 Baseline 仅显示该侧，键盘聚焦同样显示。
 - 浏览器核实 Chat 和对照使用相同 SVG，按钮 28px；复制得到完整回复并显示已复制，赞踩选中后可取消。
 - Motif 用量明细实际为输入 61,480、输出 1,785、总量 63,265 tok；用时详情显示实际开始/完成时间，没有构造 TPS/TTFT。
@@ -19,4 +19,12 @@
 
 ## 发布
 
-待 CI、合并、正式前端字节与保护数据复核完成后补记。生产用户数据、配置和预算进程必须保持。
+[PR #32](https://github.com/jingyio/DeepSeek-Harless/pull/32) 已合并并发布为 `e5b4d360e57ffb7a17cf5f16a0f4cdfe15420aaa`。四项 CI 均通过：run 38740089718（Linux 4m13s / Windows 4m38s），run 38740142430（Linux 3m40s / Windows 4m04s）。
+
+生产 79 个任务空闲后切换，6,349 条保护数据指纹一致；上线检查 3 个账号、24 组对照评分、125 份 preset、324 份不可变文件保持。五个旧终态恢复正确，7 个既有 PPT preset initialize/list 成功、工具执行 0 次。配置变动为零，预算进程未重启；复核前后均 884 请求、峰值代理估费 0.619592442 美元。此前到本轮之间的外部实际使用不计作本轮测试，本轮模型请求为 0。
+
+实际服务的客户端 SHA256 `09b3e709fa75bb3eefbc93c40287ea25b62c1caffb302f578ffaa0224ffe8739`，boot revision `d09aa7be5526`，源码与服务字节一致。公网浏览器登录页正常；未在正式账号发送测试请求。旧页面需要刷新获取新客户端。
+
+私有验收文件 `.local/postdeploy-reply-actions-acceptance.json`；部署收据位于当前 deployment 的 `reply-actions-hotfixes/20261015T131535Z-e5b4d360e57f-af336158/receipt.json`，上线验收为 `postdeploy-reply-actions-acceptance-e5b4d360e57f-20261015T131627Z-c0f1a661.json`。页面截图 `.local/reply-actions-unified.png`。
+
+收尾：确认 33 个 stage 任务和 15 组对照均终态后关闭 3 个临时进程、本机 SSH 转发及浏览器标签，未删除任何文件。回退只恢复应用到 `5d2e6a0`，不得覆盖会话、文件、评分或账本。
