@@ -145,6 +145,39 @@ window.__ModuleLoader__.load({
         }
         return undefined;
       }
+      function compactArtifactLabels(root, files) {
+        if (!root) return;
+        // Native Markdown uses resolve().label only for aria-label and keeps
+        // the raw inline-code path as visible button text. Adapt that rendered
+        // label, not the Markdown source or the authenticated download target.
+        for (const link of root.querySelectorAll('code > button, a')) {
+          if (link.closest('pre')) continue;
+          const textNodes = [];
+          const visit = node => {
+            if (node.nodeType === 3) { if (node.nodeValue?.trim()) textNodes.push(node); return; }
+            if (node.nodeName?.toLowerCase() === 'svg') return;
+            for (const child of node.childNodes || []) visit(child);
+          };
+          visit(link);
+          // Keep custom / formatted link captions intact. The native file
+          // button and a plain Markdown path label each have one text node.
+          if (textNodes.length !== 1) continue;
+          const label = textNodes[0].nodeValue.trim();
+          if (!/[\\/]/.test(label) || /^(?:https?:|mailto:|#)/i.test(label)) continue;
+          if (!/^(?:[./\\]|[a-z]:[\\/]|sandbox:|file:\/\/|[^\s/\\:]+[\\/])/i.test(label)) continue;
+          const file = artifactFor(files, label);
+          if (!file) continue;
+          const isButton = link.nodeName.toLowerCase() === 'button';
+          const target = link.getAttribute(isButton ? 'title' : 'href') || '';
+          if (!isButton && /^(?:https?:|mailto:|#)/i.test(target)) continue;
+          const name = file.name.split(/[\\/]/).pop();
+          // A later native render may update its text node but retain the
+          // already-compacted title. Exact label matching still owns the file.
+          if (artifactFor(files, target)?.id !== file.id && !(isButton && target === name)) continue;
+          textNodes[0].nodeValue = name;
+          link.setAttribute('title', name);
+        }
+      }
       function ComparisonNode({ node }) {
         const [value, setValue] = React.useState(node.data), [error, setError] = React.useState(''), [saving, setSaving] = React.useState(false);
         const [connection, setConnection] = React.useState(''), [downloads, setDownloads] = React.useState({});
@@ -315,7 +348,7 @@ window.__ModuleLoader__.load({
                 h('span', null, entry.label), h('small', null, ({ running: '进行中', completed: '完成', failed: '未完成' })[entry.status] || ''))))),
             result.fallback_reason && h('p', { className: 'harless-paired-notice' }, '优化未启用，已回退普通 DSH：' + result.fallback_reason),
             result.failure && h('p', { role: 'alert', className: 'harless-paired-notice' }, result.failure),
-            h('div', { className: 'harless-paired-answer', onClickCapture: captureLink }, (result.answer_display ?? result.answer)
+            h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, (result.answer_display ?? result.answer)
               ? MarkdownText ? h(MarkdownText, { text: result.answer_display ?? result.answer, streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
                 : h('p', { style: { whiteSpace: 'pre-wrap' } }, result.answer_display ?? result.answer)
               : h('p', { className: 'harless-paired-muted' }, result.status === 'queued' ? '等待当前任务结束后开始。' : !settled(result) ? '正在处理，结果会自动更新…' : '本轮未生成文字回复。')),
