@@ -119,9 +119,23 @@ test('Unknown authority fields, ambiguous forms, empty tasks and oversized input
     { inputs: [{ resource_id: 'paper' }] }, { messages: [{ role: 'user', content: ' ' }, { role: 'user', content: '\n' }] }]) {
     assert.throws(() => normalizeWebTaskRequest(input, context));
   }
-  assert.throws(() => normalizeWebTaskRequest('中文任务', { ...context, max_content_bytes: 4 }), /byte limit/);
+  assert.deepEqual(normalizeWebTaskRequest('中文任务', { ...context, max_content_bytes: 4 }).content,
+    [{type:'text', text:'中文任务'}]);
+  assert.throws(() => normalizeWebTaskRequest({content:[{type:'image',mediaType:'image/png',data:'aGVsbG8='}]},
+    {...context,max_content_bytes:4}), /byte limit/);
   assert.throws(() => normalizeWebTaskRequest({ content: [{ type: 'text', text: 'a' }, { type: 'file', receiptId: 'b' }] },
     { ...context, max_parts: 1 }));
   assert.throws(() => normalizeWebTaskRequest('任务', { ...context, default_budget_usd: 0.6 }), /server maximum/);
   assert.throws(() => normalizeWebTaskRequest('任务', { ...context, default_profile: 'unregistered' }), /registered/);
+});
+
+test('User text beyond former byte limit is preserved without consuming image capacity',options,async()=>{
+ const {normalizeWebTaskRequest}=await load();
+ const original='边界文本'.repeat(1800000); // More than the former 20 MiB UTF-8 ceiling.
+ assert.ok(Buffer.byteLength(original)>20*1024*1024);
+ const result=normalizeWebTaskRequest({content:[{type:'text',text:original},
+  {type:'image',mediaType:'image/png',data:'YQ=='}]}, {...context,max_content_bytes:4});
+ assert.equal(result.content[0].text,original);
+ assert.equal(result.summary.content[0].sha256,sha(original));
+ assert.equal(result.content[1].data,'YQ==');
 });

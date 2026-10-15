@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT))
 from src.adapters.scenario import prepare_scenario
 from src.adapters.harless_scenarios import prepare_scene_registry
 from src.adapters.deepseek_cost_gate import (State, create_server, normalize_request_limit,
-    request_limit_argument, PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION)
+    request_limit_argument, cost_cap_argument, PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION)
 from src.adapters.web_task_budget import TaskBudgetRegistry, create_control_server
 
 
@@ -257,7 +257,8 @@ def main():
                         help='per-task request cap; 0 means unlimited (default)')
     parser.add_argument('--run-request-limit', type=request_limit_argument, default=defaults.get('run_request_limit'),
                         help='whole-launch request cap across all tasks; 0 means unlimited (default)')
-    parser.add_argument('--run-budget-usd', type=float, default=defaults['budget_usd'], help='whole-launch budget, never reset by a new task')
+    parser.add_argument('--run-budget-usd', type=cost_cap_argument, default=defaults['budget_usd'],
+                        help='whole-launch cost cap; 0 means unlimited, accounting never resets per task')
     parser.add_argument('--fixture', choices=['normal', 'stale', 'tool-failure', 'provider-failure', 'outside-tool', 'delay'],
                         default='normal', help='mock-only failure injection for diagnostics')
     args = parser.parse_args()
@@ -278,7 +279,8 @@ def main():
         parser.error(str(error))
     if not 1024 <= args.port <= 65535 or not math.isfinite(args.budget_usd) or args.budget_usd < 0:
         parser.error('invalid port or budget')
-    if not math.isfinite(args.run_budget_usd) or not args.budget_usd <= args.run_budget_usd <= 100:
+    if args.budget_usd > 100 or (args.run_budget_usd is not None and
+            not args.budget_usd <= args.run_budget_usd <= 100):
         parser.error('whole-launch budget must cover task cap and be <=100')
     if bool(args.manifest) != bool(args.task): parser.error('--manifest and --task must be supplied together')
     if args.real_model and (args.frozen or args.fixture != 'normal'):
@@ -345,7 +347,8 @@ def main():
         args.glm_gate_token = token_hex(32)
         glm_gate = create_server('127.0.0.1', 0, args.glm['base_url'], state,
             state_selector=registry.active_state_for, allowed_models={args.glm['model']},
-            chat_path='/chat/completions', allow_files=False, gate_token=args.glm_gate_token)
+            chat_path='/chat/completions', allow_files=False, gate_token=args.glm_gate_token,
+            omit_sdk_output_limit=defaults['max_output_tokens'] is None)
         args.glm_gate_endpoint = f'http://127.0.0.1:{glm_gate.server_port}/v1'
         servers.append(glm_gate)
     for server in servers:

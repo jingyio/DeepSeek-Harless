@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <link rel="icon" type="image/jpeg" href="/assets/geneloop.jpg?v=1">
+  <link rel="icon" type="image/svg+xml" href="/assets/geneloop-spiral.svg?v=1">
   <title>GeneLoop</title>
   <style>
     :root{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Arial,sans-serif;color:#f4f4f5;background:#141416;font-synthesis:none;-webkit-font-smoothing:antialiased}
     *{box-sizing:border-box}body{margin:0;min-height:100vh}button,input{font:inherit}button{cursor:pointer}a{color:inherit}a:hover{color:#a7d2cb}
     :focus-visible{outline:2px solid #88beb5;outline-offset:3px} [hidden]{display:none!important}
     .brand{display:flex;align-items:center;gap:11px;color:#fafafa;text-decoration:none;font-size:27px;font-weight:650;letter-spacing:-.7px}
-    .brand-mark{display:inline-block;position:relative;width:38px;height:38px;border-radius:50%;overflow:hidden;background:#fff;flex:none}.brand-mark img{position:absolute;width:216.21%;max-width:none;height:auto;left:-58.62%;top:-37.93%}
+    .brand-mark{display:inline-block;width:38px;height:38px;flex:none}.brand-mark img{display:block;width:100%;height:100%;object-fit:contain}
     .auth{min-height:100vh;display:grid;grid-template-columns:minmax(0,1.08fr) minmax(420px,.92fr)}
     .story{position:relative;overflow:hidden;border-right:1px solid #303037;padding:34px clamp(30px,5vw,80px);display:flex;flex-direction:column;justify-content:space-between;background:#171719}
     .story:before{content:"";position:absolute;width:780px;height:780px;border:1px solid #2b2d36;border-radius:50%;left:-335px;top:20%;pointer-events:none}
@@ -51,15 +51,15 @@
   </style>
 </head>
 <body>
-  <div id="loading" class="load"><div class="loading-card"><a href="/" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop.jpg?v=1" alt=""></span><span>GeneLoop</span></a><div class="loading-dot" aria-hidden="true"></div><h2>正在打开工作区</h2><p id="loading-note" role="status">首次进入时，独立工作区需要几秒钟启动。</p><a id="loading-retry" href="/starting" hidden>重新尝试</a></div></div>
+  <div id="loading" class="load"><div class="loading-card"><a href="/" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></span><span>GeneLoop</span></a><div class="loading-dot" aria-hidden="true"></div><h2>正在打开工作区</h2><p id="loading-note" role="status">首次进入时，独立工作区需要几秒钟启动。</p><a id="loading-retry" href="/starting" hidden>重新尝试</a></div></div>
   <div id="auth" class="auth" hidden>
     <aside class="story">
-      <a href="/login" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop.jpg?v=1" alt=""></span><span>GeneLoop</span></a>
+      <a href="/login" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></span><span>GeneLoop</span></a>
       <div class="story-main"><h1>你的研究空间，<br><span>从这里开始。</span></h1></div>
       <div class="foot">GeneLoop · 研究工作空间</div>
     </aside>
     <main class="auth-side"><div class="card">
-      <a href="/login" class="brand mobile-brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop.jpg?v=1" alt=""></span><span>GeneLoop</span></a>
+      <a href="/login" class="brand mobile-brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></span><span>GeneLoop</span></a>
       <section id="login-view" hidden><h2>欢迎回来</h2><p class="hint">登录账号，继续你在 GeneLoop 中的工作。</p>
         <form id="login-form"><div class="field"><label for="login-user">用户名</label><input id="login-user" name="username" autocomplete="username" required></div><div class="field"><label for="login-pass">密码</label><input id="login-pass" name="password" type="password" autocomplete="current-password" required></div><button class="primary">登录</button></form>
         <p id="login-error" class="notice" role="status"></p><p class="switch">第一次使用？ <a href="/register">使用邀请码注册</a></p>
@@ -75,7 +75,7 @@
     </div></main>
   </div>
   <div id="account" class="account" hidden>
-    <aside class="aside"><a href="/" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop.jpg?v=1" alt=""></span><span>GeneLoop</span></a><div class="nav-label">账户设置</div><nav class="nav"><a href="/account" class="active">个人资料与安全</a><a href="/">返回工作区</a></nav><div class="aside-bottom"><div class="identity"><div id="avatar" class="avatar"></div><span id="side-name"></span></div><div class="nav"><button id="logout">退出登录</button></div></div></aside>
+    <aside class="aside"><a href="/" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></span><span>GeneLoop</span></a><div class="nav-label">账户设置</div><nav class="nav"><a href="/account" class="active">个人资料与安全</a><a href="/">返回工作区</a></nav><div class="aside-bottom"><div class="identity"><div id="avatar" class="avatar"></div><span id="side-name"></span></div><div class="nav"><button id="logout">退出登录</button></div></div></aside>
     <main class="content"><div class="crumb">设置 / 账户</div><h1>账户设置</h1><p class="intro">管理你的登录信息。更改会保存在服务器，下次登录继续使用。</p>
       <section class="section"><div><h2>个人资料</h2><p>这个名称显示在你的账户中。</p></div><div><form id="profile-form"><div class="field"><label for="profile-name">显示名称</label><input id="profile-name" name="displayName" maxlength="40" required></div><div class="field"><label for="profile-user">用户名</label><input id="profile-user" name="username" minlength="3" maxlength="32" pattern="[a-zA-Z][a-zA-Z0-9_-]{2,31}" required></div><button class="primary">保存资料</button></form><p id="profile-error" class="notice" role="status"></p></div></section>
       <section class="section"><div><h2>密码与安全</h2><p>修改密码后，所有设备都需要重新登录。</p></div><div><form id="password-form"><div class="field"><label for="current-pass">当前密码</label><input id="current-pass" name="currentPassword" type="password" autocomplete="current-password" required></div><div class="field"><label for="new-pass">新密码</label><input id="new-pass" name="newPassword" type="password" minlength="10" autocomplete="new-password" required><small>至少 10 位</small></div><div class="field"><label for="repeat-pass">确认新密码</label><input id="repeat-pass" name="repeatPassword" type="password" minlength="10" autocomplete="new-password" required></div><button class="primary">修改密码</button></form><p id="password-error" class="notice" role="status"></p></div></section>

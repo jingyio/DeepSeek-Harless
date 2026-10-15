@@ -114,7 +114,7 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     preparedFiles.push({ path, data });
     inputs.push({ document_id: `doc_${inputs.length + 1}`, name: ref.name, path, version_sha256: sha(data) });
   }
-  if (scene.adapter === 'literature' && (!instruction.trim() || instruction.length > 4000)) throw Error('literature_requires_bounded_question');
+  if (scene.adapter === 'literature' && !instruction.trim()) throw Error('literature_requires_question');
   for (const file of readdirSync(join(workspace, 'inputs'))) unlinkSync(join(workspace, 'inputs', file));
   for (const file of preparedFiles) writeFileSync(file.path, file.data, { mode: 0o600 });
   if (scene.adapter === 'files') writeFileTask(workspace, taskId, instruction, options.allow_output === true,

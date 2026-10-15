@@ -58,7 +58,7 @@ test('Partial failure retry preserves the successful lane; scores bind output an
  }finally{f.close();}
 });
 
-test('First uploads retain historical lane protection and bounded, valid per-lane context',async()=>{
+test('First uploads retain historical lane protection and full text within recent per-lane context',async()=>{
  let generation=0; const f=fixture({createLane:async(parent,scene,lane)=>parent+'-'+lane+'-'+(++generation)});
  try {
   const initial=await f.send('a','discuss','x'.repeat(40000)), before=await f.wait(initial.comparison_id);
@@ -70,7 +70,7 @@ test('First uploads retain historical lane protection and bounded, valid per-lan
    assert.equal(f.service.parentFor(lane.session_id),'a');
   }
   const stored=JSON.parse(readFileSync(join(f.root,'comparisons.json'))).turns.at(-1);
-  assert.ok(stored.prior_context.baseline.length<32000);
+  assert.equal(JSON.parse(stored.prior_context.baseline)[0].user,'x'.repeat(40000));
   assert.equal(JSON.parse(stored.prior_context.baseline)[0].assistant,'a/baseline');
   await f.service.rate('a',admitted.comparison_id,'baseline',4,0,after.lanes.baseline.output_sha256);
   const another=await f.service.admit('a',{requestId:'replacement',content:[{type:'file',receiptId:'new-source'}]},context);

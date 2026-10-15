@@ -1,18 +1,16 @@
 /* Product presentation only: provider names, chat content and protocols stay intact. */
 (() => {
   const installed = new WeakSet();
-  const logo = '/assets/geneloop.jpg?v=1';
+  const logo = '/assets/geneloop-spiral.svg?v=1';
   const name = 'GeneLoop';
   window.__installGeneLoopBrand = (ctx, React) => {
     if (installed.has(ctx)) return;
     installed.add(ctx);
     function Mark({ size = 32, className }) {
       return React.createElement('span', { className, role: 'img', 'aria-label': name,
-        style: { width: size, height: size, display: 'inline-block', position: 'relative',
-          overflow: 'hidden', borderRadius: '50%', flexShrink: 0, background: '#fff' } },
+        style: { width: size, height: size, display: 'inline-block', flexShrink: 0 } },
       React.createElement('img', { src: logo, alt: '', 'aria-hidden': true,
-        style: { position: 'absolute', width: '216.21%', maxWidth: 'none', height: 'auto',
-          left: '-58.62%', top: '-37.93%' } }));
+        style: { display: 'block', width: '100%', height: '100%', objectFit: 'contain' } }));
     }
     function Name() {
       return React.createElement('span', { style: { fontFamily: 'var(--geneloop-ui-font)',
@@ -55,7 +53,7 @@
   new MutationObserver(updateTitle).observe(document.head, { childList: true, subtree: true, characterData: true });
   for (const icon of document.querySelectorAll('link[rel~="icon"]')) icon.remove();
   const icon = document.createElement('link');
-  icon.rel = 'icon'; icon.type = 'image/jpeg'; icon.href = logo;
+  icon.rel = 'icon'; icon.type = 'image/svg+xml'; icon.href = logo;
   document.head.append(icon);
 
   // Old owner patches injected this link directly under body, outside the slot

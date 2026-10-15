@@ -30,5 +30,6 @@ export function registerPrivateLanes(ctx: any, output: string, principal: string
       return { ...result, items: result.items.filter((row: any) => !isPrivate(row.sessionId)) };
     };
   }
-  return { isPrivate, reserve };
+  return { isPrivate, reserve, childrenFor: (parent: string) => Object.entries(state.sessions)
+    .filter(([, value]) => value === parent).map(([id]) => id) };
 }

@@ -193,8 +193,8 @@ export function createComparisonService(output: string, principal: string, host:
         ...(context.prior_context_by_lane?.[name] ?? context.prior_context ?? []).slice(-12).map(({source_seq,...row}:any)=>row),
         ...history.slice(-6).map(t => ({
           scene: t.scene,
-          user: t.input.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n').slice(-2000),
-          assistant: (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer_display ?? t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer ?? '').slice(-5000),
+          user: t.input.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n'),
+          assistant: t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer_display ?? t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer ?? '',
         })),
       ])])) : undefined;
       // Only internal, same-parent, same-lane immutable deliveries are handed

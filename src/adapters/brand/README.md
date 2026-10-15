@@ -1,8 +1,12 @@
 # GeneLoop 品牌资产
 
+`geneloop-spiral.svg` 是 2026-10-15 按用户提供的螺旋参考图新绘制的原生矢量图标：一条连续的加粗绸带，紫、蓝、青绿渐变，透明背景，无图内文字。使用 SVG 路径直接绘制，未调用图像生成模型，也未编辑用户参考图。曲面宽窄变化保留螺旋转折，浏览器可直接缩放。
+
+登录、注册、启动页、账户设置、侧栏、对话空态及 favicon 使用 `/assets/geneloop-spiral.svg?v=1`。图标完整等比显示，不加白底或圆形裁切；侧栏保留独立的 GeneLoop 产品名。深浅背景下检查了 16、24、32、48、96、256 像素尺寸。
+
 `geneloop.jpg` 为用户于 2026-10-14 提供的原始 Logo，原样保存，SHA-256：
 `96dd2571f1881eed9c49f2a7e690f20b65f5ee07468e2788e8e9f1731aa97f3b`。
 
-账号页面和客户端仅通过 CSS 视窗显示图标区域，不改写原图。客户端使用 Harness 的三个公开品牌 slot（`sidebar.brand.mark`、`sidebar.brand.name`、`conversation.hero.brand.mark`），以 priority -100 覆盖默认展示；不修改上游包。登录、注册、设置和网页标题使用 GeneLoop，模型名称、提供商和协议标识保留实际含义。
+原图及旧固定路由保留，兼容已有页面缓存；当前界面不再使用原图。客户端使用 Harness 的三个公开品牌 slot（`sidebar.brand.mark`、`sidebar.brand.name`、`conversation.hero.brand.mark`），以 priority -100 覆盖默认展示；不修改上游包。登录、注册、设置和网页标题使用 GeneLoop，模型名称、提供商和协议标识保留实际含义。
 
-网关允许匿名读取固定 `/assets/geneloop.jpg`，让登录页加载 Logo；该路由不接受文件路径参数，不改变账号或产物的访问权限。账号页 CSP 只增加同源图片。直接 Harness 入口也注册同一路由。
+网关允许匿名读取上述两个固定资产路由，让登录页加载 Logo；路由不接受文件路径参数，不改变账号或产物的访问权限。账号页 CSP 保留同源图片，SVG 不包含脚本、外链、文本或嵌入位图。直接 Harness 入口也注册同一路由。

@@ -11,7 +11,7 @@ import { scopeOf } from '@deepseek-ai/dsh-scope';
 export const name = 'sss-web-policy';
 export const inject = ['llm', 'agents', 'sessionController'];
 type Policy = { output: string; prompt_sha256: string; allowed_tools: string[];
-  endpoint: string; max_output_tokens: number; mode: 'baseline' | 'shadow' | 'execute';
+  endpoint: string; max_output_tokens: number | null; mode: 'baseline' | 'shadow' | 'execute';
   manifest?: string; task?: string; embedding_endpoint: string; fixture?: string };
 // The official composer trims the outer whitespace before admission. Keep all
 // internal bytes intact; this is a documented transport normalization, not fuzzy matching.
@@ -42,7 +42,9 @@ export function apply(ctx: any) {
   // A fixed adapter connection cannot be redirected by the Models/settings UI.
   // Other provider routes are removed by the host overlay and denied at the waterfall.
   const options = resolveAdapterOptions({ baseURL: config.endpoint, thinking: 'disabled',
-    reasoningEffort: 'off', maxTokens: config.max_output_tokens } as any);
+    reasoningEffort: 'off', ...(config.max_output_tokens == null ? {} : { maxTokens: config.max_output_tokens }) } as any);
+  // The official resolver otherwise supplies its own 256k application default.
+  if (config.max_output_tokens == null) delete (options as any).maxTokens;
   ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new DeepSeekAdapter({
     options: () => options, resolveApiKey: async () => 'sss-mock-only',
     resolveUserId: () => 'sss-web-free-fixture',
@@ -140,7 +142,7 @@ export function apply(ctx: any) {
   ctx.on('llm/stream', (request: any, next: any) => {
     owner(request.sessionId);
     if (!prompted || request.provider !== 'deepseek-official' || request.model !== 'deepseek-flash' ||
-        request.reasoningEffort !== 'off' || request.maxTokens !== config.max_output_tokens) refuse('Unapproved model request');
+        request.reasoningEffort !== 'off' || request.maxTokens !== (config.max_output_tokens ?? undefined)) refuse('Unapproved model request');
     if (!isAgentLoopRequest(request)) refuse('Auxiliary model calls are disabled');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     const texts = humans.map((message: any) => message.content?.length === 1 && message.content[0]?.type === 'text' ? message.content[0].text : null);

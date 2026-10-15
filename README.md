@@ -2,7 +2,7 @@
 
 已有 PPT、论文、数据分析 Motif 库已统一到版本化的 [motif-libraries/](motif-libraries/README.md)。管理员在成员 Web policy 配置 `comparison_scenes: ["ppt", "paper-proofreading", "research-data-analysis"]` 后，原生 `/ppt`、`/paper`、`/data` 聊天分别执行 Baseline 与 Motif 两路，保留各自多轮历史、交付文件与 1–5 分评分；论文原库按其授权运行 Shadow。资料通过原生附件上传，账号隔离与预算沿用现有服务。库缺失或兼容锁失效会明确回退，不能把回退记为优化成功。
 
-持续部署可使用 `scripts/serve-web-budget.py`，显式指定私有 output、现有累计 checkpoint 和获准上限；缺少 checkpoint 会拒绝启动，禁止因重启清零。调用前持久化预约费用，未知使用量继续占用预算。Linux 服务器的真实三场景功能验收和失败边界见 [联调记录](docs/experiments/trained-three-scenes-20261014-v1.md)。
+持续部署可使用 `scripts/serve-web-budget.py`，显式指定私有 output、现有累计 checkpoint 和获准上限；缺少 checkpoint 会拒绝启动，禁止因重启清零。用户于 2026-10-15 取消当前共享服务器累计 1 美元费用上限，配置使用 `--budget-usd 0`（policy 的 `run_budget_usd: null`），请求次数也不限；每任务 0.23 美元继续保留。按后续指示，Web 单次文字输入不设应用长度上限，输出使用 `max_output_tokens: null` 并省略请求 `max_tokens`，保留服务商原生容量边界。调用前持久化预约费用，未知使用量继续占用任务预算，累计账本照常记录。Linux 服务器的真实三场景功能验收和失败边界见 [联调记录](docs/experiments/trained-three-scenes-20261014-v1.md)。
 
 四场景研究代码的分支整合与兼容验收见 [当前整合记录](docs/experiments/four-scenario-main-integration-20261014-v1.md)。论文生成工具/轨迹 RSI 的显式实验入口在 [论文场景](scenarios/paper-submission/README.md)，文献处理在 [文献场景](scenarios/literature-notes/README.md)。研究 CLI 与统一 Web 的工具契约不同，分支合并不会自动赋予旧实验库产品 Execute 权限；文献的任务级 Web 绑定和双栏评分仍需单独验收。
 
@@ -12,7 +12,9 @@ Web 场景快捷入口支持 `/ppt`、`/paper`、`/data`、`/chat`，输入前�
 
 工作区侧栏保留文件夹图标、折叠和操作菜单；点击名称进入工作区概览，可置顶、改名或删除分组。删除前说明影响，既有聊天移至“未分组”，记录与文件保留。聊天支持从已完成回复创建独立分支，名称按原名追加 `（1）`、`（2）` 等编号；编号按账号持久保存，分支不共享原任务评分或写入权限。对照场景及切回的普通聊天显示真实回答增量和模型/工具执行状态；重连只读取状态，不重放付费请求。接口与边界见 [接口契约](docs/interfaces.md#连续场景流式状态与对话分支2026-10-15)。
 
-GeneLoop 是本项目的产品名称，界面使用用户提供的 GeneLoop Logo。MotifAgent 的迁移内核负责有证据支持的结构执行；底层 DeepSeek Harness（DSH）负责 Agent 循环、语义判断、工具派发和会话，其来源与许可证归属保持不变。场景通过 MCP 扩展。模型选择仍显示真实提供商和模型名称；历史环境变量、协议标识、`/harless` 命令及仓库目录保持兼容，不因品牌更名修改其含义。
+GeneLoop 是本项目的产品名称，界面使用依据用户参考图绘制的无字螺旋图标。MotifAgent 的迁移内核负责有证据支持的结构执行；底层 DeepSeek Harness（DSH）负责 Agent 循环、语义判断、工具派发和会话，其来源与许可证归属保持不变。场景通过 MCP 扩展。模型选择仍显示真实提供商和模型名称；历史环境变量、协议标识、`/harless` 命令及仓库目录保持兼容，不因品牌更名修改其含义。
+
+工作区名称行可再次点击折叠，右侧菜单与新建按钮独立操作；聊天可从标题栏或侧栏菜单移入回收站，并在“最近删除”恢复原会话及文件。网页数据报告测试包位于 [examples/web-data-report-demo/](examples/web-data-report-demo/)，包含 40 行合成材料实验数据、研究说明和可直接粘贴的 `/data` 提示词；它用于软件验证，不代表实际实验结论。
 
 既有论文/DeepSeek 对照继续使用真实 DeepSeek API；共享 Web 现在可按服务器配置选择 GLM。服务器先加载 `.local/remote-env.sh`，在私有 `.env` 配置所需模型密钥（SDK 场景仍需 `DEEPSEEK_API_KEY`）；Web 用 `npm run web:real`，SDK 场景用 `npm run scenario:real -- --scenario scenarios/example/scenario.json --budget-usd 0.25`。Web 每任务与整次启动均默认上限 0.25 美元；SDK 每次运行默认上限 0.25 美元，运行前核对预览与有效配置，超出既有上限另行确认。已完成一次 SDK/Harness/MCP 的真实 API 闭环：3 次 HTTP 200、4 次工具、来源引用一致，见[最小真实调用记录](docs/experiments/deepseek-real-api-smoke-20261009-v1.md)。3080 的历史服务为模拟模式；3086 真实 Web 后端两项任务已通过，浏览器点击体验仍待确认，见[连接恢复与真实 Web 验收](docs/experiments/web-real-recovery-20261009-v1.md)。
 

@@ -36,6 +36,41 @@ HOP_HEADERS = {"host", "connection", "content-length", "transfer-encoding",
                "accept-encoding", "keep-alive", "proxy-connection"}
 FILE_PATH = re.compile(r"^/v1/files(?:/[A-Za-z0-9_-]+)?$")
 
+# Provider-owned defaults/capacities, verified 2026-10-15. These values are used
+# only to reserve money; they are never injected into an uncapped request.
+# https://api-docs.deepseek.com/api/create-chat-completion/
+DEEPSEEK_OUTPUT_DEFAULTS = {'disabled': 8192, 'enabled': 65536, 'max': 131072}
+# Z.AI documents a maximum, but no omitted-parameter default for these models:
+# https://docs.z.ai/api-reference/llm/chat-completion
+GLM_OUTPUT_CAPACITIES = {'glm-4.6': 131072, 'glm-4.7': 131072, 'glm-5': 131072,
+                         'glm-5.1': 131072, 'glm-5.2': 131072, 'glm-5.3': 131072}
+
+
+def normalize_output_limit(value: int | None) -> int | None:
+    """JSON null / CLI zero removes the application cap, not provider capacity."""
+    if value is None:
+        return None
+    if type(value) is not int or value < 0:
+        raise ValueError('output limit must be a non-negative integer or null')
+    return value or None
+
+
+def output_limit_argument(value: str) -> int | None:
+    return normalize_output_limit(int(value))
+
+
+def provider_output_reservation(model: str, request: dict) -> int:
+    """Reserve omitted output using documented provider behavior, never zero."""
+    if model in PEAK_USD_PER_MILLION:
+        thinking = request.get('thinking')
+        disabled = (isinstance(thinking, dict) and thinking.get('type') == 'disabled')
+        disabled = disabled or request.get('reasoning_effort') == 'none'
+        mode = 'disabled' if disabled else 'max' if request.get('reasoning_effort') == 'max' else 'enabled'
+        return DEEPSEEK_OUTPUT_DEFAULTS[mode]
+    if model in GLM_OUTPUT_CAPACITIES:
+        return GLM_OUTPUT_CAPACITIES[model]
+    raise ValueError('provider output capacity is unknown for omitted max_tokens')
+
 
 def _image_count(value: Any) -> int:
     if isinstance(value, dict):
@@ -46,7 +81,7 @@ def _image_count(value: Any) -> int:
     return 0
 
 
-def reservation(body: bytes, *, max_output: int,
+def reservation(body: bytes, *, max_output: int | None,
                 rates: dict[str, tuple[float, float]] | None = None) -> tuple[str, float, int]:
     request = json.loads(body)
     if not isinstance(request, dict):
@@ -56,7 +91,11 @@ def reservation(body: bytes, *, max_output: int,
     if model not in rates:
         raise ValueError("model is not in the approved peak-price table")
     output = request.get("max_tokens")
-    if not isinstance(output, int) or isinstance(output, bool) or not 1 <= output <= max_output:
+    max_output = normalize_output_limit(max_output)
+    if output is None and max_output is None:
+        output = provider_output_reservation(model, request)
+    elif (type(output) is not int or output < 1 or
+          (max_output is not None and output > max_output)):
         raise ValueError("max_tokens is missing or exceeds the per-request cap")
     # Every text token consumes at least one UTF-8 byte on the wire. Reserve an
     # additional 2,000 tokens for protocol/accounting differences and 1,024 for
@@ -141,15 +180,28 @@ def request_limit_argument(value: str) -> int | None:
     return normalize_request_limit(int(value))
 
 
+def validate_cost_cap(value: float | None) -> float | None:
+    """Only null disables a State cost cap; a numeric zero still denies spending."""
+    if value is not None and (not isinstance(value, (int, float)) or isinstance(value, bool)
+                              or not math.isfinite(value) or value < 0):
+        raise ValueError('cost cap must be a finite non-negative number or null')
+    return value
+
+
+def cost_cap_argument(value: str) -> float | None:
+    """CLI cumulative-cap convention: an explicit 0 means unlimited, recorded as null."""
+    return validate_cost_cap(float(value)) or None
+
+
 class State:
-    def __init__(self, *, cap_usd: float, output_cap: int, record: Path,
+    def __init__(self, *, cap_usd: float | None, output_cap: int | None, record: Path,
                  request_limit: int | None = None,
                  rates: dict[str, tuple[float, float]] | None = None,
                  cache_rates: dict[str, float] | None = None,
                  checkpoint: Path | None = None):
         self.request_limit = normalize_request_limit(request_limit)
-        self.cap_usd = cap_usd
-        self.output_cap = output_cap
+        self.cap_usd = validate_cost_cap(cap_usd)
+        self.output_cap = normalize_output_limit(output_cap)
         self.record = record
         self.rates = PEAK_USD_PER_MILLION if rates is None else rates
         self.cache_rates = CACHE_HIT_PEAK_USD_PER_MILLION if cache_rates is None else cache_rates
@@ -184,7 +236,7 @@ class State:
     def book(self, body: bytes) -> tuple[int, str, float, int] | None:
         model, dollars, ceiling = reservation(body, max_output=self.output_cap, rates=self.rates)
         with self.lock:
-            if (self.reserved_usd + dollars > self.cap_usd or
+            if ((self.cap_usd is not None and self.reserved_usd + dollars > self.cap_usd) or
                     (self.request_limit is not None and self.request_count >= self.request_limit)):
                 return None
             self.reserved_usd += dollars
@@ -270,7 +322,10 @@ class StreamUsage:
 def create_server(host: str, port: int, upstream: str, state: State, *,
                   state_selector=None, allowed_models: set[str] | None = None,
                   chat_path: str = '/v1/chat/completions', allow_files: bool = True,
-                  gate_token: str | None = None) -> ThreadingHTTPServer:
+                  gate_token: str | None = None,
+                  omit_sdk_output_limit: bool = False) -> ThreadingHTTPServer:
+    if omit_sdk_output_limit and state.output_cap is not None:
+        raise ValueError('SDK output defaults can only be omitted with an uncapped output policy')
     # macOS can supply system proxies even with no *_PROXY environment variables.
     # Never send a local mock/loopback upstream through an external proxy.
     opener = (urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -422,6 +477,16 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                 self._reply(403, "model session is not approved")
                 return
             try:
+                if omit_sdk_output_limit:
+                    # pi-ai supplies a model-capacity max_tokens even when the
+                    # admitted call omits it. Let this provider choose its own
+                    # default, and reserve against that exact outgoing request.
+                    payload = json.loads(body)
+                    if not isinstance(payload, dict):
+                        raise ValueError('request body must be an object')
+                    payload.pop('max_tokens', None)
+                    payload.pop('max_completion_tokens', None)
+                    body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
                 if allowed_models is not None and json.loads(body).get('model') not in allowed_models:
                     raise ValueError('model is outside this provider gate')
                 booked = request_state.book(body)
@@ -474,11 +539,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--upstream", default="https://api.deepseek.com")
-    parser.add_argument("--cap-usd", type=float, required=True)
-    parser.add_argument("--max-output", type=int, default=3000)
+    parser.add_argument("--cap-usd", type=cost_cap_argument, required=True,
+                        help="cumulative cost cap; 0 means unlimited with accounting retained")
+    parser.add_argument("--max-output", type=output_limit_argument, default=None,
+                        help="application output cap; 0/default omits it, provider capacity still applies")
     parser.add_argument("--record", type=Path, required=True)
     args = parser.parse_args()
-    if not 0 < args.cap_usd <= 100 or not 1 <= args.max_output <= 8000:
+    if args.cap_usd is not None and args.cap_usd > 100:
         parser.error("invalid research budget")
     root = Path(__file__).resolve().parents[2]
     record = args.record.resolve()

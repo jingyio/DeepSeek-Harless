@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 
-test('Web admission rejects other sessions, changed questions, schema drift and auxiliary requests',
+for (const outputCap of [1000, null]) test(`Web admission keeps guards with output cap ${outputCap}`,
   { skip: !process.features?.typescript }, async () => {
     const { apply } = await import('../src/adapters/dsh_web_policy.ts');
     const directory = mkdtempSync(join(tmpdir(), 'sss-web-policy-'));
@@ -14,12 +14,13 @@ test('Web admission rejects other sessions, changed questions, schema drift and 
     const schemas = [{ name: 'mcp__demo__pin_note', description: 'pin',
       parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } }];
     const policy = { output: directory, endpoint: 'http://127.0.0.1:1234/v1',
-      mode: 'baseline', allowed_tools: schemas.map(row => row.name), max_output_tokens: 1000,
+      mode: 'baseline', allowed_tools: schemas.map(row => row.name), max_output_tokens: outputCap,
       prompt_sha256: createHash('sha256').update('fixed task').digest('hex') };
     const path = join(directory, 'policy.json'); writeFileSync(path, JSON.stringify(policy));
     process.env.SSS_WEB_POLICY = path;
-    const listeners = new Map(); let executionGuard;
-    const ctx = { effect() {}, on(name, listener) { listeners.set(name, listener); },
+    const listeners = new Map(); let executionGuard, adapter;
+    const ctx = { effect(callback) { callback(); }, llm: { registerAdapter(_names, value) { adapter = value; } },
+      on(name, listener) { listeners.set(name, listener); },
       sessionController: {
         async create() {
           listeners.get('agent/created')({ agent: { session: { id: 'owned' }, ctx: {
@@ -33,6 +34,7 @@ test('Web admission rejects other sessions, changed questions, schema drift and 
       } };
     try {
       apply(ctx);
+      assert.equal((await adapter.resolveModel('deepseek-official', 'deepseek-flash')).defaultMaxTokens, outputCap ?? undefined);
       await ctx.sessionController.create({});
       await assert.rejects(ctx.sessionController.create({}), /One task/);
       assert.throws(() => ctx.sessionController.fork({}), /Fork/);
@@ -45,7 +47,7 @@ test('Web admission rejects other sessions, changed questions, schema drift and 
       assert.match(executionGuard({ name: 'bash' }), /outside/);
       const stream = listeners.get('llm/stream');
       const body = { sessionId: 'owned', provider: 'deepseek-official', model: 'deepseek-flash',
-        reasoningEffort: 'off', maxTokens: 1000, tools: schemas,
+        reasoningEffort: 'off', ...(outputCap == null ? {} : { maxTokens: outputCap }), tools: schemas,
         messages: [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'fixed task' }] }] };
       const next = () => (async function* () { yield { type: 'fixture' }; })();
       assert.throws(() => stream(body, next), /Auxiliary/);

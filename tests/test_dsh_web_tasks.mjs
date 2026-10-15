@@ -74,6 +74,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   const promptCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
+    emit,
     workspaceRegistry: { list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
       async create(path, title) { const old = [...workspaceGroups.values()].find(row => row.path === path); if (old) return old;
         const row = { id:'workspace-' + randomUUID(), path, title, sessionIds:[], async attachSession(id) { if(!this.sessionIds.includes(id)) this.sessionIds.push(id); } }; workspaceGroups.set(row.id,row); return row; } },
@@ -101,6 +102,9 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
         return { receiptId, file: ref };  },
     },
     sessionController: {
+      async list() { return { items: [...storedHeaders].map(([sessionId, meta]) => ({ sessionId, title: meta.title })) }; },
+      async search() { return this.list(); },
+      async page({sessionId}) { return this.inspect(sessionId); },
       async create(request) {
         assert.ok(request.cwd === undefined || request.workspaceId === undefined, 'native create rejects workspaceId together with cwd');
         const id = request.sessionId ?? `mock-session-${agents.size + 1}`;
@@ -142,6 +146,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     },
   };
   const originalController = { ...ctx.sessionController };
+  const originalUploads = { ...ctx.fileUploads };
   ctx.agents = { async create(request) { const result = await originalController.create({sessionId:request.sessionId,cwd:request.meta.cwd,agentPreset:request.meta.agentPreset});
     const agent=agents.get(result.sessionId);agent.events.push(...structuredClone(request.seed));Object.assign(storedHeaders.get(result.sessionId),request.meta);
     await request.setup(agent.ctx,agent);return agent; } };
@@ -173,14 +178,17 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     return tagged ? markAgentLoopRequest(body) : body;
   }
   return { ctx, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts, policy, policyPath,
+    async trash(body) { const request = new Request('http://127.0.0.1/api/harless/session-trash', body === undefined ? {} : { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }); request.authorized=true;
+      const response=await routes.get('/api/harless/session-trash').fetch(request); return {status:response.status,value:await response.json()}; },
     async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
     async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
     promptCalls, queueMutations, controlCalls, directory,
-    registrations, brokerCalls, brokerRoutes, modelRequest, routes, webRoutes,
+    registrations, brokerCalls, brokerRoutes, modelRequest, routes, webRoutes, adapters,
     async stopControl() { server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); },
     originalController,
     async restart() {
       Object.assign(ctx.sessionController, originalController);
+      Object.assign(ctx.fileUploads, originalUploads);
       listeners.clear(); routes.clear(); webRoutes.clear(); agents.clear();
       const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
     },
@@ -196,6 +204,24 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     },
   };
 }
+
+test('Uncapped task text and output retain guards and omit the adapter default',options,async()=>{
+ const f=await fixture({max_output_tokens:null});try{
+  const original='完整任务输入'.repeat(3000)+'unique-tail';
+  const task=await f.preview(original);await f.submit(task);
+  assert.equal(f.promptCalls[0].content.filter(part=>part.type==='text').map(part=>part.text).join(''),original);
+  const adapter=f.adapters.find(row=>row.names.includes('deepseek-official')).adapter;
+  assert.equal((await adapter.resolveModel('deepseek-official','deepseek-flash')).defaultMaxTokens,undefined);
+  const request=f.modelRequest(task,{maxTokens:undefined});
+  const next=()=> (async function*(){yield {type:'text-delta',delta:'uncapped answer'};})();
+  const received=[];for await(const chunk of f.stream(request,next))received.push(chunk);
+  assert.equal(received.length,1);
+  const recorded=JSON.parse(readFileSync(join(f.directory,'tasks',task.task_id,'model-request-config.json')));
+  assert.equal(recorded.max_output_tokens,null);assert.equal(recorded.output_cap_sent,false);
+  assert.throws(()=>f.stream(f.modelRequest(task,{maxTokens:1000}),next),/Unapproved/);
+  await f.complete(task);
+ }finally{await f.close();}
+});
 
 function assertProductPresentationOnly(ctx) {
   assert.equal(typeof ctx.indexTransform, 'function');
@@ -1120,9 +1146,11 @@ test('Completed parent routes ordinary → data → PPT → chat without moving 
     }
     const value=await (await compare(id,false,parent)).json();if(['completed','failed'].includes(value.status)){assert.equal(value.status,'completed',JSON.stringify(value));return value;}await new Promise(r=>setTimeout(r,10));
   }throw Error('comparison timeout');};
-  const data=await send('/data Discuss data','data');
+  const longData='Discuss data '+ '完整单次输入'.repeat(3000)+'data-tail';
+  const data=await send('/data '+longData,'data');
   const running=(await f.settings({action:'select',session_id:sessionId,selection:{scene:'ppt'}}));assert.equal(running.value.error.code,'session_busy');
   const dataView=await settle(data.comparison_id);assert.equal(dataView.session_id,sessionId);
+  assert.equal(JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(turn=>turn.id===data.comparison_id).input[0].text,longData);
   const parentGroup=f.ctx.workspaceRegistry.list().find(group=>group.sessionIds.includes(sessionId));
   assert.deepEqual(parentGroup.sessionIds,[sessionId],'comparison lanes must not become workspace chats');
   assert.equal(f.ctx.workspaceRegistry.list().length,1,'private lanes must not create their own visible groups');
@@ -1169,6 +1197,20 @@ test('Completed parent routes ordinary → data → PPT → chat without moving 
     assert.equal(readFileSync(job.inputs[0].path,'utf8'),'pdf-'+pptView.lanes[lane].session_id);
   }
   await f.restart();assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'new-scene');
+  const historyBefore=JSON.stringify((await f.ctx.sessionController.inspect(sessionId)).events);
+  assert.equal((await f.trash({action:'delete',session_id:sessionId})).status,200);
+  const deleted=(await f.trash()).value.deleted_session_ids;
+  for(const turn of [dataView,pptView,chatView])for(const lane of Object.values(turn.lanes)){
+    assert.ok(deleted.includes(lane.session_id));assert.equal((await f.api(undefined,'?task_id='+lane.task_id)).status,404);
+  }
+  assert.equal((await compare(ppt.comparison_id)).status,404);
+  assert.ok((await f.ctx.sessionController.list({})).items.every(row=>row.sessionId!==sessionId));
+  assert.ok((await f.ctx.sessionController.inspect(branch.sessionId)).events.length>0,'visible branch is independent of source deletion');
+  for(const lane of ['baseline','motif'])assert.equal(comparisonArtifacts(f.directory).read(branch.sessionId,lane,branchInputs.lanes[lane][0]).toString(),'pdf-'+pptView.lanes[lane].session_id);
+  await f.restart();assert.equal((await f.trash()).value.sessions.length,1);
+  assert.equal((await f.trash({action:'restore',session_id:sessionId})).status,200);
+  assert.equal(JSON.stringify((await f.ctx.sessionController.inspect(sessionId)).events),historyBefore);
+  assert.equal((await compare(ppt.comparison_id)).status,200);
  }finally{await f.close();}
 });
 
@@ -1203,5 +1245,30 @@ test('Task API exposes real text chunks and tool activity before completion and 
   live=(await f.api(undefined,'?task_id='+task.task_id)).value;assert.equal(live.activity[0].label,'读取资料');assert.doesNotMatch(JSON.stringify(live.activity),/private/);
   await f.complete(task);await f.restart();live=(await f.api(undefined,'?task_id='+task.task_id)).value;
   assert.equal(live.progress.status,'completed');assert.equal(live.activity[0].status,'failed','a tool without a real result is never presented as success');
+ }finally{await f.close();}
+});
+
+test('Trash rejects active tasks and isolates direct APIs; restoring retains task history and original workspace',options,async()=>{
+ const f=await fixture({broker:true,dshHome:true});try{
+  const task=await f.preview('synthetic deletion target'), other={session_id:(await f.ctx.sessionController.create({})).sessionId};await f.submit(task);
+  assert.equal((await f.trash({action:'delete',session_id:task.session_id})).status,409);
+  assert.equal((await f.trash({action:'delete',session_id:'foreign'})).status,404);
+  await f.complete(task);const group=f.ctx.workspaceRegistry.list().find(row=>row.sessionIds.includes(task.session_id));
+  const history=JSON.stringify((await f.ctx.sessionController.inspect(task.session_id)).events),calls=f.controlCalls.length;
+  assert.equal((await f.trash({action:'delete',session_id:task.session_id})).status,200);
+  assert.equal(f.controlCalls.length,calls,'deletion never starts or cancels model work');
+  assert.equal((await f.api(undefined,'?task_id='+task.task_id)).status,404);
+  assert.ok((await f.api()).value.tasks.every(row=>row.task_id!==task.task_id));
+  assert.ok((await f.settings()).value.sessions.every(row=>row.session_id!==task.session_id));
+  assert.equal((await f.settings(undefined,'?session_id='+task.session_id)).status,404);
+  assert.throws(()=>f.ctx.sessionController.create({sessionId:task.session_id}),ApiSessionNotFound);
+  assert.throws(()=>f.ctx.sessionController.fork({sessionId:task.session_id}),ApiSessionNotFound);
+  assert.throws(()=>f.ctx.sessionController.page({sessionId:task.session_id}),ApiSessionNotFound);
+  assert.ok((await f.ctx.sessionController.search({})).items.some(row=>row.sessionId===other.session_id));
+  await f.restart();assert.throws(()=>f.ctx.sessionController.inspect(task.session_id),ApiSessionNotFound);
+  assert.equal((await f.trash({action:'restore',session_id:task.session_id})).status,200);
+  assert.equal(JSON.stringify((await f.ctx.sessionController.inspect(task.session_id)).events),history);
+  assert.equal((await f.api(undefined,'?task_id='+task.task_id)).status,200);
+  assert.ok(group.sessionIds.includes(task.session_id));assert.equal((await f.trash()).value.sessions.length,0);
  }finally{await f.close();}
 });

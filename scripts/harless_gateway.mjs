@@ -440,11 +440,12 @@ export function createGateway(config) {
       if (!safePath(req.url)) return send(res, 400, '无效地址');
       const url = new URL(req.url, origin), path = url.pathname;
       const user = sessionFor(req);
-      if (path === '/assets/geneloop.jpg') {
+      if (path === '/assets/geneloop-spiral.svg' || path === '/assets/geneloop.jpg') {
         if (!['GET', 'HEAD'].includes(req.method)) return send(res, 405, '', { allow: 'GET, HEAD' });
-        const logo = readFileSync(new URL('../src/adapters/brand/geneloop.jpg', import.meta.url));
+        const spiral = path === '/assets/geneloop-spiral.svg';
+        const logo = readFileSync(new URL(spiral ? '../src/adapters/brand/geneloop-spiral.svg' : '../src/adapters/brand/geneloop.jpg', import.meta.url));
         return send(res, 200, req.method === 'HEAD' ? '' : logo,
-          { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=3600' });
+          { 'content-type': spiral ? 'image/svg+xml' : 'image/jpeg', 'cache-control': 'public, max-age=3600' });
       }
       if (path === '/api/internal/admin' && config.adminToken && req.method === 'POST') {
         const supplied = req.headers['x-harless-admin'];
