@@ -859,21 +859,25 @@ test('usage and time details use public anchored portals with outside and Escape
   assert.match(css, /overflow:auto/); f.dispose();
 });
 
-test('trajectory tabs use each lane actual events and distinguish verified optimization from shadow candidates', async () => {
+test('trajectory shows both lanes together and distinguishes verified optimization from shadow candidates', async () => {
   const value=comparison();value.lanes.baseline.trace=[{id:'base',kind:'tool',label:'读取数据',status:'completed'}];
   value.lanes.motif.mode='shadow';value.lanes.motif.trace=[{id:'shadow',kind:'motif',label:'预测候选',status:'completed',optimized:false,verified_skip:false}];
   const f=fixture(undefined,value,{traceOnly:true});await flush();f.render();
-  const tabs=f.all(row=>row.props.role==='tab');assert.equal(f.content(tabs[1]),'Motif · 影子评估');
-  assert.equal(tabs[0].props.tabIndex,0);assert.equal(tabs[1].props.tabIndex,-1);
-  const rows=()=>{const component=f.all(row=>typeof row.type==='function'&&row.type.name==='TraceRows')[0];return component.type(component.props);};
-  assert.match(f.content(rows()),/读取数据/);
-  f.all(row=>row.props.role==='tablist')[0].props.onKeyDown({key:'ArrowRight',preventDefault(){}});f.render();
-  assert.equal(f.all(row=>row.props.role==='tab')[1].props['aria-selected'],true);
-  assert.match(f.content(rows()),/预测候选/);assert.doesNotMatch(f.content(rows()),/已应用优化|已验证跳过/);
+  assert.equal(f.all(row=>row.props.className==='harless-trace-column').length,2);
+  assert.match(f.content(f.all(row=>row.props.className==='harless-comparison-trace')[0]),/Baseline.*Motif · 影子评估/);
+  const rows=index=>{const component=f.all(row=>row.type?.name==='TraceRows')[index];return component.type(component.props);};
+  assert.match(f.content(rows(0)),/读取数据/);assert.match(f.content(rows(1)),/预测候选/);
+  assert.doesNotMatch(f.content(rows(1)),/已应用优化|已验证跳过/);
   value.lanes.motif.trace=[{id:'verified',kind:'motif',label:'执行已认证节点',status:'completed',optimized:true,verified_skip:true}];
   f.events.get('focus')();await flush();f.render();
-  const tree=rows();assert.match(f.content(tree),/已验证跳过模型请求/);assert.equal(f.all(row=>row.props['data-optimized']==='true',tree).length,1);
-  f.dispose();
+  const tree=rows(1);assert.match(f.content(tree),/已验证跳过模型请求/);assert.equal(f.all(row=>row.props['data-optimized']==='true',tree).length,1);f.dispose();
+});
+
+test('single-lane tasks are ordinary execution records in the unified trajectory', async()=>{
+  const value=comparison();value.presentation='single';delete value.lanes.motif;
+  const f=fixture(undefined,value,{traceOnly:true});await flush();f.render();
+  assert.equal(f.all(row=>row.props.className==='harless-trace-column').length,1);
+  assert.match(f.content(f.all(row=>row.props.className==='harless-comparison-trace')[0]),/执行过程/);assert.doesNotMatch(f.content(f.all(row=>row.props.className==='harless-comparison-trace')[0]),/Baseline|Motif/);f.dispose();
 });
 
 test('completed process messages retain verified artifact routing without repeating the unbound final template',async()=>{

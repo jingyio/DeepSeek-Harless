@@ -12,7 +12,7 @@ DeepSeek 场景对照的 Baseline / Motif 两侧并行执行，各自保留会�
 
 会话开始后会根据用户内容生成简短名称；同一工作区自动重名时追加编号，手动改名和分支名保持。模型菜单按服务器实际可用目录提供 Flash / Pro；当前共享服务器可用 Flash Off / On、Pro Off。Pro On 的原生默认输出预约超过既有每任务预算，菜单会解释原因，不暗中缩短输出或更换模型。
 
-场景对照在生成中逐段保留真实文字增量，并显示思考、工具和 MCP 执行状态。每侧末尾提供复制、赞/踩、分支、用量与耗时；轨迹页可切换普通对话与对照任务，再分别查看 Baseline / Motif，已验证的 Motif 模型请求跳过用绿色标识。实现、真实模型与浏览器证据见 [本轮验收](docs/experiments/geneloop-live-workflow-20261015-v1.md)。
+场景对照在生成中逐段保留真实文字增量，并显示思考、工具和 MCP 执行状态。每侧末尾提供复制、赞/踩、分支、用量与耗时；轨迹页按真实对话顺序连续编号，普通轮次单列、对照轮次左右展示 Baseline / Motif，上方图表按轮独立切换侧别。已验证的 Motif 模型请求跳过用绿色文字标识。实现与浏览器证据见 [统一轨迹验收](docs/experiments/geneloop-unified-trajectory-20261016-v1.md)，真实模型行为证据见 [流式工作验收](docs/experiments/geneloop-live-workflow-20261015-v1.md)。
 
 Web 的 DeepSeek 模型提供推理 **Off / On**，默认 Off；On 对应官方 `thinking.enabled` 与 `reasoning_effort: high`，按会话保存，并应用到本轮两侧任务。附件入口不按场景限制扩展名，PDF、Word 和需求文本可随数据一起上传。平台会向模型提供可提取的正文和表格文本；未知二进制、损坏文件或未识别的扫描文字会明确标记，不能冒充已读。统计工具仍以真实数据表为依据，不从资料中臆造统计值。
 
