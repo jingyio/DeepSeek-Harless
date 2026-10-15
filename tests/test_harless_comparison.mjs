@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,readFileSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,sep} from 'node:path';
+import {createHash} from 'node:crypto';
 import {createComparisonService} from '../src/adapters/harless_comparison.ts';
+import {REPORT_ANSWER_BINDING} from '../src/adapters/harless_report_answer.ts';
 const context={scene:'ppt',options:{slides:2},model:{model:'fixture'},input_sha256:'a'.repeat(64)};
 function fixture(overrides={}){
  const root=mkdtempSync(join(tmpdir(),'harless-comparison-')),tasks=new Map(),created=[],prepared=[],submitted=[],cancelled=[],events=[];
@@ -137,5 +139,57 @@ test('Admitted upload references survive receipt retirement without being expose
   assert.equal(f.submitted.length,before);
   f.service.dispose();const restored=createComparisonService(f.root,'account-a',f.host);
   assert.deepEqual(restored.sourceFor('a','uploaded','receipt'),file);restored.dispose();
+ }finally{f.close();}
+});
+
+test('Historic report display binds the exact original answer, preserving files and invalidating stale scores without reruns',async()=>{
+ const raw='estimate={{estimate}}',artifact={id:'prior-verified',sha256:'f'.repeat(64),verification:'data-report-delivery-v1'};
+ const f=fixture({submit:async id=>{f.submitted.push(id);Object.assign(f.tasks.get(id),{status:'completed',answer:raw,deliveries:[artifact]});}});
+ try{
+  const admitted=await f.send('a','one','report',{...context,scene:'research-data-analysis'}),first=await f.wait(admitted.comparison_id);
+  await f.service.rate('a',admitted.comparison_id,'baseline',4,0,first.lanes.baseline.output_sha256);f.service.dispose();
+  let inspected=0;
+  const resumed=createComparisonService(f.root,'account-a',{...f.host,inspect:async(id,ctx)=>{
+   inspected++;assert.equal(ctx.recoverMissing,true);
+   // A later turn may carry a verified file; rebuilding answer presentation
+   // must not replace that file using this task's strict new-delivery scan.
+   return{...f.tasks.get(id),deliveries:[],answer_display:'estimate=1.34',answer_binding:{version:REPORT_ANSWER_BINDING,
+    source_answer_sha256:createHash('sha256').update(ctx.lane==='baseline'?raw:'different original').digest('hex'),status:'bound'}};
+  }},{pollMs:1});
+  await assert.rejects(resumed.view('foreign',admitted.comparison_id),/foreign/);assert.equal(inspected,0);
+  const repaired=await resumed.view('a',admitted.comparison_id);
+  assert.equal(repaired.lanes.baseline.answer,raw);assert.equal(repaired.lanes.baseline.answer_display,'estimate=1.34');
+  assert.deepEqual(repaired.lanes.baseline.artifacts,[artifact]);assert.notEqual(repaired.lanes.baseline.output_sha256,first.lanes.baseline.output_sha256);
+  assert.equal(repaired.lanes.motif.answer_display,undefined,'display for a different raw answer is rejected');
+  assert.deepEqual(repaired.scores,{});assert.equal(repaired.score_revision,2);assert.equal(f.submitted.length,2);
+  await assert.rejects(resumed.rate('a',admitted.comparison_id,'baseline',5,1,first.lanes.baseline.output_sha256),/已更新/);
+  await resumed.view('a',admitted.comparison_id);assert.equal(inspected,2);resumed.dispose();
+  const restored=createComparisonService(f.root,'account-a',f.host);const cached=await restored.view('a',admitted.comparison_id);
+  assert.equal(cached.lanes.baseline.answer_display,'estimate=1.34');assert.equal(cached.lanes.baseline.answer,raw);restored.dispose();
+ }finally{f.close();}
+});
+
+test('A persisted unresolved report display is audited once at terminal recovery and ratings change only with the visible result',async()=>{
+ const raw='estimate={{estimate}}',artifact={id:'verified-file',sha256:'e'.repeat(64),verification:'data-report-delivery-v1'};
+ const source=createHash('sha256').update(raw).digest('hex');
+ const pending={answer_display:'estimate=【未绑定：estimate】',answer_binding:{version:REPORT_ANSWER_BINDING,source_answer_sha256:source,status:'unresolved',reason:'no_verified_task_evidence'}};
+ const f=fixture({submit:async id=>{f.submitted.push(id);Object.assign(f.tasks.get(id),{status:'completed',answer:raw,deliveries:[artifact],...pending});}});
+ try{
+  const admitted=await f.send('a','unresolved','report',{...context,scene:'research-data-analysis'}),first=await f.wait(admitted.comparison_id);
+  const rated=await f.service.rate('a',admitted.comparison_id,'baseline',4,0,first.lanes.baseline.output_sha256);f.service.dispose();
+  let inspected=0;
+  const unchanged=createComparisonService(f.root,'account-a',{...f.host,inspect:async(id,ctx)=>{inspected++;assert.equal(ctx.recoverMissing,true);return f.tasks.get(id);}});
+  const still=await unchanged.view('a',admitted.comparison_id);
+  assert.equal(inspected,2,'version alone cannot suppress a terminal audit of unresolved values');
+  assert.deepEqual(still.scores,{baseline:4});assert.equal(still.score_revision,rated.score_revision);
+  await unchanged.view('a',admitted.comparison_id);assert.equal(inspected,2,'one audit per attempt per process');unchanged.dispose();
+  const recovered=createComparisonService(f.root,'account-a',{...f.host,inspect:async(id,ctx)=>({...f.tasks.get(id),
+   answer_display:'estimate=1.34',answer_binding:{version:REPORT_ANSWER_BINDING,source_answer_sha256:ctx.lane==='baseline'?source:'foreign-answer',status:'bound'}})});
+  const bound=await recovered.view('a',admitted.comparison_id);
+  assert.equal(bound.lanes.baseline.answer,raw);assert.equal(bound.lanes.baseline.answer_display,'estimate=1.34');
+  assert.equal(bound.lanes.motif.answer_display,pending.answer_display,'mismatched raw-answer proof stays rejected');
+  assert.deepEqual(bound.lanes.baseline.artifacts,[artifact]);assert.deepEqual(bound.scores,{});
+  assert.equal(bound.score_revision,rated.score_revision+1);assert.equal(f.submitted.length,2,'recovery never submits new model tasks');
+  recovered.dispose();
  }finally{f.close();}
 });

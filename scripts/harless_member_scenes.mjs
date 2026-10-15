@@ -113,7 +113,7 @@ export function memberSceneDeployment(policy, deployment) {
       const permittedEnv=scene.adapter==='data-report'?['HARLESS_REPORT_WORKSPACE','HARLESS_PRIVATE_ROOT']:scene.adapter==='literature' ? ['SSS_PDF_WEB_TASK','PATH','LD_LIBRARY_PATH'] :
         scene.adapter==='files' ? ['FM_WEB_WORKSPACE','FM_TASK_FILE','FM_OUTPUT'] :
         cfg.serverName==='paper_trace_rsi'?['HARLESS_PRIVATE_ROOT']:
-        ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH'];
+        ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH','HARLESS_PRIVATE_ROOT'];
       if (Object.keys(env).some(k=>!permittedEnv.includes(k)))
         throw Error('Member scene environment contains unapproved authority');
       if(scene.adapter==='literature'){

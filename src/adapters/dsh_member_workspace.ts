@@ -13,9 +13,10 @@ export async function apply(ctx: any) {
   const resolveScope = ctx.typert.lookups.get('workspaceFileScope').resolve;
   ctx.typert.lookups.configure('workspaceFileScope', async (id: string) => guard.scope(await resolveScope(id)));
   // Exact Fetch routes avoid method replacement on caller-scoped Cordis facades.
+  // Workspace creation and directory browsing are handled for every account
+  // by registerManagedWorkspaceRoutes; no native server-directory picker.
   for (const endpoint of ['workspaceFiles/list', 'workspaceFiles/stat', 'workspaceFiles/read',
-    'workspaceFiles/readAll', 'workspaceFiles/readBytes', 'workspaceFiles/readRelated',
-    'workspace/create', 'directoryPicker/list', 'directoryPicker/createDirectory']) {
+    'workspaceFiles/readAll', 'workspaceFiles/readBytes', 'workspaceFiles/readRelated']) {
     const [namespace, method] = endpoint.split('/');
     ctx.connection.fetch.register({ path: '/api/' + endpoint, methods: ['POST'], requestBody: 'buffered',
       fetch: async (request: Request) => {

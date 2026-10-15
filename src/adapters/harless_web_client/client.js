@@ -4,16 +4,23 @@ window.__ModuleLoader__.load({
   factory: (require) => {
     const React = require('react');
     // Use the exact safe AST renderer used by native Harness assistant messages.
-    const MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives')?.MarkdownText;
+    const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
+    const MarkdownText = primitives?.MarkdownText;
     const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'uiConversation', 'slots'];
     const endpoint = '/api/harless/settings';
-    const observers = new Map(), cache = new Map(), choosing = new Set(), revisions = new Map();
+    const observers = new Map(), lexiconObservers = new Map(), cache = new Map(), choosing = new Map(), revisions = new Map();
     const aliases = { ppt: 'ppt', 'paper-proofreading': 'paper', 'research-data-analysis': 'data', 'new-scene': 'chat' };
     const shortcut = scene => scene.shortcut || aliases[scene.id] || scene.id;
     const modeLabel = mode => mode === 'baseline' ? 'Origin' : mode[0].toUpperCase() + mode.slice(1);
     function publish(id, value) {
+      const oldNames = cache.get(id)?.scenes.map(shortcut).join('\n');
       cache.set(id, value);
       for (const listener of observers.get(id) || []) listener(value);
+      // Native controllers refetch candidates when their lexicon changes. A
+      // settings read must not invalidate the unchanged lexicon and recursively
+      // trigger another settings read while the menu is open.
+      if (oldNames !== value.scenes.map(shortcut).join('\n'))
+        for (const listener of lexiconObservers.get(id) || []) listener();
     }
     async function request(session, body, signal) {
       if (body) revisions.set(session.sessionId, (revisions.get(session.sessionId) || 0) + 1);
@@ -58,6 +65,7 @@ window.__ModuleLoader__.load({
     }
     function apply(ctx) {
       window.__installGeneLoopBrand?.(ctx, React);
+      window.__installGeneLoopWorkspaces?.(ctx, React, primitives);
       const command = ctx.get('commandUi'), triggers = ctx.get('inputTriggers');
       const sessions = ctx.get('sessions'), conversation = ctx.get('conversation');
       const h = React.createElement;
@@ -237,9 +245,9 @@ window.__ModuleLoader__.load({
             h('header', null, h('strong', null, title), h('span', { role: 'status' }, result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
             result.fallback_reason && h('p', { className: 'harless-paired-notice' }, '优化未启用，已回退普通 DSH：' + result.fallback_reason),
             result.failure && h('p', { role: 'alert', className: 'harless-paired-notice' }, result.failure),
-            h('div', { className: 'harless-paired-answer', onClickCapture: captureLink }, result.answer
-              ? MarkdownText ? h(MarkdownText, { text: result.answer, streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
-                : h('p', { style: { whiteSpace: 'pre-wrap' } }, result.answer)
+            h('div', { className: 'harless-paired-answer', onClickCapture: captureLink }, (result.answer_display ?? result.answer)
+              ? MarkdownText ? h(MarkdownText, { text: result.answer_display ?? result.answer, streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
+                : h('p', { style: { whiteSpace: 'pre-wrap' } }, result.answer_display ?? result.answer)
               : h('p', { className: 'harless-paired-muted' }, result.status === 'queued' ? '等待当前任务结束后开始。' : !settled(result) ? '正在处理，结果会自动更新…' : '本轮未生成文字回复。')),
             files.length > 0 && h('section', { className: 'harless-paired-deliveries', 'aria-label': title + '交付文件' },
               h('h4', null, '交付文件'), h('ul', { className: 'harless-paired-files' }, ...files.map(file => {
@@ -280,39 +288,70 @@ window.__ModuleLoader__.load({
         if (!scope) throw Error('会话已关闭，请重新打开');
         return conversation.input.for(scope);
       }
+      const isCurrent = session => !sessions.list || sessions.list.getSnapshot().current === session.sessionId;
+      function watchSession(session, signal) {
+        const abort = new AbortController();
+        const check = () => { if (!isCurrent(session)) abort.abort(); };
+        const cancel = () => abort.abort();
+        if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, { once: true });
+        const off = sessions.list?.subscribe(check) || (() => {}); check();
+        return { signal: abort.signal, dispose() { off(); signal?.removeEventListener('abort', cancel); }, check() {
+          if (abort.signal.aborted) { const error = Error('会话已切换，原输入已保留'); error.name = 'AbortError'; throw error; }
+        } };
+      }
       function leadingSpan(id) {
         const state = inputFor(id).state.getSnapshot();
-        const match = /^(\s*)\/[a-z_-]*/i.exec(state.draft);
+        const match = /^(\s*)\/[a-z0-9_-]*/i.exec(state.draft);
         if (!match) throw Error('输入已改变，请重新选择场景');
         return { start: match[1].length, end: match[0].length, draftRev: state.draftRev };
       }
-      const sameDraft = (input, span) => {
+      const sceneToken = draft => /^(\s*)\/([a-z][a-z0-9_-]*)(?=$|\s|[\u3400-\u9fff])/i.exec(draft);
+      const sameAttachments = (left, right) => left.length === right.length && left.every((id, index) => id === right[index]);
+      const draftSnapshot = input => { const state = input.state.getSnapshot(); return { ...state, attachmentIds: [...state.attachmentIds] }; };
+      const sameDraft = (input, span, expectedAttachments) => {
         const state = input.state.getSnapshot();
-        return state.draftRev === span.draftRev && state.phase === 'plain';
+        return state.draftRev === span.draftRev && state.phase === 'plain'
+          && (expectedAttachments === undefined || sameAttachments(state.attachmentIds, expectedAttachments));
       };
-      async function chooseScene(session, id, span) {
-        if (choosing.has(session.sessionId)) return;
-        choosing.add(session.sessionId);
-        try {
+      async function chooseScene(session, id, span, fromCommand = false) {
+        // The current span, not a formerly highlighted menu row, owns the pick.
+        const oldInput = inputFor(session.sessionId), initial = draftSnapshot(oldInput);
+        if (!sameDraft(oldInput, span)) throw Error('输入已改变，请重新选择场景');
+        const token = initial.draft.slice(span.start, span.end).toLowerCase();
+        const known = cache.get(session.sessionId)?.scenes.find(row => row.id === id);
+        if (!/^\/[a-z0-9_-]*$/i.test(token) || (fromCommand ? token !== '/harless' : known && !('/' + shortcut(known)).startsWith(token)))
+          throw Error('候选已更新，请按当前输入重新选择场景');
+        if (choosing.has(session.sessionId)) {
+          await choosing.get(session.sessionId);
+          throw Error('场景刚刚更新，请按当前输入重新选择');
+        }
+        const guard = watchSession(session);
+        const operation = (async () => {
+          guard.check();
           const oldInput = inputFor(session.sessionId);
-          const value = await settings(session), scene = value.scenes.find(row => row.id === id);
+          const value = await settings(session, guard.signal), scene = value.scenes.find(row => row.id === id);
+          guard.check();
           if (!scene || scene.available === false) throw Error('该场景暂不可用：' + (scene?.unavailable_reason || '未部署'));
-          if (!sameDraft(oldInput, span)) throw Error('输入已改变，请重新选择场景');
+          if (!sameDraft(oldInput, span, initial.attachmentIds)) throw Error('输入或附件已改变，请重新选择场景');
+          if (!fromCommand && !('/' + shortcut(scene)).startsWith(token)) throw Error('候选已更新，请按当前输入重新选择场景');
           let next;
           try {
-            next = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: id } });
+            next = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: id } }, guard.signal);
+            guard.check();
           } catch (error) {
             if (error.code !== 'scene_requires_new_session') throw error;
             // A scene switch cannot rewrite an immutable started preset. Create
             // an addressed new session and hand off only the unchanged draft.
-            if (!sameDraft(oldInput, span)) throw Error('输入已改变，请重新选择场景');
-            const draft = oldInput.state.getSnapshot();
-            next = await request(session, { action: 'new_session', inherit_session: session.sessionId, selection: { scene: id } });
+            if (!sameDraft(oldInput, span, initial.attachmentIds)) throw Error('输入或附件已改变，请重新选择场景');
+            const draft = initial;
+            next = await request(session, { action: 'new_session', inherit_session: session.sessionId, selection: { scene: id } }, guard.signal);
+            guard.check();
             await sessions.refresh();
+            guard.check();
             const fresh = inputFor(next.session_id);
-            if (!sameDraft(oldInput, span)) {
+            if (!sameDraft(oldInput, span, draft.attachmentIds)) {
               fresh.notify('info', '新场景会话已创建；原输入有新修改，已保留在原会话。');
-              throw Error('输入已改变，原输入已保留；请在会话列表打开新场景。');
+              throw Error('输入或附件已改变，原输入已保留；请在会话列表打开新场景。');
             }
             fresh.setDraft(draft.draft);
             if (!fresh.insertReference(reference(scene), { ...span, draftRev: fresh.state.getSnapshot().draftRev }))
@@ -324,31 +363,97 @@ window.__ModuleLoader__.load({
             }
             oldInput.setDraft('');
             command.popupFor(sessions.scope(session.sessionId)).dismiss();
-            publish(next.session_id, next); sessions.open(next.session_id);
+            publish(next.session_id, next); guard.dispose(); sessions.open(next.session_id);
             fresh.notify('info', `已新建 ${scene.label} 会话，原聊天已保留。`);
-            return;
+            return { input: fresh, state: draftSnapshot(fresh), sessionId: next.session_id };
           }
           publish(session.sessionId, next);
-          if (!oldInput.insertReference(reference(scene), span)) oldInput.notify('info', '场景已选择，输入的新修改已保留。');
-        } finally { choosing.delete(session.sessionId); }
+          if (!sameDraft(oldInput, span, initial.attachmentIds) || !oldInput.insertReference(reference(scene), span))
+            throw Error('场景已选择，但输入或附件已改变；已保留草稿，请确认后重新发送。');
+          return { input: oldInput, state: draftSnapshot(oldInput), sessionId: session.sessionId };
+        })();
+        choosing.set(session.sessionId, operation);
+        try { return await operation; } finally { guard.dispose(); if (choosing.get(session.sessionId) === operation) choosing.delete(session.sessionId); }
       }
-      const report = (session, error) => { try { inputFor(session.sessionId).notify('error', error.message); } catch {} };
+      const report = (session, error) => { if (!isCurrent(session) || error.name === 'AbortError') return; try { inputFor(session.sessionId).notify('error', error.message); } catch {} };
+      function handOffAfterSubmit(session, scene, span, signal) {
+        // A handled adjudication returns the native machine to plain. Wait for
+        // that public state before moving a frozen draft and its attachments.
+        const input = inputFor(session.sessionId), frozenAttachments = [...input.state.getSnapshot().attachmentIds];
+        let off = () => {}, offSession = () => {}, timer, done = false;
+        const stop = () => { done = true; off(); offSession(); clearTimeout(timer); signal.removeEventListener('abort', stop); };
+        const check = () => {
+          if (done || input.state.getSnapshot().phase === 'adjudicating') return;
+          stop();
+          if (signal.aborted || !isCurrent(session) || !sameDraft(input, span, frozenAttachments)) return;
+          void chooseScene(session, scene.id, span).then(target => {
+            // Submit exactly the explicitly requested draft once. A user edit
+            // during handoff wins and remains unsent in its addressed session.
+            if (!signal.aborted && isCurrent(target) && sameDraft(target.input, target.state, target.state.attachmentIds))
+              target.input.submit();
+          }).catch(error => report(session, error));
+        };
+        off = input.state.subscribe(check);
+        offSession = sessions.list?.subscribe(() => { if (!isCurrent(session)) stop(); }) || (() => {});
+        signal.addEventListener('abort', stop, { once: true });
+        timer = setTimeout(stop, 30000);
+      }
       // The native trigger recomputes candidates after every character and owns
       // keyboard/IME handling, span CAS, atomic chip deletion and undo.
       ctx.effect(() => triggers.registerSource({ trigger: '/', name: 'harless-scenes', order: -10,
         candidates: async (session, req) => {
           if (req.position !== 'leading') return [];
-          const value = await settings(session, req.signal), query = req.query.toLowerCase();
+          const query = req.query.toLowerCase();
+          if (!/^[a-z0-9_-]*$/.test(query)) return [];
+          const value = cache.get(session.sessionId) || await settings(session, req.signal);
+          if (req.signal?.aborted) return [];
           return value.scenes.filter(scene => shortcut(scene).startsWith(query)).map(scene => ({
             name: shortcut(scene), value: scene.id, section: 'Scenes', description: scene.available === false
               ? `暂不可用：${scene.unavailable_reason}` : scene.label,
           }));
         },
         onPick: pick => { void chooseScene(pick.session, pick.candidate.value, pick.span).catch(error => report(pick.session, error)); return 'handled'; },
+        matchSpace: (session, token) => {
+          const scene = cache.get(session.sessionId)?.scenes.find(row => '/' + shortcut(row) === token.toLowerCase());
+          // Hot, synchronous native insertion. Selection is confirmed by the
+          // Enter hook, so typing quickly cannot send with a previous scene.
+          return scene?.available !== false && scene ? { insert: reference(scene) } : undefined;
+        },
+        matchEnter: async (session, line, signal) => {
+          const token = sceneToken(line);
+          if (!token) return;
+          const name = token[2].toLowerCase(), hot = cache.get(session.sessionId);
+          if (hot && !hot.scenes.some(scene => shortcut(scene) === name)) return;
+          const pending = choosing.get(session.sessionId);
+          if (pending) await pending.catch(() => {});
+          if (!isCurrent(session)) return 'handled';
+          const guard = watchSession(session, signal);
+          try {
+          let value;
+          try { value = await settings(session, guard.signal); }
+          catch (error) { if (!isCurrent(session)) return 'handled'; throw error; }
+          if (!isCurrent(session)) return 'handled';
+          const scene = value.scenes.find(row => shortcut(row) === name);
+          if (!scene) return;
+          if (scene.available === false) throw Error('该场景暂不可用：' + (scene.unavailable_reason || '未部署'));
+          if (signal.aborted) throw Error('场景选择已取消，输入已保留');
+          if (value.selection.scene === scene.id) return;
+          try {
+            const selected = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: scene.id } }, guard.signal);
+            if (!isCurrent(session)) return 'handled';
+            publish(session.sessionId, selected);
+          } catch (error) {
+            if (!isCurrent(session)) return 'handled';
+            if (error.code !== 'scene_requires_new_session') throw error;
+            handOffAfterSubmit(session, scene, leadingSpan(session.sessionId), signal);
+            return 'handled';
+          }
+          } finally { guard.dispose(); }
+        },
         lexicon: session => cache.get(session.sessionId)?.scenes.map(shortcut),
         subscribeLexicon: (session, listener) => {
-          const group = observers.get(session.sessionId) || new Set(); group.add(listener); observers.set(session.sessionId, group);
-          return () => { group.delete(listener); if (!group.size) observers.delete(session.sessionId); };
+          const group = lexiconObservers.get(session.sessionId) || new Set(); group.add(listener); lexiconObservers.set(session.sessionId, group);
+          return () => { group.delete(listener); if (!group.size) lexiconObservers.delete(session.sessionId); };
         },
         warm: session => { void settings(session).catch(() => {}); },
         codec: { clipboardText: ref => '/' + ref, serialize: async ref => {
@@ -373,7 +478,7 @@ window.__ModuleLoader__.load({
         },
         onSelect: async (option, session) => {
           const separator = option.id.indexOf(':'), kind = option.id.slice(0, separator), id = option.id.slice(separator + 1);
-          if (kind === 'scene') return chooseScene(session, id, leadingSpan(session.sessionId));
+          if (kind === 'scene') return chooseScene(session, id, leadingSpan(session.sessionId), true);
           if (kind === 'option') {
             const current = await settings(session), split = id.indexOf('='), key = id.slice(0, split);
             if (current.scene_locked) throw Error('当前任务已固定选项，请在新会话中设置');

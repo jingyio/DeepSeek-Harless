@@ -19,6 +19,8 @@ import {bindUploadedPptTask,bindUploadedSourceTask,structuralOnlySimilarity} fro
 import {createComparisonService} from './harless_comparison.ts';
 import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
 import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
+import {bindReportAnswer} from './harless_report_answer.ts';
+import {registerManagedWorkspaceRoutes} from './harless_managed_workspaces.ts';
 
 export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry'];
@@ -110,6 +112,7 @@ export function apply(ctx: any) {
   const optionSelections = new Map<string,Record<string,SceneOptions>>();
   const workspaces = new Map<string, string>();
   const principal = brokerMode && config.budget_task_prefix ? 'member-' + config.budget_task_prefix : config.user_id ?? 'local-operator';
+  registerManagedWorkspaceRoutes(ctx, {output: config.output, principal});
   const saveSettings = () => json(join(config.output, 'harless-settings.json'),
     { defaults, sessions: Object.fromEntries(selections),scene_options:Object.fromEntries(optionSelections) });
   const guards = new Map<string, (() => void)[]>();
@@ -533,10 +536,16 @@ export function apply(ctx: any) {
       }
       const chosen = request.agentPreset ? scenes.find(scene => scene.preset === request.agentPreset)! : sceneFor(defaults.scene);
       if (chosen.unavailable_reason) throw new TaskError('scene_not_connected', chosen.unavailable_reason, 409);
-      if (!brokerMode && (request.cwd !== undefined || request.workspaceId !== undefined))
-        throw new TaskError('workspace_not_allowed', 'The server allocates a private Session workspace');
       if (request.cwd !== undefined && request.workspaceId !== undefined)
         throw new TaskError('invalid_workspace', '请选择工作区或目录，不能同时指定两者');
+      if (request.cwd !== undefined)
+        throw new TaskError('workspace_not_allowed', 'The server allocates a private Session workspace');
+      // Both managed workspaces and pre-existing groups are account-local in
+      // the native registry. Accept their identities in either budget mode,
+      // while refusing client-supplied host paths or another account's IDs.
+      if (request.workspaceId !== undefined && (typeof request.workspaceId !== 'string' ||
+          !ctx.workspaceRegistry?.get(request.workspaceId)))
+        throw new TaskError('workspace_not_allowed', '此工作区不属于当前账号，请重新选择工作区。', 403);
       const id = request.sessionId ?? (brokerMode ? 'session-' + randomUUID() : 'sss-' + randomUUID().replaceAll('-', ''));
       const workspace = workspaceFor(id);
       const priorPreset = ownedSessions.has(id) ? (await controller.inspect(id)).meta.agentPreset : undefined;
@@ -926,6 +935,8 @@ export function apply(ctx: any) {
         try { result = await refresh(task); }
         catch (error) { if (!terminal.has(task.status)) throw error; result = view(task, true); }
         if (meta) return { ...result,
+          ...(task.scene.adapter === 'data-report' ? bindReportAnswer({answer: result.answer ?? '', workspace: task.workspace,
+            eventsPath: join(task.output, 'events.jsonl'), startedAt: task.started_at, finishedAt: task.finished_at}) : {}),
           deliveries: captureComparisonDeliveries(artifacts, { turn: meta.turn.id, lane: meta.lane,
             attempt: meta.turn.lanes[meta.lane].attempt, workspace: task.workspace,
             adapter: task.scene.adapter, status: task.status, eventsPath: join(task.output, 'events.jsonl'),
@@ -1143,7 +1154,7 @@ export function apply(ctx: any) {
             const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const next = body.selection === undefined ? chosen : changeSelection(chosen, body.selection, scenes, executeUnavailable);
             const group = body.inherit_session && ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(body.inherit_session));
-            const created = await controller.create({ agentPreset: sceneFor(next.scene).preset, ...(group && brokerMode ? { workspaceId: group.id } : {}) });
+            const created = await controller.create({ agentPreset: sceneFor(next.scene).preset, ...(group ? { workspaceId: group.id } : {}) });
             selections.set(created.sessionId, { ...next });
             if(body.inherit_session && optionSelections.has(body.inherit_session))optionSelections.set(created.sessionId,structuredClone(optionSelections.get(body.inherit_session)));
             saveSettings();
@@ -1184,9 +1195,10 @@ export function apply(ctx: any) {
   const accountLink = process.env.HARLESS_GATEWAY_ENABLED === '1' ?
     '<script>' + readFileSync(fileURLToPath(new URL('./harless_account_link.js', import.meta.url)), 'utf8') + '</script>' : '';
   const brandScript = '<script>' + readFileSync(fileURLToPath(new URL('./geneloop_brand.js', import.meta.url)), 'utf8') + '</script>';
+  const workspaceScript = '<script>' + readFileSync(fileURLToPath(new URL('./geneloop_workspaces.js', import.meta.url)), 'utf8') + '</script>';
   ctx.effect(() => ctx.webServer.tapIndex((html: string) => html
     .replace(/<title>[^<]*<\/title>/i, '<title>GeneLoop</title>')
-    .replace('</head>', brandScript + '</head>')
+    .replace('</head>', brandScript + workspaceScript + '</head>')
     .replace('</body>', accountLink + '</body>')), 'harless-product-presentation');
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/assets/geneloop.jpg',
     handler: (request: any, response: any) => {
