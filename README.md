@@ -1,6 +1,43 @@
 # SSS：Motif × DeepSeek Harness × 自定义 MCP
 
+2026-10-15发布准备：用户已授权将完成的RSI代码、共享接口/实验文档与4个原始v2学习策略上传`feature/rsi-research-agent`。公开库见[operation-v2](examples/motif-library/file-management-operation-v2/README.md)，私有轨迹/任务/凭证保留；原运行准入证明不随公开摘要迁移。历史“暂不推送”记录对应当时阶段。GeneLoop主线的`/management`接入将以最新main为基准，避免覆盖现有注册与工作区能力。
+
+2026-10-15 最新：日常文件管理默认固定持久库，v2支持同图顺序重复、1–40唯一字符串数组及多产物绑定，SDK/Web/认证恢复沿用原任务、权限、版本和预算。18次真实执行（6新任务＋12认证）/163HTTP/USD0.097170133，4图激活、第5版，合计40次验证跳过；转换的一次工具失败和报告缺口保留。完整浏览器提交/重启/恢复/真实状态验证通过。默认真实入口重启0新增模型请求。原最终集/失败/费用保留，暂不推送。见[接口](docs/changes/persistent-rsi-integration.md)和[实验](docs/experiments/persistent-rsi-20261015.md)。
+
+日常启动：`npm run web -- --scenario file-management --real-model --mode execute`，通过原环境变量提供已有DeepSeek凭证，认证后访问`/tasks`。不传`--rsi-config`沿用`.local/rsi/daily-files-real-v2.json`；模拟库独立。预算达到原限额即停止，不靠重启清零。其它MCP仍须登记独立权限、材料和质量适配器。
+
+2026-10-15最新：已接通工具名无关的 MCP 学习契约与2–8节点参数DAG，并扩展到原授权文件写操作；真实新流从两节点前缀学习并独立认证五节点图，3个新图激活，严格文件流6/6普通任务合格。既有默认 Harness Web 的 file-management profile 已接同一库、任务后封存与自动学习队列；真实Web5/5合格，17次结构续接经实际结果验证。632 Python/211 Node通过、3可选跳过、18smoke；本轮59真实执行/470HTTP/代理USD0.237622092，包含所有失败与认证，最终留出不学习、暂不推送GitHub。其它MCP仍须登记真实权限/材料/验收适配器，任意控制流及稳定完整净收益未验证。 [完整实验](docs/experiments/generic-mcp-operation-rsi-20261015.md)、[共享接口与入口](docs/changes/generic-mcp-operation-rsi.md)。
+
+```sh
+npm run web -- --scenario file-management --budget-usd 5 --request-limit 96
+# 真实模型显式开启，预览后确认：npm run web:real -- --scenario file-management
+```
+
+以下为此前版本的历史记录；其中“默认Web未接”等表述仅对应当时版本。
+
+2026-10-15已接通首版普通CLI持续Motif学习：任务封存后自动发现/编译、新副本独立认证、版本发布与后续复用；真实新任务流完成两版升级、6/6普通交付。最新并发队列/证据修订服务621 Python/199 Node通过，最终云端复验遇503，未完整重现两代，已停止付费诊断。首版仅只读文件报告及两类有界图，默认SDK/Web未接；净收益仅观测。30真实执行/146HTTP/估费上界USD0.176759772，5次503和全部失败/费用保留，最终留出不学习，暂不推送GitHub。[实验与边界](docs/experiments/continuous-motif-rsi-20261015.md)、[接口与入口](docs/changes/continuous-rsi-integration.md)。
+
+
+此前[工作流结构报告与新RSI验证](docs/experiments/file-management-report-delivery-20261014.md)完成102次新执行：task_result身份/快照/真实回执由当前MCP状态生成，模型填写摘要/缺口；原实际字节与权限验收不变。新诊断H/回退各6/6；两轮当前版本经验学习/独立认证/自动激活后均在下一任务零HTTP执行。日常H5/6、S/F/R各6/6，最终正常H/S/R各8/8、F7/8，8版本安全停止。R完整API USD1.325444比F1.390140低约4.65%，但F未全部合格，预定同质量净收益门槛仍未满足；普通回退备份仍需修复。603 Python/185 Node及smoke通过，系列估费USD7.836915368；失败/排除/轨迹/费用与旧最终留出保留，仅本地、默认SDK/Web未启用、暂不推送GitHub。[共享契约](docs/changes/file-management-report-delivery.md)。
+
+
+此前[回退修复与持续学习验证](docs/experiments/file-management-fallback-rsi-20261014.md)完成142次真实运行：跨计划重复SHA写入在执行前拒绝，提交时检查原始字节组完整覆盖。第二版新诊断H/回退均6/6；新两轮经验自动认证激活并在后续实际执行。最终正常H7/8、S8/8、F8/8、R7/8，8版本安全停止；R完整API USD1.149742低于F1.207199约4.76%，但最终质量较低，不支持同质量净收益。未知目标失败的文件正确但缺实际报告，原失败/费用留存，最终不学习。599 Python/185 Node通过，系列估费USD7.197809948。本轮仅本地，暂不推送GitHub、默认SDK/Web未启用。[共享接口](docs/changes/file-management-fallback-guard.md)。
+
+
+[有界自动RSI](docs/experiments/file-management-auto-rsi-20261014.md)已完成两轮自动升级及66次真实运行：统一Motif/脚本版本库、无profile_id事实检索、重复成本触发普通探索、独立认证、自动激活/停用/回退。正常最终H/S/F各7/7、R6/7，8版本安全停止；RSI完整API USD0.520634，高于冻结库0.491204与H0.137249，S零模型，尚无净收益证明。此次633HTTP/USD0.477517296，系列USD5.893675700。失败/轨迹/费用原样保留，新代码仅本地、默认SDK/Web不启用。[共享接口](docs/changes/file-management-auto-rsi.md)。
+
 [已学习的文件管理 Motif 库](examples/motif-library/file-management-v1/README.md)现以版本化分发目录保存：9个库/策略、3个在线 manifest 与3份原认证/冻结摘要，原始字节/签名保留；免费检查6项通过，公开副本无需 `.local` 即可校验。用户已授权将此次库分发推送 `feature/rsi-research-agent`；此前暂不推送的记录是历史状态。G4部分运行源码仍待发布，默认SDK/Web不自动激活，固定脚本库另存。[分发契约](docs/changes/file-management-library-publication.md)。
+
+[脚本规则/目录变化与第二版](docs/experiments/file-management-script-adaptation-20261014.md)验证完成：4模板/8独立认证/40新H/S/M/L1/L2留出，正常H/S/L2各6/6、M5/6、L1 4/6，10版本负例停止未交付。L2执行0HTTP，含首版与新验证/修复/学习/认证USD0.374614224，未优于预写脚本完整API成本；65运行/790HTTP/USD0.715712544，系列USD5.416158404。原失败/轨迹/费用和旧版本保留，默认SDK/Web不启用，暂不推送。[共享变化](docs/changes/file-management-script-adaptation.md)。
+
+[学习脚本复用首批](docs/experiments/file-management-script-reuse-20261014.md)已完成：5 次新普通探索（4 份用于提炼，1 份排除但计费）→2 复制模板→8 次独立认证→24 次 H/S/M/L 新留出。正常/边界四组各4/4，8版本停止保留；学习脚本与预写脚本执行均零模型，L加建库/认证为USD0.100006092，尚无相对预写脚本的完整API成本优势。37执行/274HTTP/代理USD0.203031636，系列USD4.700445860；默认SDK/Web不启用、暂不推送。[接口变动](docs/changes/file-management-script-reuse.md)。
+
+六流程[第五阶段新留出H/S/M](docs/experiments/file-management-workflow-holdout-20261014.md)已完成54运行：正常/边界H11/12、S12/12、M12/12，18版本变化安全停止；原H全局编号失败和两轮修复保留。三组执行代理估费USD0.194854178/0.086595528/0.144017954，M加库准备/验证为USD0.379796718，本批普通脚本最低。共同合格11条件M/H执行费−16.53%，不能归为对脚本的学习增益；整Harness同job冷启动/原授权恢复与完整费用审计通过。601真实HTTP、本批USD0.425467660，全系列USD4.497414224，实付/人类质量未核实。默认SDK/Web关闭，暂不推送。[逐项接口](docs/changes/file-management-workflow-holdout.md)。
+
+
+## 先前覆盖规划（历史）
+
+普通文件管理的[40项覆盖规划](scenarios/file-management/workflow-discovery.md)仍为18项可组合、20项缺工具、2项需运行机制扩展；首批六项已完成G1/G2受限准备、G3探索、G4受限结构认证及持久化计划在线验证。G5新留出H/S/M54次初筛已完成，原留出保持不动，新留出不学习或改库；40项不能计为已实现。
 
 前端开发请先阅读[当前分支接入说明](docs/handoffs/frontend.md)：已有任务HTTP契约、安装命令、模式/预算确认与新增有界验收修复。文件管理场景可显式启用acceptance_guard，原权限和总预算内最多2轮普通Harness修复，每轮失败证据保留；验证与限制见[实施记录](docs/changes/acceptance-repair.md)。
 

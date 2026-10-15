@@ -127,6 +127,13 @@ class State:
         self.request_count = 0
         self.pending: dict[int, float] = {}
         self.lock = threading.Lock()
+        self.provider_retries = 0
+
+    def claim_provider_retry(self):
+        """At most two transient retries across the original task, not per call."""
+        with self.lock:
+            if self.provider_retries>=2:return False
+            self.provider_retries+=1;return self.provider_retries
 
     def book(self, body: bytes) -> tuple[int, str, float, int] | None:
         model, dollars, ceiling = reservation(body, max_output=self.output_cap)
@@ -279,11 +286,13 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                 self._reply(429, "approved research budget exhausted")
                 return
             request_id, model, dollars, ceiling = booked
-            started = time.monotonic()
-            status, content_type, answer = self._call_upstream(body, "POST")
-            usage = response_usage(content_type, answer)
-            observed, released = request_state.settle(request_id, model, status, usage)
-            request_state.log({"request_id": request_id, "model": model,
+            retry=0
+            while True:
+                started = time.monotonic()
+                status, content_type, answer = self._call_upstream(body, "POST")
+                usage = response_usage(content_type, answer)
+                observed, released = request_state.settle(request_id, model, status, usage)
+                request_state.log({"request_id": request_id, "model": model,
                        "reserved_upper_usd": round(dollars, 8),
                        "observed_peak_usd": round(observed, 8) if observed is not None else None,
                        "reservation_released_usd": round(released, 8),
@@ -291,7 +300,17 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                        "response_bytes": len(answer),
                        "response_usage": usage,
                        "request_utc_epoch": round(time.time(), 3),
-                       "elapsed_seconds": round(time.monotonic() - started, 3)})
+                       "elapsed_seconds": round(time.monotonic() - started, 3),
+                       "provider_retry":retry,"retry_scope":"original_task_max_two"})
+                if status not in (502,503):break
+                retry=request_state.claim_provider_retry()
+                if not retry:break
+                time.sleep(retry)
+                booked=request_state.book(body)
+                if booked is None:
+                    request_state.log({'kind':'budget_denied','reason':'provider_retry_within_original_cap'})
+                    self._reply(429,'approved research budget exhausted');return
+                request_id,model,dollars,ceiling=booked
             self._send_upstream(status, content_type, answer)
 
     return ThreadingHTTPServer((host, port), Handler)

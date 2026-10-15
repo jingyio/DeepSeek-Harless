@@ -57,7 +57,11 @@ def demo_action(values, _event):
 def prepare(args, output, endpoint):
     public = json.loads((ROOT / 'config/harness-web.json').read_text())
     literature = args.scenario == 'literature-pdf'
-    scenario = ROOT / 'scenarios/literature-notes/web-scenario.json' if literature else Path(args.scenario)
+    file_operations=args.scenario=='file-management'
+    if file_operations:
+        from src.adapters.continuous_rsi import load_config
+        file_v2=load_config(args.rsi_config).get('adapter')=='file_operations_v2'
+    scenario = ROOT / ('scenarios/file-management/web-operation-scenario-v2.json' if file_v2 else 'scenarios/file-management/web-operation-scenario.json') if file_operations else ROOT / 'scenarios/literature-notes/web-scenario.json' if literature else Path(args.scenario)
     if not scenario.is_absolute():
         scenario = ROOT / scenario
     if scenario.suffix != '.json':
@@ -67,7 +71,7 @@ def prepare(args, output, endpoint):
     preset.mkdir(parents=True, mode=0o700)
     rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
         'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
-        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *([] if literature else prepared['mcp_rows']), *([] if literature else prepared.get('agent_plugins', []))]
+        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *([] if literature or file_operations else prepared['mcp_rows']), *([] if literature or file_operations else prepared.get('agent_plugins', []))]
     rendered = json.dumps(rows, ensure_ascii=False, indent=2)
     for token, expression in prepared['environment_references'].items():
         rendered = rendered.replace(json.dumps(token), expression)
@@ -114,6 +118,29 @@ def prepare(args, output, endpoint):
         if not directory.is_dir(): raise ValueError('registered PDF directory not found')
         policy['task_binding'] = {'module': (ROOT / 'scenarios/literature-notes/web-binding.ts').as_uri(),
             'config': {'python': sys.executable, 'papers_dir': str(directory), 'presets_root': str(output / 'presets')}}
+    if file_operations:
+        from src.adapters.continuous_rsi import load_config,DATA,snapshot
+        import shutil
+        if args.frozen or args.budget_usd>5 or args.request_limit>96 or policy['max_output_tokens']>4000:
+            raise ValueError('file RSI requires original dynamic task bounds')
+        config_file=Path(args.rsi_config).resolve()
+        cfg=load_config(config_file)
+        if cfg.get('adapter') not in ('file_operations_v1','file_operations_v2') or cfg['provider_mode']!=('real' if args.real_model else 'mock'):raise ValueError('file Web/RSI provider or registered adapter mismatch')
+        directory=Path(args.files_dir).resolve() if args.files_dir else Path(cfg['workspace_roots'][0])/'web-seed'
+        if not args.files_dir:
+            directory.mkdir(parents=True,exist_ok=True)
+            if not (directory/'.experiment-copy').exists():(directory/'.experiment-copy').write_text('persistent-authorized-source')
+            if not (directory/'notes.txt').exists():(directory/'notes.txt').write_text('Registered persistent Web source '+uuid4().hex+'\n')
+            for name in ('brief.docx','ledger.xlsx'):
+                asset=ROOT/'.local/file-management-author/assets/a'/name
+                if asset.exists() and not (directory/name).exists():shutil.copyfile(asset,directory/name)
+        if not directory.is_relative_to(DATA.resolve()) or not (directory/'.experiment-copy').is_file():raise ValueError('registered file directory must be an authorized experiment copy')
+        registered=[{'path':n,'sha256':h} for n,h in snapshot(directory).items() if n!='.experiment-copy']
+        policy['task_binding']={'module':(ROOT/'scenarios/file-management/operation_web_binding.ts').as_uri(),
+             'config':{'python':sys.executable,'files_dir':str(directory),'rsi_config':str(config_file),'presets_root':str(output/'presets'),
+               'registered_files':registered,'provider_mode':cfg['provider_mode'],'request_limit':args.request_limit,'max_output':policy['max_output_tokens']}}
+    if file_operations and file_v2:
+        policy['persistent_tasks_root']=str(Path(cfg['state_root'])/'web-tasks')
     save(output / 'policy.json', policy)
     disabled = ['llm-deepseek', 'llm-pi-ai', 'session-title-llm', 'llm-retry',
                 'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']
@@ -152,6 +179,12 @@ def prepare(args, output, endpoint):
                      ROOT / 'src/adapters/deepseek_cost_gate.py', ROOT / 'scripts/harness-web.py',
                      ROOT / 'scripts/motif-example.py', ROOT / 'src/adapters/dsh_completion_guard.ts',
                      ROOT / 'src/adapters/dsh_acceptance_guard.ts', ROOT / 'scripts/validate-file-delivery.py', ROOT / 'package-lock.json',
+                     *([ROOT / name for name in ('src/adapters/continuous_rsi.py','src/adapters/continuous_motif_learning.py',
+                        'src/adapters/mcp_learning.py','src/adapters/dsh_operation_motif.ts','src/adapters/dsh_continuous_rsi.ts',
+                        'src/motif_core/operation_graph_policy.ts','src/motif_core/offline/operation_graph.py',
+                        'scenarios/file-management/operation_tools.py','scenarios/file-management/operation_contract.py',
+                        'scenarios/file-management/operation_web_binding.py','scenarios/file-management/operation_web_binding.ts')]
+                        if args.scenario=='file-management' else []),
                      *([ROOT / 'scenarios/literature-notes' / name for name in ('web-binding.ts', 'web-binding.py', 'web_pdf_tools.py', 'web-scenario.json', 'web-task.md')] if literature else []),
                      *([] if args.frozen else [ROOT / 'src/adapters/web_task_request.ts',
                        ROOT / 'src/adapters/web_task_budget.py', ROOT / 'src/adapters/web_task_panel.html'])]}
@@ -168,6 +201,8 @@ def main():
     parser.add_argument('--scenario', default='example', help='scenario name or path to scenario.json (server configuration)')
     parser.add_argument('--case', default='')
     parser.add_argument('--papers-dir', default=str(ROOT / 'testpdf'), help='server-owned PDF directory for literature-pdf')
+    parser.add_argument('--files-dir',default=None,help='server-owned experimental file source directory')
+    parser.add_argument('--rsi-config',default=None,help='shared private certified library/learning configuration for file-management')
     parser.add_argument('--max-output', type=int, default=None, help='output token cap, 1–8000')
     parser.add_argument('--frozen', action='store_true', help='legacy single-task mock regression entry')
     parser.add_argument('--real-model', action='store_true', help='enable real DeepSeek connection; each task still requires preview confirmation')
@@ -188,10 +223,13 @@ def main():
     args = parser.parse_args()
     if args.max_output is not None and not 1 <= args.max_output <= 8000: parser.error('max-output must be 1–8000')
     if args.scenario == 'literature-pdf' and args.max_output is None: args.max_output = 8000
+    if args.scenario=='file-management' and args.max_output is None:args.max_output=4000
     if args.frozen and args.mode != 'baseline' and args.scenario != 'portfolio-v1':
         parser.error('Motif modes require the portfolio-v1 historical library scenario')
     if args.fixture in ('stale', 'tool-failure') and (args.mode != 'execute' or args.scenario != 'portfolio-v1'):
         parser.error('stale/tool-failure fixtures require portfolio-v1 execute')
+    if args.scenario=='file-management' and args.fixture not in ('normal','delay'):
+        parser.error('file-management supports normal/delay mock fixtures')
     if not 1024 <= args.port <= 65535 or args.request_limit < 1 or not math.isfinite(args.budget_usd) or args.budget_usd < 0:
         parser.error('invalid port, request limit or budget')
     if not math.isfinite(args.run_budget_usd) or not args.budget_usd <= args.run_budget_usd <= 100 or args.run_request_limit < 1:
@@ -203,6 +241,9 @@ def main():
         parser.error('configure DEEPSEEK_API_KEY in private .env and start through npm run web')
     if args.run_id is not None and not re.fullmatch('[0-9a-f]{32}', args.run_id):
         parser.error('run-id must be 32 lowercase hexadecimal characters')
+    if args.scenario=='file-management' and not args.rsi_config:
+        from src.adapters.persistent_file_rsi import default_config
+        args.rsi_config=str(default_config(args.real_model))
     os.umask(0o077)
     output = ROOT / '.local/web/runs' / (args.run_id or uuid4().hex)
     output.mkdir(parents=True, mode=0o700)
@@ -219,13 +260,19 @@ def main():
         module.next_fixture_action = fixture.action
     handler = module.provider_handler('event:l_retrieval_persistence:01', with_usage=True,
                                      request_limit=24 if args.frozen else args.run_request_limit)
+    if args.scenario=='file-management' and not args.real_model:
+        from src.adapters.continuous_rsi import load_config
+        fixture_path='operation-v2-fixture.py' if load_config(args.rsi_config).get('adapter')=='file_operations_v2' else 'check-operation-rsi.py'
+        spec=importlib.util.spec_from_file_location('file_operation_fixture',ROOT/'scripts'/fixture_path)
+        fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
+        handler=fixture.Provider;handler.calls=[];handler.embedding_calls=0;handler.failures=0;handler.response_delay=1 if args.fixture=='delay' else 0
     if args.fixture == 'outside-tool':
         original_action = module.next_fixture_action
         def outside_action(values, event):
             if len(handler.calls) == 1: return 'bash', {'command': 'echo forbidden'}
             return original_action(values, event)
         module.next_fixture_action = outside_action
-    if args.fixture in ('delay', 'provider-failure'):
+    if args.fixture in ('delay', 'provider-failure') and args.scenario!='file-management':
         original_respond = handler.respond
         def respond(self):
             if args.fixture == 'delay': time.sleep(1)
@@ -233,12 +280,29 @@ def main():
             return original_respond(self)
         handler.respond = respond
     provider = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+    if args.scenario=='file-management':provider.requests=handler.calls if hasattr(handler,'calls') else []
     upstream = f'http://127.0.0.1:{provider.server_port}'
     if not args.real_model: args.embedding_endpoint = args.embedding_endpoint or upstream + '/v1/embeddings'
     else: upstream = 'https://api.deepseek.com'
     state = State(cap_usd=args.budget_usd if args.frozen else args.run_budget_usd,
                   output_cap=args.max_output or defaults['max_output_tokens'], record=output / 'ledger.jsonl',
                   request_limit=args.request_limit if args.frozen else args.run_request_limit)
+    persistent_lock=None
+    if args.scenario=='file-management':
+        from src.adapters.continuous_rsi import load_config,writer_lock
+        cfg=load_config(args.rsi_config)
+        if cfg.get('adapter')=='file_operations_v2':
+            from src.adapters.persistent_web_budget import PersistentState
+            persistent_root=Path(cfg['state_root']);persistent_root.mkdir(parents=True,exist_ok=True)
+            persistent_lock=writer_lock(persistent_root,'web-server');persistent_lock.__enter__()
+            checkpoint=persistent_root/'web-budget.json'
+            if checkpoint.exists():
+                original=json.loads(checkpoint.read_text())
+                supplied=lambda flag:any(v==flag or v.startswith(flag+'=') for v in sys.argv[1:])
+                if not supplied('--run-budget-usd'):args.run_budget_usd=original['cap_usd']
+                if not supplied('--run-request-limit'):args.run_request_limit=original['request_limit']
+            state=PersistentState(checkpoint=checkpoint,cap_usd=args.run_budget_usd,
+                output_cap=args.max_output,record=persistent_root/'web-ledger.jsonl',request_limit=args.run_request_limit)
     servers = [] if args.real_model else [provider]
     registry = None
     if not args.frozen:
@@ -254,7 +318,7 @@ def main():
     for server in servers:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     prepare(args, output, f'http://127.0.0.1:{gate.server_port}/v1')
-    env = {**os.environ, 'DSH_HOME': str(output / 'dsh'), 'SSS_WEB_POLICY': str(output / 'policy.json'),
+    env = {**os.environ, 'DSH_HOME': str(Path(cfg['state_root'])/'web-dsh') if args.scenario=='file-management' and cfg.get('adapter')=='file_operations_v2' else str(output/'dsh'), 'SSS_WEB_POLICY': str(output / 'policy.json'),
            'DEEPSEEK_API_KEY': os.environ['DEEPSEEK_API_KEY'] if args.real_model else 'sss-mock-only',
            'DEEPSEEK_BASE_URL': f'http://127.0.0.1:{gate.server_port}/v1',
            'SSS_ONLINE_MOTIF_MANIFEST': '', 'SSS_ONLINE_MOTIF_TASK': ''}
@@ -303,6 +367,10 @@ def main():
                 break
             time.sleep(0.1)
         if not (output / 'access-url.txt').exists(): raise RuntimeError('Web startup failed; inspect private startup.log')
+        if args.scenario=='file-management' and args.real_model:
+            from src.adapters.continuous_rsi import load_config,launch_worker
+            cfg=load_config(args.rsi_config)
+            if cfg['mode']=='learn' and cfg['auto_worker']:save(output/'resumed-worker.json',launch_worker(args.rsi_config,cfg['state_root']))
         while process.poll() is None:
             metrics()
             time.sleep(0.25)
@@ -324,7 +392,7 @@ def main():
                 task_state = json.loads(task_file.read_text())
                 task_state['stats'].update(registry.stats(task_state['session_id']))
                 if task_state['status'] in ('awaiting_confirmation', 'running'):
-                    task_state.update(status='cancelled', failure='server_stopped')
+                    task_state.update(status='interrupted' if args.scenario=='file-management' and cfg.get('adapter')=='file_operations_v2' else 'cancelled', failure='server_stopped')
                 save(task_file, task_state)
         events = [json.loads(line) for line in (output / 'events.jsonl').read_text().splitlines()]
         metrics()
@@ -333,6 +401,7 @@ def main():
         save(output / 'answer.json', answers[-1] if answers else None)
         text = '\n'.join(part['text'] for part in answers[-1]['data']['message']['content'] if part['type'] == 'text') if answers else ''
         (output / 'answer.md').write_text(text); (output / 'answer.md').chmod(0o600)
+        if persistent_lock:persistent_lock.__exit__(None,None,None)
     if process.returncode not in (0, -signal.SIGTERM): sys.exit(1)
 
 

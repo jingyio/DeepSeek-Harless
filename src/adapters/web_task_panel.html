@@ -68,6 +68,14 @@
       <form id="task-form">
         <div id="text-fields">
           <div class="field"><label for="instruction">你希望完成什么？</label><textarea id="instruction" placeholder="例如：整理这些资料，检查结论与来源，并输出修改建议。" required></textarea></div>
+          <div id="file-operation-fields" hidden>
+            <div class="row"><div class="field"><label for="file-source">已登记的源文件</label><select id="file-source" multiple size="4"></select></div>
+              <div class="field"><label for="file-operation">文件操作</label><select id="file-operation"><option value="copy">复制</option><option value="move">移动／重命名</option><option value="convert">转换</option><option value="archive">ZIP 打包</option><option value="quarantine">移入隔离区</option></select></div></div>
+            <div class="row"><div class="field"><label for="file-destination">实验副本中的目标路径</label><input id="file-destination" value="results/copy.txt"></div>
+              <div class="field"><label for="file-format">转换格式</label><select id="file-format"><option value="none">保持原格式</option><option value="text">文本（.txt）</option><option value="csv">表格（.csv）</option></select></div></div>
+            <label><input id="file-read-result" type="checkbox" checked style="width:auto"> 检查并读取实际产物</label>
+            <p class="muted">每项任务使用独立实验副本。已登记的源目录保持；完成后记录轨迹，真实模式会在原学习预算内认证新经验。</p>
+          </div>
           <div class="row">
             <div class="field"><label for="profile">能力配置</label><input id="profile" placeholder="留空使用服务默认配置" autocomplete="off"><small>填写当前服务已登记的场景标识。</small></div>
             <div class="field"><label for="mode">执行模式</label><select id="mode"><option value="baseline">baseline · 普通 Harness</option><option value="shadow">shadow · 观察 Motif</option><option value="execute">execute · 启用 Motif</option></select></div>
@@ -91,7 +99,7 @@
     <section aria-labelledby="tasks-title">
       <div class="task-title"><h2 id="tasks-title">任务记录</h2><button id="refresh" type="button">刷新</button></div>
       <p id="connection" class="muted" aria-live="polite">正在连接服务端…</p>
-      <div id="tasks"></div><div id="details" hidden></div>
+      <section id="learning-panel" hidden><h2>经验库与自动学习</h2><div id="learning-status" class="notice"></div></section><div id="tasks"></div><div id="details" hidden></div>
     </section>
   </div>
 </main>
@@ -100,8 +108,9 @@
 const $ = id => document.getElementById(id);
 let inputMode = 'text', draft = null, pending = false, selectedTask = null, pollTimer, providerMode = null;
 let selectedFiles = [], pendingFiles = [], uploadedNames = [];
+let fileManagement=null,fileModeInitialized=false;
 const endpoint = '/api/harless/tasks';
-const statuses = {ready:'待确认',preview:'待确认',awaiting_confirmation:'待确认',running:'执行中',completed:'已完成',failed:'失败',cancelled:'已取消',budget_exhausted:'预算耗尽',blocked:'已阻止'};
+const statuses = {ready:'待确认',preview:'待确认',awaiting_confirmation:'待确认',running:'执行中',completed:'已完成',failed:'失败',cancelled:'已取消',budget_exhausted:'预算耗尽',blocked:'已阻止',interrupted:'已中断，可恢复'};
 const terminal = new Set(['completed','failed','cancelled','budget_exhausted','blocked']);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const fmt = value => value === undefined || value === null ? '—' : String(value);
@@ -123,7 +132,7 @@ async function api(body, query='') {
 }
 function setInputMode(next) { if (pending) return; inputMode = next; $('text-fields').hidden = next !== 'text'; $('json-fields').hidden = next !== 'json'; $('instruction').required = next === 'text'; $('text-tab').setAttribute('aria-selected',String(next==='text')); $('json-tab').setAttribute('aria-selected',String(next==='json')); invalidateDraft(); }
 $('text-tab').onclick = () => setInputMode('text'); $('json-tab').onclick = () => setInputMode('json');
-for (const id of ['instruction','profile','mode','budget','inputs','json-request','images']) $(id).addEventListener('input',invalidateDraft);
+for (const id of ['instruction','profile','mode','budget','inputs','json-request','images','file-source','file-operation','file-destination','file-format','file-read-result']) $(id).addEventListener('input',invalidateDraft);
 function fileBytes(file, limit) { if (file.size > limit) throw new Error(`文件 ${file.name} 超过 ${limit/1024} KiB。`); return new Promise((resolve,reject)=> { const reader=new FileReader(); reader.onerror=()=>reject(new Error(`读取 ${file.name} 失败。`)); reader.onload=()=>resolve(String(reader.result).split(',',2)[1]); reader.readAsDataURL(file); }); }
 $('images').onchange = () => { $('image-summary').textContent = Array.from($('images').files).map(file=>file.name).join('、'); };
 $('files').onchange = () => { selectedFiles=Array.from($('files').files); pendingFiles=[...selectedFiles]; showFiles(); if(draft)showPreview(draft); lock(false); };
@@ -132,6 +141,15 @@ async function requestValue() {
   const instruction = $('instruction').value.trim(); if (!instruction) throw new Error('请填写任务要求。');
   const inputs = $('inputs').value.trim() ? JSON.parse($('inputs').value) : []; if (!Array.isArray(inputs)) throw new Error('资料引用必须是 JSON 数组。');
   const request = {instruction,mode:$('mode').value,inputs};
+  if(fileManagement){
+    const selected=Array.from($('file-source').selectedOptions).map(o=>o.value),dest=$('file-destination').value.trim();
+    if(!selected.length)throw new Error('请选择至少一个文件。');
+    if(selected.length>1&&!dest.endsWith('/'))throw new Error('批量目标请填写以 / 结尾的相对目录。');
+    const op=$('file-operation').value,format=$('file-format').value;
+    request.instruction=JSON.stringify({objective:instruction,require_result_read:$('file-read-result').checked,actions:selected.map(source=>{
+      let name=source;if(op==='archive')name+='.zip';if(op==='convert')name=name.replace(/\.[^/.]+$/,format==='csv'?'.csv':'.txt');
+      return {op,source,destination:selected.length>1?dest+name:dest,format};})});
+  }
   if (providerMode!=='mock') request.budget_usd=Number($('budget').value);
   if ($('profile').value.trim()) request.capability_profile=$('profile').value.trim();
   const content = [{type:'text',text:instruction}];
@@ -143,14 +161,14 @@ function showPreview(value) {
   draft = value; $('preview').hidden = false;
   updateProvider(value.provider_mode);
   $('preview-title').textContent=freeTask(value) ? '任务已准备，可继续免费联调':'确认本次任务';
-  $('submit-button').textContent=freeTask(value) ? '继续免费联调':'确认并执行';
-  const rows = [['模式',value.mode],['能力配置',value.capability_profile],['模型通道',providerLabels[value.provider_mode] || '尚未确认'],...(freeTask(value)?[]:[['预算上限',value.budget_usd === undefined ? undefined : `$${money(value.budget_usd)}`]]),['实际付费',value.paid_calls_enabled ? '已启用，请核对授权':'未启用'],['输入',value.input_preview || (typeof value.input_summary==='string' ? value.input_summary:JSON.stringify(value.input_summary ?? {}))],...(value.papers ? [['论文', value.papers.map(p=>p.filename).join('；')]] : []),['任务标识',value.task_id],['会话标识',value.session_id]];
+  $('submit-button').textContent=value.status==='interrupted'?'恢复原任务（预算不重置）':freeTask(value) ? '继续免费联调':'确认并执行';
+  const rows = [['模式',value.mode],['能力配置',value.capability_profile],['模型通道',providerLabels[value.provider_mode] || '尚未确认'],...(freeTask(value)?[]:[['预算上限',value.budget_usd === undefined ? undefined : `$${money(value.budget_usd)}`]]),['实际付费',value.paid_calls_enabled ? '已启用，请核对授权':'未启用'],['输入',value.input_preview || (typeof value.input_summary==='string' ? value.input_summary:JSON.stringify(value.input_summary ?? {}))],...(value.papers ? [['论文', value.papers.map(p=>p.filename).join('；')]] : []),...(value.status==='interrupted'?[['已使用请求',value.stats?.upstream_requests],['累计估费',money(value.stats?.estimated_cost_usd)]]:[]),['任务标识',value.task_id],['会话标识',value.session_id]];
   $('preview-summary').innerHTML='<dl>'+rows.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(fmt(value))}</dd>`).join('')+'</dl>';
   $('submit-button').disabled = pending || !value.task_id || !value.confirmation_digest || !!pendingFiles.length;
   $('upload-button').disabled = pending || !pendingFiles.length;
 }
 async function uploadPendingFiles() { while(pendingFiles.length) { const file=pendingFiles[0]; $('busy').textContent=`正在上传 ${file.name}…`; draft=await api({action:'upload',task_id:draft.task_id,name:file.name,data:await fileBytes(file,256*1024)}); pendingFiles.shift(); uploadedNames.push(file.name); showFiles(); } }
-async function executeDraft() { $('busy').textContent='正在提交任务…'; const value=await api({action:'submit',task_id:draft.task_id,confirmation_digest:draft.confirmation_digest}); selectedTask=value.task_id || draft.task_id; draft=null; $('preview').hidden=true; selectedFiles=[]; pendingFiles=[]; uploadedNames=[]; $('files').value=''; showFiles(); await refresh(); }
+async function executeDraft() { $('busy').textContent='正在提交任务…'; const value=await api({action:draft.status==='interrupted'?'resume':'submit',task_id:draft.task_id,confirmation_digest:draft.confirmation_digest}); selectedTask=value.task_id || draft.task_id; draft=null; $('preview').hidden=true; selectedFiles=[]; pendingFiles=[]; uploadedNames=[]; $('files').value=''; showFiles(); await refresh(); }
 $('task-form').onsubmit = async event => { event.preventDefault(); if(pending)return; clearError(); lock(true,'正在准备任务…'); try { pendingFiles=[...selectedFiles]; uploadedNames=[]; draft=await api({action:'preview',request:await requestValue()}); updateProvider(draft.provider_mode); await uploadPendingFiles(); if(freeTask(draft))await executeDraft();else{showPreview(draft);await refresh();} } catch(error){if(draft)showPreview(draft);showError(error);} finally{lock(false);} };
 $('submit-button').onclick = async () => { if(pending || !draft || pendingFiles.length)return; clearError(); lock(true,'正在提交任务…'); try { await executeDraft(); } catch(error){if(draft)showPreview(draft);showError(error);} finally{lock(false);} };
 $('upload-button').onclick = async () => {
@@ -165,19 +183,20 @@ function taskCard(task) {
   const inputTokens=stats.input_tokens ?? stats.prompt_tokens ?? (cacheHit !== undefined && cacheMiss !== undefined ? cacheHit+cacheMiss:undefined);
   const values=[['模型请求',stats.model_requests ?? stats.upstream_requests ?? stats.gate_requests],['验证后跳过',stats.verified_skips],['工具调用',stats.tool_calls],['输入 token',inputTokens],['输出 token',stats.output_tokens ?? stats.completion_tokens],['费用估值（美元）',money(stats.estimated_cost_usd ?? stats.reserved_upper_usd)],['缓存命中 token',cacheHit],['缓存未命中 token',cacheMiss],['实际支出（美元）',money(stats.actual_paid_usd)]];
   const fallback=task.fallback_reason ? fallbackLabels[task.fallback_reason] || `已回退普通流程（${task.fallback_reason}）。`:'';
-  return `<article class="task"><div class="task-title"><span>${esc(task.title || task.instruction?.slice(0,60) || task.capability_profile || '任务')} · ${esc(task.mode || '')}</span><span class="badge">${esc(statuses[status] || status)}</span></div><small>${esc(providerLabels[task.provider_mode] || '模型通道待确认')}</small><div class="metric-grid">${values.map(([label,value])=>`<div><span>${esc(label)}</span><strong>${esc(fmt(value))}</strong></div>`).join('')}</div>${fallback?`<p class="notice">${esc(fallback)}</p>`:''}<small>${esc(timeOf(task))} · ${esc(id)}</small>${task.failure ? `<p class="error">${esc(task.failure)}</p>`:''}<div class="actions"><button type="button" data-detail="${esc(id)}">查看结果与来源</button>${status==='awaiting_confirmation'?`<button type="button" data-preview="${esc(id)}">查看预览并确认</button>`:''}${!terminal.has(status)?`<button type="button" data-cancel="${esc(id)}">取消</button>`:''}<a href="/" target="_blank" rel="noopener">官方会话</a></div><small>会话：${esc(task.session_id || '未创建')}（在官方页面侧栏选择对应会话）</small></article>`;
+  const rsi=task.continuous_learning,learning=rsi ? rsi.record_file ? task.provider_mode==='real' ? '轨迹与费用已封存，已提交自动学习队列。' : '模拟轨迹已封存，不参与真实学习。' : rsi.status==='pending_cost_settlement' ? '等待在途请求结算后封存学习记录。' : '任务验收与费用结算后自动检查学习机会。' : '';
+  return `<article class="task"><div class="task-title"><span>${esc(task.title || task.instruction?.slice(0,60) || task.capability_profile || '任务')} · ${esc(task.mode || '')}</span><span class="badge">${esc(statuses[status] || status)}</span></div><small>${esc(providerLabels[task.provider_mode] || '模型通道待确认')}</small><div class="metric-grid">${values.map(([label,value])=>`<div><span>${esc(label)}</span><strong>${esc(fmt(value))}</strong></div>`).join('')}</div>${fallback?`<p class="notice">${esc(fallback)}</p>`:''}${learning?`<p class="notice">${esc(learning)}</p>`:''}<small>${esc(timeOf(task))} · ${esc(id)}</small>${task.failure ? `<p class="error">${esc(task.failure)}</p>`:''}<div class="actions"><button type="button" data-detail="${esc(id)}">查看结果与来源</button>${['awaiting_confirmation','interrupted'].includes(status)?`<button type="button" data-preview="${esc(id)}">${status==='interrupted'?'恢复原任务':'查看预览并确认'}</button>`:''}${!terminal.has(status)?`<button type="button" data-cancel="${esc(id)}">取消</button>`:''}<a href="/" target="_blank" rel="noopener">官方会话</a></div><small>会话：${esc(task.active_session_id || task.session_id || '未创建')}（在官方页面侧栏选择对应会话）</small></article>`;
 }
 async function detail(id) {
   const value=await api(null,'?task_id='+encodeURIComponent(id)); selectedTask=id; $('details').hidden=false;
   const notes=value.delivery?.markdown;
   const answer=typeof value.answer==='string' ? value.answer : typeof value.answer_md==='string' ? value.answer_md : value.answer?.text;
-  $('details').innerHTML=`<h2>任务详情</h2>${notes ? `<p>自动交付 · ${esc(value.delivery.claim_count)} 项证据字段 · ${esc(value.delivery.gap_count)} 项缺口</p><pre>${esc(notes)}</pre>` : ''}${answer?`<pre>${esc(answer)}</pre>`:''}<details><summary>配置、统计与执行记录</summary><pre>${esc(JSON.stringify(value,null,2))}</pre></details>`;
+  $('details').innerHTML=`<h2>任务详情</h2>${notes ? `<p>自动交付 · ${esc(value.delivery.claim_count??0)} 项证据字段 · ${esc(value.delivery.gap_count??value.delivery.gaps?.length??0)} 项缺口</p><pre>${esc(notes)}</pre>` : ''}${value.delivery?.outputs?.length?`<ul>${value.delivery.outputs.map(o=>`<li>${esc(o.operation)}：${esc(o.source)} → ${esc(o.path)}（字节核验通过）</li>`).join('')}</ul>`:''}${answer?`<pre>${esc(answer)}</pre>`:''}<details><summary>配置、统计与执行记录</summary><pre>${esc(JSON.stringify(value,null,2))}</pre></details>`;
 }
-async function resumeDraft(id) { const value=await api(null,'?task_id='+encodeURIComponent(id)); if(value.status!=='awaiting_confirmation')throw new Error('该任务已执行或取消，请查看任务记录。'); selectedFiles=[];pendingFiles=[];uploadedNames=[];$('files').value='';showFiles();showPreview(value);lock(false); }
+async function resumeDraft(id) { const value=await api(null,'?task_id='+encodeURIComponent(id)); if(!['awaiting_confirmation','interrupted'].includes(value.status))throw new Error('该任务已执行或取消，请查看任务记录。'); selectedFiles=[];pendingFiles=[];uploadedNames=[];$('files').value='';showFiles();showPreview(value);lock(false); }
 let refreshing=false, budgetInitialized=false;
 async function refresh() {
   if(refreshing)return; refreshing=true;
-  try { const response=await api(); const tasks=Array.isArray(response) ? response:response.tasks || response.items || []; updateProvider(response.provider_mode); if(response.scene_input_policy==='registered_pdf_directory'){ $('images').closest('.field').hidden=true; $('files').closest('.field').hidden=true; $('instruction').placeholder='例如：比较这些论文的方法、实验证据和限制，对构建高效科研 Agent 有什么启示？'; $('provider-label').textContent+=' · 使用当前服务登记的全部PDF；自动复核后直接交付，缺口明确显示。'; } if(!budgetInitialized && response.budget_usd!==undefined){$('budget').value=response.budget_usd;$('budget').max=response.budget_usd;budgetInitialized=true;} if(response.capability_profile && !$('instruction').value && !$('json-request').value) $('profile').value=response.capability_profile; $('connection').textContent=`${providerLabels[providerMode] || '通道待确认'} · 已连接 · ${tasks.length} 项任务 · 每 2 秒更新`; $('tasks').innerHTML=tasks.length ? tasks.map(taskCard).join(''):`<p class="muted">尚未提交任务。${providerMode==='mock'?'填写要求后，即可开始免费联调。':'先生成预览，确认后执行。'}</p>`; if(selectedTask)await detail(selectedTask); }
+  try { const response=await api(); const tasks=Array.isArray(response) ? response:response.tasks || response.items || []; updateProvider(response.provider_mode); if(response.file_management){fileManagement=response.file_management;$('file-operation-fields').hidden=false;$('images').closest('.field').hidden=true;$('files').closest('.field').hidden=true;const previousSources=Array.from($('file-source').selectedOptions).map(o=>o.value);$('file-source').innerHTML=fileManagement.files.map(f=>`<option value="${esc(f.path)}">${esc(f.path)}</option>`).join('');for(const o of $('file-source').options)o.selected=previousSources.includes(o.value);if(!previousSources.length&&$('file-source').options.length)$('file-source').options[0].selected=true;$('instruction').placeholder='说明希望完成的文件目标和结果检查要求。';if(!fileModeInitialized){$('mode').value='execute';fileModeInitialized=true;}} if(response.learning_status){const l=response.learning_status;$('learning-panel').hidden=false;$('learning-status').textContent=`持久经验库第 ${l.library_generation} 版 · ${l.active_motifs} 个已激活 Motif · ${l.certification.filter(x=>x.status==='certifying').length} 个认证中 · ${l.certification.filter(x=>x.status==='rejected').length} 个候选未通过。${l.learning_enabled?'自动学习已启用':'仅记录，不自动学习'}。${l.worker_running?'学习服务运行中。':''}累计代理估费 $${money(l.estimated_cost_usd)}，未结算预留 $${money(l.reserved_upper_usd)}；学习预算上限 $${money(l.learning_cap_usd)}。实际账单${l.actual_paid_usd===0?'为 0（模拟模型）':'尚未核实'}。`;} if(response.scene_input_policy==='registered_pdf_directory'){ $('images').closest('.field').hidden=true; $('files').closest('.field').hidden=true; $('instruction').placeholder='例如：比较这些论文的方法、实验证据和限制，对构建高效科研 Agent 有什么启示？'; $('provider-label').textContent+=' · 使用当前服务登记的全部PDF；自动复核后直接交付，缺口明确显示。'; } if(!budgetInitialized && response.budget_usd!==undefined){$('budget').value=response.budget_usd;$('budget').max=response.budget_usd;budgetInitialized=true;} if(response.capability_profile && !$('instruction').value && !$('json-request').value) $('profile').value=response.capability_profile; $('connection').textContent=`${providerLabels[providerMode] || '通道待确认'} · 已连接 · ${tasks.length} 项任务 · 每 2 秒更新`; $('tasks').innerHTML=tasks.length ? tasks.map(taskCard).join(''):`<p class="muted">尚未提交任务。${providerMode==='mock'?'填写要求后，即可开始免费联调。':'先生成预览，确认后执行。'}</p>`; if(selectedTask)await detail(selectedTask); }
   catch(error){$('connection').textContent=error.message;} finally{refreshing=false;}
 }
 $('refresh').onclick=refresh;

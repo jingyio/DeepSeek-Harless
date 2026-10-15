@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {digest} from '../src/motif_core/online_skill_runtime.mjs';
 import {validateReentryPolicy,createReentryController} from '../src/motif_core/collection_reentry_policy.ts';
+import {createReentryController as createPrefetchReentry} from '../src/motif_core/collection_reentry_policy_v2.ts';
 const names=['select','pin','read','gather'].map(n=>'mcp__test__'+n),obs=v=>({value:{structuredContent:v}});
 function fixture(){
  const [s,p,r,g]=names,tools=names.map(name=>({name,parameters:{}}));const graph={source_tool:s,pin_tool:p,read_tool:r,gather_tool:g,selection:'actual_model_selected_members',array_field:'files',identity_field:'file_id',pin_param:'file_id',read_param:'source_id',gather_param:'source_ids',max_targets:32,max_batch:8,stop:'semantic_handoff_after_complete_gather'};
@@ -14,10 +15,12 @@ function fixture(){
  const inventory=[0,1].map(i=>({file_id:'f'+i,path:i+'.txt',bytes:10,sha256:digest(i),source_version:digest(['v',i])}));
  const task={schema_version:1,task_id:'t',session_id:'s',input_version:'c'.repeat(64),snapshot_sha256:'d'.repeat(64),execution_version_sha256:policy.execution_version_sha256,inventory,inventory_sha256:digest(inventory)};return {policy,task,tools};
 }
-function episode(c,f,k,log){
+function episode(c,f,k,log,nativePin=false){
  const row=f.task.inventory[k];const packet={collection_id:'collection-'+k,input_sha256:f.task.input_version,snapshot_sha256:f.task.snapshot_sha256,execution_version_sha256:f.task.execution_version_sha256,files:[row],count:1,selection:'actual_model_selected_members'};packet.collection_sha256=digest(packet);
  c.observe({callId:'model-'+k,name:names[0],arguments:{file_ids:[row.file_id]}},obs(packet));let i=0,read;
- for(let step=0;step<3;step++){
+ if(nativePin)c.observe({callId:'native-pin-'+k,name:names[1],arguments:{file_id:row.file_id}},
+  obs({file_id:row.file_id,source_version:row.source_version,source_id:'source-'+k}));
+ for(let step=0;step<(nativePin?2:3);step++){
   const call=c.propose(f.tools,()=> k+'-'+(++i))[0];assert.ok(call);let out;
   if(call.proposal.tool===names[1])out={file_id:row.file_id,source_version:row.source_version,source_id:'source-'+k};
   else if(call.proposal.tool===names[2])out=read={...row,source_id:'source-'+k,status:'readable',text:'actual'};
@@ -27,4 +30,12 @@ function episode(c,f,k,log){
 }
 test('L2 waits for a fresh model choice, reenters once, and records second epoch separately',()=>{const f=fixture(),log=[],c=createReentryController(f.policy,f.task,r=>log.push(r));assert.deepEqual(c.propose(f.tools,()=>''),[]);episode(c,f,0,log);assert.equal(c.done,false);assert.deepEqual(c.propose(f.tools,()=>''),[]);c.observe({name:'mcp__test__semantic',callId:'model-decision'},obs({}));episode(c,f,1,log);assert.equal(c.done,true);assert.equal(log.filter(r=>r.kind==='reentry_epoch_batch_verified').length,3);assert.equal(log.filter(r=>r.kind==='collection_model_request_bypassed_verified').length,6);});
 test('a failed L1 does not enable second-epoch execution',()=>{const f=fixture(),c=createReentryController(f.policy,f.task,()=>{});c.fail('parent failed');assert.equal(c.halted,true);assert.deepEqual(c.propose(f.tools,()=>''),[]);});
+test('versioned reentry adopts native pins in both epochs without claiming they bypassed model requests',()=>{
+ const f=fixture(),log=[],c=createPrefetchReentry(f.policy,f.task,r=>log.push(r));
+ episode(c,f,0,log,true);assert.equal(c.done,false);assert.deepEqual(c.propose(f.tools,()=>''),[]);
+ episode(c,f,1,log,true);assert.equal(c.done,true);
+ assert.equal(log.filter(r=>r.kind==='collection_native_pin_adopted').length,2);
+ assert.equal(log.filter(r=>r.kind==='collection_model_request_bypassed_verified').length,4);
+ assert.equal(log.filter(r=>r.kind==='reentry_epoch_batch_verified').length,2);
+});
 for(const field of ['parent','evidence','scope'])test('L2 rejects changed '+field,()=>{const f=fixture();if(field==='parent')f.policy.parent_policy.policy_digest='wrong';else if(field==='evidence')f.policy.artifact.training_episodes[0].residual_witness.references[0].call_id='sss-forged';else f.policy.artifact.max_episodes=8;assert.throws(()=>validateReentryPolicy(f.policy));});

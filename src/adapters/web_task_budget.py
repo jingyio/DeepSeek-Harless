@@ -13,6 +13,7 @@ import math
 import os
 import re
 import threading
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Mapping
@@ -46,6 +47,8 @@ class RoutedState:
         self.observed_cost_usd = 0.0
         self.usage = {key: 0 for key in USAGE_FIELDS}
         self._global_ids: dict[int, int] = {}
+        self.job_file=None
+        self.active_session_id=session_id;self.current_pending=set()
 
     def book(self, body: bytes) -> tuple[int, str, float, int] | None:
         model, dollars, ceiling = reservation(body, max_output=self.state.output_cap)
@@ -61,13 +64,30 @@ class RoutedState:
                         (state.request_limit is not None and state.request_count >= state.request_limit)):
                     self.denials += 1
                     return None
+            if self.job_file:
+                from .operation_budget import command
+                v=command(self.job_file,'reserve',{'model':model,'upper_usd':dollars,'request_sha256':hashlib.sha256(body).hexdigest()})
+                if not v['admitted']:self.denials+=1;return None
             for state in (run, self.state):
                 state.reserved_usd += dollars
                 state.request_count += 1
                 state.pending[state.request_count] = dollars
             request_id = self.state.request_count
             self._global_ids[request_id] = run.request_count
+            self.current_pending.add(request_id)
+            if self.job_file:
+                from .operation_budget import command
+                command(self.job_file,'log',{'kind':'route_reserved','request_id':request_id,'global_request_id':run.request_count})
+            if hasattr(run,'checkpoint'):run.checkpoint()
             return request_id, model, dollars, ceiling
+
+    def claim_provider_retry(self):
+        with self.registry.lock:
+            if not self.active or self.cancelled:return False
+            if self.job_file:
+                from .operation_budget import command
+                return command(self.job_file,'provider-retry')['admitted']
+            return self.state.claim_provider_retry()
 
     def settle(self, request_id: int, model: str, status: int,
                usage: dict[str, int]) -> tuple[float | None, float]:
@@ -77,6 +97,11 @@ class RoutedState:
             global_id = self._global_ids[request_id]
             self.registry.run_state.settle(global_id, model, status, usage)
             observed, released = self.state.settle(request_id, model, status, usage)
+            self.current_pending.discard(request_id)
+            if self.job_file:
+                from .operation_budget import command
+                command(self.job_file,'settle',{'request_id':request_id,'model':model,'observed_usd':observed})
+            if hasattr(self.registry.run_state,'checkpoint'):self.registry.run_state.checkpoint()
             if observed is None:
                 self.unknown_usage_requests += 1
             else:
@@ -92,6 +117,9 @@ class RoutedState:
             global_id = self._global_ids.get(request_id)
             if global_id is not None:
                 task_row["global_request_id"] = global_id
+            if self.job_file:
+                from .operation_budget import command
+                command(self.job_file,'log',task_row)
             self.state.log(task_row)
             run_row = dict(task_row)
             if global_id is not None:
@@ -126,12 +154,13 @@ class TaskBudgetRegistry:
         self.by_task: dict[str, RoutedState] = {}
         self.route_denials = 0
 
-    def register(self, task_id: str, session_id: str, budget_usd: float) -> dict[str, Any]:
+    def register(self, task_id: str, session_id: str, budget_usd: float,job_file=None,ledger_file=None) -> dict[str, Any]:
         if not isinstance(task_id, str) or TASK_ID.fullmatch(task_id) is None:
             raise ValueError("task_id must be 32 lowercase hexadecimal characters")
         session_id = session_identity(session_id)
+        restoring=bool(job_file and ledger_file and Path(ledger_file).is_file())
         if (not isinstance(budget_usd, (int, float)) or isinstance(budget_usd, bool)
-                or not math.isfinite(budget_usd) or not 0 <= budget_usd <= self.max_task_budget_usd):
+                or not math.isfinite(budget_usd) or budget_usd<0 or budget_usd>self.max_task_budget_usd and not restoring):
             raise ValueError("task budget exceeds the server maximum")
         with self.lock:
             existing = self.by_session.get(session_id) or self.by_task.get(task_id)
@@ -141,19 +170,43 @@ class TaskBudgetRegistry:
                     raise ValueError("immutable task registration conflicts")
                 return self.stats(session_id)
             directory = self.tasks_root / task_id
+            if ledger_file:
+                from .continuous_rsi import private
+                directory=private(ledger_file).parent
+                if directory.name!=task_id or Path(ledger_file).name!='ledger.jsonl' or not job_file or Path(job_file).parent!=directory:raise ValueError('original task ledger binding changed')
             directory.mkdir(mode=0o700, exist_ok=True)
-            if directory.is_symlink() or directory.resolve().parent != self.tasks_root:
+            if directory.is_symlink() or not ledger_file and directory.resolve().parent != self.tasks_root:
                 raise ValueError("task ledger directory escapes its private root")
             ledger = directory / "ledger.jsonl"
             # A cold restart cannot silently reset a pre-existing task ledger.
             try:
                 descriptor = os.open(ledger, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             except FileExistsError as error:
-                raise ValueError("task ledger exists; register a new task identity") from error
-            os.close(descriptor)
+                if not job_file:raise ValueError("task ledger exists; register a new task identity") from error
+            else:os.close(descriptor)
             state = State(cap_usd=float(budget_usd), output_cap=self.run_state.output_cap,
                           request_limit=self.task_request_limit, record=ledger)
             route = RoutedState(self, task_id, session_id, state)
+            if job_file:
+                from .operation_budget import command
+                from .continuous_rsi import private
+                job_file=private(job_file);s=command(job_file,'state')['state']
+                if s['limits']['budget_usd']!=budget_usd or not restoring and (s['limits']['max_requests']!=self.task_request_limit or s['limits']['max_output']!=state.output_cap):raise ValueError('original task budget binding changed')
+                if restoring:state.request_limit=s['limits']['max_requests'];state.output_cap=s['limits']['max_output']
+                route.job_file=str(job_file);state.request_count=s['requests'];state.reserved_usd=s['spent_units']/1e9
+                state.pending={int(k):v['amount']/1e9 for k,v in s['pending'].items()}
+                rows=[json.loads(l) for l in ledger.read_text().splitlines()]
+                route._global_ids={r['request_id']:r['global_request_id'] for r in rows if r.get('global_request_id') is not None}
+                for event in sorted(Path(str(job_file)+'.events').glob('*.json')):
+                    e=json.loads(event.read_text())
+                    if e['kind']=='proxy_accounting' and e['detail'].get('kind')=='route_reserved':route._global_ids[e['detail']['request_id']]=e['detail']['global_request_id']
+                for row in rows:
+                    usage=row.get('response_usage') or {}
+                    if row.get('kind')=='budget_denied':continue
+                    if row.get('observed_peak_usd') is None:route.unknown_usage_requests+=1
+                    else:
+                        route.observed_cost_usd+=row['observed_peak_usd']
+                        for k in USAGE_FIELDS:route.usage[k]+=usage.get(k,0)
             self.by_session[session_id] = route
             self.by_task[task_id] = route
             return self.stats(session_id)
@@ -178,6 +231,43 @@ class TaskBudgetRegistry:
             route = self._route(session_id)
             route.cancelled = True
             route.active = False
+            if route.job_file:
+                from .operation_budget import command
+                if command(route.job_file,'state')['state']['status'] in ('running','paused'):command(route.job_file,'cancel')
+            return self.stats(session_id)
+
+    def suspend(self,session_id):
+        with self.lock:
+            r=self._route(session_id);r.active=False
+            if r.job_file:
+                from .operation_budget import command
+                if command(r.job_file,'state')['state']['status']=='running':command(r.job_file,'pause')
+            return self.stats(session_id)
+
+    def recover(self,session_id,owner_pid):
+        with self.lock:
+            r=self._route(session_id)
+            if not r.job_file or r.cancelled:raise ValueError('task is not recoverable')
+            if r.current_pending:raise ValueError('original requests are still settling')
+            from .operation_budget import OperationBudget,command
+            s=command(r.job_file,'state')['state']
+            value={'recovered':[]} if s['accepted'] else OperationBudget(r.job_file,r.state.record).recover(s['execution_version_sha256'],owner_pid)
+            for row in value['recovered']:
+                r.state.pending.pop(row['request_id'],None)
+                gid=r._global_ids.get(row['request_id'])
+                if gid:
+                    self.run_state.pending.pop(gid,None)
+                    self.run_state.log({**row,'request_id':gid,'task_request_id':row['request_id'],'task_id':r.task_id,'session_id':r.session_id,
+                        'response_status':0,'observed_peak_usd':None,'kind':'interrupted_request','response_usage':{}})
+                r.unknown_usage_requests+=1
+            if hasattr(self.run_state,'checkpoint'):self.run_state.checkpoint()
+            return self.stats(session_id)
+
+    def alias(self,session_id,alias_session_id):
+        with self.lock:
+            r=self._route(session_id);alias_session_id=session_identity(alias_session_id)
+            if not r.job_file or r.active or r.cancelled or alias_session_id in self.by_session:raise ValueError('invalid original task continuation alias')
+            self.by_session[alias_session_id]=r;r.active_session_id=alias_session_id
             return self.stats(session_id)
 
     def state_for(self, headers: Mapping[str, str]) -> RoutedState:
@@ -193,6 +283,7 @@ class TaskBudgetRegistry:
                 route.denials += 1
                 self.route_denials += 1
                 raise PermissionError("task budget is inactive or cancelled")
+            if route.job_file and session_id!=route.active_session_id:raise PermissionError('prior task session cannot issue new requests')
             return route
 
     def stats(self, session_id: str) -> dict[str, Any]:
@@ -268,7 +359,8 @@ def create_control_server(host: str, port: int, registry: TaskBudgetRegistry, *,
             if not self.authenticated():
                 return
             routes = {"/tasks/register": registry.register,
-                      "/tasks/activate": registry.activate, "/tasks/cancel": registry.cancel}
+                      "/tasks/activate": registry.activate, "/tasks/cancel": registry.cancel,
+                      "/tasks/suspend":registry.suspend,"/tasks/recover":registry.recover,"/tasks/alias":registry.alias}
             if self.path not in routes:
                 self.reply(404, {"error": "unknown task budget control route"})
                 return
@@ -279,6 +371,9 @@ def create_control_server(host: str, port: int, registry: TaskBudgetRegistry, *,
                     return
                 value = json.loads(self.rfile.read(length))
                 expected = {"task_id", "session_id", "budget_usd"} if self.path == "/tasks/register" else {"session_id"}
+                if self.path=='/tasks/recover':expected={'session_id','owner_pid'}
+                if self.path=='/tasks/alias':expected={'session_id','alias_session_id'}
+                if self.path=='/tasks/register' and isinstance(value,dict) and 'job_file' in value:expected|={'job_file','ledger_file'}
                 if not isinstance(value, dict) or set(value) != expected:
                     raise ValueError("invalid task budget control fields")
                 self.reply(200, routes[self.path](**value))

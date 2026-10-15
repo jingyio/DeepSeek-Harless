@@ -1,8 +1,62 @@
 # 场景、Motif 和 Harness 的接口
 
+2026-10-15最新：已接通工具名无关的 MCP 学习契约与2–8节点参数DAG，并扩展到原授权文件写操作；真实新流从两节点前缀学习并独立认证五节点图，3个新图激活，严格文件流6/6普通任务合格。既有默认 Harness Web 的 file-management profile 已接同一库、任务后封存与自动学习队列；真实Web5/5合格，17次结构续接经实际结果验证。632 Python/211 Node通过、3可选跳过、18smoke；本轮59真实执行/470HTTP/代理USD0.237622092，包含所有失败与认证，最终留出不学习、暂不推送GitHub。其它MCP仍须登记真实权限/材料/验收适配器，任意控制流及稳定完整净收益未验证。 [完整实验](experiments/generic-mcp-operation-rsi-20261015.md)、[共享接口与入口](changes/generic-mcp-operation-rsi.md)。
+
+共享协议新增 `_meta.sss_learning` / `sss-mcp-learning-v1`、`sss-operation-graph-v1`、版本库 `operation_graph` 及Web `continuous_learning` 字段；原HTTP动作/状态名保持。文件适配器在任何效果前核对原目标，原权限、版本、预算与最多2次普通Harness验收修复继续有效。无有效库/不能唯一绑定时普通Harness接管。
+
+以下为此前版本的历史记录；其中“默认Web未接”等表述仅对应当时版本。
+
+最新[工作流结构报告与新RSI验证](experiments/file-management-report-delivery-20261014.md)完成102次新执行：task_result身份/快照/真实回执由当前MCP状态生成，模型填写摘要/缺口；原实际字节与权限验收不变。新诊断H/回退各6/6；两轮当前版本经验学习/独立认证/自动激活后均在下一任务零HTTP执行。日常H5/6、S/F/R各6/6，最终正常H/S/R各8/8、F7/8，8版本安全停止。R完整API USD1.325444比F1.390140低约4.65%，但F未全部合格，预定同质量净收益门槛仍未满足；普通回退备份仍需修复。603 Python/185 Node及smoke通过，系列估费USD7.836915368；失败/排除/轨迹/费用与旧最终留出保留，仅本地、默认SDK/Web未启用、暂不推送GitHub。[共享契约](changes/file-management-report-delivery.md)。
+
+
+最新[回退修复与持续学习验证](../docs/experiments/file-management-fallback-rsi-20261014.md)完成142次真实运行：跨计划重复SHA写入在执行前拒绝，提交时检查原始字节组完整覆盖。第二版新诊断H/回退均6/6；新两轮经验自动认证激活并在后续实际执行。最终正常H7/8、S8/8、F8/8、R7/8，8版本安全停止；R完整API USD1.149742低于F1.207199约4.76%，但最终质量较低，不支持同质量净收益。未知目标失败的文件正确但缺实际报告，原失败/费用留存，最终不学习。599 Python/185 Node通过，系列估费USD7.197809948。本轮仅本地，暂不推送GitHub、默认SDK/Web未启用。[共享接口](../docs/changes/file-management-fallback-guard.md)。
+
+
+## 有界自动经验检索与更新（2026年10月14日，本地）
+
+新增sss-experience-registry-v1/schema1，原字节objects+不可变versions/current，支持脚本v1/v2与读取/集合/再入/授权计划；新TS插件SSS_EXPERIENCE_BINDING只取当前任务、库/源码SHA与审计路径，不接收profile_id或正确候选ID。真实目标/规则/权限/状态/MCP schema核验后执行，冲突/失效/修复交普通Harness；独立认证方可自动激活，旧版本与失败保留。新auto_rsi调度严格分离普通探索/独立认证/最终留出，禁止最终学习；默认HTTP/SDK/Web/MCP/旧IR未改。[契约](changes/file-management-auto-rsi.md)、[Schema](schemas/experience-registry.schema.json)、[验证](experiments/file-management-auto-rsi-20261014.md)。
+
 ## 已学习文件管理 Motif 分发索引（2026年10月14日）
 
 公开文件 `examples/motif-library/file-management-v1/catalog.json` 使用 `sss-public-file-management-library-v1` / schema 1。以包内相对路径和原始SHA列举学习库/在线manifest/认证摘要，通过 `paired_library` 关联manifest；`runtime_groups`提供冻结来源版本及依赖，`runtime_validators`绑定实际加载器字节。`default_activation=false`，不更改已有IR、Harness/MCP工具或任务授权接口。`node scripts/check-file-management-library.mjs [--require-group workflow14|recovery15]` 免费检查；严格要求不兼容来源时失败。G4部分源码仍未发布，不能以库上传代替运行时接入。[完整契约](changes/file-management-library-publication.md)。
+
+## 学习脚本第二版与真实普通修复（显式实验）
+
+新增格式 sss-learned-copy-script-v2 与私有 SSS_LEARNED_SCRIPT_V2_BINDING：guard_cases将目标摘要/规则文本摘要/实际目标前缀成对绑定，runtime_source绑定三个实际TS/事件/终结模块；已认证候选通过原公开插件和真实MCP执行。指令只有min/max SHA代表、排除零字节txt、任务/前段备份复制与目录槽位绑定；不是任意代码。失配永久停用，原同会话普通Harness/最多2轮固定验收修复/原预算与权限保持。v1/source/证书不静默升级，无新run-scenario参数、MCP工具或Web kind。受控未完成草稿与受控版本中断仅实验；额外实际SDK陈旧execute拒绝/模拟普通停止检查另存且不训练。完整字段、来源、费用分摊和边界见[变化记录](changes/file-management-script-adaptation.md)及[65次结果](experiments/file-management-script-adaptation-20261014.md)。
+
+## 从新普通轨迹编译脚本模板（2026年10月14日）
+
+新增显式实验格式 `sss-learned-copy-script-v1` 和私有 `SSS_LEARNED_SCRIPT_BINDING`，由 TS `dsh_learned_script.ts` 通过原公开 Harness 插件生命周期执行；无新 MCP 工具、公共 CLI 参数或 HTTP task kind。离线 `script_reuse_learning.py` 只从新的普通探索原事件推导有界 SHA 代表选择/前缀复制/实际前段产物数据流，保存训练 SHA、工具 schema、源版本、候选锁和独立证书。规则/权限/版本/题面/工具改变先停用，原同会话普通 Harness 和原验收预算接管；不支持任意代码或任意目录。独立认证后创建新的四组留出，旧库/契约/留出不动；新模板默认不进入 SDK/Web。详情见[接口记录](changes/file-management-script-reuse.md)及[质量与完整费用](experiments/file-management-script-reuse-20261014.md)。
+
+## 第五阶段三组新留出与冻结边界 2026年10月14日
+
+新增离线workflow_holdout默认冻结/预览，--call-model执行54个H/S/M新留出（含9零Model脚本）。新FM_WORKFLOW_CONTROL只供显式私有patch的TS dsh_workflow_experiment，在实际预览、备份恢复预览或已记录执行边界改变单个实验版本/中断下一请求；限定testpdf副本和原SHA，不给模型新工具，不默认启用SDK/Web。新Session仍同job/原权限预算/修复，未知足迹停止。普通脚本图独立声明，无artifact或伪装证书；固定状态脚本通过同MCP与实际授权。旧IR、服务/工具Schema、原FileJob/预算/验收、G4库/lock不改。54新留出不学习或修库。[详细变更](changes/file-management-workflow-holdout.md)、[完整质量/费用/失败](experiments/file-management-workflow-holdout-20261014.md)。
+
+## 持久化任务与认证计划的显式在线组合 2026年10月14日
+
+`run-scenario.py` 新增 `--file-plan-binding` / `SSS_DURABLE_PLAN_BINDING`。durable_job允许普通baseline，或既有plan_policy/plan_task加原file_job和私有sss-durable-plan-binding-v1；其他策略组合仍拒绝。预览核验但不激活；首次付费运行才在未开始的原job追加激活事件，不新增权限、预算或计数。绑定旧library-lock/policy原字节、原任务/limits、服务外层及计划组件、在线模块SHA；服务依赖或任务/权限改变不得冒用旧证书。
+
+TS `createJobPlanGuard` 在每次自动authorize/execute前核对原job状态、版本/任务/权限、费用/请求/步骤及未决预留和repairs。`createCollectionGate`可选第五参数jobGuard，原调用兼容；工具失败、Schema/题面拒绝持久化停用，cold restart不能重新激活。验收失败仍原任务、最多2次普通Harness修复后复验；restore由真实模型决定，不是新认证图。默认SDK/Web关闭新库，动态前端未接；相关新留出见第五阶段与脚本复用实验记录。[逐项接口/版本/回退](changes/file-management-workflow-online.md)、[真实结果、失败与费用](experiments/file-management-workflow-online-20261014.md)。
+
+## 此前文件流程按版本学习与独立认证 2026年10月14日
+
+新增离线workflow_learning及实际MCP/TS重放入口，复用原编译器与在线控制器；workflow_study.outcome.role改为原case.role，区分普通训练和独立认证，不重标旧证据。新candidate-lock在首次付费认证前冻结，library-lock按14/15服务依赖与Schema分组，另区分RecoveryScene外层和PlanScene实际组件摘要；固定重放先核对清单。实际空MCP说明仍保留，冻结基类说明只补离线展示元数据，不授权执行。
+
+3类产物通过独立认证与Node格式校验，8项实际免费MCP重放通过；没有新IR、共享编译器/TS/工具Schema或默认Web变化。该轮当时禁止durable_job CLI组合；后续显式组合见本页首节，原认证证据不改。自动restore未认证，留出不运行。[详细接口与兼容](changes/file-management-workflow-learning.md)、[结果和所有费用/失败](experiments/file-management-workflow-learning-20261014.md)。
+
+## 探索恢复状态与冷启动接口 2026年10月14日
+
+RecoveryScene.read_task追加实际recovery_state与读取说明；pin_file在取得句柄前按workflow.allowed_reads拒绝越界，空读取范围不因重命名/恢复扩大。新执行SHA使旧job失效；首轮两个历史读取违规仍失败。固定验收仅在已记录故障边界返回restart_required，TS守卫先保留验收并占用原repair，再交受限启动器冷启动。
+
+固定SDK不能重新创建已有传输Session，--file-job每次启动换新传输Session并绑定原持久化任务；逐轮验收按job路径SHA归档，原权限/预算/请求/修复上限保持。无job仍原规则。新增离线workflow_study和归档源码审计/观测图汇集入口，显式--call-model才付费；尚无新库、证书或默认Web接入。[详细兼容和失败记录](changes/file-management-workflow-runtime.md)、[真实探索结果](experiments/file-management-workflow-exploration-20261014.md)。
+
+## 首批工作流契约与持久化任务（2026-10-13）
+
+独立WorkflowScene提供14工具，新增sss-file-workflow-v1和私有SHA绑定oracle；固定验收检查真实效果、来源、ZIP成员、读取范围和执行版本，不扩大旧TaskContract kind。当前公开[Workflow Schema](schemas/file-workflow-contract.schema.json)只表示六项受限工作流范围。
+
+RecoveryScene显式组合TaskScene和PlanScene，15工具、授权双参数执行/撤销；当前只覆盖rename/自身计划rollback。权威TypeScript file_workflow_job维护原任务/执行版本、权限状态、预算预留、请求/步骤、验收轮次和最多2次修复。固定Python预算桥复用原价格代理；未知usage保留预留，状态事件不可覆盖，重启不清零。
+
+acceptance_guard可显式添加durable_job=true，固定插件绑定FM_JOB_FILE；CLI须配--file-job读取已有私有任务，以原预算/输出/步骤精确值运行，不能创建或重置。新入口仅普通baseline，拒绝未认证的Motif组合；旧场景无新增字段保持旧行为。CLI单次费用/请求增量与durable_*累计分别记录，默认SDK/Web不切换新入口。完整接口、版本、回退和限制见[逐项改动](changes/file-management-workflow-runtime.md)，免费实测见[实验记录](experiments/file-management-workflow-free-20261013.md)。
 
 ## 普通文件管理探索场景（2026-10-13）
 
@@ -447,3 +501,20 @@ v1三十任务14合格/16失败，v2十四任务9合格/5失败且L2编译拒绝
 新任务显式使用task_tools.TaskScene/sss-file-task-v1，14工具及参数结构保持，read_task追加任务/读取契约、task_execution_version_sha256、全局rename_targets或仅表示候选路径的classification_targets；submit_report追加任务契约版本和读取口径。预览前校验原输入实际读取/完整集合，重命名全局编号、转换指定参数及分类完整目标路径，空/空白必须实际读取且保持原位。无匹配时不生成写计划。未知版本/字段拒绝。
 
 转换区分必读原件与可选/必读产物，产物需真实执行、当前字节/版本/日志及成功原生读取事件；无关读取仍不合格。重命名新题显式allow_optional_original_reads=true，零必读不等于禁止正文。固定验收器只对含task_contract的新输入分流，旧基准不重判，失败/费用/每轮归档与最多2次普通修复保留。读取图四方法及依赖/实际schema未改，旧L2锁不改，新效果验收另记源摘要。详见[逐项改动](changes/file-management-task-contract.md)、[前端Schema](schemas/file-task-contract.schema.json)、[48次实验记录](experiments/file-management-task-quality-20261013.md)。
+# 2026-10-15 普通 CLI 持续 Motif 学习
+
+新增显式 `--rsi-config`、原生生命周期通知、封存队列、独立认证服务和不可变库自动发布；首版只读文件报告，原权限预算不扩大，净收益仅观测。字段、认证条件、版本化执行器和回退入口见[逐项接口记录](changes/continuous-rsi-integration.md)。默认 Web/SDK 尚未挂载服务。
+
+
+## 2026-10-15持久库与恢复v2
+
+[完整共享变更](changes/persistent-rsi-integration.md)。新增注册适配器`file_operations_v2`；旧适配器不覆盖。在线IR为`sss-operation-graph-v2`、证书`sss-operation-certification-v2`、机械质量`sss-file-operation-quality-v2`；元数据`sss-mcp-learning-v1`新增只在v2生效的单次数组投影，JSON Schema另存`operation-graph-v2.schema.json`/`mcp-learning-array-contract.schema.json`。旧v1编译与解释器留存。
+
+- 默认日常真实/模拟配置分别持久化在`.local/rsi/daily-files-real-v2.json`、`daily-files-mock-v2.json`，模拟禁止自动训练；显式配置仍可选。保存库、任务索引、服务费用checkpoint。省略整体预算参数沿用checkpoint，显式更改拒绝；恢复旧任务只采用其原私有账本限额，新任务仍受当前服务上限约束。
+- `pin_files(file_ids)`/`read_files(source_ids)`实际参数是1–40非空唯一字符串；结果提供真实source_ids/逐文件读取结果，schema长度与digest守卫。`files[].file_id`单投影、多产物参数绑定，不填固定参数、不猜句柄。
+- `OperationJob`继承原`FileJob`，保留原费用/步骤/请求/修复/版本/任务权限；新增恢复、结构步骤和总共2次传输重试记账。未知usage保留原预留上界并禁学。MCP将已执行/部分完成日志及真实读取/回执持久化，恢复只执行剩余已授权动作，外部未知变化拒绝。
+- CLI `--rsi-resume`继续原enrollment；v2登记场景不传`--rsi-config`采用日常真实库。SDK每次独立Runtime存储；Web每次真实session别名仍绑定原任务，不新建预算。原始events文件+SHA与汇集标注逐条核对。
+- Web POST `action=resume,task_id,confirmation_digest`只接受中断的原任务；显示原请求和累计费。GET tasks增加`learning_status`（库代数/激活/认证/学习/费用）及原任务`active_session_id`；delivery增加逐产物源/路径/操作/SHA列表，原字段保留。
+- 认证材料/标准/源码先冻结，中断认证复用原enrollment、原限额；已封存记录直接恢复，激活版本幂等。版本变化拒绝，不重签旧失败。
+
+共享入口及文件：`persistent_file_rsi.py`、`persistent_web_budget.py`、`operation_job.ts`/`operation_budget.py`/`operation_runner.py`、`continuous_rsi.py`/`continuous_motif_learning.py`、`mcp_learning.py`、`dsh_operation_motif.ts`/`dsh_continuous_rsi.ts`/`dsh_web_tasks.ts`、`dsh_acceptance_guard.ts`/`scenario.py`、`harness-web.py`/`run-scenario.py`/`validate-file-delivery.py`及场景v2tools/contract/prepare/Web-binding。逐文件前后SHA和diff在本轮开发档案，无stage/commit/push。

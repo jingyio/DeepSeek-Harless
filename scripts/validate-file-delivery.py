@@ -6,13 +6,27 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scenarios/file-management'))
 from common import DATA,digest,save,snapshot
 from report_study import verify_report,benchmark_targets
+from operation_contract import verify_operations
+from operation_contract_v2 import verify_operations_v2
 from verify import verify as legacy_verify
 from task_contract import verify_task,scope_errors
+from workflow_contract import verify_workflow
 
 def private(path):
     p=Path(path)
     if p.is_symlink() or not p.resolve().is_relative_to((ROOT/'.local').resolve()):raise ValueError('private acceptance path outside scope')
     return p.resolve()
+
+def recorded_crash_restart(spec,delivery,current):
+    """Fixed frozen probe only; an unknown footprint never permits a cold retry."""
+    if not spec.get('recovery_crash_after_publish') or spec.get('workflow_contract',{}).get('workflow_id')!='FM38':return False
+    path=delivery/'plan-state.json'
+    if not path.is_file():return False
+    state=json.loads(path.read_text());unsigned={k:v for k,v in state.items() if k!='state_sha256'}
+    from plan_tools import execution_version
+    if state.get('state_sha256')!=digest(unsigned) or state.get('input_sha256')!=digest(spec) or state.get('execution_version_sha256')!=execution_version():return False
+    live=[j for j in state['journals'].values() if j['status']=='executing' and current!=j['before'] and current in j.get('inflight_states',[])]
+    return len(live)==1
 
 def check(task_file,task_sha,delivery_root,archive_root,round_no,payload):
     task_file=private(task_file);delivery=private(delivery_root);archive=private(archive_root)
@@ -32,13 +46,18 @@ def check(task_file,task_sha,delivery_root,archive_root,round_no,payload):
     receipt=payload.get('receipt');receipt_ok=bool(isinstance(receipt,dict) and report and
         receipt.get('status') in ('delivered','delivered_with_gaps') and receipt.get('artifact_sha256')==digest(report)
         and receipt.get('input_sha256')==digest(spec) and Path(receipt.get('artifact','')).resolve()==report_path.resolve())
-    verify=verify_task if spec.get('task_contract') else verify_report if spec.get('report_contract') else legacy_verify
+    verify=verify_operations_v2 if spec.get('operation_contract',{}).get('validation_version')=='sss-file-operation-quality-v2' else verify_operations if spec.get('operation_contract') else verify_workflow if spec.get('workflow_contract') else verify_task if spec.get('task_contract') else verify_report if spec.get('report_contract') else legacy_verify
     review=verify(spec,report if receipt_ok else None,delivery,payload.get('events',[]))
     if not receipt_ok and 'no actual submit_report receipt' not in review['errors']:review['errors'].append('no verified current submit_report receipt')
     if report and report.get('final_snapshot')!=current:review['errors'].append('published report snapshot differs from current workspace; publish current results again')
     review['passed']=not review['errors']
     repairable=True
-    if spec.get('task_contract'):
+    if spec.get('workflow_contract'):
+        repairable=not any(error.startswith(('read outside','original read version')) for error in review['errors'])
+        save(delivery/'workflow-manifest.json',review['manifest'])
+        job=os.environ.get('FM_JOB_FILE')
+        if job and private(job).is_file():shutil.copyfile(job,stage/'task-job-state.json')
+    elif spec.get('task_contract'):
         scope,_=scope_errors(spec,delivery)
         if any(error.startswith(('read outside','original input read version')) for error in scope):repairable=False
     elif spec.get('report_contract') and spec.get('role')=='benchmark':
@@ -48,7 +67,9 @@ def check(task_file,task_sha,delivery_root,archive_root,round_no,payload):
     result={'version':'sss-file-acceptance-v1','round':round_no,'passed':review['passed'],'errors':review['errors'],
         'repairable':repairable,'receipt_verified':receipt_ok,'task_sha256':task_sha,'task_input_sha256':digest(spec),
         'workspace_snapshot_sha256':digest(current),'archive':str(stage),'human_blind_review':False}
-    if spec.get('task_contract'):result.update(task_contract_version=review['contract_version'],reading_scope=review)
+    if not result['passed'] and recorded_crash_restart(spec,delivery,current):result['restart_required']=True
+    if spec.get('workflow_contract'):result.update(workflow_contract_version=review['contract_version'],workflow_review=review)
+    elif spec.get('task_contract'):result.update(task_contract_version=review['contract_version'],reading_scope=review)
     save(stage/'result.json',result)
     if snapshot(workspace)!=current:raise ValueError('workspace changed during read-only acceptance')
     return result

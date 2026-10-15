@@ -10,24 +10,31 @@ import {createCollectionController,validateCollectionPolicy,validateCollectionTa
 import {createCollectionScriptController,validateCollectionScript} from '../motif_core/collection_batch_script.ts';
 import {createPlanController,validatePlanPolicy,validatePlanTask} from '../motif_core/authorized_plan_policy.ts';
 import {createReentryController,validateReentryPolicy,validateReentryTask} from '../motif_core/collection_reentry_policy.ts';
+import {createJobPlanGuard} from './dsh_job_plan_gate.ts';
+import {fileURLToPath} from 'node:url';
 export const name='sss-entry-motif';
 export const inject=['llm','agents'];
-export function createCollectionGate(policy:any,task:any,audit:(r:any)=>void,builder:any=createCollectionController){
+export function createCollectionGate(policy:any,task:any,audit:(r:any)=>void,builder:any=createCollectionController,jobGuard?:any){
   const controller=builder(policy,task,audit);let envelope:string|null=null;
-  return {controller,observe:(exec:any,result:any)=>controller.observe(exec,result),
+  return {controller,observe:(exec:any,result:any)=>{
+      controller.observe(exec,result);
+      if(jobGuard&&controller.halted)jobGuard.disable('plan_controller_halted');
+    },
     intercept(options:any,next:()=>any,live:boolean){
-      if((options.messages??[]).some((m:any)=>m.source?.kind==='task-acceptance-repair')){controller.fail('acceptance_repair_requires_ordinary_harness');return next();}
+      if((options.messages??[]).some((m:any)=>m.source?.kind==='task-acceptance-repair')){controller.fail('acceptance_repair_requires_ordinary_harness');jobGuard?.disable('acceptance_repair_requires_ordinary_harness');return next();}
       if(options.sessionId!==task.session_id||!isAgentLoopRequest(options)||!live
         ||controller.done||controller.halted||controller.pending)return next();
+      if(jobGuard&&!jobGuard.allow()){controller.fail('durable_plan_guard_rejected');return next();}
       const human=(options.messages??[]).filter((m:any)=>m.role==='user'&&m.source?.kind==='user');
       const texts=human.map((m:any)=>m.content?.length===1&&m.content[0].type==='text'?m.content[0].text:null);
       const matching=texts.filter((s:any)=>typeof s==='string'&&createHash('sha256').update(s).digest('hex')===task.prompt_sha256);
       const reminders=texts.filter((s:any)=>typeof s==='string'&&(s.startsWith('<system-reminder>\n')||s.startsWith('Current runtime context. This snapshot supersedes')));
       const now=digest(human.map((m:any)=>({id:m.id,content:m.content})));
       if(matching.length!==1||matching.length+reminders.length!==human.length||reminders.length>2||(envelope!==null&&envelope!==now)){
-        controller.fail('collection_prompt_or_user_envelope_changed');return next();}
+        controller.fail('collection_prompt_or_user_envelope_changed');jobGuard?.disable('prompt_or_user_envelope_changed');return next();}
       envelope=now;if(!controller.armed)return next();
       const calls=controller.propose(options.tools??[],randomUUID);
+      if(controller.halted)jobGuard?.disable('plan_proposal_guard_rejected');
       return calls.length?syntheticToolStreamBatch(calls):next();
     }};
 }
@@ -96,7 +103,12 @@ export function apply(ctx:any){
   const dir=join(process.cwd(),'.local/online-motif');mkdirSync(dir,{recursive:true,mode:0o700});
   const file=join(dir,createHash('sha256').update(task.session_id).digest('hex')+'.jsonl');
   const audit=(row:any)=>appendFileSync(file,JSON.stringify({...row,session_id:task.session_id})+'\n',{mode:0o600});
-  const gate=reentry?createCollectionGate(policy,task,audit,createReentryController):plan?createCollectionGate(policy,task,audit,createPlanController):script?createCollectionGate(policy,task,audit,createCollectionScriptController):(collection?createCollectionGate:terminal?createTerminalGate:createEntryGate)(policy,task,audit);let live=false;
+  const binding=process.env.SSS_DURABLE_PLAN_BINDING;
+  if(process.env.FM_JOB_FILE&&plan&&!binding)throw Error('durable plan requires explicit certified composition binding');
+  if(binding&&JSON.parse(readFileSync(binding,'utf8')).job_file!==process.env.FM_JOB_FILE)throw Error('composition and MCP must use the same durable job');
+  const jobGuard=plan&&binding?createJobPlanGuard(fileURLToPath(new URL('../../',import.meta.url)),binding,planPath!,task,audit):undefined;
+  if(jobGuard&&!jobGuard.activate()){audit({kind:'plan_motif_disabled_before_start'});return;}
+  const gate=reentry?createCollectionGate(policy,task,audit,createReentryController):plan?createCollectionGate(policy,task,audit,createPlanController,jobGuard):script?createCollectionGate(policy,task,audit,createCollectionScriptController):(collection?createCollectionGate:terminal?createTerminalGate:createEntryGate)(policy,task,audit);let live=false;
   audit({kind:reentry?'reentry_motif_loaded':plan?'plan_motif_loaded':script?'collection_script_loaded':collection?'collection_motif_loaded':terminal?'terminal_motif_loaded':'entry_motif_loaded',policy_digest:policy.policy_digest,script_digest:policy.script_digest});
   ctx.on('agent/created',({agent}:any)=>{if(agent.session.id===task.session_id){live=true;agent.ctx.on('tools/result',gate.observe);}});
   ctx.on('agent/disposed',({agent}:any)=>{if(agent.session.id===task.session_id)live=false;});

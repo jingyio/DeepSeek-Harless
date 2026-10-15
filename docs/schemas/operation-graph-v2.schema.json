@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sss-operation-graph-v2",
+  "title": "Certified bounded MCP parameter DAG",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "format",
+    "execution_version_sha256",
+    "artifact",
+    "policy_digest"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "format": {
+      "const": "sss-operation-graph-v2"
+    },
+    "execution_version_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "policy_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "artifact": {
+      "type": "object",
+      "required": [
+        "kind",
+        "status",
+        "nodes",
+        "tool_contracts",
+        "max_nodes",
+        "execution_version",
+        "source_task_fingerprints",
+        "validation_task_fingerprint",
+        "certified_digest",
+        "certification_contract"
+      ],
+      "properties": {
+        "kind": {
+          "const": "learned_mcp_operation_dag"
+        },
+        "status": {
+          "enum": [
+            "trace_validated_read_only",
+            "trace_validated_effectful"
+          ]
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "tool_contracts": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/tool"
+          }
+        },
+        "interleaving_contracts": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/tool"
+          }
+        },
+        "max_nodes": {
+          "const": 8
+        },
+        "execution_version": {
+          "type": "string"
+        },
+        "source_task_fingerprints": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "validation_task_fingerprint": {
+          "type": "string"
+        },
+        "certified_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "witnesses": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "validation_witness": {
+          "type": "object"
+        },
+        "certification_contract": {
+          "const": "sss-operation-certification-v2"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "tool": {
+      "type": "object",
+      "required": [
+        "schema",
+        "schema_sha256",
+        "contract"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "type": "object"
+        },
+        "schema_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "contract": {
+          "$ref": "mcp-learning-array-contract.schema.json"
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": [
+        "tool",
+        "bindings"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "type": "string",
+          "pattern": "^mcp__[a-zA-Z0-9_]+$"
+        },
+        "bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "node",
+              "path"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "node": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 6
+              },
+              "path": {
+                "type": "string",
+                "pattern": "^\\w+(?:\\[\\])?(?:\\.\\w+(?:\\[\\])?)*$"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "description": "V2 requires exact native provenance, every repetition complete, unique string arrays within minItems/maxItems <=40; one array projection maximum. Runtime enforces cross-field digests and execution source guards."
+}

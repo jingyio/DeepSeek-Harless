@@ -101,17 +101,21 @@ def prepare_scenario(path: Path, *, case: str = '', tool_presentation: str = 'na
             'config': {**policy, 'artifact_root': str(ROOT / '.local')}})
     acceptance = scenario.get('acceptance_guard')
     if acceptance is not None:
-        if (not isinstance(acceptance, dict) or set(acceptance) != {'kind', 'max_repairs'}
+        if (not isinstance(acceptance, dict) or set(acceptance) not in ({'kind', 'max_repairs'},{'kind','max_repairs','durable_job'},{'kind','max_repairs','durable_job','interruptible'})
                 or acceptance['kind'] != 'file_management' or type(acceptance['max_repairs']) is not int
                 or not 0 <= acceptance['max_repairs'] <= 2 or tool_presentation != 'native'
+                or 'durable_job' in acceptance and acceptance['durable_job'] is not True
+                or 'interruptible' in acceptance and (acceptance['interruptible'] is not True or not acceptance.get('durable_job'))
                 or 'mcp__file_management__submit_report' not in allowed):
             raise ValueError('invalid bounded file acceptance guard')
         agent_plugins = [{'id': 'sss-acceptance-guard',
             'name': (ROOT / 'src/adapters/dsh_acceptance_guard.ts').as_uri(),
-            'config': {**acceptance, 'project_root': str(ROOT), 'python': sys.executable,
+            'config': {'kind':acceptance['kind'],'max_repairs':acceptance['max_repairs'], 'project_root': str(ROOT), 'python': sys.executable,
                 'task_file': value({'from_env': 'FM_TASK_FILE'}),
                 'delivery_root': value({'from_env': 'FM_OUTPUT'}),
-                'archive_root': str(ROOT / '.local/task-acceptance')}}]
+                'archive_root': str(ROOT / '.local/task-acceptance'),
+                **({'job_file':value({'from_env':'FM_JOB_FILE'})} if acceptance.get('durable_job') else {}),
+                **({'interruptible':True} if acceptance.get('interruptible') else {})}}]
     insert['insert'].extend(agent_plugins)
     if tool_presentation == 'ptc':
         base += '\n- id: tools\n  config:\n    mode: ptc\n- id: code-runtime\n  disabled: true\n'

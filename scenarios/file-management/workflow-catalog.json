@@ -1,0 +1,1143 @@
+{
+  "schema_version": 1,
+  "artifact_type": "workflow_planning_catalog",
+  "revision": "20261014-r7-script-reuse",
+  "planning_only": true,
+  "execution_enabled": false,
+  "baseline_commit": "dfe4fcc31b15ea4f7a44d1819241b7622b94aeb8",
+  "scope": {
+    "workspace": "testpdf/file-management-experiment copies only",
+    "source_formats": [
+      "pdf",
+      "docx",
+      "xlsx",
+      "images",
+      "text"
+    ],
+    "push_enabled": false,
+    "new_paid_runs": 100,
+    "total_series_cap_usd": 1000
+  },
+  "status_definitions": {
+    "composable": "现有工具可组合，仍需新题面/验收与实测；通常使用ReportScene，不能给TaskScene虚构新kind",
+    "needs_tools": "需新增MCP能力或存储适配",
+    "needs_runtime": "文件操作组件存在，需新增任务级运行状态/预算/恢复整合"
+  },
+  "evidence_definitions": {
+    "component": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+    "restricted": "同类受限任务已有机器验收；本项扩展条件尚待复验",
+    "none": "该完整能力尚未验证"
+  },
+  "source_references": {
+    "base": [
+      "scenarios/file-management/file_tools.py",
+      "scenarios/file-management/prepare.py"
+    ],
+    "collection": [
+      "scenarios/file-management/collection_tools.py",
+      "scenarios/file-management/report_tools.py",
+      "docs/experiments/file-management-report-benchmark-20261013.md"
+    ],
+    "task": [
+      "scenarios/file-management/task_tools.py",
+      "scenarios/file-management/task_contract.py",
+      "docs/experiments/file-management-task-quality-20261013.md"
+    ],
+    "plan": [
+      "scenarios/file-management/plan_tools.py",
+      "docs/experiments/file-management-batch-plan-20261013.md"
+    ],
+    "recovery": [
+      "src/adapters/dsh_acceptance_guard.ts",
+      "scripts/validate-file-delivery.py",
+      "docs/experiments/acceptance-repair-20261013.md"
+    ],
+    "workflow": [
+      "scenarios/file-management/workflow_tools.py",
+      "scenarios/file-management/workflow_contract.py",
+      "scenarios/file-management/recovery_tools.py",
+      "src/adapters/file_workflow_job.ts",
+      "docs/experiments/file-management-workflow-free-20261013.md",
+      "docs/experiments/file-management-workflow-exploration-20261014.md",
+      "docs/experiments/file-management-workflow-learning-20261014.md"
+    ],
+    "online_job_plan": [
+      "src/adapters/dsh_job_plan_gate.ts",
+      "docs/experiments/file-management-workflow-online-20261014.md"
+    ],
+    "new_HSM_holdout": [
+      "docs/experiments/file-management-workflow-holdout-20261014.md",
+      "docs/changes/file-management-workflow-holdout.md"
+    ]
+  },
+  "first_batch_ids": [
+    "FM01",
+    "FM05",
+    "FM13",
+    "FM17",
+    "FM21",
+    "FM38"
+  ],
+  "items": [
+    {
+      "id": "FM01",
+      "category": "收件检查",
+      "name": "下载目录整理",
+      "user_result": "按给定项目规则分类、统一命名并交付去向清单",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "普通真实探索两条件已有机器合格轨迹；完整新留出、人审和新Motif认证未完成",
+      "priority": "P1",
+      "first_batch": true,
+      "existing_tool_parts": [
+        "list_files",
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "Model选择类别和待处理集合，图片/损坏文件保留待审",
+      "structure_candidate": "模型选集合后的批量读取与汇总；分类决定后另作计划",
+      "acceptance": "每项源文件恰好有去向或待审状态；所有原字节可追溯，无关文件不变",
+      "whole_workflow_new_holdout_completed": true,
+      "free_checks_completed": true,
+      "ordinary_exploration_completed": true,
+      "accepted_normal_and_edge_conditions": 2,
+      "human_semantic_review": false,
+      "evidence_record": "docs/experiments/file-management-workflow-exploration-20261014.md",
+      "new_library_default_enabled": false,
+      "structure_certification_record": "docs/experiments/file-management-workflow-learning-20261014.md",
+      "certified_service_component_library_available": true,
+      "applicable_new_structures": [
+        "read_edge",
+        "selected_collection_read"
+      ],
+      "new_holdout_record": "docs/experiments/file-management-workflow-holdout-20261014.md",
+      "new_holdout_quality_scope": "one generated/known-container N/E/V triple; mechanical checks only; failures retained, not production certification"
+    },
+    {
+      "id": "FM02",
+      "category": "收件检查",
+      "name": "按文档属性入库",
+      "user_result": "用实际作者、文档日期和项目标识命名归档",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "pin_file",
+        "read_file",
+        "preview_actions",
+        "execute_plan"
+      ],
+      "missing_capabilities": [
+        "文档/文件原始元数据提取与命名依据接口"
+      ],
+      "semantic_decision": "识别属性来源和歧义，不能把副本时间当原文件时间",
+      "structure_candidate": "元数据读取后绑定命名参数",
+      "acceptance": "属性有来源；缺失字段待审；名称/内容/属性按目标保持",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM03",
+      "category": "收件检查",
+      "name": "材料完整性检查",
+      "user_result": "按用户清单找出缺失、损坏、错误格式和多余材料",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "解释材料是否满足用途，区分缺失与不可读",
+      "structure_candidate": "目标清单与实际成员比对后批量核验",
+      "acceptance": "必需项全部有状态；损坏和仅属性状态保留；不修改源件",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM04",
+      "category": "收件检查",
+      "name": "不可读文件隔离",
+      "user_result": "检查后把明确损坏项移至隔离区并列出不确定项",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "preview_actions",
+        "execute_plan",
+        "restore_plan"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "决定是否隔离，unsupported或metadata_only不等于损坏",
+      "structure_candidate": "读状态汇总后选择隔离计划",
+      "acceptance": "仅获准损坏项移动；其他项保留；隔离字节与原件一致",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM05",
+      "category": "目录操作",
+      "name": "目录合并",
+      "user_result": "合并多个目录，去除输出重复项并保留内容不同的同名项",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "普通真实探索两条件已有机器合格轨迹；完整新留出、人审和新Motif认证未完成",
+      "priority": "P1",
+      "first_batch": true,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "确定冲突处理和目标命名，不凭同名判相同",
+      "structure_candidate": "实际冲突工作集的批量核验；选择后绑定复制参数",
+      "acceptance": "源目录不变；每个不同内容均有输出或明确保留决定；无覆盖",
+      "whole_workflow_new_holdout_completed": true,
+      "free_checks_completed": true,
+      "ordinary_exploration_completed": true,
+      "accepted_normal_and_edge_conditions": 2,
+      "human_semantic_review": false,
+      "evidence_record": "docs/experiments/file-management-workflow-exploration-20261014.md",
+      "new_library_default_enabled": false,
+      "structure_certification_record": "docs/experiments/file-management-workflow-learning-20261014.md",
+      "certified_service_component_library_available": true,
+      "applicable_new_structures": [
+        "read_edge",
+        "selected_collection_read"
+      ],
+      "new_holdout_record": "docs/experiments/file-management-workflow-holdout-20261014.md",
+      "new_holdout_quality_scope": "one generated/known-container N/E/V triple; mechanical checks only; failures retained, not production certification"
+    },
+    {
+      "id": "FM06",
+      "category": "目录操作",
+      "name": "完整目录迁移",
+      "user_result": "迁移文件与空目录并保留约定的时间、属性和链接行为",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "execute_plan"
+      ],
+      "missing_capabilities": [
+        "目录实体、空目录、链接、时间/权限属性与跨卷迁移核验"
+      ],
+      "semantic_decision": "选择迁移范围和元数据保留策略",
+      "structure_candidate": "树遍历后的批量计划与验证",
+      "acceptance": "文件/目录/约定属性均核对；跨卷失败保留现场",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM07",
+      "category": "目录操作",
+      "name": "项目目录初始化",
+      "user_result": "创建含空目录的项目模板并登记用途",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "preview_actions",
+        "execute_plan"
+      ],
+      "missing_capabilities": [
+        "受限目录创建和目录清单"
+      ],
+      "semantic_decision": "选模板和项目角色",
+      "structure_candidate": "已选目录模板的创建与存在性核验",
+      "acceptance": "空目录、命名与层级正确；重复运行不多建；原目录不覆盖",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM08",
+      "category": "目录操作",
+      "name": "目录结构重排",
+      "user_result": "按映射展平或重建普通文件路径并解决名称碰撞",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "execute_plan",
+        "restore_plan"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "确认映射与冲突处理，引用维护单独处理",
+      "structure_candidate": "已确认路径映射的计划参数绑定",
+      "acceptance": "逐文件映射与字节正确；无无关变更；不宣称空目录/属性已保持",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM09",
+      "category": "清理整理",
+      "name": "完全重复文件去重",
+      "user_result": "按字节摘要保留确定的主副本，其他副本可恢复隔离",
+      "tool_status": "composable",
+      "verification_status": "restricted",
+      "evidence_note": "同类受限任务已有机器验收；本项扩展条件尚待复验",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "execute_plan",
+        "restore_plan"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "确定主副本位置与允许隔离范围",
+      "structure_candidate": "实际重复组选择后的操作计划",
+      "acceptance": "仅完全重复项隔离；不同内容同名项保留；恢复字节一致",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM10",
+      "category": "清理整理",
+      "name": "近似重复材料审阅",
+      "user_result": "找出改版文档或相似图片并提出保留建议",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "pin_file",
+        "read_file",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "完整文本/图像相似候选与质量核验"
+      ],
+      "semantic_decision": "判断相似是否可替代，明确保留理由",
+      "structure_candidate": "实际候选组的成对核验与汇总",
+      "acceptance": "阈值/覆盖范围明确；建议有依据；不自动删除近似项",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM11",
+      "category": "清理整理",
+      "name": "空间占用整治",
+      "user_result": "按实际占用、日期和用户规则列出可隔离的大文件/旧文件",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "execute_plan"
+      ],
+      "missing_capabilities": [
+        "真实时间/磁盘占用/业务保留信息"
+      ],
+      "semantic_decision": "解释是否仍有业务价值",
+      "structure_candidate": "元数据筛选后选择清理集合",
+      "acceptance": "大小/时间来源真实；清理只覆盖确认项；估算与实际占用区分",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM12",
+      "category": "清理整理",
+      "name": "空目录和临时残留清理",
+      "user_result": "按目录清单清理空目录及明确临时残留",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "preview_actions",
+        "execute_plan",
+        "restore_plan"
+      ],
+      "missing_capabilities": [
+        "目录实体遍历与可恢复目录操作"
+      ],
+      "semantic_decision": "识别可清理规则和保留例外",
+      "structure_candidate": "目录状态核验后的可恢复计划",
+      "acceptance": "零文件目录也纳入；非空和保留目录不动；可恢复",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM13",
+      "category": "版本处理",
+      "name": "多版本比较",
+      "user_result": "比较多个文本版本，识别已确认版本并保留全部历史",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "普通真实探索两条件已有机器合格轨迹；完整新留出、人审和新Motif认证未完成",
+      "priority": "P1",
+      "first_batch": true,
+      "existing_tool_parts": [
+        "list_files",
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "hash_files",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "判断版本关系与可信发布依据，不凭final字样选最新版",
+      "structure_candidate": "读实际发布说明后再次选择版本集合",
+      "acceptance": "结论引用实际版本；歧义待审；选定版本复制到新目录而不覆盖历史",
+      "whole_workflow_new_holdout_completed": true,
+      "free_checks_completed": true,
+      "ordinary_exploration_completed": true,
+      "accepted_normal_and_edge_conditions": 2,
+      "human_semantic_review": false,
+      "evidence_record": "docs/experiments/file-management-workflow-exploration-20261014.md",
+      "new_library_default_enabled": false,
+      "structure_certification_record": "docs/experiments/file-management-workflow-learning-20261014.md",
+      "certified_service_component_library_available": true,
+      "applicable_new_structures": [
+        "read_edge",
+        "selected_collection_read"
+      ],
+      "new_holdout_record": "docs/experiments/file-management-workflow-holdout-20261014.md",
+      "new_holdout_quality_scope": "one generated/known-container N/E/V triple; mechanical checks only; failures retained, not production certification"
+    },
+    {
+      "id": "FM14",
+      "category": "版本处理",
+      "name": "文本版本差异报告",
+      "user_result": "给出限定读取范围内的增删改及影响说明",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "解释差异影响和未覆盖内容",
+      "structure_candidate": "模型选择版本集合后的读取汇合",
+      "acceptance": "差异来自实际文本；范围/截断明确；不修改文件",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM15",
+      "category": "版本处理",
+      "name": "名称与版本标识核查",
+      "user_result": "发现final/v2等名称与正文或发布说明不一致的项",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "判断命名与版本事实的冲突",
+      "structure_candidate": "名称候选与实际正文核验",
+      "acceptance": "冲突有来源；没有时间元数据时不推断修改先后",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM16",
+      "category": "版本处理",
+      "name": "历史版本原位恢复",
+      "user_result": "从独立版本库恢复旧版本到已存在的目标位置",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "restore_plan"
+      ],
+      "missing_capabilities": [
+        "独立版本库、原位替换授权与历史恢复接口"
+      ],
+      "semantic_decision": "选择恢复点和现有变更保留方式",
+      "structure_candidate": "已选恢复点的版本与权限守卫",
+      "acceptance": "版本来源/替换权限明确；冲突不覆盖；恢复后内容与历史匹配",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM17",
+      "category": "备份同步",
+      "name": "备份与恢复演练",
+      "user_result": "备份普通文件，再从备份复制到隔离的空恢复目录核验",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "普通真实探索两条件已有机器合格轨迹；完整新留出、人审和新Motif认证未完成",
+      "priority": "P1",
+      "first_batch": true,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "确认备份与演练范围；固定规则可用纯脚本",
+      "structure_candidate": "已确认清单的复制与摘要汇总",
+      "acceptance": "源件不变；备份/恢复路径与字节一致；不声称完整元数据或原位灾难恢复",
+      "whole_workflow_new_holdout_completed": true,
+      "free_checks_completed": true,
+      "ordinary_exploration_completed": true,
+      "accepted_normal_and_edge_conditions": 2,
+      "human_semantic_review": false,
+      "evidence_record": "docs/experiments/file-management-workflow-exploration-20261014.md",
+      "new_library_default_enabled": false,
+      "structure_certification_record": "docs/experiments/file-management-workflow-learning-20261014.md",
+      "certified_service_component_library_available": true,
+      "applicable_new_structures": [],
+      "new_holdout_record": "docs/experiments/file-management-workflow-holdout-20261014.md",
+      "new_holdout_quality_scope": "one generated/known-container N/E/V triple; mechanical checks only; failures retained, not production certification"
+    },
+    {
+      "id": "FM18",
+      "category": "备份同步",
+      "name": "增量版本备份",
+      "user_result": "比较基线，仅给新增/改变文件建立新的备份集并报告删除",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "compare_snapshot",
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "选择受影响集合与删除保留政策",
+      "structure_candidate": "实际差异工作集的参数传递",
+      "acceptance": "变更项有新备份；未变项不重复制；删除只报告，历史不覆盖",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM19",
+      "category": "备份同步",
+      "name": "单向目录补齐",
+      "user_result": "给目标目录补入缺失文件，同名不同内容保留待审",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "决定冲突保留，不把补齐称为镜像同步",
+      "structure_candidate": "源目标相对路径比对后的复制计划",
+      "acceptance": "只补缺失；目标已有内容不覆盖；冲突完整列出",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM20",
+      "category": "备份同步",
+      "name": "双向目录同步",
+      "user_result": "按共同基线协调两侧新增、修改和删除冲突",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "compare_snapshot",
+        "preview_actions",
+        "execute_plan"
+      ],
+      "missing_capabilities": [
+        "共同基线、双方版本/删除记录及冲突协调"
+      ],
+      "semantic_decision": "解决双方并发修改与删除政策",
+      "structure_candidate": "共同基线差异分支的候选结构",
+      "acceptance": "两侧来源与基线真实；冲突不丢失；取消/失败不误报一致",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM21",
+      "category": "资料交付",
+      "name": "资料包交付",
+      "user_result": "按范围选择材料、打包并交付独立清单和缺口",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "普通真实探索两条件已有机器合格轨迹；完整新留出、人审和新Motif认证未完成",
+      "priority": "P1",
+      "first_batch": true,
+      "existing_tool_parts": [
+        "list_files",
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "判断材料是否属于交付范围",
+      "structure_candidate": "实际选定文件集合到归档参数与交付核验",
+      "acceptance": "ZIP真实条目/字节与确认集合一致；独立清单绑定产物；未选文件不入包",
+      "whole_workflow_new_holdout_completed": true,
+      "free_checks_completed": true,
+      "ordinary_exploration_completed": true,
+      "accepted_normal_and_edge_conditions": 2,
+      "human_semantic_review": false,
+      "evidence_record": "docs/experiments/file-management-workflow-exploration-20261014.md",
+      "new_library_default_enabled": false,
+      "structure_certification_record": "docs/experiments/file-management-workflow-learning-20261014.md",
+      "certified_service_component_library_available": true,
+      "applicable_new_structures": [
+        "read_edge",
+        "selected_collection_read"
+      ],
+      "new_holdout_record": "docs/experiments/file-management-workflow-holdout-20261014.md",
+      "new_holdout_quality_scope": "one generated/known-container N/E/V triple; mechanical checks only; failures retained, not production certification"
+    },
+    {
+      "id": "FM22",
+      "category": "资料交付",
+      "name": "按规则筛选交付包",
+      "user_result": "按明确允许/排除路径生成外发准备包，保留源件",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "审阅例外；路径过滤不等于内容脱敏",
+      "structure_candidate": "已确认筛选集合的归档绑定",
+      "acceptance": "允许项齐全，排除项不入包；仅本地准备，不自动发送",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM23",
+      "category": "资料交付",
+      "name": "按大小分包",
+      "user_result": "把完整文件分配到多个独立ZIP并验证每包上限",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "hash_files",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "确认分组与超大单文件的处理方式",
+      "structure_candidate": "已确认文件组的多次归档与汇总",
+      "acceptance": "每项只属于一包；实际大小核验；单文件超限待审，不宣称分卷压缩",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM24",
+      "category": "资料交付",
+      "name": "交付材料脱敏",
+      "user_result": "审阅敏感字段并生成允许分发的脱敏副本",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "pin_file",
+        "read_file",
+        "preview_actions",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "受限内容编辑、敏感检测和人工脱敏复核"
+      ],
+      "semantic_decision": "判断敏感性与可用性，要求人工复核",
+      "structure_candidate": "选定字段的受限编辑和复核候选",
+      "acceptance": "保留源件；敏感残留与内容可用性人审；不把关键词过滤当充分脱敏",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM25",
+      "category": "内容加工",
+      "name": "受限格式转换",
+      "user_result": "Word/文本转TXT、Excel转CSV、图片转JPEG及前两页PDF文本转换",
+      "tool_status": "composable",
+      "verification_status": "restricted",
+      "evidence_note": "同类受限任务已有机器验收；本项扩展条件尚待复验",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "preview_actions",
+        "execute_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "选择转换目标和读取范围",
+      "structure_candidate": "实际输入集的读取与产物核验",
+      "acceptance": "当前支持范围内容正确；空输入实际读；真实产物版本和输出读取被核验",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM26",
+      "category": "内容加工",
+      "name": "PDF拆分合并",
+      "user_result": "按物理页或章节生成拆分件/合并件并核对顺序",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "pin_file",
+        "read_file",
+        "preview_actions",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "PDF页面操作和输出页面检查"
+      ],
+      "semantic_decision": "选择范围并识别章节边界",
+      "structure_candidate": "明确页集合的批量操作与汇合",
+      "acceptance": "页数/顺序/内容/书签按约定核验；源PDF不动",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM27",
+      "category": "内容加工",
+      "name": "扫描材料OCR",
+      "user_result": "识别扫描PDF/图片文本并保留原图和不确定字符",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "pin_file",
+        "read_file",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "OCR服务、位置/置信记录及人审"
+      ],
+      "semantic_decision": "判定识别质量和需人审字段",
+      "structure_candidate": "页或图像数组的识别与结果汇总",
+      "acceptance": "实际OCR范围记录；文字有位置与置信证据；低质量不冒充完整内容",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM28",
+      "category": "内容加工",
+      "name": "Office版式转换",
+      "user_result": "转PDF或其他Office格式并保持约定版式/公式/表格",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "pin_file",
+        "read_file",
+        "preview_actions",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "Office转换器、公式/版式/渲染核验"
+      ],
+      "semantic_decision": "确定可接受版式与内容损失",
+      "structure_candidate": "转换后字段与页面核验候选",
+      "acceptance": "渲染/公式/合并单元格等独立核验；纯文本一致不能替代版式验收",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM29",
+      "category": "元数据引用",
+      "name": "文件标签维护",
+      "user_result": "依据用途添加或修改原生标签并支持检索",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "pin_file",
+        "read_file",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "原生标签读取/写入"
+      ],
+      "semantic_decision": "选标签及保留现有标签政策",
+      "structure_candidate": "选定对象后的元数据修改与验证",
+      "acceptance": "真实标签可查询；不只把标签写进报告；保留无关属性",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM30",
+      "category": "元数据引用",
+      "name": "文件属性校正",
+      "user_result": "按可信来源检查并校正EXIF/作者/时间等元数据",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "pin_file",
+        "read_file",
+        "preview_actions"
+      ],
+      "missing_capabilities": [
+        "真实元数据读写及元数据版本守卫"
+      ],
+      "semantic_decision": "选择属性依据，区分原件时间与副本时间",
+      "structure_candidate": "明确字段与前值的受限修改",
+      "acceptance": "前后属性与来源可追溯；未授权字段不变；字节与属性分别记版本",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM31",
+      "category": "元数据引用",
+      "name": "移动后引用修复",
+      "user_result": "重命名或移动后更新Markdown/文档的相对链接和附件引用",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "pin_file",
+        "read_file",
+        "preview_actions",
+        "execute_plan"
+      ],
+      "missing_capabilities": [
+        "引用提取、内容编辑和链接检查"
+      ],
+      "semantic_decision": "判定指向对象和哪些引用应调整",
+      "structure_candidate": "路径映射到受影响引用集合的候选结构",
+      "acceptance": "所有已知引用仍指向目标；内容编辑可恢复；原始文件字节校验不足以代替引用核验",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM32",
+      "category": "元数据引用",
+      "name": "动态分类视图",
+      "user_result": "保存按标签、类型、日期或内容筛选的自动更新视图",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "build_index",
+        "search_index",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "持久视图、属性查询及更新接口"
+      ],
+      "semantic_decision": "定义筛选条件与缺口",
+      "structure_candidate": "持久查询和差异集更新候选",
+      "acceptance": "视图成员与实际条件相符；文件不因视图移动；更新/删除可见",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM33",
+      "category": "权限保护",
+      "name": "实际文件权限检查",
+      "user_result": "检查属主/读写权限并执行获准的最小修正",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "list_files",
+        "preview_actions",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "真实属主/ACL读写及撤销核验"
+      ],
+      "semantic_decision": "判断预期使用者与最小权限",
+      "structure_candidate": "批准权限变更后的检查与收据",
+      "acceptance": "真实OS权限可核对；拒绝/撤销有效；工具allowlist不代替文件ACL",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM34",
+      "category": "权限保护",
+      "name": "云盘共享生命周期",
+      "user_result": "创建获准共享、检查访问范围和到期撤销",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "云盘账号、共享/撤销API和额外用户授权"
+      ],
+      "semantic_decision": "确定接收方、可访问范围和期限",
+      "structure_candidate": "共享收据及撤销条件候选",
+      "acceptance": "授权方/对象/期限/撤销状态核验；须另授权账号与外部写操作",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM35",
+      "category": "权限保护",
+      "name": "受保护文件处理",
+      "user_result": "识别加密或锁定材料，受控解锁或隔离待审",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "pin_file",
+        "read_file",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "加密/锁定检查、受控解锁及秘密处理"
+      ],
+      "semantic_decision": "确定是否允许解锁，缺凭证时留待审",
+      "structure_candidate": "可检验锁定状态的分支候选",
+      "acceptance": "凭证不入轨迹；失败不当损坏；原文件和访问政策保留",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM36",
+      "category": "权限保护",
+      "name": "操作审计交付",
+      "user_result": "汇总任务实际范围、工具回执、文件变化和验收状态供审阅",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "read_task",
+        "list_files",
+        "submit_report"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "解释操作是否符合用户目标与仍有缺口",
+      "structure_candidate": "真实回执后的结果汇合",
+      "acceptance": "输入/版本/计划/当前产物一致；私有原日志由后台审计，不伪造模型读取日志",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM37",
+      "category": "持续恢复",
+      "name": "新到文件下一轮处理",
+      "user_result": "在新任务版本中识别新到/变更项并只处理受影响文件",
+      "tool_status": "composable",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "compare_snapshot",
+        "select_files",
+        "pin_file",
+        "read_file",
+        "collect_reads",
+        "preview_actions",
+        "execute_plan"
+      ],
+      "missing_capabilities": [],
+      "semantic_decision": "决定新事实影响与工作集",
+      "structure_candidate": "差异驱动的新模型选择与再入候选",
+      "acceptance": "来源版本更新后重新预览；未变项保留；不宣称已有目录监听器",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM38",
+      "category": "持续恢复",
+      "name": "中断和重启恢复",
+      "user_result": "恢复任务状态、核验旧授权及预算后安全继续或回滚",
+      "tool_status": "needs_runtime",
+      "verification_status": "component",
+      "evidence_note": "普通真实探索两条件已有机器合格轨迹；完整新留出、人审和新Motif认证未完成",
+      "priority": "P1",
+      "first_batch": true,
+      "existing_tool_parts": [
+        "read_task",
+        "list_files",
+        "preview_actions",
+        "authorize_plan",
+        "execute_plan",
+        "restore_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "通用任务/任意格式恢复、并发和跨平台组合认证；当前仅受限rename/自身rollback"
+      ],
+      "semantic_decision": "选择可安全继续、回滚或停止的结果",
+      "structure_candidate": "真实日志状态的守卫/交接；恢复图需新见证认证",
+      "acceptance": "记录边界内可恢复；无重复写；原预算/修复次数不重置；外部变更不覆盖",
+      "whole_workflow_new_holdout_completed": true,
+      "free_checks_completed": true,
+      "ordinary_exploration_completed": true,
+      "accepted_normal_and_edge_conditions": 2,
+      "human_semantic_review": false,
+      "evidence_record": "docs/experiments/file-management-workflow-exploration-20261014.md",
+      "prior_failed_runs_retained": 2,
+      "bounded_rename_rollback_runtime_implemented": true,
+      "new_library_default_enabled": false,
+      "structure_certification_record": "docs/experiments/file-management-workflow-learning-20261014.md",
+      "certified_service_component_library_available": true,
+      "applicable_new_structures": [
+        "authorized_plan"
+      ],
+      "online_job_plan_record": "docs/experiments/file-management-workflow-online-20261014.md",
+      "new_holdout_record": "docs/experiments/file-management-workflow-holdout-20261014.md",
+      "new_holdout_quality_scope": "one generated/known-container N/E/V triple; mechanical checks only; failures retained, not production certification"
+    },
+    {
+      "id": "FM39",
+      "category": "持续恢复",
+      "name": "重复请求和取消协调",
+      "user_result": "重复执行/确认只生效一次，取消后协调已完成与未完成效果",
+      "tool_status": "needs_runtime",
+      "verification_status": "component",
+      "evidence_note": "已有工具或相关窄任务有证据；本项完整流程尚待验证",
+      "priority": "P2",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "preview_actions",
+        "authorize_plan",
+        "execute_plan",
+        "restore_plan",
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "任务级效果状态与取消/重复确认协调"
+      ],
+      "semantic_decision": "处理取消后已提交部分与用户意图",
+      "structure_candidate": "稳定任务标识与已验证回执的续接候选",
+      "acceptance": "同请求幂等；取消不误报成功；并发确认不二次生效；已发生效果有记录",
+      "whole_workflow_new_holdout_completed": false
+    },
+    {
+      "id": "FM40",
+      "category": "持续恢复",
+      "name": "云端离线冲突恢复",
+      "user_result": "协调多设备离线更新、锁定、网络失败和同步版本冲突",
+      "tool_status": "needs_tools",
+      "verification_status": "none",
+      "evidence_note": "该完整能力尚未验证",
+      "priority": "P3",
+      "first_batch": false,
+      "existing_tool_parts": [
+        "submit_report"
+      ],
+      "missing_capabilities": [
+        "云盘连接、版本锁、同步/离线冲突状态及额外授权"
+      ],
+      "semantic_decision": "解决并发版本的业务冲突",
+      "structure_candidate": "服务版本/锁/网络状态的分支候选",
+      "acceptance": "所有版本保留；远端收据与本地状态一致；需另接入存储服务",
+      "whole_workflow_new_holdout_completed": false
+    }
+  ],
+  "free_preparation": {
+    "experiment_id": "fm-workflow-free-20261013-de2f6604",
+    "mcp_probes_passed": 33,
+    "actual_harness_mock_checks": 1,
+    "real_api_requests": 0,
+    "new_motif_certification": false
+  },
+  "script_reuse_followup": {
+    "workflows": [
+      "FM05",
+      "FM17"
+    ],
+    "certified_templates": 2,
+    "new_holdout_runs": 24,
+    "record": "../../docs/experiments/file-management-script-reuse-20261014.md",
+    "scope": "bounded copy programs only; not generic code learning or new public task kind"
+  }
+}

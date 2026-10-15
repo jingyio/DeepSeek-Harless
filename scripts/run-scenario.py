@@ -49,6 +49,10 @@ def main():
     parser.add_argument('--max-output', type=int, default=3000)
     parser.add_argument('--max-steps', type=int, default=16)
     parser.add_argument('--call-model', action='store_true')
+    parser.add_argument('--file-job',type=Path,help='existing private durable file task; never initializes or resets it')
+    parser.add_argument('--file-plan-binding',type=Path,help='explicit certified plan/library/runtime binding for the original durable job')
+    parser.add_argument('--rsi-config',type=Path,help='private continuous learning state/config; task events can learn certified Motifs')
+    parser.add_argument('--rsi-resume',type=Path,help='resume one original v2 RSI enrollment without resetting task grants or fees')
     args = parser.parse_args()
     requested_model = args.model
     # Keep the old CLI alias; runtime and budget accounting use the official ID.
@@ -56,8 +60,26 @@ def main():
         args.model = 'deepseek-v4-pro'
     if not 0 < args.budget_usd <= 100 or not 1 <= args.max_output <= 8000 or not 1 <= args.max_steps <= 100:
         parser.error('invalid budget')
+    if not args.rsi_config and not args.rsi_resume and args.scenario:
+        candidate=json.loads(args.scenario.read_text())
+        if candidate.get('acceptance_guard',{}).get('durable_job') and any('operation_tools_v2.py' in str(v.get('args',[])) for v in candidate.get('servers',[])):
+            from src.adapters.persistent_file_rsi import default_config
+            args.rsi_config=default_config(True)
+    if args.rsi_resume or args.rsi_config:
+        from src.adapters.continuous_rsi import load_config
+        v2=args.rsi_resume or load_config(args.rsi_config).get('adapter')=='file_operations_v2'
+        if v2:
+            if args.mode!='baseline' or args.tool_presentation!='native' or any((args.entry_policy,args.terminal_policy,args.collection_policy,args.collection_script,args.plan_policy,args.reentry_policy,args.file_job)):
+                parser.error('durable RSI owns its original native task and experience selection')
+            from src.adapters.operation_runner import execute
+            prepared=None if args.rsi_resume else prepare_scenario(args.scenario)
+            value=execute(args,prepared);print(json.dumps(value,ensure_ascii=False),flush=True)
+            return 0 if value.get('paid') is False or value.get('status')=='done' else 2
     if args.tool_presentation == 'ptc' and args.mode != 'baseline':
         parser.error('PTC strong baseline is separate from native Motif execution')
+    if args.rsi_config and (args.mode!='baseline' or args.tool_presentation!='native' or any((
+            args.entry_policy,args.terminal_policy,args.collection_policy,args.collection_script,args.plan_policy,args.reentry_policy,args.file_job))):
+        parser.error('continuous RSI requires native ordinary mode and owns certified experience selection')
     if bool(args.entry_policy) != bool(args.entry_task) or args.entry_policy and (args.mode != 'baseline' or args.tool_presentation != 'native'):
         parser.error('entry policy/task must be paired and separate from legacy Motif/PTC')
     if (bool(args.terminal_policy) != bool(args.terminal_task) or args.terminal_policy and
@@ -79,11 +101,34 @@ def main():
     patches = [prepared['patch']]
     session_id = 'sss-' + uuid4().hex
     child_env = {'SSS_SCENARIO_PRESENTATION': args.tool_presentation, 'SSS_SCENARIO_TOOLS': json.dumps(prepared['allowed_tools'])}
+    durable=None
+    if (prepared.get('acceptance_guard') or {}).get('durable_job'):
+        if (not args.file_job or args.mode!='baseline' or any((args.entry_policy,args.terminal_policy,args.collection_policy,args.collection_script,args.reentry_policy))
+                or bool(args.plan_policy)!=bool(args.file_plan_binding)):
+            parser.error('durable recovery allows ordinary baseline or a plan policy with explicit --file-plan-binding only')
+        from src.adapters.file_job_budget import job_command,FileJobBudget
+        sys.path.insert(0,str(ROOT/'scenarios/file-management'))
+        from recovery_tools import recovery_version
+        durable=job_command(args.file_job,'state')['state']
+        if durable['execution_version_sha256']!=recovery_version() or hashlib.sha256(Path(durable['task_file']).read_bytes()).hexdigest()!=durable['task_sha256']:
+            raise ValueError('durable task/permission/execution version changed')
+        limits=durable['limits']
+        if (args.budget_usd,args.max_output,args.max_steps)!=(limits['budget_usd'],limits['max_output'],limits['max_steps']):
+            parser.error('use exactly the frozen durable budget/output/step limits; they cannot reset on restart')
+        # The pinned SDK can create, but cannot reopen, a persisted transport Session.
+        # Original task/permissions/counters and round archive stay bound to the same durable job.
+        session_id='sss-job-'+hashlib.sha256(str(args.file_job.resolve()).encode()).hexdigest()[:24]+'-'+uuid4().hex[:12]
+        child_env.update(FM_JOB_FILE=str(args.file_job.resolve()),FM_TASK_FILE=durable['task_file'],FM_OUTPUT=durable['delivery_root'])
+    elif args.file_job:
+        parser.error('--file-job requires explicit durable_job acceptance configuration')
+    if args.file_plan_binding and not durable:
+        parser.error('--file-plan-binding requires the original durable job')
     entry_digest = None
     terminal_digest = None
     collection_digest = None
     script_digest = None
     plan_digest = None
+    plan_composition_preview = None
     reentry_digest = None
     if args.collection_policy:
         policy_path, task_path = args.collection_policy.resolve(strict=True), args.collection_task.resolve(strict=True)
@@ -139,6 +184,14 @@ def main():
         subprocess.run(['node','--input-type=module','-e',verifier,str(policy_path),str(bound)],cwd=ROOT,check=True,capture_output=True)
         plan_digest = policy['policy_digest']
         child_env.update(SSS_PLAN_MOTIF_POLICY=str(policy_path), SSS_PLAN_MOTIF_TASK=str(bound))
+        if durable:
+            binding_path=args.file_plan_binding.resolve(strict=True)
+            binding=json.loads(binding_path.read_text())
+            if binding.get('job_file')!=str(args.file_job.resolve()):raise ValueError('composition belongs to another job')
+            child_env['SSS_DURABLE_PLAN_BINDING']=str(binding_path)
+            check = "import fs from 'node:fs';import {createJobPlanGuard} from './src/adapters/dsh_job_plan_gate.ts';const g=createJobPlanGuard(process.cwd(),process.argv[1],process.argv[2],JSON.parse(fs.readFileSync(process.argv[3])),()=>{});try{g.validate();console.log(JSON.stringify({eligible:true,activated:false}));}catch(e){console.log(JSON.stringify({eligible:false,activated:false,reason:e.message}));}"
+            checked=subprocess.run(['node','--input-type=module','-e',check,str(binding_path),str(policy_path),str(bound)],cwd=ROOT,check=True,capture_output=True,text=True)
+            plan_composition_preview=json.loads(checked.stdout)
     if args.collection_script:
         policy_path, task_path = args.collection_script.resolve(strict=True), args.collection_script_task.resolve(strict=True)
         if (any(p.is_symlink() for p in (args.collection_script.absolute(), args.collection_script_task.absolute()))
@@ -222,10 +275,19 @@ def main():
                    budget_cap_usd=args.budget_usd, max_output_tokens=args.max_output,
                    max_agent_steps=args.max_steps, manifest_digest=motif_digest,
                    model_call_enabled=args.call_model)
+    if args.rsi_config:
+        from src.adapters.continuous_rsi import load_config
+        rsi_config=load_config(args.rsi_config)
+        preview['continuous_rsi']={'mode':rsi_config['mode'],'state_root':rsi_config['state_root'],
+          'learning_cap_usd':rsi_config['learning_cap_usd'],'series_cap_usd':rsi_config['series_cap_usd'],
+          'net_benefit_required':False,'quality_certification_required':True}
+    if durable:preview.update(durable_job_status=durable['status'],durable_requests=durable['requests'],
+                              durable_spent_usd=durable['spent_units']/1e9,durable_repairs=durable['repairs'])
+    if plan_composition_preview is not None:preview['durable_plan_composition']=plan_composition_preview
     print(json.dumps(preview, ensure_ascii=False, indent=2), flush=True)
     if not args.call_model:
         return 0
-    missing = [name for name in prepared['required_env'] if not os.environ.get(name)]
+    missing = [name for name in prepared['required_env'] if not child_env.get(name) and not os.environ.get(name)]
     if missing:
         raise ValueError('required environment variables are missing: ' + ', '.join(missing))
     if args.mode != 'baseline':
@@ -236,8 +298,16 @@ def main():
         lock.chmod(0o600)
     out = ROOT / '.local/runs' / uuid4().hex
     out.mkdir(parents=True, mode=0o700)
+    rsi_context=None
+    if args.rsi_config:
+        from src.adapters.continuous_rsi import enroll
+        rsi_context,rsi_patch=enroll(args.rsi_config,prepared,session_id,out,args,child_env)
+        patches.append(rsi_patch)
+    else:
+        child_env['SSS_CONTINUOUS_RSI_BINDING']=''
     ledger = out / 'cost-ledger.jsonl'
-    state = State(cap_usd=args.budget_usd, output_cap=args.max_output, record=ledger)
+    state = FileJobBudget(args.file_job,ledger) if durable else State(cap_usd=args.budget_usd, output_cap=args.max_output, record=ledger)
+    start_requests,start_cost=state.request_count,state.reserved_usd
     # Bind port 0 directly to avoid racing another process for a free port.
     gate = create_server('127.0.0.1', 0, 'https://api.deepseek.com', state)
     worker = threading.Thread(target=gate.serve_forever, daemon=True); worker.start()
@@ -245,7 +315,7 @@ def main():
                      SSS_BUDGET_GATE_ACTIVE='1', SSS_BUDGET_CAP_USD=str(args.budget_usd),
                      SSS_BUDGET_LEDGER=str(ledger))
     # Baseline runs must not inherit opt-in plugins from the caller's shell.
-    for name in ['SSS_ONLINE_MOTIF_MANIFEST', 'SSS_ONLINE_MOTIF_TASK', 'SSS_ENTRY_MOTIF_POLICY', 'SSS_ENTRY_MOTIF_TASK', 'SSS_TERMINAL_MOTIF_POLICY', 'SSS_TERMINAL_MOTIF_TASK', 'SSS_COLLECTION_MOTIF_POLICY', 'SSS_COLLECTION_MOTIF_TASK', 'SSS_COLLECTION_SCRIPT', 'SSS_COLLECTION_SCRIPT_TASK', 'SSS_PLAN_MOTIF_POLICY', 'SSS_PLAN_MOTIF_TASK', 'SSS_REENTRY_MOTIF_POLICY', 'SSS_REENTRY_MOTIF_TASK']:
+    for name in ['SSS_ONLINE_MOTIF_MANIFEST', 'SSS_ONLINE_MOTIF_TASK', 'SSS_ENTRY_MOTIF_POLICY', 'SSS_ENTRY_MOTIF_TASK', 'SSS_TERMINAL_MOTIF_POLICY', 'SSS_TERMINAL_MOTIF_TASK', 'SSS_COLLECTION_MOTIF_POLICY', 'SSS_COLLECTION_MOTIF_TASK', 'SSS_COLLECTION_SCRIPT', 'SSS_COLLECTION_SCRIPT_TASK', 'SSS_PLAN_MOTIF_POLICY', 'SSS_PLAN_MOTIF_TASK', 'SSS_REENTRY_MOTIF_POLICY', 'SSS_REENTRY_MOTIF_TASK', 'SSS_DURABLE_PLAN_BINDING']:
         child_env.setdefault(name, '')
     guard = NativeBudgetGuard(max_model_requests=args.max_steps, max_observed_input_tokens=None)
 
@@ -276,7 +346,7 @@ def main():
         status = 'done' if result.finish_reason == 'completed' and result.final_response.strip() else 'incomplete'
         metrics = {'status': status, 'finish_reason': result.finish_reason}
     except Exception as exc:
-        metrics = {'status': 'error', 'error_type': type(exc).__name__}
+        metrics = {'status': 'error', 'error_type': type(exc).__name__, 'error_message':str(exc)[:2000]}
     finally:
         gate.shutdown(); gate.server_close(); worker.join(timeout=5)
     audit_path = out / '.local/online-motif' / (hashlib.sha256(session_id.encode()).hexdigest() + '.jsonl')
@@ -286,7 +356,7 @@ def main():
                    completion_continuations=sum(event.get('type') == 'user/message' and
                        event.get('data', {}).get('source', {}).get('kind') == 'task-completion-guard' for event in guard.events),
                    agent_steps=guard.started_requests, **_usage(guard.events),
-                   upstream_requests=state.request_count, budget_accounted_usd=state.reserved_usd,
+                   upstream_requests=state.request_count-start_requests, budget_accounted_usd=state.reserved_usd-start_cost,
                    collection_model_requests_bypassed_verified=sum(row.get('kind') == 'collection_model_request_bypassed_verified' for row in decisions),
                    collection_script_batches_verified=sum(row.get('kind') == 'collection_script_batch_verified' for row in decisions),
                    plan_model_requests_bypassed_verified=sum(row.get('kind') == 'plan_model_request_bypassed_verified' for row in decisions),
@@ -294,8 +364,12 @@ def main():
                    entry_model_requests_bypassed_verified=sum(row.get('kind') == 'entry_model_request_bypassed_verified' for row in decisions),
                    terminal_model_requests_bypassed_verified=sum(row.get('kind') == 'terminal_model_request_bypassed_verified' for row in decisions),
                    model_requests_skipped_verified=sum(row.get('kind') == 'model_request_skipped_verified' for row in decisions))
+    if durable:
+        final_job=job_command(args.file_job,'state')['state']
+        metrics.update(durable_job_status=final_job['status'],durable_requests_total=final_job['requests'],
+                       durable_spent_usd_total=final_job['spent_units']/1e9,durable_repairs_total=final_job['repairs'])
     if prepared.get('acceptance_guard'):
-        trace=ROOT/'.local/task-acceptance'/hashlib.sha256(session_id.encode()).hexdigest()
+        trace=ROOT/'.local/task-acceptance'/hashlib.sha256((str(args.file_job.resolve()) if durable else session_id).encode()).hexdigest()
         checks=[json.loads(p.read_text()) for p in sorted(trace.glob('round-*/result.json'))]
         passed=bool(checks and checks[-1]['passed'])
         metrics.update(acceptance_guard_enabled=True,acceptance_passed=passed,acceptance_checks=len(checks),
@@ -303,6 +377,13 @@ def main():
             acceptance_trace_dir=str(trace),acceptance_max_repairs=prepared['acceptance_guard']['max_repairs'])
         if metrics['status']=='done' and not passed:metrics['status']='acceptance_failed'
     save('metrics.json', json.dumps(metrics, ensure_ascii=False, indent=2))
+    if rsi_context is not None:
+        from src.adapters.continuous_rsi import seal,launch_worker
+        sealed=seal(rsi_context,metrics)
+        metrics['continuous_rsi']=sealed
+        if sealed['auto_worker']:
+            metrics['continuous_rsi']['worker']=launch_worker(args.rsi_config,sealed['state_root'])
+        save('metrics.json',json.dumps(metrics,ensure_ascii=False,indent=2))
     print(json.dumps({'output_dir': str(out), **metrics}, ensure_ascii=False))
     return 0 if metrics['status'] == 'done' else 2
 

@@ -33,8 +33,20 @@ def accounting():
     rows=outcomes()
     if any(r.get('accounting_complete') is not True for r in rows):
         raise ValueError('an earlier attempt has unknown cost; reconcile before further paid calls')
-    return {'attempts':len(rows),'upstream_requests':sum((r.get('run') or {}).get('upstream_requests',0) for r in rows),
-            'estimated_usd':sum((r.get('run') or {}).get('budget_accounted_usd',0) for r in rows),
+    legacy_runs={str(Path(v['output_dir']).resolve()) for r in rows for v in r.get('runs',[r.get('run') or {}]) if v.get('output_dir')}
+    continuous=[json.loads(p.read_text()) for p in (ROOT/'.local/rsi').glob('*/records/*.json')]
+    continuous=[r for r in continuous if r['provider_mode']=='real' and str(Path(r['run_dir']).resolve()) not in legacy_runs]
+    for r in continuous:
+        if r['accounting_complete']:continue
+        path=Path(r['origin']).parent.parent/'cost-reconciliations'/(r['session_id']+'.json')
+        review=json.loads(path.read_text()) if path.exists() else {}
+        record_file=Path(r['origin']).parent.parent/'records'/(r['session_id']+'.json')
+        ledger=Path(r['run_dir'])/'cost-ledger.jsonl'
+        if (not review.get('accounting_complete') or review.get('record_sha256')!=sha(record_file)
+                or review.get('ledger_sha256')!=sha(ledger)):
+            raise ValueError('continuous task has unresolved API usage')
+    return {'attempts':len(rows)+len(continuous),'upstream_requests':sum((r.get('run') or {}).get('upstream_requests',0) for r in rows)+sum(r['upstream_requests'] for r in continuous),
+            'estimated_usd':sum((r.get('run') or {}).get('budget_accounted_usd',0) for r in rows)+sum(r['cost_usd'] for r in continuous),
             'actual_bill_verified':False}
 
 def run_one(exp,case,protocol,*,call_model=False,manifest=None,motif_task=None,embedding_endpoint=None,

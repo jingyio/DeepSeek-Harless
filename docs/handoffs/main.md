@@ -1,5 +1,51 @@
 # 主线当前交接
 
+## 最新本地状态：2026-10-15持久化/批量/恢复
+
+- 已完成用户指定三项，`feature/rsi-research-agent`，HEAD仍`fcdcc48`；无新提交/推送。Python编译/认证、TypeScript在线继续沿用。
+- 日常入口 `npm run web -- --scenario file-management --real-model --mode execute` 不必传库配置；真实/模拟分别固定`daily-files-real-v2`/`daily-files-mock-v2`。原凭证由环境变量提供，不写入公共文件。
+- 第5版4个v2图；真实6/6新任务机械交付、12/12认证材料交付，163HTTP/USD0.097170133、40次验证跳过。报告缺口与一次工具失败完整保留，未做人工盲评/完整净收益对照。系列代理估费USD8.348467365，账单未核实。
+- 浏览器已多选双文件提交/看实际产物、服务重启/恢复原请求4→11、原摘要确认；SDK发布后中断也原请求6→15、一计划两效果。真实默认入口恢复原库和3完成任务，0新增模型调用；认证已封存材料采用原记录0重复费用。
+- 新旧源码阶段和全部失败见`.local/persistent-rsi-development-20261015-5f4d87ee`，付费冻结协议/材料在`.local/file-management/fm-persistent-rsi-20261015-a648d606`及`fm-persistent-web-20261015-004257ff`。旧最终集/论文不学习不覆盖。
+- 新接口：[详细变更](../changes/persistent-rsi-integration.md)，[实验](../experiments/persistent-rsi-20261015.md)。REST `resume` 仅原中断任务＋原确认摘要；预算与版本变化拒绝。v1旧失败/证书保留，v2独立认证重新学库。
+- GitHub旧CI `38392885619`已被`01ce885`修复；最新已推送`fcdcc48`的`38548225640`成功。本次只检查旧失败，不重新推送。
+- 最终检查：639 Python/216 Node通过（3可选跳过）、18免费smoke及SDK/Web/认证恢复通过；逐文件旧数据保留核验见开发档案。
+- 当前边界：一个已登记文件MCP、17工具、2–8节点顺序图、非空唯一数组≤40；不支持并发图/任意循环/任意其它MCP。预算耗尽停止；未知费用或未核实轨迹拒绝训练。后续扩场景须单独适配，不能降低质量标准。
+
+## 当前接手状态（2026-10-15，Codex）
+
+- 目标/范围：用户要求先扩文件管理、再接默认前端；通用MCP算子契约、有界参数图学习、原生来源、独立认证/激活/回退与Web队列已实现，仅本地，暂不推送。
+- 分支/版本：feature/rsi-research-agent，HEAD fcdcc48；本轮和先前脏工作均未提交，不能把本机新能力当GitHub已同步。旧发布库/许可证/证书原字节保留。
+- 当前实现/接口：[通用MCP操作图实施记录](../changes/generic-mcp-operation-rsi.md)，Python离线发现/认证、TS在线执行；新schema为mcp-learning-contract和operation-graph。真实适配器为file_operations_v1，其它MCP需登记权限/材料/验收；不是任意流程全部学会。
+- 验证：632Python、211Node通过，3可选跳过，18smoke；免费真实CLI/SDK/MCP与Web API及取消结算通过；真实严格文件流6/6普通交付、两代2→5节点图和3节点后缀独立激活；真实Web5/5，验证17次请求跳过。[全部结果/负面证据](../experiments/generic-mcp-operation-rsi-20261015.md)。
+- 入口：`npm run web -- --scenario file-management --budget-usd 5 --request-limit 96`免费；`web:real`才真实，原/tasks预览确认不变。服务器可传--rsi-config/--files-dir，客户端只能选择已登记文件目标。当前私有配置`.local/file-management/fm-operation-rsi-20261015-a3adca6c/rsi.json`；库与来源指针`.local/rsi/operation-current.json`，旧只读指针不改。新克隆没有本机库，从空库普通运行学习。
+- 数据/完整成本：本轮59真实执行/470HTTP/USD0.237622092，含第一轮worker缺审计失败、失败调用屏障修订及2个保守拒绝候选。全系列1084尝试/10888HTTP/USD8.251297232，原USD1000余991.748702768（代理估计，非账单）。净收益只记录，开发人工/语义质量未核实，最终留出禁止学习。
+- 权限/预算：仅testpdf有标记的新副本；每原任务≤USD5/96步与HTTP/4000输出/2次验收修复，学习池≤USD25且计入系列。502/503同任务最多2次重试，每次记费，未知usage不训练。取消及在途结算保留原预留；本次23个当前版本预留全部结算。
+- 失败/版本：旧bfd735a4长图因省略失败调用的采集缺陷事后明确停用；原证书/失败/费不改。a3adca6c严格来源审计通过。额外pin/read候选因隔离认证要求恰好一次完成而保守拒绝，未改标准重签。
+- 保全/回退：`.local/general-rsi-development-20261015-244a9c2b`含before/after/diff/完整日志/final保全；267609个旧私有文件无删除覆盖，仅1日志追加原SHA前缀。移除--rsi-config回普通CLI；Web baseline关闭图执行，可observe停止自动学习。任务冻结原库版本，旧版本不重签。
+- 未完成/接手下一步：其它真实MCP适配器及业务验收；重复图/多产物认证与新操作服务跨进程恢复；浏览器视觉/真实办公质量/长周期完整成本观察。现有默认UI已加文件目标表单，但本轮端到端验证为真实HTTP任务API，不冒充浏览器视觉验收或公网产品上线。
+
+## 此前版本记录
+
+下面状态是历史快照，若与上面的当前状态冲突，以当前状态为准；旧证据和失败保持。
+
+2026-10-15已接通首版普通CLI持续Motif学习：任务封存后自动发现/编译、新副本独立认证、版本发布与后续复用；真实新任务流完成两版升级、6/6普通交付。最新并发队列/证据修订服务621 Python/199 Node通过，最终云端复验遇503，未完整重现两代，已停止付费诊断。首版仅只读文件报告及两类有界图，默认SDK/Web未接；净收益仅观测。30真实执行/146HTTP/估费上界USD0.176759772，5次503和全部失败/费用保留，最终留出不学习，暂不推送GitHub。[实验与边界](../experiments/continuous-motif-rsi-20261015.md)、[接口与入口](../changes/continuous-rsi-integration.md)。
+
+
+此前[工作流结构报告与新RSI验证](../experiments/file-management-report-delivery-20261014.md)完成102次新执行：task_result身份/快照/真实回执由当前MCP状态生成，模型填写摘要/缺口；原实际字节与权限验收不变。新诊断H/回退各6/6；两轮当前版本经验学习/独立认证/自动激活后均在下一任务零HTTP执行。日常H5/6、S/F/R各6/6，最终正常H/S/R各8/8、F7/8，8版本安全停止。R完整API USD1.325444比F1.390140低约4.65%，但F未全部合格，预定同质量净收益门槛仍未满足；普通回退备份仍需修复。603 Python/185 Node及smoke通过，系列估费USD7.836915368；失败/排除/轨迹/费用与旧最终留出保留，仅本地、默认SDK/Web未启用、暂不推送GitHub。[共享契约](../changes/file-management-report-delivery.md)。
+
+
+此前[回退修复与持续学习验证](../../docs/experiments/file-management-fallback-rsi-20261014.md)完成142次真实运行：跨计划重复SHA写入在执行前拒绝，提交时检查原始字节组完整覆盖。第二版新诊断H/回退均6/6；新两轮经验自动认证激活并在后续实际执行。最终正常H7/8、S8/8、F8/8、R7/8，8版本安全停止；R完整API USD1.149742低于F1.207199约4.76%，但最终质量较低，不支持同质量净收益。未知目标失败的文件正确但缺实际报告，原失败/费用留存，最终不学习。599 Python/185 Node通过，系列估费USD7.197809948。本轮仅本地，暂不推送GitHub、默认SDK/Web未启用。[共享接口](../../docs/changes/file-management-fallback-guard.md)。
+
+
+## 最新 有界自动RSI验证完成 2026年10月14日
+
+- 本地统一经验库/真实事实检索、机会触发普通探索、结构归纳、独立认证、两轮自动激活及失效普通回退已验证。新代码未提交/推送，之前Motif库分发仍在feature/rsi-research-agent；默认SDK/Web关闭。
+- [完整结果](../experiments/file-management-auto-rsi-20261014.md)：51主研究+15同操作流控制，共66运行/633HTTP/代理USD0.477517296，系列751尝试/7303HTTP/USD5.893675700。H/S/F正常留出7/7、R6/7；8V停止。完整API H/S/F/R=0.137249172/0/0.491204188/0.520633648，尚无RSI质量/净收益证明。
+- 第一轮空候选/失败探索、补充探索、两轮4份新独立认证、一次操作普通修复及未知目标最终失败保留。新库实际参与第二轮任务，0HTTP；最终留出禁止学习。此前暂不推送约束仅对新开发仍保留，最近授权上传库不扩为自动上传新代码。
+- [契约](../changes/file-management-auto-rsi.md)/Schema、TS dsh_experience、Python经验库和auto_rsi、免费SDK与两独立审计是新入口。588Python/185Node通过、3可选跳过、18smoke；47,626旧私有文件SHA不变。
+- 接手：先改善未知目标普通回退/真实语义质量，用新非留出材料；再做更长周期冻结库/持续更新的同成本对照。不能用本次最终留出修库，不能称通用自改代码RSI或上线。原1000美元估费余额994.106324300，实付未知。
+
 库提交 `02bcc21` 已推送到 `feature/rsi-research-agent`，GitHub分支引用和全部18个分发文件的blob哈希已核对；其余本地开发改动仍未提交。
 
 ## 最新 文件管理 Motif 库分发 2026年10月14日
@@ -8,6 +54,75 @@
 - [公开库](../../examples/motif-library/file-management-v1/README.md)：9库/策略、3manifest、3认证/冻结摘要，原字节/摘要与重复副本索引保留。`.local`继续忽略，私人资料、密钥、原轨迹、费用和失败不上传且不删除。
 - 本地与无 `.local` 的 HEAD+分发副本加载检查通过；6项发布回归通过，源码不匹配的两组严格检查按预期拒绝。0云请求/费用0；没有重做付费学习或认证。
 - G4库依赖的部分MCP/任务源码尚未发布，公开索引报告版本差异；不可只凭库JSON执行G4流程，也未新增自动RSI。前端接入须另行发布兼容源码与新任务权限/预算绑定。[契约](../changes/file-management-library-publication.md)。
+
+## 最新 脚本规则/目录变化与第二版完成（2026年10月14日）
+
+- 目标/授权：原testpdf副本、既有DeepSeek、1000USD系列预算，验证规则/目录失效、原普通修复、新普通学习/认证及新留出；不提交/推送。feature/rsi-research-agent / dfe4fcc未变，历史未提交改动保留。
+- 完成：独立TS dsh_learned_script_v2、script_adaptation_study/learning、受控草稿probe、SDK与独立audit；v1和六MCP服务依赖不变。四个受限关系模板从8干净普通见证推导；另2轨迹排除但计费。无任意代码/新Web kind；[接口](../changes/file-management-script-adaptation.md)。
+- 认证/质量：8新实际L2认证均0HTTP合格；认证后40新五组留出，H/S/L2各6/6、M5/6、L1 4/6，10版本边界停止未交付。原修复控制5项中4项最终成功，1原失败保留；L1回退不保证修好，新留出仍有两项两轮修复失败。报告明确自然失败、受控草稿和受控版本中断。
+- 版本：另2实际SDK/MCP陈旧execute拒绝，永久停用、0后续自动派发，模拟普通Provider各3HTTP/2轮修复后未完成，未知字节保持；0云费用，不训练。初诊断和公开helper复验原事件分别留存。
+- 成本：65实际运行/790HTTP/USD0.715712544；L2新维护USD0.274608132，加首版准备为USD0.374614224，执行0HTTP。S API仍最低，不证明完整经济成本为0；人工金额不折算/维护工时与盲评/账单未知。系列685attempts/6670HTTP/USD5.416158404，原1000预算估费余994.583841596。
+- 验证：573Python/173Node通过、3可选Docker跳过，18题smoke；16免费MCP探针、8零模型SDK及原草稿SDK修复通过。65费用/权限/字节及原事件/角色/停用审计通过，6857旧文件/PDF原字节保持；17真实验收修复全计费。
+- 数据/复现：script-adaptation-current指向8872b28c，275e4518原14次只读导入，旧L1/G4/G5指针不变。协议/候选/证书/新留出锁、frozen-source、所有原事件/费用/每轮验收、失败和副本保留；开发快照/差异在.local/script-adaptation-development-20261014-f2caa1ac。[完整结果与命令](../experiments/file-management-script-adaptation-20261014.md)。SDK/Web默认关闭新模板。
+- 未完成/下一步：只有两复制流程、已知容器和生成新路径/文本/规则的机审，不是40项完成/通用学习或上线验收。选择产品显式模板/权限与版本流程，再冻结真实业务材料和独立总成本评审；当前用户授权的本轮已完成，无后台付费任务或GitHub推送。
+
+
+## 先前 学习脚本复用首批完成（2026年10月14日）
+
+- 更新/交接人：2026-10-14，Codex；用户授权新普通探索、脚本提炼/独立认证和H/S/M/L新留出，原testpdf副本权限/1000USD系列预算保持，不提交/推送。feature/rsi-research-agent / HEAD dfe4fcc未变，本地新增代码和记录。[结果](../experiments/file-management-script-reuse-20261014.md)。
+- 完成：script_reuse_study/learning、TS dsh_learned_script、真实SDK免费检查、独立audit及3Python/3Node新回归。受限指令从实际成功普通操作推导哈希组代表、目录前缀复制和实际备份产物输入；显式私有patch，无新工具/公共CLI/HTTP kind/任意代码。原六服务依赖、G4库、旧三组留出和三PDFSHA保持。[逐项接口](../changes/file-management-script-reuse.md)。
+- 来源/失败：8792969c四普通探索全交付，FM05-E额外语义读取使编译拒绝；ef863a4d原SHA导入并补一个新元数据探索，原失败不追改。5原普通任务中4份学习，两模板不同数量见证；普通/免费/认证/自动/留出角色严格隔离，Runtime不训练。初始免费冻结拒绝和事后schema别名检查错误及修正均保留。
+- 认证/新留出：候选锁先于8认证（4独立条件×H/L）且全部合格，L4次0HTTP；证书冻结后新生成6条件×4组24次轮换。正常/边界四组4/4，8V停止均未交付；总37含13准备/24留出，29交付、8未交付，不改旧留出或用新留出修库。
+- 费用：准备136HTTP/USD0.100006092；留出H/S/M/L 77/0/61/0HTTP，USD0.057222300/0/0.045803244/0。L完整API为0.100006092，M加原全库准备为0.281582008（原库范围更广），本批L对H/S无完整API成本优势。4共同合格条件59/0/47/0HTTP，L与S相同0API。FM17的M是普通回退，其差异不能算学习收益。
+- 失败/修复：49工具错误原请求和纠正费用计入；没有真实验收修复消息，L自然修复API0，不宣称已验证新的真实DeepSeek脚本失败修复。免费真实SDK/MCP模拟Provider一次失配、一次失败验收和同会话普通修复后通过，10mockHTTP/0云费用；另两零模型程序与5反事实守卫检查通过。原权限、预算和两轮修复不重置。
+- 验证：当前及前版各6免费MCP探针通过，37完整独立字节/协议/来源/证书/四组/原HTTP与缓存usage/费用审计通过，无未知usage；568Python/170Node通过、3可选Docker跳过、18smoke通过。代码/默认接口仍实验边界，机械验收非人类质量或真实办公前瞻证据。
+- 数据：script-reuse-current指向ef863a4d，8792969c原事件/源码仍原地保存并SHA引用；protocol/candidate-lock/certificate/holdout-lock、frozen-source、全部实际工作副本/每轮验收/原模型消息及HTTP账本/summary/独立审计/guardchecks/排除原因全留存。开发改前/差异/日志在.local/script-reuse-development-20261014-9c915457。
+- 预算：本轮37执行（21有真实API、16零模型）/274HTTP/USD0.203031636；系列620执行/5880HTTP/USD4.700445860，估费余额USD995.299554140。实付/人工盲评/维护工时未知；人类金额按用户要求不折算。
+- 接手：1 新规则与目录变化后的匹配失效/重提炼/独立认证与维护成本，2 语义选择后复用脚本的混合流程，再新的留出；已有留出不训练。不要声称通用代码学习、自动维护或完整成本优于预写程序；动态前端/SDK产品加载仍未接。回退移除新私有patch/env即普通原CLI；GitHub等待用户明确恢复。
+
+## 此前 第五阶段六流程新留出三组完成 2026年10月14日
+
+- 更新/交接人：2026-10-14，Codex；用户授权新留出比较、人工金额不折算，仍只testpdf实验副本，不提交/推送。feature/rsi-research-agent / HEAD dfe4fcc未变，本地开发未提交。
+- 完成：workflow_holdout冻结18新probe/18新holdout、54个H/S/M运行并轮换顺序；H原循环，S三个语义流程同Model批量读/三个固定流程0Model，M仅旧认证读取/计划图、FM17普通回退。新TS dsh_workflow_experiment只经私有patch加载，注入相同版本/真实成功或崩溃冷边界；不新增工具，不改旧服务/IR/library/任务预算。公开入口默认预览。[接口](../changes/file-management-workflow-holdout.md)。
+- 质量：正常/边界H11/12、S12/12、M12/12；18V全部停止，仍保留未完成。原H整理全局编号错误，两修复/三检查仍失败，35HTTP费用保留，未重跑同留出。54中35交付、19失败/停止；155工具错误完整保留。[结果](../experiments/file-management-workflow-holdout-20261014.md)。
+- 费用：三组全部执行代理USD0.194854178 / 0.086595528 / 0.144017954，292/116/193HTTP。M加USD0.235778764探索/认证/在线验证为0.379796718，高于H/S；11共同合格三元配对176/72/132HTTP、M/H估费−16.53%、M/S+76.71%。本批脚本总体最低，无学习来源的因果/全成本优势结论；FM17两组普通循环差异不能算Motif作用。
+- 恢复：FM38 H/M在成功/真实进程75后均新Session整Harness冷启同job；N幂等重复、E占1原repair后原token回滚/2验收通过，原费用/请求/权限不清零；M修复后停用。S用实际MCP重连同授权，0Model。V未知外部足迹拒绝恢复，三job.failed。无自动restore图。
+- 验证：原与最终18MCP探针、9普通脚本、4真实SDK本地模拟冷启动全通过，0云费用；565Python/167Node、3Docker跳过与18smoke通过。独立54项完整字节/配对/原限额/版本/原HTTP使用量和费用审计通过，无未知usage；原54模板/oracle/pristine、三PDF、七实现和29旧库SHA不变。
+- 数据：workflow-holdout-current指向427b924b；protocol-lock/frozen-source/private模板、library-lock引用、逐arm数据/配置/工具schema、原Model/HTTP、control-marker/job/计划/备份/恢复/每轮验收/最终副本、independent-audit/summary均保留。88f86de1和0fae7c42免费版本/源差异保留；开发归档workflow-holdout-development-20261014-a0046390。新留出没有训练或改变旧库。
+- 预算：本批601HTTP/USD0.425467660，全系列583尝试/5606HTTP/USD4.497414224，98未通过交付结果保留（本批19含18受控V），原1000USD估费余额995.502585776；账单未知。人工金额按用户要求不折算，人类语义盲评/真实办公泛化/维护工时未确认。
+- 接手下一步：优先将固定规则交普通程序，选真实语义较多用户流程做前瞻质量/维护验证；同语义决定和同调度的反事实对照再判断学习增益。不要从这54留出修库、承诺规模摊销收益或上线；默认SDK/Web/动态前端保持边界，GitHub待用户恢复。
+- 回退：新实验control patch退出即原公开CLI；未改变G4库/服务版本或已发布HTTP任务契约。源码、权限、版本或模板变化必须新实验/绑定，不能覆盖旧结果或重置job。
+
+## 最新 首批六流程普通探索完成 2026年10月14日
+
+- G3新增14次普通DeepSeek尝试、12机器验收通过，首轮2恢复越界读取失败保留；修复读取前守卫后两份新文本通过。真实中断MCP重连并用原授权回滚，原任务预算不重置。共206HTTP/USD0.123931013，59工具错误和SDK旧Session免费失败均保留。[完整结果](../experiments/file-management-workflow-exploration-20261014.md)。
+- 增加持久化恢复状态事实包、固定故障边界restart_required、同job/新传输Session冷启动和job归档；普通旧入口保留，默认Web无新接入。新14/15工具无新Motif证书，旧七工具和旧库不改。[共享接口](../changes/file-management-workflow-runtime.md)、[场景交接](file-management.md)。
+- 归档源码重放审计通过，统一14图/343节点、12合格普通轨迹按版本/schema分两组；失败保留不训练，免费/模拟/留出排除，0自动Runtime节点。原54pristine/题面/oracle和三PDF不变。565Python/146Node、33免费MCP、模拟Provider冷启动和18smoke通过，3Docker跳过。
+- 系列509尝试/4799HTTP/USD3.960098813、76模型失败保留，实付未知；原USD1000预算及仅testpdf副本授权保持。当前feature/rsi-research-agent、HEAD dfe4fcc，本地未提交/推送，用户暂停GitHub同步仍有效。
+- 下一步G4实际版本分组学习并独立认证，之后G5新留出H/S/M；没有新流程节省、普通脚本增量优势或人工业务质量结论。完整格式恢复、动态前端、并发和跨平台仍待后续。
+
+## 最新：六流程副本、验收与免费恢复整合完成（2026-10-13）
+
+- 当前本地未提交/推送，公开基线仍dfe4fcc。用户本轮只推进准备与免费验证，0新增云API/真实模型费用；原495/4593/USD3.836167800和74失败保留。
+- fm-workflow-free-20261013-de2f6604：54模板（probe18/explore12/certify6/holdout18）、独立WorkflowScene/验收与TS持久化job。33免费MCP检查通过；12业务字节后置合格、6外部变化保持停止，7守卫/8容量探针通过。真实MCP退出75后同授权回滚；非零预留/请求/步骤/修复计数不重置。另SDK9本地HTTP/1修复/2验收通过；模拟计价不计系列费用。
+- 全仓565Python/145Node通过、3Docker跳过，最后版本校验26项定向通过、旧18smoke通过；早期CLI None兼容回归2失败日志保留并修复。共享scenario/停止守卫/CLI/预算桥/验收变化详见[记录](../changes/file-management-workflow-runtime.md)，[免费结果](../experiments/file-management-workflow-free-20261013.md)。
+- 新恢复仅rename/自身rollback、15工具、原限额普通baseline；新图/写入/恢复组合没有Motif证书，不直接套旧库。旧七个文件工具/契约和原三PDF不改，前端动态目录入口仍未接。
+- 下一步冻结最新协议与预算预览，在新explore副本跑普通Harness，再汇集原始轨迹学习/独立认证，之后新holdout做H/S/M；免费probe/SDK轨迹排除学习，留出保持未触碰。暂不推送继续有效。
+
+## 最新：40项文件流程覆盖与六流程设计（2026-10-13）
+
+- 用户同意先扩展覆盖规划。已完成[40项清单](../../scenarios/file-management/workflow-discovery.md)和[首批六流程方案](../../scenarios/file-management/workflow-evaluation-plan.md)，各有规划JSON；18项现有工具可组合、20项需工具、2项需运行整合。所有完整新流程留出均未完成，不能计为40项已实现。
+- 六项为下载整理、目录合并、版本比较、普通文件字节备份/隔离恢复演练、ZIP资料包交付和任务中断恢复。设计包括18组条件、H/S/M候选54次对照、必读/可选范围、字节/范围/缺口验收及失败停止口径；54次尚未启动，负例探针通过不把未完成业务重标成功。
+- 下一步先补前五项新材料和固定验收，做免费实际MCP探针；FM38须先组合TaskScene、PlanScene、预算/步骤/修复次数持久化和取消，再认证。新流程不是现有TaskContract允许的三种kind；不能拼接旧工具集或证书直接启用。
+- 本轮只改文档和规划数据，未改共享运行接口，未生成实物实验副本，0新增真实API/费用；系列仍495尝试/4593HTTP/代理USD3.836167800，实付未知。工作先留本地，未提交/推送；dfe4fcc仍为公开基线，原失败、费用和版本保留。
+
+## 最新协作要求：先本地完成，再推送（2026-10-13）
+
+- 用户明确暂停后续GitHub推送；dfe4fcc是此前已推送基线。后续修改/测试与交接先留本地，直到用户明确恢复推送。原失败、轨迹、费用和接口版本继续保留。
+- 下一步优先把当前TaskScene与已单独验证的计划授权/持久化恢复链路组合：确认绑定任务/计划/权限/来源版本，验证取消、执行中断、重启续接、外部文件变化、重复执行与恢复，预算和修复次数跨恢复不重置。读取图或守卫变化时重新认证库。
+- 然后接本地前端动态任务：用户输入→服务端形成契约与副本范围→预览确认→执行→验收/有界修复→审阅结果；当前FM_TASK_FILE预配置入口不等于已完成动态任务入口。
+- 组合后用新的跨流程留出，对比普通Harness、普通批量脚本与Motif，并计入失败/恢复/学习认证费用；再补真实材料的人审和可安装分发。仍只在原testpdf副本、既有DeepSeek和系列1000USD范围内。
+- 本次仅核对现状、记录推送约束和下一步顺序，没有启动新的付费实验或修改运行实现。
 
 ## 最新：普通文件任务质量修复与新留出完成（2026-10-13）
 

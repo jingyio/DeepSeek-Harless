@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {markAgentLoopRequest} from '@deepseek-ai/dsh-llm';
 import {digest} from '../src/motif_core/online_skill_runtime.mjs';
-import {createCollectionController,validateCollectionPolicy,validateCollectionTask} from '../src/motif_core/collection_read_policy.ts';
+import {createCollectionController} from '../src/motif_core/collection_read_policy_v2.ts';
+import {validateCollectionPolicy,validateCollectionTask} from '../src/motif_core/collection_read_policy.ts';
 import {createCollectionGate} from '../src/adapters/dsh_entry_motif.ts';
 const names=['select','pin','read','gather'].map(n=>'mcp__test__'+n);
 function fixture(n=13){
@@ -52,6 +53,30 @@ test('post-selection foreach preserves 13 actual identities, failures-as-diagnos
  assert.equal(reads.size,13);assert.equal(log.filter(r=>r.kind==='collection_model_request_bypassed_verified').length,5);
  assert.equal(log.filter(r=>r.kind==='collection_motif_read_verified').length,13);
  assert.deepEqual(c.propose(f.tools,()=>''),[]);
+});
+for(const adopted of [1,3,13])test('native pins remain model operations; remaining graph completes with '+adopted+' adopted pins',()=>{
+ const f=fixture(13),log=[],c=createCollectionController(f.policy,f.task,r=>log.push(r));let i=0;const reads=new Map();select(c,f);
+ for(const row of f.packet.files.slice(0,adopted))c.observe({name:names[1],callId:'native-'+row.file_id,arguments:{file_id:row.file_id}},
+  observed({file_id:row.file_id,source_version:row.source_version,source_id:'handle-'+row.file_id}));
+ assert.equal(log.filter(r=>r.kind==='collection_native_pin_adopted').length,adopted);
+ assert.equal(log.filter(r=>r.kind==='collection_model_request_bypassed_verified').length,0);
+ const generatedPins=[];
+ while(!c.done){const calls=c.propose(f.tools,()=>String(++i));assert.ok(calls.length>0&&calls.length<=8);
+  for(const call of calls){if(call.proposal.tool===names[1])generatedPins.push(call.proposal.arguments.file_id);
+   c.observe({name:call.proposal.tool,callId:call.callId,arguments:call.proposal.arguments},observed(response(f,call,reads)));}}
+ assert.equal(reads.size,13);assert.deepEqual(generatedPins,f.packet.files.slice(adopted).map(r=>r.file_id));
+ assert.equal(log.filter(r=>r.kind==='collection_model_request_bypassed_verified').length,adopted===13?3:5);
+ assert.ok(log.filter(r=>r.kind==='collection_native_pin_adopted').every(r=>r.model_request_bypassed===false));
+});
+for(const damage of ['member','version','duplicate','alias','extra','failed'])test('native pin adoption rejects '+damage,()=>{
+ const f=fixture(2),c=createCollectionController(f.policy,f.task,()=>{});select(c,f);const row=f.packet.files[0];
+ const first={file_id:row.file_id,source_version:row.source_version,source_id:'handle-'+row.file_id};
+ if(damage==='duplicate'||damage==='alias')c.observe({name:names[1],callId:'native-first',arguments:{file_id:row.file_id}},observed(first));
+ const second=damage==='alias'?f.packet.files[1]:row;
+ const args={file_id:damage==='member'?'outside':second.file_id};if(damage==='extra')args.unapproved=true;
+ const out={file_id:second.file_id,source_version:damage==='version'?'e'.repeat(64):second.source_version,source_id:first.source_id};
+ c.observe({name:names[1],callId:'native-second',arguments:args},damage==='failed'?{isError:true}:observed(out));
+ assert.equal(c.halted,true);assert.equal(c.done,false);assert.deepEqual(c.propose(f.tools,()=>''),[]);
 });
 for(const damage of ['scope','version','digest','snapshot','schema','failure','interleaving','gather'])test('collection defers on '+damage,()=>{
  const f=fixture(2),log=[],c=createCollectionController(f.policy,f.task,r=>log.push(r));let i=0;const reads=new Map();
