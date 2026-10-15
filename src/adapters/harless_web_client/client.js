@@ -3,6 +3,7 @@ window.__ModuleLoader__.load({
   id: 'deepseek-harless-web-client',
   factory: (require) => {
     const React = require('react');
+    const ReactDOM = require('react-dom');
     // Use the exact safe AST renderer used by native Harness assistant messages.
     const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
     const MarkdownText = primitives?.MarkdownText;
@@ -289,24 +290,54 @@ window.__ModuleLoader__.load({
           link.setAttribute('title', name);
         }
       }
-      const messageIcon = kind => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6,
-        strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, ...({
-        copy: ['M9 5V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-1', 'M4 7h10a3 3 0 0 1 3 3v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z'],
-        up: ['M7 10v11H3V10h4Zm0 0 5-8c3 0 2 5 2 7h6a2 2 0 0 1 2 2l-2 8a2 2 0 0 1-2 2H7'],
-        down: ['M7 14V3H3v11h4Zm0 0 5 8c3 0 2-5 2-7h6a2 2 0 0 0 2-2l-2-8a2 2 0 0 0-2-2H7'],
-        fork: ['M6 3v10a6 6 0 0 0 6 6h6', 'm15 16 3 3-3 3', 'M6 9h6a6 6 0 0 0 6-6', 'M4 3h4'],
-        clock: ['M12 8v5l3 2', 'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0'],
-        usage: ['M4 6c0-4 16-4 16 0s-16 4-16 0Zm0 0v12c0 4 16 4 16 0V6', 'M4 12c0 4 16 4 16 0'],
-      }[kind] || []).map((d, key) => h('path', { d, key })));
-      const durationLabel = milliseconds => Number.isFinite(milliseconds) ? milliseconds < 1000 ? '<1 秒' : milliseconds < 60000
-        ? Math.floor(milliseconds / 1000) + ' 秒' : Math.floor(milliseconds / 60000) + ' 分 ' + Math.floor(milliseconds / 1000) % 60 + ' 秒' : '待统计';
-      const usageLabel = result => {
-        const stats = result.stats || {}, usage = result.usage || stats.usage || {};
-        const total = usage.total ?? usage.total_tokens ?? stats.total_tokens ??
-          (Number.isFinite(usage.input ?? stats.prompt_tokens ?? stats.input_tokens) && Number.isFinite(usage.output ?? stats.completion_tokens ?? stats.output_tokens)
-            ? (usage.input ?? stats.prompt_tokens ?? stats.input_tokens) + (usage.output ?? stats.completion_tokens ?? stats.output_tokens) : undefined);
-        return Number.isFinite(total) ? `${total >= 1000 ? (total / 1000).toFixed(1) + 'k' : total} tok` : '待统计';
+      // Public primitives are shared with native Chat; do not duplicate SVGs or
+      // depend on private Chat components / generated CSS class names.
+      const messageIcon = kind => h(primitives[({ copy: 'IconCopyOutline16', check: 'IconCheckOutline16',
+        up: 'IconLikeOutline16', upSelected: 'IconLikeFill16', down: 'IconDislikeOutline16', downSelected: 'IconDislikeFill16',
+        fork: 'IconBranchOutline16', usage: 'IconDatabaseOutline16', clock: 'IconClockOutline16' })[kind]], { 'aria-hidden': true });
+      const actionButton = (props, icon, label) => h(primitives.Tooltip, { label, side: 'bottom', key: props.key },
+        h('button', { type: 'button', className: 'harless-message-icon', ...props }, messageIcon(icon)));
+      const durationLabel = milliseconds => {
+        if (!Number.isFinite(milliseconds)) return '待统计';
+        const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+        return seconds < 60 ? seconds + '秒' : Math.floor(seconds / 60) + '分' + String(seconds % 60).padStart(2, '0') + '秒';
       };
+      const tokenLabel = total => {
+        if (!Number.isFinite(total)) return '待统计';
+        const scaled = value => String(value >= 100 ? Math.round(value) : Math.round(value * 10) / 10);
+        return (total < 1000 ? total : total < 1000000 ? scaled(total / 1000) + 'K' : scaled(total / 1000000) + 'M') + ' tok';
+      };
+      const usageFacts = result => {
+        const stats = result.stats || {}, usage = result.usage || stats.usage || {};
+        const input = usage.input ?? usage.prompt_tokens ?? stats.prompt_tokens ?? stats.input_tokens;
+        const output = usage.output ?? usage.completion_tokens ?? stats.completion_tokens ?? stats.output_tokens;
+        const total = usage.total ?? usage.total_tokens ?? stats.total_tokens ?? (Number.isFinite(input) && Number.isFinite(output) ? input + output : undefined);
+        return { input, output, total };
+      };
+      const messageClock = time => {
+        const date = new Date(time), now = new Date();
+        if (!Number.isFinite(date.getTime())) return '';
+        const clock = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+        if (date.toDateString() === now.toDateString()) return clock;
+        return (date.getFullYear() === now.getFullYear() ? '' : date.getFullYear() + '年') + (date.getMonth() + 1) + '月' + date.getDate() + '日 ' + clock;
+      };
+      function ReplyMetric({ kind, label, rows, title }) {
+        const [open, setOpen] = React.useState(false), rootRef = React.useRef(null), panelRef = React.useRef(null);
+        const pos = primitives.useAnchoredPosition({ open, anchorRef: rootRef, panelRef, side: 'top', gap: 8, margin: 12 });
+        primitives.useDismissOnOutsidePointer(rootRef, open, setOpen, panelRef);
+        React.useEffect(() => {
+          if (!open) return;
+          const close = event => { if (event.key === 'Escape') { setOpen(false); rootRef.current?.querySelector('button')?.focus(); } };
+          document.addEventListener('keydown', close);
+          return () => document.removeEventListener('keydown', close);
+        }, [open]);
+        return h('span', { className: 'harless-message-metric', ref: rootRef, 'data-open': open || undefined },
+          h('button', { type: 'button', className: 'harless-message-metric-trigger', 'aria-label': label,
+            'aria-haspopup': 'dialog', 'aria-expanded': open, onClick: () => setOpen(!open) }, messageIcon(kind), h('span', { className: 'harless-message-metric-label' }, label)),
+          open && ReactDOM.createPortal(h('div', { ref: panelRef, role: 'dialog', 'aria-label': title, className: 'harless-message-stat-panel',
+            style: pos || { visibility: 'hidden', left: 0, top: 0 } }, h('strong', null, title),
+            h('dl', null, ...rows.flatMap(([name, value]) => [h('dt', { key: name }, name), h('dd', { key: name + '-value' }, value)]))), document.body));
+      }
       function TraceRows({ items }) {
         const states = { running: '进行中', completed: '完成', failed: '失败', interrupted: '已中断', cancelled: '已取消', skipped: '已跳过' };
         return h('ol', { className: 'harless-trace-list' }, ...items.map((entry, index) => {
@@ -323,7 +354,11 @@ window.__ModuleLoader__.load({
             detail && h('details', null, h('summary', null, '查看详情'), h('pre', null, typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2))));
         }));
       }
-      function ComparisonNode({ node, traceOnly = false }) {
+      function ComparisonNode({ node, traceOnly = false, useChat }) {
+        // Observe the whole timeline, including later ordinary Chat turns.
+        const latestTurn = useChat?.(snapshot => snapshot.timeline?.turnOrder.at(-1));
+        const turn = node.location?.turn?.turn;
+        const isLatestTurn = latestTurn === undefined || turn === undefined || latestTurn === turn;
         const key = comparisonKey(node.data), initial = rememberedSnapshot(node.data);
         const [snapshot, setValue] = React.useState(initial), [error, setError] = React.useState(''), [saving, setSaving] = React.useState(false);
         const value = comparisonKey(snapshot) === key ? snapshot : initial;
@@ -335,6 +370,7 @@ window.__ModuleLoader__.load({
         const [connection, setConnection] = React.useState(''), [downloads, setDownloads] = React.useState({});
         const [branching, setBranching] = React.useState(''), branchBusy = React.useRef(false);
         const [copied, setCopied] = React.useState(''), [traceLane, setTraceLane] = React.useState('baseline');
+        const copyTimer = React.useRef(), copyPending = React.useRef(false);
         const generation = React.useRef(0), actionBusy = React.useRef(false), downloadBusy = React.useRef(new Set());
         const alive = React.useRef(true), transferControllers = React.useRef(new Set()), refreshNow = React.useRef(() => {});
         const streamConnected = React.useRef(false);
@@ -349,7 +385,7 @@ window.__ModuleLoader__.load({
           setCopied(''); setBranching(''); branchBusy.current = false; setTraceLane('baseline');
           serverSnapshot.current = initial;
           actionBusy.current = false; downloadBusy.current.clear(); generation.current++;
-          return () => { alive.current = false; for (const abort of transferControllers.current) abort.abort(); };
+          return () => { alive.current = false; clearTimeout(copyTimer.current); for (const abort of transferControllers.current) abort.abort(); };
         }, [node.data.id, node.data.session_id]);
         // Persisted start-event data may be reassembled with a fresh object while
         // GET already holds newer results. Reset only when viewing another turn.
@@ -493,12 +529,17 @@ window.__ModuleLoader__.load({
         };
         const copy = async lane => {
           const result = value.lanes[lane], text = (result.answer_display ?? result.answer) || result.messages?.at(-1)?.text;
-          if (!text) return;
+          if (!text || copyPending.current || copied === lane) return;
+          const revision = generation.current; copyPending.current = true;
           try {
-            if (!window.navigator?.clipboard?.writeText) throw Error('clipboard unavailable');
-            await window.navigator.clipboard.writeText(text);
-            if (alive.current) { setCopied(lane); setError(''); }
-          } catch { if (alive.current) setError('未能复制，请选中回复文字后复制。'); }
+            if (primitives.writeClipboard) { if (!await primitives.writeClipboard(text)) throw Error('clipboard unavailable'); }
+            else { if (!window.navigator?.clipboard?.writeText) throw Error('clipboard unavailable'); await window.navigator.clipboard.writeText(text); }
+            if (alive.current && generation.current === revision) {
+              clearTimeout(copyTimer.current); setCopied(lane); setError('');
+              copyTimer.current = setTimeout(() => { if (alive.current) setCopied(''); }, 1000);
+            }
+          } catch { if (alive.current && generation.current === revision) setError('未能复制，请选中回复文字后复制。'); }
+          finally { copyPending.current = false; }
         };
         const download = async (lane, file) => {
           const key = lane + ':' + file.id;
@@ -566,7 +607,10 @@ window.__ModuleLoader__.load({
           const mentions = { resolve: raw => { const file = artifactFor(files, raw); return file ? {
             title: file.name, label: '下载 ' + file.name.split('/').pop(), open: () => { void download(lane, file); },
           } : undefined; } };
-          return h('section', { key: lane, className: 'harless-paired-pane' + (single ? ' harless-single-pane' : ''), 'aria-label': single ? '回复' : title },
+          const usage = usageFacts(result), duration = result.duration_ms ?? (Number.isFinite(result.stats?.elapsed_seconds) ? result.stats.elapsed_seconds * 1000 : undefined);
+          const count = value => Number.isFinite(value) ? value.toLocaleString('en-US') + ' tok' : '待统计';
+          return h('section', { key: lane, className: 'harless-paired-pane' + (single ? ' harless-single-pane' : ''), 'aria-label': single ? '回复' : title,
+            'data-actions-reveal': isLatestTurn ? 'always' : 'hover' },
             !single && h('header', null, h('strong', null, title), h('span', { role: 'status' }, notStarted ? '任务未启动' : result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
             !settled(result) && h('p', { className: 'harless-live-status', role: 'status', 'aria-live': 'polite' }, h('span', { className: 'harless-live-dot', 'aria-hidden': true }), progressLabel),
             (activity.length > 0 || previousMessages.length > 0) && h('details', { className: 'harless-activity' },
@@ -598,18 +642,22 @@ window.__ModuleLoader__.load({
             !single && result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
             h('footer', null,
               h('div', { className: 'harless-message-actions', 'aria-label': title + '回复操作' },
-                h('button', { type: 'button', className: 'harless-message-icon', 'aria-label': '复制 ' + title + ' 回复', title: copied === lane ? '已复制' : '复制', disabled: !answer, onClick: () => copy(lane) }, messageIcon('copy')),
-                ...['up', 'down'].map(vote => h('button', { key: vote, type: 'button', className: 'harless-message-icon',
-                  'aria-label': (vote === 'up' ? '赞 ' : '踩 ') + title + ' 回复', title: vote === 'up' ? '赞' : '踩', 'aria-pressed': result.feedback === vote,
+                actionButton({ 'aria-label': '复制 ' + title + ' 回复', disabled: !answer, onClick: () => copy(lane) }, copied === lane ? 'check' : 'copy', copied === lane ? '已复制' : '复制'),
+                ...['up', 'down'].map(vote => actionButton({ key: vote,
+                  'aria-label': (vote === 'up' ? '赞 ' : '踩 ') + title + ' 回复', 'aria-pressed': result.feedback === vote,
                   disabled: saving || ratings.saving || !settled(result) || !result.output_sha256,
-                  onClick: () => action({ action: 'feedback', lane, vote: result.feedback === vote ? null : vote, output_sha256: result.output_sha256 }) }, messageIcon(vote))),
-                h('button', { type: 'button', className: 'harless-message-icon', 'aria-label': '从 ' + title + ' 在新对话中分支',
-                  title: branching === lane ? '正在创建分支…' : '在新对话中分支', disabled: !!branching || !settled(value) || !result.output_sha256,
-                  onClick: () => fork(lane) }, messageIcon('fork')),
-                h('span', { className: 'harless-message-metric', title: '模型输入与输出 token 用量', 'aria-label': '用量 ' + usageLabel(result) }, messageIcon('usage'), usageLabel(result)),
-                h('span', { className: 'harless-message-metric', 'aria-label': '耗时 ' + durationLabel(result.duration_ms ?? (Number.isFinite(result.stats?.elapsed_seconds) ? result.stats.elapsed_seconds * 1000 : undefined)) },
-                  messageIcon('clock'), durationLabel(result.duration_ms ?? (Number.isFinite(result.stats?.elapsed_seconds) ? result.stats.elapsed_seconds * 1000 : undefined))),
-                copied === lane && h('span', { role: 'status', className: 'harless-paired-muted' }, '已复制')),
+                  onClick: () => action({ action: 'feedback', lane, vote: result.feedback === vote ? null : vote, output_sha256: result.output_sha256 }) },
+                  vote + (result.feedback === vote ? 'Selected' : ''), result.feedback === vote ? '取消标记' : vote === 'up' ? '好的回答' : '有问题的回答')),
+                actionButton({ 'aria-label': '从 ' + title + ' 在新对话中分支', disabled: !!branching || !settled(value) || !result.output_sha256,
+                  onClick: () => fork(lane) }, 'fork', branching === lane ? '正在创建分支…' : '在新对话中分支'),
+                h('span', { className: 'harless-message-metrics' },
+                Number.isFinite(usage.total) && h(ReplyMetric, { kind: 'usage', label: '用量 ' + tokenLabel(usage.total), title: title + ' · 本轮用量',
+                  rows: [['总用量', count(usage.total)], ['输入', count(usage.input)], ['输出', count(usage.output)]] }),
+                Number.isFinite(duration) && h(ReplyMetric, { kind: 'clock', label: '用时 ' + durationLabel(duration), title: title + ' · 本轮用时',
+                  rows: [['本轮总用时', durationLabel(duration)], ...(result.started_at ? [['开始时间', messageClock(result.started_at)]] : []),
+                    ...(result.finished_at ? [['完成时间', messageClock(result.finished_at)]] : [])] }),
+                result.finished_at && messageClock(result.finished_at) && h('time', { className: 'harless-message-time', dateTime: result.finished_at }, messageClock(result.finished_at))),
+                copied === lane && h('span', { role: 'status', className: 'harless-visually-hidden' }, '已复制')),
               h('small', null, `模型请求 ${result.stats?.upstream_requests || 0} · ${result.mode === 'shadow' ? '预测候选 ' + (result.stats?.shadow_candidates || 0) : '已验证跳过 ' + (result.stats?.verified_skips || 0)}`),
               ['failed', 'cancelled'].includes(result.status) && settled(value) && h('button', { type: 'button', disabled: saving || ratings.saving, onClick: () => action({ action: 'retry', lane }) }, '重试此侧'),
               !single && h('fieldset', { disabled: !value.scoring_available || saving, 'aria-label': title + '评分', 'aria-busy': pendingRatings[lane] !== undefined },
@@ -641,9 +689,24 @@ window.__ModuleLoader__.load({
             connection && h('p', { role: 'status', className: 'harless-paired-connection' }, connection));
         }
         return h('div', { className: 'harless-paired', 'data-comparison-id': value.id },
-          h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired-pane fieldset{display:flex;flex-wrap:wrap;gap:6px;border:0;padding:0;min-width:0}.harless-paired-pane legend{font-size:12px;color:var(--dsw-alias-label-secondary,inherit);margin-bottom:8px}.harless-paired-pane fieldset label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid #8885;border-radius:8px;padding:6px 8px;min-height:32px;cursor:pointer}.harless-paired-pane label.selected{color:var(--dsw-alias-link,#729cf7);border-color:currentColor;background:#729cf719}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-pane fieldset:disabled{opacity:.45}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;margin:0 0 8px}.harless-paired-files{list-style:none;padding:0;display:grid;gap:8px}.harless-paired-files li{min-width:0}.harless-paired-files a{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 12px;border:1px solid #8884;border-radius:10px;color:var(--dsw-alias-link,#729cf7);text-decoration:none}.harless-paired-files a:hover{background:#8881}.harless-paired-filename{min-width:0;overflow-wrap:anywhere}.harless-paired-download-label{flex-shrink:0;font-size:12px}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin-top:5px}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
+          h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;container-type:inline-size;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired-pane fieldset{display:flex;flex-wrap:wrap;gap:6px;border:0;padding:0;min-width:0}.harless-paired-pane legend{font-size:12px;color:var(--dsw-alias-label-secondary,inherit);margin-bottom:8px}.harless-paired-pane fieldset label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid #8885;border-radius:8px;padding:6px 8px;min-height:32px;cursor:pointer}.harless-paired-pane label.selected{color:var(--dsw-alias-link,#729cf7);border-color:currentColor;background:#729cf719}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-pane fieldset:disabled{opacity:.45}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;margin:0 0 8px}.harless-paired-files{list-style:none;padding:0;display:grid;gap:8px}.harless-paired-files li{min-width:0}.harless-paired-files a{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 12px;border:1px solid #8884;border-radius:10px;color:var(--dsw-alias-link,#729cf7);text-decoration:none}.harless-paired-files a:hover{background:#8881}.harless-paired-filename{min-width:0;overflow-wrap:anywhere}.harless-paired-download-label{flex-shrink:0;font-size:12px}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin-top:5px}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
           h('style', null, `.harless-single-pane{border:0;border-radius:0;padding:0;background:transparent}.harless-activity{font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary,inherit);margin:12px 0}.harless-activity summary{cursor:pointer}.harless-activity ol{padding-left:20px;margin:8px 0}.harless-activity li{padding:4px 0}.harless-activity li small{margin-left:12px}.harless-activity li[data-status=running]{color:var(--dsw-alias-state-business-primary,#729cf7)}`),
-          h('style', null, `.harless-message-actions{display:flex;align-items:center;flex-wrap:wrap;gap:4px;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired .harless-message-icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:6px;border:0;border-radius:7px;flex:none}.harless-message-icon:hover{background:var(--dsw-alias-interactive-bg-hover,#8882)}.harless-message-icon[aria-pressed=true]{color:var(--dsw-alias-state-business-primary,#729cf7);background:#729cf719}.harless-message-icon:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.harless-message-metric{display:inline-flex;align-items:center;gap:5px;margin-left:7px;font-size:12px;white-space:nowrap}.harless-message-metric svg{width:15px;height:15px}.harless-live-status{display:flex;align-items:center;gap:8px;font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary,inherit);margin:12px 0}.harless-live-dot{width:6px;height:6px;flex:none;border-radius:50%;background:var(--dsw-alias-state-business-primary,#729cf7)}.harless-process-message{padding:10px 0;border-top:1px solid #8883;overflow-wrap:anywhere}.harless-process-message pre{max-width:100%;overflow-x:auto}`),
+          h('style', null, `.harless-message-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:calc(28px + var(--dsh-content-font-delta,0px));margin-left:-6px;color:var(--dsw-alias-label-tertiary)}
+.harless-paired .harless-message-icon{display:inline-flex;align-items:center;justify-content:center;width:calc(28px + var(--dsh-content-font-delta,0px));height:calc(28px + var(--dsh-content-font-delta,0px));padding:6px;border:0;border-radius:28px;flex:none;color:var(--dsw-alias-label-tertiary)}
+.harless-message-actions svg{width:calc(15px + var(--dsh-content-font-delta,0px));height:calc(15px + var(--dsh-content-font-delta,0px));flex:none}
+.harless-paired .harless-message-icon:hover,.harless-paired .harless-message-metric-trigger:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.harless-paired .harless-message-icon:disabled{cursor:default;opacity:.4;background:transparent}
+.harless-message-icon:focus-visible,.harless-message-metric-trigger:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}
+.harless-message-metrics{display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;max-width:100%}.harless-message-metric{display:inline-flex;min-width:0}.harless-message-metric+.harless-message-metric{margin-left:-6px}
+.harless-paired .harless-message-metric-trigger{display:inline-flex;align-items:center;gap:4px;min-width:0;height:calc(28px + var(--dsh-content-font-delta,0px));padding:6px 8px;border:0;border-radius:28px;color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);font-variant-numeric:tabular-nums;line-height:calc(24px + var(--dsh-content-font-delta,0px));white-space:nowrap}
+.harless-message-metric-label{min-width:0;overflow:hidden;text-overflow:ellipsis}.harless-message-time{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);white-space:nowrap}
+.harless-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+@media(hover:hover){.harless-paired-pane[data-actions-reveal=hover] .harless-message-actions{opacity:0;transition:opacity 80ms}.harless-paired-pane[data-actions-reveal=hover]:hover .harless-message-actions,.harless-paired-pane[data-actions-reveal=hover]:focus-within .harless-message-actions,.harless-paired-pane[data-actions-reveal=hover]:has(.harless-message-metric[data-open]) .harless-message-actions{opacity:1}}
+@media(prefers-reduced-motion:reduce){.harless-paired-pane[data-actions-reveal=hover] .harless-message-actions{transition:none}}
+@media(max-width:480px){.harless-message-metric-label{display:none}}
+.harless-message-stat-panel{position:fixed;z-index:1100;box-sizing:border-box;width:280px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:12px;padding:16px;background:var(--dsw-specific-menu,#262626);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:1.5;box-shadow:0 8px 32px #0003}
+.harless-message-stat-panel>strong{display:block;padding-bottom:12px;border-bottom:1px solid var(--dsw-alias-outline-default,#8885);font-weight:500}.harless-message-stat-panel dl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;margin:12px 0 0}.harless-message-stat-panel dt{color:var(--dsw-alias-label-secondary)}.harless-message-stat-panel dd{margin:0;font-variant-numeric:tabular-nums}
+.harless-live-status{display:flex;align-items:center;gap:8px;font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary,inherit);margin:12px 0}.harless-live-dot{width:6px;height:6px;flex:none;border-radius:50%;background:var(--dsw-alias-state-business-primary,#729cf7)}.harless-process-message{padding:10px 0;border-top:1px solid #8883;overflow-wrap:anywhere}.harless-process-message pre{max-width:100%;overflow-x:auto}`),
           h('div', { className: value.presentation === 'single' ? 'harless-single' : 'harless-paired-grid' }, pane('baseline'), value.presentation !== 'single' && pane('motif')),
           !settled(value) && h('button', { type: 'button', disabled: saving, onClick: () => action({ action: 'cancel' }), style: { marginTop: 12 } }, '停止生成'),
           connection && h('div', { role: 'status', className: 'harless-paired-connection' }, connection,

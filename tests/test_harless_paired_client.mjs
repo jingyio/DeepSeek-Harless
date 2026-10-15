@@ -23,22 +23,46 @@ async function waitUntil(predicate) {
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
-function fixture(fetcher, initial = comparison(), { streaming = false, sessions = {}, anchorSeq, traceOnly = false, clipboard } = {}) {
+function fixture(fetcher, initial = comparison(), { streaming = false, sessions = {}, anchorSeq, traceOnly = false, clipboard, location, chatSnapshot } = {}) {
   let plugin, Component, cursor = 0, states = [], effects = [], effectSlots = [], cleanups = [], tree;
-  const timers = new Map(), requests = [], downloaded = [], revoked = [], events = new Map(); let timerId = 0;
+  const timers = new Map(), requests = [], downloaded = [], revoked = [], events = new Map(), listeners = new Map(); let timerId = 0;
+  const positioning = [], dismissals = [], clipboardWrites = [], mountedChildren = new Set();
   const MarkdownText = function NativeMarkdown() {};
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props || {}, children: children.flat() }),
-    useState(initial) { const n = cursor++; if (!(n in states)) states[n] = initial; return [states[n], value => { states[n] = typeof value === 'function' ? value(states[n]) : value; }]; },
+    useState(initial) { const n = cursor++, bucket = states; if (!(n in bucket)) bucket[n] = initial;
+      return [bucket[n], value => { bucket[n] = typeof value === 'function' ? value(bucket[n]) : value; }]; },
     useRef(value) { const n = cursor++; if (!(n in states)) states[n] = { current: value }; return states[n]; },
     useEffect(effect, deps) { const n = cursor++; const old = effectSlots[n]; if (!old || deps.some((value, i) => old[i] !== value)) {
       effectSlots[n] = deps; effects.push(() => { cleanups[n]?.(); cleanups[n] = effect(); }); } },
   };
-  const listener = (name, fn) => events.set(name, fn), unlisten = name => events.delete(name);
+  const listener = (name, fn) => {
+    if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn);
+    events.set(name, event => { for (const callback of [...listeners.get(name) || []]) callback(event); });
+  };
+  const unlisten = (name, fn) => { listeners.get(name)?.delete(fn); if (!listeners.get(name)?.size) events.delete(name); };
   const document = { hidden: false, addEventListener: listener, removeEventListener: unlisten,
     body: { appendChild() {} }, createElement: () => ({ click() { downloaded.push({ href: this.href, name: this.download }); }, remove() {} }) };
   const window = { crypto: webcrypto, navigator: { clipboard }, addEventListener: listener, removeEventListener: unlisten,
     __ModuleLoader__: { load(value) { plugin = value; } } };
+  const primitives = {
+    MarkdownText, Tooltip: function NativeTooltip() {},
+    ...Object.fromEntries(['CopyOutline', 'CheckOutline', 'LikeOutline', 'LikeFill', 'DislikeOutline', 'DislikeFill', 'BranchOutline', 'DatabaseOutline', 'ClockOutline']
+      .map(name => ['Icon' + name + '16', function NativeIcon() {}])),
+    writeClipboard: async text => { clipboardWrites.push(text); if (!clipboard?.writeText) return false;
+      try { await clipboard.writeText(text); return true; } catch { return false; } },
+    useAnchoredPosition: options => { positioning.push(options); return options.open ? { left: 12, top: 24 } : null; },
+    useDismissOnOutsidePointer: (rootRef, open, setOpen, panelRef) => {
+      dismissals.push({ rootRef, open, panelRef });
+      React.useEffect(() => {
+        if (!open) return;
+        const close = event => { if (!rootRef.current?.contains(event.target) && !panelRef.current?.contains(event.target)) setOpen(false); };
+        document.addEventListener('pointerdown', close);
+        return () => document.removeEventListener('pointerdown', close);
+      }, [rootRef, open, setOpen, panelRef]);
+    },
+  };
+  const ReactDOM = { createPortal: (child, target) => ({ type: 'portal', props: { target }, children: [child] }) };
   const streams = [];
   if (streaming) window.EventSource = class {
     constructor(url, options) { this.url = url; this.options = options; streams.push(this); }
@@ -51,25 +75,45 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
     URL: { createObjectURL: () => 'blob:verified-file', revokeObjectURL: value => revoked.push(value) },
     setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id) });
   const blocks = new Map();
-  plugin.factory(name => name === 'react' ? React : name === '@deepseek-ai/dsh-client-ui-primitives' ? { MarkdownText } : undefined).apply({
+  plugin.factory(name => name === 'react' ? React : name === 'react-dom' ? ReactDOM : name === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : undefined).apply({
     get: name => ({ commandUi: { decorate: () => () => {} }, inputTriggers: { registerSource: () => () => {} }, sessions,
       conversation: { blocks: { storeFor: id => ({ getSnapshot: () => blocks.get(id) }), set: (id, value) => blocks.set(id, value) } } })[name],
     effect: fn => fn(), uiConversation: { events: { register: () => () => {} } },
     slots: { inject(_name, fn) { fn(); }, register(spec, component) { if (spec.key === 'harless-comparison') Component = component; } },
   });
-  const node = { data: initial, anchorSeq };
-  const render = () => { cursor = 0; tree = Component({ node, traceOnly }); const pending = effects; effects = []; pending.forEach(fn => fn()); return tree; };
+  const node = { data: initial, anchorSeq, location };
+  const render = () => { cursor = 0; tree = Component({ node, traceOnly, ...(chatSnapshot === undefined ? {} : { useChat: select => select(chatSnapshot) }) });
+    const pending = effects; effects = []; pending.forEach(fn => fn()); return tree; };
   const all = (predicate, entry = tree) => !entry || typeof entry !== 'object' ? [] :
     [...(predicate(entry) ? [entry] : []), ...(entry.children || []).filter(child => child !== undefined).flatMap(child => all(predicate, child))];
   const content = entry => typeof entry === 'string' ? entry : (entry?.children || []).map(content).join('');
+  // Render a hook-bearing public child in its own seat, so opening a metric
+  // cannot accidentally write the parent ComparisonNode's hook state.
+  const mount = entry => {
+    const seat = { cursor: 0, states: [], effects: [], effectSlots: [], cleanups: [], tree: undefined };
+    const child = { render() {
+      const parent = { cursor, states, effects, effectSlots, cleanups };
+      ({ states, effects, effectSlots, cleanups } = seat); cursor = 0;
+      try {
+        seat.tree = entry.type(entry.props); const pending = effects; effects = []; pending.forEach(fn => fn()); return seat.tree;
+      } finally {
+        Object.assign(seat, { cursor, states, effects, effectSlots, cleanups });
+        ({ cursor, states, effects, effectSlots, cleanups } = parent);
+      }
+    }, all: predicate => all(predicate, seat.tree), content: () => content(seat.tree),
+    dispose() { seat.cleanups.forEach(fn => fn?.()); mountedChildren.delete(child); } };
+    mountedChildren.add(child); child.render(); return child;
+  };
   render();
-  return { render, all, content, requests, timers, downloaded, revoked, events, streams, MarkdownText, initial,
+  return { render, all, content, requests, timers, downloaded, revoked, events, streams, MarkdownText, primitives, initial,
+    mount, positioning, dismissals, clipboardWrites, document,
+    setChatSnapshot: value => { chatSnapshot = value; }, setNodeLocation: value => { node.location = value; },
     setNodeData: value => { node.data = value; },
     remount: (value = initial) => {
       cleanups.forEach(fn => fn?.()); states = []; effects = []; effectSlots = []; cleanups = [];
       node.data = value; return render();
     }, blocks,
-    dispose: () => cleanups.forEach(fn => fn?.()) };
+    dispose: () => { for (const child of mountedChildren) child.dispose(); cleanups.forEach(fn => fn?.()); } };
 }
 
 test('cold history displays loading until an authoritative snapshot arrives, never a fictional queued task', async () => {
@@ -676,13 +720,142 @@ test('lane footer copies full Markdown, reports actual usage and duration, and p
     return Response.json(value);
   },value,{clipboard:{writeText:async text=>copied.push(text)}});await flush();f.render();
   await f.all(row=>row.props['aria-label']==='复制 Baseline 回复')[0].props.onClick();f.render();
-  assert.deepEqual(copied,[value.lanes.baseline.answer]);assert.ok(f.all(row=>row.props['aria-label']==='用量 1.5k tok').length);
-  assert.ok(f.all(row=>row.props['aria-label']==='耗时 1 分 4 秒').length);
+  assert.deepEqual(copied,[value.lanes.baseline.answer]);assert.ok(f.all(row=>row.props.kind==='usage' && row.props.label==='用量 1.5K tok').length);
+  assert.ok(f.all(row=>row.props.kind==='clock' && row.props.label==='用时 1分04秒').length);
   await f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props.onClick();await flush();f.render();
   assert.equal(f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props['aria-pressed'],true);
   await f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props.onClick();await flush();f.render();
   assert.equal(f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props['aria-pressed'],false);
   assert.equal(f.requests.filter(row=>row.init.method==='POST').length,2);f.dispose();
+});
+
+test('comparison actions follow the latest turn of the whole conversation, including later ordinary Chat', async () => {
+  const location = { kind: 'turn', turn: { turn: 2, status: 'closed' } };
+  const f = fixture(undefined, comparison(), { location, chatSnapshot: { timeline: { turnOrder: [1, 2] } } });
+  const panes = () => f.all(row => row.type === 'section' && row.props['data-actions-reveal']);
+  assert.deepEqual(panes().map(row => row.props['data-actions-reveal']), ['always', 'always']);
+  for (const kind of ['assistant-step', 'harless-comparison']) {
+    f.setChatSnapshot({ timeline: { turnOrder: [1, 2, 3] }, nodes: new Map([['later', { kind, location: { kind: 'turn', turn: { turn: 3 } } }]]) });
+    f.render(); assert.deepEqual(panes().map(row => row.props['data-actions-reveal']), ['hover', 'hover'], kind);
+  }
+  f.setChatSnapshot({ timeline: { turnOrder: [1, 2] } }); f.render();
+  assert.deepEqual(panes().map(row => row.props['data-actions-reveal']), ['always', 'always']);
+  f.setNodeLocation({ kind: 'step', turn: { turn: 1 } }); f.render();
+  assert.deepEqual(panes().map(row => row.props['data-actions-reveal']), ['hover', 'hover']); f.dispose();
+});
+
+test('unknown comparison or timeline turn keeps actions discoverable and touch and keyboard paths remain visible', () => {
+  const f = fixture(undefined, comparison(), { chatSnapshot: { timeline: { turnOrder: [3] } } });
+  const reveal = () => f.all(row => row.props['data-actions-reveal']).map(row => row.props['data-actions-reveal']);
+  assert.deepEqual(reveal(), ['always', 'always']);
+  f.setNodeLocation({ kind: 'turn', turn: { turn: 2 } }); f.setChatSnapshot({ timeline: { turnOrder: [] } }); f.render();
+  assert.deepEqual(reveal(), ['always', 'always']);
+  f.setChatSnapshot({}); f.render(); assert.deepEqual(reveal(), ['always', 'always']);
+  f.setChatSnapshot(undefined); f.render(); assert.deepEqual(reveal(), ['always', 'always']);
+  const css = f.all(row => row.type === 'style').map(row => f.content(row)).join('\n');
+  assert.match(css, /@media\(hover:hover\)\{[^}]*data-actions-reveal=hover[^}]*opacity:0/);
+  assert.match(css, /:focus-within[^}]*opacity:1/);
+  assert.match(css, /:has\(\.harless-message-metric\[data-open\]\)/);
+  assert.match(css, /@media\(prefers-reduced-motion:reduce\)/); f.dispose();
+});
+
+test('lane actions use native glyphs and bottom tooltips, with a one-second copy check and no extra visible label', async () => {
+  const copied = [], value = comparison(); value.lanes.baseline.feedback = 'up';
+  const f = fixture(undefined, value, { clipboard: { writeText: async text => copied.push(text) } });
+  await flush(); f.render();
+  const button = label => f.all(row => row.type === 'button' && row.props['aria-label'] === label)[0];
+  for (const [label, icon] of [['复制 Baseline 回复', 'IconCopyOutline16'], ['赞 Baseline 回复', 'IconLikeFill16'],
+    ['踩 Baseline 回复', 'IconDislikeOutline16'], ['从 Baseline 在新对话中分支', 'IconBranchOutline16']]) {
+    assert.equal(button(label).children[0].type, f.primitives[icon]);
+    assert.equal(button(label).props.title, undefined, 'native Tooltip replaces browser title tooltips');
+  }
+  const tips = f.all(row => row.type === f.primitives.Tooltip);
+  assert.equal(tips.length, 8); assert.ok(tips.every(row => row.props.side === 'bottom'));
+  assert.ok(tips.some(row => row.props.label === '取消标记')); assert.ok(tips.some(row => row.props.label === '有问题的回答'));
+  await button('复制 Baseline 回复').props.onClick(); f.render();
+  assert.deepEqual(copied, [value.lanes.baseline.answer]); assert.deepEqual(f.clipboardWrites, copied);
+  assert.equal(button('复制 Baseline 回复').children[0].type, f.primitives.IconCheckOutline16);
+  assert.equal(f.all(row => row.props.role === 'status' && f.content(row) === '已复制')[0].props.className, 'harless-visually-hidden');
+  await button('复制 Baseline 回复').props.onClick(); assert.equal(copied.length, 1, 'check feedback prevents accidental duplicate copies');
+  const timer = [...f.timers].find(([, value]) => value.delay === 1000); assert.ok(timer);
+  f.timers.delete(timer[0]); timer[1].fn(); f.render();
+  assert.equal(button('复制 Baseline 回复').children[0].type, f.primitives.IconCopyOutline16);
+  assert.equal(f.all(row => row.props.role === 'status' && f.content(row) === '已复制').length, 0); f.dispose();
+});
+
+test('copy completion after leaving the comparison cannot change another conversation footer', async () => {
+  let finish; const f = fixture(undefined, comparison(), { clipboard: { writeText: () => new Promise(resolve => { finish = resolve; }) } });
+  await flush(); f.render(); const work = f.all(row => row.props['aria-label'] === '复制 Baseline 回复')[0].props.onClick();
+  const next = comparison(); next.id = 'comparison-b'; next.session_id = 'session-b'; f.setNodeData(next); f.render();
+  finish(); await work; f.render();
+  assert.equal(f.all(row => row.props['aria-label'] === '复制 Baseline 回复')[0].children[0].type, f.primitives.IconCopyOutline16);
+  assert.equal([...f.timers.values()].some(timer => timer.delay === 1000), false); f.dispose();
+});
+
+test('lane metrics use exact usage and completion time, compact counts, and only available timing facts', async () => {
+  const value = comparison(), baseline = value.lanes.baseline;
+  baseline.stats = { prompt_tokens: 1024, completion_tokens: 500, upstream_requests: 2 };
+  baseline.duration_ms = 64500; baseline.started_at = new Date(2020, 0, 2, 3, 3, 0).toISOString();
+  baseline.finished_at = new Date(2020, 0, 2, 3, 4, 5).toISOString();
+  const f = fixture(undefined, value); await flush(); f.render();
+  const metric = kind => f.all(row => row.type?.name === 'ReplyMetric' && row.props.kind === kind)[0];
+  assert.equal(metric('usage').props.label, '用量 1.5K tok');
+  assert.deepEqual(JSON.parse(JSON.stringify(metric('usage').props.rows)), [['总用量', '1,524 tok'], ['输入', '1,024 tok'], ['输出', '500 tok']]);
+  assert.equal(metric('clock').props.label, '用时 1分04秒');
+  assert.deepEqual(JSON.parse(JSON.stringify(metric('clock').props.rows)), [['本轮总用时', '1分04秒'],
+    ['开始时间', '2020年1月2日 03:03'], ['完成时间', '2020年1月2日 03:04']]);
+  const stamp = f.all(row => row.type === 'time' && row.props.className === 'harless-message-time')[0];
+  assert.equal(stamp.props.dateTime, baseline.finished_at); assert.equal(f.content(stamp), '2020年1月2日 03:04');
+  assert.doesNotMatch(JSON.stringify(metric('clock').props), /TTFT|首字|每秒|tok\/s|速度/);
+  for (const [total, label] of [[0, '0'], [999, '999'], [12345, '12.3K'], [517000, '517K'], [1200000, '1.2M']]) {
+    baseline.usage = { input: total, output: 0, total }; baseline.duration_ms = 900;
+    f.events.get('focus')(); await flush(); f.render();
+    assert.equal(metric('usage').props.label, '用量 ' + label + ' tok'); assert.equal(metric('clock').props.label, '用时 0秒');
+  }
+  f.dispose();
+});
+
+test('unknown usage and timing are omitted instead of exposing fictional waiting metrics or zeroes', async () => {
+  const value = comparison(), f = fixture(undefined, value); await flush(); f.render();
+  assert.equal(f.all(row => row.type?.name === 'ReplyMetric').length, 0);
+  assert.equal(f.all(row => row.type === 'time' && row.props.className === 'harless-message-time').length, 0);
+  value.lanes.baseline.stats = { prompt_tokens: 10 }; value.lanes.motif.duration_ms = 0;
+  f.events.get('focus')(); await flush(); f.render();
+  assert.equal(f.all(row => row.type?.name === 'ReplyMetric' && row.props.kind === 'usage').length, 0, 'partial input is not a total usage figure');
+  const metrics = f.all(row => row.type?.name === 'ReplyMetric'); assert.equal(metrics.length, 1);
+  assert.equal(metrics[0].props.label, '用时 0秒', 'a genuine zero duration is retained');
+  f.dispose();
+});
+
+test('usage and time details use public anchored portals with outside and Escape dismissal', async () => {
+  const value = comparison(); value.lanes.baseline.stats = { prompt_tokens: 1024, completion_tokens: 500 };
+  value.lanes.baseline.duration_ms = 64500;
+  const f = fixture(undefined, value); await flush(); f.render();
+  for (const kind of ['usage', 'clock']) {
+    const entry = f.all(row => row.type?.name === 'ReplyMetric' && row.props.kind === kind)[0], child = f.mount(entry);
+    const trigger = () => child.all(row => row.type === 'button')[0];
+    assert.equal(trigger().props['aria-haspopup'], 'dialog'); assert.equal(trigger().props['aria-expanded'], false);
+    assert.equal(trigger().children[0].type, f.primitives[kind === 'usage' ? 'IconDatabaseOutline16' : 'IconClockOutline16']);
+    let focused = 0; const insideTrigger = {}, insidePanel = {}, anchor = f.positioning.at(-1);
+    anchor.anchorRef.current = { contains: target => target === insideTrigger, querySelector: () => ({ focus: () => focused++ }) };
+    anchor.panelRef.current = { contains: target => target === insidePanel };
+    trigger().props.onClick(); child.render(); assert.equal(trigger().props['aria-expanded'], true);
+    const portal = child.all(row => row.type === 'portal')[0], panel = child.all(row => row.props.role === 'dialog')[0];
+    assert.equal(portal.props.target, f.document.body); assert.equal(panel.props['aria-label'], entry.props.title);
+    assert.deepEqual(panel.props.style, { left: 12, top: 24 });
+    assert.equal(f.positioning.at(-1).side, 'top'); assert.equal(f.positioning.at(-1).gap, 8); assert.equal(f.positioning.at(-1).margin, 12);
+    assert.equal(f.dismissals.at(-1).panelRef, anchor.panelRef, 'portaled content participates in outside-click boundaries');
+    assert.match(child.content(), kind === 'usage' ? /总用量1,524 tok输入1,024 tok输出500 tok/ : /本轮总用时1分04秒/);
+    assert.doesNotMatch(child.content(), /TTFT|首字|每秒|tok\/s/);
+    f.events.get('pointerdown')({ target: insidePanel }); child.render(); assert.equal(trigger().props['aria-expanded'], true);
+    f.events.get('pointerdown')({ target: {} }); child.render(); assert.equal(trigger().props['aria-expanded'], false);
+    assert.equal(child.all(row => row.type === 'portal').length, 0);
+    trigger().props.onClick(); child.render(); f.events.get('keydown')({ key: 'Escape' }); child.render();
+    assert.equal(trigger().props['aria-expanded'], false); assert.equal(focused, 1); child.dispose();
+  }
+  const css = f.all(row => row.type === 'style').map(row => f.content(row)).join('\n');
+  assert.match(css, /max-width:calc\(100vw - 24px\)/); assert.match(css, /max-height:calc\(100dvh - 24px\)/);
+  assert.match(css, /overflow:auto/); f.dispose();
 });
 
 test('trajectory tabs use each lane actual events and distinguish verified optimization from shadow candidates', async () => {
