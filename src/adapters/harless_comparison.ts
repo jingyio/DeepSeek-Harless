@@ -244,6 +244,11 @@ export function createComparisonService(output: string, principal: string, host:
     // upload receipt. These server-minted references never appear in GET views.
     sourceFor: (session:string,requestId:string,receipt:string) =>
       state.turns.find(t=>t.session_id===session&&t.request_id===requestId)?.source_files?.[receipt],
+    requestContext: (session:string,requestId:string) => {
+      const turn=state.turns.find(t=>t.session_id===session&&t.request_id===requestId);
+      return turn ? structuredClone({scene:turn.scene,options:turn.options,model:turn.model,
+        reasoning_effort:turn.reasoning_effort??'off',presentation:turn.presentation??'paired'}) : undefined;
+    },
     isLane: (id: string) => state.turns.some(t => turnLanes(t).some(name => t.lanes[name].session_id === id)) || Object.values(state.threads).some((thread: any) => Object.values(thread.lanes).includes(id)),
     parentFor: (id: string) => state.turns.find(t => turnLanes(t).some(name => t.lanes[name].session_id === id))?.session_id ?? Object.entries(state.threads).find(([, thread]: any) => Object.values(thread.lanes).includes(id))?.[0] ?? null,
     async admit(session: string, request: any, context: any) { return locked(async () => {

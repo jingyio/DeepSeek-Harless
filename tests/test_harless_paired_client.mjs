@@ -35,6 +35,7 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
     useRef(value) { const n = cursor++; if (!(n in states)) states[n] = { current: value }; return states[n]; },
     useEffect(effect, deps) { const n = cursor++; const old = effectSlots[n]; if (!old || deps.some((value, i) => old[i] !== value)) {
       effectSlots[n] = deps; effects.push(() => { cleanups[n]?.(); cleanups[n] = effect(); }); } },
+    useLayoutEffect(effect, deps) { this.useEffect(effect, deps); },
   };
   const listener = (name, fn) => {
     if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn);
