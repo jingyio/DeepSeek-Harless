@@ -1,0 +1,15 @@
+# 最新 main 下的论文历史序列复测（2026-10-15）
+
+**问题与假设。** 将历史轨迹中的 BibTeX 解析脚本及 pin→活动引用检查→原文读取序列接入正式论文场景后，检查最新 `main` 是否仍能完成当前任务的报告/PDF 链路。只有在相同输入、质量门槛和工具条件下，才能再讨论模型请求或费用收益。本轮不是旧 160→20 次完整论文实验的复现。
+
+**输入与任务。** 这是合成诊断，不是真实论文。上传 163 字节 `main.tex`，正文只有 `This note cites \\cite{alpha} for a small illustration.`；上传 79 字节 `references.bib`，只有 `@article{alpha, title={A Small Illustration}, author={Doe, Jane}, year={2020}}`。没有上传 `audit.json`。测试提示明确要求生成参考文献审查报告 PDF，并点名 `stage_current_audit`→`finalize_current_audit`→`read_current_audit`→`export_current_audit_pdf` 的顺序。这种工具引导强于真实用户通常只说“审查论文”，所以不能证明模型自主发现与采用脚本的能力。
+
+**配置与复现位置。** 在 V100 私有隔离目录 `/home/jingyij/jjy/.local/integration/harless-motif-20261014` 运行，原始输入、完整事件、有效配置、报告及 PDF 留在 `.local/web/runs/ea1954629d724a1f82bc95dde598771a/`，不入 Git。代码内容为本分支合入 `main@8004668` 的 `1f6767e`，再叠加本轮未提交的 `scripts/harness-web.py` 测试兼容修复；隔离目录采用 `git archive` 覆盖，内部 `.git` 仍显示旧 `340d243`，故自动快照的 `commit/dirty_files` 不代表这次代码版本，应以本段和代码 diff 为准。运行环境 Node `v22.23.3`、Python `3.10.21`、DSH `0.1.5-rc.3`；`deepseek-official/deepseek-flash`、`reasoning_effort=off`、任务实际 Origin（`baseline`）/RSI On，压缩关闭，输出 cap 4000 token，任务 $0.06/24 请求、启动 $0.08/32 请求。模型费用账单实付未知。任务有效配置 SHA-256 `8f637f64c5e10392d72c93e7a5ee1513ee5e6ece2b225642764a766f8698a76c`。
+
+20 个实际 MCP Schema 的快照 SHA-256 为 `ea19438c79c7afb3c8af679920ab168c735dd56d04e326144e15223ca3178e11`；私有 v3 运行包位于 `.local/paper-local-batch-v3/compiled/runtime/`，认证文件 SHA-256 `85aaa96596e2914285f329c275809851ad06e46cb574b0fdd51ceeba044a024c`，在线 manifest SHA-256 `e22428bb12f862c99fbec925aba2ba7e3bb7ef10b4989f0f3369bfdd84e2755a`。它用历史 citation/uploaded 来源和当前工具契约重编，仍只有两条可认证的只读 Motif；新增批量工具是模型显式调用，不是自动跳过。运行 ID 与上述私有目录一一对应；入口是 `scripts/harness-web.py --real-model`，任务通过 Web API 上传两文件并提交，具体请求和有效配置以私有 run 为准。
+
+**结果。** 完成 1 份报告及 3 页 PDF，46/46 个报告字段有字面覆盖；未做逐页视觉或科研事实人工审阅。真实模型 10 请求、12 工具调用、3 工具错误、0 Motif 尝试、0 Verified Skip；提示缓存命中输入 79,360 token，未命中 11,987 token，输出 4,984 token；代理估费 **$0.010053060**，约 33.2 秒。两次错误是将 `pin_paper_sources` 的句柄错传给 `read_pinned_paper_citations`，另一次是 `stage_current_audit` 参数 JSON 格式错误，后续重试恢复。批量引用工具被调用，但模型仍有多余读取，不能将请求数变化归因于该工具。加上此前隔离实验 565 请求/$1.019021400 代理估费，现累计 **575 请求/$1.029074460**；所有失败、重试均计入，账单实付未知。
+
+**无模型回归。** 五场景 `npm run web:scenes:check` 在同一隔离目录完成（run `48bdc3756af940e4b18235d2f3bfea72`）：30 种菜单组合与任务冻结预览、五个场景各自实际 MCP 配置/上传、Files 写权限预览、论文 PDF 授权预览、两个用户进程及跨用户 Session/Task/收据拒绝，模型请求 0。PPT 共享代码兼容锁更新后 `npm run motif:check` 通过，属于结构诊断。合并后 Node 全量 633 通过/3 条件跳过；根 `npm test` 首跑 953 Python 通过/7 失败，其中 4 个为此前已有的 V100 文献 PDF 解析问题，2 个参数夹具兼容失败已修复并定向 4 通过，1 个 PPT 兼容锁已按实际代码刷新并定向通过。根入口未因这些定向修复再跑到全绿，不能写作全量通过。
+
+**结论与下一步。** 已观察到历史脚本和只读操作序列在最新主线的真实小样本可用，报告/PDF 交付完成；**未观察到 RSI 自动跳过或费用增益**。这个样本与旧两次实验的输入规模、提示引导、工具集合和质量门槛均不同，不能拿 10 次对比旧 160→20 次。下一轮应固定一份经用户许可、包含章节/引用/图表的实际论文任务，用自然语言题面，在同一输入、工具集、模型与审阅标准下比较 Origin、Shadow、Execute；由模型/工具生成报告字段，不要求用户提供 JSON。旧轨迹中的写脚本和批量动作需逐项校验来源、权限和实际结果后才能认证为可执行 Motif。生产成员进程仍未切换这份私有 v3 包。

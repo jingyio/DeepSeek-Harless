@@ -193,7 +193,7 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 
 当前主线 Web 默认不额外限制每次模型输出（`config/harness-web.json` 的 `max_output_tokens:null`）；论文隔离实验曾显式设为 4000 token，结果不得与不同上限直接比较。预算代理继续记账并执行配置的费用与请求上限。论文选择 PDF 输出后，缺 PDF/覆盖收据不会标记完成，最多两次同 Session/预算内续行。最小真实论文资料的生成与导出结果及未评审边界见[实验记录](docs/experiments/paper-generated-report-20261015-v1.md)。
 
-历史论文脚本的[本地引用批量复用](docs/experiments/paper-local-batch-reuse-20261015-v1.md)已在 V100 隔离检出验证：模型从当前任务的 `.tex/.bib` 调用新 MCP 工具，生成报告和 PDF；修复后的小样本为 9 次真实请求、0 工具错误。新批量工具不是 Motif 自动跳过，跨任务质量和稳定费用收益尚未验收，生产私有包尚未切换。
+历史论文脚本的[本地引用批量复用](docs/experiments/paper-local-batch-reuse-20261015-v1.md)已在 V100 隔离检出验证：模型从当前任务的 `.tex/.bib` 调用新 MCP 工具，生成报告和 PDF；修复后的小样本为 9 次真实请求、0 工具错误。[合入最新 main 的复测](docs/experiments/paper-local-batch-main-20261015-v2.md)为 10 请求、3 工具错误、0 Motif 跳过。两次均为单引用合成样本且题面显式引导报告工具，不代表完整论文审查或稳定降本；生产私有包尚未切换。
 
 任务与用户启动实例分别隔离；菜单不调用模型，已确认任务不随菜单变化。PPT 默认只读，生成页数/模板/输出权限经任务 API 设置后确认；原生聊天尚无该参数编辑界面。完整配置、用户入口依赖和验收见 [Harless 控制协议](docs/harless-controls.md)。`npm run web:scenes:check` 检查实际 Harness/MCP 与两用户实例隔离；`-- --real-model` 明确启用最多0.06美元的只读模型验收。历史样例工具只用 `--scene-registry config/harless-diagnostics.json --scenario example` 等显式诊断配置，默认产品菜单不映射样例。
 

@@ -99,7 +99,7 @@ def configured_glm(real_model: bool):
 
 def prepare(args, output, endpoint):
     public = json.loads((ROOT / 'config/harness-web.json').read_text())
-    public['max_output_tokens'] = args.max_output_tokens
+    public['max_output_tokens'] = getattr(args, 'max_output_tokens', public['max_output_tokens'])
     scenario = Path(args.scenario)
     if not scenario.is_absolute():
         scenario = ROOT / scenario
