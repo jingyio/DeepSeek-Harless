@@ -26,6 +26,24 @@
     }));
     ctx.slots.inject('conversation.hero.brand.mark', () =>
       ctx.slots.register({ name: 'conversation.hero.brand.mark', priority: -100 }, Mark));
+
+    // GeneLoop chooses its scene through the slash reference. These upstream
+    // preset controls change a different setting and expose internal preset IDs.
+    // Keep their removal independent from workspace and composer installation.
+    ctx.slots.inject('conversation.hero.agentPreset', () => ctx.slots.register(
+      { name: 'conversation.hero.agentPreset', priority: -100 }, () => null));
+    ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register(
+      { name: 'conversation.session.header.actions', id: 'agent-preset', priority: -100 }, () => null));
+
+    // Replace only the upstream developer notice, not model setup or any user
+    // approval. Completing this public slot advances the onboarding coordinator;
+    // do not forge an acknowledgement in the user's persistent settings.
+    function SkipDeveloperNotice({ complete }) {
+      React.useLayoutEffect(() => { complete(); }, [complete]);
+      return null;
+    }
+    ctx.slots.inject('settings.onboarding', () => ctx.slots.register(
+      { name: 'settings.onboarding', id: 'welcome-notice', order: -100, priority: -100 }, SkipDeveloperNotice));
   };
   const updateTitle = () => {
     const current = document.title;
@@ -39,4 +57,17 @@
   const icon = document.createElement('link');
   icon.rel = 'icon'; icon.type = 'image/jpeg'; icon.href = logo;
   document.head.append(icon);
+
+  // Old owner patches injected this link directly under body, outside the slot
+  // system. Remove that exact legacy entry, including before plugin startup;
+  // links inside a conversation and every other dialog/control remain intact.
+  const legacySelector = 'body > a[href="/paper-revision"]';
+  const legacyStyle = document.createElement('style');
+  legacyStyle.textContent = legacySelector + '{display:none!important}';
+  document.head.append(legacyStyle);
+  const removeLegacyEntry = () => {
+    for (const entry of document.querySelectorAll(legacySelector)) entry.remove();
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', removeLegacyEntry, { once: true });
+  else removeLegacyEntry();
 })();

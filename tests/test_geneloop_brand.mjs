@@ -9,9 +9,11 @@ import vm from 'node:vm';
 import { createGateway } from '../scripts/harless_gateway.mjs';
 
 test('GeneLoop uses public brand slots without replacing provider or conversation content', () => {
-  const records = [], head = [], oldIcon = { remove() { this.removed = true; } };
+  const records = [], head = [], effects = [], oldIcon = { remove() { this.removed = true; } };
+  const legacyLink = { remove() { this.removed = true; } };
   const document = { title: '当前会话 · DeepSeek Harness', head: { append: node => head.push(node) },
-    querySelectorAll: () => [oldIcon], createElement: tag => ({ tag }) };
+    querySelectorAll: selector => selector === 'link[rel~="icon"]' ? [oldIcon]
+      : selector === 'body > a[href="/paper-revision"]' ? [legacyLink] : [], createElement: tag => ({ tag }) };
   let observe;
   const window = {};
   vm.runInNewContext(readFileSync(new URL('../src/adapters/geneloop_brand.js', import.meta.url), 'utf8'), {
@@ -19,11 +21,13 @@ test('GeneLoop uses public brand slots without replacing provider or conversatio
   });
   const ctx = { slots: { inject(_name, fn) { const output = fn(); if (output?.next) [...output]; },
     register(options, component) { records.push({ options, component }); } } };
-  const React = { createElement: (type, props, ...children) => ({ type, props, children }) };
+  const React = { createElement: (type, props, ...children) => ({ type, props, children }),
+    useLayoutEffect: effect => effects.push(effect) };
   window.__installGeneLoopBrand(ctx, React);
   window.__installGeneLoopBrand(ctx, React);
-  assert.equal(records.length, 3);
-  assert.deepEqual(records.map(row => row.options.name), ['sidebar.brand.mark', 'sidebar.brand.name', 'conversation.hero.brand.mark']);
+  assert.equal(records.length, 6);
+  assert.deepEqual(records.map(row => row.options.name), ['sidebar.brand.mark', 'sidebar.brand.name', 'conversation.hero.brand.mark',
+    'conversation.hero.agentPreset', 'conversation.session.header.actions', 'settings.onboarding']);
   assert.ok(records.every(row => row.options.priority < 0));
   assert.equal(records[0].component({ size: 24 }).props['aria-label'], 'GeneLoop');
   assert.equal(records[1].component().children[0], 'GeneLoop');
@@ -32,6 +36,40 @@ test('GeneLoop uses public brand slots without replacing provider or conversatio
   assert.equal(document.title, 'DeepSeek Flash 模型测试');
   assert.equal(oldIcon.removed, true);
   assert.equal(head[0].href, '/assets/geneloop.jpg?v=1');
+  assert.equal(legacyLink.removed, true);
+  assert.equal(head[1].textContent, 'body > a[href="/paper-revision"]{display:none!important}');
+
+  const preset = records.find(row => row.options.name === 'conversation.hero.agentPreset');
+  const header = records.find(row => row.options.name === 'conversation.session.header.actions');
+  assert.equal(preset.component(), null);
+  assert.equal(header.options.id, 'agent-preset'); assert.equal(header.component(), null);
+  const onboarding = records.filter(row => row.options.name === 'settings.onboarding');
+  assert.equal(onboarding.length, 1);
+  assert.equal(onboarding[0].options.id, 'welcome-notice');
+  let completed = 0;
+  assert.equal(onboarding[0].component({ complete() { completed++; } }), null);
+  assert.equal(completed, 0, 'onboarding state is not changed during render');
+  effects.forEach(effect => effect());
+  assert.equal(completed, 1, 'the coordinator advances without a modal or settings write');
+});
+
+test('legacy paper entry cleanup waits for parsed body and does not select conversation links', () => {
+  const removed = [], queries = [], events = [], nodes = [];
+  const document = { title: 'GeneLoop', readyState: 'loading', head: { append: node => nodes.push(node) },
+    createElement: tag => ({ tag }), addEventListener: (...args) => events.push(args),
+    querySelectorAll(selector) {
+      queries.push(selector);
+      return selector === 'body > a[href="/paper-revision"]' ? [{ remove: () => removed.push('legacy') }] : [];
+    } };
+  vm.runInNewContext(readFileSync(new URL('../src/adapters/geneloop_brand.js', import.meta.url), 'utf8'), {
+    window: {}, document, MutationObserver: class { observe() {} },
+  });
+  assert.deepEqual(removed, []);
+  assert.equal(events.length, 1); assert.equal(events[0][0], 'DOMContentLoaded');
+  assert.equal(events[0][2].once, true);
+  events[0][1]();
+  assert.deepEqual(removed, ['legacy']);
+  assert.ok(queries.every(selector => ['link[rel~="icon"]', 'body > a[href="/paper-revision"]'].includes(selector)));
 });
 
 test('login logo is public and byte-identical while account data stays protected', async t => {

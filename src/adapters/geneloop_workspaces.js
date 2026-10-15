@@ -145,7 +145,7 @@
             h('div', { className: 'geneloop-workspace-row', 'data-selected': selectedId === item.workspaceId },
               h('button', { className: 'geneloop-workspace-toggle', 'aria-label': (expanded ? '收起 ' : '展开 ') + item.title, 'aria-expanded': expanded,
                 onClick: () => setExpandedGroups(old => { const next = new Set(old); expanded ? next.delete(item.workspaceId) : next.add(item.workspaceId); return next; }) }, expanded ? '▾' : '▸'),
-              h('button', { className: 'geneloop-workspace-name', title: item.title, 'aria-pressed': selectedId === item.workspaceId,
+              h('button', { className: 'geneloop-workspace-name', 'aria-pressed': selectedId === item.workspaceId,
                 onClick: () => { navigating++; selected = item.workspaceId; notify(); setExpandedGroups(old => new Set([...old, item.workspaceId])); } }, item.title),
               h('button', { className: 'geneloop-row-action', 'aria-label': '重命名工作区 ' + item.title, onClick: () => edit('workspace', item.workspaceId, item.title) }, '⋯'),
               h('button', { className: 'geneloop-row-action', 'aria-label': '在“' + item.title + '”中新建会话', onClick: () => { void start(item.workspaceId); } }, '+')),
