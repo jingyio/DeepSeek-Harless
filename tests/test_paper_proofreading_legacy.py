@@ -6,7 +6,7 @@ import json
 import pytest
 
 from scenarios.paper_proofreading.server import PaperEvidence, PaperOutput, create_citation_evidence
-from src.adapters.paper_renderer import INPUT_SCHEMA
+from src.adapters.paper_renderer import INPUT_SCHEMA, audit_pdf_content_coverage
 
 
 def make_paper(root: Path):
@@ -74,3 +74,49 @@ def test_pdf_export_requires_this_task_approval_and_current_report_version(tmp_p
     (inputs / 'audit.json').write_bytes(raw + b' ')
     with pytest.raises(ValueError, match='approval_changed|file_version_changed_from_task_admission'):
         output.read_audit()
+
+
+def test_pdf_export_receipt_can_check_literal_content_and_links_without_claiming_truth(tmp_path, monkeypatch):
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    # ASCII enums keep this PDF fixture independent of ReportLab/font packages.
+    monkeypatch.setitem(INPUT_SCHEMA, 'status_enum', ['verified'])
+    monkeypatch.setitem(INPUT_SCHEMA, 'priority_enum', ['low'])
+    report = {'schema_version': 1, 'scope': 'Current report', 'reference_count': 1,
+              'references': [{'number': 1, 'key': 'alpha', 'short_title': 'Study A',
+                              'status': INPUT_SCHEMA['status_enum'][0],
+                              'priority': INPUT_SCHEMA['priority_enum'][0],
+                              'explanation': 'Explanation preserved',
+                              'source_ids': ['source-1'], 'evidence_files': []}],
+              'sources': [{'id': 'source-1', 'platform': 'Archive',
+                           'url': 'https://example.org/study-a'}],
+              'issues': [],
+              'citation_checks': {key: {'result': 'not assessed', 'evidence': 'fixture',
+                                        'limitation': 'human review'}
+                                  for key in INPUT_SCHEMA['citation_checks_required']},
+              'notes': ['No scientific review']}
+    pdf = tmp_path / 'report.pdf'
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    page[NameObject('/Resources')] = DictionaryObject({
+        NameObject('/Font'): DictionaryObject({NameObject('/F1'): DictionaryObject({
+            NameObject('/Type'): NameObject('/Font'),
+            NameObject('/Subtype'): NameObject('/Type1'),
+            NameObject('/BaseFont'): NameObject('/Helvetica')})})})
+    fields = ['Study A', report['references'][0]['status'], report['references'][0]['priority'],
+              'Explanation preserved', 'source-1', 'Archive', 'not assessed',
+              'fixture', 'human review', 'No scientific review']
+    stream = DecodedStreamObject()
+    stream.set_data(('BT /F1 12 Tf 50 760 Td ' + ' '.join(
+        '(' + field + ') Tj 0 -24 Td' for field in fields) + ' ET').encode())
+    page[NameObject('/Contents')] = stream
+    writer.add_uri(0, 'https://example.org/study-a', (50, 500, 120, 515))
+    with pdf.open('wb') as output:
+        writer.write(output)
+    coverage = audit_pdf_content_coverage(pdf, report)
+    assert coverage['all_fields_present'] and coverage['checked_fields'] == coverage['present_fields']
+    assert coverage['pdf_pages'] == 1 and coverage['source_link_objects'] == 1
+    assert coverage['semantic_quality_accepted'] is False
+    report['references'][0]['explanation'] = 'Missing explanation'
+    assert audit_pdf_content_coverage(pdf, report)['all_fields_present'] is False

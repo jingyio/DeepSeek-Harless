@@ -13,6 +13,8 @@ import os
 from pathlib import Path, PurePosixPath
 import subprocess
 import tempfile
+import re
+import unicodedata
 
 
 SCHEMA = "paper-renderer-preparation-v1"
@@ -167,6 +169,58 @@ def validate_audit(audit: dict) -> None:
         value = checks[field]
         if not isinstance(value, dict) or any(not isinstance(value.get(k), str) for k in INPUT_SCHEMA["citation_result_required"]):
             raise ValueError("renderer_input_invalid_citation_result")
+
+
+def audit_pdf_content_coverage(pdf_path: Path, audit: dict) -> dict:
+    """Check literal report fields in the produced PDF text and link objects.
+
+    This checks preservation, not the truth of any reference or visual quality.
+    """
+    from pypdf import PdfReader
+
+    validate_audit(audit)
+    reader = PdfReader(pdf_path)
+    if reader.is_encrypted or not 1 <= len(reader.pages) <= 200:
+        raise ValueError("renderer_pdf_pages_invalid")
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    links = []
+    for page in reader.pages:
+        for annotation in page.get("/Annots", []):
+            action = annotation.get_object().get("/A", {})
+            if action.get("/URI"):
+                links.append(str(action["/URI"]))
+
+    def normalized(value: str) -> str:
+        return re.sub(r"\s+", "", unicodedata.normalize("NFKC", value)
+                      .replace("\u00ad", "").replace("\u200b", ""))
+
+    body = normalized(text)
+    linked = normalized(text + "\n" + "\n".join(links))
+    checks = []
+
+    def check(value, *, link=False):
+        if isinstance(value, str) and value.strip():
+            checks.append(normalized(value) in (linked if link else body))
+
+    for row in audit["references"]:
+        for field in ("short_title", "status", "priority", "explanation"):
+            check(row[field])
+    for row in audit["sources"]:
+        for field in ("id", "platform", "url"):
+            check(row[field], link=field == "url")
+    for row in audit["issues"]:
+        for value in row.values():
+            check(value)
+    for row in audit["citation_checks"].values():
+        for value in row.values():
+            check(value)
+    for note in audit.get("notes", []) if isinstance(audit.get("notes"), list) else []:
+        check(note)
+    return {"pdf_pages": len(reader.pages), "checked_fields": len(checks),
+            "present_fields": sum(checks), "all_fields_present": all(checks),
+            "has_text_layer": bool(body), "has_replacement_character": "\ufffd" in text,
+            "source_link_objects": len(links), "semantic_quality_accepted": False,
+            "visual_quality_reviewed": False}
 
 
 def _capability_audit(source: str) -> dict:

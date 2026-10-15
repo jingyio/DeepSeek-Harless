@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 from src.adapters.session_files import SessionFiles
 from src.adapters import paper_static_checks
 from src.adapters.paper_query_recovery import validate_queries
-from src.adapters.paper_renderer import render_renderer, validate_audit
+from src.adapters.paper_renderer import audit_pdf_content_coverage, render_renderer, validate_audit
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -233,7 +233,7 @@ class PaperOutput:
                 'semantic_quality_accepted': False, 'source_scope': 'current_approved_task_upload'}
 
     def export(self, report_sha256):
-        workspace, grant, raw, digest, _ = self._audit(writable=True)
+        workspace, grant, raw, digest, report = self._audit(writable=True)
         if report_sha256 != digest: raise ValueError('stale_audit_export')
         if self.renderer_root is None: raise ValueError('paper_renderer_not_deployed')
         cert = json.loads((self.renderer_root / 'deployment.json').read_text())
@@ -253,6 +253,7 @@ class PaperOutput:
         receipt = render_renderer(package, cert['manifest_sha256'], target, digest,
                                   Path(sys.executable), review_path=review,
                                   expected_review_sha256=cert['review_sha256'])
+        receipt['content_coverage'] = audit_pdf_content_coverage(target / 'reference-check-report.pdf', report)
         if self.files.read('audit.json', limit=256*1024)[1] != digest:
             raise ValueError('paper_audit_changed_during_export')
         receipt['artifact_file'] = str((target / 'reference-check-report.pdf').relative_to(workspace))
