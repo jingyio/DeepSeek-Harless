@@ -1,5 +1,7 @@
 # SSS 项目目标、协作与交接规范
 
+2026-10-15最新用户分支要求：本任务所有开发改动、已完成且通过验证的功能、公开库和文档只提交并推送到`feature/rsi-research-agent`。检查main仅作为参照，不代表授权合并main。此前GeneLoop `/management`的PR #28由Agent错误合入main；仅使用明确的回退提交纠正该次误合并，不改写Git历史。之后没有用户新的明确合并授权，不再合并或推送开发功能到main。原实现以完整可校验补丁保存在`integrations/geneloop-management/`；此分支目前没有新版GeneLoop前端依赖，不把补丁存档称为已运行的接口移植。下面的旧发布授权记录不能扩大这一最新分支边界。
+
 2026-10-15最新用户授权：上传已完成内容至GitHub，并检查main将文件管理接入GeneLoop的`/management`。此授权优先于本文旧“暂不推送”记录；保留私有材料、原始认证和日志边界，不能覆盖main既有data/ppt/paper及账号/工作区能力。
 
 2026-10-15当前本地集成更新：用户指定持久化日常经验库、重复/数组Motif、新版本独立质量及SDK/Web/认证恢复三项已完成。默认真实库daily-files-real-v2，第5版4图；18真实执行/163HTTP/USD0.097170133，40验证跳过；报告缺口和工具失败保留。完整浏览器恢复通过，已封存认证0重复费用。源码、费用和原最终集保留、暂不推送；共享变更及验证见`docs/changes/persistent-rsi-integration.md`与`docs/experiments/persistent-rsi-20261015.md`。旧CI已修复，GitHub当前fcdcc48绿色。本文以下旧实验结果继续作为历史证据，不能用于覆盖新私有库或给任意其它MCP授予权限。

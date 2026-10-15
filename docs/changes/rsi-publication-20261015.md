@@ -13,3 +13,5 @@ GeneLoop最新main基线`2a03e22`已有用户注册、账号工作区和Files场
 第二轮Windows CI将原子效果的两个恢复用例报为`fsync`只读句柄EBADF；改为在无内容修改的读写句柄上刷新。此改动改变MCP源码版本，原证书/库保留并停用旧候选，新材料按相同v2标准重新学习和独立认证，不能重签旧库绕过版本守卫。
 
 Windows刷新修订后新冻结实验`fm-persistent-rsi-20261015-e2017768`：15真实执行/147HTTP/USD0.082976075，普通3/3与独立认证12/12机械交付，4新图自动激活为持久库第10版，后续移动任务5次验证跳过。旧4图明确停用且证书/产物不改签，最新公开库为`file-management-operation-v2-winfix`。最终集不学习；记录包含全部失败/费用，账单未核实。
+
+2026-10-15用户纠正发布分支：本任务开发内容只能提交`feature/rsi-research-agent`；此前把检查main理解成合并授权是Agent判断错误。PR #28的误合并需通过可追溯回退恢复，原GeneLoop实现完整保存在用户分支的`integrations/geneloop-management/`，未伪称已移植到本分支前端。以后不再由“检查main”推断允许合并。见[分支修正](branch-correction-20261015.md)。

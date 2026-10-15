@@ -1,0 +1,13 @@
+{
+  "base_commit": "8004668913b813dc07d42994c1b2578d88611db6",
+  "original_merge": "2754f144a00a3e977b438ed7e67a9396c1e2fc16",
+  "original_change_commit": "b2752b2f38e02c6e9797b47f1588eab7628a4088",
+  "patch_sha256": "4359453adc7dd361b4c53cbaa4f9c00dfae44f079aaffff53bf80e096c9fe5fb",
+  "replayed_tree_matches_original": true,
+  "activation": "pending_integration",
+  "target_branch": "feature/rsi-research-agent",
+  "model_requests": 0,
+  "main_reverted_by": "cb70cfac493ce6b285c6f039a892696d601af576",
+  "base_tree": "e9b478035092720780439692fbfbc2b56098f396",
+  "original_result_tree": "f03ad6a8533ba7c00111922f69d56e06df6491ee"
+}

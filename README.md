@@ -1,5 +1,7 @@
 # SSS：Motif × DeepSeek Harness × 自定义 MCP
 
+2026-10-15分支边界修正：本任务已完成且验证通过的实现只发布到`feature/rsi-research-agent`，查看main不授予合并权限。GeneLoop `/management`的原始实现、完整补丁和版本说明保存在[接入补丁](integrations/geneloop-management/README.md)，尚未移植为本分支的运行入口。此前误合并main的修正见[分支记录](docs/changes/branch-correction-20261015.md)。本分支原持续RSI入口和4份新认证公开库继续保留。
+
 2026-10-15已上传：持续RSI代码与4份原始v2策略见`feature/rsi-research-agent`提交`f397645`；新机器从自己的库学习，公开摘要不替代私有运行准入证明。GeneLoop main命令接入与Windows CI修复见[发布记录](docs/changes/rsi-publication-20261015.md)。
 
 2026-10-15发布准备：用户已授权将完成的RSI代码、共享接口/实验文档与4个原始v2学习策略上传`feature/rsi-research-agent`。公开库见[operation-v2](examples/motif-library/file-management-operation-v2/README.md)，私有轨迹/任务/凭证保留；原运行准入证明不随公开摘要迁移。历史“暂不推送”记录对应当时阶段。GeneLoop主线的`/management`接入将以最新main为基准，避免覆盖现有注册与工作区能力。

@@ -1,5 +1,13 @@
 # 前端接入当前科研Agent分支
 
+## 最新分支边界与发布状态（2026-10-15）
+
+- 用户要求本任务全部开发改动及已验证内容只发布`feature/rsi-research-agent`，不合入main。RSI实现与Windows兼容修订已推送至`27b5da1`，本次补分支规则和GeneLoop原实现存档；下方“未提交／暂不推送”是历史记录。
+- 当前公开库为`examples/motif-library/file-management-operation-v2-winfix/`：4份原始新策略、锁文件和认证摘要；默认不凭公开摘要激活，克隆机器须有兼容的原始准入证明或独立学习／认证。私有日常库第10版：4激活、4旧版本停用，历史证书及失败保留。
+- Windows刷新句柄修订后的独立新材料实验：15真实执行／147HTTP／代理估费USD0.082976075，普通3/3与独立认证12/12机械验收，非人工办公质量认证；最终留出不学习。原始证据、费用、失败留私有目录。
+- GeneLoop `/management`曾在main完成命令、原生分发和浏览器零模型检查，误合并PR #28需要回退。其完整补丁与来源锁已保存在[接入存档](../../integrations/geneloop-management/README.md)，可在明确的GeneLoop基线逐字节重放。当前分支没有新版GeneLoop前端依赖，尚未完成该入口的运行移植；不能只把旧13工具与17工具v2的名字改成相同就宣称兼容。
+- 原日常SDK/Web持续RSI、重复/多文件Motif及原任务恢复实现保留；默认文件管理写权限尚未调整。[分支修正与验证](../changes/branch-correction-20261015.md)。
+
 ## 最新本地状态：2026-10-15持久化/批量/恢复
 
 - 已完成用户指定三项，`feature/rsi-research-agent`，HEAD仍`fcdcc48`；无新提交/推送。Python编译/认证、TypeScript在线继续沿用。
