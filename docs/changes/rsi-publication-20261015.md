@@ -9,3 +9,5 @@
 首轮Windows CI在Python测试期间退出：费用写锁和worker状态用`os.kill(pid,0)`探测。Python在Windows对普通signal值调用TerminateProcess，不能将其作为无副作用的存活查询（[官方文档](https://docs.python.org/3.12/library/os.html#os.kill)）。改用Win32查询API，自身PID直接返回存活；无查询权限保守视为存活，避免窃取锁或重复执行。失败日志保留，修复后重新跑CI。
 
 GeneLoop最新main基线`2a03e22`已有用户注册、账号工作区和Files场景。快捷入口接入在`codex/geneloop-management`独立分支完成：以`/management`为公开命令、`/files`为兼容别名，内部scene ID及只读/整理副本授权沿用原平台。这个命令接入不声称主线Files旧13工具已经迁移为此分支17工具的持续RSI接口；两套工具契约和准入证据仍分别核验，不能仅改命令就启用旧库。
+
+第二轮Windows CI将原子效果的两个恢复用例报为`fsync`只读句柄EBADF；改为在无内容修改的读写句柄上刷新。此改动改变MCP源码版本，原证书/库保留并停用旧候选，新材料按相同v2标准重新学习和独立认证，不能重签旧库绕过版本守卫。

@@ -93,7 +93,7 @@ class OperationSceneV2(OperationScene):
                 with staged.open('w',encoding='utf-8',newline='') as f:csv.writer(f).writerows(meta['rows'])
             elif a['format']=='text':staged.write_text(text,encoding='utf-8')
             else:raise ToolError('unsupported conversion format')
-        with staged.open('rb') as f:os.fsync(f.fileno())
+        with staged.open('r+b') as f:os.fsync(f.fileno())
         return staged
     def execute_plan(self,plan_id:str):
         self.active();plan=self.plans.get(plan_id)
