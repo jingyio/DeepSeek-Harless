@@ -175,11 +175,68 @@ def test_relationship_namespaces_are_validated_before_resolving_parts(tmp_path):
 @pytest.mark.skipif(not shutil.which('pdftotext') and importlib.util.find_spec('pypdf') is None, reason='PDF text parser not installed')
 def test_real_pdf_text_and_scan_only_state(tmp_path):
     result = attachment.extract_attachment(put(tmp_path, 'source.pdf', pdf_bytes()))
-    assert result['status'] == 'extracted' and 'Real uploaded PDF text' in result['text']
+    assert result['status'] == 'extracted' and 'Real uploaded PDF text' in result['text'], result.get('reason')
     assert result['ocr_performed'] is False and result['coverage'] == 'text_only'
     blank = attachment.extract_attachment(put(tmp_path, 'scan.pdf', pdf_bytes('')))
     assert blank['status'] == 'needs_ocr' and blank['text'] == ''
     assert blank['reason'] == 'pdf_has_no_extractable_text' and blank['warnings']
+
+
+def test_pdf_file_only_reader_uses_private_exact_bytes_without_pypdf(tmp_path, monkeypatch):
+    executable = put(tmp_path, 'pdftotext.exe', b'test executable placeholder')
+    monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
+    monkeypatch.setattr(attachment.shutil, 'which', lambda name: str(executable))
+    monkeypatch.setitem(sys.modules, 'pypdf', None)
+    monkeypatch.setenv('SECRET_PDF_TEST_KEY', 'must-not-be-inherited')
+    source = put(tmp_path, 'source.pdf', pdf_bytes())
+    data, text, copies, calls = source.read_bytes(), '完整PDF文本\n' * 12000, [], []
+    def run(command, **options):
+        calls.append(command)
+        assert command[:3] == [str(executable), '-enc', 'UTF-8']
+        assert 'SECRET_PDF_TEST_KEY' not in options['env']
+        if command[3] == '-':
+            assert options['input'] == data
+            return subprocess.CompletedProcess(command, 99, b'', b'Xpdf requires a file name')
+        copy = Path(command[3]); copies.append(copy)
+        assert copy != source and copy.read_bytes() == data and 'input' not in options
+        return subprocess.CompletedProcess(command, 0, text.encode('utf-8'), b'')
+    monkeypatch.setattr(attachment.subprocess, 'run', run)
+    result = attachment.extract_attachment(source)
+    assert len(calls) == 2 and result['status'] == 'extracted' and result['text'] == text
+    assert result['extractor'] == 'pdftotext' and result['truncated'] is False
+    assert result['sha256'] == hashlib.sha256(data).hexdigest() and source.read_bytes() == data
+    assert len(copies) == 1 and not copies[0].exists()
+
+
+def test_pdf_failed_file_retry_cleans_private_copy_without_fabricating_text(tmp_path, monkeypatch):
+    executable = put(tmp_path, 'pdftotext.exe', b'test executable placeholder')
+    monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
+    monkeypatch.setattr(attachment.shutil, 'which', lambda name: str(executable))
+    monkeypatch.setitem(sys.modules, 'pypdf', None)
+    copies = []
+    def run(command, **options):
+        if command[3] != '-':
+            copies.append(Path(command[3]))
+            assert copies[-1].exists()
+        return subprocess.CompletedProcess(command, 1, b'partial invalid output', b'/private/source.pdf parser failed')
+    monkeypatch.setattr(attachment.subprocess, 'run', run)
+    result = attachment.extract_attachment(put(tmp_path, 'broken.pdf', b'not a PDF'))
+    assert result['status'] == 'unreadable' and result['text'] == ''
+    assert len(copies) == 1 and not copies[0].exists()
+    assert '/private/' not in json.dumps(result)
+
+
+def test_real_pypdf_strict_fallback_reads_the_valid_fixture(tmp_path, monkeypatch):
+    pytest.importorskip('pypdf')
+    monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
+    monkeypatch.setattr(attachment.shutil, 'which', lambda name: None)
+    source = attachment.extract_attachment(put(tmp_path, 'source.pdf', pdf_bytes()))
+    assert source['status'] == 'extracted' and source['extractor'] == 'pypdf'
+    assert 'Real uploaded PDF text' in source['text']
+    blank = attachment.extract_attachment(put(tmp_path, 'blank.pdf', pdf_bytes('')))
+    assert blank['status'] == 'needs_ocr'
+    malformed = attachment.extract_attachment(put(tmp_path, 'broken.pdf', b'%PDF-1.4\nbroken'))
+    assert malformed['status'] == 'unreadable' and malformed['text'] == ''
 
 
 def test_unknown_binary_and_legacy_doc_are_accepted_as_honest_metadata(tmp_path, monkeypatch):

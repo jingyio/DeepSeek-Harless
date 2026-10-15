@@ -270,6 +270,18 @@ def _pdf(data: bytes) -> tuple[str, dict]:
             if output.returncode == 0:
                 text = output.stdout.decode('utf-8')
                 return text, {'extractor': 'poppler', 'warnings': warnings}
+            # Git for Windows ships Xpdf's pdftotext, which rejects stdin as
+            # a PDF source. Give it a closed, private copy of the same bytes;
+            # never reopen the caller's file or weaken the pypdf fallback.
+            with tempfile.TemporaryDirectory(prefix='harless-pdf-text-') as temporary:
+                source = Path(temporary) / 'attachment.pdf'
+                source.write_bytes(data)
+                source.chmod(0o600)
+                output = subprocess.run([executable, '-enc', 'UTF-8', str(source), '-'],
+                                        capture_output=True, timeout=60, check=False, env=env)
+            if output.returncode == 0:
+                text = output.stdout.decode('utf-8')
+                return text, {'extractor': 'pdftotext', 'warnings': warnings}
         except (OSError, subprocess.SubprocessError, UnicodeError):
             pass
     try:

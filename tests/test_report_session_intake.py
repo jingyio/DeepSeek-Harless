@@ -203,16 +203,31 @@ def test_existing_report_frozen_source_files_are_preserved_on_upgrade(tmp_path):
     assert {name: (intake.case / name).read_bytes() for name in files} == files
 
 
-def test_actual_session_prepare_and_inspection_accept_documents_without_table(tmp_path):
-    pytest.importorskip('mcp')
+@pytest.mark.parametrize('files,ready,status', [
+    ({'reference.md': 'Explain the experimental design before computing results.'}, False, 'needs_data'),
+    ({'sample.csv': CSV, 'reference.txt': 'Rows are independent observations.'}, True, 'ready'),
+])
+def test_actual_session_prepare_needs_no_statistics_or_mcp_dependencies(tmp_path, files, ready, status):
+    private = tmp_path / '.local'
+    work, _ = fixture(private / 'session', files)
+    root = Path(__file__).resolve().parents[1]
+    env = {**os.environ, 'HARLESS_PRIVATE_ROOT': str(private), 'HARLESS_REPORT_WORKSPACE': str(work)}
+    # -S excludes site-packages even on the fully provisioned Linux runtime.
+    prepared = subprocess.run([sys.executable, '-S', str(root / 'scenarios/data_analysis/report_session.py'), '--prepare-only'],
+                              cwd=root, env=env, text=True, encoding='utf-8', capture_output=True, check=True, timeout=60)
+    result = json.loads(prepared.stdout)
+    assert result['prepared'] is True and result['report_ready'] is ready and result['status'] == status
+
+
+def test_actual_mcp_inspection_accepts_documents_without_table(tmp_path):
+    # The real 14-tool MCP server imports its declared scientific dependencies.
+    # Only this full-runtime check is optional in the lightweight CI environment.
+    for dependency in ('mcp', 'numpy', 'pandas', 'scipy.stats', 'statsmodels.api'):
+        pytest.importorskip(dependency)
     private = tmp_path / '.local'
     work, _ = fixture(private / 'session', {'reference.md': 'Explain the experimental design before computing results.'})
     root = Path(__file__).resolve().parents[1]
     env = {**os.environ, 'HARLESS_PRIVATE_ROOT': str(private), 'HARLESS_REPORT_WORKSPACE': str(work)}
-    prepared = subprocess.run([sys.executable, str(root / 'scenarios/data_analysis/report_session.py'), '--prepare-only'],
-                              cwd=root, env=env, text=True, encoding='utf-8', capture_output=True, check=True, timeout=60)
-    result = json.loads(prepared.stdout)
-    assert result['prepared'] is True and result['report_ready'] is False and result['status'] == 'needs_data'
     code = "import json,runpy; m=runpy.run_path('scenarios/data_analysis/report_session.py'); print(json.dumps(m['guarded'](m['workflow_tools'].inspect_study)()))"
     inspected = subprocess.run([sys.executable, '-c', code], cwd=root, env=env, text=True,
                                encoding='utf-8', capture_output=True, check=True, timeout=60)

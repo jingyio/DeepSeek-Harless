@@ -12,10 +12,6 @@ sys.path.insert(0, str(ROOT))
 for variable in ('OPENBLAS_NUM_THREADS','OMP_NUM_THREADS','MKL_NUM_THREADS'):
     os.environ.setdefault(variable, '1')
 from scenarios.data_analysis.report_intake import ReportIntake
-from benchmarks.research_report_agent_v3 import workflow_tools
-from benchmarks.research_report_agent_v3.server import TOOL_NAMES
-from mcp.server import MCPServer
-from mcp.server.mcpserver.exceptions import ToolError
 
 WORK = Path(os.environ['HARLESS_REPORT_WORKSPACE']).resolve()
 PRIVATE_ROOT=Path(os.environ.get('HARLESS_PRIVATE_ROOT',str(ROOT/'.local'))).resolve()
@@ -28,6 +24,19 @@ intake = ReportIntake(WORK)
 
 def guard():
     return intake.prepare()
+
+# Source preparation is deliberately independent of MCP and the statistics
+# stack. A reference-only turn must not import NumPy just to admit its files.
+if __name__ == '__main__' and '--prepare-only' in sys.argv:
+    prepared = guard()
+    print(json.dumps({'prepared': True, 'report_ready': prepared['report_ready'],
+                      'status': prepared['status'], 'mode': 'existing_intake_no_model'}))
+    sys.exit(0)
+
+from benchmarks.research_report_agent_v3 import workflow_tools
+from benchmarks.research_report_agent_v3.server import TOOL_NAMES
+from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 def guarded(fn):
     @wraps(fn)
@@ -57,9 +66,4 @@ for name in TOOL_NAMES:
         annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False))
 
 if __name__ == '__main__':
-    if '--prepare-only' in sys.argv:
-        prepared = guard()
-        print(json.dumps({'prepared': True, 'report_ready': prepared['report_ready'],
-                          'status': prepared['status'], 'mode': 'existing_intake_no_model'}))
-    else:
-        server.run(transport='stdio')
+    server.run(transport='stdio')
