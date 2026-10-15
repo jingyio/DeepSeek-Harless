@@ -9,6 +9,7 @@ import type { WebReasoningEffort, WebModelOption } from './harless_reasoning.ts'
 import { isAgentLoopRequest, createUserMessage, createAssistantMessage } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
@@ -138,15 +139,17 @@ export function apply(ctx: any) {
   });
   const scenes = sceneCatalog(registeredScenes ?? [{ ...config, id: config.capability_profile, label: config.capability_profile, preset: 'sss-task' }]);
   if (!scenes.some(scene => scene.id === config.capability_profile)) throw Error('Default scene is not registered');
-  const defaultSceneId = memberRestricted && scenes.some(scene => scene.id === 'new-scene') ? 'new-scene' : config.capability_profile;
+  const chatScene = scenes.find(scene => scene.id === 'new-scene' && !scene.unavailable_reason);
+  const defaultSceneId = chatScene?.id ?? config.capability_profile;
   let defaults = initialSelection(defaultSceneId, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
+  const mountedScenes = new Map<string, string>();
   const optionSelections = new Map<string,Record<string,SceneOptions>>();
   const workspaces = new Map<string, string>();
   const principal = brokerMode && config.budget_task_prefix ? 'member-' + config.budget_task_prefix : config.user_id ?? 'local-operator';
   registerManagedWorkspaceRoutes(ctx, {output: config.output, principal});
   const saveSettings = () => json(join(config.output, 'harless-settings.json'),
-    { defaults, sessions: Object.fromEntries(selections),scene_options:Object.fromEntries(optionSelections) });
+    { defaults, sessions: Object.fromEntries(selections),mounted_scenes:Object.fromEntries(mountedScenes),scene_options:Object.fromEntries(optionSelections) });
   const guards = new Map<string, (() => void)[]>();
   const sceneFor = (id: string) => {
     const scene = scenes.find(scene => scene.id === id);
@@ -219,6 +222,7 @@ export function apply(ctx: any) {
     if (config.fixture === 'tool-failure') disposers.push(agent.ctx.tools.guard((call: any) => call.name.endsWith('__read_pinned') ? 'injected mock tool failure' : undefined));
     guards.set(agent.session.id, disposers.filter(dispose => typeof dispose === 'function'));
     schemas.set(agent.session.id, agent.ctx.tools.schemas(scopeOf(agent.ctx)).sort((a: any, b: any) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    mountedScenes.set(agent.session.id, configuredScene.id); saveSettings();
   }
   function settingsView(sessionId?: string) {
     if (sessionId) trash?.assertVisible(sessionId);
@@ -299,6 +303,35 @@ export function apply(ctx: any) {
       return state;
     } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
   };
+  const restoredMountedScene = (agent: any): string | undefined => {
+    const id = agent.session.id;
+    if (mountedScenes.has(id)) return mountedScenes.get(id);
+    // Older visible parents may have routed many scenes while retaining their
+    // original native preset. Recover that mounted composition independently
+    // of the next message's scene picker.
+    const preset = ctx.sessionProjections?.stateOf?.(agent.session, 'agentPreset') ?? agent.preset ?? agent.session.header?.agentPreset;
+    const registered = scenes.find(scene => scene.preset === preset);
+    if (registered) return registered.id;
+    if (typeof preset === 'string' && /^sss-bound-[a-f0-9]{32}$/.test(preset)) {
+      try {
+        const metadata = JSON.parse(readFileSync(join(config.output, 'presets', preset, 'preset.yml'), 'utf8'));
+        const matches = scenes.filter(scene => scene.label === metadata.name);
+        if (matches.length === 1) return matches[0].id;
+      } catch { /* Unknown legacy presets still use the existing fail-closed tool guard. */ }
+    }
+    return undefined;
+  };
+  function resetNextMessageScene(sessionId: string) {
+    if (!chatScene || !brokerMode || !config.comparison_scenes?.length || comparisons?.isLane(sessionId)) return;
+    const current = selections.get(sessionId) ?? defaults;
+    if (current.scene === chatScene.id) return;
+    // Admission has already frozen this turn's model/tools/scene. This only
+    // resets the next composer and must not remount a running Agent's preset.
+    // Preserve the user's RSI preference; only an unsupported Execute mode
+    // needs to fall back when returning to the general Chat tool surface.
+    const mode = current.rsi && current.mode === 'execute' && executeUnavailable(chatScene) ? 'baseline' : current.mode;
+    selections.set(sessionId, { ...current, scene:chatScene.id, mode }); saveSettings();
+  }
   const selectPreset = ctx.agentPresets?.select.bind(ctx.agentPresets);
   // DSH history persists across deployments, so its admission record must
   // follow the same per-user DSH home instead of a disposable Web run output.
@@ -367,9 +400,12 @@ export function apply(ctx: any) {
         return changeSelection(defaults,{...selection,mode:'baseline',rsi:false},scenes,executeUnavailable);}
     };
     if (saved.defaults) defaults = restoreSelection(saved.defaults);
+    if (chatScene) defaults = initialSelection(chatScene.id, 'baseline');
     for (const [id, selection] of Object.entries(saved.sessions ?? {})) {
       if (ownedSessions.has(id)) selections.set(id, restoreSelection(selection,id));
     }
+    for (const [id, scene] of Object.entries(saved.mounted_scenes ?? {}))
+      if (ownedSessions.has(id) && scenes.some(row => row.id === scene)) mountedScenes.set(id, scene as string);
     for(const [id, values] of Object.entries(saved.scene_options ?? {}))if(ownedSessions.has(id)){
       const scoped:Record<string,SceneOptions>={};
       for(const [sceneId,value] of Object.entries(values as Record<string,unknown>))if(scenes.some(scene=>scene.id===sceneId))scoped[sceneId]=sceneOptions(value,sceneFor(sceneId));
@@ -685,7 +721,7 @@ export function apply(ctx: any) {
         catch (error) { if (!(error instanceof ApiSessionNotFound)) throw error; absent = true; }
         if (!absent) throw new TaskError('session_not_owned', 'Session is outside this Web run; create a new session');
       }
-      const chosen = request.agentPreset ? scenes.find(scene => scene.preset === request.agentPreset)! : sceneFor(defaults.scene);
+      const chosen = request.agentPreset ? scenes.find(scene => scene.preset === request.agentPreset)! : chatScene ?? sceneFor(defaults.scene);
       if (chosen.unavailable_reason) throw new TaskError('scene_not_connected', chosen.unavailable_reason, 409);
       if (request.cwd !== undefined && request.workspaceId !== undefined)
         throw new TaskError('invalid_workspace', '请选择工作区或目录，不能同时指定两者');
@@ -715,7 +751,7 @@ export function apply(ctx: any) {
       if (!priorPreset && original.rename) await original.rename({ sessionId: created.sessionId, title: '新会话' });
       ownedSessions.add(created.sessionId); saveOwnership();
       if (!selections.has(created.sessionId)) {
-        selections.set(created.sessionId, { ...defaults, scene: chosen.id });
+        selections.set(created.sessionId, chosen.id === chatScene?.id ? initialSelection(chosen.id, 'baseline') : { ...defaults, scene: chosen.id });
         saveSettings();
         bindScene(agents.get(created.sessionId), chosen);
         const option = modelSelections.get(created.sessionId) ?? defaultModel;
@@ -870,12 +906,15 @@ export function apply(ctx: any) {
   // shown. Edits use a new task/preview rather than silently mutating this binding.
   controller.updateQueue = () => { throw new TaskError('queue_edit_not_supported', 'Preview a new task before changing queued input', 409); };
   controller.selectModel = async (request: any, signal: AbortSignal) => {
+    try {
     const option = findModel(request.model);
     const previousTask = forSession(request.sessionId);
     if (!ownedSessions.has(request.sessionId) || comparisons?.busy(request.sessionId) || (previousTask && (!brokerMode || !terminal.has(previousTask.status))) || request.provider !== option.provider)
       throw new TaskError('model_not_allowed', 'Model selection is outside the approved task configuration');
     let effort: WebReasoningEffort | undefined;
-    try { effort = webReasoningEffort(option.provider, request.reasoningEffort ?? reasoningFor(request.sessionId, option)); }
+    const current = modelSelections.get(request.sessionId) ?? defaultModel;
+    const switchingModel = current.provider !== option.provider || current.model !== option.model;
+    try { effort = webReasoningEffort(option.provider, request.reasoningEffort ?? (switchingModel ? 'off' : reasoningFor(request.sessionId, option))); }
     catch { throw new TaskError('model_not_allowed', '该模型不支持所选推理模式。'); }
     try { webReasoningAvailability(option, effort); }
     catch (error) { throw new TaskError('model_budget_unavailable', (error as Error).message); }
@@ -887,6 +926,12 @@ export function apply(ctx: any) {
     if (effort !== undefined) reasoningSelections.set(request.sessionId, effort);
     saveModels();
     return result;
+    } catch (error: any) {
+      appendFileSync(join(config.output, 'model-selection-errors.jsonl'), JSON.stringify({at:utc(),session_id:request.sessionId,
+        model:request.model,reasoning_effort:request.reasoningEffort??null,code:error?.code??error?.name,message:String(error?.message??error).slice(0,2048)})+'\n',{mode:0o600});
+      if (error instanceof TaskError) throw new RemoteError(error.code as any, error.message, {} as any);
+      throw error;
+    }
   };
   if (ctx.agentPresets) ctx.agentPresets.select = (agent: any, preset: string) => serialize(async () => {
     const scene = scenes.find(scene => scene.preset === preset);
@@ -900,9 +945,11 @@ export function apply(ctx: any) {
     const tentativeSession = existingSession ?? 'pending';
     const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
     const chosenModel = supplied.model === undefined ? (existingSession ? modelSelections.get(existingSession) ?? defaultModel : defaultModel) : findModel(supplied.model);
+    const currentModel = existingSession ? modelSelections.get(existingSession) ?? defaultModel : defaultModel;
+    const modelChanged = supplied.model !== undefined && (currentModel.provider !== chosenModel.provider || currentModel.model !== chosenModel.model);
     let chosenReasoning: WebReasoningEffort | undefined;
     try { chosenReasoning = webReasoningEffort(chosenModel.provider,
-      supplied.reasoning_effort ?? (existingSession ? reasoningFor(existingSession, chosenModel) : 'off')); }
+      supplied.reasoning_effort ?? (existingSession && !modelChanged ? reasoningFor(existingSession, chosenModel) : 'off')); }
     catch { throw new TaskError('model_not_allowed', '该模型不支持所选推理模式。'); }
     try { webReasoningAvailability(chosenModel, chosenReasoning); }
     catch (error) { throw new TaskError('model_budget_unavailable', (error as Error).message); }
@@ -1154,15 +1201,22 @@ export function apply(ctx: any) {
     const content = structuredClone(request.content);
     const firstText = content.find((part: any) => part.type === 'text');
     const shortcut = firstText && parseSceneShortcut(firstText.text, scenes);
+    const admitted = comparisons?.requestContext(request.sessionId, request.requestId);
     if (shortcut) {
+      if (admitted && shortcut.scene !== admitted.scene) throw new TaskError('request_id_conflict', '同一发送请求不能更改场景。', 409);
       if (!shortcut.text.trim() && content.length === 1) {
         await setSelection(request.sessionId, { scene: shortcut.scene });
         return { accepted: true }; // choosing a scene alone never calls the model
       }
-      await setSelection(request.sessionId, { scene: shortcut.scene });
+      if (!admitted) await setSelection(request.sessionId, { scene: shortcut.scene });
       firstText.text = shortcut.text;
+    } else if (!admitted && chatScene && brokerMode && config.comparison_scenes?.length) {
+      // The serialized content is the authority for this turn. A previous
+      // composer selection must not turn plain text or an attachment send
+      // into a data/PPT request after navigation or a client restart.
+      await setSelection(request.sessionId, { scene: chatScene.id });
     }
-    const selected = selections.get(request.sessionId)!;
+    const selected = admitted ? {...selections.get(request.sessionId)!,scene:admitted.scene} : selections.get(request.sessionId)!;
     if (comparisons && (config.comparison_scenes?.includes(selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
       const priorTask = forSession(request.sessionId);
       if (priorTask && !terminal.has(priorTask.status)) throw new TaskError('session_busy', '请等待当前回复完成或取消后再发送。', 409);
@@ -1180,7 +1234,7 @@ export function apply(ctx: any) {
         return { name: ref.name, bytes: ref.bytes, digest: digest(ref) };
       });
       await refreshTitle(request.sessionId, text);
-      return comparisons.admit(request.sessionId, { ...request, content }, {
+      const result = await comparisons.admit(request.sessionId, { ...request, content }, {
         scene: selected.scene, options: {...(scene.adapter === 'ppt' ? {allow_output:true} : {}),...(optionSelections.get(request.sessionId)?.[selected.scene] ?? {})},
         prior_context_by_lane: readBranchInputs(request.sessionId)?.context,
         presentation: config.comparison_scenes?.includes(selected.scene) ? 'paired' : 'single',
@@ -1190,11 +1244,15 @@ export function apply(ctx: any) {
           })),
         model: (modelSelections.get(request.sessionId) ?? defaultModel).model, reasoning_effort: reasoningFor(request.sessionId),
         input_sha256: digest([text, files]),source_files:sourceFiles,
+        ...admitted,
       });
+      if (!admitted) resetNextMessageScene(request.sessionId);
+      return result;
     }
     const task = await preview({ content, request_id: request.requestId }, request.sessionId, 'native_chat');
     await refreshTitle(request.sessionId, content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join(' '));
     await submit(task, task.confirmation_digest, signal);
+    resetNextMessageScene(request.sessionId);
     return { accepted: true };
   });
   controller.cancel = async (request: any) => {
@@ -1420,7 +1478,7 @@ export function apply(ctx: any) {
       // A seeded conversation can later route to another scene while its own
       // native preset stays immutable. Reinstall the tool guard for the actual
       // mounted branch scope, not its next-send selection after cold recovery.
-      const mountedScene = readBranchInputs(agent.session.id)?.mounted_scene;
+      const mountedScene = readBranchInputs(agent.session.id)?.mounted_scene ?? restoredMountedScene(agent);
       bindScene(agent, sceneFor(task?.scene.id ?? mountedScene ?? selections.get(agent.session.id)?.scene ?? defaults.scene), task?.source_pending);
     }
     agent.ctx.on('tools/result', (execution: any, result: any) => forSession(agent.session.id)?.interceptor?.observe(agent.session.id, execution, result));
@@ -1540,6 +1598,29 @@ export function apply(ctx: any) {
   for (const path of ['/api/harless/tasks', '/api/sss/tasks']) {
     ctx.effect(() => ctx.connection.fetch.register({ ...taskRoute, path }), 'harless-tasks-api-' + path);
   }
+  ctx.effect(() => ctx.connection.fetch.register({ path:'/api/harless/models', methods:['GET'], requestBody:'buffered',
+    fetch: async (request: Request) => {
+      const rejection = ctx.connection.requestRejection(request);
+      if (rejection) return new Response('Unauthorized', { status:rejection });
+      try {
+        const sessionId = new URL(request.url).searchParams.get('session_id');
+        if (sessionId) await ensureOwned(sessionId);
+        const selected = sessionId ? modelSelections.get(sessionId) ?? defaultModel : undefined;
+        return browserJson({ models:modelOptions.map(option => ({ provider:option.provider,model:option.model,label:option.label,available:option.available,
+          ...(option.reasoning_unavailable ? {reasoning_unavailable:option.reasoning_unavailable} : {}),
+          reasoning_modes:option.provider === 'deepseek-official' ? (['off','high'] as const).map(id => ({
+            id, label:id === 'off' ? 'Off' : 'On', available:option.available && !option.reasoning_unavailable?.[id],
+            ...(option.reasoning_unavailable?.[id] ? { unavailable_reason:option.reasoning_unavailable[id] } : {}),
+          })) : [],
+        })), default:{provider:defaultModel.provider,model:defaultModel.model,reasoning_effort:reasoningFor('',defaultModel) ?? null},
+          ...(selected ? {session_selection:{provider:selected.provider,model:selected.model,reasoning_effort:reasoningFor(sessionId!,selected) ?? null}} : {}),
+        }, {headers:{'Cache-Control':'no-store'}});
+      } catch (error: any) {
+        return browserJson({error:{code:error.code ?? 'models_unavailable',message:error instanceof TaskError ? error.message : '暂时无法读取模型列表。'}},
+          {status:error instanceof TaskError ? error.status : 400});
+      }
+    },
+  }), 'geneloop-model-catalog');
   const settingsRoute = { methods: ['GET', 'POST'] as const, requestBody: 'buffered' as const,
     fetch: async (request: Request) => {
       try {
@@ -1565,7 +1646,7 @@ export function apply(ctx: any) {
           }
           if (body.action === 'new_session') {
             if (body.inherit_session) await ensureOwned(body.inherit_session);
-            const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
+            const chosen = chatScene ? initialSelection(chatScene.id, 'baseline') : body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const next = body.selection === undefined ? chosen : changeSelection(chosen, body.selection, scenes, executeUnavailable);
             const group = body.inherit_session && ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(body.inherit_session));
             const created = await controller.create({ agentPreset: sceneFor(next.scene).preset, ...(group ? { workspaceId: group.id } : {}) });

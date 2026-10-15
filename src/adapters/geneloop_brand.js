@@ -3,6 +3,91 @@
   const installed = new WeakSet();
   const logo = '/assets/geneloop-spiral.svg?v=1';
   const name = 'GeneLoop';
+  // The head script paints this before the application starts. Readiness comes
+  // from public Session state and committed views, never DOM mutation timing.
+  const loading = (() => {
+    if (!document.documentElement?.append) return;
+    const style = document.createElement('style');
+    style.textContent = `.geneloop-page-loader{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:var(--dsw-alias-background-primary,#141414);color:var(--dsw-alias-label-secondary,#b7bbc2);font:14px/1.5 var(--geneloop-ui-font,system-ui,sans-serif)}.geneloop-page-loader[hidden],.geneloop-load-notice[hidden]{display:none}.geneloop-loading-mark{position:relative;display:grid;place-items:center;width:76px;height:76px}.geneloop-loading-mark:before{content:"";position:absolute;inset:0;border:2px solid #729cf72b;border-top-color:#8b9cf7;border-right-color:#41cabb;border-radius:50%;animation:geneloop-loading-spin 1s linear infinite}.geneloop-loading-mark img{width:30px;height:48px;object-fit:contain}.geneloop-page-loader button,.geneloop-load-notice button{border:0;background:transparent;color:inherit;font:inherit;text-decoration:underline;cursor:pointer;padding:6px 10px}.geneloop-page-loader button:focus-visible,.geneloop-load-notice button:focus-visible{outline:2px solid #8b9cf7;outline-offset:3px;border-radius:6px}.geneloop-load-notice{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2000;max-width:calc(100vw - 32px);padding:12px 16px;border:1px solid #8885;border-radius:12px;background:var(--dsw-specific-menu,#262626);color:var(--dsw-alias-label-primary,#eee);font:13px/1.5 var(--geneloop-ui-font,system-ui,sans-serif)}@keyframes geneloop-loading-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.geneloop-loading-mark:before{animation:none}}`;
+    document.head.append(style);
+    const cover = document.createElement('div'), mark = document.createElement('span'), image = document.createElement('img');
+    cover.className = 'geneloop-page-loader'; cover.setAttribute('role', 'status'); cover.setAttribute('aria-live', 'polite');
+    mark.className = 'geneloop-loading-mark'; mark.setAttribute('aria-hidden', 'true'); image.src = logo; image.alt = '';
+    mark.append(image);
+    const label = document.createElement('span'); label.textContent = '正在加载 GeneLoop…';
+    const skip = document.createElement('button'); skip.type = 'button'; skip.textContent = '显示已加载内容';
+    cover.append(mark, label, skip);
+    const notice = document.createElement('div'); notice.className = 'geneloop-load-notice'; notice.hidden = true; notice.setAttribute('role', 'status');
+    const message = document.createElement('span'); message.textContent = '页面加载较慢，已显示可用内容。';
+    const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = '刷新重试'; retry.onclick = () => window.location.reload();
+    const dismiss = document.createElement('button'); dismiss.type = 'button'; dismiss.textContent = '关闭'; dismiss.onclick = () => { notice.hidden = true; };
+    notice.append(message, retry, dismiss); document.documentElement.append(cover, notice);
+    let current = { id: Symbol('boot'), nativeReady: false, committed: false, pending: new Set(), released: false }, timeout;
+    const release = (slow = false) => {
+      current.released = true; cover.hidden = true; clearTimeout(timeout);
+      if (slow) notice.hidden = false;
+    };
+    const check = () => { if (current.nativeReady && current.committed && !current.pending.size) release(); };
+    const arm = () => {
+      clearTimeout(timeout);
+      // This is a failure escape, not a successful-load heuristic. Errors and
+      // network stalls must never leave an opaque mask over the application.
+      timeout = setTimeout(() => release(true), 20000);
+    };
+    skip.onclick = () => release(); arm();
+    return window.__geneLoopPageLoad = {
+      select(id, ready, state) {
+        if (current.id !== id) {
+          current = { id, nativeReady: false, committed: id === undefined, pending: new Set(), released: false };
+          cover.hidden = false; notice.hidden = true; arm();
+        }
+        if (current.released) return;
+        if (state === 'error') { release(); return; }
+        current.nativeReady = ready && (id === undefined || state === 'open'); check();
+      },
+      commit(id) { if (current.id === id) { current.committed = true; check(); } },
+      hold(id) {
+        const owner = current, token = {};
+        if (owner.id === id && !owner.released) owner.pending.add(token);
+        // A lease belongs to one navigation, so late completions cannot reveal
+        // the next page. Once revealed, streaming updates never mask it again.
+        return () => { owner.pending.delete(token); if (owner === current) check(); };
+      },
+      fail() { release(); },
+    };
+  })();
+  const loadingInstalled = new WeakSet();
+  window.__installGeneLoopLoading = (ctx, React, mirrorPublicSlot) => {
+    if (!loading || loadingInstalled.has(ctx)) return;
+    loadingInstalled.add(ctx);
+    const sessions = ctx.get('sessions');
+    ctx.effect(() => {
+      let selected, unsubscribeSession;
+      const sync = () => {
+        const list = sessions.list.getSnapshot(), face = list.current === undefined ? undefined : sessions.binding(list.current)?.session;
+        if (face !== selected) { unsubscribeSession?.(); selected = face; unsubscribeSession = face?.subscribe(sync); }
+        loading.select(list.current, list.phase === 'ready', face?.getSnapshot().openState);
+      };
+      const unsubscribe = sessions.list.subscribe(sync); sync();
+      return () => { unsubscribe(); unsubscribeSession?.(); loading.fail(); };
+    }, 'geneloop: page readiness');
+    ctx.slots.inject('conversation.view', () => {
+      const original = ctx.slots.entries('conversation.session')[0];
+      if (!original) { loading.fail(); return; }
+      const alias = 'geneloop.loading.view';
+      function LoadedSession(props) {
+        const state = props.useSession(value => value.openState);
+        React.useLayoutEffect(() => { if (state === 'open' || state === 'error') loading.commit(props.sessionId); }, [props.sessionId, state]);
+        return React.createElement(original.component, { ...props,
+          renderSlot: (slot, owner, options) => props.renderSlot(slot === 'conversation.view' ? alias : slot, owner, options) });
+      }
+      const stop = ctx.slots.register({ name: 'conversation.session', ...original.options, priority: -100,
+        inject: original.inject, ...(original.store ? { store: original.store } : {}),
+        children: { [alias]: { kind: 'list', scope: 'session' } } }, LoadedSession);
+      const unmirror = mirrorPublicSlot('conversation.view', alias);
+      return () => { unmirror(); stop(); };
+    });
+  };
   window.__installGeneLoopBrand = (ctx, React) => {
     if (installed.has(ctx)) return;
     installed.add(ctx);

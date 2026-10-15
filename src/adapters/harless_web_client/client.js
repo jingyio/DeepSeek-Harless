@@ -368,6 +368,16 @@ window.__ModuleLoader__.load({
         const [ratingState, setRatingState] = React.useState(ratingSnapshot(key));
         const ratings = ratingState.key === key ? ratingState : ratingSnapshot(key), pendingRatings = ratings.pending;
         const [connection, setConnection] = React.useState(''), [downloads, setDownloads] = React.useState({});
+        const pageLoadRelease = React.useRef();
+        React.useLayoutEffect(() => {
+          const release = window.__geneLoopPageLoad?.hold(node.data.session_id);
+          pageLoadRelease.current = release;
+          if (hydrated || error || connection) release?.();
+          return () => { release?.(); if (pageLoadRelease.current === release) pageLoadRelease.current = undefined; };
+        }, [node.data.id, node.data.session_id]);
+        React.useLayoutEffect(() => {
+          if (hydrated || error || connection) pageLoadRelease.current?.();
+        }, [hydrated, error, connection]);
         const [branching, setBranching] = React.useState(''), branchBusy = React.useRef(false);
         const [copied, setCopied] = React.useState(''), [traceLane, setTraceLane] = React.useState('baseline');
         const copyTimer = React.useRef(), copyPending = React.useRef(false);
@@ -743,6 +753,7 @@ window.__ModuleLoader__.load({
         sync(); const unsubscribe = ctx.slots.subscribe?.(source, sync);
         return () => { unsubscribe?.(); cleanups.reverse().forEach(dispose => dispose()); };
       }
+      window.__installGeneLoopLoading?.(ctx, React, mirrorPublicSlot);
       // The pinned native tab roster enumerates shadowed entries as well as
       // winners. Adapt only the header's public source to one tab per id; keep
       // the native header, store, title management and scoped child actions.
@@ -940,17 +951,38 @@ window.__ModuleLoader__.load({
       function watchDraft(session) {
         const id = session.sessionId;
         if (draftWatches.has(id)) return;
+        const face = sessions.binding?.(id)?.session;
+        const beginSubmission = face?.beginSubmission;
+        const pendingSubmissions = new Set();
+        // The public retirement callback distinguishes accepted sends from a
+        // native optimistic editor clear. Never consume a scene on rejection.
+        if (beginSubmission) face.beginSubmission = function (submission) {
+          const version = choiceVersions.get(id) || 0, pending = {};
+          pendingSubmissions.add(pending);
+          try { return beginSubmission.call(this, { ...submission, onRetire: settlement => {
+            pendingSubmissions.delete(pending);
+            if (settlement.reason === 'observed' && version === (choiceVersions.get(id) || 0)) {
+              revisions.set(id, (revisions.get(id) || 0) + 1);
+              draftSelections.delete(id);
+              const value = cache.get(id);
+              if (value) publish(id, { ...value, selection: { ...value.selection, scene: 'new-scene' }, paired_comparison: false });
+            }
+            submission.onRetire?.(settlement);
+          } }); } catch (error) { pendingSubmissions.delete(pending); throw error; }
+        };
         const input = inputFor(id); let previous = input.state.getSnapshot();
+        // The composer describes this draft, never the scene used by history.
+        displaySelection(id, knownDraftScene(id, previous.draft) || 'new-scene');
         const off = input.state.subscribe(() => {
           const next = input.state.getSnapshot(), before = previous; previous = next;
           if (suppressDraftReset.has(id) || before.draftRev === next.draftRev || before.phase !== 'plain' || next.phase !== 'plain') return;
-          // Only an actual edit that removes a complete leading scene token is
-          // a cancellation. Empty drafts on mount, session changes and the
-          // native adjudicating -> committed-draft transition keep the scene.
+          // Native sends clear the draft before acceptance. The callback above
+          // resets only the next input; the server owns the frozen running task.
+          if (pendingSubmissions.size && !next.draft.trim()) return;
           const removed = knownDraftScene(id, before.draft);
           if (removed && removed !== 'new-scene' && !knownDraftScene(id, next.draft)) void resetScene(session);
         });
-        draftWatches.set(id, off);
+        draftWatches.set(id, () => { off(); if (beginSubmission) face.beginSubmission = beginSubmission; });
       }
       async function resetScene(session) {
         const id = session.sessionId, previous = choosing.get(id), version = (choiceVersions.get(id) || 0) + 1;

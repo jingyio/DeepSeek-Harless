@@ -12,6 +12,9 @@ import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import {comparisonArtifacts} from '../src/adapters/harless_comparison_artifacts.ts';
 import { digest } from '../src/motif_core/online_skill_runtime.mjs';
 import {renderPrompt} from '@deepseek-ai/dsh-system-prompt';
+import { Context, Service } from '@deepseek-ai/cordis';
+import { apply as mountNativeConnection } from '@deepseek-ai/dsh-client-connection';
+import { WebServer } from '@deepseek-ai/dsh-host-webserver';
 
 test('Scene instructions preserve report value tokens without treating them as Harness variables',()=>{
  const text='Bind {{estimate}} and {{ci_low}} to verified report results.';
@@ -155,6 +158,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   };
   const originalController = { ...ctx.sessionController };
   const originalUploads = { ...ctx.fileUploads };
+  const originalPresets = { ...ctx.agentPresets };
   ctx.agents = { async create(request) { const result = await originalController.create({sessionId:request.sessionId,cwd:request.meta.cwd,agentPreset:request.meta.agentPreset});
     const agent=agents.get(result.sessionId);agent.events.push(...structuredClone(request.seed));Object.assign(storedHeaders.get(result.sessionId),request.meta);
     await request.setup(agent.ctx,agent);return agent; } };
@@ -197,6 +201,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     async restart() {
       Object.assign(ctx.sessionController, originalController);
       Object.assign(ctx.fileUploads, originalUploads);
+      Object.assign(ctx.agentPresets, originalPresets);
       listeners.clear(); routes.clear(); webRoutes.clear(); agents.clear();
       const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
     },
@@ -336,10 +341,13 @@ test('Pro Off persists and binds the exact native route while unavailable On can
     const {sessionId}=await f.ctx.sessionController.create({});
     const select=(model,reasoningEffort)=>f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model,reasoningEffort},new AbortController().signal);
     await select('deepseek-flash','high');
+    await select('deepseek-flash');
+    assert.equal(f.modelCalls.at(-1).reasoningEffort,'high','same-model omission keeps the current reasoning setting');
     const before=f.modelCalls.length;
     await assert.rejects(select('deepseek-v4-pro','high'),error=>error.code==='model_budget_unavailable'&&/Off/.test(error.message));
     assert.equal(f.modelCalls.length,before);assert.equal(f.registrations.size,0);
-    await select('deepseek-v4-pro','off');
+    await select('deepseek-v4-pro');
+    assert.equal(f.modelCalls.at(-1).reasoningEffort,'off','model-only native selection uses the new model default, not the old model On');
     await f.restart();
     await f.ctx.sessionController.prompt({sessionId,requestId:'native-pro',mode:'queue',content:[{type:'text',text:'Check these findings'}]},new AbortController().signal);
     const task=(await f.api()).value.tasks[0];
@@ -376,6 +384,102 @@ test('Native model picker selection is used by the next chat task', options, asy
     assert.equal(f.registrations.get(sessionId).model, 'glm-4.6');
     await f.complete(task);
   } finally { await f.close(); }
+});
+
+test('task preview model-only switching defaults to Off but omitted model keeps the current On',options,async()=>{
+ const f=await fixture({broker:true,models:[
+  {provider:'deepseek-official',model:'deepseek-flash',label:'Flash',available:true},
+  {provider:'deepseek-official',model:'deepseek-v4-pro',label:'Pro',available:true,reasoning_unavailable:{high:'Pro On is outside the current task budget; choose Off'}},
+ ]});try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const flashOn=()=>f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'high'},new AbortController().signal);
+  await flashOn();
+  const ordinary=await f.api({action:'preview',session_id:sessionId,request:{instruction:'Current model setting'}});
+  assert.equal(ordinary.status,200);assert.equal(ordinary.value.model,'deepseek-flash');assert.equal(ordinary.value.reasoning_effort,'high');
+  await f.api({action:'cancel',task_id:ordinary.value.task_id});await f.api(undefined,'?task_id='+ordinary.value.task_id);
+  const switched=await f.api({action:'preview',session_id:sessionId,request:{instruction:'Explicit new model',model:'deepseek-v4-pro'}});
+  assert.equal(switched.status,200);assert.equal(switched.value.model,'deepseek-v4-pro');assert.equal(switched.value.reasoning_effort,'off');
+  assert.equal(f.modelCalls.at(-1).model,'deepseek-v4-pro');assert.equal(f.modelCalls.at(-1).reasoningEffort,'off');
+  await f.api({action:'cancel',task_id:switched.value.task_id});await f.api(undefined,'?task_id='+switched.value.task_id);
+  await flashOn();
+  const explicit=await f.api({action:'preview',session_id:sessionId,request:{instruction:'Explicit unavailable setting',model:'deepseek-v4-pro',reasoning_effort:'high'}});
+  assert.equal(explicit.status,400);assert.equal(explicit.value.error.code,'model_budget_unavailable');
+  assert.equal(f.promptCalls.length,0);
+ }finally{await f.close();}
+});
+
+test('model catalog is read-only, authenticated and omits server configuration',options,async()=>{
+ const models=[{provider:'deepseek-official',model:'deepseek-flash',label:'Flash',available:true,endpoint:'private-provider',apiKey:'private-key'},
+  {provider:'deepseek-official',model:'deepseek-v4-pro',label:'Pro',available:true,reasoning_unavailable:{high:'当前预算仅支持 Off。'}}];
+ const f=await fixture({broker:true,models});try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const get=async(session,authorized=true)=>{const request=new Request('http://local/api/harless/models'+(session?'?session_id='+session:''));request.authorized=authorized;return f.routes.get('/api/harless/models').fetch(request);};
+  assert.equal((await get(undefined,false)).status,401);
+  assert.equal((await get('foreign')).status,404);
+  const before=f.controlCalls.length;
+  const result=await get(sessionId),value=await result.json();
+  assert.equal(result.status,200);assert.equal(result.headers.get('Cache-Control'),'no-store');
+  assert.equal(value.default.reasoning_effort,'off');assert.equal(value.session_selection.model,'deepseek-flash');
+  assert.deepEqual(value.models[1].reasoning_modes,[{id:'off',label:'Off',available:true},{id:'high',label:'On',available:false,unavailable_reason:'当前预算仅支持 Off。'}]);
+  assert.doesNotMatch(JSON.stringify(value),/private-provider|private-key|control_token|endpoint/);
+  assert.equal(f.controlCalls.length,before);assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0);
+ }finally{await f.close();}
+});
+
+test('model catalog crosses the real native HTTP bridge with browser authentication and GET body handling',options,async()=>{
+ const f=await fixture({broker:true}),native=new Context();
+ try{
+  const server=new WebServer(native,{host:'127.0.0.1',port:0});await server[Service.init]();
+  native.provide('credentials',{async modifyRecord(_key,change){return change(undefined);}});
+  await mountNativeConnection(native);await new Promise(resolve=>setImmediate(resolve));
+  const origin='http://127.0.0.1:'+server.port;
+  server.register({kind:'exact',path:'/',handler:(request,response)=>{
+   if(native.connection.authorizeIndex(request,response)){response.writeHead(200);response.end('fixture');}
+  }});
+  const route=f.routes.get('/api/harless/models');
+  f.ctx.connection=native.connection;
+  native.connection.fetch.register(route);
+  assert.equal((await fetch(origin+'/api/harless/models')).status,401);
+  const exchange=await fetch(native.connection.authenticatedUrl(origin),{redirect:'manual'});
+  assert.equal(exchange.status,303);
+  const cookie=exchange.headers.get('set-cookie').split(';',1)[0];
+  // Exercise the production failure itself: a missing body contract reaches
+  // the native streaming branch, whose GET Request rejects before dispatch.
+  let malformedDispatches=0;
+  const {requestBody:_bodyMode,...malformed}=route;
+  native.connection.fetch.register({...malformed,path:'/api/harless/models-missing-body',fetch:async request=>{malformedDispatches++;return route.fetch(request);}});
+  const broken=await fetch(origin+'/api/harless/models-missing-body',{headers:{cookie}});
+  assert.equal(broken.status,400);assert.equal(await broken.text(),'');assert.equal(malformedDispatches,0);
+  const response=await fetch(origin+'/api/harless/models',{headers:{cookie}});
+  assert.equal(response.status,200);assert.match(response.headers.get('content-type'),/application\/json/);
+  assert.equal((await response.json()).models[0].model,'deepseek-flash');
+  assert.equal((await fetch(origin+'/api/harless/models',{headers:{cookie,origin:'https://foreign.invalid'}})).status,403);
+  assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0);
+ }finally{await native.fiber.dispose();await f.close();}
+});
+
+test('cold native Pro selection binds the parent mounted preset independently of its planned scene',options,async()=>{
+ const scenes=[['new-scene','Chat','mcp__workspace__list_files'],['research-data-analysis','Data','mcp__report__inspect']].map(([id,label,tool])=>({
+  id,label,preset:'sss-'+id,adapter:'workspace',allowed_tools:[tool],config_sha256:'a'.repeat(64),
+  mcp_rows:[{id:'fixture-'+id,name:'fixture-mcp',config:{fixture_tools:[tool],workspace:'__HARLESS_SESSION_WORKSPACE__'}}],
+ }));
+ const models=[{provider:'deepseek-official',model:'deepseek-flash',label:'Flash',available:true},
+  {provider:'deepseek-official',model:'deepseek-v4-pro',label:'Pro',available:true,reasoning_unavailable:{high:'Pro On unavailable under task budget; choose Off'}}];
+ for(const legacy of [false,true]){
+  const f=await fixture({broker:true,strictMountedTools:true,scenes,models,capability_profile:'new-scene',comparison_scenes:['research-data-analysis'],fixtureSchemas:scenes.map(scene=>({...toolSchemas[0],name:scene.allowed_tools[0]}))});
+  try{
+   const {sessionId}=await f.ctx.sessionController.create({});
+   assert.equal((await f.settings({action:'select',session_id:sessionId,selection:{scene:'research-data-analysis'}})).status,200);
+   assert.deepEqual(f.agents.get(sessionId).mountedTools,scenes[0].allowed_tools);
+   if(legacy){const path=join(f.directory,'harless-settings.json'),saved=JSON.parse(readFileSync(path));delete saved.mounted_scenes;writeFileSync(path,JSON.stringify(saved));}
+   await f.restart();
+   await f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-v4-pro'},new AbortController().signal);
+   assert.equal(f.modelCalls.at(-1).model,'deepseek-v4-pro');assert.equal(f.modelCalls.at(-1).reasoningEffort,'off');
+   assert.deepEqual(f.agents.get(sessionId).allow.allow,scenes[0].allowed_tools,'restore must restrict actual mounted Chat tools, never planned Data tools');
+   assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'research-data-analysis','the draft choice is independent from native preset restoration');
+   assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0);
+  }finally{await f.close();}
+ }
 });
 
 test('Selected model and empty session survive a Web process restart', options, async () => {
@@ -1150,7 +1254,7 @@ test('PPT menu options are scoped, model-free, persisted, and cannot modify a pr
     {id:'new-scene',label:'New Scene',preset:'sss-general',allowed_tools:toolSchemas.map(t=>t.name)}];
   const f=await fixture({scenes:rows,capability_profile:'ppt'});
   try{
-    const first=await f.ctx.sessionController.create({});
+    const first=await f.ctx.sessionController.create({agentPreset:'sss-task'});
     const route=f.routes.get('/api/harless/settings');
     const call=async body=>{const r=await route.fetch(new Request('http://local/api/harless/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));return {status:r.status,value:await r.json()};};
     const saved=await call({action:'set_scene_options',session_id:first.sessionId,options:{slides:8,template:'lab',allow_output:false}});
@@ -1237,6 +1341,9 @@ test('Completed parent routes ordinary → data → PPT → chat without moving 
   }throw Error('comparison timeout');};
   const longData='Discuss data '+ '完整单次输入'.repeat(3000)+'data-tail';
   const data=await send('/data '+longData,'data');
+  assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'new-scene','the next draft is Chat while the admitted data turn is running');
+  assert.equal((await send('/data '+longData,'data')).comparison_id,data.comparison_id,'retry keeps the original frozen scene after the next draft reset');
+  await assert.rejects(send('/ppt '+longData,'data'),error=>error.code==='request_id_conflict');
   await assert.rejects(selectReasoning('off'),error=>error.code==='model_not_allowed');
   const running=(await f.settings({action:'select',session_id:sessionId,selection:{scene:'ppt'}}));assert.equal(running.value.error.code,'session_busy');
   const dataView=await settle(data.comparison_id);assert.equal(dataView.session_id,sessionId);
@@ -1251,7 +1358,14 @@ test('Completed parent routes ordinary → data → PPT → chat without moving 
   assert.equal(pptView.session_id,sessionId);assert.notEqual(dataView.lanes.baseline.session_id,pptView.lanes.baseline.session_id);
   assert.match(JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.at(-1).prior_context.baseline,/answer-research-data-analysis/);
   await selectReasoning('off');expectedReasoning='off';
-  const chat=await send('/chat Explain the slides','chat'),chatView=await settle(chat.comparison_id);
+  assert.equal((await f.settings({action:'select',session_id:sessionId,selection:{scene:'ppt'}})).status,200);
+  assert.equal((await f.settings({action:'set_scene_options',session_id:sessionId,options:{slides:8,template:'lab',allow_output:true}})).status,200);
+  const admittedTasks=f.registrations.size;
+  assert.equal((await send('/ppt Use previous findings','ppt')).comparison_id,ppt.comparison_id,'retry binds original options and On even after next-draft options and effort change');
+  assert.equal(f.registrations.size,admittedTasks);
+  const originalPpt=JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(turn=>turn.id===ppt.comparison_id);
+  assert.equal(originalPpt.reasoning_effort,'high');assert.equal(originalPpt.options.slides,undefined);assert.equal(originalPpt.options.template,undefined);
+  const chat=await send('Explain the slides','chat'),chatView=await settle(chat.comparison_id);
   assert.equal(chatView.presentation,'single');assert.deepEqual(Object.keys(chatView.lanes),['baseline']);
   assert.equal((await f.ctx.sessionController.inspect(sessionId)).events.filter(e=>e.type==='user/message').length,4);
   const old=(await f.api(undefined,'?task_id='+first.task_id)).value;assert.equal(old.answer,'ordinary remembered');assert.equal(old.scene,'new-scene');
@@ -1302,6 +1416,77 @@ test('Completed parent routes ordinary → data → PPT → chat without moving 
   assert.equal((await f.trash({action:'restore',session_id:sessionId})).status,200);
   assert.equal(JSON.stringify((await f.ctx.sessionController.inspect(sessionId)).events),historyBefore);
   assert.equal((await compare(ppt.comparison_id)).status,200);
+ }finally{await f.close();}
+});
+
+test('ordinary Chat admission preserves RSI preferences and remains idempotent before and after completion',options,async()=>{
+ const scenes=[{...multiScenes[0],id:'new-scene',label:'Chat',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'research-data-analysis',label:'Data',preset:'sss-data',adapter:'workspace',mcp_rows:[]}];
+ const f=await fixture({broker:true,scenes,capability_profile:'new-scene',comparison_scenes:['research-data-analysis']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const selection={scene:'new-scene',mode:'shadow',rsi:false};
+  assert.equal((await f.settings({action:'select',session_id:sessionId,selection})).status,200);
+  const request={sessionId,requestId:'chat-retry',mode:'queue',content:[{type:'text',text:'Keep the chosen RSI preference'}]};
+  const send=()=>f.ctx.sessionController.prompt(request,new AbortController().signal);
+  await send();
+  assert.deepEqual((await f.settings(undefined,'?session_id='+sessionId)).value.selection,selection);
+  await send();assert.equal(f.promptCalls.length,1);assert.equal(f.registrations.size,1);
+  const task=(await f.api()).value.tasks[0];await f.complete(task);
+  await send();assert.equal(f.promptCalls.length,1);assert.equal(f.registrations.size,1);
+  await f.restart();await send();
+  assert.deepEqual((await f.settings(undefined,'?session_id='+sessionId)).value.selection,selection);
+  assert.equal(f.promptCalls.length,1);assert.equal(f.registrations.size,1);
+ }finally{await f.close();}
+});
+
+test('new sessions ignore a previous scene default and plain uploads route to Chat after a comparison',options,async()=>{
+ const scenes=[{...multiScenes[0],id:'new-scene',label:'Chat',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'research-data-analysis',label:'Data',preset:'sss-data',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'ppt',label:'PPT',preset:'sss-ppt',adapter:'ppt',mcp_rows:[]}];
+ const f=await fixture({broker:true,scenes,capability_profile:'ppt',comparison_scenes:['research-data-analysis','ppt'],models:[
+  {provider:'deepseek-official',model:'deepseek-flash',label:'Flash',available:true},
+  {provider:'deepseek-official',model:'deepseek-v4-pro',label:'Pro',available:true},
+ ]});
+ try{
+  await f.settings({action:'select',selection:{scene:'ppt'}});
+  const {sessionId}=await f.ctx.sessionController.create({});
+  assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'new-scene');
+  await f.settings({action:'select',session_id:sessionId,selection:{scene:'research-data-analysis'}});
+  const inherited=await f.settings({action:'new_session',inherit_session:sessionId});
+  assert.equal(inherited.status,200);assert.equal(inherited.value.selection.scene,'new-scene');
+  await f.restart();
+  assert.equal((await f.settings()).value.selection.scene,'new-scene','cold global draft does not inherit old PPT');
+  const send=(id,content)=>f.ctx.sessionController.prompt({sessionId,requestId:id,mode:'queue',content},new AbortController().signal);
+  const settle=async id=>{for(let attempt=0;attempt<200;attempt++){
+   for(const task of (await f.api()).value.tasks)if(task.status==='running'&&f.promptCalls.some(row=>row.requestId===task.request_id)){
+    f.agents.get(task.session_id).session.append('assistant/message',{message:{content:[{type:'text',text:'diagnostic answer'}]}});await f.complete(task);
+   }
+   const request=new Request('http://local/api/harless/comparisons?session_id='+sessionId+'&id='+id);request.authorized=true;
+   const value=await(await f.routes.get('/api/harless/comparisons').fetch(request)).json();
+   if(['completed','failed'].includes(value.status)){assert.equal(value.status,'completed',JSON.stringify(value));return value;}
+   await new Promise(r=>setTimeout(r,10));
+  }throw Error('comparison timeout');};
+  await f.settings({action:'select',session_id:sessionId,selection:{mode:'shadow',rsi:false}});
+  const data=await send('data-first',[{type:'text',text:'/data Discuss these methods'}]);
+  assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'new-scene');
+  assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.rsi,false,'returning from Data to Chat does not change the RSI preference');
+  assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.mode,'shadow','compatible next-draft mode is retained');
+  const done=await settle(data.comparison_id);assert.equal(done.scene,'research-data-analysis');
+  await f.settings({action:'select',session_id:sessionId,selection:{scene:'ppt'}});
+  const uploaded=await f.ctx.fileUploads.uploadStream({sessionId,name:'notes.txt',data:(async function*(){yield Buffer.from('new attachment notes');})()},new AbortController().signal);
+  const chat=await send('attachment-chat',[{type:'file',receiptId:uploaded.receiptId},{type:'text',text:'Read my notes'}]);
+  const answer=await settle(chat.comparison_id);assert.equal(answer.scene,'new-scene');assert.equal(answer.presentation,'single');
+  assert.deepEqual(Object.keys(answer.lanes),['baseline']);
+  await f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-v4-pro'},new AbortController().signal);
+  const existingCount=f.registrations.size;
+  assert.equal((await send('data-first',[{type:'text',text:'/data Discuss these methods'}])).comparison_id,data.comparison_id,'late retry retains the original Data turn');
+  assert.equal(f.registrations.size,existingCount);
+  assert.equal(JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(turn=>turn.id===data.comparison_id).model,'deepseek-flash','late retry cannot replace the admitted model with next-draft Pro');
+  const before=f.registrations.size;
+  await assert.rejects(send('invalid-upload',[{type:'text',text:'/ppt Use this file'},{type:'file',receiptId:'foreign'}]),error=>error.code==='file_receipt_not_owned');
+  assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'ppt','failed admission keeps its selected scene');
+  assert.equal(f.registrations.size,before);
  }finally{await f.close();}
 });
 

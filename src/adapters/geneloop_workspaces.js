@@ -2,11 +2,32 @@
 (() => {
   const installed = new WeakMap();
   window.__installGeneLoopWorkspaces = (ctx, React, primitives) => {
+    window.__installGeneLoopAccountSettings?.(ctx, React, primitives);
     if (installed.get(ctx)?.browser) return;
     const previous = installed.get(ctx);
     const h = React.createElement;
     const style = previous?.style || document.createElement('style');
     style.textContent = `.geneloop-workspace-modal{width:min(440px,calc(100vw - 32px))!important;padding:24px!important}.geneloop-workspace-form{display:flex;flex-direction:column;gap:12px;color:var(--dsw-alias-label-primary)}.geneloop-workspace-form h2{margin:0;font-size:20px;font-weight:600}.geneloop-workspace-form p{margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.geneloop-workspace-form label{font-size:13px;margin-top:8px}.geneloop-workspace-form input{box-sizing:border-box;width:100%;height:44px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;background:var(--dsw-alias-bg-base);color:inherit;font:inherit}.geneloop-workspace-form input:focus-visible{outline:2px solid #5f9a96;outline-offset:2px}.geneloop-workspace-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}.geneloop-workspace-actions button{font:inherit;font-size:14px;min-height:38px;padding:8px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;cursor:pointer;background:transparent;color:inherit}.geneloop-workspace-actions .primary{background:#2d6369;border-color:#2d6369;color:white}.geneloop-workspace-actions button:disabled{opacity:.55;cursor:wait}.geneloop-workspace-actions button:focus-visible{outline:2px solid #5f9a96;outline-offset:2px}.geneloop-workspace-form .error{color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:1.5}`;
+    style.textContent += `.geneloop-settings-page{color:var(--dsw-alias-label-primary);font-size:14px;line-height:1.6;min-width:0}.geneloop-settings-page h2{font-size:20px;font-weight:600;margin:0 0 16px}.geneloop-settings-page h3{font-size:15px;font-weight:500;margin:0 0 10px}.geneloop-settings-page p{color:var(--dsw-alias-label-secondary);font-size:13px;margin:0 0 16px}.geneloop-settings-page [role=alert]{color:var(--dsw-alias-state-error-primary)}.geneloop-settings-page button{font:inherit;color:inherit;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:transparent;border-radius:8px;padding:7px 12px}.geneloop-settings-page button:hover{background:var(--dsw-alias-interactive-bg-hover)}.geneloop-settings-page button:disabled{opacity:.5;cursor:default}.geneloop-settings-page button:focus-visible,.geneloop-settings-page input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.geneloop-settings-list{display:flex;flex-direction:column;gap:4px}.geneloop-settings-page .geneloop-settings-chat{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;min-height:44px;border:0;border-bottom:1px solid var(--dsw-alias-border-l2);border-radius:0}.geneloop-settings-chat>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.geneloop-settings-chat>span:last-child{flex-shrink:0;font-size:12px;color:var(--dsw-alias-label-secondary)}.geneloop-settings-section{padding:20px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}.geneloop-settings-section:first-of-type{padding-top:0}.geneloop-settings-page form{display:flex;flex-direction:column;gap:12px}.geneloop-settings-page label{display:flex;flex-direction:column;gap:6px;font-size:13px}.geneloop-settings-page input{box-sizing:border-box;width:100%;height:38px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;color:inherit;background:transparent;font:inherit}.geneloop-settings-page form>button{align-self:flex-start}.geneloop-settings-page output{display:block;overflow-wrap:anywhere;padding:12px;background:var(--dsw-alias-interactive-bg-hover);border-radius:8px}.geneloop-settings-model{padding:14px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}.geneloop-settings-model>header{display:flex;align-items:center;justify-content:space-between;gap:12px}.geneloop-settings-model>header small{color:var(--dsw-alias-label-secondary)}.geneloop-settings-model ul{list-style:none;margin:8px 0 0;padding:0}.geneloop-settings-model li{font-size:13px;color:var(--dsw-alias-label-secondary);padding:3px 0}`;
+    // Native SettingsRoot fixes its nav rail at 188px. Scope the small-screen
+    // override to our public section seat; other dialogs and desktop keep
+    // their original layout, styles and event/focus ownership.
+    const settingsDialog = '[role="dialog"][aria-modal="true"]:has([data-slot="geneloop.settings.section"])';
+    style.textContent += `@media(max-width:640px){
+      ${settingsDialog}{box-sizing:border-box;width:calc(100vw - 24px);max-width:calc(100vw - 24px);height:min(800px,calc(100vh - 24px));height:min(800px,calc(100dvh - 24px));flex-direction:column;border-radius:20px}
+      ${settingsDialog}>nav{width:100%;min-width:0;gap:12px;padding:16px 16px 10px;border-bottom:1px solid var(--dsw-alias-border-l2)}
+      ${settingsDialog}>nav>div:first-child{padding:0 96px 0 0;min-height:24px}
+      ${settingsDialog}>nav>div:last-child{flex-direction:row;gap:4px;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin}
+      ${settingsDialog}>nav>div:last-child>button{flex:0 0 auto;height:44px;white-space:nowrap;padding:10px 12px}
+      ${settingsDialog}>nav+div{min-width:0;min-height:0;flex:1}
+      ${settingsDialog}>nav+div>div:first-child{position:absolute;top:8px;right:8px;width:auto;max-width:104px;height:44px;padding:0;align-items:center}
+      ${settingsDialog}>nav+div>div:first-child>button{width:44px;height:44px;flex-shrink:0}
+      ${settingsDialog}>nav+div>div:last-child{min-width:0;padding:20px 18px;overscroll-behavior-y:contain}
+      ${settingsDialog} .geneloop-settings-page{overflow-wrap:anywhere}
+      ${settingsDialog} .geneloop-settings-page input{font-size:16px}
+      ${settingsDialog} .geneloop-settings-model>header{flex-wrap:wrap;gap:4px 12px}
+      ${settingsDialog} .geneloop-settings-model>header small{white-space:nowrap}
+    }`;
     if (!previous) {
       document.head.append(style);
       installed.set(ctx, { style, browser: false, waiting: false });
@@ -175,16 +196,36 @@
         setNotice(message); throw Error(message);
       } finally { trashBusy = false; notify(); }
     };
-    const trashDialog = (open, close) => h(primitives.Modal, { open, onClose: close, title: '最近删除', headless: true, className: 'geneloop-workspace-modal' },
-      h('div', { className: 'geneloop-workspace-form' }, h('h2', null, '最近删除'),
+    function TrashSettings() {
+      React.useSyncExternalStore(subscription, () => trash);
+      React.useSyncExternalStore(subscription, () => trashBusy);
+      React.useSyncExternalStore(subscription, () => notice);
+      React.useEffect(() => { void refreshTrash(); }, []);
+      return h('section', { className: 'geneloop-settings-page', 'aria-label': '最近删除' }, h('h2', null, '最近删除'),
         h('p', null, '这里的对话已从工作区和搜索中移除，记录和文件保留。恢复后回到原工作区；原工作区已删除时归入“未分组”。'),
         trash.loading ? h('p', { role: 'status' }, '正在加载最近删除…') : trash.error ? h('p', { className: 'error', role: 'alert' }, trash.error)
           : trash.sessions.length ? h('div', { className: 'geneloop-trash-list' }, trash.sessions.map(item => h('div', { className: 'geneloop-trash-row', key: item.session_id },
             h('span', null, item.title || '新会话'), h('button', { disabled: trashBusy, 'aria-label': '恢复对话 ' + (item.title || '新会话'),
               onClick: () => { void changeTrash('restore', item.session_id, item.title || '新会话').catch(() => {}); } }, '恢复'))))
           : h('p', null, '没有已删除的对话。'),
-        notice && h('p', { role: 'status' }, notice),
-        h('div', { className: 'geneloop-workspace-actions' }, trash.error && h('button', { onClick: () => { void refreshTrash(); } }, '重试'), h('button', { onClick: close }, '关闭'))));
+        notice && h('p', { role: noticeIsError ? 'alert' : 'status' }, notice),
+        trash.error && h('button', { type: 'button', onClick: () => { void refreshTrash(); } }, '重试'));
+    }
+    function ArchivedSettings({ close }) {
+      const ws = React.useSyncExternalStore(workspaceSource.subscribe, workspaceSource.snapshot);
+      const list = React.useSyncExternalStore(sessionSource.subscribe, sessionSource.snapshot);
+      React.useSyncExternalStore(subscription, () => trash);
+      const items = ws.archivedSessionIds.map(id => list.byId[id]).filter(publicSession);
+      return h('section', { className: 'geneloop-settings-page', 'aria-label': '已归档对话' }, h('h2', null, '已归档对话'),
+        h('p', null, '归档的对话保留记录和文件，点击名称即可打开。'),
+        items.length ? h('div', { className: 'geneloop-settings-list' }, items.map(item => h('button', { type: 'button', key: item.id,
+          className: 'geneloop-settings-chat', onClick: () => { openSession(item.id); close(); } }, h('span', null, item.title || '新会话'), h('span', null, '打开'))))
+          : h('p', null, '没有已归档的对话。'));
+    }
+    ctx.slots.inject('settings.section', function* () {
+      yield ctx.slots.register({ name: 'settings.section', id: 'geneloop-archived', order: 70, label: () => '已归档对话' }, ArchivedSettings);
+      yield ctx.slots.register({ name: 'settings.section', id: 'geneloop-trash', order: 80, label: () => '最近删除' }, TrashSettings);
+    });
     const reusableBlank = (target, preserveCurrent = false) => {
       const ws = workspaces.list.getSnapshot(), list = sessions.list.getSnapshot();
       const group = ws.items.find(row => row.workspaceId === target);
@@ -271,8 +312,7 @@
       const [editing, setEditing] = React.useState(null), [name, setName] = React.useState(''), [saving, setSaving] = React.useState(false);
       const menu = React.useSyncExternalStore(subscription, () => contextMenu);
       const [removing, setRemoving] = React.useState(null), [pinned, setPinned] = React.useState([]);
-      const [pinning, setPinning] = React.useState(false), [showArchived, setShowArchived] = React.useState(false);
-      const [showTrash, setShowTrash] = React.useState(false);
+      const [pinning, setPinning] = React.useState(false);
       const preferenceVersion = React.useRef(0);
       React.useEffect(() => {
         let active = true; const version = preferenceVersion.current;
@@ -356,8 +396,7 @@
         ws.items.length === 0 && !query && (ws.phase === 'pending' || list.phase === 'pending'
           ? h('p', { className: 'geneloop-workspace-empty', role: 'status' }, ws.state === 'error' ? '工作区连接中断，正在重新连接…' : '正在连接工作区…')
           : h('button', { className: 'geneloop-workspace-empty', onClick: () => setAdding(true) }, '创建第一个工作区')),
-        ws.archivedSessionIds.length > 0 && h('button', { className: 'geneloop-workspace-empty', onClick: () => setShowArchived(true) }, '已归档对话'),
-        h('button', { className: 'geneloop-workspace-empty', onClick: () => { setShowTrash(true); void refreshTrash(); } }, '最近删除')),
+        null),
         h(ActionMenu, { menu, close: closeMenu }, menu?.kind === 'workspace' ? [
           h('button', { key: 'pin', role: 'menuitem', disabled: pinning, onClick: () => { void togglePin(); } }, icon('pin'), pinned.includes(menu.id) ? '取消置顶' : '置顶工作区'),
           h('button', { key: 'settings', role: 'menuitem', onClick: () => edit('workspace', menu.id, menu.title) }, '工作区设置'),
@@ -386,13 +425,7 @@
             h('p', null, '这会删除此工作区的分组。已有对话将移至“未分组”，对话记录和文件都会保留。'),
             status && h('p', { className: 'error', role: 'alert' }, status),
             h('div', { className: 'geneloop-workspace-actions' }, h('button', { disabled: saving, onClick: () => setRemoving(null) }, '取消'),
-              h('button', { className: 'danger', disabled: saving, onClick: () => { void remove(); } }, saving ? '正在删除…' : '删除工作区')))),
-        trashDialog(showTrash, () => setShowTrash(false)),
-        h(primitives.Modal, { open: showArchived, onClose: () => setShowArchived(false), title: '已归档对话', headless: true, className: 'geneloop-workspace-modal' },
-          h('div', { className: 'geneloop-workspace-form' }, h('h2', null, '已归档对话'),
-            h('div', { className: 'geneloop-archived-list' }, ws.archivedSessionIds.map(id => list.byId[id]).filter(publicSession).map(item => h('button', { key: item.id,
-              className: 'geneloop-chat-name', onClick: () => { open(item.id); setShowArchived(false); } }, item.title || '新会话'))),
-            h('div', { className: 'geneloop-workspace-actions' }, h('button', { onClick: () => setShowArchived(false) }, '关闭')))));
+              h('button', { className: 'danger', disabled: saving, onClick: () => { void remove(); } }, saving ? '正在删除…' : '删除工作区')))));
     }
     function CurrentChatActions() {
       const list = React.useSyncExternalStore(sessionSource.subscribe, sessionSource.snapshot);
@@ -448,6 +481,7 @@
     // Public slot rendering may add a display:contents wrapper. Reach the
     // actual region in either shape without relying on upstream hashed classes.
     style.textContent += `div:has(>.geneloop-workspaces),div:has(>div>.geneloop-workspaces){min-width:0;box-sizing:border-box;margin-right:0}.geneloop-workspaces,.geneloop-workspace-list{min-width:0;width:100%;max-width:100%;box-sizing:border-box}.geneloop-workspace-row,.geneloop-chat-row,.geneloop-workspace-name{min-width:0;box-sizing:border-box}`;
+    style.textContent += `.geneloop-workspace-row+.geneloop-chat-row{margin-top:3px}`;
     installed.get(ctx).browser = true;
   };
 })();

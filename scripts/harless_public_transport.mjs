@@ -8,6 +8,8 @@ const publicMessages = new Map([
   ['session/not-found', '该对话暂时不可用，请刷新后重试。'],
   ['session/agent-busy', '当前回复尚未结束，请稍后重试。'],
   ['session/model-unavailable', '所选模型暂时不可用，请稍后重试。'],
+  ['model_budget_unavailable', '所选模型的推理模式超出当前任务预算，请选择 Off 后重试。'],
+  ['model_not_allowed', '暂时无法切换到所选模型，请等待当前回复结束后重试，并检查模型及推理模式。'],
 ]);
 export function publicTransportError(error) {
   const code = typeof error?.code === 'string' && /^[a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)?$/.test(error.code)

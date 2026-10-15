@@ -1,5 +1,15 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 输入默认场景、模型目录与页面加载（2026-10-15）
+
+Web 每次发送从本轮序列化文本的前导 `/data`、`/ppt`、`/paper` 或 `/chat` 识别场景；没有场景标记时使用 `new-scene`。任务 admission 冻结本轮配置后，只把可见父会话的下一次选择恢复 Chat，不重新挂载运行中的工具。已接受 `requestId` 重试按持久场景、选项、模型、推理模式和展示方式恢复，再校验内容指纹。新建会话也默认 Chat。浏览器通过公开 `beginSubmission.onRetire` 区分成功提交和乐观清空，失败保留场景与附件，新草稿选择有版本保护。
+
+`session/selectModel` 和任务预览显式更换模型且省略推理参数时使用 Off；同模型省略参数则保留已有设置，显式不可用模式仍拒绝。业务错误转换官方 `RemoteError`，网关只展示固定安全提示。实际已挂载工具场景独立保存在 `mounted_scenes`，旧会话可从原 preset 元信息恢复，避免把下一轮预选场景误当已挂载范围。
+
+认证 `GET /api/harless/models[?session_id=…]` 提供安全模型目录、Off/On 可用性与原因、默认项及可选会话当前项；会话参数仍验证归属，不返回凭据，也不修改全局默认。路由声明 `requestBody: 'buffered'`，确保原生 HTTP bridge 的 GET 没有非法请求体。
+
+设置复用公开 `settings.section` 与原生 shell；同 id 模型页只显示一个导航项，归档、最近删除、账户表单在右栏切换。加载遮罩依赖公开 sessions list、`openState`、视图布局提交和当前页对照快照读取；不等待任务完成，不抓取更早分页。读取错误即时释放遮罩，异常长等待显示已加载内容与重试提示，减少动画偏好受支持。
+
 2026-10-14 四分支兼容：`offeredSchemaMatches` 保留第四参数的冻结 Schema 摘要校验；`proposeReadyBatch.closedContinuation` 仅补充论文的闭合结构判定，授权计划仍由独立的 `approvedContinuation` 检查，失效权限不能被论文回调或相似度救回。成员场景的 `/app/.local/web/sessions` 只有在部署根与 `/user/tasks` 的设备/inode 完全相同时才进入原生文件允许范围。详情及验收层级见 [整合记录](experiments/four-scenario-main-integration-20261014-v1.md)。
 
 成员账号的文件与工作区 API 在独立 `bubblewrap` 后端中额外校验：`workspaceFiles/{read,readAll,readBytes,readRelated,stat,list}` 经公开 Fetch 路由限制到 header 派生的会话工作区；`workspace/create` 与 `directoryPicker/{list,createDirectory}` 限制到该账号的 workspace/sessions 目录。路径按 realpath 校验，拒绝父目录与符号链接越界；失败以原生 RPC envelope 的 `gateway/forbidden` 返回。公开 `workspaceFileScope` Lookup 限制包括 WebSocket changes feed 在内的根目录，未知/跨账号 Session 不得到 scope。详见 [账号网关](harless-account-gateway.md)。
