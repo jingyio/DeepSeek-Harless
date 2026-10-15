@@ -74,9 +74,11 @@ class PaperEvidence(SessionFiles):
             text = reader.pages[page - 1].extract_text() or ''
             count = len(reader.pages)
         else:
-            if page != 1: raise ValueError('text_has_one_logical_page')
             if len(data) > 256*1024: raise ValueError('paper_text_limit')
-            text, count = data.decode('utf-8'), 1
+            whole = data.decode('utf-8')
+            count = max(1, (len(whole) + 79999) // 80000)
+            if page > count: raise ValueError('page_not_in_document')
+            text = whole[(page - 1) * 80000:page * 80000]
         if len(text) > 100000: raise ValueError('paper_page_text_limit')
         self.pinned(source_id)
         return {'source_id': source_id, 'version_sha256': version, 'name': name, 'page': page,
@@ -120,7 +122,7 @@ def create_server(directory, renderer_root=None):
 
     @server.tool(annotations=annotation)
     def read_pinned_document(source_id: str, page: int = 1) -> dict:
-        """Read one exact PDF page or one bounded text file for proofreading; do not claim visual or factual verification."""
+        """Read one exact PDF page or one bounded 80k-character text page; follow page_count, not guessed page numbers."""
         return files.document(source_id, page)
 
     @server.tool(annotations=annotation)
