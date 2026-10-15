@@ -8,6 +8,6 @@
   "compression": false,
   "request_limit": 24,
   "budget_usd": 0.25,
-  "max_output_tokens": 1000,
+  "max_output_tokens": 4000,
   "real_models_enabled": false
 }

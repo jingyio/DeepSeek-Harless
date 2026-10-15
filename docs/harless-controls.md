@@ -6,7 +6,7 @@
 | Scene ID | 后端配置 | 能力与边界 |
 | --- | --- | --- |
 | `ppt` | `scenarios/research_ppt/web-scenario.json` | 既有 19 工具 TS Adapter/Python 后端，批准 PDF/PPTX、读取、生成新副本、修订、实际渲染验收与交付 |
-| `paper-proofreading` | `scenarios/paper_proofreading/scenario.json` | 17 工具：上传文件/PDF 文本、LaTeX 字面检查、当前稿引用句柄及原文、arXiv/Crossref 候选、受限查询恢复、结构修订、当前报告读取和获准的新 PDF 导出；不编译 LaTeX、不修改原稿 |
+| `paper-proofreading` | `scenarios/paper_proofreading/scenario.json` | 19 工具：上传文件/PDF 文本、LaTeX 字面检查、当前稿引用句柄及原文、arXiv/Crossref 候选、受限查询恢复、结构修订、任务内报告草稿/冻结、当前报告读取和获准的新 PDF 导出；不编译 LaTeX、不修改原稿 |
 | `research-data-analysis` | `scenarios/data_analysis/scenario.json` | 4 只读工具：真实 UTF-8 CSV/TSV 的列类型、空白缺失、描述统计、完整样本 Pearson 相关；不执行任意代码、插补、显著性或因果推断 |
 | `files` | `scenarios/file-management/web-scenario.json` | Files：13 个文件 MCP 工具，盘点、读取、查重、文本索引与检索；显式开启整理权限后，仅对本任务上传副本执行获准的复制、移动、隔离计划，并保留预览、授权和恢复收据 |
 | `new-scene` | `scenarios/general/scenario.json` | 普通 Harness + `list_files/read_file`，读取本 Session 已上传的 UTF-8 文本；没有样例数据、shell 或任意主机文件能力 |
@@ -28,7 +28,9 @@ PPT 通过服务器 `HARLESS_PPT_RUNTIME_BUNDLE` 加载 `online-manifest.json/li
 
 结构认证只覆盖闭合的只读后继；需要语义排名时明确交回 LLM，不提供固定向量伪装匹配服务。一般需语义匹配的历史入口仍要求实际 loopback 服务。只有整个执行批次的真实结果验证通过才增加 `verified_skips`。PPT 库尚未质量/费用晋级，机制通过不代表科研质量或稳定净降本。论文、数据、通用场景仅在管理员配置对应私有认证包且代码/完整 Schema 均匹配时开放 Execute；未部署仍明确拒绝。Files 的私有实验库不自动发布为产品库。
 
-论文包 `HARLESS_PAPER_RUNTIME_BUNDLE` 当前可由 `scripts/compile-paper-composite-runtime.py` 从已有独立轨迹认证库和当前 17 工具完整 Schema 编译：`pin_paper_sources → read_pinned_paper_sources` 与 `pin_paper_citations → read_pinned_paper_citations` 两条只读 Motif。旧库中 `read_pinned_citation_records` 后继保留为普通模型工具，尚未迁移成自动跳过；已有 Shadow 匹配率不是这份新包的实测跳过率。PDF 固定脚本经 `HARLESS_PAPER_RENDERER_ROOT` 单独部署，菜单 `PDF 输出` 默认关闭；上传 `audit.json` 且当前任务明确开启权限后，`read_current_audit → export_current_audit_pdf(report_sha256)` 只写任务的新输出目录。导出是模型显式工具调用，不记 Verified Skip；收据确认文件/代码/版本，并返回 PDF 页数、文本层、当前报告字段字面覆盖和链接对象数；不确认论文结论或 PDF 视觉质量。引用句柄绑定当前任务的批准输入，任务或文件版本变化会失效。上述两个环境变量均由管理员在服务端设置，前端不能提供路径。
+论文包 `HARLESS_PAPER_RUNTIME_BUNDLE` 可由 `scripts/compile-paper-composite-runtime.py` 从已有独立轨迹认证库和当前 19 工具完整 Schema 编译：`pin_paper_sources → read_pinned_paper_sources` 与 `pin_paper_citations → read_pinned_paper_citations` 两条只读 Motif。旧库中 `read_pinned_citation_records` 后继保留为普通模型工具，尚未迁移成自动跳过；已有 Shadow 匹配率不是这份新包的实测跳过率。PDF 固定脚本经 `HARLESS_PAPER_RENDERER_ROOT` 单独部署，菜单 `PDF 输出` 默认关闭。用户可上传论文资料，模型用 `stage_current_audit → finalize_current_audit` 在本任务目录生成并冻结报告；已有 `audit.json` 仍可作为输入。之后 `read_current_audit → export_current_audit_pdf(report_sha256)` 只写新的任务输出目录。生成报告和导出均为模型显式工具调用，不记 Verified Skip；格式和字面覆盖检查不认证论文结论或 PDF 视觉质量。引用句柄与报告绑定当前任务的批准输入，任务或文件版本变化会失效。上述两个环境变量均由管理员在服务端设置，前端不能提供路径。
+
+论文选择“生成报告 PDF 新副本”后，任务必须有新 PDF 和字段覆盖收据才标记完成；模型提前停下时在同一 Session/预算内最多两次普通 Harness 续行，仍未交付则标失败。单次模型输出默认上限为 4000 token，预算代理继续执行原任务/启动费用及请求上限；此调整源于 [仅上传论文资料的真实闭环](experiments/paper-generated-report-20261015-v1.md)中 1000 token 连续触顶。该小型任务完成不证明科研质量或 RSI 净收益。
 
 管理员可用 `scripts/publish-ppt-runtime.py --dataset ... --schemas ... --output ...` 从两个独立正常轨迹及一份留出重新编译；或用 `--compiled-manifest` 对未变化且全部证据锁仍有效的认证 IR 更新部署绑定，不重新运行留出、也不改旧证书。完整实际 Harness Schema 为认证输入，不从当前任务临时凑出认证。历史 `example/portfolio` 只在 `config/harless-diagnostics.json`，不出现在产品映射。
 

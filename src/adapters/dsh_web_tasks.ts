@@ -207,7 +207,7 @@ export function apply(ctx: any) {
       ] : selected.scene==='paper-proofreading' ? [
         {key:'allow_output',label:'PDF 输出',default:false,values:[
           {value:false,label:'只读校对'},
-          {value:true,label:'允许生成报告 PDF 新副本',detail:sceneFor(selected.scene).output_unavailable_reason ?? '需上传当前 audit.json；只写本任务输出目录'},
+          {value:true,label:'生成报告 PDF 新副本',detail:sceneFor(selected.scene).output_unavailable_reason ?? '上传论文资料或已有报告；任务须交付新 PDF'},
         ]},
       ] : [],
       session_id: sessionId ?? null, model_calls: 0 };
@@ -479,6 +479,23 @@ export function apply(ctx: any) {
   }
   function requireIdle() {
     if (active) throw new TaskError('task_busy', 'Another task is running; wait or cancel it', 409);
+  }
+  function paperPdfDelivered(task: Task): boolean {
+    if (task.scene.id !== 'paper-proofreading' || !task.scene_options.allow_output) return true;
+    try {
+      const outputs = join(task.workspace, 'outputs');
+      return readdirSync(outputs).some(name => {
+        if (!name.startsWith(task.request.task_id + '-')) return false;
+        try {
+          const directory = join(outputs, name);
+          if (!lstatSync(directory).isDirectory()) return false;
+          const receipt = JSON.parse(readFileSync(join(directory, 'export-receipt.json'), 'utf8'));
+          const pdf = join(directory, 'reference-check-report.pdf');
+          return lstatSync(pdf).isFile() && receipt.artifact_file === 'outputs/' + name + '/reference-check-report.pdf' &&
+            receipt.content_coverage?.all_fields_present === true;
+        } catch { return false; }
+      });
+    } catch { return false; }
   }
   function finish(task: Task, status: string, failure: string | null = null) {
     if (terminal.has(task.status)) return;
@@ -795,9 +812,8 @@ export function apply(ctx: any) {
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
     if (task.scene.adapter === 'files' && task.scene_options.allow_output && !task.scene_inputs.length)
       throw new TaskError('files_requires_input_for_output', 'Files 整理权限需要先上传本任务的来源文件', 409);
-    if (task.scene.id === 'paper-proofreading' && task.scene_options.allow_output &&
-        !task.scene_inputs.some(row => row.file === 'audit.json'))
-      throw new TaskError('paper_export_requires_audit_json', '论文 PDF 导出需要先上传本任务的 audit.json', 409);
+    if (task.scene.id === 'paper-proofreading' && task.scene_options.allow_output && !task.scene_inputs.length)
+      throw new TaskError('paper_export_requires_source', '论文 PDF 导出需要先上传本任务的论文资料或已有报告', 409);
     if (task.scene.adapter === 'literature' && !task.scene_inputs.length)
       throw new TaskError('literature_requires_pdf', '请先上传本次任务的 PDF，再开始文献处理。', 409);
     if(task.scene.adapter==='data-report'&&!task.scene_inputs.some(row=>/\.(csv|tsv)$/i.test(row.name)))
@@ -1027,6 +1043,24 @@ export function apply(ctx: any) {
       bindScene(agent, sceneFor(forSession(agent.session.id)?.scene.id ?? selections.get(agent.session.id)?.scene ?? defaults.scene));
     }
     agent.ctx.on('tools/result', (execution: any, result: any) => forSession(agent.session.id)?.interceptor?.observe(agent.session.id, execution, result));
+    agent.ctx.on('agent/turn-stopping', ({ signal }: any) => {
+      const task = forSession(agent.session.id);
+      if (!task || task.status !== 'running' || task.scene.id !== 'paper-proofreading' ||
+          !task.scene_options.allow_output || signal.aborted || paperPdfDelivered(task)) return;
+      const repairs = Number(task.stats.paper_output_repairs ?? 0);
+      if (repairs >= 2) return;
+      task.stats.paper_output_repairs = repairs + 1;
+      record(task);
+      agent.steer(createUserMessage({ content: [{ type: 'text', text:
+        '本任务选择了生成报告 PDF，但目前没有通过检查的新 PDF。请继续同一任务，沿用已读取的文件证据和原权限、预算。'
+        + '如果还没有报告，直接调用 stage_current_audit 保存字段，再以返回的 SHA 调用 finalize_current_audit；'
+        + '之后 read_current_audit、export_current_audit_pdf，并核对收据。'
+        + '不要只叙述下一步计划，不必为此查询外部元数据；无法核验的文献标为存疑并注明限制。'
+        + '如工具拒绝，请修正参数或如实报告失败，不得声称已有 PDF。' }],
+        source: { kind: 'task-acceptance-repair', session_id: agent.session.id,
+          task_id: task.request.task_id, repair: repairs + 1, max_repairs: 2,
+          model_requests_skipped_verified: 0 } }));
+    });
   }, { global: true });
   ctx.on('session/event', (session: any, event: any) => {
     const task = forSession(session.id); if (!task) return;
@@ -1049,7 +1083,11 @@ export function apply(ctx: any) {
     const task = forSession(agent.session.id); if (task) finish(task, /budget|request limit|429/i.test(String(error)) ? 'budget_exhausted' : 'failed', String(error));
   }, { global: true });
   ctx.on('agent/status', ({ agent, status }: any) => {
-    const task = forSession(agent.session.id); if (task?.status === 'running' && status === 'idle') finish(task, 'completed');
+    const task = forSession(agent.session.id);
+    if (task?.status === 'running' && status === 'idle') {
+      const delivered = paperPdfDelivered(task);
+      finish(task, delivered ? 'completed' : 'failed', delivered ? null : 'paper_pdf_not_delivered');
+    }
   }, { global: true });
   ctx.on('llm/stream', (request: any, next: any) => {
     const task = forSession(request.sessionId);

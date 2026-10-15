@@ -5,12 +5,14 @@ import io
 import json
 import os
 import re
+import stat
 import sys
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from src.adapters.session_files import SessionFiles
+from src.adapters.file_lock import exclusive_lock
 from src.adapters import paper_static_checks
 from src.adapters.paper_query_recovery import validate_queries
 from src.adapters.paper_renderer import audit_pdf_content_coverage, render_renderer, validate_audit
@@ -177,12 +179,36 @@ def create_server(directory, renderer_root=None):
 
     @server.tool(annotations=annotation)
     def read_current_audit() -> dict:
-        """Read the task's approved audit.json with its exact SHA256 for model review."""
+        """Read the task's approved or model-finalized audit report with its exact SHA256."""
         return output.read_audit()
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+    def stage_current_audit(scope: str | None = None, references: list[dict] | None = None,
+                            sources: list[dict] | None = None, issues: list[dict] | None = None,
+                            citation_checks: dict[str, dict[str, str]] | None = None,
+                            notes: list[str] | None = None,
+                            expected_draft_sha256: str = '') -> dict:
+        """Append typed report fields to this task's private draft; use returned SHA for the next call.
+
+        scope is text; notes is a list of strings. Each references/sources/issues field is
+        a list of report rows (at most eight per call). citation_checks is an object keyed
+        by check name, each value having result/evidence/limitation strings. A reference's
+        source_ids must name rows in sources; uploaded names belong in evidence_files.
+        """
+        patch = {name: value for name, value in {
+            'scope': scope, 'references': references, 'sources': sources,
+            'issues': issues, 'citation_checks': citation_checks, 'notes': notes,
+        }.items() if value is not None}
+        return output.stage(patch, expected_draft_sha256)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+    def finalize_current_audit(expected_draft_sha256: str) -> dict:
+        """Validate and freeze the model's report for this task; return SHA for PDF export."""
+        return output.finalize(expected_draft_sha256)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
     def export_current_audit_pdf(report_sha256: str) -> dict:
-        """Export only a new task PDF from the approved, versioned audit.json and reviewed renderer."""
+        """Export a new task PDF from the approved or finalized report SHA and reviewed renderer."""
         return output.export(report_sha256)
 
     return server
@@ -211,29 +237,157 @@ class PaperOutput:
         self.files = files
         self.renderer_root = Path(renderer_root).resolve(strict=True) if renderer_root else None
 
-    def _audit(self, writable=False):
+    @staticmethod
+    def _private_bytes(path, limit=256*1024):
+        if path.is_symlink(): raise ValueError('paper_audit_private_file_required')
+        with os.fdopen(os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)), 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > limit:
+                raise ValueError('paper_audit_private_file_required')
+            data = stream.read(limit + 1)
+        if len(data) > limit: raise ValueError('paper_audit_size_limit')
+        return data
+
+    @staticmethod
+    def _save(path, value):
+        if path.exists() and (path.is_symlink() or path.stat().st_nlink != 1):
+            raise ValueError('paper_audit_private_file_required')
+        data = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+        if len(data) > 256*1024: raise ValueError('paper_audit_size_limit')
+        temporary = path.with_name(path.name + '-' + uuid4().hex + '.tmp')
+        with temporary.open('xb') as stream: stream.write(data)
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+
+    def _task(self, writable=False):
         workspace = self.files.root.parent
-        raw, digest = self.files.read('audit.json', limit=256*1024)
         approved = json.loads((workspace / 'approved-inputs.json').read_text())
         grant = json.loads((workspace / 'paper-output-grant.json').read_text())
-        if (approved.get('files', {}).get('audit.json') != digest or
-            grant.get('schema_version') != 1 or grant.get('audit_sha256') != digest or
+        if (not isinstance(approved.get('files'), dict) or
+            grant.get('schema_version') != 1 or
             not isinstance(grant.get('task_id'), str) or
             not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',grant['task_id'])):
             raise ValueError('paper_audit_approval_changed')
         if writable and grant.get('allow_output') is not True:
             raise ValueError('paper_pdf_output_not_authorized')
+        listed = {row['name']: row['sha256'] for row in self.files.list_files()['files']}
+        if listed != approved['files']: raise ValueError('paper_audit_approval_changed')
+        return workspace, grant, listed
+
+    def _draft_dir(self, workspace, grant):
+        directory = workspace / 'outputs' / 'paper-audits' / grant['task_id']
+        if any(p.is_symlink() for p in (workspace / 'outputs', workspace / 'outputs' / 'paper-audits', directory)):
+            raise ValueError('paper_audit_private_directory_required')
+        return directory
+
+    def stage(self, patch, expected_draft_sha256=''):
+        workspace, grant, sources = self._task(writable=True)
+        if not sources or sources.get('audit.json') is not None:
+            raise ValueError('paper_generated_audit_requires_original_sources')
+        if (not isinstance(patch, dict) or not patch or
+            set(patch) - {'scope', 'references', 'sources', 'issues', 'citation_checks', 'notes'} or
+            len(json.dumps(patch, ensure_ascii=False).encode()) > 16000):
+            raise ValueError('paper_audit_patch_invalid')
+        directory = self._draft_dir(workspace, grant)
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with exclusive_lock(directory / '.lock'):
+            draft_path = directory / 'draft.json'
+            if (directory / 'audit.json').exists(): raise ValueError('paper_audit_already_finalized')
+            if draft_path.exists():
+                draft = json.loads(self._private_bytes(draft_path))
+                current = hashlib.sha256(self._private_bytes(draft_path)).hexdigest()
+                if expected_draft_sha256 != current: raise ValueError('stale_paper_audit_draft')
+            else:
+                if expected_draft_sha256: raise ValueError('stale_paper_audit_draft')
+                draft = {'task_id': grant['task_id'], 'source_versions': sources,
+                         'report': {'schema_version': 1, 'scope': '', 'reference_count': 0,
+                                    'references': [], 'sources': [], 'issues': [],
+                                    'citation_checks': {}, 'notes': []}}
+            if draft.get('task_id') != grant['task_id'] or draft.get('source_versions') != sources:
+                raise ValueError('paper_audit_source_changed')
+            report = draft['report']
+            if 'scope' in patch:
+                if not isinstance(patch['scope'], str) or not 1 <= len(patch['scope']) <= 2000:
+                    raise ValueError('paper_audit_scope_invalid')
+                report['scope'] = patch['scope']
+            for name in ('references', 'sources', 'issues', 'notes'):
+                if name in patch:
+                    rows = patch[name]
+                    if not isinstance(rows, list) or len(rows) > 8 or any(
+                        not isinstance(row, str if name == 'notes' else dict) for row in rows):
+                        raise ValueError('paper_audit_rows_invalid')
+                    report[name].extend(rows)
+            if 'citation_checks' in patch:
+                checks = patch['citation_checks']
+                if not isinstance(checks, dict) or len(checks) > 8 or any(
+                    key in report['citation_checks'] or not isinstance(value, dict)
+                    for key, value in checks.items()):
+                    raise ValueError('paper_audit_checks_invalid')
+                report['citation_checks'].update(checks)
+            report['reference_count'] = len(report['references'])
+            self._save(draft_path, draft)
+            digest = hashlib.sha256(self._private_bytes(draft_path)).hexdigest()
+            return {'draft_sha256': digest, 'reference_count': len(report['references']),
+                    'source_count': len(report['sources']), 'issue_count': len(report['issues']),
+                    'citation_check_count': len(report['citation_checks']),
+                    'semantic_quality_accepted': False}
+
+    def finalize(self, expected_draft_sha256):
+        workspace, grant, sources = self._task(writable=True)
+        directory = self._draft_dir(workspace, grant)
+        if not directory.is_dir() or directory.is_symlink(): raise ValueError('paper_audit_draft_missing')
+        with exclusive_lock(directory / '.lock'):
+            draft_raw = self._private_bytes(directory / 'draft.json')
+            if hashlib.sha256(draft_raw).hexdigest() != expected_draft_sha256:
+                raise ValueError('stale_paper_audit_draft')
+            draft = json.loads(draft_raw)
+            if draft.get('task_id') != grant['task_id'] or draft.get('source_versions') != sources:
+                raise ValueError('paper_audit_source_changed')
+            report = draft['report']
+            validate_audit(report)
+            if not report['scope'].strip(): raise ValueError('paper_audit_scope_required')
+            if (directory / 'audit.json').exists(): raise ValueError('paper_audit_already_finalized')
+            digest = hashlib.sha256(json.dumps(report, ensure_ascii=False, sort_keys=True,
+                                               separators=(',', ':')).encode()).hexdigest()
+            self._save(directory / 'provenance.json', {'task_id': grant['task_id'],
+                'source_versions': sources, 'draft_sha256': expected_draft_sha256,
+                'audit_sha256': digest, 'origin': 'model_generated_task_copy'})
+            self._save(directory / 'audit.json', report)
+            return {'report_sha256': digest, 'reference_count': len(report['references']),
+                    'source_count': len(report['sources']),
+                    'source_scope': 'model_generated_from_current_task_uploads',
+                    'semantic_quality_accepted': False}
+
+    def _audit(self, writable=False):
+        workspace, grant, sources = self._task(writable=writable)
+        if sources.get('audit.json') is not None:
+            raw, digest = self.files.read('audit.json', limit=256*1024)
+            if grant.get('audit_sha256') != digest:
+                raise ValueError('paper_audit_approval_changed')
+            scope = 'current_approved_task_upload'
+        else:
+            directory = self._draft_dir(workspace, grant)
+            if not (directory / 'audit.json').is_file(): raise ValueError('paper_audit_not_ready')
+            raw = self._private_bytes(directory / 'audit.json')
+            digest = hashlib.sha256(raw).hexdigest()
+            provenance = json.loads(self._private_bytes(directory / 'provenance.json', 10000))
+            if (grant.get('audit_sha256') is not None or
+                provenance.get('task_id') != grant['task_id'] or
+                provenance.get('source_versions') != sources or
+                provenance.get('audit_sha256') != digest):
+                raise ValueError('paper_audit_approval_changed')
+            scope = 'model_generated_from_current_task_uploads'
         report = json.loads(raw)
         validate_audit(report)
-        return workspace, grant, raw, digest, report
+        return workspace, grant, raw, digest, report, scope
 
     def read_audit(self):
-        _, _, _, digest, report = self._audit()
+        _, _, _, digest, report, scope = self._audit()
         return {'report_sha256': digest, 'report': report,
-                'semantic_quality_accepted': False, 'source_scope': 'current_approved_task_upload'}
+                'semantic_quality_accepted': False, 'source_scope': scope}
 
     def export(self, report_sha256):
-        workspace, grant, raw, digest, report = self._audit(writable=True)
+        workspace, grant, raw, digest, report, scope = self._audit(writable=True)
         if report_sha256 != digest: raise ValueError('stale_audit_export')
         if self.renderer_root is None: raise ValueError('paper_renderer_not_deployed')
         cert = json.loads((self.renderer_root / 'deployment.json').read_text())
@@ -245,7 +399,7 @@ class PaperOutput:
             raise ValueError('paper_renderer_deployment_changed')
         outputs = workspace / 'outputs'
         outputs.mkdir(mode=0o700, exist_ok=True)
-        if sum(1 for p in outputs.iterdir() if p.is_dir()) >= 3:
+        if sum(1 for p in outputs.glob(grant['task_id'] + '-*') if p.is_dir()) >= 3:
             raise ValueError('paper_export_attempt_limit')
         target = outputs / (grant['task_id'] + '-' + uuid4().hex)
         target.mkdir(mode=0o700)
@@ -254,8 +408,9 @@ class PaperOutput:
                                   Path(sys.executable), review_path=review,
                                   expected_review_sha256=cert['review_sha256'])
         receipt['content_coverage'] = audit_pdf_content_coverage(target / 'reference-check-report.pdf', report)
-        if self.files.read('audit.json', limit=256*1024)[1] != digest:
+        if self._audit(writable=True)[3] != digest:
             raise ValueError('paper_audit_changed_during_export')
+        receipt['audit_source_scope'] = scope
         receipt['artifact_file'] = str((target / 'reference-check-report.pdf').relative_to(workspace))
         (target / 'export-receipt.json').write_text(json.dumps(receipt, ensure_ascii=False) + '\n')
         return receipt

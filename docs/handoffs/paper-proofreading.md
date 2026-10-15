@@ -1,5 +1,9 @@
 # 论文校对场景当前交接
 
+- 最新进展（2026-10-15，Codex）：论文场景扩至 19 工具，可由模型从当前上传论文生成任务私有报告，不需用户上传 `audit.json`；已有报告仍可导入。报告分段写入有类型 Schema、SHA 乐观锁、任务/来源/权限守卫；选择 PDF 输出后必须有新 PDF 和 47/47 等实际字段覆盖收据才算完成，提前停下最多两次同预算普通续行。共享 RSI 不自动执行报告写入或 PDF。Web 默认每请求输出上限改 4000 token，费用和请求上限保留。
+- 最新真实验收：V100 私有 v15 库、19 个实际 Schema，最小 `.tex/.bib` 无 JSON 输入 11 次 DeepSeek 请求、14 工具、0 错误，生成 1 引用报告及 4 页 PDF（109,287 字节、47/47 字段、0 Motif 跳过）；前四轮 1000 token 共 42 请求均未交付，失败和错误已留账。本轮五次共 53 请求/$0.029729460 代理估费；与此前论文隔离实验累计合并为 532 请求/$0.988448532 代理估费，实际账单未知。详情见[本轮记录](../experiments/paper-generated-report-20261015-v1.md)。私有有效配置、事件、原件和渲染包留在 V100 隔离检出 `.local/`，生产未切换。
+- 当前未完成：独立真实论文人工核验、引用真实性、PDF 投稿级视觉质量、同题 Origin/Shadow/Execute 质量及净收益、旧相对目录上传协议、成员生产进程最终验收。PDF 缩略图可见字体小且偏淡，最后一页留白多；新报告小样本完成不能等价旧 160→20 节省。下面各段保留此前版本的历史进展，冲突时以上述最新状态为准。
+
 - 更新时间与交接人：2026-10-15，Codex。
 - 目标与本次范围：把旧论文引用 Motif 与旧 PDF 排版程序绑定当前 Web Task，并保留 main 的结构修订程序；共用在线 RSI Runtime，不自动执行写工具。
 - 分支 / commit / 工作区：`codex/harless-motif-libraries-20261014` 的工具代码版本 `7875dac`、提示修订版本 `340d243` 已推送，后续实验文档在同一分支，已整合 main `67e8445`；[PR #19](https://github.com/jingyio/DeepSeek-Harless/pull/19) 待审。私有 V100 隔离检出 `/home/jingyij/jjy/.local/integration/harless-motif-20261014`；生产进程未切换。
@@ -13,8 +17,8 @@
 - 提示修订 `340d243` 后，同条件 Origin 39 请求/1 PDF、Shadow 18 请求/2 候选/无 PDF、Execute 23 请求/2 验证跳过/1 PDF；两份 PDF 取自同一预上传报告，质量未人工盲评，16 请求差只能把 2 次归因于 RSI。Shadow 漏 PDF 仍被标 completed，说明提示不能替代任务级交付检查。详见[PDF 交付复测](../experiments/paper-composite-pdf-20261015-v3.md)。
 - 同一旧 34 引用/42 来源报告的 PDF-only Web 复测：旧冻结排版包逐文件 SHA 相同；明确绑定当前输入后 Origin 3 次真实请求、3 工具、0 错误、14 页 PDF、335/335 字段/链接字面保留，代理估费 $0.006092172，Verified Skip 为 0。第一轮输出也满足 335/335，但任务后续遇 HTTP 429；无用户绑定说明的后续一轮已完成，5 请求/2 工具错误/14 页 PDF/335 项保留；此前三次 HTTP 429 无 PDF，不能据此报稳定降本比例。v11 私有包已依当前代码锁重编译，生产未切换。导出收据新增机械覆盖检查，场景 Prompt 指明获准 JSON 与工具绑定；原排版脚本未改。详见[同报告复测](../experiments/paper-pdf-adoption-repro-20261015-v1.md)。
 - 回归：`npm run smoke`、`npm run web:controls:check`、论文 `npm run web:scenes:check` 通过。V100 完整 `npm test` 为 861 Python 通过、4 个文献 PDF 用例失败，Node 阶段被入口跳过；单独按项目 Python 环境运行 Node 全量为 450 通过、3 条件跳过。原因集中在文献 PDF 解析/旧句柄，需要单独处理。早先直接运行 Node 时未设置 `SSS_PURE_CODE_PYTHON`，纯代码用例失败属于入口环境问题，按正确环境已通过。
-- 配置与数据：公共 Registry 在 `config/harless-scenes.json`，论文工具 Schema/Prompt 在场景目录；本分支最新私有 `HARLESS_PAPER_RUNTIME_BUNDLE` 指向 `.local/paper-composite-20261015-v11/runtime/` 五文件包、`HARLESS_PAPER_RENDERER_ROOT` 指向审阅部署，**生产进程尚未切换到该包**。成员 `libraryRoot` 挂在独立 `/app/private-motif-library`，不遮住仓库 `motif-libraries/`。旧原始轨迹、渲染包、凭证及运行结果均留 `.local/`，不进 Git。
-- 未完成与阻塞：虽然最新 v10 两轮三模式均已完成，交付质量不一致，尚无合格净降本证据；明确要求 PDF 的任务仍可能在缺 PDF 时被 Harness 标为 completed。旧完整 LaTeX 包的相对目录不能原样上传，需安全路径协议。逐页 PDF 质量/引用真实性人工评审未做；旧 `read_pinned_citation_records` 仍是模型调用工具，PDF 写入不能作为 Verified Skip。私有查询库尚未任务级冻结或生产部署。未改动的成员文件 macOS 路径测试需协作者处理。
+- 配置与数据：公共 Registry 在 `config/harless-scenes.json`，论文工具 Schema/Prompt 在场景目录；当时私有 `HARLESS_PAPER_RUNTIME_BUNDLE` 指向 `.local/paper-composite-20261015-v11/runtime/` 五文件包；本轮隔离验收已重编为 v15、`HARLESS_PAPER_RENDERER_ROOT` 指向审阅部署，**生产进程尚未切换到该包**。成员 `libraryRoot` 挂在独立 `/app/private-motif-library`，不遮住仓库 `motif-libraries/`。旧原始轨迹、渲染包、凭证及运行结果均留 `.local/`，不进 Git。
+- 未完成与阻塞：虽然最新 v10 两轮三模式均已完成，交付质量不一致，尚无合格净降本证据；此前明确要求 PDF 的任务曾在缺 PDF 时被 Harness 标为 completed；本轮已加交付后置检查。旧完整 LaTeX 包的相对目录不能原样上传，需安全路径协议。逐页 PDF 质量/引用真实性人工评审未做；旧 `read_pinned_citation_records` 仍是模型调用工具，PDF 写入不能作为 Verified Skip。私有查询库尚未任务级冻结或生产部署。未改动的成员文件 macOS 路径测试需协作者处理。
 - 接手下一步：1）审阅 PR 并验证完整五场景矩阵；2）在生产部署前用最新 commit/完整 Schema 重新确认私有包代码锁、两个真实账号及预算累计；3）用独立真实论文做同条件 Origin/Shadow/Execute 质量和费用对照，逐页核 PDF。
-- 权限与预算：早期真实诊断每项 12 请求/$0.03、每次启动 24 请求/$0.06；main `1ee0bf4` 合并后有 7 请求/$0.00509706，更新到 `67e8445` 的 v6 再增 4 请求/$0.002019408。后续隔离实验累计 479 次已记录请求/$0.958719072 保守代理估费，包含全部失败、重试与 503 未知用量预留；这是后续实验自己的累计值，不能与前述旧诊断混作同一分母，账单实付未知。公共 Web 默认额度不变，外部投稿与私人原件写入未授权。
+- 权限与预算：早期真实诊断每项 12 请求/$0.03、每次启动 24 请求/$0.06；main `1ee0bf4` 合并后有 7 请求/$0.00509706，更新到 `67e8445` 的 v6 再增 4 请求/$0.002019408。此前隔离实验累计 479 次已记录请求/$0.958719072 保守代理估费（本轮另加 53 请求/$0.029729460），包含全部失败、重试与 503 未知用量预留；这是后续实验自己的累计值，不能与前述旧诊断混作同一分母，账单实付未知。公共 Web 默认额度不变，外部投稿与私人原件写入未授权。
 - 回退与风险：关闭 RSI 或撤销私有库环境变量后 Execute 明确拒绝；可回退本 PR 的论文工具与输出授权。回退不删除账号、Session、私有轨迹或累计预算。

@@ -97,6 +97,7 @@ def configured_glm(real_model: bool):
 
 def prepare(args, output, endpoint):
     public = json.loads((ROOT / 'config/harness-web.json').read_text())
+    public['max_output_tokens'] = args.max_output_tokens
     scenario = Path(args.scenario)
     if not scenario.is_absolute():
         scenario = ROOT / scenario
@@ -253,6 +254,8 @@ def main():
     parser.add_argument('--run-id', help='optional unique 32-character hexadecimal output identity')
     parser.add_argument('--budget-usd', type=float, default=defaults['budget_usd'])
     parser.add_argument('--request-limit', type=int, default=defaults['request_limit'])
+    parser.add_argument('--max-output-tokens', type=int, default=defaults['max_output_tokens'],
+                        help='per-model-request output cap; budget proxy enforces the same value')
     parser.add_argument('--run-request-limit', type=int, default=256, help='whole-launch request cap across all tasks')
     parser.add_argument('--run-budget-usd', type=float, default=defaults['budget_usd'], help='whole-launch budget, never reset by a new task')
     parser.add_argument('--fixture', choices=['normal', 'stale', 'tool-failure', 'provider-failure', 'outside-tool', 'delay'],
@@ -270,6 +273,8 @@ def main():
         parser.error('stale/tool-failure fixtures require portfolio-v1 execute')
     if not 1024 <= args.port <= 65535 or args.request_limit < 1 or not math.isfinite(args.budget_usd) or args.budget_usd < 0:
         parser.error('invalid port, request limit or budget')
+    if not 100 <= args.max_output_tokens <= 8000:
+        parser.error('max output tokens must be between 100 and 8000')
     if not math.isfinite(args.run_budget_usd) or not args.budget_usd <= args.run_budget_usd <= 100 or args.run_request_limit < 1:
         parser.error('whole-launch budget must cover task cap and be <=100; request limit must be positive')
     if bool(args.manifest) != bool(args.task): parser.error('--manifest and --task must be supplied together')
@@ -317,7 +322,7 @@ def main():
         rates[args.glm['model']] = args.glm['rates']
         cache_rates[args.glm['model']] = args.glm['rates'][0]
     state = State(cap_usd=args.budget_usd if args.frozen else args.run_budget_usd,
-                  output_cap=defaults['max_output_tokens'], record=output / 'ledger.jsonl',
+                  output_cap=args.max_output_tokens, record=output / 'ledger.jsonl',
                   request_limit=args.request_limit if args.frozen else args.run_request_limit,
                   rates=rates, cache_rates=cache_rates)
     servers = [] if args.real_model else [provider]
