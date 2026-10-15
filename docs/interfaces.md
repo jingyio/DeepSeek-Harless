@@ -68,7 +68,7 @@
 
 `paper-rsi-patch-task.py`提供full/baseline/compile/shadow/execute，默认preview免费。本轮新权限仅来自当前私有授权文件；Shadow library自身不授予execute。`dsh_trace_rsi_batch_execute.ts`要求同图至少两个独立纯工具正常Session，混合文字见证仍保留；按当前来源/代码/schema顺序与收据判断有界后继，由Harness派发真实MCP并逐项核验，失败后停止接管。actual HTTP请求、verified skip和未核验跳过分别记录。`--strict-tool-channel`只重申消息格式，所有新对照条件共享相同提示，实质冲突、恢复说明和最终依据不得省略。
 
-真实算法样例和初版对照见[V1实验记录](experiments/paper-rsi-local-patch-execute-20261012-v1.md)。最新[V4](experiments/paper-rsi-local-view-execute-20261012-v4.md)三项同工具真实请求15→9、六次全部核验、估费下降13.24%；仅局部结构修订，前期反例保留、学习未摊平。学习/重试/恢复记入累计额度；默认产品费用上限仍1美元。当前仍依赖私有历史输入和Python控制器，不是完整生产插件、Windows模型验收或Web产品。
+真实算法样例和初版对照见[V1实验记录](experiments/paper-rsi-local-patch-execute-20261012-v1.md)。最新[V4](experiments/paper-rsi-local-view-execute-20261012-v4.md)三项同工具真实请求15→9、六次全部核验、估费下降13.24%；仅局部结构修订，前期反例保留、学习未摊平。学习/重试/恢复记入累计账本；当前共享服务器预算策略见下文“预算、模型与记录”，历史实验上限不追改。当前仍依赖私有历史输入和Python控制器，不是完整生产插件、Windows模型验收或Web产品。
 
 ## DeepSeek 自生成检查工具与 RSI 接缝（前次固定目标原型，2026-10-11）
 
@@ -104,7 +104,7 @@ library/在线 manifest 新增可选 `certification_scope`（`independent_decisi
 
 `npm run web` → `scripts/harness-web.py` → 官方 `dsh --profile web --patch <私有 host overlay>`。执行、会话、队列、模型消息和工具调度归官方 Harness；SDK 的 `run-scenario.py` 与 `harness_runtime.py` 保留。场景配置定义能力，不再固定一次用户任务。默认动态策略为 `src/adapters/dsh_web_tasks.ts`，请求规范化在 `web_task_request.ts`，双层预算路由在 `web_task_budget.py`，DeepSeek Harless 界面为同源 `/tasks`。旧 `/sss` 是兼容别名，历史代码/环境变量标识保持不变。
 
-后续涉及模型的联调与场景验收统一走真实 API：`npm run web:real` 等价于 `npm run web -- --real-model`；`npm run scenario:real` 等价于 `npm run scenario -- --call-model`。前者仍通过工作台预览确认任务，后者直接执行预算预览后的一次场景；均保留原有预算代理。用户已授权此测试用途，默认使用用户指定的 1 美元上限，扩大上限或外部副作用另行确认。纯单元、无模型 smoke 和故障注入仅作开发诊断；真实调用失败不得用模拟成绩替代。SDK 真实最小场景已完成 3 次 HTTP 200 与 4 次 MCP，见[真实调用记录](experiments/deepseek-real-api-smoke-20261009-v1.md)；现有 3080 模拟服务未重启，真实 Web 后端最小闭环已通过，浏览器交互仍待验收，见[恢复记录](experiments/web-real-recovery-20261009-v1.md)。
+后续涉及模型的联调与场景验收统一走真实 API：`npm run web:real` 等价于 `npm run web -- --real-model`；`npm run scenario:real` 等价于 `npm run scenario -- --call-model`。前者仍通过工作台预览确认任务，后者直接执行预算预览后的一次场景；均保留原有预算代理。用户已授权此测试用途；当前共享服务器已取消原累计 1 美元上限，继续保留每任务 0.23 美元；Web 不额外限制单次文字输入或输出长度，其余独立入口按有效配置执行。扩大任务上限或外部副作用另行确认。纯单元、无模型 smoke 和故障注入仅作开发诊断；真实调用失败不得用模拟成绩替代。SDK 真实最小场景已完成 3 次 HTTP 200 与 4 次 MCP，见[真实调用记录](experiments/deepseek-real-api-smoke-20261009-v1.md)；现有 3080 模拟服务未重启，真实 Web 后端最小闭环已通过，浏览器交互仍待验收，见[恢复记录](experiments/web-real-recovery-20261009-v1.md)。
 
 ### 前端提交与任务生命周期
 
@@ -173,15 +173,15 @@ Harness 原生 `SessionPromptRequest.content` 的实际格式为：
 
 ### 预算、模型与记录
 
-每任务与全启动默认各 0.25 美元，每请求最多 1000 输出 token，请求次数默认不限。前端预算只能下调服务器任务费用上限；`--budget-usd` 定任务上限，`--run-budget-usd` 定全启动上限。可选 `--request-limit/--run-request-limit` 正整数保留次数限制；CLI `0`、配置/统计中的 `null` 表示不限次数，仍完整累计请求与费用。`TaskBudgetRegistry` 先不可变注册，原生聊天随发送激活；显式 API 经 submit 激活。预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子占用两层费用额度，完整成功用量两层结算，新任务不重置全局限制。
+通用入口每任务与全启动默认各 0.25 美元，请求次数默认不限。Web 不对单次用户文字另设长度上限；输出配置 `max_output_tokens: null` 时，移除适配器的默认输出值并在真实模型请求中省略 `max_tokens`，不截断模型返回。服务商自身的上下文容量、输出容量和未指定参数时的默认值仍适用。上传容量、账号/路径权限及 HTTP 协议安全边界继续保留。前端预算只能下调服务器任务费用上限；`harness-web.py --budget-usd` 定任务上限，`--run-budget-usd` 定全启动上限，后者显式 `0` 表示取消累计费用限制。累计 cap 在 policy/effective config/统计中以 `null` 表示不限，禁止使用 Infinity 或巨大数代替；内部 `State(cap_usd=0)` 仍代表零费用预算。可选 `--request-limit/--run-request-limit` 正整数保留次数限制；CLI `0`、配置/统计中的 `null` 表示不限次数，仍完整累计请求与费用。`TaskBudgetRegistry` 在累计无限时仍要求显式的有限任务费用上限；先不可变注册，原生聊天随发送激活，显式 API 经 submit 激活。预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子记录任务与累计费用，检查仍有效的上限，完整成功用量两层结算，新任务不重置累计账本。
 
-私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。固定 provider/model、`reasoning_effort="off"`、输出 cap，关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
+私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。每任务固定已选 provider/model、`reasoning_effort="off"` 和输出配置（允许 `null`），关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
 
 默认模拟模式无实际支出；`npm run web:real` 显式开放 DeepSeek 连接，官方聊天发送后直接执行并产生真实模型费用。服务器私有根 `.env` 通过统一 `scripts/project.mjs` 的 `loadEnvFile` 加载（Node 20.12+，已有环境值优先），字段见 `.env.example`。SDK 基本连通已通过真实 API 验证；当前直接发送的真实 Web 浏览器流程尚未验收。其他收费 MCP 和人工费用也不在这份模型代理额度内。
 
-当前共享服务器已授权的累计费用上限为 1 美元，取消请求次数上限。独立预算进程以 `serve-web-budget.py --request-limit 0 --task-request-limit 0 --budget-usd 1` 启动，必须沿用原 `--checkpoint`；保留累计已用次数与费用，不能清零。该进程生成的私有 `policy.json` 将 `request_limit/run_request_limit` 记录为 `null`，账号启动策略须同步这两个字段；重启预算进程后也须同步新的代理与控制端点。
+用户于 2026-10-15 明确取消当前共享服务器原有累计 1 美元费用上限，请求次数同样不限。独立预算进程使用 `serve-web-budget.py --request-limit 0 --task-request-limit 0 --budget-usd 0 --task-budget-usd 0.23 --max-output 0`；必须沿用原 `--checkpoint`，保留累计已用次数、费用和任务账本，不能清零。该进程生成的私有 `policy.json` 将 `run_budget_usd/request_limit/run_request_limit/max_output_tokens` 记录为 `null`、`budget_usd` 仍为 `0.23`。账号启动策略须同步这些字段；重启预算进程后也须同步新的代理与控制端点。切换时先停止新请求并等待活动任务结算，再停止旧预算进程并复制最新账本；失败恢复不能用较旧 checkpoint 覆盖新消费。
 
-私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。固定 provider/model、`reasoning_effort="off"`、输出 cap，关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
+省略输出参数仍须预约费用：按 [DeepSeek 官方请求契约](https://api-docs.deepseek.com/api/create-chat-completion/)的默认输出计算，关闭思考时为 8192 token，开启思考为 65536，`max` effort 为 131072。这些数值仅用于计费预约，不写入请求或裁剪输出；真实完整用量到达后结算，缺失用量保留预约。未知模型的默认值/容量必须先登记，不能按零输出计费绕过任务预算；GLM 4.6 等已知模型按 [官方最大输出容量](https://docs.z.ai/api-reference/llm/chat-completion)保守预约。可选 GLM 代理在输出配置为 `null` 时移除 pi-ai SDK 自动填入的输出参数，按实际出站正文预约费用。长输入或更高价模型仍可能达到有限任务费用上限，此时按金额拒绝，不偷偷缩减输入或输出。
 
 默认模拟模式无实际支出；`npm run web:real` 显式开放 DeepSeek 连接，仍须工作台预览确认。服务器私有根 `.env` 通过统一 `scripts/project.mjs` 的 `loadEnvFile` 加载（Node 20.12+，已有环境值优先），字段见 `.env.example`。真实模式拒绝原生聊天直接执行付费任务。SDK 基本连通已通过真实 API 验证，真实 Web 尚未验收；其他收费 MCP 和人工费用也不在这份模型代理额度内。
 
@@ -632,4 +632,12 @@ PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历
 工作区概览通过公开 keyed `main` slot 展示；选中工作区不清除原聊天草稿，新建聊天仍在所选组内。文件夹按钮负责折叠；菜单提供设置名称、置顶和删除分组。`GET /api/harless/workspaces/preferences` 返回 `{pinned_workspace_ids:string[]}`；POST 接受 `{workspace_id:string,pinned:boolean}`，在同账号私有索引中持久化，未知或已删除 ID 返回 404，不返回路径。删除调用公共 workspace delete，仅删除分组登记；界面确认后将原聊天显示为未分组，保留会话日志与文件。
 
 以上为当前代码契约；浏览器、服务器和真实模型验收结果分别记录在对应实验与主线交接中，接口实现本身不构成部署或科研质量证明。
+
+## 会话回收站与工作区折叠（2026-10-15）
+
+`GET /api/harless/session-trash` 返回当前账号的最近删除记录；`POST` 接受 `{action:"delete"|"restore",session_id}`。这是可恢复删除，保留同一会话 ID、原工作区关系、历史和文件，不复用原生永久删除事件。活动任务或待处理输入返回 `409 session_busy`；未知或其他账号的 ID 不可操作。删除时同时隐藏私有执行子会话，已独立复制的可见分支仍可使用。原工作区已删除时，恢复的聊天显示在未分组。
+
+墓碑在账号私有目录持久化。列表、全文搜索、打开、分支、发送、上传、工具结果和文件读取统一检查；全文搜索在原生匹配数量限制之前排除已删除记录，避免它们遮住有效结果。`GET /api/harless/session-trash?stream=1` 为同账号 SSE，仅通知 `{changed:true}`，客户端重新读取列表；原生会话流在删除期间暂停，恢复后继续，避免同 ID 恢复后永久禁用输入。
+
+工作区名称行同时支持展开和收起，选中状态不强制重新展开。工作区连接按稳定 ID 与会话归属复用空草稿，不比较已脱敏的目录标识；已有文字或附件的草稿不会被新建操作覆盖。会话菜单和当前对话顶部提供移入回收站，侧栏“最近删除”始终提供恢复入口。
 

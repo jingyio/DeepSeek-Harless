@@ -24,12 +24,13 @@ import {createTaskProgress} from './harless_task_progress.ts';
 import {createSessionBranchService,sessionBranchTitle} from './harless_session_branch.ts';
 import {registerManagedWorkspaceRoutes} from './harless_managed_workspaces.ts';
 import {registerPrivateLanes} from './harless_private_lanes.ts';
+import {createSessionTrash, protectDeletedSessions, protectDeletedSessionFiles, protectDeletedSessionQuery, registerSessionTrashRoute, SessionTrashError} from './harless_session_trash.ts';
 
 export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController'];
 type Policy = {
-  output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number;
-  mode: ExecutionMode; budget_usd: number; request_limit?: number | null; run_budget_usd?: number; run_request_limit?: number | null; capability_profile: string;
+  output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number | null;
+  mode: ExecutionMode; budget_usd: number; request_limit?: number | null; run_budget_usd?: number | null; run_request_limit?: number | null; capability_profile: string;
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   budget_broker_endpoint?: string;
   budget_task_prefix?: string;
@@ -84,6 +85,7 @@ export function apply(ctx: any) {
   const brokerMode = config.budget_broker_endpoint !== undefined;
   if (config.comparison_scenes && (!brokerMode || !Array.isArray(config.comparison_scenes) || config.comparison_scenes.some(id => !['ppt', 'paper-proofreading', 'research-data-analysis', 'literature'].includes(id)))) throw Error('Invalid comparison policy');
   let comparisons: ReturnType<typeof createComparisonService> | undefined;
+  let trash: ReturnType<typeof createSessionTrash>;
   const modelOptions = config.models ?? [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }];
   const defaultModel = modelOptions.find(option => option.available);
   if (!defaultModel || modelOptions.some(option => !/^[a-z][a-z0-9-]*$/.test(option.provider) || !/^[A-Za-z0-9._-]+$/.test(option.model) ||
@@ -187,6 +189,7 @@ export function apply(ctx: any) {
     schemas.set(agent.session.id, agent.ctx.tools.schemas(scopeOf(agent.ctx)).sort((a: any, b: any) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   }
   function settingsView(sessionId?: string) {
+    if (sessionId) trash?.assertVisible(sessionId);
     if (sessionId && !ownedSessions.has(sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run', 404);
     const selected = sessionId ? selections.get(sessionId) ?? defaults : defaults;
     const task = sessionId ? forSession(sessionId) : undefined;
@@ -400,6 +403,7 @@ export function apply(ctx: any) {
   }
   function get(id: unknown): Task {
     if (typeof id !== 'string' || !tasks.has(id)) throw new TaskError('task_not_found', 'Unknown task', 404);
+    trash?.assertVisible(tasks.get(id)!.request.session_id);
     return tasks.get(id)!;
   }
   const forSession = (id: string): Task | undefined => tasks.get(sessions.get(id) ?? '');
@@ -523,6 +527,21 @@ export function apply(ctx: any) {
   const controller = ctx.sessionController;
   const privateLanes = registerPrivateLanes(ctx, config.output, principal, id => comparisons?.isLane(id) ?? false);
   const privateCreations = new WeakSet<object>();
+  const inspectForTrash = controller.inspect.bind(controller);
+  trash = createSessionTrash(ownershipPath.replace(/\.json$/, '-trash.json'), principal, {
+    owns: ensureOwned,
+    isPrivate: privateLanes.isPrivate,
+    privateChildren: id => [...new Set([...privateLanes.childrenFor(id), ...[...ownedSessions]
+      .filter(child => comparisons?.parentFor(child) === id)])],
+    busy: ids => ids.some(id => comparisons?.busy(id) || agents.get(id)?.status === 'running' ||
+      agents.get(id)?.inbox?.nextTurn?.length || agents.get(id)?.inbox?.nextStep?.length ||
+      [...tasks.values()].some(task => task.request.session_id === id && task.status !== 'awaiting_confirmation' && !terminal.has(task.status))),
+    async describe(id) {
+      const snapshot = await inspectForTrash(id);
+      const workspace = ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(id));
+      return { title: sessionBranchTitle(snapshot.meta, snapshot.events), ...(workspace ? { workspace_id: workspace.id } : {}) };
+    },
+  });
   const original = { create: controller.create.bind(controller), prompt: controller.prompt.bind(controller),
     cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller) };
   const titledSessions = new Set<string>();
@@ -535,6 +554,7 @@ export function apply(ctx: any) {
     titledSessions.add(id);
   }
   async function ensureOwned(id: string) {
+    trash.assertVisible(id);
     if (ownedSessions.has(id)) {
       await repairBlankTitle(id);
       if (!selections.has(id)) {
@@ -570,6 +590,7 @@ export function apply(ctx: any) {
   }
   controller.create = (request: any) => {
     const result = creation.then(async () => {
+      if (request.sessionId) trash.assertVisible(request.sessionId);
       const privateCreation = privateCreations.has(request);
       if (request.sessionId && privateLanes.isPrivate(request.sessionId) && !privateCreation)
         throw new TaskError('comparison_child', '请在原对话中继续。', 409);
@@ -701,9 +722,9 @@ export function apply(ctx: any) {
             const sourceLane = saved?.presentation==='single'?'baseline':lane;
             const result = saved?.lanes[sourceLane];
             if (!saved || !result) throw new TaskError('branch_history_unavailable','分支历史结果暂不可用。',409);
-            history.push({source_seq:mappedSeq(event.seq),user:event.data.content.filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n').slice(-2000),assistant:(result.answer_display??result.answer??'').slice(-5000)});
+            history.push({source_seq:mappedSeq(event.seq),user:event.data.content.filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n'),assistant:result.answer_display??result.answer??''});
           } else if (!event.data?.harless_branch_context && ['user/message','assistant/message'].includes(event.type)) {
-            history.push({source_seq:mappedSeq(event.seq),[event.type==='user/message'?'user':'assistant']:(event.data.content??event.data.message?.content??[]).filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n').slice(-5000)});
+            history.push({source_seq:mappedSeq(event.seq),[event.type==='user/message'?'user':'assistant']:(event.data.content??event.data.message?.content??[]).filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n')});
           }
         }
         // Newest verified report precedes chart files and original sources.
@@ -1030,7 +1051,7 @@ export function apply(ctx: any) {
       if (!Array.isArray(content) || !content.length || content.some((part: any) => !['text', 'file'].includes(part.type)) ||
           content.filter((part: any) => part.type === 'file').length > 8) throw new TaskError('unsupported_input', '请发送文字和最多 8 份场景资料。');
       const text = content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n');
-      if (!text.trim() || text.length > 10000) throw new TaskError('invalid_request', '请填写不超过 10000 字的任务。');
+      if (!text.trim()) throw new TaskError('invalid_request', '请填写任务内容。');
       const sourceFiles:Record<string,any>={};
       const files = content.filter((part: any) => part.type === 'file').map((part: any) => {
         const ref = ctx.fileUploads.resolve(parent, part.receiptId)??comparisons.sourceFor(request.sessionId,request.requestId,part.receiptId);
@@ -1044,7 +1065,7 @@ export function apply(ctx: any) {
         presentation: config.comparison_scenes?.includes(selected.scene) ? 'paired' : 'single',
         prior_context: (await controller.inspect(request.sessionId)).events.filter((event: any) =>
           (event.type === 'user/message' && !event.data.harless_comparison) || (event.type === 'assistant/message' && !event.data.harless_branch_context)).slice(-12).map((event: any) => ({
-            [event.type === 'user/message' ? 'user' : 'assistant']: (event.data.content ?? event.data.message?.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n').slice(-3000),
+            [event.type === 'user/message' ? 'user' : 'assistant']: (event.data.content ?? event.data.message?.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n'),
           })),
         model: (modelSelections.get(request.sessionId) ?? defaultModel).model, input_sha256: digest([text, files]),source_files:sourceFiles,
       });
@@ -1209,11 +1230,12 @@ export function apply(ctx: any) {
         if (request.method === 'GET') {
           const value: any = await comparisons!.view(session, id), lane = url.searchParams.get('lane'), file = url.searchParams.get('file');
           if (url.searchParams.get('stream') === '1' && !file) {
-            let stop: (() => void) | undefined, heartbeat: ReturnType<typeof setInterval> | undefined, closed = false;
+            let stop: (() => void) | undefined, stopTrash: (() => void) | undefined, heartbeat: ReturnType<typeof setInterval> | undefined, closed = false;
             const encoder = new TextEncoder();
             const body = new ReadableStream({
               async start(stream) {
-                const close = () => { closed = true; stop?.(); if (heartbeat) clearInterval(heartbeat); request.signal.removeEventListener('abort', close); try { stream.close(); } catch {} };
+                const close = () => { closed = true; stop?.(); stopTrash?.(); if (heartbeat) clearInterval(heartbeat); request.signal.removeEventListener('abort', close); try { stream.close(); } catch {} };
+                stopTrash = trash.subscribe(() => { if (trash.isDeleted(session)) close(); });
                 request.signal.addEventListener('abort', close, { once: true });
                 try {
                   stop = await comparisons!.subscribe(session, id, snapshot => {
@@ -1223,7 +1245,7 @@ export function apply(ctx: any) {
                   else heartbeat = setInterval(() => { try { stream.enqueue(encoder.encode(': keepalive\n\n')); } catch { close(); } }, 15000);
                 } catch { close(); }
               },
-              cancel() { closed = true; stop?.(); if (heartbeat) clearInterval(heartbeat); },
+              cancel() { closed = true; stop?.(); stopTrash?.(); if (heartbeat) clearInterval(heartbeat); },
             });
             return new Response(body, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' } });
           }
@@ -1236,16 +1258,19 @@ export function apply(ctx: any) {
           return Response.json(value, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
-        const result = body.action === 'rate' ? await comparisons!.rate(body.session_id, body.id, body.lane, body.score, body.revision, body.output_sha256)
+        const result = await serialize(async () => body.action === 'rate' ? await comparisons!.rate(body.session_id, body.id, body.lane, body.score, body.revision, body.output_sha256)
           : body.action === 'retry' ? await comparisons!.retry(body.session_id, body.id, body.lane)
           : body.action === 'cancel' ? await comparisons!.cancel(body.session_id, body.id)
-          : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })();
+          : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })());
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error: any) { return Response.json({ error: { code: error.code ?? 'comparison_failed', message: error.message } }, { status: error.status ?? 400 }); }
     } }), 'harless-comparison-api');
   }
   const options = resolveAdapterOptions({ baseURL: brokerMode ? config.budget_broker_endpoint + '/v1' : config.endpoint,
-    thinking: 'disabled', reasoningEffort: 'off', maxTokens: config.max_output_tokens } as any);
+    thinking: 'disabled', reasoningEffort: 'off', ...(config.max_output_tokens == null ? {} : { maxTokens: config.max_output_tokens }) } as any);
+  // resolveAdapterOptions supplies 256k when omitted; remove that application
+  // default so the native adapter leaves max_tokens off the provider request.
+  if (config.max_output_tokens == null) delete (options as any).maxTokens;
   ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new DeepSeekAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
     resolveUserId: () => principal, prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
@@ -1287,7 +1312,7 @@ export function apply(ctx: any) {
     if (!task || task.status !== 'running' || active !== task.request.task_id ||
         request.provider !== task.model_option.provider || request.model !== task.model_option.model ||
         request.reasoningEffort !== (task.model_option.provider === 'harless-glm' ? undefined : 'off') ||
-        request.maxTokens !== config.max_output_tokens || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
+        request.maxTokens !== (config.max_output_tokens ?? undefined) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
     if (!humans.some((message: any) => task.current_humans.has(message.id)) ||
@@ -1298,7 +1323,7 @@ export function apply(ctx: any) {
     if (digest(requestedTools) !== digest(task.tools)) throw Error('Tool schema version changed');
     json(join(task.output, 'model-request-config.json'), { provider: request.provider, model: request.model,
       reasoning_effort: request.reasoningEffort ?? 'off', reasoning_effort_sent: request.reasoningEffort !== undefined,
-      max_output_tokens: request.maxTokens,
+      max_output_tokens: request.maxTokens ?? null, output_cap_sent: request.maxTokens !== undefined,
       tools_order: requestedTools.map((tool: any) => tool.name), tools_sha256: digest(requestedTools),
       human_message_sha256: humans.map((message: any) => digest(message.content)), mode: task.request.mode });
     task.stats.llm_decisions = Number(task.stats.llm_decisions) + 1; record(task);
@@ -1314,7 +1339,7 @@ export function apply(ctx: any) {
         if (request.method === 'GET') {
           const id = new URL(request.url).searchParams.get('task_id');
           if (id) return Response.json(await refresh(get(id)), { headers: { 'Cache-Control': 'no-store' } });
-          const rows = await Promise.all([...tasks.values()].map(refresh));
+          const rows = await Promise.all([...tasks.values()].filter(task => !trash.isDeleted(task.request.session_id)).map(refresh));
           const aggregate: Record<string, number> = { tasks: rows.length };
           for (const row of rows) { aggregate[row.status] = (aggregate[row.status] ?? 0) + 1;
             for (const field of ['upstream_requests', 'verified_skips', 'tool_calls', 'prompt_tokens', 'completion_tokens']) aggregate[field] = (aggregate[field] ?? 0) + Number(row.stats[field] ?? 0); }
@@ -1325,6 +1350,7 @@ export function apply(ctx: any) {
         const body: any = await request.json();
         const result = await serialize(async () => {
           if (body.action === 'preview') {
+            if (body.session_id) trash.assertVisible(body.session_id);
             if (body.session_id && !ownedSessions.has(body.session_id)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
             if (body.session_id && (comparisons?.isLane(body.session_id) || comparisons?.hasSession(body.session_id))) throw new TaskError('comparison_session', '请在原对照会话的聊天输入框发送任务。', 409);
             return view(await preview(body.request, body.session_id), true);
@@ -1364,9 +1390,9 @@ export function apply(ctx: any) {
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error) {
         appendFileSync(join(config.output, 'admission-errors.jsonl'), JSON.stringify({ time: utc(), error: String(error) }) + '\n', { mode: 0o600 });
-        const known = error instanceof TaskError || error instanceof WebTaskRequestError || error instanceof SettingsError;
+        const known = error instanceof TaskError || error instanceof WebTaskRequestError || error instanceof SettingsError || error instanceof SessionTrashError;
         return Response.json({ error: { code: known ? error.code : 'task_request_failed', message: known ? String((error as Error).message) : 'Task configuration or input admission failed; inspect the private server log' } },
-          { status: error instanceof TaskError ? error.status : 400 });
+          { status: error instanceof TaskError || error instanceof SessionTrashError ? error.status : 400 });
       }
     } };
   for (const path of ['/api/harless/tasks', '/api/sss/tasks']) {
@@ -1378,7 +1404,7 @@ export function apply(ctx: any) {
         const url = new URL(request.url), sessionId = url.searchParams.get('session_id') ?? undefined;
         if (request.method === 'GET') {
           const value = await serialize(async () => { if (sessionId) await ensureOwned(sessionId); return settingsView(sessionId); });
-          return Response.json({ ...value, sessions: [...ownedSessions].map(session_id => ({ session_id, ...settingsView(session_id) })) }, { headers: { 'Cache-Control': 'no-store' } });
+          return Response.json({ ...value, sessions: [...ownedSessions].filter(id => !trash.isDeleted(id)).map(session_id => ({ session_id, ...settingsView(session_id) })) }, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
         const result = await serialize(async () => {
@@ -1411,10 +1437,15 @@ export function apply(ctx: any) {
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error) {
         return Response.json({ error: { code: (error as any).code ?? 'settings_failed', message: String((error as Error).message) } },
-          { status: error instanceof TaskError ? error.status : 400 });
+          { status: error instanceof TaskError || error instanceof SessionTrashError ? error.status : 400 });
       }
     } };
   ctx.effect(() => ctx.connection.fetch.register({ ...settingsRoute, path: '/api/harless/settings' }), 'harless-settings-api');
+  registerSessionTrashRoute(ctx, trash, serialize);
+  ctx.effect(() => protectDeletedSessions(controller, trash), 'harless-trash-session-guards');
+  ctx.inject?.(['sessionQuery'], (scope: any) => scope.effect(() => protectDeletedSessionQuery(scope.sessionQuery, trash, privateLanes.isPrivate)));
+  ctx.effect(() => protectDeletedSessionFiles(undefined, ctx.fileUploads, trash), 'harless-trash-upload-guards');
+  ctx.inject?.(['workspaceFiles'], (scope: any) => scope.effect(() => protectDeletedSessionFiles(scope.workspaceFiles, undefined, trash)));
   if (ctx.commands) ctx.effect(() => ctx.commands.register({ name: 'harless', description: 'Choose a scene, mode, and RSI setting',
     input: { hint: 'scene | mode | rsi | list | status' },
     handler: ({ agent, rawInput }: any) => serialize(async () => {
@@ -1446,13 +1477,15 @@ export function apply(ctx: any) {
     .replace(/<title>[^<]*<\/title>/i, '<title>GeneLoop</title>')
     .replace('</head>', brandScript + workspaceScript + '</head>')
     .replace('</body>', accountLink + '</body>')), 'harless-product-presentation');
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/assets/geneloop.jpg',
+  for (const [asset, type] of [['geneloop-spiral.svg', 'image/svg+xml'], ['geneloop.jpg', 'image/jpeg']]) {
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/assets/' + asset,
     handler: (request: any, response: any) => {
       if (!['GET', 'HEAD'].includes(request.method)) {
         response.writeHead(405, { Allow: 'GET, HEAD' }); response.end(); return;
       }
-      response.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=3600',
+      response.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=3600',
         'X-Content-Type-Options': 'nosniff' });
-      response.end(request.method === 'HEAD' ? '' : readFileSync(new URL('./brand/geneloop.jpg', import.meta.url)));
-    } }), 'harless-product-logo');
+      response.end(request.method === 'HEAD' ? '' : readFileSync(new URL('./brand/' + asset, import.meta.url)));
+    } }), 'harless-product-logo-' + asset);
+  }
 }

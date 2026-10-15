@@ -207,29 +207,48 @@ test('pin endpoint enforces normal authentication and returns only owned opaque 
 });
 
 function interactiveWorkspaceBrowser() {
-  const slots = [], values = [], calls = [], window = { innerWidth: 1200, innerHeight: 800 };
-  const document = { createElement: () => ({ remove() {} }), head: { append() {} } };
-  class Store { constructor(value) { this.value = value; } getSnapshot() { return this.value; } subscribe() { return () => {}; } }
+  const slots = [], values = [], headerValues = [], calls = [], streams = [], cleanups = [], styles = [], inputs = new Map();
+  const window = { innerWidth: 1200, innerHeight: 800, EventSource: class {
+    constructor(url) { this.url = url; streams.push(this); } close() { this.closed = true; }
+  } };
+  const document = { createElement: () => ({ remove() {} }), head: { append: style => styles.push(style) } };
+  class Store { constructor(value) { this.value = value; this.listeners = new Set(); } getSnapshot() { return this.value; }
+    subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); } emit() { for (const fn of this.listeners) fn(); } }
   const workspaces = { list: new Store({ items: [{ workspaceId: 'a', title: '论文', path: '/private/a', sessionIds: ['one'] },
     { workspaceId: 'b', title: '实验', path: '/private/b', sessionIds: [] }], archivedSessionIds: [] }),
     async delete(id) { calls.push(['delete', id]); this.list.value = { ...this.list.value, items: this.list.value.items.filter(item => item.workspaceId !== id) }; },
     async rename(id, title) { calls.push(['rename', id, title]); },
   };
   const sessions = { list: new Store({ current: 'one', ids: ['one'], byId: { one: { id: 'one', title: '已有聊天' } } }),
-    open(id) { calls.push(['open', id]); }, async create(options) { calls.push(['create', options]); return 'new'; } };
+    open(id) { calls.push(['open', id]); }, async create(options) { calls.push(['create', options]); return 'new'; },
+    scope(id) { return { id }; },
+    clear() { calls.push(['clear']); this.list.value = { ...this.list.value, current: undefined }; this.list.emit(); },
+    async refresh() { calls.push(['refresh']); } };
   const navigation = { startSession() {}, async forkSession(id) { calls.push(['fork', id]); }, async archiveSession(id) { calls.push(['archive', id]); } };
   const layout = { selectPanel(id) { calls.push(['panel', id]); } };
-  const services = { workspaces, sessions, uiWorkspace: navigation, layout };
-  let index = 0, pinned = [];
+  const services = { workspaces, sessions, uiWorkspace: navigation, layout, conversation: { input: { for(scope) {
+    return { state: { getSnapshot: () => inputs.get(scope.id) || { draft: '', attachmentIds: [], phase: 'plain' } } };
+  } } } };
+  let index = 0, pinned = [], hookValues = values, deleted = [], trashFailure = null, delayTrash = null;
   const React = { createElement: (type, props, ...children) => ({ type, props, children }),
-    useState(initial) { const i = index++; if (!(i in values)) values[i] = typeof initial === 'function' ? initial() : initial;
-      return [values[i], update => { values[i] = typeof update === 'function' ? update(values[i]) : update; }]; },
-    useRef(initial) { const i = index++; if (!(i in values)) values[i] = { current: initial }; return values[i]; }, useEffect() {},
+    useState(initial) { const i = index++, target = hookValues; if (!(i in target)) target[i] = typeof initial === 'function' ? initial() : initial;
+      return [target[i], update => { target[i] = typeof update === 'function' ? update(target[i]) : update; }]; },
+    useRef(initial) { const i = index++; if (!(i in hookValues)) hookValues[i] = { current: initial }; return hookValues[i]; }, useEffect() {},
     useSyncExternalStore(_subscribe, snapshot) { return snapshot(); },
   };
-  const ctx = { get: name => services[name], effect: fn => fn(), slots: { inject(_name, fn) { const result = fn(); if (result?.next) [...result]; },
+  const ctx = { get: name => services[name], effect: fn => { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup); }, slots: { inject(_name, fn) { const result = fn(); if (result?.next) [...result]; },
     register(options, component) { slots.push({ options, component }); } } };
-  const fetch = async (_url, options) => {
+  const fetch = async (url, options) => {
+    if (url === '/api/harless/session-trash') {
+      if (options?.method === 'POST') {
+        const input = JSON.parse(options.body); calls.push(['trash', input]);
+        if (delayTrash) await delayTrash;
+        if (trashFailure) return { ok: false, status: 409, json: async () => ({ error: { code: trashFailure } }) };
+        if (input.action === 'delete') deleted = [...new Set([...deleted, input.session_id])];
+        else deleted = deleted.filter(id => id !== input.session_id);
+      }
+      return { ok: true, json: async () => ({ deleted_session_ids: [...deleted], sessions: deleted.map(id => ({ session_id: id, title: sessions.list.value.byId[id]?.title || '新会话', workspace_id: 'a' })) }) };
+    }
     if (options?.method === 'POST') { const input = JSON.parse(options.body); calls.push(['pin', input]); pinned = input.pinned ? [...pinned, input.workspace_id] : pinned.filter(id => id !== input.workspace_id); }
     return { ok: true, json: async () => ({ pinned_workspace_ids: pinned }) };
   };
@@ -237,11 +256,16 @@ function interactiveWorkspaceBrowser() {
   window.__installGeneLoopWorkspaces(ctx, React, { Modal: 'modal' });
   const Browser = slots.find(row => row.options.name === 'sidebar.workspaces').component;
   const Home = slots.find(row => row.options.name === 'main' && row.options.key === 'geneloop-workspace').component;
-  const render = () => { index = 0; return Browser({ wide: true }); };
+  const Header = slots.find(row => row.options.id === 'geneloop-chat-management').component;
+  const render = () => { index = 0; hookValues = values; return Browser({ wide: true }); };
+  const header = () => { index = 0; hookValues = headerValues; return Header(); };
   const nodes = tree => { const result = []; const visit = node => { if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) return node.forEach(visit); result.push(node); node.children?.forEach(visit); }; visit(tree); return result; };
   const click = button => button.props.onClick({ stopPropagation() {}, currentTarget: { getBoundingClientRect: () => ({ right: 260, bottom: 180 }), focus() {} } });
-  return { render, home: () => Home(), nodes, click, calls, workspaces, sessions, navigation };
+  return { render, header, home: () => Home(), nodes, click, calls, workspaces, sessions, navigation, streams, inputs, styles,
+    dispose: () => cleanups.reverse().forEach(fn => fn()),
+    remount: () => { values.length = 0; return render(); }, setDeleted: ids => { deleted = ids; },
+    failTrash: code => { trashFailure = code; }, delayTrash: promise => { delayTrash = promise; } };
 }
 
 test('workspace browser restores folder controls and an accessible menu with durable pinning', async () => {
@@ -277,6 +301,18 @@ test('private execution lanes never appear in grouped, ungrouped, archived or ov
   const overview = JSON.stringify(ui.home());
   assert.doesNotMatch(overview, /private-grouped/);
   assert.match(overview, /1 个/);
+});
+
+test('workspace region inset covers direct and display-contents slot wrappers without depending on native class hashes', () => {
+  const ui = interactiveWorkspaceBrowser();
+  const css = ui.styles.map(style => style.textContent).join('\n');
+  const rule = [...css.matchAll(/([^{}]+)\{([^{}]+)\}/g)].find(([, , declaration]) => declaration.includes('margin-right:0'));
+  assert.ok(rule, 'override the native negative right margin, not padding inside the workspace list');
+  assert.deepEqual(rule[1].split(','), ['div:has(>.geneloop-workspaces)', 'div:has(>div>.geneloop-workspaces)'],
+    'cover both public slot host shapes, including the measured display:contents wrapper');
+  assert.match(rule[2], /min-width:0/);
+  assert.match(rule[2], /box-sizing:border-box/);
+  assert.match(css, /grid-template-columns:minmax\(0,1fr\) 28px 28px/);
 });
 
 test('deleting a named workspace requires consequence review and keeps its chats visible ungrouped', async () => {
@@ -331,4 +367,152 @@ test('workspace landing uses a public panel, preserves the current chat, and sta
   const modal = ui.nodes(ui.render()).find(node => node.type === 'modal' && node.props.title === '工作区设置');
   assert.equal(modal.props.open, true);
   assert.equal(ui.nodes(modal).find(node => node.type === 'input').props.value, '实验');
+});
+
+test('workspace clicks toggle without selected/current updates or sidebar remount reopening the group', () => {
+  const ui = interactiveWorkspaceBrowser();
+  const group = name => ui.nodes(ui.render()).find(node => node.props?.className === 'geneloop-workspace-name' && node.children[1].children.includes(name));
+  assert.equal(group('论文').props['aria-expanded'], true);
+  ui.click(group('论文'));
+  assert.equal(group('论文').props['aria-expanded'], false);
+  ui.sessions.list.emit();
+  assert.equal(group('论文').props['aria-expanded'], false, 'same-current stream updates do not undo explicit collapse');
+  ui.remount();
+  assert.equal(group('论文').props['aria-expanded'], false, 'sidebar remount preserves explicit collapsed state');
+  ui.click(group('论文'));
+  assert.equal(group('论文').props['aria-expanded'], true);
+  ui.click(group('实验'));
+  assert.equal(group('实验').props['aria-expanded'], true);
+  ui.click(group('实验'));
+  assert.equal(group('实验').props['aria-expanded'], false, 'selected group also collapses');
+  ui.sessions.list.emit();
+  assert.equal(group('实验').props['aria-expanded'], false);
+  assert.ok(!ui.calls.some(row => row[0] === 'create' || row[0] === 'open'), 'collapse never creates or changes the current chat');
+});
+
+test('moving current chat to trash clears selection without creating another chat and supports durable restoration', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  await new Promise(resolve => setImmediate(resolve));
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.['aria-label'] === '会话操作 已有聊天'));
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.role === 'menuitem' && node.children.includes('移入回收站')));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls[0])), ['trash', { action: 'delete', session_id: 'one' }]);
+  assert.ok(ui.calls.some(row => row[0] === 'clear'));
+  assert.ok(ui.calls.some(row => row[0] === 'panel' && row[1] === null));
+  assert.ok(!ui.calls.some(row => ['create', 'archive'].includes(row[0])));
+  assert.ok(!ui.nodes(ui.render()).some(node => node.props?.['aria-label'] === '会话操作 已有聊天'));
+  assert.ok(!ui.nodes(ui.home()).some(node => node.type === 'button' && node.children.some(child => child?.type === 'span' && child.children.includes('已有聊天'))));
+  ui.click(ui.nodes(ui.render()).find(node => node.type === 'button' && node.children.includes('最近删除')));
+  await new Promise(resolve => setImmediate(resolve));
+  const dialog = ui.nodes(ui.render()).find(node => node.type === 'modal' && node.props.title === '最近删除');
+  assert.equal(dialog.props.open, true);
+  const restore = ui.nodes(dialog).find(node => node.props?.['aria-label'] === '恢复对话 已有聊天');
+  ui.click(restore); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(ui.calls.some(row => row[0] === 'trash' && row[1].action === 'restore' && row[1].session_id === 'one'));
+  assert.ok(ui.nodes(ui.render()).some(node => node.props?.['aria-label'] === '会话操作 已有聊天'));
+  assert.equal(ui.sessions.list.value.current, undefined, 'restoration does not unexpectedly open or create a chat');
+});
+
+test('header provides deletion when sidebar is collapsed and active-task refusal leaves current chat intact', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  await new Promise(resolve => setImmediate(resolve));
+  ui.failTrash('session_busy');
+  const button = ui.nodes(ui.header()).find(node => node.props?.['aria-label'] === '将当前对话移入回收站');
+  assert.equal(button.children[0].type, 'svg', 'direct recycle-bin icon does not duplicate native export ellipsis');
+  ui.click(button);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.sessions.list.value.current, 'one');
+  assert.ok(!ui.calls.some(row => ['clear', 'create', 'archive'].includes(row[0])));
+  const error = ui.nodes(ui.header()).find(node => node.type === 'modal' && node.props.title === '操作未完成');
+  assert.equal(error.props.open, true);
+  assert.match(JSON.stringify(error), /停止生成或等待完成/);
+});
+
+test('completing a delayed deletion cannot clear a different conversation opened meanwhile', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  await new Promise(resolve => setImmediate(resolve));
+  let finish; ui.delayTrash(new Promise(resolve => { finish = resolve; }));
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.['aria-label'] === '会话操作 已有聊天'));
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.role === 'menuitem' && node.children.includes('移入回收站')));
+  ui.sessions.list.value = { ...ui.sessions.list.value, current: 'two', ids: ['one', 'two'], byId: { ...ui.sessions.list.value.byId, two: { id: 'two', title: '另一对话' } } };
+  ui.sessions.list.emit(); finish();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.sessions.list.value.current, 'two');
+  assert.ok(!ui.calls.some(row => ['clear', 'create'].includes(row[0])));
+});
+
+test('account trash stream clears deleted selection and refreshes restored membership without permanent removal events', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.streams.length, 1);
+  const stream = ui.streams[0]; assert.equal(stream.url, '/api/harless/session-trash?stream=1');
+  ui.setDeleted(['one']); stream.onmessage({ data: '{"changed":true}' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.sessions.list.value.current, undefined);
+  assert.ok(!ui.nodes(ui.render()).some(node => node.props?.['aria-label'] === '会话操作 已有聊天'));
+  ui.setDeleted([]); stream.onmessage({ data: '{"changed":true}' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(ui.nodes(ui.render()).some(node => node.props?.['aria-label'] === '会话操作 已有聊天'));
+  assert.equal(ui.calls.filter(row => row[0] === 'refresh').length, 2);
+  assert.ok(!ui.calls.some(row => ['open', 'create'].includes(row[0])));
+  ui.dispose(); assert.equal(stream.closed, true, 'plugin unmount releases account notification stream');
+});
+
+test('workspace new chat reuses an empty blank by membership without depending on redacted host paths', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  ui.sessions.list.value.byId.one.blank = true;
+  ui.sessions.list.value.byId.one.cwd = '/server/session/work';
+  ui.workspaces.list.value.items[0].path = '';
+  ui.navigation.startSession('a'); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(!ui.calls.some(row => row[0] === 'create'));
+  assert.ok(ui.calls.some(row => row[0] === 'open' && row[1] === 'one'));
+  ui.inputs.set('one', { draft: '尚未发送的问题', attachmentIds: ['csv', 'json'], phase: 'plain' });
+  assert.equal(await ui.navigation.connectWorkspace('a'), 'one', 'workspace selection during upload preserves current draft and attachment owner');
+  assert.ok(!ui.calls.some(row => row[0] === 'create'));
+  ui.navigation.startSession('a'); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.calls.filter(row => row[0] === 'create').length, 1, 'explicit new chat never reuses an occupied composer');
+  assert.deepEqual(ui.inputs.get('one').attachmentIds, ['csv', 'json']);
+  assert.equal(ui.inputs.get('one').draft, '尚未发送的问题');
+});
+
+test('removed and restored native membership refresh trash without exposing archived deleted chats or reopening a frozen selection', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  await new Promise(resolve => setImmediate(resolve));
+  ui.workspaces.list.value.archivedSessionIds = ['one'];
+  ui.setDeleted(['one']);
+  ui.sessions.list.value = { ...ui.sessions.list.value, current: undefined, ids: [] };
+  ui.sessions.list.emit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(ui.calls.some(row => row[0] === 'clear'), 'removed-current masked gap must clear the durable native selection too');
+  ui.click(ui.nodes(ui.render()).find(node => node.type === 'button' && node.children.includes('已归档对话')));
+  const archive = ui.nodes(ui.render()).find(node => node.type === 'modal' && node.props.title === '已归档对话');
+  assert.ok(!ui.nodes(archive).some(node => node.type === 'button' && node.children.includes('已有聊天')));
+  ui.setDeleted([]); ui.sessions.list.value.ids = ['one']; ui.sessions.list.emit();
+  await new Promise(resolve => setImmediate(resolve));
+  const restoredArchive = ui.nodes(ui.render()).find(node => node.type === 'modal' && node.props.title === '已归档对话');
+  assert.ok(ui.nodes(restoredArchive).some(node => node.type === 'button' && node.children.includes('已有聊天')));
+  assert.equal(ui.sessions.list.value.current, undefined);
+});
+
+test('workspace browser installation retries delayed service readiness without duplicating directory flows or native replacement', async () => {
+  const slots = [], styles = [], services = {}, callbacks = [], window = {};
+  const document = { createElement: () => ({ remove() {} }), head: { append: value => styles.push(value) } };
+  const ctx = { get: name => services[name], inject: (_names, ready) => callbacks.push(ready), effect: fn => fn(),
+    slots: { inject(_name, fn) { const value = fn(); if (value?.next) [...value]; }, register(options, component) { slots.push({ options, component }); } } };
+  const React = { createElement: (type, props, ...children) => ({ type, props, children }) };
+  vm.runInNewContext(readFileSync(new URL('../src/adapters/geneloop_workspaces.js', import.meta.url), 'utf8'), {
+    window, document, fetch: async () => ({ ok: true, json: async () => ({ sessions: [], deleted_session_ids: [] }) }),
+  });
+  window.__installGeneLoopWorkspaces(ctx, React, { Modal: 'modal' });
+  assert.equal(slots.length, 2); assert.equal(callbacks.length, 1);
+  const store = value => ({ getSnapshot: () => value, subscribe: () => () => {} });
+  services.workspaces = { list: store({ items: [], archivedSessionIds: [] }) };
+  services.sessions = { list: store({ current: undefined, ids: [], byId: {} }) };
+  services.uiWorkspace = { startSession() {} };
+  callbacks[0](); window.__installGeneLoopWorkspaces(ctx, React, { Modal: 'modal' });
+  assert.equal(slots.filter(row => row.options.name === 'sidebar.workspaces').length, 1);
+  assert.equal(slots.filter(row => row.options.name.endsWith('.directoryFlow')).length, 2);
+  assert.equal(styles.length, 1);
+  assert.ok(slots.find(row => row.options.name === 'sidebar.workspaces').options.priority < 0, 'public single slot elects our browser before native default');
+  await new Promise(resolve => setImmediate(resolve));
 });

@@ -34,6 +34,7 @@ class CostGateStreamTests(unittest.TestCase):
         self.release = threading.Event()
         self.upstream_done = threading.Event()
         self.calls = []
+        self.bodies = []
         self.mode = 'stream'
         test = self
 
@@ -44,7 +45,7 @@ class CostGateStreamTests(unittest.TestCase):
                 pass
 
             def do_POST(self):
-                self.rfile.read(int(self.headers['Content-Length']))
+                test.bodies.append(self.rfile.read(int(self.headers['Content-Length'])))
                 test.calls.append(dict(self.headers))
                 if test.mode in ('json', 'error'):
                     raw = json.dumps({'usage': USAGE} if test.mode == 'json'
@@ -102,10 +103,10 @@ class CostGateStreamTests(unittest.TestCase):
             server.server_close()
         self.temporary.cleanup()
 
-    def request(self, headers=None, server=None):
+    def request(self, headers=None, server=None, body=BODY):
         conn = http.client.HTTPConnection('127.0.0.1', (server or self.gate).server_port, timeout=2)
         self.clients.append(conn)
-        conn.request('POST', '/v1/chat/completions', BODY,
+        conn.request('POST', '/v1/chat/completions', body,
                      {'Content-Type': 'application/json', **(headers or {})})
         return conn, conn.getresponse()
 
@@ -147,6 +148,52 @@ class CostGateStreamTests(unittest.TestCase):
         self.assertEqual(self.calls[0]['Accept-Encoding'], 'identity')
         self.assertNotIn('private token', self.state.record.read_text())
         self.assertNotIn('Bearer fixture', self.state.record.read_text())
+
+    def test_omitted_output_limit_reaches_upstream_unchanged_and_streams(self):
+        self.state.output_cap = None
+        self.state.cap_usd = None
+        body = b'{"model":"deepseek-flash","thinking":{"type":"disabled"},"messages":[],"stream":true}'
+        _, response = self.request(body=body)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.read(len(FIRST)), FIRST)
+        self.assertFalse(self.upstream_done.is_set())
+        self.assertEqual(self.bodies, [body])
+        self.assertNotIn('max_tokens', json.loads(self.bodies[0]))
+        maximum = reservation(body, max_output=None)[1]
+        self.assertAlmostEqual(self.state.reserved_usd, .1 + maximum)
+        self.release.set()
+        self.assertEqual(response.read(), LAST)
+        self.assertEqual(self.settled()['response_usage'], USAGE)
+        self.assertAlmostEqual(self.state.reserved_usd, .1 + observed_peak_cost('deepseek-flash', USAGE))
+
+    def test_optional_sdk_default_removal_reserves_and_forwards_uncapped_glm(self):
+        with self.assertRaisesRegex(ValueError, 'uncapped output policy'):
+            create_server('127.0.0.1', 0, 'http://127.0.0.1', self.state,
+                          omit_sdk_output_limit=True)
+        self.state.output_cap = None
+        self.state.rates = {**self.state.rates, 'glm-4.6': (0.3, 1.2)}
+        gate = create_server('127.0.0.1', 0,
+                             f'http://127.0.0.1:{self.upstream.server_port}', self.state,
+                             allowed_models={'glm-4.6'}, omit_sdk_output_limit=True)
+        self.servers.append(gate)
+        threading.Thread(target=gate.serve_forever, kwargs={'poll_interval': .01}, daemon=True).start()
+        body = {'model': 'glm-4.6', 'max_tokens': 32768, 'max_completion_tokens': 32768,
+                'messages': [{'role': 'user', 'content': '保留输入全文'}], 'stream': True}
+        _, response = self.request(server=gate, body=json.dumps(body).encode())
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.read(len(FIRST)), FIRST)
+        self.assertFalse(self.upstream_done.is_set())
+        wire = json.loads(self.bodies[0])
+        self.assertEqual(wire, {key: value for key, value in body.items()
+                               if key not in ('max_tokens', 'max_completion_tokens')})
+        maximum = reservation(self.bodies[0], max_output=None, rates=self.state.rates)[1]
+        self.assertAlmostEqual(self.state.reserved_usd, .1 + maximum)
+        self.assertGreater(maximum, 131072 * 1.2 / 1_000_000)
+        self.release.set()
+        self.assertEqual(response.read(), LAST)
+        self.assertEqual(self.settled()['response_usage'], USAGE)
+        self.assertAlmostEqual(self.state.reserved_usd, .1 + observed_peak_cost(
+            'glm-4.6', USAGE, rates=self.state.rates, cache_rates=self.state.cache_rates))
 
     def test_browser_disconnect_still_drains_and_settles_complete_usage(self):
         conn, response = self.request()

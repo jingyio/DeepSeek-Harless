@@ -2,7 +2,7 @@
 
 The control endpoint is loopback-only and token authenticated. Registration is
 immutable and inactive until a confirmed task is activated. Every model call
-reserves against both its task cap and the unchanged whole-launch cap. It logs
+reserves against its task cap and any configured whole-launch cap. It logs
 only counters/usage and identities, never prompt bodies or authentication keys.
 """
 from __future__ import annotations
@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import parse_qs, urlsplit
 
-from src.adapters.deepseek_cost_gate import State, normalize_request_limit, reservation
+from src.adapters.deepseek_cost_gate import (State, normalize_request_limit, normalize_output_limit,
+    reservation, validate_cost_cap)
 
 TASK_ID = re.compile(r"^[a-f0-9]{32}$")
 USAGE_FIELDS = ("prompt_tokens", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens",
@@ -61,7 +62,7 @@ class RoutedState:
                 self.denials += 1
                 return None
             for state in (run, self.state):
-                if (state.reserved_usd + dollars > state.cap_usd or
+                if ((state.cap_usd is not None and state.reserved_usd + dollars > state.cap_usd) or
                         (state.request_limit is not None and state.request_count >= state.request_limit)):
                     self.denials += 1
                     return None
@@ -109,14 +110,13 @@ class TaskBudgetRegistry:
     def __init__(self, *, run_state: State, tasks_root: Path,
                  max_task_budget_usd: float | None = None,
                  task_request_limit: int | None = None):
-        if (not isinstance(run_state.cap_usd, (int, float)) or isinstance(run_state.cap_usd, bool)
-                or not math.isfinite(run_state.cap_usd) or run_state.cap_usd < 0
-                or type(run_state.output_cap) is not int or run_state.output_cap < 1):
-            raise ValueError("invalid whole-launch budget state")
+        validate_cost_cap(run_state.cap_usd)
+        normalize_output_limit(run_state.output_cap)
         maximum = run_state.cap_usd if max_task_budget_usd is None else max_task_budget_usd
         if (not isinstance(maximum, (int, float)) or isinstance(maximum, bool)
-                or not math.isfinite(maximum) or not 0 <= maximum <= run_state.cap_usd):
-            raise ValueError("task maximum must not exceed whole-launch cap")
+                or not math.isfinite(maximum) or maximum < 0
+                or (run_state.cap_usd is not None and maximum > run_state.cap_usd)):
+            raise ValueError("a finite task maximum is required and must not exceed whole-launch cap")
         self.run_state = run_state
         self.max_task_budget_usd = float(maximum)
         # An unlimited task does not inherit a request-count cap. The independent
