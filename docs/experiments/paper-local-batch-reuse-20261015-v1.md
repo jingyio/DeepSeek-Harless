@@ -11,7 +11,7 @@
 | 初次，`41c1e9c0` | `b43e2b9379394d3bd116475dbf49e7b447bfbc847a4075c75c12c5675d7649a4` | 24 / 28 / 16 | 批量工具成功，但模型漏填 `references[0].evidence_files`；草稿保存后 finalize 报通用错误，重复重试，报告/PDF 均无，任务失败 | $0.021298776 |
 | 修复草稿字段反馈，`97df3c1e` | `8183b25fc8a430b51e1b1e6f10a204d17c6b83a99292aa8ff9d82fd49fa1f47c` | 9 / 11 / 0 | 模型调用批量工具，生成 1 引用报告和 4 页、112,401 字节 PDF；38/38 字段字面覆盖，真实文本层，0 Motif 尝试/跳过 | $0.009274092 |
 
-两次合计 **33 次真实请求、$0.030572868 代理估费**，失败、恢复和重复请求均计入。第一次失败的直接原因是原草稿接口接受不完整行，后续又只能追加、不能修改已保存行；MCP 统一错误遮蔽了具体缺失字段。现改为写入前返回 `staged=false`、缺失字段和原草稿 SHA，不修改草稿；成功才返回 `staged=true`。失败输入和修复回归保留在测试中。第二次工具序列含 `list_inputs → collect_current_local_citation_evidence`，之后模型仍额外读取了两个上传文件，并重复调用了一次 `read_pinned_paper_citations`；所以操作序列虽然可用，但尚未完全消除冗余读取。
+两次合计 **33 次真实请求、$0.030572868 代理估费**，失败、恢复和重复请求均计入。接在此前隔离论文实验的 532 请求/$0.988448532 代理估费之后，累计为 **565 请求/$1.019021400**；这是代理估费，不是账单实付，也不改变公共产品预算。第一次失败的直接原因是原草稿接口接受不完整行，后续又只能追加、不能修改已保存行；MCP 统一错误遮蔽了具体缺失字段。现改为写入前返回 `staged=false`、缺失字段和原草稿 SHA，不修改草稿；成功才返回 `staged=true`。失败输入和修复回归保留在测试中。第二次工具序列含 `list_inputs → collect_current_local_citation_evidence`，之后模型仍额外读取了两个上传文件，并重复调用了一次 `read_pinned_paper_citations`；所以操作序列虽然可用，但尚未完全消除冗余读取。
 
 **验证。** V100 项目环境中 `pytest -q tests/test_paper_proofreading_legacy.py tests/test_paper_reference_records.py` 为 22 通过，覆盖实际 stdio MCP、来源变化、跨任务句柄、缺字段拒绝与旧入口；`web:scenes:check -- --scenes paper-proofreading` 在 v2 包下通过 27 个有效冻结草稿、实际 MCP/上传、PDF 权限和双用户拒绝，0 模型；`npm run smoke`、`npm run web:controls:check` 通过，后者是模拟模型。`npm test` 为 869 Python 通过、4 个此前已记录的文献 PDF 解析用例失败，入口因此未进入 Node；单独运行构建检查和 Node 全量为 453 通过/3 条件跳过。四个文献失败与本次论文场景代码无交集，但完整测试仍不能称为全绿。
 
