@@ -61,6 +61,44 @@ test('approved uploaded source pin permits only a versioned handle read', async 
   assert.deepEqual(candidates[0].arguments,{source_id:source});
   assert.deepEqual(await proposeReadyBatch({...args,history:[{...row,output:{...row.output,version_sha256:'0'.repeat(64)}}]}),[]);
   assert.deepEqual(await proposeReadyBatch({...args,history:[{...row,output:{...row.output,source_id:'other'}}]}),[]);
+  const other='mcp__paper_checks__pin_document';
+  manifest.contracts[other]={read_only:true,required_params:['name','sha256'],
+    default_params:{},output_fields:[],description:'Observe another Session pin'};
+  sealManifest(manifest);
+  const audits=[];
+  const interceptor=createOnlineInterceptor({manifest,task,mode:'execute',
+    similarity:async()=>{throw Error('closed read must not call embeddings');},
+    audit:event=>audits.push(event)});
+  interceptor.observe(task.session_id,{name:pin,callId:'model-pin',
+    arguments:{main:'paper.tex'}},
+  {structuredContent:{source_id:source,version_sha256:version}});
+  interceptor.observe(task.session_id,{name:other,callId:'other-pin',
+    arguments:{name:'notes.tex',sha256:version}},
+  {structuredContent:{source_id:'source-'+'c'.repeat(32),version_sha256:version}});
+  const stream=await interceptor.intercept(task.session_id,
+    {tools:[offered(read,['source_id'])]},
+    ()=>{throw Error('interleaved safe read should not reset the certified frontier');});
+  const chunks=[];
+  for await (const chunk of stream) chunks.push(chunk);
+  const call=chunks.find(chunk=>chunk.type==='tool-call-delta');
+  assert.equal(call.name,read);
+  assert.deepEqual(JSON.parse(call.argumentsDelta),{source_id:source});
+  interceptor.observe(task.session_id,{name:read,callId:call.id,
+    arguments:{source_id:source}},
+  {structuredContent:{source_id:source,version_sha256:version}});
+  assert.equal(audits.filter(event=>event.kind==='model_request_skipped_verified').length,1);
+  const failed=createOnlineInterceptor({manifest,task,mode:'execute',
+    similarity:async()=>{throw Error('no embeddings');}});
+  failed.observe(task.session_id,{name:pin,callId:'model-pin',
+    arguments:{main:'paper.tex'}},
+  {structuredContent:{source_id:source,version_sha256:version}});
+  failed.observe(task.session_id,{name:other,callId:'failed-pin',
+    arguments:{name:'notes.tex',sha256:version}},
+  {isError:true,structuredContent:{error:'missing'}});
+  let fallback=false;
+  await failed.intercept(task.session_id,{tools:[offered(read,['source_id'])]},
+    ()=>{fallback=true;return null;});
+  assert.equal(fallback,true);
 });
 
 test('fresh unique Gmail search can anchor one model-free read, but ambiguous results defer', async () => {

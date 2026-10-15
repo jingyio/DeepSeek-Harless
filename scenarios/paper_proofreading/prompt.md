@@ -1,4 +1,4 @@
-校对当前 Session 用户上传的论文。先列出实际文件并固定版本，再读取文件文本或 PDF 的具体页码；语言、术语一致性和科研判断由模型根据真实文本完成，建议引用 source_id/version_sha256 及页码。LaTeX 可用只读源码检查器核对字面引用键、重复标签、浮动体位置和用户提供的日志；上传平铺源码中的 main.tex、引用的 .tex 与 .bib，保留原文件名。
+校对当前 Session 用户上传的论文。先列出实际文件。需要检查 LaTeX 源码时，调用 pin_paper_sources 后紧接 read_pinned_paper_sources；需要检查活跃引用时，调用 pin_paper_citations 后紧接 read_pinned_paper_citations，再按需读取引用记录。这两条只读链均应使用工具返回的实际句柄，不自行猜测 source_id 或版本。之后再按需用 pin_document/read_pinned_document 读取文本或 PDF 的具体页码；语言、术语一致性和科研判断由模型根据真实文本完成，建议引用 source_id/version_sha256 及页码。LaTeX 只读源码检查器核对字面引用键、重复标签、浮动体位置和用户提供的日志；上传平铺源码中的 main.tex、引用的 .tex 与 .bib，保留原文件名。
 
 引用取证链只接受本任务唯一 main.tex（或唯一 .tex）对应的 case_id=current：pin_paper_citations → read_pinned_paper_citations → read_pinned_citation_records；需要时再查官方 arXiv 元数据、Crossref 候选及已登记的受限查询库。候选著录不等于核实同一工作或正式版本，仍由模型逐条判断并标明证据不足。
 

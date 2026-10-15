@@ -29,6 +29,22 @@ spec.loader.exec_module(exporter)
 
 READ_PAIR = ('mcp__paper_checks__pin_paper_sources', 'mcp__paper_checks__read_pinned_paper_sources')
 CITATION_PAIR = ('mcp__paper_checks__pin_paper_citations', 'mcp__paper_checks__read_pinned_paper_citations')
+# These Session-local paper tools are observed but never emitted by a Motif.
+# They cannot invalidate an unrelated, versioned pin/read edge when they
+# succeed; failures and the PDF write still remain barriers.
+OBSERVED_READS = {
+    'mcp__paper_checks__list_inputs': {
+        'required_params': [], 'read_only': True, 'replay_stable': True,
+        'output_fields': [], 'description': 'List approved task inputs.'},
+    'mcp__paper_checks__pin_document': {
+        'required_params': ['name', 'sha256'], 'read_only': True,
+        'replay_stable': False, 'observed_anchor': True,
+        'output_fields': [], 'description': 'Pin another approved Session file.'},
+    'mcp__paper_checks__read_pinned_document': {
+        'required_params': ['source_id'], 'read_only': True,
+        'replay_stable': True, 'output_fields': [],
+        'description': 'Read another Session-local pinned file.'},
+}
 
 
 def sha(path: Path) -> str:
@@ -73,6 +89,7 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
     if any(pair not in by_pair for pair in wanted):
         raise ValueError('historical citation or uploaded-read evidence missing')
     contracts = read(ROOT / 'scenarios/paper_proofreading/motif-contracts.json')
+    contracts.update(OBSERVED_READS)
     legacy = read(citation_dir / 'contracts.json')
     _validate_artifact(by_pair[CITATION_PAIR], parse_tool_contracts(legacy))
     for name in CITATION_PAIR:
@@ -91,7 +108,7 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
     migrated['certified_digest'] = artifact_signature(migrated)
     _validate_artifact(migrated, parse_tool_contracts(contracts))
     library = library_from_certified([by_pair[READ_PAIR], migrated])
-    versions = {name: 'version_sha256' for name in contracts}
+    versions = {name: 'version_sha256' for pair in wanted for name in pair}
     manifest = exporter.export_manifest(library, contracts,
         {CITATION_PAIR[0]: {'case_id': 'current'}}, versions)
     scene = {'id': 'paper-proofreading', 'mcp_rows': [{'config': {'serverName': 'paper_checks', 'args': []}}],
