@@ -9,15 +9,40 @@ const terminal = new Set(['completed', 'failed', 'cancelled']);
 const lanes = ['baseline', 'motif'] as const;
 type LaneName = typeof lanes[number];
 type Lane = { session_id: string; task_id?: string; status: string; answer?: string; failure?: string;
+  failure_stage?: 'preparation' | 'execution';
   answer_display?: string; answer_binding?: any; progress?: any; activity?: any[];
   mode?:string;library_sha256?:string;source_pending?:boolean;
   attempt: number; output_sha256?: string; stats?: any; fallback_reason?: string; artifacts?: any[] };
 type Turn = { id: string; session_id: string; request_id: string; fingerprint: string; scene: string;
   options: any; model: any; input_sha256: string; created_at: string; status: string;
+  reasoning_effort?: 'off' | 'high';
   lanes: Record<LaneName, Lane>; scores: Partial<Record<LaneName, number>>; score_revision: number; input: any;
   presentation?: 'paired' | 'single'; prior_artifacts?: Partial<Record<LaneName,any[]>>; prior_sources?: any[];
   published?: boolean; cancellation_requested?: boolean; source_files?:Record<string,any>; prior_context?: Partial<Record<LaneName,string>> };
 const turnLanes = (t: Pick<Turn,'presentation'>): readonly LaneName[] => t.presentation === 'single' ? ['baseline'] : lanes;
+const admissionMessages: Record<string, string> = {
+  data_requires_csv_or_tsv: '此前任务未能读取附件，请重新发送；如果仍有问题，请反馈给管理员。',
+  data_input_format_unsupported: '此前任务未能读取附件，请重新发送；如果仍有问题，请反馈给管理员。',
+  data_text_requires_utf8: '需求说明文件不是有效的 UTF-8 文本。请将 TXT/MD 另存为 UTF-8 编码后重新上传。',
+  ppt_requires_pdf_or_pptx: '此前任务未能读取附件，请重新发送；如果仍有问题，请反馈给管理员。',
+  paper_input_format_unsupported: '此前任务未能读取附件，请重新发送；如果仍有问题，请反馈给管理员。',
+  literature_requires_pdf: '此前任务未能读取附件，请重新发送；如果仍有问题，请反馈给管理员。',
+  literature_requires_question: '请在输入框说明需要解决的文献问题，然后重新发送。',
+  scene_input_limit: '附件超出上传限制。每次最多 8 份，每份不超过 20 MiB；请调整附件后重新发送。',
+  duplicate_scene_filename: '附件文件名重复。请为文件使用不同名称后重新上传。',
+  paper_requires_safe_flat_filenames: '论文附件名称不符合要求。请使用简短的文字、数字、点、下划线或连字符命名文件，避免路径和开头的点。',
+  file_bytes_changed: '附件内容已发生变化。请重新上传当前版本，再发送任务。',
+  file_receipt_not_owned: '附件上传记录已失效或不属于当前会话。请在本会话重新上传后发送。',
+  scene_not_connected: '当前场景服务暂时不可用，请稍后重试。',
+  scene_tools_unavailable: '当前场景服务暂时不可用，请稍后重试。',
+  scene_output_unavailable: '当前场景的文件生成功能暂时不可用，请稍后重试。',
+};
+function admissionFailure(error: any): string | undefined {
+  // Only exact, known codes have public wording. Never surface arbitrary
+  // exception messages, paths, stack traces, or private backend diagnostics.
+  for (const code of [error?.code, error?.message])
+    if (typeof code === 'string' && Object.hasOwn(admissionMessages, code)) return admissionMessages[code];
+}
 export class ComparisonError extends Error {
   code: string; status: number;
   constructor(code: string, message: string, status = 409) { super(message); this.code = code; this.status = status; }
@@ -62,10 +87,16 @@ export function createComparisonService(output: string, principal: string, host:
     lanes: Object.fromEntries(turnLanes(t).map(name => {
       const lane = t.lanes[name], artifacts = (lane.artifacts ?? []).filter(row=>
         t.scene!=='research-data-analysis'||row.verification==='data-report-delivery-v1');
-      const delivery_status = artifacts.length ? 'available' : terminal.has(lane.status) ? 'not_delivered' : 'pending';
-      return [name, { ...lane, artifacts, delivery_status,
+      const notStarted = lane.status === 'failed' && !lane.task_id && !lane.answer && !lane.answer_display && !artifacts.length &&
+        !lane.activity?.length && ['upstream_requests', 'model_requests', 'tool_calls', 'llm_decisions', 'verified_skips']
+          .every(field => !Number(lane.stats?.[field]));
+      const delivery_status = artifacts.length ? 'available' : notStarted ? 'not_started' : terminal.has(lane.status) ? 'not_delivered' : 'pending';
+      const failure = notStarted && lane.failure === '这一路未完成，请重试；另一侧结果已保留。'
+        ? '任务未能启动，请检查附件后重试。' : lane.failure;
+      return [name, { ...lane, ...(failure === undefined ? {} : {failure}), artifacts, delivery_status,
         delivery_message: delivery_status === 'available' ? '结果文件已保存，可下载到本地。'
           : delivery_status === 'pending' ? '结果文件会在生成并通过交付检查后显示。'
+          : delivery_status === 'not_started' ? '本轮尚未开始执行，暂无结果文件。'
           : lane.source_pending ? '本轮没有生成结果文件。你可以继续提问或上传资料。'
           : t.scene === 'research-data-analysis' ? '本轮尚无通过交付校验的报告。模型回复结束不表示报告已成功生成。'
           : '本轮没有可下载的结果文件。' }];
@@ -121,7 +152,10 @@ export function createComparisonService(output: string, principal: string, host:
           appendFileSync(join(output, 'comparison-errors.jsonl'), JSON.stringify({
             id: t.id, lane: name, code: error?.code ?? error?.name ?? 'unknown',
             message: String(error?.message ?? error).slice(0, 1024) }) + '\n', { mode: 0o600 });
-          Object.assign(lane, { status: 'failed', failure: '这一路未完成，请重试；另一侧结果已保留。' });
+          const preparing = !lane.task_id;
+          Object.assign(lane, { status: 'failed', failure_stage: preparing ? 'preparation' : 'execution',
+            failure: preparing ? admissionFailure(error) ?? '任务未能启动，请稍后重试；如果仍有问题，请反馈给管理员。'
+              : '这一路未完成，请重试；已生成的结果会保留。' });
         }
         summary(t); save(); await publish(t);
       }
@@ -146,7 +180,7 @@ export function createComparisonService(output: string, principal: string, host:
     lane.task_id = result.task_id;
     if (t.cancellation_requested || disposed) {
       lane.status = 'cancelled'; await host.cancel(result.task_id);
-    } else Object.assign(lane, { status: 'queued', failure: undefined });
+    } else Object.assign(lane, { status: 'queued', failure: undefined, failure_stage: undefined });
   }
   return {
     hasSession: (id: string) => Boolean(state.threads[id]),
@@ -166,10 +200,14 @@ export function createComparisonService(output: string, principal: string, host:
     async admit(session: string, request: any, context: any) { return locked(async () => {
       await host.owns(session);
       if (disposed) throw new ComparisonError('comparison_stopping', '服务正在重启，请稍后再试。');
-      const fingerprint = hash([request.content, context.scene, context.options, context.model]);
+      const fingerprint = hash([request.content, context.scene, context.options, context.model, context.reasoning_effort ?? 'off']);
       const duplicate = state.turns.find(t => t.session_id === session && t.request_id === request.requestId);
       if (duplicate) {
-        if (duplicate.fingerprint !== fingerprint) throw new ComparisonError('request_id_conflict', '同一发送请求不能更改内容。');
+        // Stored turns from before reasoning selection were all Off. Preserve
+        // their idempotent admission without allowing a replay to switch to On.
+        const legacyOff = duplicate.reasoning_effort === undefined && (context.reasoning_effort ?? 'off') === 'off'
+          && duplicate.fingerprint === hash([request.content, context.scene, context.options, context.model]);
+        if (duplicate.fingerprint !== fingerprint && !legacyOff) throw new ComparisonError('request_id_conflict', '同一发送请求不能更改内容。');
         if (duplicate.published === false) {
           await host.publish(session, view(duplicate), request);
           for (const name of turnLanes(duplicate)) duplicate.lanes[name].status = 'queued';
@@ -211,7 +249,7 @@ export function createComparisonService(output: string, principal: string, host:
         state.threads[session] = thread; save();
       }
       const t: Turn = { id: 'comparison-' + randomUUID(), session_id: session, request_id: request.requestId,
-        fingerprint, scene: context.scene, options: context.options, model: context.model, presentation,
+        fingerprint, scene: context.scene, options: context.options, model: context.model, reasoning_effort: context.reasoning_effort ?? 'off', presentation,
         input_sha256: context.input_sha256, created_at: new Date().toISOString(), status: 'preparing',
         lanes: Object.fromEntries(selectedLanes.map(name => [name, { session_id: thread.lanes[name], status: 'preparing', attempt: 0 }])) as Record<LaneName,Lane>,
         scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files, prior_context: priorContext, prior_artifacts: priorArtifacts, prior_sources: Object.values(priorSources ?? {}) };
@@ -282,7 +320,7 @@ export function createComparisonService(output: string, principal: string, host:
       if (!turnLanes(t).includes(name as LaneName) || !terminal.has(t.status) || inFlight.has(t.id)) throw new ComparisonError('comparison_busy', '请等当前对照结束后重试。');
       const lane = t.lanes[name as LaneName];
       if (lane.status === 'completed') throw new ComparisonError('lane_completed', '成功结果已保留，无需重复付费运行。');
-      lane.attempt++; lane.task_id = undefined; lane.status = 'preparing';
+      lane.attempt++; lane.task_id = undefined; lane.status = 'preparing'; lane.failure_stage = undefined;
       t.cancellation_requested = false;
       summary(t); save(); enqueue(t); return view(t);
     }); },

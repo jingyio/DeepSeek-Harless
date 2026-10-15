@@ -1,6 +1,18 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-15：工作区折叠、回收站与螺旋图标（当前，已发布）
+## 2026-10-15：场景流式、推理开关和 PDF/Word 附件（当前，已发布）
+
+- 发布：`codex/scene-stream-thinking` 经 [PR #27](https://github.com/jingyio/DeepSeek-Harless/pull/27) 合入 main `3bb96877f246aa418d5faf4b1577973cfa12e072`，正式 release `geneloop-workspace-trash` 已部署该提交；最终四项 Windows/Linux CI 全通过。此前线上 `b4712d6` 的切换收据与数据保持。
+- 已完成：SSE 只在收到有效快照后视为可用，始终保留只读恢复；真实 DeepSeek On/Off 选择和每轮冻结；取消场景级附件扩展名拒绝，补 PDF/DOC/DOCX 等只读正文提取及明确未解析状态；报告从混合附件中找数据表并保留其余资料。
+- 已验证：完整 Node 594 通过/3 条件跳过；完整 Python 初次 924 通过/1 个旧 PPT 锁失败，更新独立兼容锁后定向通过。另有报告、附件、推理、消息严格 JSON、连接失效回归；Linux 成员依赖 29 项通过、独立沙箱实际解析 PDF/DOC/DOCX、65 个 PPT 锁和五组真实 MCP schema 通过。
+- 真实链路：混合 Word/PDF/未知二进制与 Off/On 两轮共 5 请求；截图三文件报告共 26 请求，两侧 PDF 实际下载 SHA 通过；Off→On→Off 带旧工具历史共 5 请求通过。浏览器同一对话 data→ppt→paper 与生成中部分正文可见。详情和失败证据见 [本轮记录](../experiments/geneloop-scene-stream-attachments-20261015-v1.md)。
+- 部署：新增可选 `memberSceneDeployment.antiwordRoot`，可信解析依赖只读映射，旧 PDF 路径保留。切换前 59 个任务空闲；只重启应用，原预算进程、Home/output 和 3 个账号保留。运行指针为私有 `current-runtime.json`，旧部署收据不覆盖。
+- 最终复核：Windows 附件 31 项、Linux 附件/报告 51 项通过；线上 7 份旧 PPT preset 实际初始化、3 个旧 job、20 处报告配置、16 份来源与 234 个成品 SHA、3 个旧对照终态/评分通过。On/Off 模型目录、实际进程解析器配置、公网登录页 200 与品牌资源通过，新增模型请求 0。生产旧诊断凭据失效，未改密码或新增账号，浏览器认证验收使用隔离 stage。
+- 边界：文字层读取不等于扫描件 OCR 或图片/版式核查；未知二进制可以上传但诚实提示未解析。论文仍 Shadow，数据统计仍需真实表格；Baseline 报告有一次工具错误后恢复，未把该用例当作科研质量或普遍成本收益证明。
+- 授权：真实测试、合并及部署延续；累计费用/请求次数/额外输出上限 null，每任务 $0.23 保留。上线复核前后原账本均为 785 请求 / $0.540679206 代理估费，实付未知，未清零或重启预算。已有网页须整页刷新（Ctrl+F5）加载新客户端。
+- 收尾：确认隔离 stage 的 22 个任务均空闲后，关闭临时 owner/gateway、本机 SSH 转发及本轮测试标签；测试资料和证据保留，生产进程不受影响。
+
+## 2026-10-15：工作区折叠、回收站与螺旋图标（历史，已发布）
 
 - 发布：`codex/workspace-collapse-chat-delete` 经 [PR #25](https://github.com/jingyio/DeepSeek-Harless/pull/25) 合入 main `747b080`，正式 release `geneloop-workspace-trash` 已部署；四项 Windows/Linux CI 通过。保留原 Home/output、3 账号及数据，708 次/$0.472179990 旧账本未清零。
 - 已完成：工作区名称再次点击可折叠，补齐实际公开 slot 包装层的右侧边距；持久可恢复对话回收站、账号隔离、原生搜索和事件跟随保护；加粗无字渐变螺旋 SVG；合成数据报告测试包。

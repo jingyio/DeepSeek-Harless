@@ -63,7 +63,7 @@
     "src/adapters/harless_rsi_binding.ts": "5abcf95c01f651488df19719ec13cd1e13786ef13d991424587ba47b38abb3eb",
     "src/adapters/harless_rsi_bundle.py": "bbb99cdb517a13585f0fa338e8342e2323466cac34e6cd488aed487a61c722e0",
     "src/motif_core/online_skill_runtime.mjs": "7bfdc12632631ab6f1d26ce246af93b97f9edb51b0067523e160cb12e23bd77f",
-    "src/adapters/harless_task_scope.ts": "dc5507d9fc06217bd2ed7473c90fdf168f4509a108f937158e8ef23b7d77c03b",
+    "src/adapters/harless_task_scope.ts": "a7b2c4dafba7d9babb7effc17f32961df4dac62aba0a29f28842483cab49ab3d",
     "scenarios/research_ppt/ts/pending-plan.ts": "d4d9090d5b2b900d8e74529bcdef19cc3853e0ca2eeeb6cd11c71b102546d106",
     "scenarios/research_ppt/dist/pending-plan.js": "2341a030671dd06b35a6e549008b35679430cc0aafa17b53724ea99bb150631f",
     "scenarios/research_ppt/dist/pending-plan.d.ts": "71bfa83e34efed75776948be8b04f4ec28bcbbbcb62eeea8ac2f26e2af6a985e",
