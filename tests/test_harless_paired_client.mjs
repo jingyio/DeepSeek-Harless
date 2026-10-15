@@ -208,6 +208,21 @@ test('completed model text without delivery is visibly distinguished and cannot 
   assert.equal(f.all(row => row.type === 'a' && row.props.download, pane).length, 0);
   assert.equal(f.all(row => row.type === f.MarkdownText, pane)[0].props.fileMentions.resolve(artifact.name), undefined); f.dispose();
 });
+test('an admission failure displays not started with corrective guidance instead of a delivery failure', async () => {
+  const value = comparison(); value.status = 'failed'; value.scoring_available = false;
+  for (const lane of Object.values(value.lanes)) Object.assign(lane, { status: 'failed', answer: '', artifacts: [], stats: {},
+    failure_stage: 'preparation', failure: '请将 TXT/MD 另存为 UTF-8 编码后重新上传。',
+    delivery_status: 'not_started', delivery_message: '本轮尚未开始执行，暂无结果文件。' });
+  const f = fixture(undefined, value); await flush(); f.render();
+  const panes = f.all(row => row.props.className === 'harless-paired-pane'); assert.equal(panes.length, 2);
+  for (const pane of panes) {
+    assert.match(f.content(pane), /任务未启动/); assert.match(f.content(pane), /UTF-8/);
+    assert.doesNotMatch(f.content(pane), /交付校验|另一侧结果已保留/);
+    assert.equal(f.all(row => row.type === f.MarkdownText, pane).length, 0);
+    assert.equal(f.all(row => row.type === 'a' && row.props.download, pane).length, 0);
+  }
+  assert.equal(f.timers.size, 0); f.dispose();
+});
 test('overlapping old GET cannot undo a saved score; followup read still happens', async () => {
   const value = comparison(), old = comparison(); let finishRead, reads = 0;
   const f = fixture((_url, init) => {
@@ -354,6 +369,73 @@ test('old stream snapshots cannot replace newer retry output or close the active
   stream.emit(stale);f.render();
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'新尝试的流式回复');assert.notEqual(stream.closed,true);
   f.dispose();
+});
+
+test('an open but buffered stream keeps polling real incremental output before completion', async () => {
+  const initial = comparison(); initial.status = 'running'; initial.snapshot_revision = 1;
+  for (const lane of Object.values(initial.lanes)) { lane.status = 'queued'; lane.answer = ''; }
+  let finishRead, current = structuredClone(initial);
+  const f = fixture((_url, _init, n) => n === 1 ? new Promise(resolve => { finishRead = resolve; }) : Response.json(current), initial, { streaming: true });
+  f.streams[0].onopen();
+  finishRead(Response.json(initial)); await flush(); f.render();
+  const poll = [...f.timers.entries()].find(([, timer]) => timer.delay === 1800);
+  assert.ok(poll, 'onopen alone must not suppress the GET recovery path');
+  current.snapshot_revision = 2; current.lanes.baseline.status = 'running'; current.lanes.baseline.answer = '真实第一段';
+  f.timers.delete(poll[0]); await poll[1].fn(); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '真实第一段');
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.streaming, true);
+  assert.ok(f.requests.every(row => row.init.method === 'GET'));
+  f.dispose(); assert.equal(f.timers.size, 0);
+});
+
+test('stream liveness has a read-only watchdog and ignores callbacks from a retired connection', async () => {
+  let current = comparison(); current.status = 'running'; current.snapshot_revision = 10;
+  for (const lane of Object.values(current.lanes)) { lane.status = 'running'; lane.answer = ''; }
+  const f = fixture(() => Response.json(current), current, { streaming: true }); await flush(); f.render();
+  const old = f.streams[0]; old.onopen();
+  const partial = structuredClone(current); partial.snapshot_revision = 11; partial.lanes.baseline.answer = '第一段';
+  old.emit(partial); f.render();
+  // A native projection may rebuild the same persisted start node at any time.
+  f.setNodeData(structuredClone(current)); f.render(); assert.equal(f.streams.length, 1);
+  f.events.get('focus')(); await flush(); f.render();
+  assert.ok([...f.timers.values()].some(timer => timer.delay === 5000));
+  current = structuredClone(partial); current.snapshot_revision = 12; current.lanes.baseline.answer += '，第二段';
+  const watchdog = [...f.timers.entries()].find(([, timer]) => timer.delay === 10000);
+  f.timers.delete(watchdog[0]); watchdog[1].fn(); await flush(); f.render();
+  assert.equal(old.closed, true); assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '第一段，第二段');
+  const reconnect = [...f.timers.entries()].find(([, timer]) => timer.delay === 2000);
+  f.timers.delete(reconnect[0]); reconnect[1].fn(); assert.equal(f.streams.length, 2);
+  const late = structuredClone(current); late.snapshot_revision = 99; late.lanes.baseline.answer = 'retired connection';
+  old.emit(late); old.onerror(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '第一段，第二段');
+  const done = comparison(); done.snapshot_revision = 13; current = done;
+  f.streams[1].emit(done); f.render();
+  assert.equal(f.streams[1].closed, true); assert.ok(f.requests.every(row => row.init.method === 'GET'));
+  f.dispose(); assert.equal(f.timers.size, 0);
+});
+
+test('loss of access closes an existing stream and its recovery timers', async () => {
+  const current = comparison(); current.status = 'running'; current.snapshot_revision = 1;
+  let denied = false;
+  const f = fixture(() => denied ? Response.json({ error: {} }, { status: 404 }) : Response.json(current), current, { streaming: true });
+  await flush(); f.render(); f.streams[0].onopen(); f.streams[0].emit(current); f.render();
+  denied = true; f.events.get('focus')(); await flush(); f.render();
+  assert.equal(f.streams[0].closed, true); assert.equal(f.timers.size, 0);
+  assert.match(f.content(f.all(row => row.props.className === 'harless-paired-connection')[0]), /不存在/);
+  f.dispose();
+});
+
+test('switching conversations closes the old stream before accepting the new session snapshot', async () => {
+  let current = comparison(); current.status = 'running'; current.snapshot_revision = 10;
+  const f = fixture(() => Response.json(current), current, { streaming: true }); await flush(); f.render();
+  const old = f.streams[0]; old.onopen(); old.emit(current); f.render();
+  current = comparison(); current.id = 'comparison-b'; current.session_id = 'session-b'; current.status = 'running'; current.snapshot_revision = 1;
+  current.lanes.baseline.answer = '第二个会话';
+  f.setNodeData(current); f.render(); assert.equal(old.closed, true);
+  const late = comparison(); late.snapshot_revision = 999; late.lanes.baseline.answer = '旧会话迟到内容';
+  old.emit(late); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '第二个会话');
+  assert.match(f.streams[1].url, /session-b/); f.dispose(); assert.equal(f.timers.size, 0);
 });
 
 

@@ -14,7 +14,9 @@ function fixture(overrides={}){
   createLane:async(parent,scene,lane)=>{const id=parent+'-'+lane;created.push(id);return id;},
   prepare:async(t,lane,requestId)=>{prepared.push({parent:t.session_id,lane,requestId});const task_id=requestId;tasks.set(task_id,{status:'queued',answer:t.session_id+'/'+lane,stats:{model_requests:0},deliveries:[]});return{task_id};},
   submit:async id=>{submitted.push(id);tasks.get(id).status='completed';},inspect:async id=>tasks.get(id),
-  cancel:async id=>{cancelled.push(id);tasks.get(id).status='cancelled';},publish:async(parent,view,request)=>events.push({parent,view,request}),...overrides};
+  cancel:async id=>{cancelled.push(id);tasks.get(id).status='cancelled';},publish:async(parent,view,request)=>{
+   if(request)assert.deepEqual(view,JSON.parse(JSON.stringify(view)),'initial native user/message metadata must be pure JSON');
+   events.push({parent,view,request});},...overrides};
  const service=createComparisonService(root,'account-a',host,{pollMs:1});
  const send=(session='a',requestId='one',text='question',ctx=context)=>service.admit(session,{requestId,content:[{type:'text',text}]},ctx);
  const wait=async(id,session='a')=>{for(let i=0;i<200;i++){const value=await service.view(session,id);if(['completed','failed','cancelled'].includes(value.status)){await new Promise(r=>setTimeout(r,3));return value;}await new Promise(r=>setTimeout(r,3));}throw Error('fixture timed out');};
@@ -56,6 +58,86 @@ test('Partial failure retry preserves the successful lane; scores bind output an
   assert.throws(()=>createComparisonService(f.root,'another-account',f.host),/scope_mismatch/);
   assert.equal(readFileSync(join(f.root,'comparison-ratings.jsonl'),'utf8').trim().split('\n').length,2);
  }finally{f.close();}
+});
+
+test('reasoning selection is immutable for both lanes and the same request cannot change its mode', async () => {
+ const seen=[]; const f=fixture({prepare:async(t,lane,requestId)=>{
+  seen.push({lane,effort:t.reasoning_effort});f.tasks.set(requestId,{status:'queued',answer:lane,deliveries:[]});return{task_id:requestId};
+ }});
+ try {
+  const sent=await f.send('a','reasoning','question',{...context,reasoning_effort:'high'});
+  await f.wait(sent.comparison_id);
+  assert.deepEqual(seen,[{lane:'baseline',effort:'high'},{lane:'motif',effort:'high'}]);
+  const stored=JSON.parse(readFileSync(join(f.root,'comparisons.json'),'utf8')).turns[0];
+  assert.equal(stored.reasoning_effort,'high');
+  await assert.rejects(f.send('a','reasoning','question',{...context,reasoning_effort:'off'}),/不能更改/);
+  assert.equal((await f.send('a','reasoning','question',{...context,reasoning_effort:'high'})).comparison_id,sent.comparison_id);
+  assert.equal(f.submitted.length,2);
+ }finally{f.close();}
+});
+
+test('legacy Off admissions remain idempotent after restart and cannot be upgraded to On', async () => {
+ const f=fixture(); let resumed;
+ try {
+  const sent=await f.send();await f.wait(sent.comparison_id);f.service.dispose();
+  const path=join(f.root,'comparisons.json'),state=JSON.parse(readFileSync(path,'utf8'));
+  delete state.turns[0].reasoning_effort;
+  const content=[{type:'text',text:'question'}];
+  state.turns[0].fingerprint=createHash('sha256').update(JSON.stringify([content,context.scene,context.options,context.model])).digest('hex');
+  writeFileSync(path,JSON.stringify(state));resumed=createComparisonService(f.root,'account-a',f.host,{pollMs:1});
+  assert.equal((await resumed.admit('a',{requestId:'one',content},context)).comparison_id,sent.comparison_id);
+  await assert.rejects(resumed.admit('a',{requestId:'one',content},{...context,reasoning_effort:'high'}),/不能更改/);
+  assert.equal(f.submitted.length,2);
+ }finally{resumed?.dispose();f.close();}
+});
+
+test('known preparation errors give safe actionable messages and are not report delivery failures', async () => {
+ for (const [code, expected] of [
+  ['data_input_format_unsupported', /未能读取附件，请重新发送/],
+  ['data_requires_csv_or_tsv', /未能读取附件，请重新发送/],
+  ['data_text_requires_utf8', /另存为 UTF-8/],
+  ['scene_input_limit', /最多 8 份/],
+  ['file_bytes_changed', /重新上传当前版本/],
+ ]) {
+  const error = code === 'scene_input_limit' ? Object.assign(Error('/home/private/secret'), {code}) : Error(code);
+  const f = fixture({prepare:async()=>{throw error;}});
+  try {
+   const sent=await f.send('a','one','report',{...context,scene:'research-data-analysis'}),view=await f.wait(sent.comparison_id);
+   assert.equal(view.status,'failed');assert.equal(view.scoring_available,false);assert.equal(f.submitted.length,0);
+   for(const lane of Object.values(view.lanes)) {
+    assert.match(lane.failure,expected);assert.equal(lane.failure_stage,'preparation');assert.equal(lane.delivery_status,'not_started');
+    assert.match(lane.delivery_message,/尚未开始执行/);assert.doesNotMatch(JSON.stringify(lane),/private|secret|交付校验|另一侧结果已保留/);
+   }
+  }finally{f.close();}
+ }
+});
+
+test('unknown preparation diagnostics stay private while successful opposite results survive', async () => {
+ const secret='data_requires_csv_or_tsv /home/private/source.csv\nstack: connection failure';
+ const f=fixture({prepare:async(t,lane,id)=>{
+  if(lane==='baseline')throw Object.assign(Error(secret),{code:'__proto__'});
+  f.tasks.set(id,{status:'queued',answer:'另一侧已完成',deliveries:[]});return{task_id:id};
+ }});
+ try {
+  const sent=await f.send(),view=await f.wait(sent.comparison_id);
+  assert.equal(view.lanes.baseline.delivery_status,'not_started');assert.match(view.lanes.baseline.failure,/任务未能启动/);
+  assert.doesNotMatch(JSON.stringify(view),/private|stack|source.csv|data_requires|__proto__|另一侧结果已保留/);
+  assert.equal(view.lanes.motif.status,'completed');assert.equal(view.lanes.motif.answer,'另一侧已完成');assert.equal(f.submitted.length,1);
+  assert.match(readFileSync(join(f.root,'comparison-errors.jsonl'),'utf8'),/private/,'private diagnostics remain available to the operator');
+ }finally{f.close();}
+});
+
+test('historic unadmitted failures render as not started without rewriting results or inventing delivery checks', async () => {
+ const f=fixture({prepare:async()=>{throw Error('old_unknown');}});let resumed;
+ try {
+  const sent=await f.send('a','one','report',{...context,scene:'research-data-analysis'});await f.wait(sent.comparison_id);f.service.dispose();
+  const path=join(f.root,'comparisons.json'),state=JSON.parse(readFileSync(path,'utf8'));
+  for(const lane of Object.values(state.turns[0].lanes)){delete lane.failure_stage;lane.task_id=null;lane.failure='这一路未完成，请重试；另一侧结果已保留。';}
+  writeFileSync(path,JSON.stringify(state));resumed=createComparisonService(f.root,'account-a',f.host,{pollMs:1});
+  const view=await resumed.view('a',sent.comparison_id);
+  for(const lane of Object.values(view.lanes)){assert.equal(lane.delivery_status,'not_started');assert.doesNotMatch(lane.failure,/另一侧/);}
+  assert.equal(f.submitted.length,0);
+ }finally{resumed?.dispose();f.close();}
 });
 
 test('First uploads retain historical lane protection and full text within recent per-lane context',async()=>{

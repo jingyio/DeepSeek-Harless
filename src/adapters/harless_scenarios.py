@@ -12,6 +12,42 @@ IDENTITY = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
 WORKSPACE = '__HARLESS_SESSION_WORKSPACE__'
 
 
+def _fixed_dependency(path: Path, *, directory: bool) -> Path:
+    absolute = path.absolute()
+    if (path.is_symlink() or absolute.resolve(strict=True) != absolute or absolute.parent == absolute or
+            not (absolute.is_dir() if directory else absolute.is_file())):
+        raise ValueError('attachment parser requires fixed installation paths')
+    return absolute
+
+
+def _configure_attachment_parsers(scene: dict) -> None:
+    """Forward only explicitly configured, validated public parser resources."""
+    env = {}
+    if os.environ.get('HARLESS_PDF_TOOLCHAIN_ROOT'):
+        root = _fixed_dependency(Path(os.environ['HARLESS_PDF_TOOLCHAIN_ROOT']), directory=True)
+        if any(path.name not in ('bin', 'lib', 'share', 'include') for path in root.iterdir()):
+            raise ValueError('attachment PDF parser must be an isolated Poppler installation')
+        for name in ('pdfinfo', 'pdftotext'):
+            _fixed_dependency(root / 'bin' / name, directory=False)
+        _fixed_dependency(root / 'lib/x86_64-linux-gnu', directory=True)
+        scene['pdf_toolchain_root'] = str(root)
+        env['HARLESS_PDF_TOOLCHAIN_ROOT'] = str(root)
+    if os.environ.get('HARLESS_ANTIWORD_BIN'):
+        binary = _fixed_dependency(Path(os.environ['HARLESS_ANTIWORD_BIN']), directory=False)
+        if binary.name != 'antiword' or binary.parent.name != 'bin' or binary.parent.parent.name != 'usr':
+            raise ValueError('attachment Word parser must use an isolated Antiword package')
+        root = _fixed_dependency(binary.parents[2], directory=True)
+        mappings = _fixed_dependency(root / 'usr/share/antiword', directory=True)
+        _fixed_dependency(mappings / 'UTF-8.txt', directory=False)
+        if any(path.is_symlink() or not path.is_file() or path.name.startswith('.') for path in mappings.iterdir()):
+            raise ValueError('attachment Word mappings must contain only public resource files')
+        scene['antiword_root'] = str(root)
+        env.update(HARLESS_ANTIWORD_BIN=str(binary), ANTIWORDHOME=str(mappings))
+    for row in scene['mcp_rows']:
+        if row['config']['serverName'] == 'research_report':
+            row['config'].setdefault('env', {}).update(env)
+
+
 def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, prepared_default: dict,
                            output: Path, embedding_endpoint: str, embedding_model: str) -> list[dict]:
     registry = json.loads(registry_path.read_text(encoding='utf-8'))
@@ -55,6 +91,8 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             except (OSError, ValueError): scene['unavailable_reason'] = 'literature_pdf_dependencies_missing'
         if row.get('adapter') == 'data-report' and any(importlib.util.find_spec(module) is None for module in ('numpy','pandas','scipy','matplotlib','statsmodels')):
             scene['unavailable_reason'] = 'data_report_python_dependencies_missing'
+        if row.get('adapter') == 'data-report':
+            _configure_attachment_parsers(scene)
         if row.get('adapter') == 'data-report' and os.environ.get('HARLESS_PPT_FONT_ROOT'):
             report_font = Path(os.environ['HARLESS_PPT_FONT_ROOT']).resolve() / 'wqy-microhei.ttc'
             if report_font.is_file() and not report_font.is_symlink():

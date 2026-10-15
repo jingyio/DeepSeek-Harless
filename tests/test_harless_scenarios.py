@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import pytest
 from src.adapters.scenario import prepare_scenario, ROOT
-from src.adapters.harless_scenarios import prepare_scene_registry
+from src.adapters.harless_scenarios import prepare_scene_registry, _configure_attachment_parsers
 
 
 def prepared(tmp_path, registry=None):
@@ -60,3 +60,61 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
         assert rows[identity]['adapter'] == ('data-report' if identity == 'research-data-analysis' else 'workspace')
         assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows[identity]['mcp_rows'])
         assert 'examples/' not in rows[identity]['scenario'] and 'portfolio' not in rows[identity]['scenario']
+
+
+def parser_fixture(tmp_path):
+    pdf, antiword = tmp_path / 'pdf', tmp_path / 'antiword'
+    for path in (pdf / 'bin', pdf / 'lib/x86_64-linux-gnu', antiword / 'usr/bin', antiword / 'usr/share/antiword'):
+        path.mkdir(parents=True)
+    for path in (pdf / 'bin/pdfinfo', pdf / 'bin/pdftotext', antiword / 'usr/bin/antiword', antiword / 'usr/share/antiword/UTF-8.txt'):
+        path.write_text('public dependency fixture')
+    scene = {'mcp_rows': [{'config': {'serverName': 'research_report', 'env': {'HARLESS_REPORT_WORKSPACE': '__HARLESS_SESSION_WORKSPACE__'}}}]}
+    return pdf, antiword, scene
+
+
+def test_report_attachment_environment_forwards_only_validated_parser_paths(tmp_path, monkeypatch):
+    pdf, antiword, scene = parser_fixture(tmp_path)
+    monkeypatch.setenv('HARLESS_PDF_TOOLCHAIN_ROOT', str(pdf))
+    monkeypatch.setenv('HARLESS_ANTIWORD_BIN', str(antiword / 'usr/bin/antiword'))
+    monkeypatch.setenv('ANTIWORDHOME', '/owner/private')
+    monkeypatch.setenv('PRIVATE_KEY', 'not-forwarded')
+    _configure_attachment_parsers(scene)
+    env = scene['mcp_rows'][0]['config']['env']
+    assert env == {'HARLESS_REPORT_WORKSPACE': '__HARLESS_SESSION_WORKSPACE__', 'HARLESS_PDF_TOOLCHAIN_ROOT': str(pdf),
+                   'HARLESS_ANTIWORD_BIN': str(antiword / 'usr/bin/antiword'), 'ANTIWORDHOME': str(antiword / 'usr/share/antiword')}
+    assert scene['pdf_toolchain_root'] == str(pdf) and scene['antiword_root'] == str(antiword)
+
+
+def test_optional_report_extractors_do_not_inherit_unconfigured_ambient_environment(tmp_path, monkeypatch):
+    _, _, scene = parser_fixture(tmp_path)
+    monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
+    monkeypatch.delenv('HARLESS_ANTIWORD_BIN', raising=False)
+    monkeypatch.setenv('ANTIWORDHOME', '/owner/private')
+    _configure_attachment_parsers(scene)
+    assert scene['mcp_rows'][0]['config']['env'] == {'HARLESS_REPORT_WORKSPACE': '__HARLESS_SESSION_WORKSPACE__'}
+
+
+def test_report_parser_configuration_rejects_user_directories_and_missing_mapping(tmp_path, monkeypatch):
+    pdf, antiword, scene = parser_fixture(tmp_path)
+    monkeypatch.setenv('HARLESS_PDF_TOOLCHAIN_ROOT', str(pdf))
+    monkeypatch.delenv('HARLESS_ANTIWORD_BIN', raising=False)
+    (pdf / '.env').write_text('private')
+    with pytest.raises(ValueError, match='isolated Poppler'):
+        _configure_attachment_parsers(scene)
+    (pdf / '.env').unlink()
+    monkeypatch.setenv('HARLESS_ANTIWORD_BIN', str(antiword / 'usr/bin/antiword'))
+    (antiword / 'usr/share/antiword/UTF-8.txt').unlink()
+    with pytest.raises((ValueError, FileNotFoundError)):
+        _configure_attachment_parsers(scene)
+
+
+def test_report_parser_symlinks_are_not_followed(tmp_path, monkeypatch):
+    pdf, _, scene = parser_fixture(tmp_path)
+    linked = tmp_path / 'redirected'
+    try:
+        linked.symlink_to(pdf, target_is_directory=True)
+    except OSError:
+        pytest.skip('symlink permission unavailable')
+    monkeypatch.setenv('HARLESS_PDF_TOOLCHAIN_ROOT', str(linked))
+    with pytest.raises(ValueError, match='fixed installation paths'):
+        _configure_attachment_parsers(scene)

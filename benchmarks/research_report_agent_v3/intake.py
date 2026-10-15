@@ -13,9 +13,9 @@ def sha(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def read_text(path: Path, *, maximum: int = 1_000_000) -> str:
+def read_text(path: Path, *, maximum: int | None = 1_000_000) -> str:
     raw = Path(path).read_bytes()
-    if len(raw) > maximum:
+    if maximum is not None and len(raw) > maximum:
         raise ValueError(f"Input exceeds {maximum} bytes: {Path(path).name}")
     try:
         return raw.decode("utf-8-sig")
@@ -25,12 +25,14 @@ def read_text(path: Path, *, maximum: int = 1_000_000) -> str:
 
 def materialize(*, data: Path, request_file: Path, destination: Path,
                 study_json: Path | None = None, outline_file: Path | None = None,
-                case_id: str | None = None) -> dict:
+                case_id: str | None = None, max_context_bytes: int | None = 1_000_000) -> dict:
     """Copy immutable inputs into destination/cases/id; no case-name dispatch.
 
     This deliberately does not infer paired subjects, randomization, units,
     missingness assumptions, statistical design or requested report length.
     The tools/LLM must use provided study descriptions or ask for clarification.
+    Existing benchmark callers retain their context size limit. Authorized Web
+    uploads may set max_context_bytes=None to preserve their full derived text.
     """
     csv_text = read_text(data, maximum=20_000_000)
     table = list(csv.reader(io.StringIO(csv_text)))
@@ -38,17 +40,17 @@ def materialize(*, data: Path, request_file: Path, destination: Path,
         raise ValueError("CSV needs a nonempty header and at least one data row")
     if len(set(table[0])) != len(table[0]) or any(len(row) != len(table[0]) for row in table[1:]):
         raise ValueError("CSV headers must be unique and row widths consistent")
-    request = read_text(request_file).strip()
+    request = read_text(request_file, maximum=max_context_bytes).strip()
     if not request:
         raise ValueError("A nonempty user request is required")
-    supplied = json.loads(read_text(study_json)) if study_json else {}
+    supplied = json.loads(read_text(study_json, maximum=max_context_bytes)) if study_json else {}
     if not isinstance(supplied, dict):
         raise ValueError("--study-json must contain a JSON object")
     if "benchmark_frozen_decisions" in supplied:
         raise ValueError("v3 main experiment requires free presentation and narrative; frozen decisions are not accepted")
     # Match the record layer's strict canonical JSON before any paid execution.
     json.dumps(supplied, ensure_ascii=False, allow_nan=False)
-    outline = read_text(outline_file).strip() if outline_file else None
+    outline = read_text(outline_file, maximum=max_context_bytes).strip() if outline_file else None
     if outline_file and not outline:
         raise ValueError("An outline file cannot be empty")
     fingerprint = sha(json.dumps({"csv": sha(csv_text.encode()), "request": request,

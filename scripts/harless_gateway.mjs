@@ -353,7 +353,7 @@ export function createGateway(config) {
       const env = { PATH: '/opt/node/bin:/usr/bin:/bin', HOME: '/user/workspace', DSH_HOME: '/user/dsh',
         SSS_WEB_POLICY: '/user/config/policy.json', DEEPSEEK_API_KEY: delegate(user, 'model'),
         HARLESS_GATEWAY_ENABLED: '1',
-        ...(sceneDeployment ? {SSS_PYTHON:sceneDeployment.python} : {}),
+        ...(sceneDeployment ? {SSS_PYTHON:sceneDeployment.python,...sceneDeployment.attachmentEnvironment} : {}),
         NO_PROXY: 'localhost,127.0.0.1,::1', no_proxy: 'localhost,127.0.0.1,::1',
         LANG: 'C.UTF-8', PYTHONUTF8: '1' };
       const child = spawn('/usr/bin/bwrap', args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
