@@ -754,6 +754,145 @@ window.__ModuleLoader__.load({
         return () => { unsubscribe?.(); cleanups.reverse().forEach(dispose => dispose()); };
       }
       window.__installGeneLoopLoading?.(ctx, React, mirrorPublicSlot);
+      // Adapt public seats/stores only: keep native menus, keyboard handling,
+      // upload/editor ownership and server-side permission enforcement.
+      if (ctx.slots.entries && ctx.slots.subscribe) {
+        const hiddenCommands = new Set(['export', 'feedback', 'harless', 'permission', 'model']);
+        const filteredMenus = new WeakSet(), modelChoices = new Map();
+        function webMenu(id) {
+          const scope = sessions.scope(id), menu = scope && triggers.sessionOf?.(scope)?.menu;
+          if (!menu || filteredMenus.has(menu)) return;
+          filteredMenus.add(menu);
+          const filter = () => {
+            const before = menu.getSnapshot(); let changed = false;
+            const groups = before.groups.map(group => {
+              if (group.source !== 'command') return group;
+              const items = group.items.filter(item => !hiddenCommands.has(item.name));
+              if (items.length === group.items.length) return group;
+              changed = true; return { ...group, items };
+            });
+            if (!changed) return;
+            const previous = before.highlight && before.groups.find(group => group.source === before.highlight.source)?.items[before.highlight.index];
+            const highlighted = before.highlight && groups.find(group => group.source === before.highlight.source);
+            const index = highlighted?.items.indexOf(previous) ?? -1;
+            const first = groups.find(group => group.items.length);
+            menu.set({ ...before, groups, open: before.open && groups.some(group => group.status === 'pending' || group.items.length),
+              highlight: index >= 0 ? { source: highlighted.source, index } : first ? { source: first.source, index: 0 } : null });
+          };
+          filter(); scope.effect(() => menu.subscribe(filter), 'geneloop: web command menu');
+        }
+        function optimisticModel(id, native) {
+          if (modelChoices.has(id)) return modelChoices.get(id);
+          const scope = sessions.scope(id), face = sessions.binding(id)?.session;
+          let tail = Promise.resolve(), latestChoice = Promise.resolve(true), pending = 0, revision = 0, disposed = false;
+          let desired, confirmed = native.directory.getSnapshot().current, awaitingProjection, error = null, snapshot;
+          const listeners = new Set();
+          const same = (a, b) => a?.provider === b?.provider && a?.model === b?.model && a?.reasoningEffort === b?.reasoningEffort;
+          const publishModel = () => {
+            if (disposed) return;
+            const source = native.directory.getSnapshot();
+            if (awaitingProjection && same(source.current, awaitingProjection)) awaitingProjection = undefined;
+            if (!pending && !awaitingProjection) confirmed = source.current;
+            snapshot = { ...source, current: desired || confirmed, status: pending ? 'ready' : error ? 'error' : source.status,
+              error: error || (pending ? null : source.error) };
+            for (const listener of listeners) listener();
+          };
+          const enqueue = operation => {
+            const run = tail.then(() => { if (disposed) throw Error('会话已关闭，请重新打开后重试。'); return operation(); });
+            tail = run.catch(() => {}); return run;
+          };
+          const value = { ...native, directory: { getSnapshot: () => snapshot,
+            subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } },
+            select(selection) {
+              if (!native.available || disposed) return Promise.resolve(false);
+              const chosen = { ...selection }, version = ++revision;
+              pending++; desired = chosen; error = null; publishModel();
+              const operation = enqueue(async () => {
+                let accepted = false, failure;
+                try {
+                  accepted = await native.select(chosen);
+                  if (!accepted) failure = native.directory.getSnapshot().error || '服务器未接受此选项。';
+                } catch (cause) { failure = cause.message || '连接暂时中断。'; }
+                if (disposed) return false;
+                if (accepted) { confirmed = chosen; awaitingProjection = chosen; }
+                pending--;
+                if (version === revision) {
+                  desired = undefined;
+                  if (!accepted) {
+                    error = '模型切换未保存，已恢复之前的选项。' + failure;
+                    conversation.input.for(scope)?.notify?.('error', error);
+                  }
+                  // New sends may use the restored selection; an already
+                  // queued send keeps the failed promise and retains its draft.
+                  latestChoice = Promise.resolve(true);
+                }
+                publishModel(); return accepted;
+              });
+              latestChoice = operation;
+              operation.catch(() => {});
+              // Native menu closes now; the queue persists across navigation.
+              return Promise.resolve(true);
+            } };
+          publishModel();
+          const unsubscribe = native.directory.subscribe(publishModel);
+          const prompt = face?.prompt;
+          const queuedPrompt = prompt && function (...args) {
+            const selection = latestChoice;
+            return enqueue(async () => {
+              if (!await selection) throw Error('模型切换未成功，消息尚未发送，请确认模型后重试。');
+              if (args[2]?.aborted) throw Error('发送已取消。');
+              return prompt.apply(this, args);
+            });
+          };
+          if (queuedPrompt) face.prompt = queuedPrompt;
+          scope.effect(() => () => {
+            disposed = true; unsubscribe(); listeners.clear(); modelChoices.delete(id);
+            if (queuedPrompt && face.prompt === queuedPrompt) face.prompt = prompt;
+          }, 'geneloop: model selection queue');
+          modelChoices.set(id, value); return value;
+        }
+        function wrapWebSeat(name, adapt) {
+          ctx.slots.inject(name, () => {
+            let release, mirrors = [], installing = false;
+            const install = () => {
+              if (release || installing) return;
+              const original = ctx.slots.entries(name).find(entry => (entry.options.priority ?? 0) >= 0);
+              if (!original) return;
+              installing = true;
+              try {
+                const names = Object.fromEntries(Object.keys(original.children || {}).map(child => [child, 'geneloop.web.' + child]));
+                const children = Object.fromEntries(Object.entries(original.children || {}).map(([child, spec]) => [names[child], spec]));
+                release = ctx.slots.register({ name, priority: -100, locale: original.locale,
+                  ...(original.store ? { store: original.store } : {}), ...(original.select ? { select: original.select } : {}),
+                  children, inject: (...args) => adapt(original.inject?.(...args) || {}, args[0]) }, props => h(original.component, {
+                  ...props, renderSlot: (child, owner, options) => props.renderSlot(names[child] || child, owner, options),
+                  ...(props.renderSlotChain ? { renderSlotChain: (child, owner, options) => props.renderSlotChain(names[child] || child, owner, options) } : {}),
+                }));
+                mirrors = Object.keys(names).map(child => mirrorPublicSlot(child, names[child]));
+              } finally { installing = false; }
+            };
+            install(); const unsubscribe = ctx.slots.subscribe(name, install);
+            return () => { unsubscribe(); mirrors.reverse().forEach(stop => stop()); release?.(); };
+          });
+        }
+        wrapWebSeat('conversation.composer.bar', (props, id) => {
+          if (id) webMenu(id);
+          const launcher = props.hooks?.menuLauncher;
+          return { ...props, command: undefined,
+            ...(launcher ? { hooks: { ...props.hooks, menuLauncher: {
+              subscribe: listener => launcher.subscribe(listener),
+              getSnapshot: () => launcher.getSnapshot() === 'harless-scenes' ? 'command' : launcher.getSnapshot(),
+            } } } : {}), toggleCommandMenu: id ? () => {
+            props.keyboard.dismissPopup();
+            const draft = props.keyboard.snapshot;
+            const prefix = /^(\s*)\/[a-z0-9_-]*/i.exec(draft.draft);
+            triggers.sessionOf(sessions.scope(id)).toggleSource('harless-scenes', { trigger: '/', query: '', quoted: false,
+              position: 'leading', span: { start: prefix ? prefix[1].length : 0,
+                end: prefix ? prefix[0].length : 0, draftRev: draft.draftRev } });
+          } : props.toggleCommandMenu };
+        });
+        wrapWebSeat('conversation.input.model', (props, id) => optimisticModel(id, props));
+      }
       // The pinned native tab roster enumerates shadowed entries as well as
       // winners. Adapt only the header's public source to one tab per id; keep
       // the native header, store, title management and scoped child actions.
@@ -1040,7 +1179,8 @@ window.__ModuleLoader__.load({
         if (!sameDraft(oldInput, span)) throw Error('输入已改变，请重新选择场景');
         const token = initial.draft.slice(span.start, span.end).toLowerCase();
         const known = cache.get(session.sessionId)?.scenes.find(row => row.id === id);
-        if (!/^\/[a-z0-9_-]*$/i.test(token) || (fromCommand ? token !== '/harless' : known && !('/' + shortcut(known)).startsWith(token)))
+        const leadingInsertion = span.start === 0 && span.end === 0;
+        if ((!leadingInsertion && !/^\/[a-z0-9_-]*$/i.test(token)) || (fromCommand ? token !== '/harless' : known && !('/' + shortcut(known)).startsWith(token)))
           throw Error('候选已更新，请按当前输入重新选择场景');
         const previous = choosing.get(session.sessionId), version = (choiceVersions.get(session.sessionId) || 0) + 1;
         choiceVersions.set(session.sessionId, version);

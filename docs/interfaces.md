@@ -703,3 +703,9 @@ DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路�
 场景前端通过公开 primitives 复用 Chat 的复制、勾选、赞踩、分支、用量和用时图标及 Tooltip；不导入私有组件或依赖生成的样式类。最新轮由公开 `useChat` 的整个 `timeline.turnOrder` 判定，包括后续普通 Chat；历史侧栏仅在支持 hover 的设备上淡出，hover/focus-within 或统计面板展开时恢复，评分不随之隐藏。
 
 统计使用每侧已有 usage/stats、duration_ms、started_at/finished_at，未知总量/时长不显示虚构数字；不从全程耗时推算 TPS/TTFT。弹层使用公开锚点定位及外点关闭，Escape 返回触发按钮；复制成功勾选一秒后恢复，沿用版本绑定的反馈与分支接口。桌面窄栏允许统计整组换行，手机窄屏采用原生紧凑图标并保留可访问名称。
+
+## 网页输入栏和即时模型选择（2026-10-15）
+
+通过公开 slot 包装原生输入栏和模型选择器，保留原 inject、store、locale 与子插槽归属。输入栏不提供 permission command 属性，因此不渲染权限选择器；服务端权限策略保持。公开 trigger menu store 过滤 `export/feedback/harless/permission/model`，同步修正键盘高亮，其他来源和扩展命令保留。指令按钮打开 `harless-scenes`；已有文字时在开头插入场景 chip，替换已有前缀时使用当前 draftRev，保留正文和附件。
+
+模型选择由每 Session 的公开 directory 投影立即反馈，RPC 串行执行；后到的旧结果不能覆盖最新待存选项。原生菜单收到即时成功只表示已接收选择，后台失败通过原生 notice 提示并回到确认状态。公开 `session.prompt` 与模型写入共用队列，发送等待其前面的选择完成，失败或取消保留草稿；发送之后的选择不能越过该次请求。站内导航复用队列，Session scope 结束时解除订阅、恢复 prompt。不改上游包、不修改模型目录、推理可用性或预算。
