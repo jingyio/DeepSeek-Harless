@@ -749,3 +749,5 @@ DeepSeek 原生模型目录展示 Off / On，内部值分别为 `off` / `high`�
 ## GeneLoop /management
 
 个人分支上的文件管理采用 `management_graph_v3`、`management_v3` 材料适配器和 `sss-management-quality-v3`。默认工作区任务副本内低风险整理直接执行；覆盖、永久删除、外部根及高风险恢复逐计划确认。原生工作区与 Agent 生命周期保持同一入口，持久化库及原任务账本避免重启丢失版本、权限和预算。17 工具的 SDK / 原生 schema 完整一致，离线编译使用 Python，在线续接使用 TypeScript。详细接口、限制和恢复流程见 [management-autonomous-rsi.md](changes/management-autonomous-rsi.md)。
+
+2026-10-16 跨卷更新：私有 management state 新增受摘要保护的 `local_staging` 登记。复制先在目标卷落盘并核对字节，再同卷原子发布；恢复先清理未发布登记暂存，未知文件/符号链接不排除。工具 schema 与原权限/预算保持，新源码摘要必须重新学习和认证；旧政策与证书不重签。

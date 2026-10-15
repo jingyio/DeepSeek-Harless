@@ -1,11 +1,14 @@
 # 文件管理当前交接
 
-- 更新时间：2026-10-15；当前开发分支 `feature/rsi-research-agent`，只推个人分支，不合入 main。
+- 更新时间：2026-10-16；当前开发分支 `feature/rsi-research-agent`，只推个人分支，不合入 main。
 - 已完成：GeneLoop 原生 `/management`，副本内复制/移动/重命名/建目录默认执行；高风险执行和恢复原生逐计划确认；持久化经验库、Python 学习与独立认证、TypeScript 续接、费用/失败封存、原任务恢复及报告下载。
 - 真实验证：普通整理 0 次确认；覆盖和恢复各确认一次；永久删除拒绝后不改文件；已登记外部根复制需确认；文件提交后进程中断并恢复，原预算及日志不重置；前端新任务验证 1 次模型请求跳过。全部调试、失败、费用和旧原最终集保留。
-- 验证与当前限制：[实验记录](../experiments/management-native-20261015.md)、[共享接口](../changes/management-autonomous-rsi.md)。完整回归 Python 1050 / Node 717 通过，5 可选跳过；未主张总体净收益或任意新 MCP 支持。当前跨任务自动撤销仍需适配。
+- 验证与当前限制：[实验记录](../experiments/management-native-20261015.md)、[共享接口](../changes/management-autonomous-rsi.md)。完整回归 Python 1061 / Node 717 通过，5 可选跳过；未主张总体净收益或任意新 MCP 支持。当前跨任务自动撤销仍需适配。
 - 配置：`npm run management -- --real-model`；日常真实库 `daily-management-real-v3`；任务最高 USD5/96步和请求/4000输出/2修复，原系列1000、学习25。凭证、原轨迹、备份和原认证证据只在私有 `.local/`。
-- 公开库：`examples/motif-library/management-v3-native`，当前兼容的原始两节点数组读取政策；公开摘要不授予生产执行权限，新环境独立认证。旧库和旧认证保留。
+- 公开库：`examples/motif-library/management-v3-cross-volume`，第11版当前兼容的原始两节点执行/结果检查政策；公开摘要不授予生产执行权限，新环境独立认证。旧库和旧认证保留。
+
+- 跨平台：修复真实 Windows CI 跨卷发布错误；11 项追加诊断含部分复制/发布退出和继续/撤销。修复提交 `6041ff8` 已推个人分支，CI [`38767209333`](https://github.com/jingyio/DeepSeek-Harless/actions/runs/38767209333) Ubuntu/Windows 均通过。新五类文件 3/3 和前端新整理通过，SDK/前端各验证跳过 1 次；完整建库、认证及失败计费。
+- 费用/版本：本轮全部版本 63 执行 / 674HTTP / USD0.512721448；原系列 USD8.944164888，未核对账单。第11版兼容活动1、旧版本失效3、停用3；worker已结束，无未结算预留。旧公开包保持原字节，不重签。
 
 ## 历史交接（按原记录保留）
 

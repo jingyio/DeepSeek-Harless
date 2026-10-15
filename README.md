@@ -244,3 +244,5 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 ### 个人分支：主动文件管理
 
 GeneLoop 的 `/management` 复用原生工作区和 Agent，同一工作区任务副本内默认可复制、移动、重命名和建目录；高风险操作逐计划确认。启动 `npm run management -- --real-model`，先按既有私有配置提供 `DEEPSEEK_API_KEY`。日常经验库和原预算持久化，任务结束后自动发现、学习、独立认证及复用 Motif。详情与真实费用/失败见 [文件管理验证](docs/experiments/management-native-20261015.md)。此功能仅发布到 `feature/rsi-research-agent`，不合入 main。
+
+2026-10-16：文件管理已补目标卷原子发布与中断清理，当前兼容经验包见 [第11版公开库](examples/motif-library/management-v3-cross-volume/README.md)。旧包和失败完整保留；新五类文件与原生整理均已验证自动复用，完整费用及跨平台检查见上述实验记录。
