@@ -127,15 +127,27 @@ def observed_peak_cost(model: str, usage: dict[str, int], *,
             + usage["completion_tokens"] * output_rate) / 1_000_000
 
 
+def normalize_request_limit(value: int | None, name: str = 'request_limit') -> int | None:
+    """None/JSON null and zero mean unlimited calls; dollar limits still apply."""
+    if value is None:
+        return None
+    if type(value) is not int or value < 0:
+        raise ValueError(f'{name} must be a non-negative integer or null (0/null means unlimited)')
+    return value or None
+
+
+def request_limit_argument(value: str) -> int | None:
+    """argparse converter: keep unlimited explicit in CLI configuration as 0."""
+    return normalize_request_limit(int(value))
+
+
 class State:
     def __init__(self, *, cap_usd: float, output_cap: int, record: Path,
                  request_limit: int | None = None,
                  rates: dict[str, tuple[float, float]] | None = None,
                  cache_rates: dict[str, float] | None = None,
                  checkpoint: Path | None = None):
-        if request_limit is not None and (type(request_limit) is not int or request_limit < 1):
-            raise ValueError('request_limit must be a positive integer')
-        self.request_limit = request_limit
+        self.request_limit = normalize_request_limit(request_limit)
         self.cap_usd = cap_usd
         self.output_cap = output_cap
         self.record = record

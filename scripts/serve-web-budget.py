@@ -13,7 +13,7 @@ from secrets import token_hex
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from src.adapters.deepseek_cost_gate import State, create_server
+from src.adapters.deepseek_cost_gate import State, create_server, request_limit_argument
 from src.adapters.web_task_budget import TaskBudgetRegistry, create_control_server
 
 
@@ -22,14 +22,15 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--budget-usd', type=float, required=True)
-    parser.add_argument('--request-limit', type=int, required=True)
+    parser.add_argument('--request-limit', type=request_limit_argument, required=True,
+                        help='cumulative request cap; 0 means unlimited without resetting usage')
     parser.add_argument('--task-budget-usd', type=float, default=0.23)
-    parser.add_argument('--task-request-limit', type=int, default=24)
+    parser.add_argument('--task-request-limit', type=request_limit_argument, default=None,
+                        help='per-task request cap; 0 means unlimited (default)')
     parser.add_argument('--max-output', type=int, default=1000)
     args = parser.parse_args()
     if (not math.isfinite(args.budget_usd) or not 0 < args.budget_usd <= 100 or
-            not 0 < args.task_budget_usd <= args.budget_usd or args.request_limit < 1 or
-            args.task_request_limit < 1 or not 1 <= args.max_output <= 8000):
+            not 0 < args.task_budget_usd <= args.budget_usd or not 1 <= args.max_output <= 8000):
         parser.error('invalid explicit spending limits')
     output, checkpoint = args.output.resolve(), args.checkpoint.resolve()
     if '.local' not in output.parts or not checkpoint.is_relative_to(output):
@@ -52,11 +53,13 @@ def main():
     policy = {'endpoint': f'http://127.0.0.1:{gate.server_port}/v1',
               'control_endpoint': f'http://127.0.0.1:{control.server_port}',
               'control_token': token, 'budget_usd': args.task_budget_usd,
+              'request_limit': args.task_request_limit,
               'run_budget_usd': args.budget_usd, 'run_request_limit': args.request_limit}
     (output / 'policy.json').write_text(json.dumps(policy) + '\n')
     for server in (gate, control):
         threading.Thread(target=server.serve_forever, daemon=True).start()
     print(json.dumps({'ready': True, 'request_count': state.request_count,
+                      'request_limit': args.task_request_limit, 'run_request_limit': state.request_limit,
                       'reserved_usd': state.reserved_usd}), flush=True)
     signal.pause()
 

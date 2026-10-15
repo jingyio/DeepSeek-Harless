@@ -409,13 +409,30 @@ export function createGateway(config) {
   };
   const proxy = async (req, res, user) => {
     const backend = await backendFor(user);
+    // Backend authentication/startup may outlive a browser that has navigated away.
+    if (closing || req.aborted || res.destroyed) return;
+    let responseStream;
     const upstream = http.request({ host: '127.0.0.1', port: backend.port, path: req.url,
       method: req.method, headers: proxyHeaders(req, backend), timeout: 120000 }, response => {
+      responseStream = response;
+      response.once('error', () => { if (!res.destroyed) res.destroy(); });
+      if (res.destroyed) { response.destroy(); upstream.destroy(); return; }
       const headers = { ...response.headers, 'cache-control': response.headers['cache-control'] ?? 'no-store' };
       delete headers['set-cookie']; delete headers['content-security-policy-report-only'];
       res.writeHead(response.statusCode ?? 502, headers); response.pipe(res);
     });
-    upstream.on('error', () => { if (!res.headersSent) send(res, 502, '工作区暂时不可用，请刷新重试。'); else res.destroy(); });
+    const cancel = () => {
+      req.unpipe(upstream);
+      responseStream?.unpipe(res);
+      responseStream?.destroy();
+      upstream.destroy();
+    };
+    // IncomingMessage's normal `close` also fires when a GET body completes;
+    // use response close / request aborted so live SSE subscriptions survive
+    // the request-body end and stop promptly when their browser disconnects.
+    res.once('close', cancel);
+    req.once('aborted', cancel);
+    upstream.on('error', () => { if (res.destroyed) return; if (!res.headersSent) send(res, 502, '工作区暂时不可用，请刷新重试。'); else res.destroy(); });
     req.pipe(upstream);
   };
   const server = http.createServer(async (req, res) => {

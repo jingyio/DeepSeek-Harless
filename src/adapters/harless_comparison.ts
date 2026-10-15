@@ -9,13 +9,15 @@ const terminal = new Set(['completed', 'failed', 'cancelled']);
 const lanes = ['baseline', 'motif'] as const;
 type LaneName = typeof lanes[number];
 type Lane = { session_id: string; task_id?: string; status: string; answer?: string; failure?: string;
-  answer_display?: string; answer_binding?: any;
+  answer_display?: string; answer_binding?: any; progress?: any; activity?: any[];
   mode?:string;library_sha256?:string;source_pending?:boolean;
   attempt: number; output_sha256?: string; stats?: any; fallback_reason?: string; artifacts?: any[] };
 type Turn = { id: string; session_id: string; request_id: string; fingerprint: string; scene: string;
   options: any; model: any; input_sha256: string; created_at: string; status: string;
   lanes: Record<LaneName, Lane>; scores: Partial<Record<LaneName, number>>; score_revision: number; input: any;
+  presentation?: 'paired' | 'single'; prior_artifacts?: Partial<Record<LaneName,any[]>>; prior_sources?: any[];
   published?: boolean; cancellation_requested?: boolean; source_files?:Record<string,any>; prior_context?: Partial<Record<LaneName,string>> };
+const turnLanes = (t: Pick<Turn,'presentation'>): readonly LaneName[] => t.presentation === 'single' ? ['baseline'] : lanes;
 export class ComparisonError extends Error {
   code: string; status: number;
   constructor(code: string, message: string, status = 409) { super(message); this.code = code; this.status = status; }
@@ -35,16 +37,17 @@ export function createComparisonService(output: string, principal: string, host:
   { pollMs = 400 }: { pollMs?: number } = {}) {
   mkdirSync(output, { recursive: true, mode: 0o700 });
   const path = join(output, 'comparisons.json');
-  const state: { version: number; principal: string; threads: Record<string, any>; turns: Turn[] } = existsSync(path)
+  const state: { version: number; revision?: number; principal: string; threads: Record<string, any>; turns: Turn[] } = existsSync(path)
     ? JSON.parse(readFileSync(path, 'utf8')) : { version: 1, principal, threads: {}, turns: [] };
   if (state.version !== 1 || state.principal !== principal || !Array.isArray(state.turns)) throw Error('comparison_store_scope_mismatch');
   const pending: Turn[] = [], inFlight = new Set<string>();
+  const subscribers = new Map<string, Set<(value: any) => void>>();
   const reconciledDeliveries = new Set<string>();
   let running = false, disposed = false, admission = Promise.resolve();
-  const save = () => { const tmp = path + '.' + randomUUID() + '.tmp'; writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 }); renameSync(tmp, path); };
+  const save = () => { state.revision = (state.revision ?? 0) + 1; const tmp = path + '.' + randomUUID() + '.tmp'; writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 }); renameSync(tmp, path); };
   // Reconnect never starts a paid task. A stopped turn needs an explicit retry.
   for (const t of state.turns) if (!terminal.has(t.status)) {
-    for (const name of lanes) if (!terminal.has(t.lanes[name].status)) Object.assign(t.lanes[name], { status: 'failed', failure: '服务重启中断了这一路，请重试。' });
+    for (const name of turnLanes(t)) if (!terminal.has(t.lanes[name].status)) Object.assign(t.lanes[name], { status: 'failed', failure: '服务重启中断了这一路，请重试。' });
     t.status = 'failed';
   }
   save();
@@ -53,10 +56,10 @@ export function createComparisonService(output: string, principal: string, host:
   };
   const outputHash = (lane: Lane) => hash([lane.answer, lane.artifacts,
     ...(lane.answer_display === undefined ? [] : [{ answer_display: lane.answer_display, answer_binding: lane.answer_binding }])]);
-  const view = (t: Turn) => ({ id: t.id, session_id: t.session_id, scene: t.scene, status: t.status,
+  const view = (t: Turn) => ({ snapshot_revision: state.revision ?? 0, presentation: t.presentation ?? 'paired', id: t.id, session_id: t.session_id, scene: t.scene, status: t.status,
     input_sha256: t.input_sha256, created_at: t.created_at, score_revision: t.score_revision, scores: { ...t.scores },
-    scoring_available: lanes.every(name => t.lanes[name].status === 'completed'),
-    lanes: Object.fromEntries(lanes.map(name => {
+    scoring_available: t.presentation !== 'single' && turnLanes(t).every(name => t.lanes[name].status === 'completed'),
+    lanes: Object.fromEntries(turnLanes(t).map(name => {
       const lane = t.lanes[name], artifacts = (lane.artifacts ?? []).filter(row=>
         t.scene!=='research-data-analysis'||row.verification==='data-report-delivery-v1');
       const delivery_status = artifacts.length ? 'available' : terminal.has(lane.status) ? 'not_delivered' : 'pending';
@@ -74,7 +77,7 @@ export function createComparisonService(output: string, principal: string, host:
     return t;
   }
   function summary(t: Turn) {
-    const statuses = lanes.map(name => t.lanes[name].status);
+    const statuses = turnLanes(t).map(name => t.lanes[name].status);
     t.status = statuses.every(s => s === 'completed') ? 'completed' : statuses.every(s => terminal.has(s))
       ? statuses.includes('failed') ? 'failed' : 'cancelled' : 'running';
   }
@@ -86,7 +89,7 @@ export function createComparisonService(output: string, principal: string, host:
     if (disposed) return;
     Object.assign(lane, { status: t.cancellation_requested ? 'cancelled' : task.status === 'budget_exhausted' ? 'failed' : task.status === 'awaiting_confirmation' ? 'queued' : task.status,
       answer: task.answer ?? lane.answer ?? '', stats: task.stats, fallback_reason: task.fallback_reason ?? null,
-      answer_display: task.answer_display, answer_binding: task.answer_binding,
+      answer_display: task.answer_display, answer_binding: task.answer_binding, progress: task.progress, activity: task.activity,
       mode:task.mode,library_sha256:task.library_sha256,source_pending:task.source_pending === true,
       artifacts: task.deliveries ?? [], failure: task.status === 'budget_exhausted'
         ? (task.deliveries?.length ? '已完成的文件通过交付校验，可下载；后续模型回复达到请求或预算上限，未完成的部分与支出均已保留。' : '这一路达到预算或请求上限，结果与已有支出已保留。')
@@ -98,7 +101,7 @@ export function createComparisonService(output: string, principal: string, host:
   async function run(t: Turn) {
     inFlight.add(t.id);
     try {
-      for (const name of lanes) {
+      for (const name of turnLanes(t)) {
         const lane = t.lanes[name];
         if (disposed || terminal.has(lane.status)) continue;
         try {
@@ -132,6 +135,7 @@ export function createComparisonService(output: string, principal: string, host:
   }
   const enqueue = (t: Turn) => { pending.push(t); void drain().catch(() => {}); };
   async function publish(t: Turn) {
+    for (const subscriber of subscribers.get(t.id) ?? []) { try { subscriber(view(t)); } catch { /* A disconnected reader cannot interrupt execution. */ } }
     // Persisted results remain readable even when a transient UI event fails.
     try { await host.publish(t.session_id, view(t)); } catch { /* GET recovers the saved state. */ }
   }
@@ -146,12 +150,19 @@ export function createComparisonService(output: string, principal: string, host:
   }
   return {
     hasSession: (id: string) => Boolean(state.threads[id]),
+    busy: (id: string) => state.turns.some(t => t.session_id === id && !terminal.has(t.status)),
+    async subscribe(session: string, id: string, listener: (value: any) => void) {
+      const t = await get(session, id); const listeners = subscribers.get(id) ?? new Set();
+      listeners.add(listener); subscribers.set(id, listeners); listener(view(t));
+      return () => { listeners.delete(listener); if (!listeners.size) subscribers.delete(id); };
+    },
+    snapshot: (session: string, id: string) => { const t = state.turns.find(t => t.session_id === session && t.id === id); return t ? view(t) : undefined; },
     // Only a previously admitted request in this account can resolve a retired
     // upload receipt. These server-minted references never appear in GET views.
     sourceFor: (session:string,requestId:string,receipt:string) =>
       state.turns.find(t=>t.session_id===session&&t.request_id===requestId)?.source_files?.[receipt],
-    isLane: (id: string) => state.turns.some(t => lanes.some(name => t.lanes[name].session_id === id)) || Object.values(state.threads).some((thread: any) => Object.values(thread.lanes).includes(id)),
-    parentFor: (id: string) => state.turns.find(t => lanes.some(name => t.lanes[name].session_id === id))?.session_id ?? Object.entries(state.threads).find(([, thread]: any) => Object.values(thread.lanes).includes(id))?.[0] ?? null,
+    isLane: (id: string) => state.turns.some(t => turnLanes(t).some(name => t.lanes[name].session_id === id)) || Object.values(state.threads).some((thread: any) => Object.values(thread.lanes).includes(id)),
+    parentFor: (id: string) => state.turns.find(t => turnLanes(t).some(name => t.lanes[name].session_id === id))?.session_id ?? Object.entries(state.threads).find(([, thread]: any) => Object.values(thread.lanes).includes(id))?.[0] ?? null,
     async admit(session: string, request: any, context: any) { return locked(async () => {
       await host.owns(session);
       if (disposed) throw new ComparisonError('comparison_stopping', '服务正在重启，请稍后再试。');
@@ -161,7 +172,7 @@ export function createComparisonService(output: string, principal: string, host:
         if (duplicate.fingerprint !== fingerprint) throw new ComparisonError('request_id_conflict', '同一发送请求不能更改内容。');
         if (duplicate.published === false) {
           await host.publish(session, view(duplicate), request);
-          for (const name of lanes) duplicate.lanes[name].status = 'queued';
+          for (const name of turnLanes(duplicate)) duplicate.lanes[name].status = 'queued';
           summary(duplicate);
           duplicate.published = true; save(); enqueue(duplicate);
         }
@@ -171,32 +182,45 @@ export function createComparisonService(output: string, principal: string, host:
       let thread = state.threads[session];
       const history = state.turns.filter(t => t.session_id === session);
       const withFiles = request.content.some((part: any) => part.type === 'file');
+      const presentation = context.presentation === 'single' ? 'single' : 'paired';
+      const selectedLanes: readonly LaneName[] = presentation === 'single' ? ['baseline'] : lanes;
       const newSources = Boolean(thread && withFiles);
-      if (thread && hash([thread.scene, thread.options]) !== hash([context.scene, context.options])) throw new ComparisonError('new_session_required', '更换场景或文件权限需要新会话，原对照已保留。');
-      // Each newly uploaded source set gets isolated task agents. Keep the
-      // visible conversation and all prior ratings; new file-bound agents
-      // get the recent lane-specific discussion, never the other lane's output.
-      const priorContext = newSources ? Object.fromEntries(lanes.map(name => [name, JSON.stringify(history.slice(-6).map(t => ({
-        user: t.input.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n').slice(-2000),
-        assistant: (t.lanes[name].answer ?? '').slice(-3000),
-      })))])) : undefined;
-      if (!thread || newSources) {
-        thread = { scene: context.scene, options: context.options, lanes: {} };
-        for (const name of lanes) thread.lanes[name] = await host.createLane(session, context.scene, name);
+      const changed = Boolean(thread && hash([thread.scene, thread.options, thread.presentation ?? 'paired']) !== hash([context.scene, context.options, presentation]));
+      // A conversation is stable; immutable tool/budget/evidence scopes belong
+      // to its private execution children. Rotate those children on transitions.
+      const rotate = !thread || newSources || changed;
+      const priorContext = rotate ? Object.fromEntries(selectedLanes.map(name => [name, JSON.stringify([
+        ...(context.prior_context_by_lane?.[name] ?? context.prior_context ?? []).slice(-12).map(({source_seq,...row}:any)=>row),
+        ...history.slice(-6).map(t => ({
+          scene: t.scene,
+          user: t.input.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n').slice(-2000),
+          assistant: (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer_display ?? t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer ?? '').slice(-5000),
+        })),
+      ])])) : undefined;
+      // Only internal, same-parent, same-lane immutable deliveries are handed
+      // forward. The Host rechecks hashes and target scene formats before copy.
+      const priorArtifacts = rotate && !withFiles ? Object.fromEntries(selectedLanes.map(name => [name,
+        history.slice(-6).flatMap(t => (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.artifacts ?? [])
+          .filter(row => t.scene !== 'research-data-analysis' || row.verification === 'data-report-delivery-v1')
+          .map(row => ({ turn: t.id, lane: t.presentation === 'single' ? 'baseline' : name, row }))).slice(-32),
+      ])) : undefined;
+      const priorSources = rotate && !withFiles ? ([...history].reverse().find(t => Object.keys(t.source_files ?? {}).length)?.source_files ?? context.prior_sources) : undefined;
+      if (rotate) {
+        thread = { scene: context.scene, options: context.options, presentation, lanes: {} };
+        for (const name of selectedLanes) thread.lanes[name] = await host.createLane(session, context.scene, name);
         state.threads[session] = thread; save();
       }
       const t: Turn = { id: 'comparison-' + randomUUID(), session_id: session, request_id: request.requestId,
-        fingerprint, scene: context.scene, options: context.options, model: context.model,
+        fingerprint, scene: context.scene, options: context.options, model: context.model, presentation,
         input_sha256: context.input_sha256, created_at: new Date().toISOString(), status: 'preparing',
-        lanes: { baseline: { session_id: thread.lanes.baseline, status: 'preparing', attempt: 0 },
-          motif: { session_id: thread.lanes.motif, status: 'preparing', attempt: 0 } },
-        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files, prior_context: priorContext };
+        lanes: Object.fromEntries(selectedLanes.map(name => [name, { session_id: thread.lanes[name], status: 'preparing', attempt: 0 }])) as Record<LaneName,Lane>,
+        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files, prior_context: priorContext, prior_artifacts: priorArtifacts, prior_sources: Object.values(priorSources ?? {}) };
       state.turns.push(t); save();
-      for (const name of lanes) t.lanes[name].status = 'queued';
+      for (const name of turnLanes(t)) t.lanes[name].status = 'queued';
       summary(t); save();
       try { await host.publish(session, view(t), request); }
       catch (error) {
-        for (const name of lanes) Object.assign(t.lanes[name], { status: 'failed', failure: '请求未成功保存，请重新发送。' });
+        for (const name of turnLanes(t)) Object.assign(t.lanes[name], { status: 'failed', failure: '请求未成功保存，请重新发送。' });
         summary(t); save(); throw error;
       }
       t.published = true; save();
@@ -206,7 +230,7 @@ export function createComparisonService(output: string, principal: string, host:
       const t = await get(session, id);
       // Recover old hidden deliveries without submitting or charging a model
       // call. Ownership is checked above; original failure status stays visible.
-      if (terminal.has(t.status)) for (const name of lanes) {
+      if (terminal.has(t.status)) for (const name of turnLanes(t)) {
         const lane = t.lanes[name], key = `${t.id}/${name}/${lane.attempt}`;
         const needsDeliveryAudit=t.scene==='research-data-analysis'&&lane.artifacts?.some(row=>row.verification!=='data-report-delivery-v1');
         // A running task can have an unresolved display before finished_at is
@@ -243,7 +267,7 @@ export function createComparisonService(output: string, principal: string, host:
     },
     async rate(session: string, id: string, name: string, score: number, revision: number, outputHash: string) { return locked(async () => {
       const t = await get(session, id);
-      if (!lanes.includes(name as LaneName) || !Number.isInteger(score) || score < 1 || score > 5) throw new ComparisonError('invalid_score', '请选择 1–5 分。', 400);
+      if (!turnLanes(t).includes(name as LaneName) || !Number.isInteger(score) || score < 1 || score > 5) throw new ComparisonError('invalid_score', '请选择 1–5 分。', 400);
       if (!view(t).scoring_available) throw new ComparisonError('comparison_not_complete', '两侧都完成后才能评分。');
       if (revision !== t.score_revision || outputHash !== t.lanes[name as LaneName].output_sha256) throw new ComparisonError('score_version_changed', '结果或评分已更新，请刷新后评分。');
       t.scores[name as LaneName] = score; t.score_revision++; save();
@@ -255,7 +279,7 @@ export function createComparisonService(output: string, principal: string, host:
     }); },
     async retry(session: string, id: string, name: string) { return locked(async () => {
       const t = await get(session, id);
-      if (!lanes.includes(name as LaneName) || !terminal.has(t.status) || inFlight.has(t.id)) throw new ComparisonError('comparison_busy', '请等当前对照结束后重试。');
+      if (!turnLanes(t).includes(name as LaneName) || !terminal.has(t.status) || inFlight.has(t.id)) throw new ComparisonError('comparison_busy', '请等当前对照结束后重试。');
       const lane = t.lanes[name as LaneName];
       if (lane.status === 'completed') throw new ComparisonError('lane_completed', '成功结果已保留，无需重复付费运行。');
       lane.attempt++; lane.task_id = undefined; lane.status = 'preparing';
@@ -265,7 +289,7 @@ export function createComparisonService(output: string, principal: string, host:
     async cancel(session: string, id: string) { return locked(async () => {
       const t = await get(session, id);
       t.cancellation_requested = true;
-      for (const name of lanes) {
+      for (const name of turnLanes(t)) {
         const lane = t.lanes[name];
         if (terminal.has(lane.status)) continue;
         lane.status = 'cancelled';
@@ -273,6 +297,6 @@ export function createComparisonService(output: string, principal: string, host:
       }
       summary(t); save(); await publish(t); return view(t);
     }); },
-    dispose() { disposed = true; },
+    dispose() { disposed = true; subscribers.clear(); },
   };
 }

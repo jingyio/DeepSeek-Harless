@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import parse_qs, urlsplit
 
-from src.adapters.deepseek_cost_gate import State, reservation
+from src.adapters.deepseek_cost_gate import State, normalize_request_limit, reservation
 
 TASK_ID = re.compile(r"^[a-f0-9]{32}$")
 USAGE_FIELDS = ("prompt_tokens", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens",
@@ -119,9 +119,9 @@ class TaskBudgetRegistry:
             raise ValueError("task maximum must not exceed whole-launch cap")
         self.run_state = run_state
         self.max_task_budget_usd = float(maximum)
-        if task_request_limit is not None and (type(task_request_limit) is not int or task_request_limit < 1):
-            raise ValueError("task_request_limit must be a positive integer")
-        self.task_request_limit = run_state.request_limit if task_request_limit is None else task_request_limit
+        # An unlimited task does not inherit a request-count cap. The independent
+        # global count/dollar checks remain enforced by RoutedState.book().
+        self.task_request_limit = normalize_request_limit(task_request_limit, 'task_request_limit')
         self.tasks_root = Path(tasks_root).resolve()
         if ".local" not in self.tasks_root.parts:
             raise ValueError("task ledgers must stay inside a private .local directory")

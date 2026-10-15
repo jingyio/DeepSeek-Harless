@@ -151,9 +151,43 @@ class WebTaskBudgetTests(unittest.TestCase):
         self.assertEqual(routes[2].state.request_count, 0)
         self.assertEqual(self.run.request_count, 4)
         self.assertEqual(self.registry.stats(routes[2].session_id)["global_request_limit"], 4)
-        for invalid in (0, -1, True, "2"):
+        for invalid in (-1, True, False, "2", 1.5):
             with self.assertRaisesRegex(ValueError, "task_request_limit"):
                 TaskBudgetRegistry(run_state=self.run, tasks_root=self.root / "other", task_request_limit=invalid)
+
+    def test_unlimited_task_and_global_counts_preserve_usage_and_dollar_guards(self):
+        for limit in (None, 0):
+            with self.subTest(limit=limit):
+                self.run = State(cap_usd=1, output_cap=100, request_limit=limit,
+                                 record=self.root / f'unlimited-{limit}.jsonl')
+                self.registry = TaskBudgetRegistry(run_state=self.run,
+                    tasks_root=self.root / f'unlimited-{limit}', task_request_limit=limit)
+                route = self.active()
+                for _ in range(25):
+                    booked = route.book(BODY)
+                    self.assertIsNotNone(booked)
+                    route.settle(booked[0], booked[1], 200, USAGE)
+                stats = self.registry.stats(route.session_id)
+                self.assertIsNone(stats['request_limit'])
+                self.assertIsNone(stats['global_request_limit'])
+                self.assertEqual(stats['upstream_requests'], 25)
+                self.assertEqual(stats['global_upstream_requests'], 25)
+                route.state.cap_usd = route.state.reserved_usd
+                self.assertIsNone(route.book(BODY))
+                self.assertEqual(self.run.request_count, 25)
+                route.state.cap_usd = 0.5
+                self.run.cap_usd = self.run.reserved_usd
+                self.assertIsNone(route.book(BODY))
+                self.assertEqual(self.run.request_count, 25)
+
+    def test_unlimited_task_does_not_inherit_count_cap_but_global_cap_still_applies(self):
+        route = self.active()
+        self.assertIsNone(route.state.request_limit)
+        for _ in range(4):
+            booked = route.book(BODY)
+            route.settle(booked[0], booked[1], 200, USAGE)
+        self.assertIsNone(route.book(BODY))
+        self.assertEqual(self.run.request_count, 4)
 
     def test_atomic_parallel_booking_enforces_global_dollars(self):
         _, reservation_usd, _ = reservation(BODY, max_output=100)

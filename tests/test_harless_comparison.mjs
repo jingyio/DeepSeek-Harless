@@ -29,7 +29,8 @@ test('Concurrent send is idempotent; each user/chat and lane keeps a distinct mu
   const second=await f.send('a','two','follow up');const v=await f.wait(second.comparison_id);assert.equal(f.created.length,2);assert.equal(v.lanes.baseline.session_id,'a-baseline');
   const other=await f.send('b','one');const bview=await f.wait(other.comparison_id,'b');assert.equal(bview.lanes.motif.answer,'b/motif');
   await assert.rejects(f.service.view('b',a.comparison_id),/找不到/);await assert.rejects(f.service.view('foreign',a.comparison_id),/foreign/);
-  await assert.rejects(f.send('a','three','change scene',{...context,scene:'data'}),/需要新会话/);
+  const changed=await f.send('a','three','change scene',{...context,scene:'data'});
+  assert.equal((await f.wait(changed.comparison_id)).scene,'data');
   const uploaded = await f.service.admit('a',{requestId:'files',content:[{type:'file',receiptId:'new'}]},context);
   assert.equal((await f.wait(uploaded.comparison_id)).status,'completed');
   const stored = JSON.parse(readFileSync(join(f.root,'comparisons.json'))).turns.at(-1);
@@ -79,6 +80,51 @@ test('First uploads retain historical lane protection and bounded, valid per-lan
   assert.equal(f.service.isLane(after.lanes.baseline.session_id),true);
   const followup=await f.send('a','after-upload','explain');
   assert.equal((await f.wait(followup.comparison_id)).lanes.baseline.session_id,replaced.lanes.baseline.session_id);
+ }finally{f.close();}
+});
+
+test('Scene and chat transitions preserve the parent, isolated lanes, files and scores across restart',async()=>{
+ let counter=0;const f=fixture({createLane:async(parent,scene,lane)=>`${parent}-${scene}-${lane}-${++counter}`});
+ try {
+  const a=await f.send('a','data','analyze',{...context,scene:'research-data-analysis'}),first=await f.wait(a.comparison_id);
+  for (const name of ['baseline','motif']) f.tasks.get(first.lanes[name].task_id).deliveries=[{id:name+'-report',name:'report.pdf',sha256:name,verification:'data-report-delivery-v1'}];
+  // A cold read performs the bounded immutable delivery reconciliation.
+  f.service.dispose();const fresh=createComparisonService(f.root,'account-a',f.host,{pollMs:1});
+  const repaired=await fresh.view('a',a.comparison_id);
+  await fresh.rate('a',a.comparison_id,'baseline',5,repaired.score_revision,repaired.lanes.baseline.output_sha256);
+  const request=(requestId,text)=>({requestId,content:[{type:'text',text}]});
+  const wait=async(id)=>{for(let i=0;i<200;i++){const value=await fresh.view('a',id);if(['completed','failed'].includes(value.status))return value;await new Promise(r=>setTimeout(r,3));}throw Error('timeout');};
+  const ppt=await fresh.admit('a',request('ppt','make slides'),{...context,scene:'ppt',prior_context:[{user:'Earlier ordinary question',assistant:'Earlier ordinary answer'}]});
+  const second=await wait(ppt.comparison_id);
+  assert.equal(second.session_id,'a');assert.notEqual(first.lanes.baseline.session_id,second.lanes.baseline.session_id);
+  const stored=JSON.parse(readFileSync(join(f.root,'comparisons.json'))).turns.at(-1);
+  assert.match(stored.prior_context.baseline,/Earlier ordinary answer/);
+  assert.match(stored.prior_context.baseline,/a\/baseline/);assert.doesNotMatch(stored.prior_context.baseline,/a\/motif/);
+  assert.deepEqual(stored.prior_artifacts.baseline.map(v=>v.row.id),['baseline-report']);
+  assert.deepEqual(stored.prior_artifacts.motif.map(v=>v.row.id),['motif-report']);
+  const chat=await fresh.admit('a',request('chat','explain'),{...context,scene:'new-scene',presentation:'single'}),third=await wait(chat.comparison_id);
+  assert.equal(third.session_id,'a');assert.equal(third.presentation,'single');assert.deepEqual(Object.keys(third.lanes),['baseline']);assert.equal(third.scoring_available,false);
+  assert.equal(f.submitted.length,5,'ordinary chat executes only once');
+  assert.equal(fresh.snapshot('b',ppt.comparison_id),undefined);
+  assert.equal((await fresh.view('a',a.comparison_id)).scores.baseline,5);
+  fresh.dispose();const resumed=createComparisonService(f.root,'account-a',f.host,{pollMs:1});
+  assert.equal((await resumed.view('a',chat.comparison_id)).presentation,'single');resumed.dispose();
+ }finally{f.close();}
+});
+
+test('Scoped subscriptions emit incremental answer and real progress then detach',async()=>{
+ const f=fixture({submit:async id=>{f.submitted.push(id);Object.assign(f.tasks.get(id),{status:'running',answer:'first',progress:{label:'正在生成回复',status:'running'}});}});
+ try {
+  const a=await f.send(),seen=[];
+  const stop=await f.service.subscribe('a',a.comparison_id,value=>seen.push(value));
+  await assert.rejects(f.service.subscribe('b',a.comparison_id,()=>{}),/找不到/);
+  for(let i=0;i<30&&!seen.some(v=>v.lanes.baseline.answer==='first');i++)await new Promise(r=>setTimeout(r,3));
+  assert.ok(seen.some(v=>v.lanes.baseline.answer==='first'&&v.lanes.baseline.progress.label==='正在生成回复'));
+  const baseline=[...f.tasks.keys()][0];Object.assign(f.tasks.get(baseline),{answer:'first second',status:'completed'});
+  for(let i=0;i<30&&f.tasks.size<2;i++)await new Promise(r=>setTimeout(r,3));
+  const count=seen.length;stop();
+  for(const task of f.tasks.values())task.status='completed';await f.wait(a.comparison_id);
+  assert.equal(seen.length,count);
  }finally{f.close();}
 });
 test('Cancelling during asynchronous preparation never submits a late task or revives a queued lane',async()=>{

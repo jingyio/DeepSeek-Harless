@@ -145,7 +145,7 @@ test('workspace browser preserves store receivers and top-level New chat targets
  const sessions={list:new Store({current:null,ids:[],byId:{}}),async create(request){created.push(request);return 'new-'+created.length;},open(){}};
  const navigation={startSession(){throw Error('old behavior');}},services={workspaces,sessions,uiWorkspace:navigation};
  const ctx={get:name=>services[name],effect:fn=>fn(),slots:{inject(_name,fn){const v=fn();if(v?.next)[...v];},register(options,component){slots.push({options,component});}}};
- const React={createElement:(type,props,...children)=>({type,props,children}),useState:initial=>[initial,()=>{}],useEffect(){},
+ const React={createElement:(type,props,...children)=>({type,props,children}),useState:initial=>[initial,()=>{}],useRef:initial=>({current:initial}),useEffect(){},
   useSyncExternalStore(subscribe,snapshot){const stop=subscribe(()=>{});stop();return snapshot();}};
  window.__installGeneLoopWorkspaces(ctx,React,{Modal:'modal'});
  const Browser=slots.find(row=>row.options.name==='sidebar.workspaces').component;
@@ -160,4 +160,171 @@ test('workspace browser preserves store receivers and top-level New chat targets
  navigation.startSession(); await new Promise(resolve=>setImmediate(resolve));
  assert.equal(created.length,2,'New chat creates a fresh chat instead of reopening a blank one');
  assert.equal(created[1].workspaceId,'b');
+});
+
+test('workspace pins persist per account and cannot address another account or resurrect a deleted group', options, async t => {
+  const { createManagedWorkspaceService } = await import('../src/adapters/harless_managed_workspaces.ts');
+  const root = temporary(t), one = registry(), two = registry();
+  const a = createManagedWorkspaceService(root, 'account-a', one), b = createManagedWorkspaceService(root, 'account-b', two);
+  const left = (await a.create({ name: '同名课题', request_id: randomUUID() })).workspace;
+  const right = (await b.create({ name: '同名课题', request_id: randomUUID() })).workspace;
+  await Promise.all([a.pin({ workspace_id: left.workspaceId, pinned: true }), b.pin({ workspace_id: right.workspaceId, pinned: true })]);
+  assert.deepEqual(a.preferences().pinned_workspace_ids, [left.workspaceId]);
+  assert.deepEqual(b.preferences().pinned_workspace_ids, [right.workspaceId]);
+  assert.deepEqual(createManagedWorkspaceService(root, 'account-a', one).preferences(), a.preferences());
+  await assert.rejects(a.pin({ workspace_id: right.workspaceId, pinned: true }), error => error.status === 404);
+  await assert.rejects(a.pin({ workspace_id: left.workspaceId, pinned: 'true' }));
+  await assert.rejects(a.pin({ workspace_id: left.workspaceId, pinned: true, path: right.path }));
+  await a.pin({ workspace_id: left.workspaceId, pinned: false });
+  assert.deepEqual(a.preferences().pinned_workspace_ids, []);
+  await a.pin({ workspace_id: left.workspaceId, pinned: true });
+  one.items.splice(0, 1);
+  assert.deepEqual(a.preferences().pinned_workspace_ids, []);
+  await assert.rejects(a.pin({ workspace_id: left.workspaceId, pinned: true }), error => error.status === 404);
+  assert.doesNotMatch(JSON.stringify(b.preferences()), /path|managed-workspaces/);
+});
+
+test('pin endpoint enforces normal authentication and returns only owned opaque IDs', options, async t => {
+  const { registerManagedWorkspaceRoutes } = await import('../src/adapters/harless_managed_workspaces.ts');
+  const routes = new Map(), records = registry(), ctx = { workspaceRegistry: records, effect: fn => fn(), connection: {
+    requestRejection: req => req.headers.get('authorization') === 'fixture' ? undefined : 401,
+    fetch: { register: route => { routes.set(route.path, route); return () => {}; } },
+  } };
+  const service = registerManagedWorkspaceRoutes(ctx, { output: temporary(t), principal: 'member' });
+  const item = (await service.create({ name: '项目', request_id: randomUUID() })).workspace;
+  const route = routes.get('/api/harless/workspaces/preferences');
+  const send = (data, auth = true) => route.fetch(new Request('http://localhost/api/harless/workspaces/preferences', {
+    method: data ? 'POST' : 'GET', headers: { 'content-type': 'application/json', ...(auth ? { authorization: 'fixture' } : {}) },
+    ...(data ? { body: JSON.stringify(data) } : {}),
+  }));
+  assert.equal((await send(undefined, false)).status, 401);
+  assert.equal((await send({ workspace_id: item.workspaceId, pinned: true }, false)).status, 401);
+  const pinned = await send({ workspace_id: item.workspaceId, pinned: true });
+  assert.equal(pinned.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await pinned.json(), { pinned_workspace_ids: [item.workspaceId] });
+  assert.deepEqual(await (await send()).json(), { pinned_workspace_ids: [item.workspaceId] });
+  assert.equal((await send({ workspace_id: randomUUID(), pinned: true })).status, 404);
+});
+
+function interactiveWorkspaceBrowser() {
+  const slots = [], values = [], calls = [], window = { innerWidth: 1200, innerHeight: 800 };
+  const document = { createElement: () => ({ remove() {} }), head: { append() {} } };
+  class Store { constructor(value) { this.value = value; } getSnapshot() { return this.value; } subscribe() { return () => {}; } }
+  const workspaces = { list: new Store({ items: [{ workspaceId: 'a', title: '论文', path: '/private/a', sessionIds: ['one'] },
+    { workspaceId: 'b', title: '实验', path: '/private/b', sessionIds: [] }], archivedSessionIds: [] }),
+    async delete(id) { calls.push(['delete', id]); this.list.value = { ...this.list.value, items: this.list.value.items.filter(item => item.workspaceId !== id) }; },
+    async rename(id, title) { calls.push(['rename', id, title]); },
+  };
+  const sessions = { list: new Store({ current: 'one', ids: ['one'], byId: { one: { id: 'one', title: '已有聊天' } } }),
+    open(id) { calls.push(['open', id]); }, async create(options) { calls.push(['create', options]); return 'new'; } };
+  const navigation = { startSession() {}, async forkSession(id) { calls.push(['fork', id]); }, async archiveSession(id) { calls.push(['archive', id]); } };
+  const layout = { selectPanel(id) { calls.push(['panel', id]); } };
+  const services = { workspaces, sessions, uiWorkspace: navigation, layout };
+  let index = 0, pinned = [];
+  const React = { createElement: (type, props, ...children) => ({ type, props, children }),
+    useState(initial) { const i = index++; if (!(i in values)) values[i] = typeof initial === 'function' ? initial() : initial;
+      return [values[i], update => { values[i] = typeof update === 'function' ? update(values[i]) : update; }]; },
+    useRef(initial) { const i = index++; if (!(i in values)) values[i] = { current: initial }; return values[i]; }, useEffect() {},
+    useSyncExternalStore(_subscribe, snapshot) { return snapshot(); },
+  };
+  const ctx = { get: name => services[name], effect: fn => fn(), slots: { inject(_name, fn) { const result = fn(); if (result?.next) [...result]; },
+    register(options, component) { slots.push({ options, component }); } } };
+  const fetch = async (_url, options) => {
+    if (options?.method === 'POST') { const input = JSON.parse(options.body); calls.push(['pin', input]); pinned = input.pinned ? [...pinned, input.workspace_id] : pinned.filter(id => id !== input.workspace_id); }
+    return { ok: true, json: async () => ({ pinned_workspace_ids: pinned }) };
+  };
+  vm.runInNewContext(readFileSync(new URL('../src/adapters/geneloop_workspaces.js', import.meta.url), 'utf8'), { window, document, fetch });
+  window.__installGeneLoopWorkspaces(ctx, React, { Modal: 'modal' });
+  const Browser = slots.find(row => row.options.name === 'sidebar.workspaces').component;
+  const Home = slots.find(row => row.options.name === 'main' && row.options.key === 'geneloop-workspace').component;
+  const render = () => { index = 0; return Browser({ wide: true }); };
+  const nodes = tree => { const result = []; const visit = node => { if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) return node.forEach(visit); result.push(node); node.children?.forEach(visit); }; visit(tree); return result; };
+  const click = button => button.props.onClick({ currentTarget: { getBoundingClientRect: () => ({ right: 260, bottom: 180 }), focus() {} } });
+  return { render, home: () => Home(), nodes, click, calls, workspaces, sessions, navigation };
+}
+
+test('workspace browser restores folder controls and an accessible menu with durable pinning', async () => {
+  const ui = interactiveWorkspaceBrowser(); let tree = ui.render(), nodes = ui.nodes(tree);
+  const toggle = nodes.find(node => node.props?.className === 'geneloop-workspace-toggle');
+  assert.equal(toggle.children[0].type, 'svg', 'folder outline remains visible next to every workspace');
+  assert.equal(toggle.props['aria-expanded'], true);
+  assert.equal(nodes.some(node => node.props?.type === 'search'), false, 'search is a compact optional control');
+  assert.ok(nodes.filter(node => node.props?.className === 'geneloop-workspace-name').every(node => !node.props.title));
+  ui.click(nodes.find(node => node.props?.['aria-label'] === '工作区操作 实验'));
+  nodes = ui.nodes(ui.render());
+  assert.ok(nodes.some(node => node.props?.role === 'menuitem' && node.children.includes('工作区设置')));
+  ui.click(nodes.find(node => node.props?.role === 'menuitem' && node.children.includes('置顶工作区')));
+  await new Promise(resolve => setImmediate(resolve));
+  nodes = ui.nodes(ui.render());
+  assert.equal(nodes.find(node => node.props?.className === 'geneloop-workspace-name').children[0], '实验');
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(row => row[0] === 'pin'))), ['pin', { workspace_id: 'b', pinned: true }]);
+  assert.doesNotMatch(JSON.stringify(ui.render()), /\/private\//);
+});
+
+test('private execution lanes never appear in grouped, ungrouped, archived or overview chat lists', () => {
+  const ui = interactiveWorkspaceBrowser();
+  const state = ui.sessions.list.value;
+  for (const id of ['private-grouped', 'private-ungrouped', 'private-archived']) {
+    state.ids.push(id); state.byId[id] = { id, title: id, projectionValues: { harlessComparisonLane: true } };
+  }
+  ui.workspaces.list.value.items[0].sessionIds.push('private-grouped');
+  ui.workspaces.list.value.archivedSessionIds.push('private-archived');
+  const publicNames = tree => ui.nodes(tree).filter(node => node.type === 'button').flatMap(node => node.children.filter(child => typeof child === 'string'));
+  assert.ok(publicNames(ui.render()).includes('已有聊天'));
+  assert.ok(publicNames(ui.render()).every(value => !value.includes('private-')));
+  const overview = JSON.stringify(ui.home());
+  assert.doesNotMatch(overview, /private-grouped/);
+  assert.match(overview, /1 个/);
+});
+
+test('deleting a named workspace requires consequence review and keeps its chats visible ungrouped', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.['aria-label'] === '工作区操作 论文'));
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.role === 'menuitem' && node.children.includes('删除工作区')));
+  assert.deepEqual(ui.calls, [], 'opening confirmation cannot mutate the workspace');
+  const nodes = ui.nodes(ui.render()), modal = nodes.find(node => node.type === 'modal' && node.props.title === '删除工作区');
+  assert.equal(modal.props.open, true);
+  assert.match(JSON.stringify(modal), /删除工作区“论文”/);
+  assert.match(JSON.stringify(modal), /已有对话将移至.*未分组.*对话记录和文件都会保留/);
+  const confirmation = ui.nodes(modal).find(node => node.type === 'button' && node.children.includes('删除工作区'));
+  ui.click(confirmation); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(ui.calls, [['delete', 'a']]);
+  assert.equal(ui.sessions.list.value.byId.one.title, '已有聊天');
+  assert.match(JSON.stringify(ui.render()), /未分组/);
+  ui.navigation.startSession(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(row => row[0] === 'create'))), ['create', {}]);
+});
+
+test('chat overflow menu invokes the shared fork and archive navigation capabilities', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.['aria-label'] === '会话操作 已有聊天'));
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.role === 'menuitem' && node.children.includes('在新对话中分支')));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(ui.calls, [['fork', 'one']]);
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.['aria-label'] === '会话操作 已有聊天'));
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.role === 'menuitem' && node.children.includes('归档对话')));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(ui.calls[1], ['archive', 'one']);
+});
+
+test('workspace landing uses a public panel, preserves the current chat, and starts new chats in the selected group', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.className === 'geneloop-workspace-name' && node.children.includes('实验')));
+  assert.deepEqual(ui.calls, [['panel', 'geneloop-workspace']]);
+  assert.equal(ui.sessions.list.value.current, 'one', 'opening a workspace overview does not replace an existing chat or draft');
+  assert.match(JSON.stringify(ui.home()), /实验工作区/);
+  assert.match(JSON.stringify(ui.home()), /这个工作区还没有对话/);
+  assert.doesNotMatch(JSON.stringify(ui.home()), /\/private\//);
+  ui.click(ui.nodes(ui.home()).find(node => node.props?.className === 'geneloop-workspace-start'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(row => row[0] === 'create'))), ['create', { workspaceId: 'b' }]);
+  assert.deepEqual(ui.calls.at(-1), ['panel', null]);
+  ui.click(ui.nodes(ui.home()).find(node => node.props?.className === 'geneloop-workspace-home-menu'));
+  const settings = ui.nodes(ui.render()).find(node => node.props?.role === 'menuitem' && node.children.includes('工作区设置'));
+  assert.ok(settings, 'overview header uses the same workspace management menu');
+  ui.click(settings);
+  const modal = ui.nodes(ui.render()).find(node => node.type === 'modal' && node.props.title === '工作区设置');
+  assert.equal(modal.props.open, true);
+  assert.equal(ui.nodes(modal).find(node => node.type === 'input').props.value, '实验');
 });

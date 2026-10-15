@@ -73,7 +73,7 @@ test('gateway shutdown closes an idle browser connection and finishes promptly',
     const timer=setTimeout(()=>reject(Error('gateway shutdown remained blocked by browser socket')),1000);timer.unref();
   })]);
 });
-async function fixture(t) {
+async function fixture(t, handleUpstream) {
   const dir = mkdtempSync(join(tmpdir(), 'harless-gateway-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const seen = [];
@@ -83,6 +83,7 @@ async function fixture(t) {
       res.writeHead(303, { location: '/', 'set-cookie': 'dsh-auth-test=secret-internal; HttpOnly; Path=/' });
       res.end(); return;
     }
+    if (handleUpstream?.(req, res)) return;
     res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': 'dsh-auth-test=never-public' });
     res.end(JSON.stringify({ path: req.url }));
   });
@@ -106,6 +107,70 @@ async function fixture(t) {
   return { dir, seen, config, request, upstream, base, get gateway() { return gateway; },
     async restart() { await close(gateway.server); gateway = createGateway(config); port = await listen(gateway.server); } };
 }
+
+test('disconnecting an HTTP event stream releases its backend subscription without ending sibling streams', { timeout: 5000 }, async t => {
+  const active = new Map(), stopped = [];
+  let f;
+  t.after(() => { for (const response of active.values()) response.destroy(); f?.gateway.close(); });
+  f = await fixture(t, (req, res) => {
+    if (!req.url.startsWith('/api/harless/events/')) return false;
+    active.set(req.url, res);
+    res.once('close', () => { active.delete(req.url); stopped.push(req.url); });
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
+    res.write('event: ready\ndata: {}\n\n');
+    return true;
+  });
+  const code = createOwnerClaim(f.gateway);
+  const claimed = await f.request('/api/account/claim', { method: 'POST', body: {
+    claimCode: code, username: 'owner', displayName: 'Owner', password: 'long-enough-test-password',
+  } });
+  assert.equal(claimed.status, 200);
+  const cookie = claimed.headers.get('set-cookie').split(';')[0];
+  const openStream = path => new Promise((resolve, reject) => {
+    const request = http.get(f.base() + path, { headers: { cookie }, agent: false }, response => {
+      response.once('error', () => {}); // Expected on deliberate downstream cancellation.
+      response.once('data', chunk => resolve({ request, response, first: chunk.toString() }));
+    });
+    request.once('error', reject);
+  });
+  const [left, right] = await Promise.all([openStream('/api/harless/events/left'), openStream('/api/harless/events/right')]);
+  assert.match(left.first, /event: ready/); assert.match(right.first, /event: ready/);
+  assert.equal(active.size, 2, 'GET body completion must not cancel a live event stream');
+  const leftClosed = once(active.get('/api/harless/events/left'), 'close', { signal: AbortSignal.timeout(2000) });
+  left.response.destroy(); left.request.destroy(); await leftClosed;
+  assert.deepEqual(stopped, ['/api/harless/events/left']);
+  assert.equal(active.size, 1);
+  const nextChunk = once(right.response, 'data', { signal: AbortSignal.timeout(2000) });
+  active.get('/api/harless/events/right').write('event: progress\ndata: {"step":2}\n\n');
+  assert.match((await nextChunk)[0].toString(), /"step":2/);
+  const json = await f.request('/api/harless/tasks', { cookie });
+  assert.equal(json.status, 200); assert.deepEqual(await json.json(), { path: '/api/harless/tasks' });
+  const rightClosed = once(active.get('/api/harless/events/right'), 'close', { signal: AbortSignal.timeout(2000) });
+  right.response.destroy(); right.request.destroy(); await rightClosed;
+  assert.equal(active.size, 0);
+});
+
+test('browser disconnect before response headers cancels the pending upstream HTTP request', { timeout: 5000 }, async t => {
+  let received;
+  const arrived = new Promise(resolve => { received = resolve; });
+  let f, backend, downstream;
+  t.after(() => { downstream?.destroy(); backend?.res.destroy(); f?.gateway.close(); });
+  f = await fixture(t, (req, res) => {
+    if (req.url !== '/api/harless/slow-stream') return false;
+    received({ req, res }); return true;
+  });
+  const code = createOwnerClaim(f.gateway);
+  const claimed = await f.request('/api/account/claim', { method: 'POST', body: {
+    claimCode: code, username: 'owner', displayName: 'Owner', password: 'long-enough-test-password',
+  } });
+  const cookie = claimed.headers.get('set-cookie').split(';')[0];
+  downstream = http.get(f.base() + '/api/harless/slow-stream', { headers: { cookie }, agent: false });
+  downstream.on('error', () => {});
+  backend = await arrived;
+  const closed = once(backend.res, 'close', { signal: AbortSignal.timeout(2000) });
+  downstream.destroy(); await closed;
+  assert.equal(backend.res.destroyed, true);
+});
 
 test('gateway shutdown closes both sides of an upgraded browser connection',async t=>{
  const f=await fixture(t);let backendSocket;

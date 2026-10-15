@@ -23,7 +23,7 @@ async function waitUntil(predicate) {
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
-function fixture(fetcher, initial = comparison()) {
+function fixture(fetcher, initial = comparison(), { streaming = false, sessions = {}, anchorSeq } = {}) {
   let plugin, Component, cursor = 0, states = [], effects = [], effectSlots = [], cleanups = [], tree;
   const timers = new Map(), requests = [], downloaded = [], revoked = [], events = new Map(); let timerId = 0;
   const MarkdownText = function NativeMarkdown() {};
@@ -39,24 +39,31 @@ function fixture(fetcher, initial = comparison()) {
     body: { appendChild() {} }, createElement: () => ({ click() { downloaded.push({ href: this.href, name: this.download }); }, remove() {} }) };
   const window = { crypto: webcrypto, addEventListener: listener, removeEventListener: unlisten,
     __ModuleLoader__: { load(value) { plugin = value; } } };
+  const streams = [];
+  if (streaming) window.EventSource = class {
+    constructor(url, options) { this.url = url; this.options = options; streams.push(this); }
+    addEventListener(name, callback) { if (name === 'snapshot') this.snapshot = callback; }
+    close() { this.closed = true; }
+    emit(value) { this.snapshot({ data: JSON.stringify(value) }); }
+  };
   const fetch = async (url, init) => { requests.push({ url, init }); return fetcher ? fetcher(url, init, requests.length) : Response.json(initial); };
   runInNewContext(source, { window, document, fetch, AbortController, Uint8Array,
     URL: { createObjectURL: () => 'blob:verified-file', revokeObjectURL: value => revoked.push(value) },
     setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id) });
   const blocks = new Map();
   plugin.factory(name => name === 'react' ? React : name === '@deepseek-ai/dsh-client-ui-primitives' ? { MarkdownText } : undefined).apply({
-    get: name => ({ commandUi: { decorate: () => () => {} }, inputTriggers: { registerSource: () => () => {} }, sessions: {},
+    get: name => ({ commandUi: { decorate: () => () => {} }, inputTriggers: { registerSource: () => () => {} }, sessions,
       conversation: { blocks: { storeFor: id => ({ getSnapshot: () => blocks.get(id) }), set: (id, value) => blocks.set(id, value) } } })[name],
     effect: fn => fn(), uiConversation: { events: { register: () => () => {} } },
     slots: { inject(_name, fn) { fn(); }, register(spec, component) { if (spec.key === 'harless-comparison') Component = component; } },
   });
-  const node = { data: initial };
+  const node = { data: initial, anchorSeq };
   const render = () => { cursor = 0; tree = Component({ node }); const pending = effects; effects = []; pending.forEach(fn => fn()); return tree; };
   const all = (predicate, entry = tree) => !entry || typeof entry !== 'object' ? [] :
     [...(predicate(entry) ? [entry] : []), ...(entry.children || []).filter(child => child !== undefined).flatMap(child => all(predicate, child))];
   const content = entry => typeof entry === 'string' ? entry : (entry?.children || []).map(content).join('');
   render();
-  return { render, all, content, requests, timers, downloaded, revoked, events, MarkdownText, initial,
+  return { render, all, content, requests, timers, downloaded, revoked, events, streams, MarkdownText, initial,
     setNodeData: value => { node.data = value; },
     dispose: () => cleanups.forEach(fn => fn?.()) };
 }
@@ -229,4 +236,79 @@ test('unmount aborts a stalled request silently and leaves no retry timer', asyn
   await flush(); f.dispose(); await flush(); f.render();
   assert.equal(f.timers.size, 0); assert.equal(f.all(row => row.props.className === 'harless-paired-connection').length, 0);
   assert.equal(f.requests.length, 1);
+});
+
+
+test('single conversation continuation renders one streamed answer without comparison labels or rating', async () => {
+  const value=comparison();value.presentation='single';delete value.lanes.motif;value.scoring_available=false;
+  const f=fixture(undefined,value);await flush();f.render();
+  assert.equal(f.all(row=>row.type===f.MarkdownText).length,1);
+  assert.equal(f.all(row=>row.type==='fieldset').length,0);
+  assert.equal(f.all(row=>row.type==='strong'&&f.content(row).includes('Baseline')).length,0);
+  assert.equal(f.all(row=>row.props.className==='harless-paired-error').length,0);f.dispose();
+});
+
+test('live stream renders incremental text and real activity before terminal completion', async () => {
+  const value=comparison();value.status='running';value.scoring_available=false;
+  for(const row of Object.values(value.lanes)){row.status='running';row.answer='';row.artifacts=[];}
+  const f=fixture(undefined,value,{streaming:true});await flush();f.render();
+  const stream=f.streams[0];assert.match(stream.url,/stream=1/);assert.equal(stream.options.withCredentials,true);stream.onopen();
+  const partial=structuredClone(value);partial.lanes.baseline.answer='正在分析第一';
+  partial.lanes.baseline.progress={label:'正在读取数据',status:'running'};
+  partial.lanes.baseline.activity=[{label:'读取数据',status:'running'}];stream.emit(partial);f.render();
+  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一');
+  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.streaming,true);
+  assert.match(f.content(f.all(row=>row.props.className==='harless-activity')[0]),/正在读取数据/);
+  partial.lanes.baseline.answer+='组数据';stream.emit(partial);f.render();
+  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一组数据');
+  stream.emit(comparison());f.render();assert.equal(stream.closed,true);
+  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.streaming,false);f.dispose();
+});
+
+test('a stale initial GET cannot replace newer streaming text; unmount closes the stream', async () => {
+  let resolve;const blocked=new Promise(r=>resolve=r),value=comparison();value.status='running';
+  for(const row of Object.values(value.lanes))row.status='running';
+  const f=fixture(()=>blocked,value,{streaming:true}),stream=f.streams[0];stream.onopen();
+  const partial=structuredClone(value);partial.lanes.baseline.answer='新的流式片段';stream.emit(partial);f.render();
+  resolve(Response.json(value));await flush();f.render();
+  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'新的流式片段');
+  f.dispose();assert.equal(stream.closed,true);assert.equal(f.timers.size,0);
+});
+
+test('a streamed result for another conversation is rejected and never shown', async () => {
+  const value=comparison();value.status='running';for(const row of Object.values(value.lanes))row.status='running';
+  const f=fixture(undefined,value,{streaming:true});await flush();const foreign=structuredClone(value);foreign.session_id='another-user';foreign.lanes.baseline.answer='foreign secret';
+  f.streams[0].emit(foreign);await flush();f.render();
+  assert.equal(f.streams[0].closed,true);assert.ok(f.all(row=>row.type===f.MarkdownText).every(row=>!row.props.text.includes('foreign secret')));f.dispose();
+});
+
+
+test('old stream snapshots cannot replace newer retry output or close the active stream', async () => {
+  const value=comparison();value.status='running';value.snapshot_revision=10;
+  for(const row of Object.values(value.lanes))row.status='running';
+  const f=fixture(undefined,value,{streaming:true});await flush();f.render();const stream=f.streams[0];stream.onopen();
+  const next=structuredClone(value);next.snapshot_revision=12;next.lanes.baseline.answer='新尝试的流式回复';next.lanes.baseline.attempt=1;
+  stream.emit(next);f.render();
+  const stale=structuredClone(value);stale.snapshot_revision=11;stale.status='failed';stale.lanes.baseline.answer='旧尝试失败';
+  stream.emit(stale);f.render();
+  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'新尝试的流式回复');assert.notEqual(stream.closed,true);
+  f.dispose();
+});
+
+
+test('completed paired and single turns branch at their own anchor without local title overrides', async () => {
+  for (const single of [false, true]) {
+    const value = comparison(); if (single) { value.presentation = 'single'; delete value.lanes.motif; }
+    const calls = [], opened = []; let finish;
+    const f = fixture(undefined, value, { anchorSeq: 17, sessions: {
+      fork: options => { calls.push(options); return new Promise(resolve => { finish = resolve; }); },
+      open: id => opened.push(id),
+    } });
+    await flush(); f.render();
+    const button = f.all(row => row.props['aria-label'] === '在新对话中分支')[0]; assert.ok(button);
+    const operation = button.props.onClick(); button.props.onClick();
+    assert.equal(calls.length, 1); assert.equal(calls[0].sessionId, 'session-a');
+    assert.equal(calls[0].atSeq, 17); assert.equal(calls[0].increaseTitle, false);
+    finish('branch-1'); await operation; assert.deepEqual(opened, ['branch-1']); f.dispose();
+  }
 });

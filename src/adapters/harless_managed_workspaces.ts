@@ -102,7 +102,25 @@ export function createManagedWorkspaceService(output: string, principal: string,
     if (dirname(canonical) === root) safeDirectory(canonical.slice(root.length + 1));
     return { workspace: view(known), created: false };
   }
-  return { root, create, adopt };
+  const preferences = () => {
+    const owned = new Set(registry.list().map((row: any) => row.id ?? row.workspaceId));
+    return { pinned_workspace_ids: (Array.isArray(state.pinned) ? state.pinned : []).filter((id: unknown) => owned.has(id)) };
+  };
+  async function pin(input: any) {
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['workspace_id', 'pinned'].includes(key)) ||
+        typeof input.workspace_id !== 'string' || typeof input.pinned !== 'boolean')
+      throw new ManagedWorkspaceError('invalid_workspace_preference', '工作区设置无效，请重试。');
+    const operation = pending.then(() => {
+      if (!registry.list().some((row: any) => (row.id ?? row.workspaceId) === input.workspace_id))
+        throw new ManagedWorkspaceError('workspace_not_found', '工作区不存在或已移除。', 404);
+      const ids = preferences().pinned_workspace_ids.filter((id: string) => id !== input.workspace_id);
+      state.pinned = input.pinned ? [...ids, input.workspace_id] : ids;
+      save(); return preferences();
+    });
+    pending = operation.catch(() => undefined);
+    return operation;
+  }
+  return { root, create, adopt, preferences, pin };
 }
 
 /** Exact Connection Fetch routes keep the host's normal authentication fence. */
@@ -111,6 +129,21 @@ export function registerManagedWorkspaceRoutes(ctx: any, { output, principal }: 
   protectWorkspaceProjection(ctx.workspaceController);
   const headers = { 'Cache-Control': 'no-store' };
   const reject = (request: Request) => ctx.connection.requestRejection?.(request);
+  ctx.effect(() => ctx.connection.fetch.register({ path: '/api/harless/workspaces/preferences', methods: ['GET', 'POST'], requestBody: 'buffered',
+    fetch: async (request: Request) => {
+      const denied = reject(request); if (denied) return new Response('', { status: denied });
+      try {
+        if (request.method === 'GET') return Response.json(service.preferences(), { headers });
+        if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') return new Response('', { status: 415 });
+        const text = await request.text(); if (text.length > 4096) return new Response('', { status: 413 });
+        let input; try { input = JSON.parse(text); } catch { throw new ManagedWorkspaceError('invalid_json', '请求格式无效。'); }
+        return Response.json(await service.pin(input), { headers });
+      } catch (error: any) {
+        return Response.json({ error: { code: error instanceof ManagedWorkspaceError ? error.code : 'workspace_preference_failed',
+          message: error instanceof ManagedWorkspaceError ? error.message : '工作区设置未能保存，请重试。' } },
+        { status: error instanceof ManagedWorkspaceError ? error.status : 500, headers });
+      }
+    } }), 'geneloop-managed-workspace-preferences');
   ctx.effect(() => ctx.connection.fetch.register({ path: '/api/harless/workspaces', methods: ['POST'], requestBody: 'buffered',
     fetch: async (request: Request) => {
       const denied = reject(request); if (denied) return new Response('', { status: denied });
