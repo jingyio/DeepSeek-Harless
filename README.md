@@ -1,5 +1,7 @@
 # SSS：Motif × DeepSeek Harness × 自定义 MCP
 
+2026-10-15已上传：持续RSI代码与4份原始v2策略见`feature/rsi-research-agent`提交`f397645`；新机器从自己的库学习，公开摘要不替代私有运行准入证明。GeneLoop main命令接入与Windows CI修复见[发布记录](docs/changes/rsi-publication-20261015.md)。
+
 2026-10-15发布准备：用户已授权将完成的RSI代码、共享接口/实验文档与4个原始v2学习策略上传`feature/rsi-research-agent`。公开库见[operation-v2](examples/motif-library/file-management-operation-v2/README.md)，私有轨迹/任务/凭证保留；原运行准入证明不随公开摘要迁移。历史“暂不推送”记录对应当时阶段。GeneLoop主线的`/management`接入将以最新main为基准，避免覆盖现有注册与工作区能力。
 
 2026-10-15 最新：日常文件管理默认固定持久库，v2支持同图顺序重复、1–40唯一字符串数组及多产物绑定，SDK/Web/认证恢复沿用原任务、权限、版本和预算。18次真实执行（6新任务＋12认证）/163HTTP/USD0.097170133，4图激活、第5版，合计40次验证跳过；转换的一次工具失败和报告缺口保留。完整浏览器提交/重启/恢复/真实状态验证通过。默认真实入口重启0新增模型请求。原最终集/失败/费用保留，暂不推送。见[接口](docs/changes/persistent-rsi-integration.md)和[实验](docs/experiments/persistent-rsi-20261015.md)。

@@ -142,3 +142,10 @@ def test_series_admission_waits_for_short_accounting_writer(tmp_path):
     with writer_lock(tmp_path,'worker'):
         with pytest.raises(RuntimeError,match='writer is active'):
             with writer_lock(tmp_path,'worker'):pass
+
+def test_liveness_never_signals_the_current_process(monkeypatch):
+    import os
+    from src.adapters.process_state import process_exists
+    monkeypatch.setattr(os,'kill',lambda *args:(_ for _ in ()).throw(AssertionError('must not signal self')))
+    assert process_exists(os.getpid())
+    assert not process_exists(-1)

@@ -24,8 +24,8 @@ def status(config):
     worker=read(root/'worker.lock') if (root/'worker.lock').exists() else None
     alive=False
     if worker:
-        try:os.kill(worker['pid'],0);alive=True
-        except ProcessLookupError:pass
+        from .process_state import process_exists
+        alive=process_exists(worker['pid'])
     return {'persistent':True,'provider_mode':cfg['provider_mode'],'learning_enabled':enabled,'library_generation':library['generation'],
       'active_motifs':sum(e['state']=='active' for e in library['entries']),'disabled_motifs':sum(e['state']=='disabled' for e in library['entries']),
       'certification':jobs,'worker_running':alive,'recorded_tasks':len(pool),'estimated_cost_usd':sum(v.get('cost_usd',0) for v in pool.values()),

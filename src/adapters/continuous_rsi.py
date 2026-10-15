@@ -41,7 +41,7 @@ LEARNER += ['src/motif_core/offline/operation_graph_v1.py','src/motif_core/opera
     'scenarios/file-management/operation_tools_v2.py','scenarios/file-management/operation_contract_v2.py',
     'scenarios/file-management/operation_prepare_v2.py','src/adapters/operation_job.ts','src/adapters/file_workflow_job.ts',
     'src/adapters/operation_budget.py','src/adapters/operation_runner.py','src/adapters/persistent_file_rsi.py',
-    'src/adapters/persistent_web_budget.py','src/adapters/dsh_acceptance_guard.ts','src/adapters/scenario.py']
+    'src/adapters/persistent_web_budget.py','src/adapters/process_state.py','src/adapters/dsh_acceptance_guard.ts','src/adapters/scenario.py']
 
 
 def private(path):
@@ -148,8 +148,8 @@ def writer_lock(root, name):
             except (FileNotFoundError,json.JSONDecodeError):
                 if name!='series' or time.monotonic()>=deadline:raise RuntimeError(name+' writer is active')
                 time.sleep(.05);continue
-            try:os.kill(previous['pid'],0)
-            except ProcessLookupError:
+            from .process_state import process_exists
+            if not process_exists(previous['pid']):
                 archive=root/'stale-locks';archive.mkdir(exist_ok=True)
                 try:path.rename(archive/(name+'-'+uuid4().hex+'.json'))
                 except FileNotFoundError:pass
