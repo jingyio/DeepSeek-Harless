@@ -23,22 +23,47 @@ async function waitUntil(predicate) {
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
-function fixture(fetcher, initial = comparison(), { streaming = false, sessions = {}, anchorSeq } = {}) {
+function fixture(fetcher, initial = comparison(), { streaming = false, sessions = {}, anchorSeq, traceOnly = false, clipboard, location, chatSnapshot } = {}) {
   let plugin, Component, cursor = 0, states = [], effects = [], effectSlots = [], cleanups = [], tree;
-  const timers = new Map(), requests = [], downloaded = [], revoked = [], events = new Map(); let timerId = 0;
+  const timers = new Map(), requests = [], downloaded = [], revoked = [], events = new Map(), listeners = new Map(); let timerId = 0;
+  const positioning = [], dismissals = [], clipboardWrites = [], mountedChildren = new Set();
   const MarkdownText = function NativeMarkdown() {};
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props || {}, children: children.flat() }),
-    useState(initial) { const n = cursor++; if (!(n in states)) states[n] = initial; return [states[n], value => { states[n] = typeof value === 'function' ? value(states[n]) : value; }]; },
+    useState(initial) { const n = cursor++, bucket = states; if (!(n in bucket)) bucket[n] = initial;
+      return [bucket[n], value => { bucket[n] = typeof value === 'function' ? value(bucket[n]) : value; }]; },
     useRef(value) { const n = cursor++; if (!(n in states)) states[n] = { current: value }; return states[n]; },
     useEffect(effect, deps) { const n = cursor++; const old = effectSlots[n]; if (!old || deps.some((value, i) => old[i] !== value)) {
       effectSlots[n] = deps; effects.push(() => { cleanups[n]?.(); cleanups[n] = effect(); }); } },
+    useLayoutEffect(effect, deps) { this.useEffect(effect, deps); },
   };
-  const listener = (name, fn) => events.set(name, fn), unlisten = name => events.delete(name);
+  const listener = (name, fn) => {
+    if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn);
+    events.set(name, event => { for (const callback of [...listeners.get(name) || []]) callback(event); });
+  };
+  const unlisten = (name, fn) => { listeners.get(name)?.delete(fn); if (!listeners.get(name)?.size) events.delete(name); };
   const document = { hidden: false, addEventListener: listener, removeEventListener: unlisten,
     body: { appendChild() {} }, createElement: () => ({ click() { downloaded.push({ href: this.href, name: this.download }); }, remove() {} }) };
-  const window = { crypto: webcrypto, addEventListener: listener, removeEventListener: unlisten,
+  const window = { crypto: webcrypto, navigator: { clipboard }, addEventListener: listener, removeEventListener: unlisten,
     __ModuleLoader__: { load(value) { plugin = value; } } };
+  const primitives = {
+    MarkdownText, Tooltip: function NativeTooltip() {},
+    ...Object.fromEntries(['CopyOutline', 'CheckOutline', 'LikeOutline', 'LikeFill', 'DislikeOutline', 'DislikeFill', 'BranchOutline', 'DatabaseOutline', 'ClockOutline']
+      .map(name => ['Icon' + name + '16', function NativeIcon() {}])),
+    writeClipboard: async text => { clipboardWrites.push(text); if (!clipboard?.writeText) return false;
+      try { await clipboard.writeText(text); return true; } catch { return false; } },
+    useAnchoredPosition: options => { positioning.push(options); return options.open ? { left: 12, top: 24 } : null; },
+    useDismissOnOutsidePointer: (rootRef, open, setOpen, panelRef) => {
+      dismissals.push({ rootRef, open, panelRef });
+      React.useEffect(() => {
+        if (!open) return;
+        const close = event => { if (!rootRef.current?.contains(event.target) && !panelRef.current?.contains(event.target)) setOpen(false); };
+        document.addEventListener('pointerdown', close);
+        return () => document.removeEventListener('pointerdown', close);
+      }, [rootRef, open, setOpen, panelRef]);
+    },
+  };
+  const ReactDOM = { createPortal: (child, target) => ({ type: 'portal', props: { target }, children: [child] }) };
   const streams = [];
   if (streaming) window.EventSource = class {
     constructor(url, options) { this.url = url; this.options = options; streams.push(this); }
@@ -51,22 +76,233 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
     URL: { createObjectURL: () => 'blob:verified-file', revokeObjectURL: value => revoked.push(value) },
     setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id) });
   const blocks = new Map();
-  plugin.factory(name => name === 'react' ? React : name === '@deepseek-ai/dsh-client-ui-primitives' ? { MarkdownText } : undefined).apply({
+  plugin.factory(name => name === 'react' ? React : name === 'react-dom' ? ReactDOM : name === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : undefined).apply({
     get: name => ({ commandUi: { decorate: () => () => {} }, inputTriggers: { registerSource: () => () => {} }, sessions,
       conversation: { blocks: { storeFor: id => ({ getSnapshot: () => blocks.get(id) }), set: (id, value) => blocks.set(id, value) } } })[name],
     effect: fn => fn(), uiConversation: { events: { register: () => () => {} } },
     slots: { inject(_name, fn) { fn(); }, register(spec, component) { if (spec.key === 'harless-comparison') Component = component; } },
   });
-  const node = { data: initial, anchorSeq };
-  const render = () => { cursor = 0; tree = Component({ node }); const pending = effects; effects = []; pending.forEach(fn => fn()); return tree; };
+  const node = { data: initial, anchorSeq, location };
+  const render = () => { cursor = 0; tree = Component({ node, traceOnly, ...(chatSnapshot === undefined ? {} : { useChat: select => select(chatSnapshot) }) });
+    const pending = effects; effects = []; pending.forEach(fn => fn()); return tree; };
   const all = (predicate, entry = tree) => !entry || typeof entry !== 'object' ? [] :
     [...(predicate(entry) ? [entry] : []), ...(entry.children || []).filter(child => child !== undefined).flatMap(child => all(predicate, child))];
   const content = entry => typeof entry === 'string' ? entry : (entry?.children || []).map(content).join('');
+  // Render a hook-bearing public child in its own seat, so opening a metric
+  // cannot accidentally write the parent ComparisonNode's hook state.
+  const mount = entry => {
+    const seat = { cursor: 0, states: [], effects: [], effectSlots: [], cleanups: [], tree: undefined };
+    const child = { render() {
+      const parent = { cursor, states, effects, effectSlots, cleanups };
+      ({ states, effects, effectSlots, cleanups } = seat); cursor = 0;
+      try {
+        seat.tree = entry.type(entry.props); const pending = effects; effects = []; pending.forEach(fn => fn()); return seat.tree;
+      } finally {
+        Object.assign(seat, { cursor, states, effects, effectSlots, cleanups });
+        ({ cursor, states, effects, effectSlots, cleanups } = parent);
+      }
+    }, all: predicate => all(predicate, seat.tree), content: () => content(seat.tree),
+    dispose() { seat.cleanups.forEach(fn => fn?.()); mountedChildren.delete(child); } };
+    mountedChildren.add(child); child.render(); return child;
+  };
   render();
-  return { render, all, content, requests, timers, downloaded, revoked, events, streams, MarkdownText, initial,
+  return { render, all, content, requests, timers, downloaded, revoked, events, streams, MarkdownText, primitives, initial,
+    mount, positioning, dismissals, clipboardWrites, document,
+    setChatSnapshot: value => { chatSnapshot = value; }, setNodeLocation: value => { node.location = value; },
     setNodeData: value => { node.data = value; },
-    dispose: () => cleanups.forEach(fn => fn?.()) };
+    remount: (value = initial) => {
+      cleanups.forEach(fn => fn?.()); states = []; effects = []; effectSlots = []; cleanups = [];
+      node.data = value; return render();
+    }, blocks,
+    dispose: () => { for (const child of mountedChildren) child.dispose(); cleanups.forEach(fn => fn?.()); } };
 }
+
+test('cold history displays loading until an authoritative snapshot arrives, never a fictional queued task', async () => {
+  const initial = comparison(); initial.status = 'running'; initial.scoring_available = false; initial.snapshot_revision = 1;
+  for (const lane of Object.values(initial.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
+  let finish;
+  const f = fixture(() => new Promise(resolve => { finish = resolve; }), initial);
+  assert.match(f.content(f.render()), /正在加载此轮结果/);
+  assert.doesNotMatch(f.content(f.render()), /等待执行|等待当前任务|停止生成/);
+  assert.equal(f.blocks.size, 0, 'historical submission data does not block the composer');
+  const done = comparison(); done.snapshot_revision = 8; finish(Response.json(done)); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText).length, 2);
+  assert.equal(f.all(row => row.props.className === 'harless-paired-loading').length, 0);
+  assert.equal(f.all(row => row.type === 'button' && f.content(row) === '停止生成').length, 0); f.dispose();
+});
+
+test('returning to completed comparison reuses verified results while the new GET is pending or older', async () => {
+  const initial = comparison(); initial.status = 'running'; initial.scoring_available = false; initial.snapshot_revision = 1;
+  for (const lane of Object.values(initial.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
+  const done = comparison(); done.snapshot_revision = 8; done.scores.motif = 4;
+  let finish, reads = 0;
+  const f = fixture(() => ++reads === 1 ? Response.json(done) : new Promise(resolve => { finish = resolve; }), initial, { streaming: true });
+  await flush(); f.render(); f.remount(structuredClone(initial));
+  assert.equal(f.all(row => row.type === f.MarkdownText).length, 2);
+  assert.equal(f.all(row => row.type === 'input' && row.props.name.endsWith('-motif') && row.props.value === 4)[0].props.checked, true);
+  assert.doesNotMatch(f.content(f.render()), /等待执行|等待当前任务|停止生成/);
+  assert.equal(f.blocks.get('session-a'), undefined);
+  assert.equal(f.streams.length, 1, 'a cached completed task does not reopen a live stream');
+  finish(Response.json(initial)); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText).length, 2, 'an older read cannot erase cached results'); f.dispose();
+});
+
+test('cached results cannot leak into a different conversation during navigation', async () => {
+  const f = fixture(); await flush(); f.render();
+  const next = comparison(); next.id = 'comparison-b'; next.session_id = 'session-b'; next.status = 'running';
+  for (const lane of Object.values(next.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
+  f.setNodeData(next); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText).length, 0);
+  assert.match(f.content(f.render()), /正在加载此轮结果/); f.dispose();
+});
+
+test('rating selection paints immediately and serializes rapid choices using the latest server revision', async () => {
+  const value = comparison(); value.snapshot_revision = 1;
+  const pending = [], writes = [];
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    const body = JSON.parse(init.body); writes.push(body);
+    return new Promise(resolve => pending.push(() => {
+      assert.equal(body.revision, value.score_revision);
+      value.scores[body.lane] = body.score; value.score_revision++; value.snapshot_revision++;
+      resolve(Response.json(value));
+    }));
+  }, value);
+  await flush(); f.render();
+  const choice = (lane, score) => f.all(row => row.type === 'input' && row.props.name.endsWith('-' + lane) && row.props.value === score)[0];
+  const work = choice('baseline', 2).props.onChange(); f.render();
+  assert.equal(choice('baseline', 2).props.checked, true);
+  assert.equal(f.all(row => row.type === 'fieldset')[0].props.disabled, false);
+  assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], true);
+  assert.match(f.content(f.render()), /正在保存评分/);
+  choice('baseline', 3).props.onChange(); f.render(); choice('baseline', 5).props.onChange(); f.render();
+  choice('motif', 4).props.onChange(); f.render();
+  assert.equal(choice('baseline', 5).props.checked, true); assert.equal(choice('motif', 4).props.checked, true);
+  assert.equal(writes.length, 1, 'one shared score revision allows only one POST in flight');
+  pending.shift()(); await flush(); f.render();
+  assert.equal(choice('baseline', 5).props.checked, true, 'an older successful selection does not replace the newer pending choice');
+  assert.equal(writes[1].score, 5, 'intermediate unsent scores coalesce to the last selection');
+  pending.shift()(); await flush(); pending.shift()(); await work; await flush(); f.render();
+  assert.deepEqual(writes.map(row => [row.lane, row.score, row.revision]), [['baseline', 2, 1], ['baseline', 5, 2], ['motif', 4, 3]]);
+  assert.equal(choice('baseline', 5).props.checked, true); assert.equal(choice('motif', 4).props.checked, true);
+  assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], false); f.dispose();
+});
+
+test('a rejected rating rolls back to confirmed selection and leaves the other lane unchanged', async () => {
+  const value = comparison(); value.scores.baseline = 2; value.scores.motif = 5;
+  let finish;
+  const f = fixture((_url, init) => init.method === 'POST' ? new Promise(resolve => { finish = resolve; }) : Response.json(value), value);
+  await flush(); f.render();
+  const choice = (lane, score) => f.all(row => row.type === 'input' && row.props.name.endsWith('-' + lane) && row.props.value === score)[0];
+  const work = choice('baseline', 4).props.onChange(); f.render(); assert.equal(choice('baseline', 4).props.checked, true);
+  finish(Response.json({ error: { message: 'save rejected' } }, { status: 500 })); await work; await flush(); f.render();
+  assert.equal(choice('baseline', 2).props.checked, true); assert.equal(choice('motif', 5).props.checked, true);
+  assert.equal(f.all(row => row.props.className === 'harless-paired-error').length, 1);
+  assert.equal(f.requests.filter(row => row.init.method === 'POST').length, 1); f.dispose();
+});
+
+test('a lost response reconciles before saving a newer queued selection without reposting the old one', async () => {
+  const value = comparison(); const writes = []; let rejectFirst;
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    const body = JSON.parse(init.body); writes.push(body);
+    if (writes.length === 1) return new Promise((_resolve, reject) => { rejectFirst = () => {
+      value.scores.baseline = 2; value.score_revision++; reject(TypeError('connection lost after commit'));
+    }; });
+    assert.equal(body.revision, value.score_revision); value.scores[body.lane] = body.score; value.score_revision++;
+    return Response.json(value);
+  }, value);
+  await flush(); f.render();
+  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+  const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange(); f.render();
+  rejectFirst(); await work; await flush(); f.render();
+  assert.equal(choice(5).props.checked, true); assert.deepEqual(writes.map(row => [row.score, row.revision]), [[2, 1], [5, 2]]); f.dispose();
+});
+
+test('the latest explicit rating survives component unmount and reappears while saving after navigation', async () => {
+  const value = comparison(), writes = [], pending = [];
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    const body = JSON.parse(init.body); writes.push(body);
+    return new Promise(resolve => pending.push(() => {
+      assert.equal(init.signal.aborted, false, 'leaving the card does not cancel the page-owned save');
+      assert.equal(body.revision, value.score_revision); value.scores[body.lane] = body.score; value.score_revision++;
+      resolve(Response.json(value));
+    }));
+  }, value);
+  await flush(); f.render();
+  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+  const work = choice(2).props.onChange(); f.render(); choice(3).props.onChange(); f.render(); choice(5).props.onChange();
+  f.dispose(); pending.shift()(); await flush();
+  assert.deepEqual(writes.map(row => row.score), [2, 5], 'the last unsent intent is saved even with no mounted listener');
+  f.remount(comparison()); f.render();
+  assert.equal(choice(5).props.checked, true); assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], true);
+  pending.shift()(); await work; await flush(); f.render();
+  assert.equal(choice(5).props.checked, true); assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], false);
+  f.dispose(); f.remount(comparison()); await flush(); f.render();
+  assert.equal(choice(5).props.checked, true); assert.equal(writes.length, 2); f.dispose();
+});
+
+test('401 and 403 discard queued ratings and do not replay them after access returns', async () => {
+  for (const status of [401, 403]) {
+    const value = comparison(), writes = []; value.scores.baseline = 1; let finish;
+    const f = fixture((_url, init) => {
+      if (init.method !== 'POST') return Response.json(value);
+      writes.push(JSON.parse(init.body)); return new Promise(resolve => { finish = resolve; });
+    }, value);
+    await flush(); f.render();
+    const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+    const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange();
+    finish(Response.json({ error: {} }, { status })); await work; await flush(); f.render();
+    assert.equal(choice(1).props.checked, true); assert.equal(choice(5).props.checked, false);
+    assert.equal(writes.length, 1); assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /登录已过期|没有权限/);
+    f.remount(comparison()); await flush(); f.render();
+    assert.equal(choice(5).props.checked, false); assert.equal(writes.length, 1); f.dispose();
+  }
+});
+
+test('leaving the authenticated page discards pending choices and ignores a late successful response', async () => {
+  const value = comparison(), writes = []; let finish;
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    writes.push(JSON.parse(init.body)); return new Promise(resolve => { finish = resolve; });
+  }, value);
+  await flush(); f.render();
+  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+  const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange();
+  f.events.get('pagehide')();
+  const late = comparison(); late.scores.baseline = 2; late.score_revision++;
+  finish(Response.json(late)); await work; await flush(); f.render();
+  assert.equal(writes.length, 1); assert.equal(choice(2).props.checked, false); assert.equal(choice(5).props.checked, false);
+  f.remount(comparison()); await flush(); f.render(); assert.equal(choice(2).props.checked, false); assert.equal(choice(5).props.checked, false); f.dispose();
+});
+
+test('output replacement stops remaining queued scores and rolls back to the new confirmed result', async () => {
+  const value = comparison(); value.snapshot_revision = 2; let finish; const writes = [];
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    writes.push(JSON.parse(init.body)); return new Promise(resolve => { finish = resolve; });
+  }, value);
+  await flush(); f.render();
+  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+  const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange();
+  value.lanes.baseline.output_sha256 = 'replacement-hash'; value.snapshot_revision++; value.score_revision++; value.scores = {};
+  finish(Response.json({ error: {} }, { status: 409 })); await work; await flush(); f.render();
+  assert.equal(writes.length, 1); assert.equal(choice(2).props.checked, false); assert.equal(choice(5).props.checked, false);
+  assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /确认新结果后重新评分/); f.dispose();
+});
+
+test('a restarted server epoch supersedes a higher old revision and rejects late old-epoch snapshots', async () => {
+  const old = comparison(); old.snapshot_epoch = 7; old.snapshot_revision = 120;
+  const restarted = comparison(); restarted.snapshot_epoch = 8; restarted.snapshot_revision = 90;
+  restarted.lanes.baseline.answer = '服务恢复后的已完成结果'; let current = old;
+  const f = fixture(() => Response.json(current), old); await flush(); f.render();
+  current = restarted; f.events.get('focus')(); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, restarted.lanes.baseline.answer);
+  current = old; f.events.get('focus')(); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, restarted.lanes.baseline.answer);
+  f.remount(old); assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, restarted.lanes.baseline.answer); f.dispose();
+});
 test('paired answers delegate Markdown and inline artifact mentions to the native safe renderer', async () => {
   const f = fixture(); await flush(); f.render();
   const markdown = f.all(row => row.type === f.MarkdownText); assert.equal(markdown.length, 2);
@@ -334,7 +570,8 @@ test('live stream renders incremental text and real activity before terminal com
   partial.lanes.baseline.activity=[{label:'读取数据',status:'running'}];stream.emit(partial);f.render();
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一');
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.streaming,true);
-  assert.match(f.content(f.all(row=>row.props.className==='harless-activity')[0]),/正在读取数据/);
+  assert.match(f.content(f.all(row=>row.props.className==='harless-live-status')[0]),/正在读取数据/);
+  assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,undefined,'tool details remain collapsed');
   partial.lanes.baseline.answer+='组数据';stream.emit(partial);f.render();
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一组数据');
   stream.emit(comparison());f.render();assert.equal(stream.closed,true);
@@ -439,19 +676,215 @@ test('switching conversations closes the old stream before accepting the new ses
 });
 
 
-test('completed paired and single turns branch at their own anchor without local title overrides', async () => {
+test('completed paired and single turns branch from a selected lane and immutable output once', async () => {
   for (const single of [false, true]) {
     const value = comparison(); if (single) { value.presentation = 'single'; delete value.lanes.motif; }
     const calls = [], opened = []; let finish;
-    const f = fixture(undefined, value, { anchorSeq: 17, sessions: {
-      fork: options => { calls.push(options); return new Promise(resolve => { finish = resolve; }); },
-      open: id => opened.push(id),
-    } });
+    const f = fixture((_url, init) => {
+      if(init.method !== 'POST') return Response.json(value);
+      calls.push(JSON.parse(init.body)); return new Promise(resolve => { finish = () => resolve(Response.json({sessionId:'branch-1'})); });
+    }, value, { anchorSeq: 17, sessions: { open: id => opened.push(id) } });
     await flush(); f.render();
-    const button = f.all(row => row.props['aria-label'] === '在新对话中分支')[0]; assert.ok(button);
+    const button = f.all(row => row.props['aria-label'] === '从 Baseline 在新对话中分支')[0]; assert.ok(button);
+    assert.equal(f.all(row => row.type==='button' && f.content(row)==='在新对话中分支').length,0,'no duplicate large text button');
     const operation = button.props.onClick(); button.props.onClick();
-    assert.equal(calls.length, 1); assert.equal(calls[0].sessionId, 'session-a');
-    assert.equal(calls[0].atSeq, 17); assert.equal(calls[0].increaseTitle, false);
-    finish('branch-1'); await operation; assert.deepEqual(opened, ['branch-1']); f.dispose();
+    assert.equal(calls.length, 1); assert.equal(calls[0].session_id, 'session-a');
+    assert.equal(calls[0].id,'comparison-a');assert.equal(calls[0].lane,'baseline');assert.equal(calls[0].output_sha256,'baseline-hash');
+    assert.equal(calls[0].action,'fork');assert.equal(calls[0].title,undefined);
+    finish(); await operation; assert.deepEqual(opened, ['branch-1']); f.dispose();
   }
+});
+
+test('successive real assistant messages stay visible during tools and collapse only after the final answer', async () => {
+  const value=comparison();value.status='running';value.snapshot_revision=1;
+  const row=value.lanes.baseline;row.status='running';row.answer='先读取资料';row.messages=[{id:'first',text:'先读取资料',status:'completed'}];
+  const f=fixture(undefined,value,{streaming:true});await flush();f.render();
+  const next=structuredClone(value);next.snapshot_revision=2;next.lanes.baseline.answer='已经核验，正在';
+  next.lanes.baseline.messages.push({id:'second',text:'已经核验，正在',status:'streaming'});
+  next.lanes.baseline.progress={label:'正在调用数据分析工具'};f.streams[0].emit(next);f.render();
+  const old=f.all(row=>row.props.className==='harless-stream-messages')[0];assert.ok(old);
+  assert.equal(f.all(row=>row.type===f.MarkdownText,old)[0].props.text,'先读取资料');
+  assert.equal(f.all(row=>row.props.className==='harless-paired-answer')[0].children[0].props.text,'已经核验，正在');
+  assert.match(f.content(f.all(row=>row.props.className==='harless-live-status')[0]),/分析工具/);
+  next.status='completed';next.snapshot_revision=3;next.lanes.baseline.status='completed';next.lanes.baseline.answer='完整结论';
+  next.lanes.baseline.messages.push({id:'final',text:'完整结论',status:'completed'});f.streams[0].emit(next);f.render();
+  assert.equal(f.all(row=>row.props.className==='harless-stream-messages').length,0);
+  assert.equal(f.all(row=>row.props.className==='harless-paired-answer')[0].children[0].props.text,'完整结论');
+  assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,undefined);f.dispose();
+});
+
+test('lane footer copies full Markdown, reports actual usage and duration, and persists reversible feedback', async () => {
+  const value=comparison(),copied=[];value.lanes.baseline.stats={upstream_requests:2,prompt_tokens:1024,completion_tokens:500};
+  value.lanes.baseline.duration_ms=64500;
+  const f=fixture((_url,init)=>{
+    if(init.method==='POST'){const body=JSON.parse(init.body);assert.equal(body.action,'feedback');assert.equal(body.output_sha256,'baseline-hash');value.lanes[body.lane].feedback=body.vote;}
+    return Response.json(value);
+  },value,{clipboard:{writeText:async text=>copied.push(text)}});await flush();f.render();
+  await f.all(row=>row.props['aria-label']==='复制 Baseline 回复')[0].props.onClick();f.render();
+  assert.deepEqual(copied,[value.lanes.baseline.answer]);assert.ok(f.all(row=>row.props.kind==='usage' && row.props.label==='用量 1.5K tok').length);
+  assert.ok(f.all(row=>row.props.kind==='clock' && row.props.label==='用时 1分04秒').length);
+  await f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props.onClick();await flush();f.render();
+  assert.equal(f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props['aria-pressed'],true);
+  await f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props.onClick();await flush();f.render();
+  assert.equal(f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props['aria-pressed'],false);
+  assert.equal(f.requests.filter(row=>row.init.method==='POST').length,2);f.dispose();
+});
+
+test('comparison actions follow the latest turn of the whole conversation, including later ordinary Chat', async () => {
+  const location = { kind: 'turn', turn: { turn: 2, status: 'closed' } };
+  const f = fixture(undefined, comparison(), { location, chatSnapshot: { timeline: { turnOrder: [1, 2] } } });
+  const panes = () => f.all(row => row.type === 'section' && row.props['data-actions-reveal']);
+  assert.deepEqual(panes().map(row => row.props['data-actions-reveal']), ['always', 'always']);
+  for (const kind of ['assistant-step', 'harless-comparison']) {
+    f.setChatSnapshot({ timeline: { turnOrder: [1, 2, 3] }, nodes: new Map([['later', { kind, location: { kind: 'turn', turn: { turn: 3 } } }]]) });
+    f.render(); assert.deepEqual(panes().map(row => row.props['data-actions-reveal']), ['hover', 'hover'], kind);
+  }
+  f.setChatSnapshot({ timeline: { turnOrder: [1, 2] } }); f.render();
+  assert.deepEqual(panes().map(row => row.props['data-actions-reveal']), ['always', 'always']);
+  f.setNodeLocation({ kind: 'step', turn: { turn: 1 } }); f.render();
+  assert.deepEqual(panes().map(row => row.props['data-actions-reveal']), ['hover', 'hover']); f.dispose();
+});
+
+test('unknown comparison or timeline turn keeps actions discoverable and touch and keyboard paths remain visible', () => {
+  const f = fixture(undefined, comparison(), { chatSnapshot: { timeline: { turnOrder: [3] } } });
+  const reveal = () => f.all(row => row.props['data-actions-reveal']).map(row => row.props['data-actions-reveal']);
+  assert.deepEqual(reveal(), ['always', 'always']);
+  f.setNodeLocation({ kind: 'turn', turn: { turn: 2 } }); f.setChatSnapshot({ timeline: { turnOrder: [] } }); f.render();
+  assert.deepEqual(reveal(), ['always', 'always']);
+  f.setChatSnapshot({}); f.render(); assert.deepEqual(reveal(), ['always', 'always']);
+  f.setChatSnapshot(undefined); f.render(); assert.deepEqual(reveal(), ['always', 'always']);
+  const css = f.all(row => row.type === 'style').map(row => f.content(row)).join('\n');
+  assert.match(css, /@media\(hover:hover\)\{[^}]*data-actions-reveal=hover[^}]*opacity:0/);
+  assert.match(css, /:focus-within[^}]*opacity:1/);
+  assert.match(css, /:has\(\.harless-message-metric\[data-open\]\)/);
+  assert.match(css, /@media\(prefers-reduced-motion:reduce\)/); f.dispose();
+});
+
+test('lane actions use native glyphs and bottom tooltips, with a one-second copy check and no extra visible label', async () => {
+  const copied = [], value = comparison(); value.lanes.baseline.feedback = 'up';
+  const f = fixture(undefined, value, { clipboard: { writeText: async text => copied.push(text) } });
+  await flush(); f.render();
+  const button = label => f.all(row => row.type === 'button' && row.props['aria-label'] === label)[0];
+  for (const [label, icon] of [['复制 Baseline 回复', 'IconCopyOutline16'], ['赞 Baseline 回复', 'IconLikeFill16'],
+    ['踩 Baseline 回复', 'IconDislikeOutline16'], ['从 Baseline 在新对话中分支', 'IconBranchOutline16']]) {
+    assert.equal(button(label).children[0].type, f.primitives[icon]);
+    assert.equal(button(label).props.title, undefined, 'native Tooltip replaces browser title tooltips');
+  }
+  const tips = f.all(row => row.type === f.primitives.Tooltip);
+  assert.equal(tips.length, 8); assert.ok(tips.every(row => row.props.side === 'bottom'));
+  assert.ok(tips.some(row => row.props.label === '取消标记')); assert.ok(tips.some(row => row.props.label === '有问题的回答'));
+  await button('复制 Baseline 回复').props.onClick(); f.render();
+  assert.deepEqual(copied, [value.lanes.baseline.answer]); assert.deepEqual(f.clipboardWrites, copied);
+  assert.equal(button('复制 Baseline 回复').children[0].type, f.primitives.IconCheckOutline16);
+  assert.equal(f.all(row => row.props.role === 'status' && f.content(row) === '已复制')[0].props.className, 'harless-visually-hidden');
+  await button('复制 Baseline 回复').props.onClick(); assert.equal(copied.length, 1, 'check feedback prevents accidental duplicate copies');
+  const timer = [...f.timers].find(([, value]) => value.delay === 1000); assert.ok(timer);
+  f.timers.delete(timer[0]); timer[1].fn(); f.render();
+  assert.equal(button('复制 Baseline 回复').children[0].type, f.primitives.IconCopyOutline16);
+  assert.equal(f.all(row => row.props.role === 'status' && f.content(row) === '已复制').length, 0); f.dispose();
+});
+
+test('copy completion after leaving the comparison cannot change another conversation footer', async () => {
+  let finish; const f = fixture(undefined, comparison(), { clipboard: { writeText: () => new Promise(resolve => { finish = resolve; }) } });
+  await flush(); f.render(); const work = f.all(row => row.props['aria-label'] === '复制 Baseline 回复')[0].props.onClick();
+  const next = comparison(); next.id = 'comparison-b'; next.session_id = 'session-b'; f.setNodeData(next); f.render();
+  finish(); await work; f.render();
+  assert.equal(f.all(row => row.props['aria-label'] === '复制 Baseline 回复')[0].children[0].type, f.primitives.IconCopyOutline16);
+  assert.equal([...f.timers.values()].some(timer => timer.delay === 1000), false); f.dispose();
+});
+
+test('lane metrics use exact usage and completion time, compact counts, and only available timing facts', async () => {
+  const value = comparison(), baseline = value.lanes.baseline;
+  baseline.stats = { prompt_tokens: 1024, completion_tokens: 500, upstream_requests: 2 };
+  baseline.duration_ms = 64500; baseline.started_at = new Date(2020, 0, 2, 3, 3, 0).toISOString();
+  baseline.finished_at = new Date(2020, 0, 2, 3, 4, 5).toISOString();
+  const f = fixture(undefined, value); await flush(); f.render();
+  const metric = kind => f.all(row => row.type?.name === 'ReplyMetric' && row.props.kind === kind)[0];
+  assert.equal(metric('usage').props.label, '用量 1.5K tok');
+  assert.deepEqual(JSON.parse(JSON.stringify(metric('usage').props.rows)), [['总用量', '1,524 tok'], ['输入', '1,024 tok'], ['输出', '500 tok']]);
+  assert.equal(metric('clock').props.label, '用时 1分04秒');
+  assert.deepEqual(JSON.parse(JSON.stringify(metric('clock').props.rows)), [['本轮总用时', '1分04秒'],
+    ['开始时间', '2020年1月2日 03:03'], ['完成时间', '2020年1月2日 03:04']]);
+  const stamp = f.all(row => row.type === 'time' && row.props.className === 'harless-message-time')[0];
+  assert.equal(stamp.props.dateTime, baseline.finished_at); assert.equal(f.content(stamp), '2020年1月2日 03:04');
+  assert.doesNotMatch(JSON.stringify(metric('clock').props), /TTFT|首字|每秒|tok\/s|速度/);
+  for (const [total, label] of [[0, '0'], [999, '999'], [12345, '12.3K'], [517000, '517K'], [1200000, '1.2M']]) {
+    baseline.usage = { input: total, output: 0, total }; baseline.duration_ms = 900;
+    f.events.get('focus')(); await flush(); f.render();
+    assert.equal(metric('usage').props.label, '用量 ' + label + ' tok'); assert.equal(metric('clock').props.label, '用时 0秒');
+  }
+  f.dispose();
+});
+
+test('unknown usage and timing are omitted instead of exposing fictional waiting metrics or zeroes', async () => {
+  const value = comparison(), f = fixture(undefined, value); await flush(); f.render();
+  assert.equal(f.all(row => row.type?.name === 'ReplyMetric').length, 0);
+  assert.equal(f.all(row => row.type === 'time' && row.props.className === 'harless-message-time').length, 0);
+  value.lanes.baseline.stats = { prompt_tokens: 10 }; value.lanes.motif.duration_ms = 0;
+  f.events.get('focus')(); await flush(); f.render();
+  assert.equal(f.all(row => row.type?.name === 'ReplyMetric' && row.props.kind === 'usage').length, 0, 'partial input is not a total usage figure');
+  const metrics = f.all(row => row.type?.name === 'ReplyMetric'); assert.equal(metrics.length, 1);
+  assert.equal(metrics[0].props.label, '用时 0秒', 'a genuine zero duration is retained');
+  f.dispose();
+});
+
+test('usage and time details use public anchored portals with outside and Escape dismissal', async () => {
+  const value = comparison(); value.lanes.baseline.stats = { prompt_tokens: 1024, completion_tokens: 500 };
+  value.lanes.baseline.duration_ms = 64500;
+  const f = fixture(undefined, value); await flush(); f.render();
+  for (const kind of ['usage', 'clock']) {
+    const entry = f.all(row => row.type?.name === 'ReplyMetric' && row.props.kind === kind)[0], child = f.mount(entry);
+    const trigger = () => child.all(row => row.type === 'button')[0];
+    assert.equal(trigger().props['aria-haspopup'], 'dialog'); assert.equal(trigger().props['aria-expanded'], false);
+    assert.equal(trigger().children[0].type, f.primitives[kind === 'usage' ? 'IconDatabaseOutline16' : 'IconClockOutline16']);
+    let focused = 0; const insideTrigger = {}, insidePanel = {}, anchor = f.positioning.at(-1);
+    anchor.anchorRef.current = { contains: target => target === insideTrigger, querySelector: () => ({ focus: () => focused++ }) };
+    anchor.panelRef.current = { contains: target => target === insidePanel };
+    trigger().props.onClick(); child.render(); assert.equal(trigger().props['aria-expanded'], true);
+    const portal = child.all(row => row.type === 'portal')[0], panel = child.all(row => row.props.role === 'dialog')[0];
+    assert.equal(portal.props.target, f.document.body); assert.equal(panel.props['aria-label'], entry.props.title);
+    assert.deepEqual(panel.props.style, { left: 12, top: 24 });
+    assert.equal(f.positioning.at(-1).side, 'top'); assert.equal(f.positioning.at(-1).gap, 8); assert.equal(f.positioning.at(-1).margin, 12);
+    assert.equal(f.dismissals.at(-1).panelRef, anchor.panelRef, 'portaled content participates in outside-click boundaries');
+    assert.match(child.content(), kind === 'usage' ? /总用量1,524 tok输入1,024 tok输出500 tok/ : /本轮总用时1分04秒/);
+    assert.doesNotMatch(child.content(), /TTFT|首字|每秒|tok\/s/);
+    f.events.get('pointerdown')({ target: insidePanel }); child.render(); assert.equal(trigger().props['aria-expanded'], true);
+    f.events.get('pointerdown')({ target: {} }); child.render(); assert.equal(trigger().props['aria-expanded'], false);
+    assert.equal(child.all(row => row.type === 'portal').length, 0);
+    trigger().props.onClick(); child.render(); f.events.get('keydown')({ key: 'Escape' }); child.render();
+    assert.equal(trigger().props['aria-expanded'], false); assert.equal(focused, 1); child.dispose();
+  }
+  const css = f.all(row => row.type === 'style').map(row => f.content(row)).join('\n');
+  assert.match(css, /max-width:calc\(100vw - 24px\)/); assert.match(css, /max-height:calc\(100dvh - 24px\)/);
+  assert.match(css, /overflow:auto/); f.dispose();
+});
+
+test('trajectory tabs use each lane actual events and distinguish verified optimization from shadow candidates', async () => {
+  const value=comparison();value.lanes.baseline.trace=[{id:'base',kind:'tool',label:'读取数据',status:'completed'}];
+  value.lanes.motif.mode='shadow';value.lanes.motif.trace=[{id:'shadow',kind:'motif',label:'预测候选',status:'completed',optimized:false,verified_skip:false}];
+  const f=fixture(undefined,value,{traceOnly:true});await flush();f.render();
+  const tabs=f.all(row=>row.props.role==='tab');assert.equal(f.content(tabs[1]),'Motif · 影子评估');
+  assert.equal(tabs[0].props.tabIndex,0);assert.equal(tabs[1].props.tabIndex,-1);
+  const rows=()=>{const component=f.all(row=>typeof row.type==='function'&&row.type.name==='TraceRows')[0];return component.type(component.props);};
+  assert.match(f.content(rows()),/读取数据/);
+  f.all(row=>row.props.role==='tablist')[0].props.onKeyDown({key:'ArrowRight',preventDefault(){}});f.render();
+  assert.equal(f.all(row=>row.props.role==='tab')[1].props['aria-selected'],true);
+  assert.match(f.content(rows()),/预测候选/);assert.doesNotMatch(f.content(rows()),/已应用优化|已验证跳过/);
+  value.lanes.motif.trace=[{id:'verified',kind:'motif',label:'执行已认证节点',status:'completed',optimized:true,verified_skip:true}];
+  f.events.get('focus')();await flush();f.render();
+  const tree=rows();assert.match(f.content(tree),/已验证跳过模型请求/);assert.equal(f.all(row=>row.props['data-optimized']==='true',tree).length,1);
+  f.dispose();
+});
+
+test('completed process messages retain verified artifact routing without repeating the unbound final template',async()=>{
+  const value=comparison();value.lanes.baseline.answer='结果 {{estimate}}';value.lanes.baseline.answer_display='结果 1.25';
+  value.lanes.baseline.messages=[{id:'prior',text:'先查看 `/app/work/outputs/report/research_report.pdf`',status:'completed'},
+    {id:'final',text:'结果 {{estimate}}',status:'completed'}];
+  const f=fixture(undefined,value);await flush();f.render();
+  const process=f.all(row=>row.props.className==='harless-process-message')[0];assert.equal(typeof process.props.ref,'function');
+  let prevented=false;process.props.onClickCapture({target:{closest:()=>({getAttribute:()=>'/private/not-approved.pdf'})},
+    preventDefault(){prevented=true;},stopPropagation(){}});assert.equal(prevented,true);
+  const texts=f.all(row=>row.type===f.MarkdownText).map(row=>row.props.text);assert.ok(texts.includes('结果 1.25'));
+  assert.equal(texts.some(text=>text.includes('{{estimate}}')),false);assert.equal(f.all(row=>row.type===f.MarkdownText,process)[0].props.fileMentions.resolve('/app/work/'+artifact.name).title,artifact.name);
+  f.dispose();
 });

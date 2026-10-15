@@ -116,9 +116,11 @@ export function publicTaskView(value: any): any {
       ? createPublicTextStream().push(result[key]) : publicText(result[key]);
   }
   if (result.error) result.error = textFields(result.error);
+  if(typeof result.text==='string'&&/^(?:assistant|trace)-/.test(result.id??''))result.text=['running','streaming'].includes(result.status)
+    ?createPublicTextStream().push(result.text):publicText(result.text);
   for (const key of ['progress', 'activity']) if (result[key]) result[key] = textFields(result[key]);
   if (result.lanes) result.lanes = Object.fromEntries(Object.entries(result.lanes).map(([key, lane]) => [key, publicTaskView(lane)]));
-  for (const key of ['tasks', 'turns', 'items', 'current_task']) if (result[key]) result[key] = publicTaskView(result[key]);
+  for (const key of ['tasks', 'turns', 'items', 'current_task','messages','trace']) if (result[key]) result[key] = publicTaskView(result[key]);
   return result;
 }
 

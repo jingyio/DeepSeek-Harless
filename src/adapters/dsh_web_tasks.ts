@@ -4,11 +4,12 @@ import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeF
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
-import { WebDeepSeekAdapter, webReasoningEffort } from './harless_reasoning.ts';
-import type { WebReasoningEffort } from './harless_reasoning.ts';
+import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels } from './harless_reasoning.ts';
+import type { WebReasoningEffort, WebModelOption } from './harless_reasoning.ts';
 import { isAgentLoopRequest, createUserMessage, createAssistantMessage } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
 import { createPaperFlowShadowObserver } from './harless_paper_flow_shadow.ts';
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
@@ -26,6 +27,7 @@ import {bindReportAnswer} from './harless_report_answer.ts';
 import {createTaskProgress} from './harless_task_progress.ts';
 import {bindProductPrompt} from './harless_product_prompt.ts';
 import {protectPublicSessionOutput, publicTaskView} from './harless_public_output.ts';
+import {createConversationTitles} from './geneloop_conversation_titles.ts';
 import {createSessionBranchService,sessionBranchTitle} from './harless_session_branch.ts';
 import {registerManagedWorkspaceRoutes} from './harless_managed_workspaces.ts';
 import {registerPrivateLanes} from './harless_private_lanes.ts';
@@ -47,7 +49,7 @@ type Policy = {
   resources?: Record<string, { version: string; text: string }>;
   models?: ModelOption[];
 };
-type ModelOption = { provider: string; model: string; label: string; available: boolean };
+type ModelOption = WebModelOption;
 type Task = {
   request: NormalizedWebTask; delivery: PromptPart[]; confirmation_digest: string;
   status: string; created_at: string; started_at?: string; finished_at?: string;
@@ -90,6 +92,16 @@ export function apply(ctx: any) {
   mkdirSync(join(config.output, 'tasks'), { recursive: true, mode: 0o700 });
   const tasks = new Map<string, Task>(), sessions = new Map<string, string>();
   const progress = new Map<string, ReturnType<typeof createTaskProgress>>();
+  const taskSubscribers=new Map<string,Set<(value:any)=>void>>();
+  const progressTimers=new Map<string,ReturnType<typeof setTimeout>>();
+  function notifyTask(task:Task){
+    const id=task.request.task_id;
+    if(!taskSubscribers.get(id)?.size||progressTimers.has(id))return;
+    progressTimers.set(id,setTimeout(()=>{progressTimers.delete(id);
+      const snapshot=view(task,true);for(const listener of taskSubscribers.get(id)??[])try{listener(snapshot);}catch{}
+    },40));
+  }
+  ctx.effect(()=>()=>{for(const timer of progressTimers.values())clearTimeout(timer);progressTimers.clear();taskSubscribers.clear();},'harless-task-progress-lifetime');
   const brokerMode = config.budget_broker_endpoint !== undefined;
   if (config.comparison_scenes && (!brokerMode || !Array.isArray(config.comparison_scenes) || config.comparison_scenes.some(id => !['ppt', 'paper-proofreading', 'research-data-analysis', 'literature'].includes(id)))) throw Error('Invalid comparison policy');
   let comparisons: ReturnType<typeof createComparisonService> | undefined;
@@ -97,7 +109,9 @@ export function apply(ctx: any) {
   const modelOptions = config.models ?? [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }];
   const defaultModel = modelOptions.find(option => option.available);
   if (!defaultModel || modelOptions.some(option => !/^[a-z][a-z0-9-]*$/.test(option.provider) || !/^[A-Za-z0-9._-]+$/.test(option.model) ||
-        typeof option.label !== 'string' || !option.label || typeof option.available !== 'boolean') ||
+        typeof option.label !== 'string' || !option.label || typeof option.available !== 'boolean' ||
+        (option.reasoning_unavailable !== undefined && (!option.reasoning_unavailable || typeof option.reasoning_unavailable !== 'object' || Array.isArray(option.reasoning_unavailable) ||
+          Object.entries(option.reasoning_unavailable).some(([effort, reason]) => !['off', 'high'].includes(effort) || typeof reason !== 'string' || !reason)))) ||
       new Set(modelOptions.map(option => option.model)).size !== modelOptions.length) throw Error('Invalid server model catalog');
   const modelSelections = new Map<string, ModelOption>();
   const reasoningSelections = new Map<string, WebReasoningEffort>();
@@ -128,15 +142,17 @@ export function apply(ctx: any) {
   });
   const scenes = sceneCatalog(registeredScenes ?? [{ ...config, id: config.capability_profile, label: config.capability_profile, preset: 'sss-task' }]);
   if (!scenes.some(scene => scene.id === config.capability_profile)) throw Error('Default scene is not registered');
-  const defaultSceneId = memberRestricted && scenes.some(scene => scene.id === 'new-scene') ? 'new-scene' : config.capability_profile;
+  const chatScene = scenes.find(scene => scene.id === 'new-scene' && !scene.unavailable_reason);
+  const defaultSceneId = chatScene?.id ?? config.capability_profile;
   let defaults = initialSelection(defaultSceneId, config.mode);
   const selections = new Map<string, Selection>(), agents = new Map<string, any>();
+  const mountedScenes = new Map<string, string>();
   const optionSelections = new Map<string,Record<string,SceneOptions>>();
   const workspaces = new Map<string, string>();
   const principal = brokerMode && config.budget_task_prefix ? 'member-' + config.budget_task_prefix : config.user_id ?? 'local-operator';
   registerManagedWorkspaceRoutes(ctx, {output: config.output, principal});
   const saveSettings = () => json(join(config.output, 'harless-settings.json'),
-    { defaults, sessions: Object.fromEntries(selections),scene_options:Object.fromEntries(optionSelections) });
+    { defaults, sessions: Object.fromEntries(selections),mounted_scenes:Object.fromEntries(mountedScenes),scene_options:Object.fromEntries(optionSelections) });
   const guards = new Map<string, (() => void)[]>();
   const sceneFor = (id: string) => {
     const scene = scenes.find(scene => scene.id === id);
@@ -213,6 +229,7 @@ export function apply(ctx: any) {
     if (config.fixture === 'tool-failure') disposers.push(agent.ctx.tools.guard((call: any) => call.name.endsWith('__read_pinned') ? 'injected mock tool failure' : undefined));
     guards.set(agent.session.id, disposers.filter(dispose => typeof dispose === 'function'));
     schemas.set(agent.session.id, agent.ctx.tools.schemas(scopeOf(agent.ctx)).sort((a: any, b: any) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    mountedScenes.set(agent.session.id, configuredScene.id); saveSettings();
   }
   function settingsView(sessionId?: string) {
     if (sessionId) trash?.assertVisible(sessionId);
@@ -298,6 +315,35 @@ export function apply(ctx: any) {
       return state;
     } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
   };
+  const restoredMountedScene = (agent: any): string | undefined => {
+    const id = agent.session.id;
+    if (mountedScenes.has(id)) return mountedScenes.get(id);
+    // Older visible parents may have routed many scenes while retaining their
+    // original native preset. Recover that mounted composition independently
+    // of the next message's scene picker.
+    const preset = ctx.sessionProjections?.stateOf?.(agent.session, 'agentPreset') ?? agent.preset ?? agent.session.header?.agentPreset;
+    const registered = scenes.find(scene => scene.preset === preset);
+    if (registered) return registered.id;
+    if (typeof preset === 'string' && /^sss-bound-[a-f0-9]{32}$/.test(preset)) {
+      try {
+        const metadata = JSON.parse(readFileSync(join(config.output, 'presets', preset, 'preset.yml'), 'utf8'));
+        const matches = scenes.filter(scene => scene.label === metadata.name);
+        if (matches.length === 1) return matches[0].id;
+      } catch { /* Unknown legacy presets still use the existing fail-closed tool guard. */ }
+    }
+    return undefined;
+  };
+  function resetNextMessageScene(sessionId: string) {
+    if (!chatScene || !brokerMode || !config.comparison_scenes?.length || comparisons?.isLane(sessionId)) return;
+    const current = selections.get(sessionId) ?? defaults;
+    if (current.scene === chatScene.id) return;
+    // Admission has already frozen this turn's model/tools/scene. This only
+    // resets the next composer and must not remount a running Agent's preset.
+    // Preserve the user's RSI preference; only an unsupported Execute mode
+    // needs to fall back when returning to the general Chat tool surface.
+    const mode = current.rsi && current.mode === 'execute' && executeUnavailable(chatScene) ? 'baseline' : current.mode;
+    selections.set(sessionId, { ...current, scene:chatScene.id, mode }); saveSettings();
+  }
   const selectPreset = ctx.agentPresets?.select.bind(ctx.agentPresets);
   // DSH history persists across deployments, so its admission record must
   // follow the same per-user DSH home instead of a disposable Web run output.
@@ -366,9 +412,12 @@ export function apply(ctx: any) {
         return changeSelection(defaults,{...selection,mode:'baseline',rsi:false},scenes,executeUnavailable);}
     };
     if (saved.defaults) defaults = restoreSelection(saved.defaults);
+    if (chatScene) defaults = initialSelection(chatScene.id, 'baseline');
     for (const [id, selection] of Object.entries(saved.sessions ?? {})) {
       if (ownedSessions.has(id)) selections.set(id, restoreSelection(selection,id));
     }
+    for (const [id, scene] of Object.entries(saved.mounted_scenes ?? {}))
+      if (ownedSessions.has(id) && scenes.some(row => row.id === scene)) mountedScenes.set(id, scene as string);
     for(const [id, values] of Object.entries(saved.scene_options ?? {}))if(ownedSessions.has(id)){
       const scoped:Record<string,SceneOptions>={};
       for(const [sceneId,value] of Object.entries(values as Record<string,unknown>))if(scenes.some(scene=>scene.id===sceneId))scoped[sceneId]=sceneOptions(value,sceneFor(sceneId));
@@ -411,7 +460,7 @@ export function apply(ctx: any) {
   });
   if (indexedTasks.length !== indexedCount) saveTaskIndex();
   let creation: Promise<unknown> = Promise.resolve();
-  let active: string | null = null;
+  const active = new Map<string, { comparison?: string; provider: string }>();
   // Serial admission prevents two preview/submit retries from creating duplicate work.
   let admission: Promise<unknown> = Promise.resolve();
   const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -444,11 +493,13 @@ export function apply(ctx: any) {
   const forSession = (id: string): Task | undefined => tasks.get(sessions.get(id) ?? '');
   function view(task: Task, detail = false) {
     const request = task.request;
+    const live=progress.get(request.task_id)?.snapshot();
     return { task_id: request.task_id, session_id: request.session_id, request_id: request.request_id,
       capability_profile: request.capability_profile, scene: task.scene.id, scene_sha256: task.scene.config_sha256,
       user_id: principal, selected_mode: task.selection.mode, rsi: task.selection.rsi, mode: request.mode, budget_usd: request.budget_usd,
       entrypoint: task.entrypoint, source_task_id: task.source_task_id, status: task.status, failure: task.failure, fallback_reason: task.fallback_reason,
       created_at: task.created_at, started_at: task.started_at, finished_at: task.finished_at,
+      duration_ms:task.started_at?Math.max(0,Date.parse(task.finished_at??utc())-Date.parse(task.started_at)):0,
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
       request_sha256: request.request_sha256, confirmation_digest: task.confirmation_digest,
       provider_mode: config.provider_mode, provider: task.model_option.provider, model: task.model_option.model,
@@ -458,11 +509,11 @@ export function apply(ctx: any) {
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, source_pending: task.source_pending ?? false,
       effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
       stats: task.stats, sources: task.sources,
-      ...(progress.has(task.request.task_id) ? {progress: progress.get(task.request.task_id)!.snapshot().progress, activity: progress.get(task.request.task_id)!.snapshot().activity} : {}),
+      ...(live?{progress:live.progress,activity:live.activity,messages:live.messages,trace:live.trace}:{}),
       ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
         'ledger.jsonl', 'motif-audit.jsonl', ...(task.answer ? ['answer.md'] : [])] } : {}) };
   }
-  function record(task: Task) { json(join(task.output, 'task-state.json'), view(task)); }
+  function record(task: Task) { json(join(task.output, 'task-state.json'), view(task)); notifyTask(task); }
   for (const taskId of indexedTasks) {
     const output = join(config.output, 'tasks', taskId);
     const request: NormalizedWebTask = JSON.parse(readFileSync(join(output, 'task.json'), 'utf8'));
@@ -500,7 +551,24 @@ export function apply(ctx: any) {
       reasoning_effort: webReasoningEffort(state.provider ?? defaultModel.provider, state.reasoning_effort ?? effective.reasoning_effort ?? 'off') };
     try { task.answer = readFileSync(join(output, 'answer.md'), 'utf8'); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    tasks.set(taskId, task); progress.set(taskId, createTaskProgress({answer:task.answer,progress:state.progress,activity:state.activity})); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
+    let live=createTaskProgress({answer:task.answer,progress:state.progress,activity:state.activity,messages:state.messages,trace:state.trace});
+    if(!Array.isArray(state.trace)){
+      // Old tasks already saved native events. Anchor at this exact admitted
+      // request so a reused child session cannot expose another turn's trace.
+      try{
+        const events=readFileSync(join(output,'events.jsonl'),'utf8').split('\n').filter(Boolean).map(line=>JSON.parse(line));
+        const start=events.findIndex(event=>event.type==='user/message'&&event.data?.source?.rpcId===request.request_id);
+        if(start>=0){
+          // The journal rebuilds tool activities as well as the new trace. Do
+          // not append it to the old saved activity list; retain that list only
+          // when this task's exact journal anchor cannot be recovered.
+          live=createTaskProgress({answer:task.answer,progress:state.progress});
+          for(const event of events.slice(start))live.event(event);
+        }
+        for(const line of readFileSync(join(output,'motif-audit.jsonl'),'utf8').split('\n').filter(Boolean)){const entry=JSON.parse(line);live.audit({...entry,at:entry.at??''});}
+      }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+    }
+    tasks.set(taskId, task); progress.set(taskId,live); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
     if (!selections.has(request.session_id)) selections.set(request.session_id, { ...task.selection });
     if (!modelSelections.has(request.session_id)) modelSelections.set(request.session_id, task.model_option);
     if (!reasoningSelections.has(request.session_id) && task.reasoning_effort !== undefined) reasoningSelections.set(request.session_id, task.reasoning_effort);
@@ -523,7 +591,9 @@ export function apply(ctx: any) {
   }
   if (ownedSessions.size) saveSettings();
   function audit(task: Task, row: any) {
-    appendFileSync(join(task.output, 'motif-audit.jsonl'), JSON.stringify({ ...row, task_id: task.request.task_id }) + '\n', { mode: 0o600 });
+    const entry={...row,at:utc(),task_id:task.request.task_id};
+    appendFileSync(join(task.output, 'motif-audit.jsonl'), JSON.stringify(entry) + '\n', { mode: 0o600 });
+    progress.get(task.request.task_id)?.audit(entry);
     if (row.kind === 'motif_bypass_attempt') task.stats.motif_attempts = Number(task.stats.motif_attempts) + 1;
     if (row.kind === 'shadow_candidate') task.stats.shadow_candidates = Number(task.stats.shadow_candidates) + 1;
     if (row.kind === 'model_request_skipped_verified') task.stats.verified_skips = Number(task.stats.verified_skips) + 1;
@@ -546,8 +616,16 @@ export function apply(ctx: any) {
       (Date.parse(task.finished_at ?? utc()) - Date.parse(task.started_at)) / 1000;
     record(task); return view(task, true);
   }
-  function requireIdle() {
-    if (active) throw new TaskError('task_busy', 'Another task is running; wait or cancel it', 409);
+  function canStart(comparison?: string, provider?: string) {
+    if (!active.size) return true;
+    // Only the two isolated lanes of this exact comparison may share a slot.
+    // DeepSeek forwards the session header through the turn-budget broker;
+    // legacy headerless adapters must retain unambiguous single-task routing.
+    return Boolean(brokerMode && comparison && provider === 'deepseek-official' && active.size < 2 &&
+      [...active.values()].every(row => row.comparison === comparison && row.provider === provider));
+  }
+  function requireIdle(comparison?: string, provider?: string) {
+    if (!canStart(comparison, provider)) throw new TaskError('task_busy', 'Another task is running; wait or cancel it', 409);
   }
   function paperPdfDelivered(task: Task): boolean {
     if (task.scene.id !== 'paper-proofreading' || !task.scene_options.allow_output) return true;
@@ -576,7 +654,7 @@ export function apply(ctx: any) {
     task.closing = (async () => {
       await broker('/unbind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       await control('/tasks/cancel', { session_id: task.budget_session_id });
-      if (active === task.request.task_id) active = null;
+      active.delete(task.request.task_id);
     })().catch((error) => { task.failure = 'budget_close_failed: ' + String(error); record(task); });
   }
   const controller = ctx.sessionController;
@@ -598,14 +676,28 @@ export function apply(ctx: any) {
     },
   });
   const original = { create: controller.create.bind(controller), prompt: controller.prompt.bind(controller),
-    cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller) };
+    cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller), rename: controller.rename?.bind(controller) };
+  const titles = createConversationTitles(config.output, principal, {
+    inspect: id => controller.inspect(id),
+    siblings: id => {
+      const groups = ctx.workspaceRegistry?.list() ?? [];
+      const group = groups.find((row: any) => row.sessionIds.includes(id));
+      return (group?.sessionIds ?? [...ownedSessions].filter(sid => !groups.some((row: any) => row.sessionIds.includes(sid))))
+        .filter((sid: string) => ownedSessions.has(sid) && !privateLanes.isPrivate(sid) && !trash.isDeleted(sid));
+    },
+    rename: (id, title) => original.rename?.({ sessionId: id, title }),
+  });
+  if (original.rename) controller.rename = (request: any) => titles.rename(request.sessionId, request.title);
+  const refreshTitle = (id: string, text?: string) => privateLanes.isPrivate(id) || trash.isDeleted(id)
+    ? Promise.resolve() : titles.refresh(id, text).catch(() => undefined);
   const titledSessions = new Set<string>();
   async function repairBlankTitle(id: string, snapshot?: any) {
     if (titledSessions.has(id) || !controller.rename) return;
     snapshot ??= await controller.inspect(id);
     if (!snapshot.meta.title && !snapshot.events.some((event: any) =>
         ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)))
-      await controller.rename({ sessionId: id, title: '新会话' });
+      await original.rename?.({ sessionId: id, title: '新会话' });
+    await refreshTitle(id);
     titledSessions.add(id);
   }
   async function ensureOwned(id: string) {
@@ -658,7 +750,7 @@ export function apply(ctx: any) {
         catch (error) { if (!(error instanceof ApiSessionNotFound)) throw error; absent = true; }
         if (!absent) throw new TaskError('session_not_owned', 'Session is outside this Web run; create a new session');
       }
-      const chosen = request.agentPreset ? scenes.find(scene => scene.preset === request.agentPreset)! : sceneFor(defaults.scene);
+      const chosen = request.agentPreset ? scenes.find(scene => scene.preset === request.agentPreset)! : chatScene ?? sceneFor(defaults.scene);
       if (chosen.unavailable_reason) throw new TaskError('scene_not_connected', chosen.unavailable_reason, 409);
       if (request.cwd !== undefined && request.workspaceId !== undefined)
         throw new TaskError('invalid_workspace', '请选择工作区或目录，不能同时指定两者');
@@ -685,10 +777,10 @@ export function apply(ctx: any) {
         agentPreset: priorPreset ?? sessionPreset(config.output, workspace, chosen) });
       // Native title fallback is the storage directory basename (a UUID).
       // Give new chats a durable user-facing name without renaming old chats.
-      if (!priorPreset && controller.rename) await controller.rename({ sessionId: created.sessionId, title: '新会话' });
+      if (!priorPreset && original.rename) await original.rename({ sessionId: created.sessionId, title: '新会话' });
       ownedSessions.add(created.sessionId); saveOwnership();
       if (!selections.has(created.sessionId)) {
-        selections.set(created.sessionId, { ...defaults, scene: chosen.id });
+        selections.set(created.sessionId, chosen.id === chatScene?.id ? initialSelection(chosen.id, 'baseline') : { ...defaults, scene: chosen.id });
         saveSettings();
         bindScene(agents.get(created.sessionId), chosen);
         const option = modelSelections.get(created.sessionId) ?? defaultModel;
@@ -701,6 +793,7 @@ export function apply(ctx: any) {
     creation = result.catch(() => undefined); return result;
   };
   let branchSeqMap = new Map<number, number>();
+  let laneBranchSelection:'baseline'|'motif'|undefined;
   const branches = createSessionBranchService(config.output, principal, {
     ensureOwned: async id => { await ensureOwned(id); if (comparisons?.isLane(id)) throw new TaskError('comparison_child', '请在原对话中创建分支。', 409); },
     inspect: id => controller.inspect(id),
@@ -716,7 +809,7 @@ export function apply(ctx: any) {
         if (!reference) continue;
         const saved = comparisons?.snapshot(source, reference.id);
         if (!saved || !['completed','failed','cancelled'].includes(saved.status)) throw new TaskError('branch_turn_incomplete', '请等待所选回复完成后创建分支。', 409);
-        const text = Object.entries(saved.lanes).map(([name, value]: [string, any]) =>
+        const text = Object.entries(saved.lanes).filter(([name])=>!laneBranchSelection||name===(saved.presentation==='single'?'baseline':laneBranchSelection)).map(([name, value]: [string, any]) =>
           (saved.presentation === 'single' ? '' : (name === 'baseline' ? 'Baseline\n' : 'Motif\n')) + (value.answer_display ?? value.answer ?? '')).join('\n\n');
         const option = modelSelections.get(source) ?? defaultModel;
         projected.push({ type:'assistant/message', time:event.time, surfaceOp:'append',
@@ -741,18 +834,20 @@ export function apply(ctx: any) {
     },
     async createSeeded({ sessionId, sourceSessionId, title, seed, inheritedEventCount, sourceAtSeq }) {
       if (!ctx.agents?.create || !ctx.agentPresets?.mount) throw new TaskError('branch_unavailable', '当前服务暂不能创建分支，请稍后重试。', 409);
-      const workspace = workspaceFor(sessionId), scene = sceneFor(scenes.some(row => row.id === 'new-scene') ? 'new-scene' : defaults.scene);
       const selected = selections.get(sourceSessionId) ?? defaults;
+      const workspace = workspaceFor(sessionId), scene = sceneFor(selected.scene);
       const option = modelSelections.get(sourceSessionId) ?? defaultModel;
       const group = ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(sourceSessionId));
       const preset = sessionPreset(config.output, workspace, scene);
-      // A fork starts its own tool scope. Prior event evidence is readable
-      // history; the next routed send will allocate fresh task input copies.
+      // A fork inherits the selected scene, but mounts a fresh registered
+      // composition in its own workspace. The persisted selection and mounted
+      // tools must agree when agent/created reinstalls its restrictions. Never
+      // reuse the source agent's preset, tool list or input permissions.
       ownedSessions.add(sessionId); selections.set(sessionId, { ...selected }); modelSelections.set(sessionId, option);
       if (reasoningSelections.has(sourceSessionId)) reasoningSelections.set(sessionId, reasoningSelections.get(sourceSessionId)!);
       const sourceEvents = (await controller.inspect(sourceSessionId)).events.filter((event: any) => event.seq <= sourceAtSeq);
       const store = comparisonArtifacts(config.output), inherited = readBranchInputs(sourceSessionId);
-      const snapshot: any = {version:1,principal,session_id:sessionId,inherited_event_count:inheritedEventCount,lanes:{},context:{}};
+      const snapshot: any = {version:1,principal,session_id:sessionId,mounted_scene:scene.id,inherited_event_count:inheritedEventCount,lanes:{},context:{}};
       const inheritedCut = inherited?.inherited_event_count ?? 0;
       const inCut = (row: any) => Number.isSafeInteger(row.source_seq) && row.source_seq <= sourceAtSeq;
       const mappedSeq = (seq: number) => branchSeqMap.get(seq) ?? (() => { throw new TaskError('branch_history_unavailable','分支历史位置暂不可用。',409); })();
@@ -768,13 +863,14 @@ export function apply(ctx: any) {
           const filename = `${names.size+1}-${safe}${extname(safe).toLowerCase()==='.json'?'.txt':''}`;
           writeFileSync(join(directory,filename),bytes,{mode:0o600,flag:'wx'}); names.set('outputs/'+filename,safe);sourceSeqs.set('outputs/'+filename,mappedSeq(sourceSeq));seen.add(version);total+=bytes.length;
         };
-        const history: any[] = (inherited?.context?.[lane] ?? []).filter(inCut).map((row:any)=>({...row,source_seq:mappedSeq(row.source_seq)}));
+        const inheritedLane=laneBranchSelection??lane;
+        const history: any[] = (inherited?.context?.[inheritedLane] ?? []).filter(inCut).map((row:any)=>({...row,source_seq:mappedSeq(row.source_seq)}));
         for (const event of sourceEvents) {
           if (event.seq < inheritedCut) continue;
           const ref = event.type==='user/message' && event.data.harless_comparison;
           if (ref) {
             const saved = comparisons?.snapshot(sourceSessionId,ref.id);
-            const sourceLane = saved?.presentation==='single'?'baseline':lane;
+            const sourceLane = saved?.presentation==='single'?'baseline':laneBranchSelection??lane;
             const result = saved?.lanes[sourceLane];
             if (!saved || !result) throw new TaskError('branch_history_unavailable','分支历史结果暂不可用。',409);
             history.push({source_seq:mappedSeq(event.seq),user:event.data.content.filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n'),assistant:result.answer_display??result.answer??''});
@@ -786,11 +882,11 @@ export function apply(ctx: any) {
         const comparisonsAtCut = sourceEvents.filter((event:any)=>event.type==='user/message'&&event.data.harless_comparison).reverse();
         for (const event of comparisonsAtCut) {
           const saved = comparisons!.snapshot(sourceSessionId,event.data.harless_comparison.id)!;
-          const sourceLane = saved.presentation==='single'?'baseline':lane;
+          const sourceLane = saved.presentation==='single'?'baseline':laneBranchSelection??lane;
           const files = [...(saved.lanes[sourceLane]?.artifacts??[])].sort((a:any,b:any)=>Number(/(?:research_)?report\.pdf$/i.test(b.name))-Number(/(?:research_)?report\.pdf$/i.test(a.name)));
           for (const row of files) copy(row.name,store.read(saved.id,sourceLane,row),event.seq);
         }
-        for (const row of (inherited?.lanes?.[lane]??[]).filter(inCut)) copy(row.name,store.read(sourceSessionId,lane,row),row.source_seq);
+        for (const row of (inherited?.lanes?.[inheritedLane]??[]).filter(inCut)) copy(row.name,store.read(sourceSessionId,inheritedLane,row),row.source_seq);
         for (const event of [...sourceEvents].reverse()) if(event.type==='user/message') for(const part of event.data.content??[]) {
           if(part.type!=='file'||!part.attachment||part.attachment.bytes>20*1024*1024)continue;
           const ref=part.attachment,chunks:Buffer[]=[];let bytes=0;
@@ -808,7 +904,15 @@ export function apply(ctx: any) {
           agentOptions:{ provider:option.provider, model:option.model, ...(reasoningFor(sessionId, option) === undefined ? {} : {reasoningEffort: reasoningFor(sessionId, option)}) },
           setup:async (agentCtx: any) => { await ctx.agentPresets.mount(agentCtx,preset); },
         });
-      } catch (error) { ownedSessions.delete(sessionId); selections.delete(sessionId); modelSelections.delete(sessionId); reasoningSelections.delete(sessionId); throw error; }
+      } catch (error) {
+        ownedSessions.delete(sessionId); selections.delete(sessionId); modelSelections.delete(sessionId); reasoningSelections.delete(sessionId);
+        // Mount failures can contain internal tool rosters, paths and plugin
+        // details. Keep diagnostics in the private output only; both native
+        // RPC and comparison HTTP clients receive the same actionable error.
+        try { json(join(workspace, 'branch-initialization-error.json'), { time: utc(), source_session_id: sourceSessionId, message: String(error) }); } catch {}
+        if (error instanceof TaskError) throw error;
+        throw new TaskError('branch_unavailable', '分支暂时未能创建，原对话与结果已保留，请稍后重试。', 409);
+      }
       if (group) await group.attachSession(sessionId);
       await controller.rename({sessionId,title});
       if (optionSelections.has(sourceSessionId)) optionSelections.set(sessionId,structuredClone(optionSelections.get(sourceSessionId)!));
@@ -817,17 +921,32 @@ export function apply(ctx: any) {
     },
   });
   controller.fork = (request: any) => serialize(() => branches.fork(request));
+  async function forkComparison(body:any){
+    const value=await comparisons!.view(body.session_id,body.id),lane=value.lanes[body.lane];
+    if(!['baseline','motif'].includes(body.lane)||!lane)throw new TaskError('invalid_lane','找不到这一路回复。',404);
+    if(!terminal.has(value.status)||!lane.output_sha256||body.output_sha256!==lane.output_sha256)throw new TaskError('branch_version_changed','回复尚未完成或已更新，请刷新后创建分支。',409);
+    const snapshot=await controller.inspect(body.session_id);
+    const anchor=snapshot.events.find((event:any)=>event.type==='user/message'&&event.data.harless_comparison?.id===body.id);
+    if(!anchor)throw new TaskError('branch_history_unavailable','找不到这条回复的历史位置。',409);
+    laneBranchSelection=body.lane;
+    try{return await branches.fork({sessionId:body.session_id,atSeq:anchor.seq});}finally{laneBranchSelection=undefined;}
+  }
   // Native queue editing would change the approved content after its digest was
   // shown. Edits use a new task/preview rather than silently mutating this binding.
   controller.updateQueue = () => { throw new TaskError('queue_edit_not_supported', 'Preview a new task before changing queued input', 409); };
   controller.selectModel = async (request: any, signal: AbortSignal) => {
+    try {
     const option = findModel(request.model);
     const previousTask = forSession(request.sessionId);
     if (!ownedSessions.has(request.sessionId) || comparisons?.busy(request.sessionId) || (previousTask && (!brokerMode || !terminal.has(previousTask.status))) || request.provider !== option.provider)
       throw new TaskError('model_not_allowed', 'Model selection is outside the approved task configuration');
     let effort: WebReasoningEffort | undefined;
-    try { effort = webReasoningEffort(option.provider, request.reasoningEffort ?? reasoningFor(request.sessionId, option)); }
+    const current = modelSelections.get(request.sessionId) ?? defaultModel;
+    const switchingModel = current.provider !== option.provider || current.model !== option.model;
+    try { effort = webReasoningEffort(option.provider, request.reasoningEffort ?? (switchingModel ? 'off' : reasoningFor(request.sessionId, option))); }
     catch { throw new TaskError('model_not_allowed', '该模型不支持所选推理模式。'); }
+    try { webReasoningAvailability(option, effort); }
+    catch (error) { throw new TaskError('model_budget_unavailable', (error as Error).message); }
     const requested = { ...request };
     if (effort === undefined) delete requested.reasoningEffort;
     else requested.reasoningEffort = effort;
@@ -836,6 +955,12 @@ export function apply(ctx: any) {
     if (effort !== undefined) reasoningSelections.set(request.sessionId, effort);
     saveModels();
     return result;
+    } catch (error: any) {
+      appendFileSync(join(config.output, 'model-selection-errors.jsonl'), JSON.stringify({at:utc(),session_id:request.sessionId,
+        model:request.model,reasoning_effort:request.reasoningEffort??null,code:error?.code??error?.name,message:String(error?.message??error).slice(0,2048)})+'\n',{mode:0o600});
+      if (error instanceof TaskError) throw new RemoteError(error.code as any, error.message, {} as any);
+      throw error;
+    }
   };
   if (ctx.agentPresets) ctx.agentPresets.select = (agent: any, preset: string) => serialize(async () => {
     const scene = scenes.find(scene => scene.preset === preset);
@@ -849,10 +974,14 @@ export function apply(ctx: any) {
     const tentativeSession = existingSession ?? 'pending';
     const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
     const chosenModel = supplied.model === undefined ? (existingSession ? modelSelections.get(existingSession) ?? defaultModel : defaultModel) : findModel(supplied.model);
+    const currentModel = existingSession ? modelSelections.get(existingSession) ?? defaultModel : defaultModel;
+    const modelChanged = supplied.model !== undefined && (currentModel.provider !== chosenModel.provider || currentModel.model !== chosenModel.model);
     let chosenReasoning: WebReasoningEffort | undefined;
     try { chosenReasoning = webReasoningEffort(chosenModel.provider,
-      supplied.reasoning_effort ?? (existingSession ? reasoningFor(existingSession, chosenModel) : 'off')); }
+      supplied.reasoning_effort ?? (existingSession && !modelChanged ? reasoningFor(existingSession, chosenModel) : 'off')); }
     catch { throw new TaskError('model_not_allowed', '该模型不支持所选推理模式。'); }
+    try { webReasoningAvailability(chosenModel, chosenReasoning); }
+    catch (error) { throw new TaskError('model_budget_unavailable', (error as Error).message); }
     const taskInput = input && typeof input === 'object' && !Array.isArray(input)
       ? { ...supplied } : input;
     if (taskInput && typeof taskInput === 'object' && !Array.isArray(taskInput)) { delete taskInput.model; delete taskInput.scene_options; delete taskInput.reasoning_effort; }
@@ -1067,7 +1196,7 @@ export function apply(ctx: any) {
     }
     if (task.fallback_reason) audit(task, { kind: 'motif_fallback', reason: task.fallback_reason });
   }
-  async function submit(task: Task, confirmation: unknown, signal: AbortSignal) {
+  async function submit(task: Task, confirmation: unknown, signal: AbortSignal, comparison?: string) {
     if (confirmation !== task.confirmation_digest) throw new TaskError('confirmation_changed', 'Input/configuration changed; preview and confirm again', 409);
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
     if (task.scene.adapter === 'files' && task.scene_options.allow_output && !task.scene_inputs.length)
@@ -1094,7 +1223,9 @@ export function apply(ctx: any) {
     }
     // Source materialization/validation belongs to the selected tool call.
     // A greeting, explanation or planning turn need not prepare a report.
-    requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
+    requireIdle(comparison, task.model_option.provider);
+    active.set(task.request.task_id, {comparison, provider: task.model_option.provider});
+    task.status = 'running'; task.started_at = utc(); record(task);
     try {
       const attachmentContext = await sceneAttachmentContext(task.workspace, task.scene_inputs);
       if (scopeDigest(task.workspace, task.scene) !== task.scope_sha256)
@@ -1129,15 +1260,22 @@ export function apply(ctx: any) {
     const content = structuredClone(request.content);
     const firstText = content.find((part: any) => part.type === 'text');
     const shortcut = firstText && parseSceneShortcut(firstText.text, scenes);
+    const admitted = comparisons?.requestContext(request.sessionId, request.requestId);
     if (shortcut) {
+      if (admitted && shortcut.scene !== admitted.scene) throw new TaskError('request_id_conflict', '同一发送请求不能更改场景。', 409);
       if (!shortcut.text.trim() && content.length === 1) {
         await setSelection(request.sessionId, { scene: shortcut.scene });
         return { accepted: true }; // choosing a scene alone never calls the model
       }
-      await setSelection(request.sessionId, { scene: shortcut.scene });
+      if (!admitted) await setSelection(request.sessionId, { scene: shortcut.scene });
       firstText.text = shortcut.text;
+    } else if (!admitted && chatScene && brokerMode && config.comparison_scenes?.length) {
+      // The serialized content is the authority for this turn. A previous
+      // composer selection must not turn plain text or an attachment send
+      // into a data/PPT request after navigation or a client restart.
+      await setSelection(request.sessionId, { scene: chatScene.id });
     }
-    const selected = selections.get(request.sessionId)!;
+    const selected = admitted ? {...selections.get(request.sessionId)!,scene:admitted.scene} : selections.get(request.sessionId)!;
     if (comparisons && (config.comparison_scenes?.includes(selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
       const priorTask = forSession(request.sessionId);
       if (priorTask && !terminal.has(priorTask.status)) throw new TaskError('session_busy', '请等待当前回复完成或取消后再发送。', 409);
@@ -1157,7 +1295,8 @@ export function apply(ctx: any) {
         sourceFiles[part.receiptId]=structuredClone(ref);
         return { name: ref.name, bytes: ref.bytes, digest: digest(ref) };
       });
-      return comparisons.admit(request.sessionId, { ...request, content }, {
+      await refreshTitle(request.sessionId, text);
+      const result = await comparisons.admit(request.sessionId, { ...request, content }, {
         scene: selected.scene, options: {...(scene.adapter === 'ppt' ? {allow_output:true} : {}),...(optionSelections.get(request.sessionId)?.[selected.scene] ?? {})},
         prior_context_by_lane: readBranchInputs(request.sessionId)?.context,
         presentation: config.comparison_scenes?.includes(selected.scene) ? 'paired' : 'single',
@@ -1167,10 +1306,15 @@ export function apply(ctx: any) {
           })),
         model: (modelSelections.get(request.sessionId) ?? defaultModel).model, reasoning_effort: reasoningFor(request.sessionId),
         input_sha256: digest([text, files]),source_files:sourceFiles,
+        ...admitted,
       });
+      if (!admitted) resetNextMessageScene(request.sessionId);
+      return result;
     }
     const task = await preview({ content, request_id: request.requestId }, request.sessionId, 'native_chat');
+    await refreshTitle(request.sessionId, content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join(' '));
     await submit(task, task.confirmation_digest, signal);
+    resetNextMessageScene(request.sessionId);
     return { accepted: true };
   });
   controller.cancel = async (request: any) => {
@@ -1182,7 +1326,8 @@ export function apply(ctx: any) {
     const artifacts = comparisonArtifacts(config.output), taskParents = new Map<string, any>();
     comparisons = createComparisonService(config.output, principal, {
       owns: ensureOwned,
-      ready: () => active === null,
+      parallel: turn => findModel(turn.model).provider === 'deepseek-official',
+      ready: turn => canStart(turn.id, findModel(turn.model).provider),
       async createLane(parent, scene, lane) {
         const request = { sessionId: privateLanes.reserve(parent), agentPreset: sceneFor(scene).preset };
         privateCreations.add(request);
@@ -1192,7 +1337,8 @@ export function apply(ctx: any) {
         return created.sessionId;
       },
       async prepare(turn, lane, requestId) { return serialize(async () => {
-        requireIdle(); const child = turn.lanes[lane].session_id;
+        requireIdle(turn.id, findModel(turn.model).provider); const child = turn.lanes[lane].session_id;
+        if (turn.cancellation_requested) throw new TaskError('comparison_cancelled', '任务已取消。', 409);
         await ensureOwned(turn.session_id); await ensureOwned(child);
         if (comparisons!.parentFor(child) !== turn.session_id) throw new TaskError('comparison_scope_mismatch', '对话执行范围不匹配。', 403);
         const previous = forSession(child), content: any[] = [];
@@ -1264,11 +1410,18 @@ export function apply(ctx: any) {
         // Unavailable or invalid research libraries must be visible; never label a Baseline run as optimized.
         if (lane === 'motif' && reason && mode==='baseline') task.fallback_reason = reason;
         taskParents.set(task.request.task_id, { turn, lane });
-        try { await submit(task, task.confirmation_digest, new AbortController().signal); }
+        try {
+          if (turn.cancellation_requested) { finish(task, 'cancelled', 'user_cancelled'); await task.closing; return {task_id:task.request.task_id}; }
+          await submit(task, task.confirmation_digest, new AbortController().signal, turn.id);
+        }
         catch (error) { finish(task, 'failed', 'comparison_admission_failed'); await task.closing; throw error; }
         return { task_id: task.request.task_id };
       }); },
       async submit(_id) { /* prepare+submit is atomic within the existing admission lock. */ },
+      subscribe(id,listener){
+        get(id);const listeners=taskSubscribers.get(id)??new Set();listeners.add(listener);taskSubscribers.set(id,listeners);
+        return()=>{listeners.delete(listener);if(!listeners.size)taskSubscribers.delete(id);};
+      },
       async inspect(id, context) {
         const task = get(id), meta = taskParents.get(id) ?? context;
         let result;
@@ -1299,8 +1452,6 @@ export function apply(ctx: any) {
           // Public durable turn events make this app-owned result a native chat
           // turn. The two child Sessions perform all actual model execution.
           agent.session.append('turn/start',{turn:parentTurn});
-          if(!events.some((e:any)=>e.type==='user/message'))await controller.rename({sessionId:parent,
-            title:request.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join(' ').slice(0,80)});
         }
         if (request && !agent.session.snapshotEvents().some((e: any) => e.type === 'user/message' && e.data.source?.rpcId === request.requestId)) {
           const ids: string[] = [], content: any[] = [];
@@ -1329,6 +1480,7 @@ export function apply(ctx: any) {
         const url = new URL(request.url), session = url.searchParams.get('session_id')!, id = url.searchParams.get('id')!;
         if (request.method === 'GET') {
           const value: any = await comparisons!.view(session, id), lane = url.searchParams.get('lane'), file = url.searchParams.get('file');
+          if(url.searchParams.get('trace')==='1')return browserJson(await comparisons!.trace(session,id,lane??'',Number(url.searchParams.get('after')??-1),Number(url.searchParams.get('limit')??100)),{headers:{'Cache-Control':'no-store'}});
           if (url.searchParams.get('stream') === '1' && !file) {
             let stop: (() => void) | undefined, stopTrash: (() => void) | undefined, heartbeat: ReturnType<typeof setInterval> | undefined, closed = false;
             const encoder = new TextEncoder();
@@ -1358,10 +1510,14 @@ export function apply(ctx: any) {
           return browserJson(value, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
-        const result = await serialize(async () => body.action === 'rate' ? await comparisons!.rate(body.session_id, body.id, body.lane, body.score, body.revision, body.output_sha256)
+        const feedbackAction = body.action === 'rate' || body.action === 'feedback';
+        const perform = async () => body.action === 'rate' ? await comparisons!.rate(body.session_id, body.id, body.lane, body.score, body.revision, body.output_sha256)
+          : body.action === 'feedback' ? await comparisons!.feedback(body.session_id,body.id,body.lane,body.vote,body.output_sha256)
+          : body.action === 'fork' ? await forkComparison(body)
           : body.action === 'retry' ? await comparisons!.retry(body.session_id, body.id, body.lane)
           : body.action === 'cancel' ? await comparisons!.cancel(body.session_id, body.id)
-          : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })());
+          : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })();
+        const result = await (feedbackAction ? perform() : serialize(perform));
         return browserJson(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error: any) { return browserJson({ error: { code: error.code ?? 'comparison_failed', message: error.message } }, { status: error.status ?? 400 }); }
     } }), 'harless-comparison-api');
@@ -1371,15 +1527,21 @@ export function apply(ctx: any) {
   // resolveAdapterOptions supplies 256k when omitted; remove that application
   // default so the native adapter leaves max_tokens off the provider request.
   if (config.max_output_tokens == null) delete (options as any).maxTokens;
+  options.models = webDeepSeekModels(options.models, modelOptions);
   ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new WebDeepSeekAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
     resolveUserId: () => principal, prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
-  })), 'sss-web-task-provider');
+  }, modelOptions)), 'sss-web-task-provider');
   ctx.on('agent/created', ({ agent }: any) => {
     agents.set(agent.session.id, agent);
     if (ownedSessions.has(agent.session.id)) {
       workspaceFor(agent.session.id);
-      bindScene(agent, sceneFor(forSession(agent.session.id)?.scene.id ?? selections.get(agent.session.id)?.scene ?? defaults.scene), forSession(agent.session.id)?.source_pending);
+      const task = forSession(agent.session.id);
+      // A seeded conversation can later route to another scene while its own
+      // native preset stays immutable. Reinstall the tool guard for the actual
+      // mounted branch scope, not its next-send selection after cold recovery.
+      const mountedScene = readBranchInputs(agent.session.id)?.mounted_scene ?? restoredMountedScene(agent);
+      bindScene(agent, sceneFor(task?.scene.id ?? mountedScene ?? selections.get(agent.session.id)?.scene ?? defaults.scene), task?.source_pending);
     }
     agent.ctx.on('tools/result', (execution: any, result: any) => forSession(agent.session.id)?.interceptor?.observe(agent.session.id, execution, result));
     agent.ctx.on('agent/turn-stopping', ({ signal }: any) => {
@@ -1431,7 +1593,7 @@ export function apply(ctx: any) {
   }, { global: true });
   ctx.on('llm/stream', (request: any, next: any) => {
     const task = forSession(request.sessionId);
-    if (!task || task.status !== 'running' || active !== task.request.task_id ||
+    if (!task || task.status !== 'running' || !active.has(task.request.task_id) ||
         request.provider !== task.model_option.provider || request.model !== task.model_option.model ||
         request.reasoningEffort !== task.reasoning_effort ||
         request.maxTokens !== (config.max_output_tokens ?? undefined) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
@@ -1452,7 +1614,7 @@ export function apply(ctx: any) {
     const live = progress.get(task.request.task_id) ?? createTaskProgress(); progress.set(task.request.task_id, live); live.beginAttempt();
     return (async function* () {
       const stream = task.interceptor ? await task.interceptor.intercept(request.sessionId, request, next) : next();
-      for await (const chunk of stream) { live.chunk(chunk); task.answer = live.snapshot().answer; yield chunk; }
+      for await (const chunk of stream) { live.chunk(chunk); task.answer = live.snapshot().answer; notifyTask(task); yield chunk; }
     })();
   }, { global: true });
   const taskRoute = { methods: ['GET', 'POST'] as const, requestBody: 'buffered' as const,
@@ -1520,6 +1682,29 @@ export function apply(ctx: any) {
   for (const path of ['/api/harless/tasks', '/api/sss/tasks']) {
     ctx.effect(() => ctx.connection.fetch.register({ ...taskRoute, path }), 'harless-tasks-api-' + path);
   }
+  ctx.effect(() => ctx.connection.fetch.register({ path:'/api/harless/models', methods:['GET'], requestBody:'buffered',
+    fetch: async (request: Request) => {
+      const rejection = ctx.connection.requestRejection(request);
+      if (rejection) return new Response('Unauthorized', { status:rejection });
+      try {
+        const sessionId = new URL(request.url).searchParams.get('session_id');
+        if (sessionId) await ensureOwned(sessionId);
+        const selected = sessionId ? modelSelections.get(sessionId) ?? defaultModel : undefined;
+        return browserJson({ models:modelOptions.map(option => ({ provider:option.provider,model:option.model,label:option.label,available:option.available,
+          ...(option.reasoning_unavailable ? {reasoning_unavailable:option.reasoning_unavailable} : {}),
+          reasoning_modes:option.provider === 'deepseek-official' ? (['off','high'] as const).map(id => ({
+            id, label:id === 'off' ? 'Off' : 'On', available:option.available && !option.reasoning_unavailable?.[id],
+            ...(option.reasoning_unavailable?.[id] ? { unavailable_reason:option.reasoning_unavailable[id] } : {}),
+          })) : [],
+        })), default:{provider:defaultModel.provider,model:defaultModel.model,reasoning_effort:reasoningFor('',defaultModel) ?? null},
+          ...(selected ? {session_selection:{provider:selected.provider,model:selected.model,reasoning_effort:reasoningFor(sessionId!,selected) ?? null}} : {}),
+        }, {headers:{'Cache-Control':'no-store'}});
+      } catch (error: any) {
+        return browserJson({error:{code:error.code ?? 'models_unavailable',message:error instanceof TaskError ? error.message : '暂时无法读取模型列表。'}},
+          {status:error instanceof TaskError ? error.status : 400});
+      }
+    },
+  }), 'geneloop-model-catalog');
   const settingsRoute = { methods: ['GET', 'POST'] as const, requestBody: 'buffered' as const,
     fetch: async (request: Request) => {
       try {
@@ -1545,7 +1730,7 @@ export function apply(ctx: any) {
           }
           if (body.action === 'new_session') {
             if (body.inherit_session) await ensureOwned(body.inherit_session);
-            const chosen = body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
+            const chosen = chatScene ? initialSelection(chatScene.id, 'baseline') : body.inherit_session ? settingsView(body.inherit_session).selection : defaults;
             const next = body.selection === undefined ? chosen : changeSelection(chosen, body.selection, scenes, executeUnavailable);
             const group = body.inherit_session && ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(body.inherit_session));
             const created = await controller.create({ agentPreset: sceneFor(next.scene).preset, ...(group ? { workspaceId: group.id } : {}) });
@@ -1564,6 +1749,11 @@ export function apply(ctx: any) {
     } };
   ctx.effect(() => ctx.connection.fetch.register({ ...settingsRoute, path: '/api/harless/settings' }), 'harless-settings-api');
   registerSessionTrashRoute(ctx, trash, serialize);
+  ctx.effect(() => {
+    let live = true;
+    void (async () => { for (const id of ownedSessions) { if (!live) break; await refreshTitle(id); } })();
+    return () => { live = false; };
+  }, 'geneloop-conversation-titles');
   ctx.effect(() => protectPublicSessionOutput(controller), 'geneloop-public-session-output');
   ctx.effect(() => protectDeletedSessions(controller, trash), 'harless-trash-session-guards');
   ctx.inject?.(['sessionQuery'], (scope: any) => scope.effect(() => protectDeletedSessionQuery(scope.sessionQuery, trash, privateLanes.isPrivate)));

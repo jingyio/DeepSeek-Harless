@@ -262,7 +262,9 @@ function interactiveWorkspaceBrowser() {
   const nodes = tree => { const result = []; const visit = node => { if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) return node.forEach(visit); result.push(node); node.children?.forEach(visit); }; visit(tree); return result; };
   const click = button => button.props.onClick({ stopPropagation() {}, currentTarget: { getBoundingClientRect: () => ({ right: 260, bottom: 180 }), focus() {} } });
+  const settings = id => slots.find(row => row.options.name === 'settings.section' && row.options.id === id).component({ close: () => calls.push(['close-settings']) });
   return { render, header, home: () => Home(), nodes, click, calls, workspaces, sessions, navigation, streams, inputs, styles,
+    settings, slots,
     dispose: () => cleanups.reverse().forEach(fn => fn()),
     remount: () => { values.length = 0; return render(); }, setDeleted: ids => { deleted = ids; },
     failTrash: code => { trashFailure = code; }, delayTrash: promise => { delayTrash = promise; } };
@@ -390,6 +392,41 @@ test('workspace clicks toggle without selected/current updates or sidebar remoun
   assert.ok(!ui.calls.some(row => row[0] === 'create' || row[0] === 'open'), 'collapse never creates or changes the current chat');
 });
 
+test('archive and trash belong to native settings while workspace and first chat retain a visible gap', () => {
+  const ui = interactiveWorkspaceBrowser(); ui.workspaces.list.value.archivedSessionIds = ['one'];
+  const sidebar = ui.nodes(ui.render());
+  assert.ok(!sidebar.some(node => node.type === 'button' && node.children.some(child => ['已归档对话', '最近删除'].includes(child))));
+  for (const [id, label] of [['geneloop-archived', '已归档对话'], ['geneloop-trash', '最近删除']]) {
+    const entry = ui.slots.find(row => row.options.name === 'settings.section' && row.options.id === id);
+    assert.equal(entry.options.label(), label); assert.equal(ui.settings(id).type, 'section');
+  }
+  const archived = ui.settings('geneloop-archived'), open = ui.nodes(archived).find(node => node.type === 'button');
+  ui.click(open); assert.ok(ui.calls.some(row => row[0] === 'open' && row[1] === 'one'));
+  assert.ok(ui.calls.some(row => row[0] === 'close-settings'));
+  assert.match(ui.styles.map(style => style.textContent).join(''), /\.geneloop-workspace-row\+\.geneloop-chat-row\{margin-top:3px\}/);
+  ui.dispose();
+});
+
+test('mobile settings uses its public seat to give content full width without changing desktop or unrelated dialogs', () => {
+  const ui = interactiveWorkspaceBrowser();
+  const css = ui.styles.map(style => style.textContent).join('');
+  const scope = '[role="dialog"][aria-modal="true"]:has([data-slot="geneloop.settings.section"])';
+  const mobile = css.slice(css.indexOf('@media(max-width:640px){'), css.indexOf('\n    }', css.indexOf('@media(max-width:640px){')));
+  assert.ok(mobile.startsWith('@media(max-width:640px){'));
+  assert.ok(mobile.includes(scope + '{box-sizing:border-box;width:calc(100vw - 24px)'));
+  assert.match(mobile, /height:min\(800px,calc\(100dvh - 24px\)\);flex-direction:column/);
+  assert.ok(mobile.includes(scope + '>nav{width:100%;min-width:0'));
+  assert.match(mobile, />nav>div:last-child\{[^}]*flex-direction:row[^}]*overflow-x:auto/);
+  assert.match(mobile, />nav>div:last-child>button\{flex:0 0 auto;height:44px;white-space:nowrap/);
+  assert.match(mobile, />nav\+div\{min-width:0;min-height:0;flex:1\}/);
+  assert.match(mobile, />nav>div:first-child\{padding:0 160px 0 0/);
+  assert.match(mobile, />nav\+div>div:first-child button\{white-space:nowrap\}/);
+  assert.match(mobile, />nav\+div>div:first-child\{position:absolute;top:8px;right:8px/);
+  assert.ok(mobile.split('\n').slice(1).filter(line => line.trim()).every(line => line.trim().startsWith(scope)), 'every responsive rule stays in the owned settings shell');
+  assert.doesNotMatch(mobile, /VOzbGW|\!important/);
+  ui.dispose();
+});
+
 test('moving current chat to trash clears selection without creating another chat and supports durable restoration', async () => {
   const ui = interactiveWorkspaceBrowser();
   await new Promise(resolve => setImmediate(resolve));
@@ -402,10 +439,9 @@ test('moving current chat to trash clears selection without creating another cha
   assert.ok(!ui.calls.some(row => ['create', 'archive'].includes(row[0])));
   assert.ok(!ui.nodes(ui.render()).some(node => node.props?.['aria-label'] === '会话操作 已有聊天'));
   assert.ok(!ui.nodes(ui.home()).some(node => node.type === 'button' && node.children.some(child => child?.type === 'span' && child.children.includes('已有聊天'))));
-  ui.click(ui.nodes(ui.render()).find(node => node.type === 'button' && node.children.includes('最近删除')));
-  await new Promise(resolve => setImmediate(resolve));
-  const dialog = ui.nodes(ui.render()).find(node => node.type === 'modal' && node.props.title === '最近删除');
-  assert.equal(dialog.props.open, true);
+  assert.ok(!ui.nodes(ui.render()).some(node => node.type === 'button' && node.children.includes('最近删除')));
+  const dialog = ui.settings('geneloop-trash');
+  assert.equal(dialog.type, 'section'); assert.equal(dialog.props['aria-label'], '最近删除');
   const restore = ui.nodes(dialog).find(node => node.props?.['aria-label'] === '恢复对话 已有聊天');
   ui.click(restore); await new Promise(resolve => setImmediate(resolve));
   assert.ok(ui.calls.some(row => row[0] === 'trash' && row[1].action === 'restore' && row[1].session_id === 'one'));
@@ -484,13 +520,12 @@ test('removed and restored native membership refresh trash without exposing arch
   ui.sessions.list.emit();
   await new Promise(resolve => setImmediate(resolve));
   assert.ok(ui.calls.some(row => row[0] === 'clear'), 'removed-current masked gap must clear the durable native selection too');
-  ui.click(ui.nodes(ui.render()).find(node => node.type === 'button' && node.children.includes('已归档对话')));
-  const archive = ui.nodes(ui.render()).find(node => node.type === 'modal' && node.props.title === '已归档对话');
-  assert.ok(!ui.nodes(archive).some(node => node.type === 'button' && node.children.includes('已有聊天')));
+  const archive = ui.settings('geneloop-archived');
+  assert.ok(!ui.nodes(archive).some(node => node.type === 'span' && node.children.includes('已有聊天')));
   ui.setDeleted([]); ui.sessions.list.value.ids = ['one']; ui.sessions.list.emit();
   await new Promise(resolve => setImmediate(resolve));
-  const restoredArchive = ui.nodes(ui.render()).find(node => node.type === 'modal' && node.props.title === '已归档对话');
-  assert.ok(ui.nodes(restoredArchive).some(node => node.type === 'button' && node.children.includes('已有聊天')));
+  const restoredArchive = ui.settings('geneloop-archived');
+  assert.ok(ui.nodes(restoredArchive).some(node => node.type === 'span' && node.children.includes('已有聊天')));
   assert.equal(ui.sessions.list.value.current, undefined);
 });
 

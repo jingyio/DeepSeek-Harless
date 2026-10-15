@@ -1,5 +1,15 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 输入默认场景、模型目录与页面加载（2026-10-15）
+
+Web 每次发送从本轮序列化文本的前导 `/data`、`/ppt`、`/paper` 或 `/chat` 识别场景；没有场景标记时使用 `new-scene`。任务 admission 冻结本轮配置后，只把可见父会话的下一次选择恢复 Chat，不重新挂载运行中的工具。已接受 `requestId` 重试按持久场景、选项、模型、推理模式和展示方式恢复，再校验内容指纹。新建会话也默认 Chat。浏览器通过公开 `beginSubmission.onRetire` 区分成功提交和乐观清空，失败保留场景与附件，新草稿选择有版本保护。
+
+`session/selectModel` 和任务预览显式更换模型且省略推理参数时使用 Off；同模型省略参数则保留已有设置，显式不可用模式仍拒绝。业务错误转换官方 `RemoteError`，网关只展示固定安全提示。实际已挂载工具场景独立保存在 `mounted_scenes`，旧会话可从原 preset 元信息恢复，避免把下一轮预选场景误当已挂载范围。
+
+认证 `GET /api/harless/models[?session_id=…]` 提供安全模型目录、Off/On 可用性与原因、默认项及可选会话当前项；会话参数仍验证归属，不返回凭据，也不修改全局默认。路由声明 `requestBody: 'buffered'`，确保原生 HTTP bridge 的 GET 没有非法请求体。
+
+设置复用公开 `settings.section` 与原生 shell；同 id 模型页只显示一个导航项，归档、最近删除、账户表单在右栏切换。加载遮罩依赖公开 sessions list、`openState`、视图布局提交和当前页对照快照读取；不等待任务完成，不抓取更早分页。读取错误即时释放遮罩，异常长等待显示已加载内容与重试提示，减少动画偏好受支持。
+
 2026-10-14 四分支兼容：`offeredSchemaMatches` 保留第四参数的冻结 Schema 摘要校验；`proposeReadyBatch.closedContinuation` 仅补充论文的闭合结构判定，授权计划仍由独立的 `approvedContinuation` 检查，失效权限不能被论文回调或相似度救回。成员场景的 `/app/.local/web/sessions` 只有在部署根与 `/user/tasks` 的设备/inode 完全相同时才进入原生文件允许范围。详情及验收层级见 [整合记录](experiments/four-scenario-main-integration-20261014-v1.md)。
 
 成员账号的文件与工作区 API 在独立 `bubblewrap` 后端中额外校验：`workspaceFiles/{read,readAll,readBytes,readRelated,stat,list}` 经公开 Fetch 路由限制到 header 派生的会话工作区；`workspace/create` 与 `directoryPicker/{list,createDirectory}` 限制到该账号的 workspace/sessions 目录。路径按 realpath 校验，拒绝父目录与符号链接越界；失败以原生 RPC envelope 的 `gateway/forbidden` 返回。公开 `workspaceFileScope` Lookup 限制包括 WebSocket changes feed 在内的根目录，未知/跨账号 Session 不得到 scope。详见 [账号网关](harless-account-gateway.md)。
@@ -14,7 +24,7 @@
 
 网关 `scripts/harless_public_transport.mjs` 只投影原生 unary JSON RPC 的失败 envelope，以及 `/api/remote.mux` WebSocket 的错误和已识别 `$events` 元信息。错误保留可接受的 code、给出用户提示并清空内部 details；host home、会话新增事件 cwd 和会话错误详情不对外展示。成功 RPC 字节、无关流、客户端请求、二进制和文件内容保持；SSE 与下载不作为普通 JSON RPC 缓存改写。`ws` 固定为直接运行依赖，双向连接关闭和背压仍由代理处理。
 
-普通聊天通过公开 `conversation.chat.node` 插槽汇总每个回合的过程，默认仅显示最终回答；生成中显示当前真实回答和状态。工具、上下文、早期消息与推理文字按需展开，可再次收起，新会话/回合默认折叠。最终正文复用已注册的原生 assistant renderer，保留 Markdown、图片、授权文件入口；`turn-tail` 复制、评分和分支操作未被替换，错误与中断提示保留。上游 Compact 的回答边界决定承载节点，避免旧节点被外层隐藏；本修改不接管 trace 目标，也不修改上游源码。对照标题只改展示名称 Baseline / Motif，协议仍使用 `baseline`、`execute`、`shadow`。
+普通聊天通过公开 `conversation.chat.node` 插槽汇总每个回合的过程，默认仅显示最终回答；生成中显示当前真实回答和状态。工具、上下文、早期消息与推理文字按需展开，可再次收起，新会话/回合默认折叠。最终正文复用已注册的原生 assistant renderer，保留 Markdown、图片、授权文件入口；`turn-tail` 复制、评分和分支操作未被替换，错误与中断提示保留。上游 Compact 的回答边界决定承载节点，避免旧节点被外层隐藏；普通对话轨迹仍复用原生视图，对照轨迹通过公开插槽补充，不修改上游源码。对照标题只改展示名称 Baseline / Motif，协议仍使用 `baseline`、`execute`、`shadow`。
 
 PPT 的本轮兼容锁仅更新共享 `harless_task_scope.ts` 产品身份组合所需代码 SHA 及其 `runtime-bindings.json` 登记摘要；原学习边、上传来源归属与字节摘要、job 绑定、工具参数和完整 MCP schema 不变，不是新训练证书。检查结果与尚待补充的真实/UI/发布验收见 [本轮记录](experiments/geneloop-message-privacy-20261015-v1.md)。
 
@@ -657,6 +667,20 @@ PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历
 
 以上为当前代码契约；浏览器、服务器和真实模型验收结果分别记录在对应实验与主线交接中，接口实现本身不构成部署或科研质量证明。
 
+### 对照消息、独立轨迹与尾部动作
+
+任务和每侧对照快照增加 `messages`（按模型响应保留文字、尝试编号、时间与完成/中断状态）、`trace`（请求、思考状态、工具、回复及 Motif 事件）和 `started_at/finished_at/duration_ms`。原生流事件直接更新快照，并经节流订阅送达 SSE；前端运行中保留之前的工作说明，终态默认显示最后回复，之前的说明与工具折叠。不会将最终文本拆分来模拟流式；状态和轨迹不公开推理正文、原始工具参数或主机路径。取消的回复标记中断。
+
+`GET /api/harless/comparisons?session_id=...&id=...&trace=1&lane=baseline|motif&after=-1&limit=100` 返回该账号、该轮、该侧的分页轨迹。旧任务优先恢复私有任务状态；缺少新轨迹时从当前请求锚点重放既有事件，不调用模型，也不混入同子会话的其他轮次。只有真实 `model_request_skipped_verified` 才设置 `optimized:true, verified_skip:true` 并使用绿色“已验证跳过模型请求”标识；候选、尝试、回退分别呈现。原生轨迹视图保留于“普通对话”，对照轮次提供 Baseline / Motif 标签，按原轮号定位。
+
+对照 POST 的 `action:"feedback"` 接受 `lane`、`vote:"up"|"down"|null` 和 `output_sha256`；版本不符或未完成则拒绝，反馈独立于 1–5 分研究评分，重试后清除。`action:"fork"` 接受同一对照定位与 `lane`，只复制所选侧的已完成历史，按该侧来源与已验证文件创建独立分支。两侧分别提供复制、赞/踩、分支、用量和耗时，原独立大分支按钮移除。
+
+### 自动会话名称与真实模型目录
+
+`geneloop_conversation_titles.ts` 在首次有效用户请求提取简短主题，不额外调用付费模型；问候名暂存，后续实质请求可替换。同一工作区的自动重名追加编号；用户手动改名、独立分支名和已有非占位名不覆盖。账号私有 `conversation-titles.json` 记录状态；所有改名仍走原生 Controller，保留其返回值与通知契约。
+
+真实启动通过已认证的 DeepSeek `/models` GET 与已支持、已定价模型求交集，失败不伪造可用目录。记录只保留公共模型元信息，不保存凭据或提供商异常正文。会话选中的模型和推理档位进入该轮冻结配置、预算检查与原生请求；不在服务端静默替换。默认输出费用已超过每任务预算的档位以 `reasoning_unavailable` 提前说明并拒绝，不降低服务商默认输出、不增加预算。共享服务当前 Flash Off/On、Pro Off 可用，Pro On 受既有每任务费用预算限制。
+
 ## 会话回收站与工作区折叠（2026-10-15）
 
 `GET /api/harless/session-trash` 返回当前账号的最近删除记录；`POST` 接受 `{action:"delete"|"restore",session_id}`。这是可恢复删除，保留同一会话 ID、原工作区关系、历史和文件，不复用原生永久删除事件。活动任务或待处理输入返回 `409 session_busy`；未知或其他账号的 ID 不可操作。删除时同时隐藏私有执行子会话，已独立复制的可见分支仍可使用。原工作区已删除时，恢复的聊天显示在未分组。
@@ -674,3 +698,24 @@ DeepSeek 原生模型目录展示 Off / On，内部值分别为 `off` / `high`�
 上传准入不再按场景限制文件扩展名，所有附件仍校验所属账号、回执、容量、字节和 SHA。工具输入只引用其能处理的来源子集，其他附件作为参考资料保留。只读提取器读取 PDF 文字层、Word DOCX 正文和表格、Office 表格/演示文本及普通文本；旧 DOC 使用已部署的 antiword。文档视觉元素不宣称已审阅，扫描文字标记待 OCR，未知或损坏内容提供明确读取状态。提取全文作为用户资料传入原生 DSH 请求，不增加工具权限、不执行宏或附件代码、不信任附件中的系统指令。
 
 数据工具 `inspect_study` 同时返回参考资料与 `report_ready`。没有可分析表、存在多表或表格无效时，仍允许正常模型问答；实际请求统计工具时才说明所缺条件。真实统计仍基于明确的 CSV/TSV，不能从 PDF/Word 臆造数据。研究要求派生为冻结的 intake 请求，原件与原始消息不改写；旧已生成报告维持原来源快照和版本。原始上传资料可在同一父会话跨场景携带，生成成品仍按目标工具支持类型筛选。
+
+# 对照恢复、并行与评分补充（2026-10-15）
+
+比较快照新增持久递增的 `snapshot_epoch`：每次服务启动先递增并同步落盘，客户端按 epoch、`snapshot_revision`、`score_revision` 的顺序比较。运行中的快照写盘可合并到 250ms，真实 SSE 增量仍立即广播；终态与评分同步落盘。旧记录缺少 epoch 时按 0 兼容，较旧实例的迟到响应不能覆盖新实例状态。
+
+DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路由及请求授权检查；不同轮次和普通任务仍遵守现有调度。缺少明确 Session 路由的模型适配器继续串行。重连和历史读取不启动模型，完整终态快照不再反复访问预算服务，旧记录保留必要的交付恢复。
+
+`rate` 和 `feedback` 使用短临界区，校验输出 SHA 和版本，持久化后返回，不等待原生页面通知。客户端按比较 ID 共享评分保存队列，立即显示选择、串行提交最新意图；站内导航不丢失待保存选择。失败显示错误并读取服务器确认；401/403、退出页面或插件停止时清空队列及内存缓存。该评分仍与回复赞踩分别存储。
+
+
+## 回复操作栏一致性（2026-10-15）
+
+场景前端通过公开 primitives 复用 Chat 的复制、勾选、赞踩、分支、用量和用时图标及 Tooltip；不导入私有组件或依赖生成的样式类。最新轮由公开 `useChat` 的整个 `timeline.turnOrder` 判定，包括后续普通 Chat；历史侧栏仅在支持 hover 的设备上淡出，hover/focus-within 或统计面板展开时恢复，评分不随之隐藏。
+
+统计使用每侧已有 usage/stats、duration_ms、started_at/finished_at，未知总量/时长不显示虚构数字；不从全程耗时推算 TPS/TTFT。弹层使用公开锚点定位及外点关闭，Escape 返回触发按钮；复制成功勾选一秒后恢复，沿用版本绑定的反馈与分支接口。桌面窄栏允许统计整组换行，手机窄屏采用原生紧凑图标并保留可访问名称。
+
+## 网页输入栏和即时模型选择（2026-10-15）
+
+通过公开 slot 包装原生输入栏和模型选择器，保留原 inject、store、locale 与子插槽归属。输入栏不提供 permission command 属性，因此不渲染权限选择器；服务端权限策略保持。公开 trigger menu store 过滤 `export/feedback/harless/permission/model`，同步修正键盘高亮，其他来源和扩展命令保留。指令按钮打开 `harless-scenes`；已有文字时在开头插入场景 chip，替换已有前缀时使用当前 draftRev，保留正文和附件。
+
+模型选择由每 Session 的公开 directory 投影立即反馈，RPC 串行执行；后到的旧结果不能覆盖最新待存选项。原生菜单收到即时成功只表示已接收选择，后台失败通过原生 notice 提示并回到确认状态。公开 `session.prompt` 与模型写入共用队列，发送等待其前面的选择完成，失败或取消保留草稿；发送之后的选择不能越过该次请求。站内导航复用队列，Session scope 结束时解除订阅、恢复 prompt。不改上游包、不修改模型目录、推理可用性或预算。

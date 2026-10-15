@@ -26,7 +26,7 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
     { id: 'research-data-analysis', label: 'Data', available: false },
     { id: 'new-scene', label: 'Chat', available: true }];
   if (allAvailable) for (const scene of scenes) scene.available = true;
-  const values = new Map(), inputs = new Map(), posts = [], opened = [], rebinds = [], reads = [], submissions = [], blocks = new Map(), statusUpdates = [];
+  const values = new Map(), inputs = new Map(), faces = new Map(), retirements = new Map(), posts = [], opened = [], rebinds = [], reads = [], submissions = [], blocks = new Map(), statusUpdates = [];
   let registered, decoration, trigger, statusComponent, freshCount = 0;
   function makeInput(id, draft = '/p 请生成报告') {
     values.set(id, { selection: { scene: 'new-scene', mode: 'baseline', rsi: true }, scenes, scene_locked: locked });
@@ -48,6 +48,7 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
     inputs.set(id, input); return input;
   }
   makeInput('alice'); makeInput('bob');
+  for (const id of inputs.keys()) faces.set(id, { beginSubmission(value) { retirements.set(id, value.onRetire); return { requestId: 'request-' + id }; } });
   const fetch = async (url, init) => {
     const body = init.method === 'POST' ? JSON.parse(init.body) : undefined;
     if (body) { posts.push(body); await beforePost?.(body, inputs); }
@@ -66,7 +67,7 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
   runInNewContext(source, { window: { __ModuleLoader__: { load(spec) { registered = spec; } } }, fetch, AbortController, setTimeout, clearTimeout });
   let current = 'alice'; const sessionListeners = new Set();
   const setCurrent = id => { current = id; for (const fn of sessionListeners) fn(); };
-  const sessions = { scope: id => inputs.has(id) ? { id } : undefined, refresh: async () => {}, open(id) { opened.push(id); setCurrent(id); onOpen?.(id, inputs); },
+  const sessions = { scope: id => inputs.has(id) ? { id } : undefined, binding: id => ({ session: faces.get(id) }), refresh: async () => {}, open(id) { opened.push(id); setCurrent(id); onOpen?.(id, inputs); },
     list: { getSnapshot: () => ({ current }), subscribe(fn) { sessionListeners.add(fn); return () => sessionListeners.delete(fn); } } };
   registered.factory(name => name === 'react' ? {
     useState: initial => [initial, value => statusUpdates.push(value)], useEffect: effect => effect(),
@@ -85,7 +86,7 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
     for (let i = 0; i < 15; i++) await new Promise(resolve => setImmediate(resolve));
   };
   return { decoration, trigger, inputs, posts, opened, values, pick, statusComponent, rebinds, reads, submissions, blocks, setCurrent,
-    statusUpdates, observeStatus: (sessionId = 'alice') => statusComponent({ sessionId, openSession: id => sessions.open(id) }) };
+    statusUpdates, faces, retirements, observeStatus: (sessionId = 'alice') => statusComponent({ sessionId, openSession: id => sessions.open(id) }) };
 }
 test('Scene slash source filters each prefix and uses native reference chips', async () => {
   const f = fixture(), session = { sessionId: 'alice' };
@@ -113,6 +114,16 @@ test('Choosing PPT from /harless retains a visible token and preserves other dra
   assert.equal(f.inputs.get('alice').inserts.length, 1);
   await f.decoration.ui.onSelect(rows.find(row => row.id === 'mode:shadow'), session);
   assert.equal(f.values.get('alice').selection.mode, 'shadow');
+});
+
+test('Scene launcher inserts a leading chip into an existing draft and retains attachments', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
+  input.setDraft('请生成报告'); input.addAttachments(['paper']);
+  await f.trigger.candidates({ sessionId: 'alice' }, { query: '', position: 'leading' });
+  await f.pick('alice', 'ppt', 0);
+  assert.equal(input.state.getSnapshot().draft, '/ppt 请生成报告');
+  assert.deepEqual(Array.from(input.state.getSnapshot().attachmentIds), ['paper']);
+  assert.equal(f.values.get('alice').selection.scene, 'ppt');
 });
 test('Flat native task options preserve other options and refuse frozen or unoffered choices', async () => {
   const f=fixture(),session={sessionId:'alice'},current=f.values.get('alice');
@@ -390,16 +401,47 @@ test('Deleting an optimistic chip waits for its mount and then clears it, never 
   assert.ok(f.statusUpdates.slice(cancelledAt).every(value => value.selection.scene === 'new-scene'), 'late scene reads and mount results cannot restore the cancelled badge');
 });
 
-test('Native submit clearing and reopening an empty draft keep a scene for ordinary multi-turn continuation', async () => {
+test('Only accepted submission resets the next input to Chat without changing the running scene', async () => {
   const f = fixture({ allAvailable: true }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
   f.values.get('alice').selection.scene = 'research-data-analysis'; input.setDraft('');
   f.trigger.warm(session); await flush();
   assert.equal(f.posts.length, 0, 'loading an empty composer is not a cancellation');
   input.setDraft('/data 第一轮'); input.setPhase('adjudicating');
   await f.trigger.matchEnter(session, '/data 第一轮', new AbortController().signal);
+  let forwarded = 0;
+  f.faces.get('alice').beginSubmission({ onRetire: () => forwarded++ });
   input.setDraft(''); input.setPhase('plain'); await flush();
+  f.observeStatus(); await flush();
+  f.retirements.get('alice')({ reason: 'observed', attachments: [] });
+  assert.equal(forwarded, 1);
+  assert.equal(f.statusUpdates.at(-1).selection.scene, 'new-scene');
+  assert.equal(f.statusUpdates.at(-1).paired_comparison, false);
   f.setCurrent('bob'); f.setCurrent('alice'); input.setDraft('继续上一轮'); await flush();
+  // The server, tested separately, consumes its selection at admission. The
+  // client must never mount a new preset into an already running task.
   assert.equal(f.values.get('alice').selection.scene, 'research-data-analysis'); assert.equal(f.posts.length, 0);
+});
+
+test('Failed admission retains the scene and forwards native attachment recovery', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
+  await f.pick('alice'); f.observeStatus(); await flush();
+  const count = f.posts.length; let reason;
+  f.faces.get('alice').beginSubmission({ onRetire: value => { reason = value.reason; } });
+  input.setDraft(''); await flush();
+  f.retirements.get('alice')({ reason: 'failed' });
+  input.setDraft('/ppt 请生成报告'); await flush();
+  assert.equal(reason, 'failed'); assert.equal(f.posts.length, count);
+  assert.equal(f.statusUpdates.at(-1).selection.scene, 'ppt');
+});
+
+test('A late accepted submission cannot erase a scene selected for a newer draft', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
+  await f.pick('alice'); f.observeStatus(); await flush();
+  f.faces.get('alice').beginSubmission({});
+  input.setDraft('/data 下一轮'); await f.pick('alice', 'research-data-analysis', 5);
+  f.retirements.get('alice')({ reason: 'observed', attachments: [] });
+  assert.equal(f.statusUpdates.at(-1).selection.scene, 'research-data-analysis');
+  assert.match(input.state.getSnapshot().draft, /^\/data/);
 });
 
 test('Deleting a started scene token resets its current conversation without moving input or files', async () => {

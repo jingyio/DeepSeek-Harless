@@ -41,3 +41,12 @@ test('event projection conceals home, added cwd and errors without touching othe
   project({type:'end',streamId:'events1'});
   assert.equal(project(ready).value.host.home,'/home/operator','retired ID is no longer an event stream');
 });
+
+test('model selection failures retain actionable safe codes without returning private diagnostics',()=>{
+  for(const code of ['model_budget_unavailable','model_not_allowed']){
+    const error=publicTransportError({code,message:'/home/private/runtime: provider secret failure',details:{token:'secret'}});
+    assert.equal(error.code,code);assert.deepEqual(error.details,{});
+    assert.doesNotMatch(JSON.stringify(error),/private|secret/);
+    assert.match(error.message,code==='model_budget_unavailable'?/Off/:/模型/);
+  }
+});

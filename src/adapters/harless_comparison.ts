@@ -10,8 +10,10 @@ const lanes = ['baseline', 'motif'] as const;
 type LaneName = typeof lanes[number];
 type Lane = { session_id: string; task_id?: string; status: string; answer?: string; failure?: string;
   failure_stage?: 'preparation' | 'execution';
-  answer_display?: string; answer_binding?: any; progress?: any; activity?: any[];
+  answer_display?: string; answer_binding?: any; progress?: any; activity?: any[]; messages?: any[]; trace?: any[];
+  started_at?: string; finished_at?: string; duration_ms?: number; feedback?: 'up'|'down'|null;
   mode?:string;library_sha256?:string;source_pending?:boolean;
+  delivery_reconciled?: boolean;
   attempt: number; output_sha256?: string; stats?: any; fallback_reason?: string; artifacts?: any[] };
 type Turn = { id: string; session_id: string; request_id: string; fingerprint: string; scene: string;
   options: any; model: any; input_sha256: string; created_at: string; status: string;
@@ -53,23 +55,46 @@ export type ComparisonHost = {
   prepare(turn: any, lane: LaneName, requestId: string): Promise<{ task_id: string }>;
   submit(taskId: string): Promise<void>;
   inspect(taskId: string, context?: { turn: any; lane: LaneName; recoverMissing?: boolean }): Promise<any>;
+  subscribe?(taskId: string, listener: (task: any) => void): () => void;
   cancel(taskId: string): Promise<void>;
   publish(parent: string, turn: any, request?: any): Promise<void>;
-  ready?(): boolean;
+  parallel?(turn: any): boolean;
+  ready?(turn: any, lane: LaneName): boolean;
 };
 
 export function createComparisonService(output: string, principal: string, host: ComparisonHost,
   { pollMs = 400 }: { pollMs?: number } = {}) {
   mkdirSync(output, { recursive: true, mode: 0o700 });
   const path = join(output, 'comparisons.json');
-  const state: { version: number; revision?: number; principal: string; threads: Record<string, any>; turns: Turn[] } = existsSync(path)
+  const state: { version: number; revision?: number; snapshot_epoch?: number; principal: string; threads: Record<string, any>; turns: Turn[] } = existsSync(path)
     ? JSON.parse(readFileSync(path, 'utf8')) : { version: 1, principal, threads: {}, turns: [] };
   if (state.version !== 1 || state.principal !== principal || !Array.isArray(state.turns)) throw Error('comparison_store_scope_mismatch');
+  if (!Number.isSafeInteger(state.snapshot_epoch ?? 0) || (state.snapshot_epoch ?? 0) < 0 || state.snapshot_epoch === Number.MAX_SAFE_INTEGER)
+    throw Error('comparison_store_epoch_invalid');
+  // A crashed process may have emitted revisions newer than its checkpoint.
+  // Persist a new generation before exposing any view, so clients can accept
+  // recovery even when that generation starts at a lower local revision.
+  state.snapshot_epoch = (state.snapshot_epoch ?? 0) + 1;
   const pending: Turn[] = [], inFlight = new Set<string>();
   const subscribers = new Map<string, Set<(value: any) => void>>();
   const reconciledDeliveries = new Set<string>();
-  let running = false, disposed = false, admission = Promise.resolve();
-  const save = () => { state.revision = (state.revision ?? 0) + 1; const tmp = path + '.' + randomUUID() + '.tmp'; writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 }); renameSync(tmp, path); };
+  let running = false, disposed = false, admission = Promise.resolve(), feedbackAdmission = Promise.resolve();
+  let checkpoint: ReturnType<typeof setTimeout> | undefined;
+  const writeState = () => { const tmp = path + '.' + randomUUID() + '.tmp'; writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 }); renameSync(tmp, path); };
+  const save = (defer = false) => {
+    state.revision = (state.revision ?? 0) + 1;
+    // Native deltas still publish immediately. Coalesce only the growing
+    // on-disk snapshot; admissions, final results and feedback remain durable.
+    if (defer) {
+      checkpoint ??= setTimeout(() => {
+        checkpoint = undefined;
+        try { writeState(); } catch { /* Native task journals remain authoritative; the next durable transition retries and propagates failure. */ }
+      }, 250);
+      return;
+    }
+    if (checkpoint) { clearTimeout(checkpoint); checkpoint = undefined; }
+    writeState();
+  };
   // Reconnect never starts a paid task. A stopped turn needs an explicit retry.
   for (const t of state.turns) if (!terminal.has(t.status)) {
     for (const name of turnLanes(t)) if (!terminal.has(t.lanes[name].status)) Object.assign(t.lanes[name], { status: 'failed', failure: '服务重启中断了这一路，请重试。' });
@@ -79,21 +104,27 @@ export function createComparisonService(output: string, principal: string, host:
   const locked = <T>(fn: () => Promise<T>): Promise<T> => {
     const job = admission.then(fn); admission = job.then(() => undefined, () => undefined); return job;
   };
+  // Rating writes have their own short critical section. Creating a new
+  // execution scope must not delay feedback on an already completed result.
+  const feedbackLocked = <T>(fn: () => Promise<T>): Promise<T> => {
+    const job = feedbackAdmission.then(fn); feedbackAdmission = job.then(() => undefined, () => undefined); return job;
+  };
   const outputHash = (lane: Lane) => hash([lane.answer, lane.artifacts,
     ...(lane.answer_display === undefined ? [] : [{ answer_display: lane.answer_display, answer_binding: lane.answer_binding }])]);
-  const view = (t: Turn) => ({ snapshot_revision: state.revision ?? 0, presentation: t.presentation ?? 'paired', id: t.id, session_id: t.session_id, scene: t.scene, status: t.status,
+  const view = (t: Turn) => ({ snapshot_epoch: state.snapshot_epoch, snapshot_revision: state.revision ?? 0, presentation: t.presentation ?? 'paired', id: t.id, session_id: t.session_id, scene: t.scene, status: t.status,
     input_sha256: t.input_sha256, created_at: t.created_at, score_revision: t.score_revision, scores: { ...t.scores },
     scoring_available: t.presentation !== 'single' && turnLanes(t).every(name => t.lanes[name].status === 'completed'),
     lanes: Object.fromEntries(turnLanes(t).map(name => {
       const lane = t.lanes[name], artifacts = (lane.artifacts ?? []).filter(row=>
         t.scene!=='research-data-analysis'||row.verification==='data-report-delivery-v1');
+      const {delivery_reconciled, ...publicLane} = lane;
       const notStarted = lane.status === 'failed' && !lane.task_id && !lane.answer && !lane.answer_display && !artifacts.length &&
         !lane.activity?.length && ['upstream_requests', 'model_requests', 'tool_calls', 'llm_decisions', 'verified_skips']
           .every(field => !Number(lane.stats?.[field]));
       const delivery_status = artifacts.length ? 'available' : notStarted ? 'not_started' : terminal.has(lane.status) ? 'not_delivered' : 'pending';
       const failure = notStarted && lane.failure === '这一路未完成，请重试；另一侧结果已保留。'
         ? '任务未能启动，请检查附件后重试。' : lane.failure;
-      return [name, { ...lane, ...(failure === undefined ? {} : {failure}), artifacts, delivery_status,
+      return [name, { ...publicLane, ...(failure === undefined ? {} : {failure}), artifacts, delivery_status,
         delivery_message: delivery_status === 'available' ? '结果文件已保存，可下载到本地。'
           : delivery_status === 'pending' ? '结果文件会在生成并通过交付检查后显示。'
           : delivery_status === 'not_started' ? '本轮尚未开始执行，暂无结果文件。'
@@ -112,34 +143,50 @@ export function createComparisonService(output: string, principal: string, host:
     t.status = statuses.every(s => s === 'completed') ? 'completed' : statuses.every(s => terminal.has(s))
       ? statuses.includes('failed') ? 'failed' : 'cancelled' : 'running';
   }
-  async function refresh(t: Turn, name: LaneName) {
+  function applyTask(t: Turn, name: LaneName, task: any) {
     const lane = t.lanes[name];
-    if (!lane.task_id) return;
-    const previous = hash(view(t));
-    const task = await host.inspect(lane.task_id, { turn: t, lane: name });
     if (disposed) return;
     Object.assign(lane, { status: t.cancellation_requested ? 'cancelled' : task.status === 'budget_exhausted' ? 'failed' : task.status === 'awaiting_confirmation' ? 'queued' : task.status,
       answer: task.answer ?? lane.answer ?? '', stats: task.stats, fallback_reason: task.fallback_reason ?? null,
       answer_display: task.answer_display, answer_binding: task.answer_binding, progress: task.progress, activity: task.activity,
+      messages:task.messages,trace:task.trace,started_at:task.started_at,finished_at:task.finished_at,duration_ms:task.duration_ms,
       mode:task.mode,library_sha256:task.library_sha256,source_pending:task.source_pending === true,
-      artifacts: task.deliveries ?? [], failure: task.status === 'budget_exhausted'
+      artifacts: task.deliveries ?? lane.artifacts ?? [], failure: task.status === 'budget_exhausted'
         ? (task.deliveries?.length ? '已完成的文件通过交付校验，可下载；后续模型回复达到请求或预算上限，未完成的部分与支出均已保留。' : '这一路达到预算或请求上限，结果与已有支出已保留。')
         : task.status === 'failed' ? '这一路运行失败，请查看状态后重试；已校验的交付文件仍可下载。' : undefined });
-    if (terminal.has(lane.status)) lane.output_sha256 = outputHash(lane);
-    summary(t); save();
+    if (terminal.has(lane.status)) {
+      lane.output_sha256 = outputHash(lane);
+      if (Array.isArray(task.deliveries)) lane.delivery_reconciled = true;
+    }
+    summary(t); save(!terminal.has(lane.status));
+  }
+  async function refresh(t: Turn, name: LaneName) {
+    const lane = t.lanes[name];
+    if (!lane.task_id) return;
+    const previous = hash(view(t));
+    applyTask(t,name,await host.inspect(lane.task_id, { turn: t, lane: name }));
+    if(disposed)return;
     if (hash(view(t)) !== previous) await publish(t);
   }
   async function run(t: Turn) {
     inFlight.add(t.id);
     try {
-      for (const name of turnLanes(t)) {
+      const runLane = async (name: LaneName) => {
         const lane = t.lanes[name];
-        if (disposed || terminal.has(lane.status)) continue;
+        let unsubscribe: (()=>void)|undefined;
+        if (disposed || terminal.has(lane.status)) return;
         try {
-          while (host.ready?.() === false && !disposed && !terminal.has(lane.status)) await new Promise(resolve => setTimeout(resolve, pollMs));
-          if (disposed || terminal.has(lane.status)) continue;
+          while (host.ready?.(t, name) === false && !disposed && !terminal.has(lane.status)) await new Promise(resolve => setTimeout(resolve, pollMs));
+          if (disposed || terminal.has(lane.status)) return;
           if (!lane.task_id) await prepare(t, name);
-          if (disposed || terminal.has(lane.status)) continue;
+          if (disposed || terminal.has(lane.status)) return;
+          unsubscribe=host.subscribe?.(lane.task_id!,task=>{
+            // Native chunk notifications carry the full current task view. A
+            // terminal update is reconciled below with verified deliveries.
+            if(disposed||terminal.has(task.status)||terminal.has(lane.status))return;
+            applyTask(t,name,task);
+            for(const subscriber of subscribers.get(t.id)??[])try{subscriber(view(t));}catch{}
+          });
           await host.submit(lane.task_id);
           do {
             await refresh(t, name);
@@ -153,12 +200,14 @@ export function createComparisonService(output: string, principal: string, host:
             id: t.id, lane: name, code: error?.code ?? error?.name ?? 'unknown',
             message: String(error?.message ?? error).slice(0, 1024) }) + '\n', { mode: 0o600 });
           const preparing = !lane.task_id;
-          Object.assign(lane, { status: 'failed', failure_stage: preparing ? 'preparation' : 'execution',
+          Object.assign(lane, { status: t.cancellation_requested || disposed ? 'cancelled' : 'failed', failure_stage: preparing ? 'preparation' : 'execution',
             failure: preparing ? admissionFailure(error) ?? '任务未能启动，请稍后重试；如果仍有问题，请反馈给管理员。'
               : '这一路未完成，请重试；已生成的结果会保留。' });
-        }
+        } finally { unsubscribe?.(); }
         summary(t); save(); await publish(t);
-      }
+      };
+      if (host.parallel?.(t) === false) for (const name of turnLanes(t)) await runLane(name);
+      else await Promise.all(turnLanes(t).map(runLane));
     } finally { inFlight.delete(t.id); if (!disposed) { summary(t); save(); } }
   }
   async function drain() {
@@ -195,6 +244,11 @@ export function createComparisonService(output: string, principal: string, host:
     // upload receipt. These server-minted references never appear in GET views.
     sourceFor: (session:string,requestId:string,receipt:string) =>
       state.turns.find(t=>t.session_id===session&&t.request_id===requestId)?.source_files?.[receipt],
+    requestContext: (session:string,requestId:string) => {
+      const turn=state.turns.find(t=>t.session_id===session&&t.request_id===requestId);
+      return turn ? structuredClone({scene:turn.scene,options:turn.options,model:turn.model,
+        reasoning_effort:turn.reasoning_effort??'off',presentation:turn.presentation??'paired'}) : undefined;
+    },
     isLane: (id: string) => state.turns.some(t => turnLanes(t).some(name => t.lanes[name].session_id === id)) || Object.values(state.threads).some((thread: any) => Object.values(thread.lanes).includes(id)),
     parentFor: (id: string) => state.turns.find(t => turnLanes(t).some(name => t.lanes[name].session_id === id))?.session_id ?? Object.entries(state.threads).find(([, thread]: any) => Object.values(thread.lanes).includes(id))?.[0] ?? null,
     async admit(session: string, request: any, context: any) { return locked(async () => {
@@ -276,11 +330,15 @@ export function createComparisonService(output: string, principal: string, host:
         // terminal state; the per-attempt key below bounds this to one read.
         const needsAnswerBinding=t.scene==='research-data-analysis'&&hasReportPlaceholders(lane.answer??'')&&
           (lane.answer_binding?.version!==REPORT_ANSWER_BINDING||lane.answer_binding?.status==='unresolved');
-        if (!terminal.has(lane.status) || !lane.task_id || (lane.artifacts?.length&&!needsDeliveryAudit&&!needsAnswerBinding) || reconciledDeliveries.has(key)) continue;
+        const needsTrace=!Array.isArray(lane.trace);
+        const needsDeliveryRecovery=!lane.delivery_reconciled&&!lane.artifacts?.length;
+        if (!terminal.has(lane.status) || !lane.task_id || (!needsDeliveryRecovery&&!needsDeliveryAudit&&!needsAnswerBinding&&!needsTrace) || reconciledDeliveries.has(key)) continue;
         try {
           const task = await host.inspect(lane.task_id, { turn: t, lane: name, recoverMissing: true });
           if (['completed', 'failed', 'budget_exhausted', 'cancelled'].includes(task.status)) {
             let changed = false;
+            if (Array.isArray(task.deliveries)) { lane.delivery_reconciled=true; save(); }
+            if(needsTrace&&Array.isArray(task.trace)){lane.trace=task.trace;lane.messages=task.messages;lane.started_at=task.started_at;lane.finished_at=task.finished_at;lane.duration_ms=task.duration_ms;save();}
             if ((!lane.artifacts?.length||needsDeliveryAudit) && Array.isArray(task.deliveries) && hash(task.deliveries)!==hash(lane.artifacts??[])) {
               lane.artifacts = task.deliveries; changed = true;
               if (lane.status !== 'completed'&&task.deliveries.length) lane.failure = (lane.failure ?? '这一路未完成。') + ' 已完成的文件通过交付校验，可下载。';
@@ -295,6 +353,7 @@ export function createComparisonService(output: string, principal: string, host:
               // A recovered file or evidence-bound display changes the rated
               // output; stale ratings cannot apply to the new version.
               if (t.scores[name] !== undefined) { delete t.scores[name]; t.score_revision++; }
+              lane.feedback=null;
               save(); await publish(t);
             }
           }
@@ -303,7 +362,7 @@ export function createComparisonService(output: string, principal: string, host:
       }
       return view(t);
     },
-    async rate(session: string, id: string, name: string, score: number, revision: number, outputHash: string) { return locked(async () => {
+    async rate(session: string, id: string, name: string, score: number, revision: number, outputHash: string) { return feedbackLocked(async () => {
       const t = await get(session, id);
       if (!turnLanes(t).includes(name as LaneName) || !Number.isInteger(score) || score < 1 || score > 5) throw new ComparisonError('invalid_score', '请选择 1–5 分。', 400);
       if (!view(t).scoring_available) throw new ComparisonError('comparison_not_complete', '两侧都完成后才能评分。');
@@ -312,15 +371,34 @@ export function createComparisonService(output: string, principal: string, host:
       const event = { comparison_id: id, principal, lane: name, score, revision: t.score_revision,
         output_sha256: outputHash, input_sha256: t.input_sha256, at: new Date().toISOString() };
       writeFileSync(join(output, 'comparison-ratings.jsonl'), JSON.stringify(event) + '\n', { flag: 'a', mode: 0o600 });
-      await publish(t);
+      void publish(t);
       return view(t);
     }); },
+    async feedback(session:string,id:string,name:string,vote:unknown,outputSha:string){return feedbackLocked(async()=>{
+      const t=await get(session,id),lane=t.lanes[name as LaneName];
+      if(!turnLanes(t).includes(name as LaneName)||!['up','down',null].includes(vote as any))throw new ComparisonError('invalid_feedback','反馈选项无效。',400);
+      if(!terminal.has(lane.status)||!lane.output_sha256||outputSha!==lane.output_sha256)throw new ComparisonError('feedback_version_changed','回复尚未完成或已更新，请刷新后反馈。');
+      lane.feedback=vote as 'up'|'down'|null;save();
+      appendFileSync(join(output,'comparison-feedback.jsonl'),JSON.stringify({comparison_id:id,principal,lane:name,vote,output_sha256:outputSha,at:new Date().toISOString()})+'\n',{mode:0o600});
+      void publish(t);return view(t);
+    });},
+    async trace(session:string,id:string,name:string,after=-1,limit=100){
+      const t=await get(session,id);
+      if(!turnLanes(t).includes(name as LaneName))throw new ComparisonError('invalid_lane','找不到这一路轨迹。',404);
+      if(!Number.isSafeInteger(after)||after< -1||!Number.isSafeInteger(limit)||limit<1||limit>200)throw new ComparisonError('invalid_cursor','轨迹分页位置无效。',400);
+      const lane=t.lanes[name as LaneName];
+      if(lane.task_id){const task=await host.inspect(lane.task_id,{turn:t,lane:name as LaneName});if(Array.isArray(task.trace)){lane.trace=task.trace;lane.messages=task.messages;}}
+      const rows=lane.trace??[],items=rows.slice(after+1,after+1+limit).map((row,index)=>({...row,cursor:after+1+index}));
+      return {id,session_id:session,lane:name,items,next_cursor:items.length?items.at(-1)!.cursor:after,has_more:after+1+items.length<rows.length};
+    },
     async retry(session: string, id: string, name: string) { return locked(async () => {
       const t = await get(session, id);
       if (!turnLanes(t).includes(name as LaneName) || !terminal.has(t.status) || inFlight.has(t.id)) throw new ComparisonError('comparison_busy', '请等当前对照结束后重试。');
       const lane = t.lanes[name as LaneName];
       if (lane.status === 'completed') throw new ComparisonError('lane_completed', '成功结果已保留，无需重复付费运行。');
       lane.attempt++; lane.task_id = undefined; lane.status = 'preparing'; lane.failure_stage = undefined;
+      lane.delivery_reconciled=false;
+      lane.feedback=null;lane.messages=[];lane.trace=[];
       t.cancellation_requested = false;
       summary(t); save(); enqueue(t); return view(t);
     }); },
@@ -335,6 +413,6 @@ export function createComparisonService(output: string, principal: string, host:
       }
       summary(t); save(); await publish(t); return view(t);
     }); },
-    dispose() { disposed = true; subscribers.clear(); },
+    dispose() { disposed = true; subscribers.clear(); if(checkpoint){clearTimeout(checkpoint);checkpoint=undefined;writeState();} },
   };
 }

@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 from src.adapters.scenario import prepare_scenario
 from src.adapters.harless_scenarios import prepare_scene_registry
 from src.adapters.harless_product_prompt import product_persona, product_system_prompt
+from src.adapters.harless_models import discover_deepseek_models, model_options, price_basis
 from src.adapters.deepseek_cost_gate import (State, create_server, normalize_request_limit,
     request_limit_argument, cost_cap_argument, PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION)
 from src.adapters.web_task_budget import TaskBudgetRegistry, create_control_server
@@ -149,9 +150,10 @@ def prepare(args, output, endpoint):
             control_endpoint=args.control_endpoint, control_token=args.control_token,
             certified_input_sha256=canonical_prompt_sha, resources=resources,
             embedding_model=args.embedding_model)
-        policy['models'] = ([{'provider': 'deepseek-official', 'model': 'deepseek-flash',
-                              'label': 'DeepSeek Flash', 'available': True}]
-                            if not args.real_model or os.environ.get('DEEPSEEK_API_KEY', '').strip() else [])
+        catalog = (getattr(args, 'deepseek_catalog', None) if args.real_model else
+                   {'data': [{'id': 'deepseek-flash'}]})
+        policy['models'] = (model_options(catalog, budget_usd=args.budget_usd,
+                            max_output_tokens=public['max_output_tokens']) if catalog else [])
         if args.glm:
             policy['models'].append({'provider': 'harless-glm', 'model': args.glm['model'],
                                      'label': args.glm['model'].upper(), 'available': True})
@@ -211,6 +213,8 @@ def prepare(args, output, endpoint):
                 'paid_calls': None if args.real_model else 0, 'entry': 'frozen' if args.frozen else 'dynamic',
                 'run_budget_usd': args.run_budget_usd, 'run_request_limit': args.run_request_limit}
     snapshot['configured_models'] = policy.get('models', [])
+    snapshot['deepseek_model_discovery'] = getattr(args, 'deepseek_catalog', None)
+    snapshot['deepseek_price_basis'] = price_basis(snapshot['configured_models'])
     if args.glm:
         snapshot['glm_price_basis'] = {'input_usd_per_million': args.glm['rates'][0],
                                        'output_usd_per_million': args.glm['rates'][1]}
@@ -221,7 +225,7 @@ def prepare(args, output, endpoint):
     snapshot['files_sha256'] = {str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else 'private-scenario-config': hashlib.sha256(path.read_bytes()).hexdigest()
         for path in [scenario, ROOT / 'config/harness-web.json', ROOT / 'src/adapters' /
                      ('dsh_web_policy.ts' if args.frozen else 'dsh_web_tasks.ts'),
-                     ROOT / 'src/adapters/deepseek_cost_gate.py', ROOT / 'scripts/harness-web.py',
+                     ROOT / 'src/adapters/deepseek_cost_gate.py', ROOT / 'src/adapters/harless_models.py', ROOT / 'scripts/harness-web.py',
                      ROOT / 'config/geneloop-persona.json', ROOT / 'src/adapters/harless_product_prompt.py',
                      ROOT / 'scripts/motif-example.py', ROOT / 'package-lock.json',
                      *([] if args.frozen else [ROOT / 'src/adapters/web_task_request.ts',
@@ -302,6 +306,14 @@ def main():
         parser.error('configure DEEPSEEK_API_KEY or HARLESS_GLM_API_KEY in private .env')
     if args.run_id is not None and not re.fullmatch('[0-9a-f]{32}', args.run_id):
         parser.error('run-id must be 32 lowercase hexadecimal characters')
+    args.deepseek_catalog = None
+    if args.real_model and os.environ.get('DEEPSEEK_API_KEY', '').strip():
+        try:
+            args.deepseek_catalog = discover_deepseek_models(os.environ['DEEPSEEK_API_KEY'])
+            model_options(args.deepseek_catalog, budget_usd=args.budget_usd,
+                          max_output_tokens=defaults['max_output_tokens'])
+        except ValueError as error:
+            parser.error(str(error))
     os.umask(0o077)
     output = ROOT / '.local/web/runs' / (args.run_id or uuid4().hex)
     output.mkdir(parents=True, mode=0o700)

@@ -42,6 +42,76 @@ test('Concurrent send is idempotent; each user/chat and lane keeps a distinct mu
   assert.equal((await f.wait(replaced.comparison_id)).status,'completed');
  }finally{f.close();}
 });
+
+test('paired lanes start together while another turn waits for both and same-chat overlap stays rejected',async()=>{
+ const f=fixture({submit:async id=>{f.submitted.push(id);f.tasks.get(id).status='running';}});
+ try{
+  const first=await f.send();
+  for(let i=0;i<50&&f.submitted.length<2;i++)await new Promise(r=>setTimeout(r,2));
+  assert.equal(f.submitted.length,2,'neither lane waits for the other answer');
+  assert.ok([...f.tasks.values()].every(task=>task.status==='running'));
+  await assert.rejects(f.send('a','overlap'),/仍在运行/);
+  const other=await f.send('b','next');
+  await new Promise(r=>setTimeout(r,5));assert.equal(f.submitted.length,2);
+  f.tasks.get(f.submitted[0]).status='completed';
+  await new Promise(r=>setTimeout(r,5));assert.equal(f.submitted.length,2,'the next turn waits for the remaining lane');
+  f.tasks.get(f.submitted[1]).status='completed';await f.wait(first.comparison_id);
+  for(let i=0;i<50&&f.submitted.length<4;i++)await new Promise(r=>setTimeout(r,2));
+  assert.equal(f.submitted.length,4);
+  for(const task of f.tasks.values())task.status='completed';await f.wait(other.comparison_id,'b');
+ }finally{f.close();}
+});
+
+test('a headerless host explicitly retains sequential execution',async()=>{
+ const f=fixture({parallel:()=>false,submit:async id=>{f.submitted.push(id);f.tasks.get(id).status='running';}});
+ try{
+  const sent=await f.send();
+  for(let i=0;i<50&&!f.submitted.length;i++)await new Promise(r=>setTimeout(r,2));
+  assert.equal(f.submitted.length,1);f.tasks.get(f.submitted[0]).status='completed';
+  for(let i=0;i<50&&f.submitted.length<2;i++)await new Promise(r=>setTimeout(r,2));
+  assert.equal(f.submitted.length,2);f.tasks.get(f.submitted[1]).status='completed';await f.wait(sent.comparison_id);
+ }finally{f.close();}
+});
+
+test('durable ratings return without waiting for native publication and complete snapshots need no cold backend inspection',async()=>{
+ let block=false,release;const gate=new Promise(resolve=>release=resolve);
+ const f=fixture({publish:async()=>{if(block)await gate;},submit:async id=>{f.submitted.push(id);Object.assign(f.tasks.get(id),{status:'completed',trace:[],messages:[]});}});
+ let restored;
+ try{
+  const sent=await f.send(),done=await f.wait(sent.comparison_id);block=true;
+  let response;const rate=f.service.rate('a',sent.comparison_id,'baseline',4,0,done.lanes.baseline.output_sha256).then(value=>response=value);
+  for(let i=0;i<50&&!response;i++)await new Promise(r=>setTimeout(r,2));
+  assert.equal(response?.scores.baseline,4,'native UI publication cannot block the score response');await rate;
+  assert.equal(JSON.parse(readFileSync(join(f.root,'comparisons.json'),'utf8')).turns[0].scores.baseline,4);
+  f.service.dispose();restored=createComparisonService(f.root,'account-a',{...f.host,inspect:async()=>{throw Error('complete snapshot must not read a budget service');}});
+  assert.equal((await restored.view('a',sent.comparison_id)).scores.baseline,4);
+ }finally{release();restored?.dispose();f.close();}
+});
+
+test('a crash before the delta checkpoint recovers in a durable newer epoch even with a lower revision',async()=>{
+ const listeners=new Map();let resumed;
+ const f=fixture({submit:async id=>{f.submitted.push(id);f.tasks.get(id).status='running';},
+  subscribe:(id,listener)=>{listeners.set(id,listener);return()=>listeners.delete(id);}});
+ try{
+  const sent=await f.send();
+  for(let i=0;i<50&&listeners.size<2;i++)await new Promise(r=>setTimeout(r,2));
+  assert.equal(listeners.size,2);
+  const path=join(f.root,'comparisons.json'),lastDurable=readFileSync(path,'utf8');
+  const [id,notify]=[...listeners][0];
+  for(let i=0;i<12;i++)notify({...f.tasks.get(id),answer:'a'.repeat(i+1)});
+  const before=f.service.snapshot('a',sent.comparison_id);
+  assert.ok(before.snapshot_revision>JSON.parse(lastDurable).revision);
+  // Disposal flushes intentionally, so restore the pre-crash disk bytes to
+  // model abrupt termination before the pending 250 ms checkpoint was written.
+  f.service.dispose();await new Promise(r=>setTimeout(r,5));writeFileSync(path,lastDurable);
+  resumed=createComparisonService(f.root,'account-a',f.host,{pollMs:1});
+  const after=resumed.snapshot('a',sent.comparison_id),persisted=JSON.parse(readFileSync(path,'utf8'));
+  assert.equal(after.status,'failed');assert.equal(after.snapshot_epoch,before.snapshot_epoch+1);
+  assert.ok(after.snapshot_revision<before.snapshot_revision);
+  assert.equal(persisted.snapshot_epoch,after.snapshot_epoch,'the new epoch must be on disk before any snapshot can be emitted');
+  assert.equal(f.submitted.length,2,'recovery never retries paid execution');
+ }finally{resumed?.dispose();f.close();}
+});
 test('Partial failure retry preserves the successful lane; scores bind output and revision and survive restart',async()=>{
  let fail=true;const f=fixture({submit:async id=>{f.submitted.push(id);if(fail&&f.prepared.find(p=>p.requestId===id).lane==='motif')throw Error('injected');f.tasks.get(id).status='completed';}});
  try{
@@ -209,9 +279,44 @@ test('Scoped subscriptions emit incremental answer and real progress then detach
   assert.equal(seen.length,count);
  }finally{f.close();}
 });
+
+test('native task notifications publish all assistant steps without waiting for the next inspection',async()=>{
+ const listeners=new Map();
+ const f=fixture({submit:async id=>{f.submitted.push(id);f.tasks.get(id).status='running';},subscribe:(id,fn)=>{listeners.set(id,fn);return()=>listeners.delete(id);}});
+ try{
+  const sent=await f.send(),seen=[],stop=await f.service.subscribe('a',sent.comparison_id,value=>seen.push(value));
+  for(let i=0;i<50&&!listeners.size;i++)await new Promise(r=>setTimeout(r,2));
+  const id=[...listeners.keys()][0],task=f.tasks.get(id);
+  task.answer='中间说明';task.messages=[{id:'assistant-1',text:'中间说明',status:'streaming'}];task.trace=[{id:'trace-1',kind:'assistant',text:'中间说明'}];
+  listeners.get(id)(task);
+  assert.equal(seen.at(-1).lanes.baseline.messages[0].text,'中间说明');
+  assert.equal(seen.at(-1).lanes.baseline.trace[0].id,'trace-1');
+  task.status='completed';
+  for(let i=0;i<100;i++){for(const current of f.tasks.values())current.status='completed';if(f.service.snapshot('a',sent.comparison_id).status==='completed')break;await new Promise(r=>setTimeout(r,2));}
+  stop();await f.wait(sent.comparison_id);assert.equal(listeners.size,0);
+ }finally{f.close();}
+});
+
+test('lane trace pagination and feedback retain ownership, output versions and restart durability',async()=>{
+ const f=fixture({inspect:async id=>({...f.tasks.get(id),trace:[{id:'trace-1',kind:'tool',label:'读取资料'},{id:'trace-2',kind:'motif',verified_skip:true,optimized:true}]})});
+ try{
+  const sent=await f.send(),done=await f.wait(sent.comparison_id);
+  const first=await f.service.trace('a',sent.comparison_id,'motif',-1,1);
+  assert.equal(first.items[0].id,'trace-1');assert.equal(first.next_cursor,0);assert.equal(first.has_more,true);
+  const next=await f.service.trace('a',sent.comparison_id,'motif',first.next_cursor,1);assert.equal(next.items[0].verified_skip,true);assert.equal(next.has_more,false);
+  await assert.rejects(f.service.trace('b',sent.comparison_id,'motif'),/找不到/);
+  await assert.rejects(f.service.trace('a',sent.comparison_id,'foreign'),/轨迹/);
+  await assert.rejects(f.service.trace('a',sent.comparison_id,'motif',NaN),/分页/);
+  await assert.rejects(f.service.feedback('a',sent.comparison_id,'motif','up','stale'),/已更新/);
+  const saved=await f.service.feedback('a',sent.comparison_id,'motif','up',done.lanes.motif.output_sha256);
+  assert.equal(saved.lanes.motif.feedback,'up');assert.equal(saved.lanes.baseline.feedback,undefined);
+  assert.deepEqual(saved.scores,done.scores);f.service.dispose();
+  const restored=createComparisonService(f.root,'account-a',f.host);assert.equal((await restored.view('a',sent.comparison_id)).lanes.motif.feedback,'up');restored.dispose();
+ }finally{f.close();}
+});
 test('Cancelling during asynchronous preparation never submits a late task or revives a queued lane',async()=>{
  let release;const gate=new Promise(r=>release=r);const f=fixture({prepare:async(t,lane,id)=>{await gate;f.tasks.set(id,{status:'queued'});return{task_id:id};}});
- try{const a=await f.send();await f.service.cancel('a',a.comparison_id);release();await new Promise(r=>setTimeout(r,20));const v=await f.service.view('a',a.comparison_id);assert.equal(v.status,'cancelled');assert.equal(f.submitted.length,0);assert.equal(f.cancelled.length,1);}finally{f.close();}
+ try{const a=await f.send();await f.service.cancel('a',a.comparison_id);release();await new Promise(r=>setTimeout(r,20));const v=await f.service.view('a',a.comparison_id);assert.equal(v.status,'cancelled');assert.equal(f.submitted.length,0);assert.equal(f.cancelled.length,2);assert.equal(new Set(f.cancelled).size,2);}finally{f.close();}
 });
 test('Initial publication failure makes no model submission and the same request can recover',async()=>{
  let fail=true;const f=fixture({publish:async(_parent,_view,request)=>{if(request&&fail)throw Error('injected persistence failure');}});
