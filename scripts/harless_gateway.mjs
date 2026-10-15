@@ -334,7 +334,7 @@ export function createGateway(config) {
         ...(sceneDeployment ? [{path:sceneDeployment.output+'/presets',trust:'system'}] : [])] };
       store(join(userDir, 'config', 'host.patch.yml'), patch);
       mkdirSync(join(userDir, 'config', 'presets', 'sss-task'), { recursive: true, mode: 0o700 });
-      store(join(userDir, 'config', 'presets', 'sss-task', 'preset.yml'), { name: 'DeepSeek Harless · 我的工作区' });
+      store(join(userDir, 'config', 'presets', 'sss-task', 'preset.yml'), { name: 'GeneLoop · 我的工作区' });
       store(join(userDir, 'config', 'presets', 'sss-task', 'agent.cordis.yml'), [{ id: 'sss-persona',
         name: '@deepseek-ai/dsh-persona', config: { prefix: 'Complete the bounded task within this user workspace.',
           suffix: 'Do not claim access to another account or private materials.' } }]);
@@ -423,6 +423,12 @@ export function createGateway(config) {
       if (!safePath(req.url)) return send(res, 400, '无效地址');
       const url = new URL(req.url, origin), path = url.pathname;
       const user = sessionFor(req);
+      if (path === '/assets/geneloop.jpg') {
+        if (!['GET', 'HEAD'].includes(req.method)) return send(res, 405, '', { allow: 'GET, HEAD' });
+        const logo = readFileSync(new URL('../src/adapters/brand/geneloop.jpg', import.meta.url));
+        return send(res, 200, req.method === 'HEAD' ? '' : logo,
+          { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=3600' });
+      }
       if (path === '/api/internal/admin' && config.adminToken && req.method === 'POST') {
         const supplied = req.headers['x-harless-admin'];
         const expected = Buffer.from(config.adminToken);
@@ -440,7 +446,7 @@ export function createGateway(config) {
       if (path === '/account' || path === '/login' || path === '/register' || path === '/claim' || path === '/starting') {
         const html = readFileSync(config.accountHtml, 'utf8');
         return send(res, 200, html, { 'content-type': 'text/html; charset=utf-8',
-          'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'self'" });
+          'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'" });
       }
       if (!user) return send(res, 303, '', { location: '/login' });
       if (user.role === 'member' && !backends.has(user.id)) {

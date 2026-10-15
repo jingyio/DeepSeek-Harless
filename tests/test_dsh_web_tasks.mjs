@@ -189,6 +189,22 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   };
 }
 
+function assertProductPresentationOnly(ctx) {
+  assert.equal(typeof ctx.indexTransform, 'function');
+  const body = '<main id="native-harness-root"></main><script type="module" src="/native-client.js"></script>';
+  const html = ctx.indexTransform('<!doctype html><html><head><title>DeepSeek Harness</title></head><body>' + body + '</body></html>');
+  const brand = '<script>' + readFileSync(new URL('../src/adapters/geneloop_brand.js', import.meta.url), 'utf8') + '</script>';
+  const account = process.env.HARLESS_GATEWAY_ENABLED === '1' ?
+    '<script>' + readFileSync(new URL('../src/adapters/harless_account_link.js', import.meta.url), 'utf8') + '</script>' : '';
+  // Product branding must be ready before the native client boots. It may not
+  // reintroduce the separate workbench or intercept sending with a dialog.
+  assert.ok(html.indexOf(brand) > html.indexOf('<head>'));
+  assert.ok(html.indexOf(brand) < html.indexOf('</head>'));
+  assert.match(html, /<title>GeneLoop<\/title>/);
+  assert.equal(html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>')), body + account);
+  assert.doesNotMatch(html, /sss-native-confirmation|DeepSeek Harless 任务工作台/);
+}
+
 test('Harless task APIs remain available without separate workbench or settings pages', options, async () => {
   const f = await fixture();
   try {
@@ -202,7 +218,7 @@ test('Harless task APIs remain available without separate workbench or settings 
       page.handler({}, response);
       assert.equal(response.status, 302); assert.equal(response.headers.Location, '/');
     }
-    assert.equal(f.ctx.indexTransform, undefined);
+    assertProductPresentationOnly(f.ctx);
     const settings = await f.settings();
     assert.equal(settings.status, 200); assert.equal('panels' in settings.value, false);
     const listing = await f.api();
@@ -590,7 +606,7 @@ test('Real-provider native prompt runs immediately with budget admission and no 
     assert.equal(f.promptCalls.length, 1); assert.equal(f.registrations.size, 1);
     assert.equal(f.controlCalls.filter(call => call.path === '/tasks/activate').length, 1);
     assert.deepEqual(f.promptCalls[0].content, request.content);
-    assert.equal(f.ctx.indexTransform, undefined);
+    assertProductPresentationOnly(f.ctx);
     assert.equal((await f.submit(task)).status, 200); assert.equal(f.promptCalls.length, 1);
     await f.complete(task);
   } finally { await f.close(); }

@@ -114,7 +114,7 @@ def prepare(args, output, endpoint):
         rendered = rendered.replace(json.dumps(token), expression)
     (preset / 'agent.cordis.yml').write_text(rendered)
     (preset / 'agent.cordis.yml').chmod(0o600)
-    save(preset / 'preset.yml', {'name': f'DeepSeek Harless {prepared["name"]}（{"真实模型" if args.real_model else "免费模拟"}）'})
+    save(preset / 'preset.yml', {'name': f'GeneLoop · {prepared["name"]}（{"真实模型" if args.real_model else "免费模拟"}）'})
     canonical_prompt_sha = hashlib.sha256(prepared['prompt'].strip().encode()).hexdigest()
     policy = {'output': str(output), 'prompt_sha256': canonical_prompt_sha,
               'allowed_tools': prepared['allowed_tools'], 'endpoint': endpoint,
@@ -380,7 +380,7 @@ def main():
             snapshot['observed_tools_order'] = [row['function']['name'] for row in first['tools']]
             snapshot['observed_tools_sha256'] = hashlib.sha256(json.dumps(first['tools'], sort_keys=True).encode()).hexdigest()
             save(output / 'effective-config.json', snapshot)
-    print('DeepSeek Harless Web：' + ('真实模型 API；聊天发送后直接执行，服务端预算约束生效。' if args.real_model else '模拟模型，实际费用为 0。'), flush=True)
+    print('GeneLoop Web：' + ('真实模型 API；聊天发送后直接执行，服务端预算约束生效。' if args.real_model else '模拟模型，实际费用为 0。'), flush=True)
     print('私有输出目录：' + str(output), flush=True)
     try:
         for _ in range(300):
@@ -394,7 +394,7 @@ def main():
                     (output / 'public-access-url.txt').write_text(public_url + '\n')
                     (output / 'public-access-url.txt').chmod(0o600)
                     print('HTTPS 网关登录地址仅保存在 public-access-url.txt；网关须另行配置。', flush=True)
-                print('官方 Web 已启动；认证地址仅保存在 access-url.txt。' + ('冻结题面见 prompt.md。' if args.frozen else '认证后在聊天输入框旁选择 Harless 场景与模式。'), flush=True)
+                print('官方 Web 已启动；认证地址仅保存在 access-url.txt。' + ('冻结题面见 prompt.md。' if args.frozen else '认证后在聊天输入框旁选择 GeneLoop 场景与模式。'), flush=True)
                 break
             time.sleep(0.1)
         if not (output / 'access-url.txt').exists(): raise RuntimeError('Web startup failed; inspect private startup.log')

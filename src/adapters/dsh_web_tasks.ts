@@ -185,6 +185,7 @@ export function apply(ctx: any) {
       motif_library: sceneFor(selected.scene).runtime_kind ? {kind:sceneFor(selected.scene).runtime_kind,
         mode:sceneFor(selected.scene).runtime_mode,sha256:sceneFor(selected.scene).runtime_library_sha256,loaded:!sceneFor(selected.scene).rsi_unavailable_reason}:null,
       comparison_child: sessionId ? Boolean(comparisons?.isLane(sessionId)) : false,
+      comparison_parent_session_id: sessionId ? comparisons?.parentFor(sessionId) ?? null : null,
       preview_scene: selected.scene, // compatibility alias; now an actual registered selection
       preview_scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason })),
       current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status } : null,
@@ -521,7 +522,7 @@ export function apply(ctx: any) {
   }
   controller.create = (request: any) => {
     const result = creation.then(async () => {
-      if (request.agentPreset && !scenes.some(scene => scene.preset === request.agentPreset)) throw new TaskError('profile_not_allowed', 'Use the server-configured DeepSeek Harless preset');
+      if (request.agentPreset && !scenes.some(scene => scene.preset === request.agentPreset)) throw new TaskError('profile_not_allowed', 'Use the server-configured GeneLoop preset');
       if (request.sessionId && !ownedSessions.has(request.sessionId)) {
         // Official Web supplies a fresh client-generated ID. Allow only a proven
         // absent ID; adopting an existing foreign session still fails closed.
@@ -585,7 +586,7 @@ export function apply(ctx: any) {
   if (ctx.agentPresets) ctx.agentPresets.select = (agent: any, preset: string) => serialize(async () => {
     const scene = scenes.find(scene => scene.preset === preset);
     if (!scene) throw new SettingsError('scene_not_found', '只能选择服务器登记的场景');
-    if (forSession(agent.session.id)) throw new TaskError('session_already_bound', '当前会话已绑定任务，请新建会话后选择 Harless 设置', 409);
+    if (forSession(agent.session.id)) throw new TaskError('session_already_bound', '当前会话已绑定任务，请新建会话后选择 GeneLoop 设置', 409);
     await setSelection(agent.session.id, { scene: scene.id }); return preset;
   });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench'): Promise<Task> {
@@ -636,7 +637,7 @@ export function apply(ctx: any) {
       return task;
     }
     request.session_id = existingSession ?? (await controller.create({ agentPreset: scene.preset })).sessionId;
-    if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', '预览前请先选择与当前会话一致的 Harless 场景', 409);
+    if (existingSession && scene.id !== selected.scene) throw new TaskError('scene_changed', '预览前请先选择与当前会话一致的 GeneLoop 场景', 409);
     if (previousTask && !terminal.has(previousTask.status)) throw new TaskError('session_busy', '请等待本轮完成或取消，再发送下一条消息。', 409);
     await previousTask?.closing;
     if (!brokerMode && (sessions.has(request.session_id) || boundSessions.has(request.session_id))) throw new TaskError('session_already_bound', 'This session already has a task；请点击“新会话”后发送新的任务。', 409);
@@ -928,7 +929,7 @@ export function apply(ctx: any) {
           deliveries: captureComparisonDeliveries(artifacts, { turn: meta.turn.id, lane: meta.lane,
             attempt: meta.turn.lanes[meta.lane].attempt, workspace: task.workspace,
             adapter: task.scene.adapter, status: task.status, eventsPath: join(task.output, 'events.jsonl'),
-            startedAt: task.started_at, finishedAt: task.finished_at }) };
+            startedAt: task.started_at, finishedAt: task.finished_at, recoverMissing: context?.recoverMissing }) };
         return result;
       },
       async cancel(id) { const task = get(id); await controller.cancel({ sessionId: task.request.session_id }); },
@@ -1182,6 +1183,18 @@ export function apply(ctx: any) {
   }
   const accountLink = process.env.HARLESS_GATEWAY_ENABLED === '1' ?
     '<script>' + readFileSync(fileURLToPath(new URL('./harless_account_link.js', import.meta.url)), 'utf8') + '</script>' : '';
-  if (accountLink) ctx.effect(() => ctx.webServer.tapIndex((html: string) => html.replace('</body>',
-    accountLink + '</body>')), 'harless-account-link');
+  const brandScript = '<script>' + readFileSync(fileURLToPath(new URL('./geneloop_brand.js', import.meta.url)), 'utf8') + '</script>';
+  ctx.effect(() => ctx.webServer.tapIndex((html: string) => html
+    .replace(/<title>[^<]*<\/title>/i, '<title>GeneLoop</title>')
+    .replace('</head>', brandScript + '</head>')
+    .replace('</body>', accountLink + '</body>')), 'harless-product-presentation');
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/assets/geneloop.jpg',
+    handler: (request: any, response: any) => {
+      if (!['GET', 'HEAD'].includes(request.method)) {
+        response.writeHead(405, { Allow: 'GET, HEAD' }); response.end(); return;
+      }
+      response.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=3600',
+        'X-Content-Type-Options': 'nosniff' });
+      response.end(request.method === 'HEAD' ? '' : readFileSync(new URL('./brand/geneloop.jpg', import.meta.url)));
+    } }), 'harless-product-logo');
 }

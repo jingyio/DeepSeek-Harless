@@ -97,7 +97,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             rendered = json.dumps(rows, ensure_ascii=False, indent=2)
             for token, expression in prepared['environment_references'].items(): rendered = rendered.replace(json.dumps(token), expression)
             (preset / 'agent.cordis.yml').write_text(rendered, encoding='utf-8'); (preset / 'agent.cordis.yml').chmod(0o600)
-            (preset / 'preset.yml').write_text(json.dumps({'name': row['label']}, ensure_ascii=False), encoding='utf-8')
+            (preset / 'preset.yml').write_text(json.dumps({'name': 'GeneLoop · ' + row['label']}, ensure_ascii=False), encoding='utf-8')
             (preset / 'preset.yml').chmod(0o600)
         scenes.append(scene)
     if default_id not in seen:
