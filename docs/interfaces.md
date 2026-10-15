@@ -453,6 +453,8 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 
 论文场景的任务输入上限为 16 份平铺文件，通用、PPT、数据与 Files 场景仍为 8 份；服务端在任务准入和 `SessionFiles.list_files()` 两层执行相同边界。该上限容纳单篇论文的多个 `.tex` 与 `.bib`，但不解释目录结构：引用 `sections/...` 的原始 LaTeX 包仍需后续安全的相对路径或压缩包协议，不能仅靠增加文件数声称全稿检查。
 
+论文 `read_pinned_document(source_id, page)` 对 PDF 读取实际页；对 UTF-8 文本按固定 80,000 字符分逻辑页，返回 `page_count`，越界页拒绝。上传与版本守卫仍按完整文件字节 SHA 执行，分页不会生成新的来源或绕过单文件/总量上限。论文私有 Motif manifest 可登记 `list_inputs`、`pin_document`、`read_pinned_document` 为只读观察合同，用来保留无关成功读取之间的已认证 pin/read 前沿；这些工具没有 Motif 图，不会被 Runtime 自动调用，失败结果及写工具仍形成屏障。具体实测与局限见[前沿复测](experiments/paper-composite-frontier-20261015-v2.md)。
+
 当前用户边界是一个可信 principal 一个独立 Harness 启动；启动器接受 `--user-id`，客户端不能指定 cwd/工作区、库或命令。上传收据通过官方 Agent scope 解析后复制，重新确认时验证字节摘要。多账号 gateway 仍需账户负责人接入并联合验收。场景安装、登记字段、限额、拒绝原因与已验证边界见 [Harless 控制协议](harless-controls.md)；本节更新旧“仅前端预览”描述，不改写旧实验结论。
 
 ### 账号会话跨部署恢复（2026-10-14）
