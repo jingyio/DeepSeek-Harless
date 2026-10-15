@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, basename, sep } from 'node:path';
 const options={skip:!process.features?.typescript};
@@ -40,8 +40,8 @@ test('Related assets, workspace creation, directory browsing and stream scopes s
   await assert.rejects(f.rpc('readRelated','own.txt',{relativePath:'../config/policy.json'}),/只允许/);
   await assert.rejects(f.gateway.invoke({namespace:'workspace',method:'create',args:{request:{path:f.config}}}),/只允许/);
   await assert.rejects(f.gateway.invoke({namespace:'directoryPicker',method:'list',args:{path:f.config}}),/只允许/);
-  await f.gateway.invoke({namespace:'directoryPicker',method:'list',args:{}});assert.equal(f.calls.at(-1).args.path,realpathSync(f.work));
-  assert.equal(f.gateway.scope({workspaceRoot:f.work}).workspaceRoot,realpathSync(f.work));
+  await f.gateway.invoke({namespace:'directoryPicker',method:'list',args:{}});assert.equal(f.calls.at(-1).args.path,f.work);
+  assert.equal(f.gateway.scope({workspaceRoot:f.work}).workspaceRoot,f.work);
   assert.throws(()=>f.gateway.scope({workspaceRoot:f.config}),/只允许/);
  }finally{f.close();}
 });

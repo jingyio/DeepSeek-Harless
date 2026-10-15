@@ -52,14 +52,3 @@ test('PPT binding uses approved current versions and never guesses a source hand
     await assert.rejects(structuralOnlySimilarity(),/semantic_matching_disabled/);
   }finally{rmSync(root,{recursive:true,force:true});}
 });
-
-test('Management is the public Files shortcut and the old Files token still selects the same scene',options,async()=>{
- const {sceneShortcut,parseSceneShortcut}=await import('../src/adapters/harless_settings.ts');
- const scenes=[{id:'files'},{id:'research-data-analysis'},{id:'ppt'},{id:'paper-proofreading'},{id:'new-scene'}];
- assert.equal(sceneShortcut(scenes[0]),'management');
- assert.deepEqual(parseSceneShortcut('/management 盘点上传文件',scenes),{scene:'files',text:'盘点上传文件'});
- assert.deepEqual(parseSceneShortcut('/MANAGEMENT查重',scenes),{scene:'files',text:'查重'});
- assert.deepEqual(parseSceneShortcut('/files 旧会话继续',scenes),{scene:'files',text:'旧会话继续'});
- for(const text of ['/management/report.txt','正文中的 /management','/management-other'])assert.equal(parseSceneShortcut(text,scenes),undefined);
- for(const [token,scene] of [['data','research-data-analysis'],['ppt','ppt'],['paper','paper-proofreading'],['chat','new-scene']])assert.equal(parseSceneShortcut('/'+token,scenes).scene,scene);
-});

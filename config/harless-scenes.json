@@ -4,7 +4,7 @@
     {"id":"ppt", "label":"PPT", "scenario":"scenarios/research_ppt/web-scenario.json", "instructions":"scenarios/research_ppt/prompt.md", "adapter":"ppt", "rsi":{"runtime_bundle":"motif-libraries/ppt"}},
     {"id":"paper-proofreading", "label":"Paper Proofreading", "scenario":"scenarios/paper_proofreading/scenario.json", "instructions":"scenarios/paper_proofreading/prompt.md", "adapter":"workspace", "rsi":{"runtime_bundle":"motif-libraries/paper"}},
     {"id":"research-data-analysis", "label":"Research Data Analysis", "scenario":"scenarios/data_analysis/report-scenario.json", "instructions":"scenarios/data_analysis/report-prompt.md", "adapter":"data-report", "rsi":{"runtime_bundle":"motif-libraries/data"}},
-    {"id":"files", "label":"文件管理", "scenario":"scenarios/file-management/web-scenario.json", "instructions":"scenarios/file-management/web-prompt.md", "adapter":"files"},
+    {"id":"files", "label":"Files", "scenario":"scenarios/file-management/web-scenario.json", "instructions":"scenarios/file-management/web-prompt.md", "adapter":"files"},
     {"id":"new-scene", "label":"New Scene", "scenario":"scenarios/general/scenario.json", "instructions":"scenarios/general/prompt.md", "adapter":"workspace"}
   ]
 }
