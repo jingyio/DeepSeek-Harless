@@ -419,7 +419,8 @@ test('mobile settings uses its public seat to give content full width without ch
   assert.match(mobile, />nav>div:last-child\{[^}]*flex-direction:row[^}]*overflow-x:auto/);
   assert.match(mobile, />nav>div:last-child>button\{flex:0 0 auto;height:44px;white-space:nowrap/);
   assert.match(mobile, />nav\+div\{min-width:0;min-height:0;flex:1\}/);
-  assert.match(mobile, />nav>div:first-child\{padding:0 96px 0 0/);
+  assert.match(mobile, />nav>div:first-child\{padding:0 160px 0 0/);
+  assert.match(mobile, />nav\+div>div:first-child button\{white-space:nowrap\}/);
   assert.match(mobile, />nav\+div>div:first-child\{position:absolute;top:8px;right:8px/);
   assert.ok(mobile.split('\n').slice(1).filter(line => line.trim()).every(line => line.trim().startsWith(scope)), 'every responsive rule stays in the owned settings shell');
   assert.doesNotMatch(mobile, /VOzbGW|\!important/);

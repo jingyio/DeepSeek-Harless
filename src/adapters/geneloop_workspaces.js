@@ -16,11 +16,12 @@
     style.textContent += `@media(max-width:640px){
       ${settingsDialog}{box-sizing:border-box;width:calc(100vw - 24px);max-width:calc(100vw - 24px);height:min(800px,calc(100vh - 24px));height:min(800px,calc(100dvh - 24px));flex-direction:column;border-radius:20px}
       ${settingsDialog}>nav{width:100%;min-width:0;gap:12px;padding:16px 16px 10px;border-bottom:1px solid var(--dsw-alias-border-l2)}
-      ${settingsDialog}>nav>div:first-child{padding:0 96px 0 0;min-height:24px}
+      ${settingsDialog}>nav>div:first-child{padding:0 160px 0 0;min-height:24px}
       ${settingsDialog}>nav>div:last-child{flex-direction:row;gap:4px;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin}
       ${settingsDialog}>nav>div:last-child>button{flex:0 0 auto;height:44px;white-space:nowrap;padding:10px 12px}
       ${settingsDialog}>nav+div{min-width:0;min-height:0;flex:1}
-      ${settingsDialog}>nav+div>div:first-child{position:absolute;top:8px;right:8px;width:auto;max-width:104px;height:44px;padding:0;align-items:center}
+      ${settingsDialog}>nav+div>div:first-child{position:absolute;top:8px;right:8px;width:auto;max-width:calc(100% - 84px);height:44px;padding:0;align-items:center}
+      ${settingsDialog}>nav+div>div:first-child button{white-space:nowrap}
       ${settingsDialog}>nav+div>div:first-child>button{width:44px;height:44px;flex-shrink:0}
       ${settingsDialog}>nav+div>div:last-child{min-width:0;padding:20px 18px;overscroll-behavior-y:contain}
       ${settingsDialog} .geneloop-settings-page{overflow-wrap:anywhere}
