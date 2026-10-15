@@ -1,6 +1,16 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-15：产品身份、消息隐私与过程折叠（当前，已发布）
+## 2026-10-15：连续工作消息、双栏轨迹与模型选择（当前）
+
+- 范围：`codex/geneloop-live-workflow` 基于 `8004668`，补真实流事件订阅、逐步骤消息保留、Baseline/Motif 独立轨迹及每侧回复动作；自动主题标题、同工作区重名编号与手动名保护；模型菜单与服务器实际目录一致。不改上游 Harness、不新增 Agent 循环。
+- 已完成：`harless_task_progress.ts`、`harless_comparison.ts`、`dsh_web_tasks.ts` 和 Web client 贯通实时状态、冷恢复、反馈与所选侧分支；只有实际 verified skip 以绿色标记。新增 `geneloop_conversation_titles.ts`、`harless_models.py`，原生模型请求、费用代理与任务权限保持。
+- 已验证：隔离 Linux 全量 Python 759 通过/193 跳过，Node 646 通过/3 跳过；之后增加取消、标题和旧活动恢复定向用例。真实 Pro Off 普通聊天成功；Flash Off 数据报告两侧连续输出、交付两份一页 PDF 与六份图文件，8 份下载 SHA 一致；同父对话切 `/ppt` 的 Flash On 两侧真实完成并记录思考状态。
+- 浏览器：默认最终回复、运行中多段说明保留；轨迹页独立 Baseline/Motif、原普通轨迹和正确轮号；复制与反馈持久化已验证。实际分支验收暴露挂载工具与继承场景不一致，修复和最终发布状态以本节后续记录为准。
+- 实验与限制：[本轮记录](../experiments/geneloop-live-workflow-20261015-v1.md)。真实合成软件测试共 26 请求、峰值代理估费 0.023294604 美元；未盲评科研质量，不推广成本或性能收益。Pro On 原生默认输出预约超过既有任务预算，明确显示不可用，不截断输出来开放它。
+- 配置：共享每任务 0.23 美元、双栏每侧 0.115 美元；累计费用/次数不限，`max_output_tokens:null`。沿用原预算进程与账本，stage 后累计 825 请求/代理估费 0.571919058 美元。部署只迁移 owner/member 两处 models，原 preset/MCP、账户、会话、来源、交付与评分须复核保留。
+- 发布：最终 PR、CI、正式 SHA 与只读验收收据待本轮发布后补记。回退仅恢复代码与模型目录，不回滚用户记录或累计费用。
+
+## 2026-10-15：产品身份、消息隐私与过程折叠（历史，已发布）
 
 - 发布：`codex/geneloop-message-privacy` 经 [PR #29](https://github.com/jingyio/DeepSeek-Harless/pull/29) 合并为 `926704c64dc27cddd0284bf64632b033da66b369`，正式运行同一提交，四项 Windows/Linux CI 全通过。只调整 Web 产品身份、浏览器公开输出和聊天展示，研究 CLI 提示默认不变，不修改上游 Harness。
 - 已完成：共享 `config/geneloop-persona.json`，新建/恢复 Web Agent 均绑定产品身份并抑制运行环境注入；Session page/follow/list/search/control 与任务/对照视图使用分离投影，原始 journal、用户消息、用户文件和执行上下文不改写；补原生 RPC 与 WS 错误/元信息投影。

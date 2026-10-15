@@ -209,6 +209,41 @@ test('Scoped subscriptions emit incremental answer and real progress then detach
   assert.equal(seen.length,count);
  }finally{f.close();}
 });
+
+test('native task notifications publish all assistant steps without waiting for the next inspection',async()=>{
+ const listeners=new Map();
+ const f=fixture({submit:async id=>{f.submitted.push(id);f.tasks.get(id).status='running';},subscribe:(id,fn)=>{listeners.set(id,fn);return()=>listeners.delete(id);}});
+ try{
+  const sent=await f.send(),seen=[],stop=await f.service.subscribe('a',sent.comparison_id,value=>seen.push(value));
+  for(let i=0;i<50&&!listeners.size;i++)await new Promise(r=>setTimeout(r,2));
+  const id=[...listeners.keys()][0],task=f.tasks.get(id);
+  task.answer='中间说明';task.messages=[{id:'assistant-1',text:'中间说明',status:'streaming'}];task.trace=[{id:'trace-1',kind:'assistant',text:'中间说明'}];
+  listeners.get(id)(task);
+  assert.equal(seen.at(-1).lanes.baseline.messages[0].text,'中间说明');
+  assert.equal(seen.at(-1).lanes.baseline.trace[0].id,'trace-1');
+  task.status='completed';
+  for(let i=0;i<100;i++){for(const current of f.tasks.values())current.status='completed';if(f.service.snapshot('a',sent.comparison_id).status==='completed')break;await new Promise(r=>setTimeout(r,2));}
+  stop();await f.wait(sent.comparison_id);assert.equal(listeners.size,0);
+ }finally{f.close();}
+});
+
+test('lane trace pagination and feedback retain ownership, output versions and restart durability',async()=>{
+ const f=fixture({inspect:async id=>({...f.tasks.get(id),trace:[{id:'trace-1',kind:'tool',label:'读取资料'},{id:'trace-2',kind:'motif',verified_skip:true,optimized:true}]})});
+ try{
+  const sent=await f.send(),done=await f.wait(sent.comparison_id);
+  const first=await f.service.trace('a',sent.comparison_id,'motif',-1,1);
+  assert.equal(first.items[0].id,'trace-1');assert.equal(first.next_cursor,0);assert.equal(first.has_more,true);
+  const next=await f.service.trace('a',sent.comparison_id,'motif',first.next_cursor,1);assert.equal(next.items[0].verified_skip,true);assert.equal(next.has_more,false);
+  await assert.rejects(f.service.trace('b',sent.comparison_id,'motif'),/找不到/);
+  await assert.rejects(f.service.trace('a',sent.comparison_id,'foreign'),/轨迹/);
+  await assert.rejects(f.service.trace('a',sent.comparison_id,'motif',NaN),/分页/);
+  await assert.rejects(f.service.feedback('a',sent.comparison_id,'motif','up','stale'),/已更新/);
+  const saved=await f.service.feedback('a',sent.comparison_id,'motif','up',done.lanes.motif.output_sha256);
+  assert.equal(saved.lanes.motif.feedback,'up');assert.equal(saved.lanes.baseline.feedback,undefined);
+  assert.deepEqual(saved.scores,done.scores);f.service.dispose();
+  const restored=createComparisonService(f.root,'account-a',f.host);assert.equal((await restored.view('a',sent.comparison_id)).lanes.motif.feedback,'up');restored.dispose();
+ }finally{f.close();}
+});
 test('Cancelling during asynchronous preparation never submits a late task or revives a queued lane',async()=>{
  let release;const gate=new Promise(r=>release=r);const f=fixture({prepare:async(t,lane,id)=>{await gate;f.tasks.set(id,{status:'queued'});return{task_id:id};}});
  try{const a=await f.send();await f.service.cancel('a',a.comparison_id);release();await new Promise(r=>setTimeout(r,20));const v=await f.service.view('a',a.comparison_id);assert.equal(v.status,'cancelled');assert.equal(f.submitted.length,0);assert.equal(f.cancelled.length,1);}finally{f.close();}

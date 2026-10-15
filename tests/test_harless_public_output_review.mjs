@@ -89,3 +89,13 @@ test('reconnect preserves original compact event count, dense index and download
   const visible=publicTaskView(task);
   assert.equal(visible.rating,task.rating);assert.equal(visible.artifacts,task.artifacts);
 });
+
+test('paired step messages and paged trace apply the same private tail boundary as the main answer',()=>{
+  const original={status:'running',messages:[{id:'assistant-1',status:'streaming',text:'正在读取 /ho'}],
+    trace:[{id:'trace-1',status:'running',kind:'assistant',text:'目录:/home/operator/work'}]};
+  const live=publicTaskView(original);
+  assert.equal(live.messages[0].text,'正在读取 ');assert.equal(live.trace[0].text,'目录:');
+  assert.match(original.trace[0].text,/operator/);
+  const page=publicTaskView({items:[{id:'trace-2',kind:'assistant',status:'completed',text:'file:///home/operator/work',cursor:2}]});
+  assert.doesNotMatch(JSON.stringify(page),/operator/);assert.equal(page.items[0].cursor,2);
+});

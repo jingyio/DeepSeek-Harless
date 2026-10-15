@@ -23,7 +23,7 @@ async function waitUntil(predicate) {
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
-function fixture(fetcher, initial = comparison(), { streaming = false, sessions = {}, anchorSeq } = {}) {
+function fixture(fetcher, initial = comparison(), { streaming = false, sessions = {}, anchorSeq, traceOnly = false, clipboard } = {}) {
   let plugin, Component, cursor = 0, states = [], effects = [], effectSlots = [], cleanups = [], tree;
   const timers = new Map(), requests = [], downloaded = [], revoked = [], events = new Map(); let timerId = 0;
   const MarkdownText = function NativeMarkdown() {};
@@ -37,7 +37,7 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
   const listener = (name, fn) => events.set(name, fn), unlisten = name => events.delete(name);
   const document = { hidden: false, addEventListener: listener, removeEventListener: unlisten,
     body: { appendChild() {} }, createElement: () => ({ click() { downloaded.push({ href: this.href, name: this.download }); }, remove() {} }) };
-  const window = { crypto: webcrypto, addEventListener: listener, removeEventListener: unlisten,
+  const window = { crypto: webcrypto, navigator: { clipboard }, addEventListener: listener, removeEventListener: unlisten,
     __ModuleLoader__: { load(value) { plugin = value; } } };
   const streams = [];
   if (streaming) window.EventSource = class {
@@ -58,7 +58,7 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
     slots: { inject(_name, fn) { fn(); }, register(spec, component) { if (spec.key === 'harless-comparison') Component = component; } },
   });
   const node = { data: initial, anchorSeq };
-  const render = () => { cursor = 0; tree = Component({ node }); const pending = effects; effects = []; pending.forEach(fn => fn()); return tree; };
+  const render = () => { cursor = 0; tree = Component({ node, traceOnly }); const pending = effects; effects = []; pending.forEach(fn => fn()); return tree; };
   const all = (predicate, entry = tree) => !entry || typeof entry !== 'object' ? [] :
     [...(predicate(entry) ? [entry] : []), ...(entry.children || []).filter(child => child !== undefined).flatMap(child => all(predicate, child))];
   const content = entry => typeof entry === 'string' ? entry : (entry?.children || []).map(content).join('');
@@ -334,7 +334,8 @@ test('live stream renders incremental text and real activity before terminal com
   partial.lanes.baseline.activity=[{label:'读取数据',status:'running'}];stream.emit(partial);f.render();
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一');
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.streaming,true);
-  assert.match(f.content(f.all(row=>row.props.className==='harless-activity')[0]),/正在读取数据/);
+  assert.match(f.content(f.all(row=>row.props.className==='harless-live-status')[0]),/正在读取数据/);
+  assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,undefined,'tool details remain collapsed');
   partial.lanes.baseline.answer+='组数据';stream.emit(partial);f.render();
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一组数据');
   stream.emit(comparison());f.render();assert.equal(stream.closed,true);
@@ -439,19 +440,86 @@ test('switching conversations closes the old stream before accepting the new ses
 });
 
 
-test('completed paired and single turns branch at their own anchor without local title overrides', async () => {
+test('completed paired and single turns branch from a selected lane and immutable output once', async () => {
   for (const single of [false, true]) {
     const value = comparison(); if (single) { value.presentation = 'single'; delete value.lanes.motif; }
     const calls = [], opened = []; let finish;
-    const f = fixture(undefined, value, { anchorSeq: 17, sessions: {
-      fork: options => { calls.push(options); return new Promise(resolve => { finish = resolve; }); },
-      open: id => opened.push(id),
-    } });
+    const f = fixture((_url, init) => {
+      if(init.method !== 'POST') return Response.json(value);
+      calls.push(JSON.parse(init.body)); return new Promise(resolve => { finish = () => resolve(Response.json({sessionId:'branch-1'})); });
+    }, value, { anchorSeq: 17, sessions: { open: id => opened.push(id) } });
     await flush(); f.render();
-    const button = f.all(row => row.props['aria-label'] === '在新对话中分支')[0]; assert.ok(button);
+    const button = f.all(row => row.props['aria-label'] === '从 Baseline 在新对话中分支')[0]; assert.ok(button);
+    assert.equal(f.all(row => row.type==='button' && f.content(row)==='在新对话中分支').length,0,'no duplicate large text button');
     const operation = button.props.onClick(); button.props.onClick();
-    assert.equal(calls.length, 1); assert.equal(calls[0].sessionId, 'session-a');
-    assert.equal(calls[0].atSeq, 17); assert.equal(calls[0].increaseTitle, false);
-    finish('branch-1'); await operation; assert.deepEqual(opened, ['branch-1']); f.dispose();
+    assert.equal(calls.length, 1); assert.equal(calls[0].session_id, 'session-a');
+    assert.equal(calls[0].id,'comparison-a');assert.equal(calls[0].lane,'baseline');assert.equal(calls[0].output_sha256,'baseline-hash');
+    assert.equal(calls[0].action,'fork');assert.equal(calls[0].title,undefined);
+    finish(); await operation; assert.deepEqual(opened, ['branch-1']); f.dispose();
   }
+});
+
+test('successive real assistant messages stay visible during tools and collapse only after the final answer', async () => {
+  const value=comparison();value.status='running';value.snapshot_revision=1;
+  const row=value.lanes.baseline;row.status='running';row.answer='先读取资料';row.messages=[{id:'first',text:'先读取资料',status:'completed'}];
+  const f=fixture(undefined,value,{streaming:true});await flush();f.render();
+  const next=structuredClone(value);next.snapshot_revision=2;next.lanes.baseline.answer='已经核验，正在';
+  next.lanes.baseline.messages.push({id:'second',text:'已经核验，正在',status:'streaming'});
+  next.lanes.baseline.progress={label:'正在调用数据分析工具'};f.streams[0].emit(next);f.render();
+  const old=f.all(row=>row.props.className==='harless-stream-messages')[0];assert.ok(old);
+  assert.equal(f.all(row=>row.type===f.MarkdownText,old)[0].props.text,'先读取资料');
+  assert.equal(f.all(row=>row.props.className==='harless-paired-answer')[0].children[0].props.text,'已经核验，正在');
+  assert.match(f.content(f.all(row=>row.props.className==='harless-live-status')[0]),/分析工具/);
+  next.status='completed';next.snapshot_revision=3;next.lanes.baseline.status='completed';next.lanes.baseline.answer='完整结论';
+  next.lanes.baseline.messages.push({id:'final',text:'完整结论',status:'completed'});f.streams[0].emit(next);f.render();
+  assert.equal(f.all(row=>row.props.className==='harless-stream-messages').length,0);
+  assert.equal(f.all(row=>row.props.className==='harless-paired-answer')[0].children[0].props.text,'完整结论');
+  assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,undefined);f.dispose();
+});
+
+test('lane footer copies full Markdown, reports actual usage and duration, and persists reversible feedback', async () => {
+  const value=comparison(),copied=[];value.lanes.baseline.stats={upstream_requests:2,prompt_tokens:1024,completion_tokens:500};
+  value.lanes.baseline.duration_ms=64500;
+  const f=fixture((_url,init)=>{
+    if(init.method==='POST'){const body=JSON.parse(init.body);assert.equal(body.action,'feedback');assert.equal(body.output_sha256,'baseline-hash');value.lanes[body.lane].feedback=body.vote;}
+    return Response.json(value);
+  },value,{clipboard:{writeText:async text=>copied.push(text)}});await flush();f.render();
+  await f.all(row=>row.props['aria-label']==='复制 Baseline 回复')[0].props.onClick();f.render();
+  assert.deepEqual(copied,[value.lanes.baseline.answer]);assert.ok(f.all(row=>row.props['aria-label']==='用量 1.5k tok').length);
+  assert.ok(f.all(row=>row.props['aria-label']==='耗时 1 分 4 秒').length);
+  await f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props.onClick();await flush();f.render();
+  assert.equal(f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props['aria-pressed'],true);
+  await f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props.onClick();await flush();f.render();
+  assert.equal(f.all(row=>row.props['aria-label']==='赞 Baseline 回复')[0].props['aria-pressed'],false);
+  assert.equal(f.requests.filter(row=>row.init.method==='POST').length,2);f.dispose();
+});
+
+test('trajectory tabs use each lane actual events and distinguish verified optimization from shadow candidates', async () => {
+  const value=comparison();value.lanes.baseline.trace=[{id:'base',kind:'tool',label:'读取数据',status:'completed'}];
+  value.lanes.motif.mode='shadow';value.lanes.motif.trace=[{id:'shadow',kind:'motif',label:'预测候选',status:'completed',optimized:false,verified_skip:false}];
+  const f=fixture(undefined,value,{traceOnly:true});await flush();f.render();
+  const tabs=f.all(row=>row.props.role==='tab');assert.equal(f.content(tabs[1]),'Motif · 影子评估');
+  assert.equal(tabs[0].props.tabIndex,0);assert.equal(tabs[1].props.tabIndex,-1);
+  const rows=()=>{const component=f.all(row=>typeof row.type==='function'&&row.type.name==='TraceRows')[0];return component.type(component.props);};
+  assert.match(f.content(rows()),/读取数据/);
+  f.all(row=>row.props.role==='tablist')[0].props.onKeyDown({key:'ArrowRight',preventDefault(){}});f.render();
+  assert.equal(f.all(row=>row.props.role==='tab')[1].props['aria-selected'],true);
+  assert.match(f.content(rows()),/预测候选/);assert.doesNotMatch(f.content(rows()),/已应用优化|已验证跳过/);
+  value.lanes.motif.trace=[{id:'verified',kind:'motif',label:'执行已认证节点',status:'completed',optimized:true,verified_skip:true}];
+  f.events.get('focus')();await flush();f.render();
+  const tree=rows();assert.match(f.content(tree),/已验证跳过模型请求/);assert.equal(f.all(row=>row.props['data-optimized']==='true',tree).length,1);
+  f.dispose();
+});
+
+test('completed process messages retain verified artifact routing without repeating the unbound final template',async()=>{
+  const value=comparison();value.lanes.baseline.answer='结果 {{estimate}}';value.lanes.baseline.answer_display='结果 1.25';
+  value.lanes.baseline.messages=[{id:'prior',text:'先查看 `/app/work/outputs/report/research_report.pdf`',status:'completed'},
+    {id:'final',text:'结果 {{estimate}}',status:'completed'}];
+  const f=fixture(undefined,value);await flush();f.render();
+  const process=f.all(row=>row.props.className==='harless-process-message')[0];assert.equal(typeof process.props.ref,'function');
+  let prevented=false;process.props.onClickCapture({target:{closest:()=>({getAttribute:()=>'/private/not-approved.pdf'})},
+    preventDefault(){prevented=true;},stopPropagation(){}});assert.equal(prevented,true);
+  const texts=f.all(row=>row.type===f.MarkdownText).map(row=>row.props.text);assert.ok(texts.includes('结果 1.25'));
+  assert.equal(texts.some(text=>text.includes('{{estimate}}')),false);assert.equal(f.all(row=>row.type===f.MarkdownText,process)[0].props.fileMentions.resolve('/app/work/'+artifact.name).title,artifact.name);
+  f.dispose();
 });
