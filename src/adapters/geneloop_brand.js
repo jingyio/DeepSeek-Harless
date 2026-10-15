@@ -15,8 +15,8 @@
           left: '-58.62%', top: '-37.93%' } }));
     }
     function Name() {
-      return React.createElement('span', { style: { fontFamily: 'Georgia, "Times New Roman", serif',
-        fontSize: 23, fontWeight: 600, letterSpacing: '-.65px', whiteSpace: 'nowrap', lineHeight: 1 } }, name);
+      return React.createElement('span', { style: { fontFamily: 'var(--geneloop-ui-font)',
+        fontSize: 22, fontWeight: 650, letterSpacing: '-.6px', whiteSpace: 'nowrap', lineHeight: 1.2 } }, name);
     }
     // Slot priority is an explicit public composition contract: lowest renders.
     // The upstream official brand remains untouched and is shadowed as a unit.
@@ -65,6 +65,11 @@
   const legacyStyle = document.createElement('style');
   legacyStyle.textContent = legacySelector + '{display:none!important}';
   document.head.append(legacyStyle);
+  // Set the document font as well as the public theme token: inherited text
+  // otherwise falls back to the browser's serif default in some native slots.
+  const typography = document.createElement('style');
+  typography.textContent = `:root,body{--geneloop-ui-font:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Arial,sans-serif;--dsw-font-family:var(--geneloop-ui-font)}body{font-family:var(--geneloop-ui-font);font-weight:400;line-height:1.5;-webkit-font-smoothing:antialiased}button,input,textarea,select{font-family:inherit}.harless-paired-answer{line-height:1.7}`;
+  document.head.append(typography);
   const removeLegacyEntry = () => {
     for (const entry of document.querySelectorAll(legacySelector)) entry.remove();
   };

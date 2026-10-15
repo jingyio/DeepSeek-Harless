@@ -154,7 +154,7 @@ test('workspace browser preserves store receivers and top-level New chat targets
  assert.doesNotMatch(JSON.stringify(tree),/\/private\//);
  const workspaceNames=nodes.filter(node=>node.props?.className==='geneloop-workspace-name');
  assert.ok(workspaceNames.every(node=>!('title' in node.props)), 'workspace names have no hover tooltip');
- workspaceNames.find(node=>node.children.includes('课题 B')).props.onClick();
+ workspaceNames.find(node=>node.children[1].children.includes('课题 B')).props.onClick();
  navigation.startSession(); await new Promise(resolve=>setImmediate(resolve));
  assert.equal(created.length,1); assert.equal(created[0].workspaceId,'b');
  navigation.startSession(); await new Promise(resolve=>setImmediate(resolve));
@@ -240,15 +240,16 @@ function interactiveWorkspaceBrowser() {
   const render = () => { index = 0; return Browser({ wide: true }); };
   const nodes = tree => { const result = []; const visit = node => { if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) return node.forEach(visit); result.push(node); node.children?.forEach(visit); }; visit(tree); return result; };
-  const click = button => button.props.onClick({ currentTarget: { getBoundingClientRect: () => ({ right: 260, bottom: 180 }), focus() {} } });
+  const click = button => button.props.onClick({ stopPropagation() {}, currentTarget: { getBoundingClientRect: () => ({ right: 260, bottom: 180 }), focus() {} } });
   return { render, home: () => Home(), nodes, click, calls, workspaces, sessions, navigation };
 }
 
 test('workspace browser restores folder controls and an accessible menu with durable pinning', async () => {
   const ui = interactiveWorkspaceBrowser(); let tree = ui.render(), nodes = ui.nodes(tree);
-  const toggle = nodes.find(node => node.props?.className === 'geneloop-workspace-toggle');
-  assert.equal(toggle.children[0].type, 'svg', 'folder outline remains visible next to every workspace');
-  assert.equal(toggle.props['aria-expanded'], true);
+  const primary = nodes.find(node => node.props?.className === 'geneloop-workspace-name');
+  assert.equal(primary.children[0].type, 'svg', 'folder outline remains visible next to every workspace');
+  assert.equal(primary.props['aria-expanded'], true);
+  assert.ok(!nodes.some(node => ['geneloop-workspace-toggle','geneloop-workspace-chevron'].includes(node.props?.className)));
   assert.equal(nodes.some(node => node.props?.type === 'search'), false, 'search is a compact optional control');
   assert.ok(nodes.filter(node => node.props?.className === 'geneloop-workspace-name').every(node => !node.props.title));
   ui.click(nodes.find(node => node.props?.['aria-label'] === '工作区操作 实验'));
@@ -257,7 +258,7 @@ test('workspace browser restores folder controls and an accessible menu with dur
   ui.click(nodes.find(node => node.props?.role === 'menuitem' && node.children.includes('置顶工作区')));
   await new Promise(resolve => setImmediate(resolve));
   nodes = ui.nodes(ui.render());
-  assert.equal(nodes.find(node => node.props?.className === 'geneloop-workspace-name').children[0], '实验');
+  assert.equal(nodes.find(node => node.props?.className === 'geneloop-workspace-name').children[1].children[0], '实验');
   assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find(row => row[0] === 'pin'))), ['pin', { workspace_id: 'b', pinned: true }]);
   assert.doesNotMatch(JSON.stringify(ui.render()), /\/private\//);
 });
@@ -310,7 +311,10 @@ test('chat overflow menu invokes the shared fork and archive navigation capabili
 
 test('workspace landing uses a public panel, preserves the current chat, and starts new chats in the selected group', async () => {
   const ui = interactiveWorkspaceBrowser();
-  ui.click(ui.nodes(ui.render()).find(node => node.props?.className === 'geneloop-workspace-name' && node.children.includes('实验')));
+  const workspace = ui.nodes(ui.render()).find(node => node.props?.className === 'geneloop-workspace-name' && node.children[1].children.includes('实验'));
+  assert.equal(workspace.props['aria-expanded'], false);
+  ui.click(workspace);
+  assert.equal(ui.nodes(ui.render()).find(node => node.props?.className === 'geneloop-workspace-name' && node.children[1].children.includes('实验')).props['aria-expanded'], true);
   assert.deepEqual(ui.calls, [['panel', 'geneloop-workspace']]);
   assert.equal(ui.sessions.list.value.current, 'one', 'opening a workspace overview does not replace an existing chat or draft');
   assert.match(JSON.stringify(ui.home()), /实验工作区/);

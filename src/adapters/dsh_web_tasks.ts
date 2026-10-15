@@ -489,8 +489,15 @@ export function apply(ctx: any) {
   }
   async function refresh(task: Task) {
     await task.closing;
-    const counters = await control('/tasks/stats?session_id=' + encodeURIComponent(task.budget_session_id));
-    Object.assign(task.stats, counters.stats ?? counters);
+    let counters;
+    try { counters = await control('/tasks/stats?session_id=' + encodeURIComponent(task.budget_session_id), undefined, terminal.has(task.status)); }
+    catch (error) {
+      // A replaced budget process may no longer retain an old task route. Its
+      // persisted final usage is still evidence, never a new zero-cost budget.
+      // Active tasks and authorization/response errors remain fail-closed.
+      if (!terminal.has(task.status) || !(error instanceof TypeError || (error as Error).name === 'TimeoutError')) throw error;
+    }
+    if (counters) Object.assign(task.stats, counters.stats ?? counters);
     task.stats.model_requests = Number(task.stats.upstream_requests ?? 0);
     task.stats.actual_paid_usd = config.provider_mode === 'mock' ? 0 : null;
     if (task.started_at) task.stats.elapsed_seconds =

@@ -177,6 +177,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
     promptCalls, queueMutations, controlCalls, directory,
     registrations, brokerCalls, brokerRoutes, modelRequest, routes, webRoutes,
+    async stopControl() { server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); },
     originalController,
     async restart() {
       Object.assign(ctx.sessionController, originalController);
@@ -211,6 +212,20 @@ function assertProductPresentationOnly(ctx) {
   assert.equal(html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>')), body + account);
   assert.doesNotMatch(html, /sss-native-confirmation|DeepSeek Harless 任务工作台/);
 }
+
+test('Completed task usage survives a missing or offline budget route while active tasks fail closed',options,async()=>{
+ const f=await fixture({broker:true});try{
+  const task=await f.preview('Preserve historical usage');await f.submit(task);
+  Object.assign([...f.registrations.values()][0],{upstream_requests:7,estimated_cost_usd:0.12,prompt_tokens:1234});
+  await f.complete(task);await f.restart();f.registrations.clear();
+  let result=await f.api(undefined,'?task_id='+task.task_id);assert.equal(result.status,200);assert.equal(result.value.stats.upstream_requests,7);assert.equal(result.value.stats.estimated_cost_usd,0.12);
+  const next=await f.preview('New active task');await f.submit(next);f.registrations.clear();
+  result=await f.api(undefined,'?task_id='+next.task_id);assert.equal(result.status,409);assert.equal(result.value.error.code,'budget_control_failed');
+  await f.stopControl();
+  result=await f.api(undefined,'?task_id='+task.task_id);assert.equal(result.status,200);assert.equal(result.value.stats.prompt_tokens,1234);assert.equal(result.value.stats.estimated_cost_usd,0.12);
+  result=await f.api(undefined,'?task_id='+next.task_id);assert.notEqual(result.status,200);
+ }finally{await f.close();}
+});
 
 test('Harless task APIs remain available without separate workbench or settings pages', options, async () => {
   const f = await fixture();

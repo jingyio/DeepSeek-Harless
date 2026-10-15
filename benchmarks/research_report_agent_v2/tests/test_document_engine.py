@@ -1,5 +1,6 @@
 """Offline layout tests use geometric image fixtures, never claimed research data."""
 import json
+import os
 import hashlib
 import re
 import tempfile
@@ -14,6 +15,17 @@ from benchmarks.research_report_agent_v2.document_engine import CONTENT_RECT, PA
 
 
 class DocumentEngineTests(unittest.TestCase):
+    def test_configured_font_refuses_missing_files_and_fonts_without_chinese(self):
+        from matplotlib import get_data_path
+        missing = str(Path(tempfile.gettempdir()) / 'not-a-report-font-20261015.ttf')
+        with patch.dict(os.environ, {'HARLESS_REPORT_FONT': missing}):
+            with self.assertRaisesRegex(ValueError, 'embeddable'):
+                document_engine._font('brief')
+        latin = Path(get_data_path()) / 'fonts/ttf/DejaVuSans.ttf'
+        with patch.dict(os.environ, {'HARLESS_REPORT_FONT': str(latin)}):
+            with self.assertRaisesRegex(ValueError, 'Chinese glyphs'):
+                document_engine._font('brief')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

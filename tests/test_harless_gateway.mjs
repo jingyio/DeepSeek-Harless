@@ -4,7 +4,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { once } from 'node:events';
 import { createHash, createHmac } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGateway, createOwnerClaim, createInvites } from '../scripts/harless_gateway.mjs';
@@ -55,6 +55,50 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   const unsafeFiles=structuredClone(files);
   unsafeFiles.mcp_rows[0].config.env.FM_OUTPUT='/owner/private';
   assert.throws(()=>memberSceneDeployment({...policy,scenes:[unsafeFiles]},deployment),/server-bound task workspace/);
+  const dependencyStore=join(root,'dependencies/node_modules'), releaseLink=join(root,'release/node_modules');
+  mkdirSync(dependencyStore,{recursive:true});mkdirSync(join(root,'release'));mkdirSync(join(root,'scenarios/research_ppt'));
+  symlinkSync(dependencyStore,releaseLink,process.platform==='win32'?'junction':'dir');
+  symlinkSync(releaseLink,join(root,'scenarios/research_ppt/node_modules'),process.platform==='win32'?'junction':'dir');
+  const linked=memberSceneDeployment(policy,deployment);
+  assert.ok(linked.mounts.some(row=>row.source===realpathSync(dependencyStore)&&row.target===releaseLink),
+    'the dependency mount must resolve the first release symlink inside the member namespace');
+  assert.ok(!linked.mounts.some(row=>row.source===join(root,'release')),'never expose a whole release checkout');
+});
+
+test('data report fonts require the fixed mounted resource and its matching digest', t => {
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-report-font-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for(const name of ['scenarios','python/bin','fonts'])mkdirSync(join(root,name),{recursive:true});
+  const python=join(root,'python/bin/python');writeFileSync(python,'test dependency');
+  writeFileSync(join(root,'python/pyvenv.cfg'),'test installation');
+  const fontRoot=join(root,'fonts'), font=join(fontRoot,'wqy-microhei.ttc');
+  writeFileSync(join(fontRoot,'NotoSansCJKsc-Regular.otf'),'existing public PPT font');
+  writeFileSync(join(fontRoot,'WQY-COPYRIGHT.txt'),'public font license');
+  writeFileSync(font,'public report font fixture');
+  const scene={id:'data',adapter:'data-report',allowed_tools:['mcp__research_report__inspect_study'],
+    report_font_sha256:createHash('sha256').update(readFileSync(font)).digest('hex'),
+    mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',config:{serverName:'research_report',transport:'stdio',
+      command:python,cwd:root,args:[join(root,'scenarios/data_analysis/report_session.py')],
+      env:{HARLESS_REPORT_WORKSPACE:'__HARLESS_SESSION_WORKSPACE__',HARLESS_REPORT_FONT:font}}}]};
+  const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')],fontRoot};
+  const deploy=(value=scene,options=deployment)=>memberSceneDeployment({scenes:[value]},options);
+  const result=deploy();
+  assert.equal(result.scenes[0].mcp_rows[0].config.env.HARLESS_REPORT_FONT,font);
+  assert.ok(result.mounts.some(row=>row.source===fontRoot && row.target===fontRoot));
+  assert.throws(()=>deploy(scene,{...deployment,fontRoot:undefined}),/matching fixed public font/);
+  const wrongPath=structuredClone(scene);wrongPath.mcp_rows[0].config.env.HARLESS_REPORT_FONT=join(fontRoot,'NotoSansCJKsc-Regular.otf');
+  assert.throws(()=>deploy(wrongPath),/matching fixed public font/);
+  assert.throws(()=>deploy({...scene,report_font_sha256:undefined}),/matching fixed public font/);
+  assert.throws(()=>deploy({...scene,report_font_sha256:'0'.repeat(64)}),/matching fixed public font/);
+  const absentEnv=structuredClone(scene);delete absentEnv.mcp_rows[0].config.env.HARLESS_REPORT_FONT;
+  assert.throws(()=>deploy(absentEnv),/matching fixed public font/);
+  delete absentEnv.report_font_sha256;
+  assert.doesNotThrow(()=>deploy(absentEnv),'legacy scenes without a configured report font remain valid');
+  writeFileSync(join(fontRoot,'private-data.json'),'private');
+  assert.throws(()=>deploy(),/only fixed public font resources/);
+  rmSync(join(fontRoot,'private-data.json'));
+  rmSync(font);
+  assert.throws(()=>deploy(),/matching fixed public font/);
 });
 
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
