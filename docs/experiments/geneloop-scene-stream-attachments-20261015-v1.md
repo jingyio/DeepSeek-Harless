@@ -22,6 +22,13 @@
 5. Linux 隔离进程零模型读取：PDF 由 Poppler 提取，真实旧版 `.doc` 由 Antiword 提取 5,432 字符，DOCX 由 XML 提取。来源 SHA 一致，依赖只读、宿主私有配置不可见。PPT 65 项代码锁通过，5 种页数的真实 MCP 完整 schema 匹配。
 6. 独立审查补齐 Strict OOXML 文档命名空间，并拒绝未知命名空间伪解析；Web 派生参考正文取消旧 1 MB 额外限制，benchmark 默认保持。大于 1 MB 的用户文字、TXT 与 JSON 完整性通过确定性回归，不通过额外付费长上下文调用替代。
 
+## 发布与最终复核
+
+- [PR #27](https://github.com/jingyio/DeepSeek-Harless/pull/27) 已合并，生产运行 main `3bb96877f246aa418d5faf4b1577973cfa12e072`。最终四项 Windows/Linux CI 全成功，Windows 附件 31 项、Linux 附件/报告 51 项通过。stage 源码清单 1,131 个跟踪文件中 1,127 个与最终实现字节一致，4 个差异均为文档，运行代码一致。
+- 切换前 59 个历史任务空闲；保留原 Home/output、3 个账号、预算进程和账本。正式环境只读复核通过：7 份旧 PPT preset 实际初始化/工具目录、3 个旧 job、20 处报告配置、16 份来源及 234 个成品 SHA、3 个旧对照完成状态与评分。上述旧对照视图没有文件列表，不以该项替代旧成品下载验证。
+- 生产模型目录包含 Off/On，进程实际解析器环境与只读依赖配置一致；公网登录页 HTTP 200、品牌及螺旋资源正常。部署和复核新增模型请求均为 0；复核前后累计 785 请求 / $0.540679206 代理估费不变，账单实付未知。
+- 私有部署收据标识 `20261015T092232Z-3bb96877f246-e5381c1e`；复核标识 `postdeploy-scene-stream-acceptance-3bb96877f246-20261015T092307Z-attempt1-527f7b54`。运行指针更新为 `current-runtime.json`，旧收据保留，原始凭据和日志不提交。
+
 ## 负例、限制与回退
 
 - 初次新代码验收因公开消息 metadata 含 `undefined` 而在模型之前失败；改为省略该字段，并补严格 JSON 回归。`attachment-documents-v1` 原失败记录保留，没有付费调用。
