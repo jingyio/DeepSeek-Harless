@@ -1,5 +1,15 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-15：场景流式、推理开关和 PDF/Word 附件（当前候选版）
+
+- 分支：`codex/scene-stream-thinking`，基于 `2a03e22`。此前线上为 `b4712d6`；本节记录候选版验收，部署状态以发布后的追加记录为准。
+- 已完成：SSE 只在收到有效快照后视为可用，始终保留只读恢复；真实 DeepSeek On/Off 选择和每轮冻结；取消场景级附件扩展名拒绝，补 PDF/DOC/DOCX 等只读正文提取及明确未解析状态；报告从混合附件中找数据表并保留其余资料。
+- 已验证：完整 Node 594 通过/3 条件跳过；完整 Python 初次 924 通过/1 个旧 PPT 锁失败，更新独立兼容锁后定向通过。另有报告、附件、推理、消息严格 JSON、连接失效回归；Linux 成员依赖 29 项通过、独立沙箱实际解析 PDF/DOC/DOCX、65 个 PPT 锁和五组真实 MCP schema 通过。
+- 真实链路：混合 Word/PDF/未知二进制与 Off/On 两轮共 5 请求；截图三文件报告共 26 请求，两侧 PDF 实际下载 SHA 通过；Off→On→Off 带旧工具历史共 5 请求通过。浏览器同一对话 data→ppt→paper 与生成中部分正文可见。详情和失败证据见 [本轮记录](../experiments/geneloop-scene-stream-attachments-20261015-v1.md)。
+- 部署准备：新增可选 `memberSceneDeployment.antiwordRoot`，可信解析依赖只读映射，旧 PDF 路径保留；私有切换脚本默认预检，明确执行才重启应用，不重启预算进程、不清账本、不回退用户数据。更新后运行指针为私有 `current-runtime.json`，保留旧部署收据。
+- 边界：文字层读取不等于扫描件 OCR 或图片/版式核查；未知二进制可以上传但诚实提示未解析。论文仍 Shadow，数据统计仍需真实表格；Baseline 报告有一次工具错误后恢复，未把该用例当作科研质量或普遍成本收益证明。
+- 授权：真实测试、合并及部署延续；累计费用/请求次数/额外输出上限 null，每任务 $0.23 保留，原账本不清零。
+
 ## 2026-10-15：工作区折叠、回收站与螺旋图标（当前，已发布）
 
 - 发布：`codex/workspace-collapse-chat-delete` 经 [PR #25](https://github.com/jingyio/DeepSeek-Harless/pull/25) 合入 main `747b080`，正式 release `geneloop-workspace-trash` 已部署；四项 Windows/Linux CI 通过。保留原 Home/output、3 账号及数据，708 次/$0.472179990 旧账本未清零。

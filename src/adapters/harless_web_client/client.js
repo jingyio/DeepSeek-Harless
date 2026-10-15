@@ -186,6 +186,7 @@ window.__ModuleLoader__.load({
         const alive = React.useRef(true), transferControllers = React.useRef(new Set()), refreshNow = React.useRef(() => {});
         const streamConnected = React.useRef(false);
         const streamBlocked = React.useRef(false);
+        const closeLiveStream = React.useRef(() => {});
         const snapshotRevision = React.useRef(Number(node.data.snapshot_revision ?? -1));
         const acceptSnapshot = next => {
           const revision = Number(next.snapshot_revision ?? -1);
@@ -215,12 +216,16 @@ window.__ModuleLoader__.load({
               if (!abort.signal.aborted && revision === generation.current && !actionBusy.current) {
                 applied = acceptSnapshot(next); setConnection(''); failures = 0;
               }
-              if (((!applied || !settled(next)) && !streamConnected.current) || actionBusy.current) delay = document.hidden ? 8000 : 1800;
+              // An open HTTP connection does not prove that its proxy forwards
+              // snapshots. Keep a low-frequency, read-only recovery path even
+              // after the stream has delivered data; never replay a submission.
+              if (!applied || !settled(next) || actionBusy.current)
+                delay = document.hidden ? 8000 : streamConnected.current ? 5000 : 1800;
             } catch (e) {
               if (!abort.signal.aborted) {
                 failures++;
                 const denied = [401, 403, 404].includes(e.status);
-                if (denied) streamBlocked.current = true;
+                if (denied) { streamBlocked.current = true; closeLiveStream.current(); }
                 setConnection(networkMessage(e) + (denied ? '' : ' 正在自动重连…'));
                 if (!denied) delay = Math.min(30000, 1800 * 2 ** Math.min(failures, 5));
               }
@@ -236,34 +241,43 @@ window.__ModuleLoader__.load({
         }, [node.data.id, node.data.session_id]);
         React.useEffect(() => {
           if (settled(value) || !window.EventSource) return;
-          let stream, retryTimer, disposed = false, failures = 0;
+          let stream, retryTimer, stallTimer, disposed = false, failures = 0;
+          const stopStream = () => { clearTimeout(stallTimer); stream?.close(); streamConnected.current = false; };
+          const close = () => { disposed = true; clearTimeout(retryTimer); stopStream(); };
+          closeLiveStream.current = close;
           const connect = () => {
             if (disposed || streamBlocked.current) return;
-            stream = new window.EventSource(comparisonUrl(value) + '&stream=1', { withCredentials: true });
-            stream.onopen = () => { if (!disposed) { streamConnected.current = true; failures = 0; } };
-            stream.onmessage = event => {
-              if (disposed || streamBlocked.current || actionBusy.current) return;
+            const current = new window.EventSource(comparisonUrl(node.data) + '&stream=1', { withCredentials: true });
+            stream = current;
+            const alive = () => !disposed && stream === current && !streamBlocked.current;
+            const watch = () => { clearTimeout(stallTimer); stallTimer = setTimeout(() => { if (alive()) current.onerror(); }, 10000); };
+            // Only an authenticated snapshot establishes stream liveness.
+            current.onopen = () => { if (alive()) watch(); };
+            current.onmessage = event => {
+              if (!alive() || actionBusy.current) return;
               try {
                 const next = JSON.parse(event.data);
-                if (next.id !== value.id || next.session_id !== value.session_id || !next.lanes?.baseline
+                if (next.id !== node.data.id || next.session_id !== node.data.session_id || !next.lanes?.baseline
                   || (next.presentation !== 'single' && !next.lanes?.motif)) throw Error('Invalid stream result');
                 if (!acceptSnapshot(next)) return;
+                streamConnected.current = true; failures = 0; watch();
                 generation.current++; setConnection('');
-                if (settled(next)) { disposed = true; streamConnected.current = false; stream.close(); }
-              } catch { stream.onerror(); }
+                if (settled(next)) close();
+              } catch { current.onerror(); }
             };
-            stream.addEventListener('snapshot', stream.onmessage);
-            stream.onerror = () => {
-              stream.close(); streamConnected.current = false;
-              if (disposed || streamBlocked.current) return;
+            current.addEventListener('snapshot', current.onmessage);
+            current.onerror = () => {
+              if (!alive()) return;
+              stopStream(); stream = undefined;
               // A stream reconnect is read-only. Never replay a paid request.
               void refreshNow.current();
               retryTimer = setTimeout(connect, Math.min(30000, 2000 * 2 ** Math.min(failures++, 4)));
             };
+            watch();
           };
           connect();
-          return () => { disposed = true; streamConnected.current = false; clearTimeout(retryTimer); stream?.close(); };
-        }, [value.id, value.session_id, settled(value)]);
+          return () => { close(); if (closeLiveStream.current === close) closeLiveStream.current = () => {}; };
+        }, [node.data.id, node.data.session_id, settled(value)]);
         React.useEffect(() => {
           if (settled(value)) return;
           updateBusy(value.session_id, value.id, true);
@@ -326,6 +340,7 @@ window.__ModuleLoader__.load({
         const pane = lane => {
           const result = value.lanes[lane], files = result.artifacts || [], title = lane === 'baseline' ? 'Baseline · DSH' : result.mode === 'shadow' ? 'Motif · Shadow' : 'Motif · DSH';
           const single = value.presentation === 'single';
+          const notStarted = result.delivery_status === 'not_started';
           const activity = Array.isArray(result.activity) ? result.activity : [];
           const progressLabel = result.progress?.label || (!settled(result) ? labels[result.status] : '查看执行过程');
           const captureLink = event => {
@@ -341,7 +356,7 @@ window.__ModuleLoader__.load({
             title: file.name, label: '下载 ' + file.name.split('/').pop(), open: () => { void download(lane, file); },
           } : undefined; } };
           return h('section', { key: lane, className: 'harless-paired-pane' + (single ? ' harless-single-pane' : ''), 'aria-label': single ? '回复' : title },
-            !single && h('header', null, h('strong', null, title), h('span', { role: 'status' }, result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
+            !single && h('header', null, h('strong', null, title), h('span', { role: 'status' }, notStarted ? '任务未启动' : result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
             (activity.length > 0 || !settled(result)) && h('details', { className: 'harless-activity' },
               h('summary', null, h('span', { role: 'status', 'aria-live': 'polite' }, progressLabel)),
               activity.length > 0 && h('ol', null, ...activity.map((entry, index) => h('li', { key: index, 'data-status': entry.status },
@@ -351,7 +366,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, (result.answer_display ?? result.answer)
               ? MarkdownText ? h(MarkdownText, { text: result.answer_display ?? result.answer, streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
                 : h('p', { style: { whiteSpace: 'pre-wrap' } }, result.answer_display ?? result.answer)
-              : h('p', { className: 'harless-paired-muted' }, result.status === 'queued' ? '等待当前任务结束后开始。' : !settled(result) ? '正在处理，结果会自动更新…' : '本轮未生成文字回复。')),
+              : h('p', { className: 'harless-paired-muted' }, notStarted ? '任务未启动，暂无回复。' : result.status === 'queued' ? '等待当前任务结束后开始。' : !settled(result) ? '正在处理，结果会自动更新…' : '本轮未生成文字回复。')),
             files.length > 0 && h('section', { className: 'harless-paired-deliveries', 'aria-label': title + '交付文件' },
               h('h4', null, '交付文件'), h('ul', { className: 'harless-paired-files' }, ...files.map(file => {
                 const status = downloads[lane + ':' + file.id];

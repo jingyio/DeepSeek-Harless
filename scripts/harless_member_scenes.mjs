@@ -4,6 +4,25 @@ import { createHash } from 'node:crypto';
 import { join, relative, dirname, basename, isAbsolute, sep, resolve, posix } from 'node:path';
 
 const inside = (base, value) => value === base || (!relative(base, value).startsWith('..') && !isAbsolute(relative(base, value)));
+function fixedPath(value, kind, label) {
+  if (typeof value !== 'string' || !isAbsolute(value) || realpathSync(value) !== resolve(value) || lstatSync(value).isSymbolicLink() ||
+      !(kind === 'file' ? statSync(value).isFile() : statSync(value).isDirectory()) || dirname(value) === value)
+    throw Error('Member ' + label + ' must be a fixed installation without redirected paths');
+  return realpathSync(value);
+}
+function containedInstallation(root) {
+  // Distribution soname/documentation links may stay inside the read-only
+  // installation; never follow a package link into an owner's home or secrets.
+  const check = directory => {
+    for (const entry of readdirSync(directory, {withFileTypes:true})) {
+      const path=join(directory,entry.name);
+      if (entry.isSymbolicLink()) {
+        if (!inside(root,realpathSync(path))) throw Error('Member PDF parser link escapes its installation');
+      } else if (entry.isDirectory()) check(path);
+    }
+  };
+  check(root);
+}
 export function memberSceneDeployment(policy, deployment) {
   if (!deployment) return null; // Legacy explicit chat-only deployment remains supported.
   const root = realpathSync(deployment.projectRoot);
@@ -32,13 +51,34 @@ export function memberSceneDeployment(policy, deployment) {
   const mounts = [...mappings, ...pythonRoots.map(source => ({ source, target: source }))];
   const renderer=deployment.rendererRoot ? realpathSync(deployment.rendererRoot) : null;
   const fonts=deployment.fontRoot ? realpathSync(deployment.fontRoot) : null;
-  const pdf=deployment.pdfToolchainRoot ? realpathSync(deployment.pdfToolchainRoot) : null;
+  const pdf=deployment.pdfToolchainRoot ? fixedPath(deployment.pdfToolchainRoot,'directory','PDF parser') : null;
+  const antiword=deployment.antiwordRoot ? fixedPath(deployment.antiwordRoot,'directory','Word parser') : null;
+  const attachmentEnvironment={};
   if(pdf){
     if(pdf==='/' || !['pdfinfo','pdftotext'].every(name=>existsSync(join(pdf,'bin',name))) ||
        !existsSync(join(pdf,'lib/x86_64-linux-gnu')) ||
        readdirSync(pdf).some(name=>!['bin','lib','share','include'].includes(name)))
       throw Error('Member PDF parser must be a fixed Poppler installation');
+    for(const name of ['pdfinfo','pdftotext'])fixedPath(join(pdf,'bin',name),'file','PDF parser executable');
+    fixedPath(join(pdf,'lib/x86_64-linux-gnu'),'directory','PDF parser libraries');
+    containedInstallation(pdf);
+    // Existing bound literature presets still use the old absolute path.
     mounts.push({source:pdf,target:pdf});
+    mounts.push({source:pdf,target:'/opt/harless/pdf'});
+    mappings.push({source:pdf,target:'/opt/harless/pdf'});
+    attachmentEnvironment.HARLESS_PDF_TOOLCHAIN_ROOT='/opt/harless/pdf';
+  }
+  let antiwordBinary,antiwordMappings;
+  if(antiword){
+    antiwordBinary=fixedPath(join(antiword,'usr/bin/antiword'),'file','Word parser executable');
+    antiwordMappings=fixedPath(join(antiword,'usr/share/antiword'),'directory','Word parser mappings');
+    fixedPath(join(antiwordMappings,'UTF-8.txt'),'file','Word UTF-8 mapping');
+    if(readdirSync(antiwordMappings,{withFileTypes:true}).some(item=>!item.isFile() || item.isSymbolicLink() || item.name.startsWith('.')))
+      throw Error('Member Word parser mappings must contain only fixed public resource files');
+    const binaryTarget='/opt/harless/antiword/bin/antiword',mappingsTarget='/opt/harless/antiword/share/antiword';
+    mounts.push({source:antiwordBinary,target:binaryTarget},{source:antiwordMappings,target:mappingsTarget});
+    mappings.push({source:antiwordBinary,target:binaryTarget},{source:antiwordMappings,target:mappingsTarget});
+    Object.assign(attachmentEnvironment,{HARLESS_ANTIWORD_BIN:binaryTarget,ANTIWORDHOME:mappingsTarget});
   }
   if(renderer){
     if(!existsSync(join(renderer,'program/soffice.bin')) || !existsSync(join(renderer,'share')))
@@ -118,12 +158,20 @@ export function memberSceneDeployment(policy, deployment) {
       cfg.command=cfg.command === 'node' ? 'node' : executable;
       cfg.cwd='/app'; cfg.args=cfg.args.map(translate);
       const env=cfg.env ?? {};
-      const permittedEnv=scene.adapter==='data-report'?['HARLESS_REPORT_WORKSPACE','HARLESS_PRIVATE_ROOT','HARLESS_REPORT_FONT']:scene.adapter==='literature' ? ['SSS_PDF_WEB_TASK','PATH','LD_LIBRARY_PATH'] :
+      const permittedEnv=scene.adapter==='data-report'?['HARLESS_REPORT_WORKSPACE','HARLESS_PRIVATE_ROOT','HARLESS_REPORT_FONT','HARLESS_PDF_TOOLCHAIN_ROOT','HARLESS_ANTIWORD_BIN','ANTIWORDHOME']:scene.adapter==='literature' ? ['SSS_PDF_WEB_TASK','PATH','LD_LIBRARY_PATH'] :
         scene.adapter==='files' ? ['FM_WEB_WORKSPACE','FM_TASK_FILE','FM_OUTPUT'] :
         cfg.serverName==='paper_trace_rsi'?['HARLESS_PRIVATE_ROOT']:
         ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH','HARLESS_PRIVATE_ROOT'];
       if (Object.keys(env).some(k=>!permittedEnv.includes(k)))
         throw Error('Member scene environment contains unapproved authority');
+      if(scene.adapter==='data-report'){
+        if(('HARLESS_PDF_TOOLCHAIN_ROOT' in env || scene.pdf_toolchain_root!==undefined) &&
+            (!pdf || scene.pdf_toolchain_root!==pdf || env.HARLESS_PDF_TOOLCHAIN_ROOT!==pdf))
+          throw Error('Member report PDF parser requires the matching fixed installation');
+        if(('HARLESS_ANTIWORD_BIN' in env || 'ANTIWORDHOME' in env || scene.antiword_root!==undefined) &&
+            (!antiword || scene.antiword_root!==antiword || env.HARLESS_ANTIWORD_BIN!==antiwordBinary || env.ANTIWORDHOME!==antiwordMappings))
+          throw Error('Member report Word parser requires the matching fixed installation');
+      }
       if(scene.adapter==='data-report' && ('HARLESS_REPORT_FONT' in env || scene.report_font_sha256!==undefined)){
         const font=fonts && join(fonts,'wqy-microhei.ttc');
         if(!font || env.HARLESS_REPORT_FONT!==font || !existsSync(font) ||
@@ -146,6 +194,8 @@ export function memberSceneDeployment(policy, deployment) {
       if(cfg.env.PATH && scene.adapter!=='literature')cfg.env.PATH=join(renderer,'program')+':/opt/node/bin:/usr/bin:/bin';
     }
     const next={...structuredClone(scene),mcp_rows:rows};
+    if(next.pdf_toolchain_root)next.pdf_toolchain_root=translate(next.pdf_toolchain_root);
+    if(next.antiword_root)next.antiword_root='/opt/harless/antiword';
     for(const key of ['manifest','task','tool_schemas','certification_path','runtime_library']) if(next[key]) {
       if(!inside(join(root,'motif-libraries'),next[key]) && (!deployment.libraryRoot || !inside(realpathSync(deployment.libraryRoot),next[key])))
         throw Error('Member Motif library is outside sanitized runtime artifacts');
@@ -155,5 +205,5 @@ export function memberSceneDeployment(policy, deployment) {
     return next;
   });
   return {scenes,mounts,allowed_tools:[...new Set(scenes.filter(s=>!s.unavailable_reason).flatMap(s=>s.allowed_tools))],
-    output:'/app/.local/web',python:executable};
+    output:'/app/.local/web',python:executable,attachmentEnvironment};
 }

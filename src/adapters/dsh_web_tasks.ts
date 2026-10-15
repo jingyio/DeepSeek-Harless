@@ -3,7 +3,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
+import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
+import { WebDeepSeekAdapter, webReasoningEffort } from './harless_reasoning.ts';
+import type { WebReasoningEffort } from './harless_reasoning.ts';
 import { isAgentLoopRequest, createUserMessage, createAssistantMessage } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
@@ -11,7 +13,7 @@ import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
 import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, sceneShortcut, parseSceneShortcut, SettingsError } from './harless_settings.ts';
-import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest } from './harless_task_scope.ts';
+import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest, sceneAttachmentContext } from './harless_task_scope.ts';
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
@@ -52,7 +54,7 @@ type Task = {
   sources: { resource_id: string; version: string; sha256: string }[];
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
-  model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; source_pending?: boolean; scope_sha256: string | null;
+  model_option: ModelOption; reasoning_effort?: WebReasoningEffort; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; source_pending?: boolean; scope_sha256: string | null;
   budget_session_id: string;
   source_task_id?: string;
   bound_binding_sha256?: string | null;
@@ -92,6 +94,13 @@ export function apply(ctx: any) {
         typeof option.label !== 'string' || !option.label || typeof option.available !== 'boolean') ||
       new Set(modelOptions.map(option => option.model)).size !== modelOptions.length) throw Error('Invalid server model catalog');
   const modelSelections = new Map<string, ModelOption>();
+  const reasoningSelections = new Map<string, WebReasoningEffort>();
+  const reasoningFor = (id: string, option = modelSelections.get(id) ?? defaultModel) =>
+    webReasoningEffort(option.provider, option.provider === 'harless-glm' ? 'off' : reasoningSelections.get(id) ?? 'off');
+  const modelSelection = (id: string, option = modelSelections.get(id) ?? defaultModel) => ({
+    sessionId: id, provider: option.provider, model: option.model,
+    ...(reasoningFor(id, option) === undefined ? {} : { reasoningEffort: reasoningFor(id, option) }),
+  });
   const findModel = (id: unknown): ModelOption => {
     const option = modelOptions.find(row => row.model === id && row.available);
     if (!option) throw new TaskError('model_not_allowed', 'Model is not enabled by the server configuration');
@@ -167,8 +176,14 @@ export function apply(ctx: any) {
     return { ...safe, allowed_tools: [], instructions, instructions_sha256: sha(instructions),
       config_sha256: digest({ scene: scene.id, parent: scene.config_sha256 ?? null, legacy_chat_only: true }) };
   }
+  const sourcePendingFor = (scene: Scene, inputs: any[]) => {
+    if (!scene.adapter || scene.id === 'new-scene') return false;
+    const formats = scene.adapter === 'data-report' ? ['.csv','.tsv']
+      : scene.adapter === 'ppt' ? ['.pdf','.pptx'] : scene.adapter === 'literature' ? ['.pdf'] : undefined;
+    return formats ? !inputs.some(row => formats.includes(extname(row.file ?? '').toLowerCase())) : !inputs.length;
+  };
   const instructionsFor = (scene: Scene, sourcePending = false) => scene.adapter && scene.id !== 'new-scene'
-    ? `${scene.instructions ?? ''}\n\n交互原则：以上工具流程仅在用户确实需要相应处理时适用。文字、附件及二者组合都走当前场景的正常执行流程，由你根据请求决定直接回答、询问资料或调用工具。正常回应问候、讨论目标、解释方法；不要为闲聊强制运行报告流程或要求上传。具体操作缺少必要来源时自然说明需要什么，不编造数据或交付，不暴露内部配置或服务器路径。${sourcePending ? '当前任务没有附件；这不限制正常问答或可用工具，也不代表用户必须上传。' : ''}`
+    ? `${scene.instructions ?? ''}\n\n交互原则：以上工具流程仅在用户确实需要相应处理时适用。文字、附件及二者组合都走当前场景的正常执行流程，由你根据请求决定直接回答、询问资料或调用工具。正常回应问候、讨论目标、解释方法；不要为闲聊强制运行报告流程或要求上传。具体操作缺少必要来源时自然说明需要什么，不编造数据或交付，不暴露内部配置或服务器路径。${sourcePending ? '当前任务尚无可用于处理的数据来源；这不限制正常问答或可用工具，也不代表用户必须上传。' : ''}`
     : scene.instructions;
   function bindScene(agent: any, configuredScene: Scene, sourcePending = false) {
     const scene = sessionScene(agent.session.id, configuredScene);
@@ -244,9 +259,7 @@ export function apply(ctx: any) {
           if (boundSessions.has(sessionId) || legacyChatSessions.has(sessionId) || snapshot.events.some((event: any) =>
               ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)))
             throw new TaskError('scene_requires_new_session', '该任务的工具范围已固定，请在支持场景切换的对话中继续。', 409);
-          if (!agents.has(sessionId)) await original.selectModel({ sessionId,
-            provider: (modelSelections.get(sessionId) ?? defaultModel).provider,
-            model: (modelSelections.get(sessionId) ?? defaultModel).model, reasoningEffort: 'off' }, new AbortController().signal);
+          if (!agents.has(sessionId)) await original.selectModel(modelSelection(sessionId), new AbortController().signal);
           const scene = sceneFor(next.scene);
           await selectPreset!(agents.get(sessionId), sessionPreset(config.output, workspaceFor(sessionId), scene));
           bindScene(agents.get(sessionId), scene);
@@ -316,9 +329,15 @@ export function apply(ctx: any) {
       const option = modelOptions.find(row => row.model === model && row.available);
       if (ownedSessions.has(id) && option) modelSelections.set(id, option);
     }
+    if (saved.reasoning_efforts !== undefined && (!saved.reasoning_efforts || typeof saved.reasoning_efforts !== 'object' || Array.isArray(saved.reasoning_efforts)))
+      throw Error('Invalid Web reasoning selection record');
+    for (const [id, effort] of Object.entries(saved.reasoning_efforts ?? {})) {
+      if (ownedSessions.has(id)) reasoningSelections.set(id, webReasoningEffort('deepseek-official', effort)!);
+    }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   const saveModels = () => json(modelPath, { scope: runScope,
-    models: Object.fromEntries([...modelSelections].map(([id, option]) => [id, option.model])) });
+    models: Object.fromEntries([...modelSelections].map(([id, option]) => [id, option.model])),
+    reasoning_efforts: Object.fromEntries(reasoningSelections) });
   try {
     const saved = JSON.parse(readFileSync(join(config.output, 'harless-settings.json'), 'utf8'));
     const restoreSelection = (selection:any,id?:string) => {
@@ -417,6 +436,7 @@ export function apply(ctx: any) {
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
       request_sha256: request.request_sha256, confirmation_digest: task.confirmation_digest,
       provider_mode: config.provider_mode, provider: task.model_option.provider, model: task.model_option.model,
+      reasoning_effort: task.reasoning_effort ?? null,
       motif_library:task.scene.runtime_kind??null,library_sha256:task.scene.runtime_library_sha256??null,
       paid_calls_enabled: config.provider_mode === 'real',
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, source_pending: task.source_pending ?? false,
@@ -460,12 +480,14 @@ export function apply(ctx: any) {
       manifest_sha256: effective.manifest_sha256 ?? null,
       binding_sha256: effective.binding_sha256 ?? null,
       bound_binding_sha256: effective.bound_binding_sha256 ?? null,
-      model_option: modelOptions.find(option => option.model === state.model && option.provider === state.provider) ?? defaultModel };
+      model_option: modelOptions.find(option => option.model === state.model && option.provider === state.provider) ?? defaultModel,
+      reasoning_effort: webReasoningEffort(state.provider ?? defaultModel.provider, state.reasoning_effort ?? effective.reasoning_effort ?? 'off') };
     try { task.answer = readFileSync(join(output, 'answer.md'), 'utf8'); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     tasks.set(taskId, task); progress.set(taskId, createTaskProgress({answer:task.answer,progress:state.progress,activity:state.activity})); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
     if (!selections.has(request.session_id)) selections.set(request.session_id, { ...task.selection });
     if (!modelSelections.has(request.session_id)) modelSelections.set(request.session_id, task.model_option);
+    if (!reasoningSelections.has(request.session_id) && task.reasoning_effort !== undefined) reasoningSelections.set(request.session_id, task.reasoning_effort);
     if (terminal.has(task.status)) progress.get(taskId)?.finish(task.status);
     if (!terminal.has(task.status)) {
       task.status = 'failed'; task.failure = 'frontend_restarted_before_completion'; task.finished_at = utc();
@@ -637,8 +659,7 @@ export function apply(ctx: any) {
         saveSettings();
         bindScene(agents.get(created.sessionId), chosen);
         const option = modelSelections.get(created.sessionId) ?? defaultModel;
-        await original.selectModel({ sessionId: created.sessionId, provider: option.provider,
-          model: option.model, ...(option.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' }) });
+        await original.selectModel(modelSelection(created.sessionId, option));
         modelSelections.set(created.sessionId, option);
         saveModels();
       }
@@ -695,6 +716,7 @@ export function apply(ctx: any) {
       // A fork starts its own tool scope. Prior event evidence is readable
       // history; the next routed send will allocate fresh task input copies.
       ownedSessions.add(sessionId); selections.set(sessionId, { ...selected }); modelSelections.set(sessionId, option);
+      if (reasoningSelections.has(sourceSessionId)) reasoningSelections.set(sessionId, reasoningSelections.get(sourceSessionId)!);
       const sourceEvents = (await controller.inspect(sourceSessionId)).events.filter((event: any) => event.seq <= sourceAtSeq);
       const store = comparisonArtifacts(config.output), inherited = readBranchInputs(sourceSessionId);
       const snapshot: any = {version:1,principal,session_id:sessionId,inherited_event_count:inheritedEventCount,lanes:{},context:{}};
@@ -750,15 +772,15 @@ export function apply(ctx: any) {
       try {
         await ctx.agents.create({ sessionId, seed, inheritedEventCount,
           meta:{ cwd:group?.path ?? workspace, parentSession:sourceSessionId, isSeeded:true, agentPreset:preset },
-          agentOptions:{ provider:option.provider, model:option.model },
+          agentOptions:{ provider:option.provider, model:option.model, ...(reasoningFor(sessionId, option) === undefined ? {} : {reasoningEffort: reasoningFor(sessionId, option)}) },
           setup:async (agentCtx: any) => { await ctx.agentPresets.mount(agentCtx,preset); },
         });
-      } catch (error) { ownedSessions.delete(sessionId); selections.delete(sessionId); modelSelections.delete(sessionId); throw error; }
+      } catch (error) { ownedSessions.delete(sessionId); selections.delete(sessionId); modelSelections.delete(sessionId); reasoningSelections.delete(sessionId); throw error; }
       if (group) await group.attachSession(sessionId);
       await controller.rename({sessionId,title});
       if (optionSelections.has(sourceSessionId)) optionSelections.set(sessionId,structuredClone(optionSelections.get(sourceSessionId)!));
       saveOwnership();saveSettings();saveModels();
-      await original.selectModel({sessionId,provider:option.provider,model:option.model,...(option.provider==='harless-glm'?{}:{reasoningEffort:'off'})},new AbortController().signal);
+      await original.selectModel(modelSelection(sessionId, option),new AbortController().signal);
     },
   });
   controller.fork = (request: any) => serialize(() => branches.fork(request));
@@ -768,14 +790,17 @@ export function apply(ctx: any) {
   controller.selectModel = async (request: any, signal: AbortSignal) => {
     const option = findModel(request.model);
     const previousTask = forSession(request.sessionId);
-    if (!ownedSessions.has(request.sessionId) || (previousTask && (!brokerMode || !terminal.has(previousTask.status))) || request.provider !== option.provider ||
-        (request.reasoningEffort !== undefined && request.reasoningEffort !== 'off'))
+    if (!ownedSessions.has(request.sessionId) || comparisons?.busy(request.sessionId) || (previousTask && (!brokerMode || !terminal.has(previousTask.status))) || request.provider !== option.provider)
       throw new TaskError('model_not_allowed', 'Model selection is outside the approved task configuration');
+    let effort: WebReasoningEffort | undefined;
+    try { effort = webReasoningEffort(option.provider, request.reasoningEffort ?? reasoningFor(request.sessionId, option)); }
+    catch { throw new TaskError('model_not_allowed', '该模型不支持所选推理模式。'); }
     const requested = { ...request };
-    if (option.provider === 'harless-glm') delete requested.reasoningEffort;
-    else requested.reasoningEffort = 'off';
+    if (effort === undefined) delete requested.reasoningEffort;
+    else requested.reasoningEffort = effort;
     const result = await original.selectModel(requested, signal);
     modelSelections.set(request.sessionId, option);
+    if (effort !== undefined) reasoningSelections.set(request.sessionId, effort);
     saveModels();
     return result;
   };
@@ -791,9 +816,13 @@ export function apply(ctx: any) {
     const tentativeSession = existingSession ?? 'pending';
     const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
     const chosenModel = supplied.model === undefined ? (existingSession ? modelSelections.get(existingSession) ?? defaultModel : defaultModel) : findModel(supplied.model);
+    let chosenReasoning: WebReasoningEffort | undefined;
+    try { chosenReasoning = webReasoningEffort(chosenModel.provider,
+      supplied.reasoning_effort ?? (existingSession ? reasoningFor(existingSession, chosenModel) : 'off')); }
+    catch { throw new TaskError('model_not_allowed', '该模型不支持所选推理模式。'); }
     const taskInput = input && typeof input === 'object' && !Array.isArray(input)
       ? { ...supplied } : input;
-    if (taskInput && typeof taskInput === 'object' && !Array.isArray(taskInput)) { delete taskInput.model; delete taskInput.scene_options; }
+    if (taskInput && typeof taskInput === 'object' && !Array.isArray(taskInput)) { delete taskInput.model; delete taskInput.scene_options; delete taskInput.reasoning_effort; }
     const selected = existingSession ? selections.get(existingSession)! : defaults;
     if (existingSession && !selected) throw new TaskError('session_not_owned', 'Session is outside this Web run');
     const request = normalizeWebTaskRequest(taskInput, { task_id: taskId, session_id: tentativeSession,
@@ -825,7 +854,8 @@ export function apply(ctx: any) {
     const options = sceneOptions(supplied.scene_options ?? (existingSession ? optionSelections.get(existingSession)?.[scene.id] : undefined) ?? (scene.adapter === 'ppt' && previousTask?.scene.id === scene.id ? previousTask.scene_options : undefined), scene);
     if(options.allow_output && scene.output_unavailable_reason)throw new TaskError('scene_output_unavailable',scene.output_unavailable_reason,409);
     const selection = changeSelection(selected, { scene: scene.id, mode: requestedMode }, scenes, executeUnavailable);
-    request.request_sha256 = digest({ request: request.request_sha256, selection, scene_options: options, user_id: principal });
+    request.request_sha256 = digest({ request: request.request_sha256, selection, scene_options: options, user_id: principal,
+      ...(chosenReasoning === 'high' ? {reasoning_effort: chosenReasoning} : {}) });
     const previous = requests.get(request.request_id);
     if (previous) {
       const task = get(previous);
@@ -839,9 +869,10 @@ export function apply(ctx: any) {
     if (!brokerMode && (sessions.has(request.session_id) || boundSessions.has(request.session_id))) throw new TaskError('session_already_bound', 'This session already has a task；请点击“新会话”后发送新的任务。', 409);
     // Saved model selections survive process restarts; live Agents and their
     // MCP schemas do not. Restore the native Agent before checking its tools.
-    if (!agents.has(request.session_id) || modelSelections.get(request.session_id)?.model !== chosenModel.model) await controller.selectModel({
+    if (!agents.has(request.session_id) || modelSelections.get(request.session_id)?.model !== chosenModel.model ||
+        reasoningFor(request.session_id, chosenModel) !== chosenReasoning) await controller.selectModel({
       sessionId: request.session_id, provider: chosenModel.provider, model: chosenModel.model,
-      ...(chosenModel.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' })
+      ...(chosenReasoning === undefined ? {} : { reasoningEffort: chosenReasoning })
     }, new AbortController().signal);
     const newFileInput = request.content.some(part => part.type === 'file');
     if (previousTask && (previousTask.scene.id !== scene.id || (scene.adapter && newFileInput && !previousTask.source_pending) ||
@@ -857,7 +888,7 @@ export function apply(ctx: any) {
       bindScene(agents.get(request.session_id), scene);
     }
     // Source availability is metadata, never a different chat/tool pipeline.
-    const sourcePending = Boolean(scene.adapter && scene.id !== 'new-scene' && !sceneInputs.length);
+    const sourcePending = sourcePendingFor(scene, sceneInputs);
     bindScene(agents.get(request.session_id), scene, sourcePending);
     const tools = structuredClone(schemas.get(request.session_id) ?? []);
     if (tools.length !== scene.allowed_tools.length || tools.some((tool: any) => !scene.allowed_tools.includes(tool.name)))
@@ -888,7 +919,7 @@ export function apply(ctx: any) {
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output,
       humans: priorHumans, current_humans: new Set(), sources,
-      model_option: chosenModel, budget_session_id: budgetSessionId,
+      model_option: chosenModel, reasoning_effort: chosenReasoning, budget_session_id: budgetSessionId,
       source_task_id: firstSources ? taskId : previousTask?.source_task_id ?? previousTask?.request.task_id ?? taskId,
       stats: { tool_calls: 0, tool_errors: 0, llm_decisions: 0, motif_attempts: 0, shadow_candidates: 0, verified_skips: 0,
         upstream_requests: 0, model_requests: 0, actual_paid_usd: config.provider_mode === 'mock' ? 0 : null } };
@@ -904,9 +935,9 @@ export function apply(ctx: any) {
     indexedTasks.push(taskId); saveTaskIndex(); return task;
   }
   function updateDraft(task: Task) {
-    if(task.scene.binding_policy && task.request.mode!=='baseline' && task.scene_inputs.length){
+    if(task.scene.binding_policy && task.request.mode!=='baseline' && !task.source_pending && task.scene_inputs.length){
       const manifest=JSON.parse(readFileSync(task.scene.manifest!,'utf8'));
-      const binding=task.scene.binding_policy==='ppt_uploaded_sources_v1' ? bindUploadedPptTask(task.workspace,task.scene_inputs,task.request,manifest,task.source_task_id)
+      const binding=task.scene.binding_policy==='ppt_uploaded_sources_v1' ? bindUploadedPptTask(task.workspace,task.scene_inputs.filter(row=>['.pdf','.pptx'].includes(extname(row.file).toLowerCase())),task.request,manifest,task.source_task_id)
         : bindUploadedSourceTask(task.workspace,task.scene_inputs,task.request,manifest);
       json(join(task.output,'bound-motif-task.json'),binding);
       task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
@@ -920,7 +951,7 @@ export function apply(ctx: any) {
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, scope_sha256: task.scope_sha256, user_id: principal,
       provider_mode: config.provider_mode, max_output_tokens: config.max_output_tokens });
     task.confirmation_digest = digest({ confirmation: task.confirmation_digest,
-      provider: task.model_option.provider, model: task.model_option.model });
+      provider: task.model_option.provider, model: task.model_option.model, reasoning_effort: task.reasoning_effort ?? null });
     json(join(task.output, 'task.json'), task.request);
     json(join(task.output, 'effective-config.json'), { ...view(task), selection: task.selection, tools: task.tools,
       scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
@@ -932,7 +963,7 @@ export function apply(ctx: any) {
       allowed_tools: task.scene.allowed_tools, offered_allowed_tools: task.scene.allowed_tools,
       workspace: task.workspace, scope_sha256: task.scope_sha256,
       runtime_file_locks:task.scene.runtime_file_locks,
-      tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
+      tool_schemas_sha256: digest(task.tools), reasoning_effort: task.reasoning_effort ?? null, compression: false,
       budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit === 0 ? null : config.request_limit,
         run_usd: config.run_budget_usd, run_requests: config.run_request_limit === 0 ? null : config.run_request_limit, reset_history: false },
       run_config: '../../effective-config.json', manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256, scene_registry_sha256: config.scene_registry_sha256 });
@@ -1002,11 +1033,14 @@ export function apply(ctx: any) {
     // A greeting, explanation or planning turn need not prepare a report.
     requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
     try {
+      const attachmentContext = await sceneAttachmentContext(task.workspace, task.scene_inputs);
+      if (scopeDigest(task.workspace, task.scene) !== task.scope_sha256)
+        throw new TaskError('confirmation_changed', '附件内容已改变，请重新发送。', 409);
       configureMotif(task);
       await control('/tasks/activate', { session_id: task.budget_session_id });
       await broker('/bind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       await original.prompt({ requestId: task.request.request_id, sessionId: task.request.session_id,
-        mode: 'queue', content: task.delivery }, signal);
+        mode: 'queue', content: attachmentContext ? [...task.delivery, {type:'text',text:attachmentContext}] : task.delivery }, signal);
       return view(task, true);
     } catch (error) { finish(task, 'failed', String(error)); throw error; }
   }
@@ -1026,9 +1060,7 @@ export function apply(ctx: any) {
     // agent/created reinstalls its tool restrictions and schema binding.
     if (!schemas.has(request.sessionId)) {
       const option = modelSelections.get(request.sessionId) ?? defaultModel;
-      await original.selectModel({ sessionId: request.sessionId,
-        provider: option.provider, model: option.model,
-        ...(option.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' }) }, signal);
+      await original.selectModel(modelSelection(request.sessionId, option), signal);
       modelSelections.set(request.sessionId, option);
     }
     const content = structuredClone(request.content);
@@ -1067,7 +1099,8 @@ export function apply(ctx: any) {
           (event.type === 'user/message' && !event.data.harless_comparison) || (event.type === 'assistant/message' && !event.data.harless_branch_context)).slice(-12).map((event: any) => ({
             [event.type === 'user/message' ? 'user' : 'assistant']: (event.data.content ?? event.data.message?.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n'),
           })),
-        model: (modelSelections.get(request.sessionId) ?? defaultModel).model, input_sha256: digest([text, files]),source_files:sourceFiles,
+        model: (modelSelections.get(request.sessionId) ?? defaultModel).model, reasoning_effort: reasoningFor(request.sessionId),
+        input_sha256: digest([text, files]),source_files:sourceFiles,
       });
     }
     const task = await preview({ content, request_id: request.requestId }, request.sessionId, 'native_chat');
@@ -1113,7 +1146,7 @@ export function apply(ctx: any) {
           const accepts = (name: string) => {
             const suffix = extname(name).toLowerCase();
             if (target.adapter === 'ppt') return ['.pdf','.pptx'].includes(suffix);
-            if (target.id === 'research-data-analysis') return ['.csv','.tsv','.json'].includes(suffix);
+            if (target.id === 'research-data-analysis') return ['.csv','.tsv','.json','.txt','.md'].includes(suffix);
             if (target.id === 'paper-proofreading') return ['.pdf','.tex','.bib','.bbl','.log','.md','.txt','.json'].includes(suffix);
             if (target.adapter === 'literature') return suffix === '.pdf';
             return false;
@@ -1138,10 +1171,10 @@ export function apply(ctx: any) {
             if (accepts(row.name)) await carry(row.name, artifacts.read(source.turn, expectedLane, row));
           }
           if (!carried.length) for (const row of readBranchInputs(turn.session_id)?.lanes?.[lane] ?? []) {
-            if (accepts(row.name)) await carry(row.name,artifacts.read(turn.session_id,lane,row));
+            await carry(row.name,artifacts.read(turn.session_id,lane,row));
           }
           if (!carried.length) for (const ref of turn.prior_sources ?? []) {
-            if (!accepts(ref.name) || ref.bytes > 20 * 1024 * 1024) continue;
+            if (ref.bytes > 20 * 1024 * 1024) continue;
             const chunks: Buffer[] = []; let bytes = 0;
             for await (const chunk of ctx.attachments.readFileStream(ref)) {
               bytes += chunk.length; if (bytes > 20 * 1024 * 1024) throw new TaskError('scene_input_limit', '历史资料过大。');
@@ -1160,7 +1193,8 @@ export function apply(ctx: any) {
         const mode = lane === 'baseline' ? 'baseline' : configured.runtime_kind==='paper_shadow_v1'?'shadow':reason ? 'baseline' : 'execute';
         selections.set(child, { scene: turn.scene, mode, rsi: mode !== 'baseline' });
         optionSelections.set(child, { [turn.scene]: turn.options }); saveSettings();
-        const task = await preview({ content, request_id: requestId, model: turn.model, budget_usd: turn.presentation === 'single' ? config.budget_usd : config.budget_usd / 2, mode }, child, 'native_chat');
+        const task = await preview({ content, request_id: requestId, model: turn.model, reasoning_effort: turn.reasoning_effort ?? 'off',
+          budget_usd: turn.presentation === 'single' ? config.budget_usd : config.budget_usd / 2, mode }, child, 'native_chat');
         // Unavailable or invalid research libraries must be visible; never label a Baseline run as optimized.
         if (lane === 'motif' && reason && mode==='baseline') task.fallback_reason = reason;
         taskParents.set(task.request.task_id, { turn, lane });
@@ -1188,7 +1222,7 @@ export function apply(ctx: any) {
         await ensureOwned(parent);
         if (!agents.has(parent)) {
           const option = modelSelections.get(parent) ?? defaultModel;
-          await original.selectModel({ sessionId: parent, provider: option.provider, model: option.model, reasoningEffort: 'off' });
+          await original.selectModel(modelSelection(parent, option));
         }
         const agent = agents.get(parent);
         const events=agent.session.snapshotEvents();
@@ -1267,11 +1301,11 @@ export function apply(ctx: any) {
     } }), 'harless-comparison-api');
   }
   const options = resolveAdapterOptions({ baseURL: brokerMode ? config.budget_broker_endpoint + '/v1' : config.endpoint,
-    thinking: 'disabled', reasoningEffort: 'off', ...(config.max_output_tokens == null ? {} : { maxTokens: config.max_output_tokens }) } as any);
+    reasoningEffort: 'off', ...(config.max_output_tokens == null ? {} : { maxTokens: config.max_output_tokens }) } as any);
   // resolveAdapterOptions supplies 256k when omitted; remove that application
   // default so the native adapter leaves max_tokens off the provider request.
   if (config.max_output_tokens == null) delete (options as any).maxTokens;
-  ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new DeepSeekAdapter({ options: () => options,
+  ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new WebDeepSeekAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
     resolveUserId: () => principal, prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
   })), 'sss-web-task-provider');
@@ -1311,7 +1345,7 @@ export function apply(ctx: any) {
     const task = forSession(request.sessionId);
     if (!task || task.status !== 'running' || active !== task.request.task_id ||
         request.provider !== task.model_option.provider || request.model !== task.model_option.model ||
-        request.reasoningEffort !== (task.model_option.provider === 'harless-glm' ? undefined : 'off') ||
+        request.reasoningEffort !== task.reasoning_effort ||
         request.maxTokens !== (config.max_output_tokens ?? undefined) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
@@ -1322,7 +1356,7 @@ export function apply(ctx: any) {
     const requestedTools = request.tools ?? [];
     if (digest(requestedTools) !== digest(task.tools)) throw Error('Tool schema version changed');
     json(join(task.output, 'model-request-config.json'), { provider: request.provider, model: request.model,
-      reasoning_effort: request.reasoningEffort ?? 'off', reasoning_effort_sent: request.reasoningEffort !== undefined,
+      reasoning_effort: request.reasoningEffort ?? null, reasoning_effort_sent: request.reasoningEffort !== undefined,
       max_output_tokens: request.maxTokens ?? null, output_cap_sent: request.maxTokens !== undefined,
       tools_order: requestedTools.map((tool: any) => tool.name), tools_sha256: digest(requestedTools),
       human_message_sha256: humans.map((message: any) => digest(message.content)), mode: task.request.mode });
@@ -1377,7 +1411,7 @@ export function apply(ctx: any) {
             if (task.scene.adapter) {
               task.scene_inputs = await bindSceneInputs(ctx, agents.get(task.request.session_id), task.workspace, task.scene,
                 task.request.content, task.scene_options, task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), task.request.task_id);
-              task.source_pending = task.scene.id !== 'new-scene' && !task.scene_inputs.length;
+              task.source_pending = sourcePendingFor(task.scene, task.scene_inputs);
               await selectPreset!(agents.get(task.request.session_id), sessionPreset(config.output, task.workspace, task.scene));
               bindScene(agents.get(task.request.session_id), task.scene);
               task.scope_sha256 = scopeDigest(task.workspace, task.scene);

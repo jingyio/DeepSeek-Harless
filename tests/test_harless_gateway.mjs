@@ -101,6 +101,62 @@ test('data report fonts require the fixed mounted resource and its matching dige
   assert.throws(()=>deploy(),/matching fixed public font/);
 });
 
+test('attachment parsers map only verified public dependencies into member and report environments', t => {
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-attachment-deploy-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for(const name of ['scenarios','python/bin','pdf/bin','pdf/lib/x86_64-linux-gnu','pdf/share',
+    'antiword/usr/bin','antiword/usr/share/antiword'])mkdirSync(join(root,name),{recursive:true});
+  const python=join(root,'python/bin/python');writeFileSync(python,'test Python');
+  writeFileSync(join(root,'python/pyvenv.cfg'),'test installation');
+  const pdf=join(root,'pdf'),antiword=join(root,'antiword'),binary=join(antiword,'usr/bin/antiword'),mapping=join(antiword,'usr/share/antiword');
+  for(const name of ['pdfinfo','pdftotext'])writeFileSync(join(pdf,'bin',name),'public parser');
+  writeFileSync(binary,'public Word parser');writeFileSync(join(mapping,'UTF-8.txt'),'public character mapping');
+  writeFileSync(join(antiword,'operator-private.json'),'must not be mounted');
+  const scene={id:'data',adapter:'data-report',allowed_tools:['mcp__research_report__inspect_study'],
+    pdf_toolchain_root:pdf,antiword_root:antiword,mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',config:{
+      serverName:'research_report',transport:'stdio',command:python,cwd:root,args:[join(root,'scenarios/data_analysis/report_session.py')],
+      env:{HARLESS_REPORT_WORKSPACE:'__HARLESS_SESSION_WORKSPACE__',HARLESS_PDF_TOOLCHAIN_ROOT:pdf,HARLESS_ANTIWORD_BIN:binary,ANTIWORDHOME:mapping}}}]};
+  const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')],pdfToolchainRoot:pdf,antiwordRoot:antiword};
+  const deploy=(value=scene,options=deployment)=>memberSceneDeployment({scenes:[value]},options);
+  const result=deploy(),env=result.scenes[0].mcp_rows[0].config.env;
+  assert.deepEqual(result.attachmentEnvironment,{HARLESS_PDF_TOOLCHAIN_ROOT:'/opt/harless/pdf',
+    HARLESS_ANTIWORD_BIN:'/opt/harless/antiword/bin/antiword',ANTIWORDHOME:'/opt/harless/antiword/share/antiword'});
+  for(const [key,value] of Object.entries(result.attachmentEnvironment))assert.equal(env[key],value);
+  assert.ok(result.mounts.some(row=>row.source===binary&&row.target===env.HARLESS_ANTIWORD_BIN));
+  assert.ok(result.mounts.some(row=>row.source===mapping&&row.target===env.ANTIWORDHOME));
+  assert.ok(result.mounts.some(row=>row.source===pdf&&row.target===pdf),'old bound PDF presets retain their read-only installation');
+  assert.ok(result.mounts.every(row=>row.source!==antiword&&row.source!==root));
+  assert.equal(result.scenes[0].pdf_toolchain_root,'/opt/harless/pdf');
+  const wrong=structuredClone(scene);wrong.mcp_rows[0].config.env.HARLESS_ANTIWORD_BIN='/owner/private/antiword';
+  assert.throws(()=>deploy(wrong),/matching fixed installation/);
+  assert.throws(()=>deploy(scene,{...deployment,antiwordRoot:undefined}),/matching fixed installation/);
+  assert.throws(()=>deploy(scene,{...deployment,pdfToolchainRoot:undefined}),/matching fixed installation/);
+  const missingMetadata=structuredClone(scene);delete missingMetadata.antiword_root;
+  assert.throws(()=>deploy(missingMetadata),/matching fixed installation/);
+  const link=join(root,'redirected-word');symlinkSync(antiword,link,process.platform==='win32'?'junction':'dir');
+  assert.throws(()=>deploy(scene,{...deployment,antiwordRoot:link}),/without redirected paths/);
+  const privateMap=join(mapping,'private-dir');mkdirSync(privateMap);
+  assert.throws(()=>deploy(),/only fixed public resource files/);
+});
+
+test('literature uses the mapped PDF environment while package links cannot expose private directories', t => {
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-pdf-deploy-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for(const name of ['scenarios','python/bin','pdf/bin','pdf/lib/x86_64-linux-gnu','pdf/share','private'])mkdirSync(join(root,name),{recursive:true});
+  const python=join(root,'python/bin/python');writeFileSync(python,'test Python');writeFileSync(join(root,'python/pyvenv.cfg'),'test installation');
+  const pdf=join(root,'pdf');for(const name of ['pdfinfo','pdftotext'])writeFileSync(join(pdf,'bin',name),'public parser');
+  const scene={id:'literature',adapter:'literature',allowed_tools:[],pdf_toolchain_root:pdf,mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',config:{
+    serverName:'literature_web',transport:'stdio',command:python,cwd:root,args:[join(root,'scenarios/literature-notes/session_tools.py')],
+    env:{SSS_PDF_WEB_TASK:'__HARLESS_SESSION_WORKSPACE__/literature',PATH:join(pdf,'bin')+':/usr/bin:/bin',LD_LIBRARY_PATH:join(pdf,'lib/x86_64-linux-gnu')}}}]};
+  const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')],pdfToolchainRoot:pdf};
+  mkdirSync(join(pdf,'share/public-docs'));
+  symlinkSync(join(pdf,'share/public-docs'),join(pdf,'share/package-docs'),process.platform==='win32'?'junction':'dir');
+  const env=memberSceneDeployment({scenes:[scene]},deployment).scenes[0].mcp_rows[0].config.env;
+  assert.equal(env.PATH,'/opt/harless/pdf/bin:/usr/bin:/bin');assert.equal(env.LD_LIBRARY_PATH,'/opt/harless/pdf/lib/x86_64-linux-gnu');
+  symlinkSync(join(root,'private'),join(pdf,'share/redirect'),process.platform==='win32'?'junction':'dir');
+  assert.throws(()=>memberSceneDeployment({scenes:[scene]},deployment),/link escapes/);
+});
+
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 const close = server => new Promise(resolve => server.close(resolve));
 const origin = 'https://app.example.test';

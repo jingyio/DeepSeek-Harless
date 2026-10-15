@@ -71,7 +71,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   const receipts = new Map();
   const storedSessions = new Map();
   const storedHeaders = new Map();
-  const promptCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
+  const promptCalls = [], modelCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
     emit,
@@ -141,7 +141,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
       },
       async cancel() { return { accepted: true }; },
       async rename({ sessionId, title }) { storedHeaders.get(sessionId).title = title; return { title }; },
-      async selectModel(request) { await originalController.create({ sessionId: request.sessionId }); return request; },
+      async selectModel(request) { modelCalls.push(structuredClone(request)); await originalController.create({ sessionId: request.sessionId }); return request; },
       updateQueue(request) { queueMutations.push(request); return { accepted: true }; },
     },
   };
@@ -182,7 +182,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
       const response=await routes.get('/api/harless/session-trash').fetch(request); return {status:response.status,value:await response.json()}; },
     async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
     async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
-    promptCalls, queueMutations, controlCalls, directory,
+    promptCalls, modelCalls, queueMutations, controlCalls, directory,
     registrations, brokerCalls, brokerRoutes, modelRequest, routes, webRoutes, adapters,
     async stopControl() { server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); },
     originalController,
@@ -356,6 +356,48 @@ test('Selected model and empty session survive a Web process restart', options, 
     assert.equal(task.status, 'running');
     await f.complete(task);
   } finally { await f.close(); }
+});
+
+test('Native On/Off selection survives restart, freezes each real request contract, and can change on the next turn', options, async () => {
+  const f = await fixture({ broker:true, max_output_tokens:null });
+  try {
+    const {sessionId}=await f.ctx.sessionController.create({});
+    assert.equal(f.modelCalls.at(-1).reasoningEffort,'off');
+    const select=effort=>f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:effort},new AbortController().signal);
+    for(const effort of ['on','low','max']) await assert.rejects(select(effort),error=>error.code==='model_not_allowed');
+    await select('high'); await f.restart();
+    await f.ctx.sessionController.prompt({sessionId,requestId:'thinking-on',mode:'queue',content:[{type:'text',text:'Explain the method'}]},new AbortController().signal);
+    const first=(await f.api()).value.tasks[0];
+    assert.equal(first.reasoning_effort,'high');assert.equal(f.modelCalls.at(-1).reasoningEffort,'high');
+    await assert.rejects(select('off'),error=>error.code==='model_not_allowed');
+    const next=async function*(){yield {type:'text-delta',index:0,text:'answer'};};
+    assert.throws(()=>f.stream(f.modelRequest(first,{reasoningEffort:'off',maxTokens:undefined}),next),/Unapproved/);
+    for await(const chunk of f.stream(f.modelRequest(first,{reasoningEffort:'high',maxTokens:undefined}),next)){}
+    const firstConfig=JSON.parse(readFileSync(join(f.directory,'tasks',first.task_id,'model-request-config.json')));
+    assert.equal(firstConfig.reasoning_effort,'high');assert.equal(firstConfig.max_output_tokens,null);assert.equal(firstConfig.output_cap_sent,false);
+    await f.complete(first); await select('off');
+    await f.ctx.sessionController.prompt({sessionId,requestId:'thinking-off',mode:'queue',content:[{type:'text',text:'Continue briefly'}]},new AbortController().signal);
+    const second=(await f.api()).value.tasks.at(-1);
+    assert.equal(second.reasoning_effort,'off');assert.equal(second.session_id,first.session_id);
+    for await(const chunk of f.stream(f.modelRequest(second,{maxTokens:undefined}),next)){}
+    assert.equal(JSON.parse(readFileSync(join(f.directory,'tasks',first.task_id,'effective-config.json'))).reasoning_effort,'high');
+    assert.equal(f.registrations.size,2,'reasoning changes never reset or reuse a previous task budget');
+    await f.complete(second);
+    const record=JSON.parse(readFileSync(join(f.directory,readdirSync(f.directory).find(name=>name.startsWith('session-models-')))));
+    assert.equal(record.reasoning_efforts[sessionId],'off');
+  } finally { await f.close(); }
+});
+
+test('Task preview binds reasoning in its confirmation and rejects changing a reused request ID', options, async()=>{
+  const f=await fixture({broker:true});try{
+    const first=await f.preview({instruction:'Diagnose this result',request_id:'same-input',reasoning_effort:'high'});
+    assert.equal(first.reasoning_effort,'high');
+    const duplicate=await f.api({action:'preview',request:{instruction:'Diagnose this result',request_id:'same-input',reasoning_effort:'off'}});
+    assert.equal(duplicate.status,409);assert.equal(duplicate.value.error.code,'request_id_conflict');
+    assert.equal((await f.api()).value.tasks.length,1);
+    const unsupported=await f.api({action:'preview',request:{instruction:'Diagnose',reasoning_effort:'max'}});
+    assert.equal(unsupported.status,400);assert.equal(unsupported.value.error.code,'model_not_allowed');
+  }finally{await f.close();}
 });
 
 test('Submit requires the current confirmation and never reruns a retry; only one task is active', options, async () => {
@@ -1136,10 +1178,18 @@ test('Completed parent routes ordinary → data → PPT → chat without moving 
   const send=(text,id)=>f.ctx.sessionController.prompt({sessionId,requestId:id,mode:'queue',content:[{type:'text',text}]},new AbortController().signal);
   await send('Remember ordinary context','ordinary');const first=(await f.api()).value.tasks[0];
   f.agents.get(sessionId).session.append('assistant/message',{message:{content:[{type:'text',text:'ordinary remembered'}]}});await f.complete(first);
+  let expectedReasoning='high';
+  const selectReasoning=reasoningEffort=>f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort},new AbortController().signal);
+  await selectReasoning('high');
   const priorScopes=f.presetCalls.length;
   const compare=async(id,stream=false,parent=sessionId)=>{const request=new Request('http://local/api/harless/comparisons?session_id='+parent+'&id='+id+(stream?'&stream=1':''));request.authorized=true;return f.routes.get('/api/harless/comparisons').fetch(request);};
   const settle=async (id,parent=sessionId)=>{for(let attempt=0;attempt<200;attempt++){
     for(const task of (await f.api()).value.tasks)if(task.status==='running'){
+      if(!f.promptCalls.some(row=>row.sessionId===task.session_id&&row.requestId===task.request_id))continue;
+      assert.equal(task.reasoning_effort,expectedReasoning);
+      const modelRequest=f.modelRequest(task,{reasoningEffort:expectedReasoning,tools:f.agents.get(task.session_id).ctx.tools.schemas()});
+      for await(const chunk of f.stream(modelRequest,async function*(){yield {type:'text-delta',index:0,text:'diagnostic partial'};})){}
+      assert.equal(JSON.parse(readFileSync(join(f.directory,'tasks',task.task_id,'model-request-config.json'))).reasoning_effort,expectedReasoning);
       f.agents.get(task.session_id).session.append('assistant/message',{message:{content:[{type:'text',text:'answer-'+task.scene+'-'+task.session_id}]}});
       if(task.scene==='ppt'){const outputs=join(f.directory,'sessions',task.session_id,'work','outputs');mkdirSync(outputs,{recursive:true});writeFileSync(join(outputs,'report.pdf'),'pdf-'+task.session_id);}
       await f.complete(task);
@@ -1148,6 +1198,7 @@ test('Completed parent routes ordinary → data → PPT → chat without moving 
   }throw Error('comparison timeout');};
   const longData='Discuss data '+ '完整单次输入'.repeat(3000)+'data-tail';
   const data=await send('/data '+longData,'data');
+  await assert.rejects(selectReasoning('off'),error=>error.code==='model_not_allowed');
   const running=(await f.settings({action:'select',session_id:sessionId,selection:{scene:'ppt'}}));assert.equal(running.value.error.code,'session_busy');
   const dataView=await settle(data.comparison_id);assert.equal(dataView.session_id,sessionId);
   assert.equal(JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(turn=>turn.id===data.comparison_id).input[0].text,longData);
@@ -1160,6 +1211,7 @@ test('Completed parent routes ordinary → data → PPT → chat without moving 
   const ppt=await send('/ppt Use previous findings','ppt'),pptView=await settle(ppt.comparison_id);
   assert.equal(pptView.session_id,sessionId);assert.notEqual(dataView.lanes.baseline.session_id,pptView.lanes.baseline.session_id);
   assert.match(JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.at(-1).prior_context.baseline,/answer-research-data-analysis/);
+  await selectReasoning('off');expectedReasoning='off';
   const chat=await send('/chat Explain the slides','chat'),chatView=await settle(chat.comparison_id);
   assert.equal(chatView.presentation,'single');assert.deepEqual(Object.keys(chatView.lanes),['baseline']);
   assert.equal((await f.ctx.sessionController.inspect(sessionId)).events.filter(e=>e.type==='user/message').length,4);
@@ -1218,6 +1270,7 @@ test('Native fork creates independently numbered fresh scopes in the same accoun
  const f=await fixture({broker:true,scenes:multiScenes});
  try{
   const {sessionId}=await f.ctx.sessionController.create({});const source=f.agents.get(sessionId);
+  await f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'high'},new AbortController().signal);
   source.session.append('turn/start',{turn:1});
   source.session.append('user/message',{id:'u',role:'user',source:{kind:'user'},content:[{type:'text',text:'original'}]},{surfaceOp:'append'});
   source.session.append('assistant/message',{turn:1,step:0,stream:[],message:{id:'a',role:'assistant',source:{kind:'model',provider:'deepseek-official',model:'deepseek-flash'},content:[{type:'text',text:'answer'}]}},{surfaceOp:'append'});
@@ -1227,9 +1280,13 @@ test('Native fork creates independently numbered fresh scopes in the same accoun
   const first=await f.ctx.sessionController.inspect(a.sessionId),second=await f.ctx.sessionController.inspect(b.sessionId);
   assert.equal(first.meta.title,'Research（1）');assert.equal(second.meta.title,'Research（2）');
   assert.notEqual(a.sessionId,b.sessionId);assert.equal(first.events[1].data.content[0].text,'original');
+  for(const id of [a.sessionId,b.sessionId])assert.equal(f.modelCalls.filter(row=>row.sessionId===id).at(-1).reasoningEffort,'high');
   assert.equal(first.meta.parentSession,sessionId);assert.equal(first.meta.cwd,(await f.ctx.sessionController.inspect(sessionId)).meta.cwd);
   await assert.rejects(f.ctx.sessionController.fork({sessionId:'foreign'}),error=>error.code==='session_not_owned');
   assert.equal(f.registrations.size,0);
+  await f.restart();
+  await f.ctx.sessionController.prompt({sessionId:a.sessionId,requestId:'fork-on',mode:'queue',content:[{type:'text',text:'Continue independently'}]},new AbortController().signal);
+  const forkTask=(await f.api()).value.tasks.at(-1);assert.equal(forkTask.reasoning_effort,'high');await f.complete(forkTask);
  }finally{await f.close();}
 });
 
