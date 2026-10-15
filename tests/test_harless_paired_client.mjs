@@ -79,6 +79,67 @@ test('paired answers delegate Markdown and inline artifact mentions to the nativ
   assert.match(css, /@container\(max-width:650px\)/);
   assert.equal(f.timers.size, 0, 'completed turns do not poll forever'); f.dispose();
 });
+test('verified native file labels show the filename without altering Markdown, targets, icons, or custom captions', async () => {
+  const value = comparison(), original = value.lanes.baseline.answer;
+  const f = fixture(undefined, value); await flush(); f.render();
+  const answer = f.all(row => row.props.className === 'harless-paired-answer')[0];
+  function rendered(text, { tag = 'button', href, title = artifact.name, pre = false } = {}) {
+    const textNode = { nodeType: 3, nodeValue: text }, icon = { nodeType: 1, nodeName: 'svg', childNodes: [] };
+    const attrs = { href, title, 'aria-label': '下载 research_report.pdf' }, onClick = () => {};
+    const node = { nodeType: 1, nodeName: tag.toUpperCase(), childNodes: [icon, textNode], onClick,
+      closest: selector => selector === 'pre' && pre ? {} : null,
+      getAttribute: key => attrs[key], setAttribute: (key, next) => { attrs[key] = next; } };
+    return { node, textNode, icon, attrs, onClick };
+  }
+  const absolute = rendered('/app/.local/web/sessions/session-a/work/' + artifact.name);
+  const relative = rendered(artifact.name, { tag: 'a', href: 'sandbox:/app/work/' + artifact.name });
+  const custom = rendered('下载最终报告', { tag: 'a', href: '/app/work/' + artifact.name });
+  const captionWithPath = rendered('下载 /app/work/' + artifact.name, { tag: 'a', href: '/app/work/' + artifact.name });
+  const unknown = rendered('/app/work/not-approved.pdf', { title: 'not-approved.pdf' });
+  const code = rendered('/app/work/' + artifact.name, { pre: true });
+  const external = rendered(artifact.name, { tag: 'a', href: 'https://example.com/' + artifact.name });
+  const rows = [absolute, relative, custom, captionWithPath, unknown, code, external];
+  answer.props.ref({ querySelectorAll: selector => { assert.equal(selector, 'code > button, a'); return rows.map(row => row.node); } });
+  assert.equal(absolute.textNode.nodeValue, 'research_report.pdf'); assert.equal(absolute.attrs.title, 'research_report.pdf');
+  assert.equal(relative.textNode.nodeValue, 'research_report.pdf'); assert.equal(relative.attrs.href, 'sandbox:/app/work/' + artifact.name);
+  assert.equal(custom.textNode.nodeValue, '下载最终报告'); assert.equal(custom.attrs.href, '/app/work/' + artifact.name);
+  assert.equal(captionWithPath.textNode.nodeValue, '下载 /app/work/' + artifact.name);
+  assert.equal(unknown.textNode.nodeValue, '/app/work/not-approved.pdf');
+  assert.equal(code.textNode.nodeValue, '/app/work/' + artifact.name); assert.equal(external.textNode.nodeValue, artifact.name);
+  for (const row of rows) { assert.equal(row.node.childNodes[0], row.icon); assert.equal(row.node.onClick, row.onClick); }
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, original, 'do not rewrite inline or fenced source code');
+  assert.equal(value.lanes.baseline.answer, original);
+  f.dispose();
+});
+test('artifact label adaptation follows stream completion and remains effective after terminal refresh', async () => {
+  const running = comparison(); running.status = 'running'; running.snapshot_revision = 0;
+  running.lanes.baseline.status = 'running'; running.lanes.baseline.artifacts = [];
+  let current = running;
+  const f = fixture(url => url.includes('&file=') ? new Response(fileBytes, { headers: { 'content-type': 'application/pdf' } }) : Response.json(current), running, { streaming: true });
+  await flush(); f.render();
+  const textNode = { nodeType: 3, nodeValue: '/app/.local/web/sessions/session-a/work/' + artifact.name };
+  const attrs = { title: artifact.name }, icon = { nodeType: 1, nodeName: 'svg', childNodes: [] };
+  const button = { nodeType: 1, nodeName: 'BUTTON', childNodes: [icon, textNode], closest: () => null,
+    getAttribute: key => attrs[key], setAttribute: (key, next) => { attrs[key] = next; } };
+  const root = { querySelectorAll: () => [button] };
+  f.all(row => row.props.className === 'harless-paired-answer')[0].props.ref(root);
+  assert.match(textNode.nodeValue, /^\/app\//, 'an unverified streaming path is unchanged');
+  current = comparison(); current.snapshot_revision = 1;
+  current.lanes.baseline.artifacts.push({ ...artifact, id: 'another-file', name: 'outputs/another/research_report.pdf' });
+  f.streams[0].emit(current); f.render();
+  f.all(row => row.props.className === 'harless-paired-answer')[0].props.ref(root);
+  assert.equal(textNode.nodeValue, 'research_report.pdf'); assert.equal(attrs.title, 'research_report.pdf');
+  textNode.nodeValue = '/app/.local/web/sessions/refreshed/work/' + artifact.name;
+  current.snapshot_revision = 2; f.events.get('focus')(); await flush(); f.render();
+  f.all(row => row.props.className === 'harless-paired-answer')[0].props.ref(root);
+  assert.equal(textNode.nodeValue, 'research_report.pdf', 'native text refresh is compacted even when the title was already normalized');
+  assert.equal(button.childNodes[0], icon);
+  const mention = f.all(row => row.type === f.MarkdownText)[0].props.fileMentions.resolve('/app/work/' + artifact.name);
+  mention.open(); await waitUntil(() => f.downloaded.length > 0);
+  assert.deepEqual(f.downloaded, [{ href: 'blob:verified-file', name: 'research_report.pdf' }]);
+  assert.ok(f.requests.some(row => row.url.endsWith('&lane=baseline&file=file-one') && row.init.credentials === 'same-origin'));
+  f.dispose();
+});
 test('network read failure keeps rendered output and backs off; recovery stops polling completed turns', async () => {
   let reads = 0; const value = comparison();
   const f = fixture(() => { if (++reads < 3) throw TypeError('Failed to fetch'); return Response.json(value); });
