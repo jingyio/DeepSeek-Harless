@@ -65,8 +65,199 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
   render();
   return { render, all, content, requests, timers, downloaded, revoked, events, streams, MarkdownText, initial,
     setNodeData: value => { node.data = value; },
+    remount: (value = initial) => {
+      cleanups.forEach(fn => fn?.()); states = []; effects = []; effectSlots = []; cleanups = [];
+      node.data = value; return render();
+    }, blocks,
     dispose: () => cleanups.forEach(fn => fn?.()) };
 }
+
+test('cold history displays loading until an authoritative snapshot arrives, never a fictional queued task', async () => {
+  const initial = comparison(); initial.status = 'running'; initial.scoring_available = false; initial.snapshot_revision = 1;
+  for (const lane of Object.values(initial.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
+  let finish;
+  const f = fixture(() => new Promise(resolve => { finish = resolve; }), initial);
+  assert.match(f.content(f.render()), /正在加载此轮结果/);
+  assert.doesNotMatch(f.content(f.render()), /等待执行|等待当前任务|停止生成/);
+  assert.equal(f.blocks.size, 0, 'historical submission data does not block the composer');
+  const done = comparison(); done.snapshot_revision = 8; finish(Response.json(done)); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText).length, 2);
+  assert.equal(f.all(row => row.props.className === 'harless-paired-loading').length, 0);
+  assert.equal(f.all(row => row.type === 'button' && f.content(row) === '停止生成').length, 0); f.dispose();
+});
+
+test('returning to completed comparison reuses verified results while the new GET is pending or older', async () => {
+  const initial = comparison(); initial.status = 'running'; initial.scoring_available = false; initial.snapshot_revision = 1;
+  for (const lane of Object.values(initial.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
+  const done = comparison(); done.snapshot_revision = 8; done.scores.motif = 4;
+  let finish, reads = 0;
+  const f = fixture(() => ++reads === 1 ? Response.json(done) : new Promise(resolve => { finish = resolve; }), initial, { streaming: true });
+  await flush(); f.render(); f.remount(structuredClone(initial));
+  assert.equal(f.all(row => row.type === f.MarkdownText).length, 2);
+  assert.equal(f.all(row => row.type === 'input' && row.props.name.endsWith('-motif') && row.props.value === 4)[0].props.checked, true);
+  assert.doesNotMatch(f.content(f.render()), /等待执行|等待当前任务|停止生成/);
+  assert.equal(f.blocks.get('session-a'), undefined);
+  assert.equal(f.streams.length, 1, 'a cached completed task does not reopen a live stream');
+  finish(Response.json(initial)); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText).length, 2, 'an older read cannot erase cached results'); f.dispose();
+});
+
+test('cached results cannot leak into a different conversation during navigation', async () => {
+  const f = fixture(); await flush(); f.render();
+  const next = comparison(); next.id = 'comparison-b'; next.session_id = 'session-b'; next.status = 'running';
+  for (const lane of Object.values(next.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
+  f.setNodeData(next); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText).length, 0);
+  assert.match(f.content(f.render()), /正在加载此轮结果/); f.dispose();
+});
+
+test('rating selection paints immediately and serializes rapid choices using the latest server revision', async () => {
+  const value = comparison(); value.snapshot_revision = 1;
+  const pending = [], writes = [];
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    const body = JSON.parse(init.body); writes.push(body);
+    return new Promise(resolve => pending.push(() => {
+      assert.equal(body.revision, value.score_revision);
+      value.scores[body.lane] = body.score; value.score_revision++; value.snapshot_revision++;
+      resolve(Response.json(value));
+    }));
+  }, value);
+  await flush(); f.render();
+  const choice = (lane, score) => f.all(row => row.type === 'input' && row.props.name.endsWith('-' + lane) && row.props.value === score)[0];
+  const work = choice('baseline', 2).props.onChange(); f.render();
+  assert.equal(choice('baseline', 2).props.checked, true);
+  assert.equal(f.all(row => row.type === 'fieldset')[0].props.disabled, false);
+  assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], true);
+  assert.match(f.content(f.render()), /正在保存评分/);
+  choice('baseline', 3).props.onChange(); f.render(); choice('baseline', 5).props.onChange(); f.render();
+  choice('motif', 4).props.onChange(); f.render();
+  assert.equal(choice('baseline', 5).props.checked, true); assert.equal(choice('motif', 4).props.checked, true);
+  assert.equal(writes.length, 1, 'one shared score revision allows only one POST in flight');
+  pending.shift()(); await flush(); f.render();
+  assert.equal(choice('baseline', 5).props.checked, true, 'an older successful selection does not replace the newer pending choice');
+  assert.equal(writes[1].score, 5, 'intermediate unsent scores coalesce to the last selection');
+  pending.shift()(); await flush(); pending.shift()(); await work; await flush(); f.render();
+  assert.deepEqual(writes.map(row => [row.lane, row.score, row.revision]), [['baseline', 2, 1], ['baseline', 5, 2], ['motif', 4, 3]]);
+  assert.equal(choice('baseline', 5).props.checked, true); assert.equal(choice('motif', 4).props.checked, true);
+  assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], false); f.dispose();
+});
+
+test('a rejected rating rolls back to confirmed selection and leaves the other lane unchanged', async () => {
+  const value = comparison(); value.scores.baseline = 2; value.scores.motif = 5;
+  let finish;
+  const f = fixture((_url, init) => init.method === 'POST' ? new Promise(resolve => { finish = resolve; }) : Response.json(value), value);
+  await flush(); f.render();
+  const choice = (lane, score) => f.all(row => row.type === 'input' && row.props.name.endsWith('-' + lane) && row.props.value === score)[0];
+  const work = choice('baseline', 4).props.onChange(); f.render(); assert.equal(choice('baseline', 4).props.checked, true);
+  finish(Response.json({ error: { message: 'save rejected' } }, { status: 500 })); await work; await flush(); f.render();
+  assert.equal(choice('baseline', 2).props.checked, true); assert.equal(choice('motif', 5).props.checked, true);
+  assert.equal(f.all(row => row.props.className === 'harless-paired-error').length, 1);
+  assert.equal(f.requests.filter(row => row.init.method === 'POST').length, 1); f.dispose();
+});
+
+test('a lost response reconciles before saving a newer queued selection without reposting the old one', async () => {
+  const value = comparison(); const writes = []; let rejectFirst;
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    const body = JSON.parse(init.body); writes.push(body);
+    if (writes.length === 1) return new Promise((_resolve, reject) => { rejectFirst = () => {
+      value.scores.baseline = 2; value.score_revision++; reject(TypeError('connection lost after commit'));
+    }; });
+    assert.equal(body.revision, value.score_revision); value.scores[body.lane] = body.score; value.score_revision++;
+    return Response.json(value);
+  }, value);
+  await flush(); f.render();
+  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+  const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange(); f.render();
+  rejectFirst(); await work; await flush(); f.render();
+  assert.equal(choice(5).props.checked, true); assert.deepEqual(writes.map(row => [row.score, row.revision]), [[2, 1], [5, 2]]); f.dispose();
+});
+
+test('the latest explicit rating survives component unmount and reappears while saving after navigation', async () => {
+  const value = comparison(), writes = [], pending = [];
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    const body = JSON.parse(init.body); writes.push(body);
+    return new Promise(resolve => pending.push(() => {
+      assert.equal(init.signal.aborted, false, 'leaving the card does not cancel the page-owned save');
+      assert.equal(body.revision, value.score_revision); value.scores[body.lane] = body.score; value.score_revision++;
+      resolve(Response.json(value));
+    }));
+  }, value);
+  await flush(); f.render();
+  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+  const work = choice(2).props.onChange(); f.render(); choice(3).props.onChange(); f.render(); choice(5).props.onChange();
+  f.dispose(); pending.shift()(); await flush();
+  assert.deepEqual(writes.map(row => row.score), [2, 5], 'the last unsent intent is saved even with no mounted listener');
+  f.remount(comparison()); f.render();
+  assert.equal(choice(5).props.checked, true); assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], true);
+  pending.shift()(); await work; await flush(); f.render();
+  assert.equal(choice(5).props.checked, true); assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], false);
+  f.dispose(); f.remount(comparison()); await flush(); f.render();
+  assert.equal(choice(5).props.checked, true); assert.equal(writes.length, 2); f.dispose();
+});
+
+test('401 and 403 discard queued ratings and do not replay them after access returns', async () => {
+  for (const status of [401, 403]) {
+    const value = comparison(), writes = []; value.scores.baseline = 1; let finish;
+    const f = fixture((_url, init) => {
+      if (init.method !== 'POST') return Response.json(value);
+      writes.push(JSON.parse(init.body)); return new Promise(resolve => { finish = resolve; });
+    }, value);
+    await flush(); f.render();
+    const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+    const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange();
+    finish(Response.json({ error: {} }, { status })); await work; await flush(); f.render();
+    assert.equal(choice(1).props.checked, true); assert.equal(choice(5).props.checked, false);
+    assert.equal(writes.length, 1); assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /登录已过期|没有权限/);
+    f.remount(comparison()); await flush(); f.render();
+    assert.equal(choice(5).props.checked, false); assert.equal(writes.length, 1); f.dispose();
+  }
+});
+
+test('leaving the authenticated page discards pending choices and ignores a late successful response', async () => {
+  const value = comparison(), writes = []; let finish;
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    writes.push(JSON.parse(init.body)); return new Promise(resolve => { finish = resolve; });
+  }, value);
+  await flush(); f.render();
+  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+  const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange();
+  f.events.get('pagehide')();
+  const late = comparison(); late.scores.baseline = 2; late.score_revision++;
+  finish(Response.json(late)); await work; await flush(); f.render();
+  assert.equal(writes.length, 1); assert.equal(choice(2).props.checked, false); assert.equal(choice(5).props.checked, false);
+  f.remount(comparison()); await flush(); f.render(); assert.equal(choice(2).props.checked, false); assert.equal(choice(5).props.checked, false); f.dispose();
+});
+
+test('output replacement stops remaining queued scores and rolls back to the new confirmed result', async () => {
+  const value = comparison(); value.snapshot_revision = 2; let finish; const writes = [];
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    writes.push(JSON.parse(init.body)); return new Promise(resolve => { finish = resolve; });
+  }, value);
+  await flush(); f.render();
+  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
+  const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange();
+  value.lanes.baseline.output_sha256 = 'replacement-hash'; value.snapshot_revision++; value.score_revision++; value.scores = {};
+  finish(Response.json({ error: {} }, { status: 409 })); await work; await flush(); f.render();
+  assert.equal(writes.length, 1); assert.equal(choice(2).props.checked, false); assert.equal(choice(5).props.checked, false);
+  assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /确认新结果后重新评分/); f.dispose();
+});
+
+test('a restarted server epoch supersedes a higher old revision and rejects late old-epoch snapshots', async () => {
+  const old = comparison(); old.snapshot_epoch = 7; old.snapshot_revision = 120;
+  const restarted = comparison(); restarted.snapshot_epoch = 8; restarted.snapshot_revision = 90;
+  restarted.lanes.baseline.answer = '服务恢复后的已完成结果'; let current = old;
+  const f = fixture(() => Response.json(current), old); await flush(); f.render();
+  current = restarted; f.events.get('focus')(); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, restarted.lanes.baseline.answer);
+  current = old; f.events.get('focus')(); await flush(); f.render();
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, restarted.lanes.baseline.answer);
+  f.remount(old); assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, restarted.lanes.baseline.answer); f.dispose();
+});
 test('paired answers delegate Markdown and inline artifact mentions to the native safe renderer', async () => {
   const f = fixture(); await flush(); f.render();
   const markdown = f.all(row => row.type === f.MarkdownText); assert.equal(markdown.length, 2);

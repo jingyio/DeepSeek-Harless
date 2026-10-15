@@ -1,6 +1,14 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-15：连续工作消息、双栏轨迹与模型选择（当前，已发布）
+## 2026-10-15：对照并行、页面恢复与评分（当前，待发布）
+
+- 范围：`codex/comparison-responsive-parallel` 基于 `722b181`；修复已完成任务跳页先显示等待，评分立即反馈并跨站内导航保存，同一轮 DeepSeek 两侧并行；GLM 继续串行。
+- 实现：`harless_comparison.ts` 和 `dsh_web_tasks.ts` 保留独立任务/Session/预算授权；仅运行快照合并写盘，终态/评分同步落盘；持久 `snapshot_epoch` 处理异常重启版本倒退。client 有界内存快照、共享评分队列与失败确认；完整终态不反复访问费用服务。
+- 验证：Linux Python 759 通过/193 跳过，最终 Node 668 通过/3 跳过；无模型 smoke 通过。真实 Flash Off 报告两侧重叠 24.288 秒，8 份交付下载 SHA 正确，23 请求/0.014672460 美元峰值代理估费，未盲评科学质量。浏览器跳页和快速评分后返回保持已交付及最后选择。
+- 记录：[验收与失败边界](../experiments/geneloop-comparison-responsive-20261015-v1.md)。共享预算沿用每轮 0.23/每侧 0.115 美元，累计与额外输出上限 null；账本当前 850 请求/0.588207498 美元，不清零。
+- 状态：待 PR/CI 和固定 SHA 上线；部署只更代码，账号、模型目录、preset/MCP、私有配置、用户记录及预算进程保持。账号进程管理说明补在 [账号网关](../harless-account-gateway.md)，没有顺带新增空闲回收或资源配额。
+
+## 2026-10-15：连续工作消息、双栏轨迹与模型选择（历史，已发布）
 
 - 范围：`codex/geneloop-live-workflow` 基于 `8004668`，补真实流事件订阅、逐步骤消息保留、Baseline/Motif 独立轨迹及每侧回复动作；自动主题标题、同工作区重名编号与手动名保护；模型菜单与服务器实际目录一致。不改上游 Harness、不新增 Agent 循环。
 - 已完成：`harless_task_progress.ts`、`harless_comparison.ts`、`dsh_web_tasks.ts` 和 Web client 贯通实时状态、冷恢复、反馈与所选侧分支；只有实际 verified skip 以绿色标记。新增 `geneloop_conversation_titles.ts`、`harless_models.py`，原生模型请求、费用代理与任务权限保持。
