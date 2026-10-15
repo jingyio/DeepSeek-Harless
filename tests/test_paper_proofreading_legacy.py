@@ -3,8 +3,11 @@ from pathlib import Path
 import asyncio
 import hashlib
 import json
+import os
+import sys
 
 import pytest
+from mcp import Client, StdioServerParameters
 
 from scenarios.paper_proofreading.server import PaperEvidence, PaperOutput, create_citation_evidence, create_server
 from src.adapters.paper_renderer import INPUT_SCHEMA, audit_pdf_content_coverage
@@ -32,6 +35,26 @@ def test_citation_chain_is_versioned_and_bound_to_one_input_directory(tmp_path):
     (tmp_path / 'first' / 'references.bib').write_text('@article{alpha, title={Changed}}')
     with pytest.raises(ValueError, match='version changed'):
         first.read_citation_records(batch['citation_id'])
+
+
+def test_historical_local_citation_sequence_reuses_bib_script_without_network(tmp_path, monkeypatch):
+    first = make_paper(tmp_path / 'first')
+    second = make_paper(tmp_path / 'second')
+    monkeypatch.setattr(first, '_fetch_preprints', lambda *_: pytest.fail('local batch must not fetch metadata'))
+    packet = first.collect_local_citation_evidence('current')
+    assert packet['internal_steps'] == [
+        'pin_sources', 'inspect_active_citations', 'read_original_bibliography']
+    assert packet['diagnostic']['cited_keys'] == ['alpha']
+    assert [row['key'] for row in packet['references']['records']] == ['alpha']
+    assert packet['references']['records'][0]['raw_bibtex'].startswith('@article{alpha')
+    assert packet['references']['version_sha256'] == packet['version_sha256']
+    assert 'metadata' not in packet and packet['formal_publication_confirmed'] is False
+    assert first.read_citation_records(packet['citation_id'])['version_sha256'] == packet['version_sha256']
+    with pytest.raises(ValueError, match='unknown|expired'):
+        second.read_citation_records(packet['citation_id'])
+    (tmp_path / 'first' / 'references.bib').write_text('@article{alpha, title={Changed}}')
+    with pytest.raises(ValueError, match='version changed'):
+        first.read_citation_records(packet['citation_id'])
 
 
 def test_ambiguous_main_and_arbitrary_case_are_rejected(tmp_path):
@@ -96,7 +119,15 @@ def test_model_generated_audit_is_bound_to_task_sources_and_grant(tmp_path):
     grant_path.write_text(json.dumps(grant))
     with pytest.raises(ValueError, match='not_ready'):
         output.read_audit()
+    rejected = output.stage({'references': [{'number': 1, 'key': 'alpha',
+        'short_title': 'Unresolved alpha', 'status': '存疑', 'priority': 'P2',
+        'source_ids': [], 'explanation': 'Local citation only'}]})
+    assert rejected['staged'] is False
+    assert rejected['missing_fields'] == ['references[0].evidence_files']
+    assert rejected['draft_sha256'] is None
+    assert not list((workspace / 'outputs' / 'paper-audits').rglob('draft.json'))
     first = output.stage({'scope': 'Only the uploaded main.tex was checked.'})
+    assert first['staged'] is True
     with pytest.raises(ValueError, match='stale_paper_audit_draft'):
         output.stage({'notes': ['stale writer']}, '0' * 64)
     checks = {key: {'result': 'not checked', 'evidence': 'main.tex',
@@ -135,6 +166,48 @@ def test_report_staging_mcp_schema_exposes_field_types(tmp_path):
     assert 'string' in {branch['type'] for branch in fields['scope']['anyOf']}
     assert 'array' in {branch['type'] for branch in fields['notes']['anyOf']}
     assert 'object' in {branch['type'] for branch in fields['citation_checks']['anyOf']}
+
+
+def test_local_citation_batch_is_read_only_mcp_tool(tmp_path):
+    inputs = tmp_path / 'inputs'
+    inputs.mkdir()
+    tool = next(tool for tool in asyncio.run(create_server(inputs).list_tools())
+                if tool.name == 'collect_current_local_citation_evidence')
+    assert tool.input_schema['type'] == 'object'
+    assert tool.input_schema.get('required', []) == []
+
+
+def test_local_citation_batch_real_stdio_uses_only_approved_task_sources(tmp_path):
+    work = tmp_path / 'work'
+    inputs = work / 'inputs'
+    inputs.mkdir(parents=True)
+    (inputs / 'main.tex').write_text(
+        r'\documentclass{article}\begin{document}\cite{alpha}'
+        r'\bibliography{references}\end{document}', encoding='utf-8')
+    (inputs / 'references.bib').write_text('@article{alpha, title={A}, year={2020}}', encoding='utf-8')
+    approved = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs.iterdir()}
+    (work / 'approved-inputs.json').write_text(json.dumps({'files': approved}))
+    (work / 'paper-output-grant.json').write_text(json.dumps({
+        'schema_version': 1, 'task_id': 'test-task', 'allow_output': False, 'audit_sha256': None}))
+    root = Path(__file__).resolve().parents[1]
+
+    async def call():
+        params = StdioServerParameters(command=sys.executable,
+            args=[str(root / 'scenarios/paper_proofreading/server.py'), str(inputs)],
+            cwd=root, env=os.environ.copy())
+        async with Client(params, read_timeout_seconds=30) as client:
+            result = await client.call_tool('collect_current_local_citation_evidence', {})
+            assert not result.is_error
+            packet = json.loads(result.content[0].text)
+            assert packet['diagnostic']['cited_keys'] == ['alpha']
+            assert [row['key'] for row in packet['references']['records']] == ['alpha']
+            assert packet['internal_steps'] == [
+                'pin_sources', 'inspect_active_citations', 'read_original_bibliography']
+            read = await client.call_tool('read_pinned_citation_records',
+                                          {'citation_id': packet['citation_id']})
+            assert not read.is_error
+            assert json.loads(read.content[0].text)['version_sha256'] == packet['version_sha256']
+    asyncio.run(call())
 
 
 def test_pdf_export_receipt_can_check_literal_content_and_links_without_claiming_truth(tmp_path, monkeypatch):

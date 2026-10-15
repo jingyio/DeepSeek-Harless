@@ -292,16 +292,15 @@ class PaperEvidence:
         if len(json.dumps(result,ensure_ascii=False).encode())>1500000:raise ValueError('recovery evidence exceeds limit')
         return result
 
-    def collect_citation_evidence(self, case_id: str):
-        """One bounded tool body, preserving the existing steps and source guards.
+    def collect_local_citation_evidence(self, case_id: str):
+        """Replay the witnessed local pin/inspect/record sequence without network.
 
-        This is an engineered composite capability, not a newly mined Motif.
-        No model judgment, generated code or manuscript write occurs here.
+        This is a bounded, source-checked tool composition, not a Motif bypass.
+        The model still decides what the literal records mean.
         """
         pin = self.pin(case_id, 'sources')
         inspected = self.inspect_citations(pin['source_id'])
         records = self.read_citation_records(inspected['citation_id'])
-        preprints = self._fetch_preprints(inspected['citation_id'], records)
         if self.version(case_id) != pin['version_sha256']:
             raise ValueError('source changed during composite evidence collection')
         result = {'schema_version': 1, 'case_id': case_id,
@@ -311,11 +310,20 @@ class PaperEvidence:
                   'diagnostic': inspected['diagnostic'],
                   'references': records,
                   'required_reference_pairs': records['required_reference_pairs'],
-                  'metadata': preprints['metadata'],
                   'internal_steps': ['pin_sources', 'inspect_active_citations',
-                                     'read_original_bibliography', 'fetch_arxiv_metadata'],
+                                     'read_original_bibliography'],
                   'formal_publication_confirmed': False,
                   'bibliography_match_confirmed': False}
+        if len(json.dumps(result, ensure_ascii=False).encode()) > 1500000:
+            raise ValueError('composite evidence exceeds size limit')
+        return result
+
+    def collect_citation_evidence(self, case_id: str):
+        """Existing network-enabled composite; preserve its historical contract."""
+        local = self.collect_local_citation_evidence(case_id)
+        preprints = self._fetch_preprints(local['citation_id'], local['references'])
+        result = {**local, 'metadata': preprints['metadata'],
+                  'internal_steps': [*local['internal_steps'], 'fetch_arxiv_metadata']}
         if len(json.dumps(result, ensure_ascii=False).encode()) > 1500000:
             raise ValueError('composite evidence exceeds size limit')
         return result

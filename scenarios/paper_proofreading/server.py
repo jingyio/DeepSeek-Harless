@@ -15,7 +15,7 @@ from src.adapters.session_files import SessionFiles
 from src.adapters.file_lock import exclusive_lock
 from src.adapters import paper_static_checks
 from src.adapters.paper_query_recovery import validate_queries
-from src.adapters.paper_renderer import audit_pdf_content_coverage, render_renderer, validate_audit
+from src.adapters.paper_renderer import INPUT_SCHEMA, audit_pdf_content_coverage, render_renderer, validate_audit
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -154,6 +154,11 @@ def create_server(directory, renderer_root=None):
         return citations().read_citation_records(citation_id)
 
     @server.tool(annotations=annotation)
+    def collect_current_local_citation_evidence() -> dict:
+        """Collect current LaTeX checks and active original BibTeX records in one bounded, versioned local read; no network or authenticity claim."""
+        return citations().collect_local_citation_evidence('current')
+
+    @server.tool(annotations=annotation)
     def fetch_pinned_cited_preprint_metadata(citation_id: str) -> dict:
         """Fetch official arXiv metadata for the bound citations; it does not certify publication."""
         return citations().read_preprints(citation_id)
@@ -194,6 +199,7 @@ def create_server(directory, renderer_root=None):
         a list of report rows (at most eight per call). citation_checks is an object keyed
         by check name, each value having result/evidence/limitation strings. A reference's
         source_ids must name rows in sources; uploaded names belong in evidence_files.
+        Missing required fields return staged=false and exact field names without writing.
         """
         patch = {name: value for name, value in {
             'scope': scope, 'references': references, 'sources': sources,
@@ -280,6 +286,23 @@ class PaperOutput:
             raise ValueError('paper_audit_private_directory_required')
         return directory
 
+    @staticmethod
+    def _missing_patch_fields(patch):
+        missing = []
+        for name, schema_key in (('references', 'reference_required'),
+                                 ('sources', 'source_required'), ('issues', 'issue_required')):
+            rows = patch.get(name, [])
+            for index, row in enumerate(rows if isinstance(rows, list) else []):
+                if isinstance(row, dict):
+                    missing.extend(f'{name}[{index}].{field}' for field in INPUT_SCHEMA[schema_key]
+                                   if field not in row)
+        checks = patch.get('citation_checks', {})
+        for name, row in (checks.items() if isinstance(checks, dict) else []):
+            if isinstance(row, dict):
+                missing.extend(f'citation_checks.{name}.{field}' for field in INPUT_SCHEMA['citation_result_required']
+                               if field not in row)
+        return missing
+
     def stage(self, patch, expected_draft_sha256=''):
         workspace, grant, sources = self._task(writable=True)
         if not sources or sources.get('audit.json') is not None:
@@ -305,6 +328,12 @@ class PaperOutput:
                                     'citation_checks': {}, 'notes': []}}
             if draft.get('task_id') != grant['task_id'] or draft.get('source_versions') != sources:
                 raise ValueError('paper_audit_source_changed')
+            missing = self._missing_patch_fields(patch)
+            if missing:
+                return {'staged': False, 'draft_sha256': current if draft_path.exists() else None,
+                        'validation_error': 'paper_audit_patch_missing_record_fields',
+                        'missing_fields': missing[:16], 'missing_field_count': len(missing),
+                        'semantic_quality_accepted': False}
             report = draft['report']
             if 'scope' in patch:
                 if not isinstance(patch['scope'], str) or not 1 <= len(patch['scope']) <= 2000:
@@ -327,7 +356,7 @@ class PaperOutput:
             report['reference_count'] = len(report['references'])
             self._save(draft_path, draft)
             digest = hashlib.sha256(self._private_bytes(draft_path)).hexdigest()
-            return {'draft_sha256': digest, 'reference_count': len(report['references']),
+            return {'staged': True, 'draft_sha256': digest, 'reference_count': len(report['references']),
                     'source_count': len(report['sources']), 'issue_count': len(report['issues']),
                     'citation_check_count': len(report['citation_checks']),
                     'semantic_quality_accepted': False}
