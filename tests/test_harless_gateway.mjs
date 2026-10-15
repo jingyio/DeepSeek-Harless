@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGateway, createOwnerClaim, createInvites } from '../scripts/harless_gateway.mjs';
 import { memberSceneDeployment } from '../scripts/harless_member_scenes.mjs';
+import WebSocket, { WebSocketServer } from 'ws';
 
 test('Scene deployment mounts code read-only and keeps user data and credentials out', t => {
   const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-scene-deploy-')));
@@ -287,6 +288,111 @@ test('gateway shutdown closes both sides of an upgraded browser connection',asyn
   f.gateway.close();
   await Promise.race([Promise.all([stopped,downstream,upstream]),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('upgraded connection prevented gateway shutdown')),1000);timer.unref();})]);
  } finally {socket.destroy();backendSocket?.destroy();f.gateway.close();}
+});
+
+test('native RPC errors hide server diagnostics while success and downloads retain exact bytes', async t => {
+  const secret='/home/operator/deployment/private.py',success=Buffer.from(JSON.stringify({type:'server-response',rpcId:'r1',result:{ok:true,value:{text:secret,data:'AAECAw=='}}},null,2));
+  const f=await fixture(t,(req,res)=>{
+    if(req.url==='/api/session/failure'){
+      const bytes=Buffer.from(JSON.stringify({type:'server-response',rpcId:'r2',result:{ok:false,error:{code:'gateway/internal',message:secret,details:{stack:secret}}}}));
+      res.writeHead(200,{'content-type':'application/json','content-length':bytes.length,'etag':'private-etag','set-cookie':'backend=private'});res.end(bytes);return true;
+    }
+    if(req.url==='/api/session/compressed'){
+      assert.equal(req.headers['accept-encoding'],'identity');
+      res.writeHead(200,{'content-type':'application/json','content-encoding':'gzip'});res.end(success);return true;
+    }
+    if(['/api/session/page','/api/session/modelCatalog','/api/session/download'].includes(req.url)){
+      res.writeHead(200,{'content-type':'application/json',...(req.url.endsWith('download')?{'content-disposition':'attachment; filename="user.json"'}:{})});res.end(success);return true;
+    }
+  });
+  const claim=createOwnerClaim(f.gateway),account=await f.request('/api/account/claim',{method:'POST',body:{claimCode:claim,username:'owner',displayName:'Owner',password:'long-password-123'}});
+  assert.equal(account.status,200);const cookie=account.headers.get('set-cookie').split(';')[0];
+  const failed=await f.request('/api/session/failure',{method:'POST',cookie,body:{type:'client-request'}}),raw=Buffer.from(await failed.arrayBuffer());
+  assert.equal(failed.status,200);assert.equal(failed.headers.get('etag'),null);assert.equal(failed.headers.get('set-cookie'),null);
+  assert.equal(Number(failed.headers.get('content-length')),raw.length);assert.ok(!raw.includes(Buffer.from(secret)));
+  assert.equal(JSON.parse(raw).result.error.code,'gateway/internal');assert.equal(f.seen.at(-1).cookie,'dsh-auth-test=secret-internal');
+  for(const path of ['/api/session/page','/api/session/modelCatalog','/api/session/download']){
+    const response=await f.request(path,{method:'POST',cookie,body:{type:'client-request'}});
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()),success);
+  }
+  const compressed=await f.request('/api/session/compressed',{method:'POST',cookie,body:{type:'client-request'}});
+  assert.equal(compressed.status,502);assert.equal(compressed.headers.get('content-encoding'),null);
+  assert.ok(!(await compressed.text()).includes(secret));
+});
+
+test('native mux projects extra public events with authenticated headers, fragments, heartbeat and binary forwarding', {timeout:10000}, async t => {
+  const f=await fixture(t),wss=new WebSocketServer({noServer:true});let backend,handshake;
+  f.upstream.on('upgrade',(req,socket,head)=>{handshake=req.headers;wss.handleUpgrade(req,socket,head,ws=>{backend=ws;wss.emit('connection',ws,req);});});
+  t.after(()=>{for(const ws of wss.clients)ws.terminate();wss.close();f.gateway.close();});
+  const claim=createOwnerClaim(f.gateway),account=await f.request('/api/account/claim',{method:'POST',body:{claimCode:claim,username:'owner',displayName:'Owner',password:'long-password-123'}});
+  assert.equal(account.status,200);const cookie=account.headers.get('set-cookie').split(';')[0];
+  const opened=once(wss,'connection');
+  const client=new WebSocket(f.base().replace(/^http/,'ws')+'/api/remote.mux',{headers:{cookie,origin}});
+  client.on('error',()=>{});t.after(()=>client.terminate());
+  await Promise.all([once(client,'open'),opened]);
+  assert.equal(handshake.cookie,'dsh-auth-test=secret-internal');
+  assert.equal(handshake.origin,'http://127.0.0.1:'+f.config.ownerPort);assert.notEqual(handshake.cookie,cookie);
+  const request=JSON.stringify({type:'open',streamId:'events',endpoint:'$events',payload:{args:{}}});
+  let got=once(backend,'message');client.send(request);assert.equal((await got)[0].toString(),request);
+  const ready=JSON.stringify({type:'item',streamId:'events',value:{type:'ready',clientId:'live',host:{home:'/home/operator/中文'}}});
+  const readyBytes=Buffer.from(ready),cut=readyBytes.indexOf(Buffer.from('中文'))+1;
+  let incoming=once(client,'message');backend.send(readyBytes.subarray(0,cut),{binary:false,fin:false});backend.send(readyBytes.subarray(cut),{binary:false,fin:true});
+  assert.equal(JSON.parse((await incoming)[0]).value.host.home,'');
+  for(const value of [
+    {type:'item',streamId:'events',value:{type:'emit',event:'api-session/added',args:[{sessionId:'one',cwd:'/home/operator/work',running:false,blank:true,updatedAt:1}]}},
+    {type:'item',streamId:'events',value:{type:'emit',event:'api-session/error',args:['one','Error /home/operator/stack']}},
+    {type:'error',streamId:'other',error:{code:'gateway/internal',message:'/home/operator',details:{path:'/app/private'}}},
+  ]){
+    incoming=once(client,'message');backend.send(JSON.stringify(value));const data=(await incoming)[0];assert.ok(!data.toString().includes('/home/'));assert.ok(!data.toString().includes('/app/'));
+  }
+  const untouched=JSON.stringify({type:'item',streamId:'follow',value:{type:'event',event:{seq:1,data:{userText:'/home/user/upload.txt'}}}});
+  incoming=once(client,'message');backend.send(untouched);assert.equal((await incoming)[0].toString(),untouched);
+  const binary=Buffer.from([0,128,255,1]);got=once(backend,'message');client.send(binary);let [bytes,isBinary]=await got;assert.deepEqual(bytes,binary);assert.equal(isBinary,true);
+  incoming=once(client,'message');backend.send(binary);[bytes,isBinary]=await incoming;assert.deepEqual(bytes,binary);assert.equal(isBinary,true);
+  const pong=once(backend,'pong');backend.ping('browser-heartbeat');assert.equal((await pong)[0].toString(),'browser-heartbeat');
+  // A burst shares one carrier; a slow send callback may pause reads but cannot
+  // reorder/deduplicate dense follow indices or block sibling cancellation.
+  const burst=Array.from({length:64},(_,index)=>JSON.stringify({type:'item',streamId:index%2?'right':'left',value:{index,text:'增量'.repeat(500)}}));
+  const received=[];
+  const complete=new Promise(resolve=>{
+    const collect=data=>{received.push(data.toString());if(received.length===burst.length){client.off('message',collect);resolve();}};
+    client.on('message',collect);
+  });
+  for(const frame of burst)backend.send(frame);
+  const cancel=JSON.stringify({type:'cancel',streamId:'left'});
+  got=once(backend,'message');client.send(cancel);
+  assert.equal((await got)[0].toString(),cancel);await complete;assert.deepEqual(received,burst);
+  const stopped=once(backend,'close');client.close(1000);await stopped;
+});
+
+test('native mux browser cancellation releases a pending upstream handshake', {timeout:5000}, async t => {
+  const f=await fixture(t);let backend;
+  const arrived=new Promise(resolve=>f.upstream.on('upgrade',(_req,socket)=>{backend=socket;socket.on('error',()=>{});socket.once('end',()=>socket.end());socket.resume();resolve();}));
+  t.after(()=>{backend?.destroy();f.gateway.close();});
+  const claim=createOwnerClaim(f.gateway),account=await f.request('/api/account/claim',{method:'POST',body:{claimCode:claim,username:'owner',displayName:'Owner',password:'long-password-123'}});
+  const cookie=account.headers.get('set-cookie').split(';')[0];
+  const client=new WebSocket(f.base().replace(/^http/,'ws')+'/api/remote.mux',{headers:{cookie,origin}});
+  client.on('error',()=>{});t.after(()=>client.terminate());await arrived;
+  const closed=once(backend,'close',{signal:AbortSignal.timeout(2000)});
+  client.terminate();await closed;assert.equal(backend.destroyed,true);
+});
+
+test('native mux rejects anonymous or foreign-origin connections and shutdown cancels both sockets', {timeout:10000}, async t => {
+  const f=await fixture(t),wss=new WebSocketServer({noServer:true});let upgrades=0;
+  f.upstream.on('upgrade',(req,socket,head)=>{upgrades++;wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws));});
+  t.after(()=>{for(const ws of wss.clients)ws.terminate();wss.close();f.gateway.close();});
+  const claim=createOwnerClaim(f.gateway),account=await f.request('/api/account/claim',{method:'POST',body:{claimCode:claim,username:'owner',displayName:'Owner',password:'long-password-123'}});
+  assert.equal(account.status,200);const cookie=account.headers.get('set-cookie').split(';')[0],url=f.base().replace(/^http/,'ws')+'/api/remote.mux';
+  for(const [headers,status] of [[{origin},401],[{cookie,origin:'https://foreign.example'},403]]){
+    const ws=new WebSocket(url,{headers});ws.on('error',()=>{});
+    const response=await new Promise(resolve=>ws.once('unexpected-response',(_request,response)=>{response.resume();resolve(response.statusCode);ws.terminate();}));
+    assert.equal(response,status);
+  }
+  assert.equal(upgrades,0);
+  const opened=once(wss,'connection'),client=new WebSocket(url,{headers:{cookie,origin}});client.on('error',()=>{});
+  await once(client,'open');const [backend]=await opened;
+  const closed=Promise.all([once(client,'close'),once(backend,'close'),once(f.gateway.server,'close')]);
+  f.gateway.close();await closed;
 });
 
 test('owner claim, login, profile, password, logout and persistence', async t => {

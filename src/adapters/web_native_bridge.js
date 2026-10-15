@@ -4,7 +4,7 @@
   const endpoint = '/api/harless/tasks';
   const dialog = document.createElement('dialog');
   dialog.id = 'harless-native-confirmation';
-  dialog.setAttribute('aria-label', '确认 DeepSeek Harless 任务');
+  dialog.setAttribute('aria-label', '确认 GeneLoop 任务');
   dialog.style.cssText = 'max-width:620px;width:calc(100% - 48px);border:1px solid #ddd;border-radius:14px;padding:24px;background:white;color:#202124;';
   const element = (tag, text) => { const node = document.createElement(tag); node.textContent = text; dialog.append(node); return node; };
   element('h2', '确认本次任务与预算');

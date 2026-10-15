@@ -23,6 +23,8 @@ import {comparisonArtifacts,captureComparisonDeliveries} from './harless_compari
 import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
 import {bindReportAnswer} from './harless_report_answer.ts';
 import {createTaskProgress} from './harless_task_progress.ts';
+import {bindProductPrompt} from './harless_product_prompt.ts';
+import {protectPublicSessionOutput, publicTaskView} from './harless_public_output.ts';
 import {createSessionBranchService,sessionBranchTitle} from './harless_session_branch.ts';
 import {registerManagedWorkspaceRoutes} from './harless_managed_workspaces.ts';
 import {registerPrivateLanes} from './harless_private_lanes.ts';
@@ -73,6 +75,8 @@ const json = (path: string, value: unknown) => {
   renameSync(path + '.tmp', path);
 };
 
+const browserJson = (value: any, init?: ResponseInit) => Response.json(publicTaskView(value), init);
+
 export function apply(ctx: any) {
   const config: Policy = JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!, 'utf8'));
   if (!loopback(config.endpoint) || !loopback(config.control_endpoint) ||
@@ -113,7 +117,7 @@ export function apply(ctx: any) {
   const registeredScenes = config.scenes?.map(row => {
     if (!memberRestricted) return row;
     const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas, certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = row;
-    const instructions = '当前成员沙箱仅开放普通 Harness 对话；没有文件或场景 MCP 工具。不要声称已读取文件或完成生成。';
+    const instructions = '当前会话仅开放 GeneLoop 普通对话；没有文件或场景工具。不要声称已读取文件或完成生成。';
     return { ...safe, allowed_tools: [], preset: 'sss-disabled-' + row.id,
       config_sha256: digest({ scene: row.id, parent: row.config_sha256 ?? null, role: 'member_chat_only', allowed_tools: [] }),
       ...(row.id === 'new-scene' ? { preset: 'sss-task', unavailable_reason: undefined, instructions, instructions_sha256: sha(instructions) }
@@ -191,7 +195,7 @@ export function apply(ctx: any) {
     const allowedTools = scene.allowed_tools;
     const allowed = new Set(allowedTools);
     const instructions = instructionsFor(scene, sourcePending);
-    const disposers = [agent.ctx.tools.restrict({ allow: allowedTools }),
+    const disposers = [...bindProductPrompt(agent), agent.ctx.tools.restrict({ allow: allowedTools }),
       agent.ctx.tools.guard((call: any) => allowed.has(call.name) ? undefined : 'Tool is outside the configured capability profile')];
     if (instructions) {
       // Report value tokens such as {{estimate}} are literal instructions, not
@@ -684,7 +688,7 @@ export function apply(ctx: any) {
         const saved = comparisons?.snapshot(source, reference.id);
         if (!saved || !['completed','failed','cancelled'].includes(saved.status)) throw new TaskError('branch_turn_incomplete', '请等待所选回复完成后创建分支。', 409);
         const text = Object.entries(saved.lanes).map(([name, value]: [string, any]) =>
-          (saved.presentation === 'single' ? '' : (name === 'baseline' ? 'Baseline · DSH\n' : 'Motif · DSH\n')) + (value.answer_display ?? value.answer ?? '')).join('\n\n');
+          (saved.presentation === 'single' ? '' : (name === 'baseline' ? 'Baseline\n' : 'Motif\n')) + (value.answer_display ?? value.answer ?? '')).join('\n\n');
         const option = modelSelections.get(source) ?? defaultModel;
         projected.push({ type:'assistant/message', time:event.time, surfaceOp:'append',
           data:{ turn:reference.turn ?? 1, step:0, stream:[], harless_branch_context:true, message:createAssistantMessage({content:[{type:'text',text}], source:{provider:option.provider,model:option.model}}) } });
@@ -1122,7 +1126,7 @@ export function apply(ctx: any) {
         privateCreations.add(request);
         const created = await controller.create(request);
         // Only the comparison Host admits child turns. Native prompt rejects direct child mutation.
-        await controller.rename({ sessionId: created.sessionId, title: lane === 'baseline' ? 'Baseline DSH' : 'Motif DSH' });
+        await controller.rename({ sessionId: created.sessionId, title: lane === 'baseline' ? 'Baseline' : 'Motif' });
         return created.sessionId;
       },
       async prepare(turn, lane, requestId) { return serialize(async () => {
@@ -1273,7 +1277,7 @@ export function apply(ctx: any) {
                 request.signal.addEventListener('abort', close, { once: true });
                 try {
                   stop = await comparisons!.subscribe(session, id, snapshot => {
-                    if (!closed) try { stream.enqueue(encoder.encode('event: snapshot\ndata: ' + JSON.stringify(snapshot) + '\n\n')); } catch { close(); }
+                    if (!closed) try { stream.enqueue(encoder.encode('event: snapshot\ndata: ' + JSON.stringify(publicTaskView(snapshot)) + '\n\n')); } catch { close(); }
                   });
                   if (closed || request.signal.aborted) close();
                   else heartbeat = setInterval(() => { try { stream.enqueue(encoder.encode(': keepalive\n\n')); } catch { close(); } }, 15000);
@@ -1289,15 +1293,15 @@ export function apply(ctx: any) {
             return new Response(artifacts.read(id, lane!, row), { headers: { 'Content-Type': 'application/octet-stream',
               'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(row.name.split('/').pop()), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
           }
-          return Response.json(value, { headers: { 'Cache-Control': 'no-store' } });
+          return browserJson(value, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
         const result = await serialize(async () => body.action === 'rate' ? await comparisons!.rate(body.session_id, body.id, body.lane, body.score, body.revision, body.output_sha256)
           : body.action === 'retry' ? await comparisons!.retry(body.session_id, body.id, body.lane)
           : body.action === 'cancel' ? await comparisons!.cancel(body.session_id, body.id)
           : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })());
-        return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
-      } catch (error: any) { return Response.json({ error: { code: error.code ?? 'comparison_failed', message: error.message } }, { status: error.status ?? 400 }); }
+        return browserJson(result, { headers: { 'Cache-Control': 'no-store' } });
+      } catch (error: any) { return browserJson({ error: { code: error.code ?? 'comparison_failed', message: error.message } }, { status: error.status ?? 400 }); }
     } }), 'harless-comparison-api');
   }
   const options = resolveAdapterOptions({ baseURL: brokerMode ? config.budget_broker_endpoint + '/v1' : config.endpoint,
@@ -1372,12 +1376,12 @@ export function apply(ctx: any) {
       try {
         if (request.method === 'GET') {
           const id = new URL(request.url).searchParams.get('task_id');
-          if (id) return Response.json(await refresh(get(id)), { headers: { 'Cache-Control': 'no-store' } });
+          if (id) return browserJson(await refresh(get(id)), { headers: { 'Cache-Control': 'no-store' } });
           const rows = await Promise.all([...tasks.values()].filter(task => !trash.isDeleted(task.request.session_id)).map(refresh));
           const aggregate: Record<string, number> = { tasks: rows.length };
           for (const row of rows) { aggregate[row.status] = (aggregate[row.status] ?? 0) + 1;
             for (const field of ['upstream_requests', 'verified_skips', 'tool_calls', 'prompt_tokens', 'completion_tokens']) aggregate[field] = (aggregate[field] ?? 0) + Number(row.stats[field] ?? 0); }
-          return Response.json({ tasks: rows, aggregate, capability_profile: config.capability_profile,
+          return browserJson({ tasks: rows, aggregate, capability_profile: config.capability_profile,
             provider_mode: config.provider_mode, model_options: modelOptions,
             default_mode: defaults.mode, budget_usd: config.budget_usd, settings: settingsView() });
         }
@@ -1421,11 +1425,11 @@ export function apply(ctx: any) {
           }
           throw new TaskError('unknown_action', 'Supported actions: preview, submit, cancel, upload');
         });
-        return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
+        return browserJson(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error) {
         appendFileSync(join(config.output, 'admission-errors.jsonl'), JSON.stringify({ time: utc(), error: String(error) }) + '\n', { mode: 0o600 });
         const known = error instanceof TaskError || error instanceof WebTaskRequestError || error instanceof SettingsError || error instanceof SessionTrashError;
-        return Response.json({ error: { code: known ? error.code : 'task_request_failed', message: known ? String((error as Error).message) : 'Task configuration or input admission failed; inspect the private server log' } },
+        return browserJson({ error: { code: known ? error.code : 'task_request_failed', message: known ? String((error as Error).message) : '暂时无法开始任务，请稍后重试。' } },
           { status: error instanceof TaskError || error instanceof SessionTrashError ? error.status : 400 });
       }
     } };
@@ -1438,7 +1442,7 @@ export function apply(ctx: any) {
         const url = new URL(request.url), sessionId = url.searchParams.get('session_id') ?? undefined;
         if (request.method === 'GET') {
           const value = await serialize(async () => { if (sessionId) await ensureOwned(sessionId); return settingsView(sessionId); });
-          return Response.json({ ...value, sessions: [...ownedSessions].filter(id => !trash.isDeleted(id)).map(session_id => ({ session_id, ...settingsView(session_id) })) }, { headers: { 'Cache-Control': 'no-store' } });
+          return browserJson({ ...value, sessions: [...ownedSessions].filter(id => !trash.isDeleted(id)).map(session_id => ({ session_id, ...settingsView(session_id) })) }, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
         const result = await serialize(async () => {
@@ -1468,14 +1472,15 @@ export function apply(ctx: any) {
           }
           throw new SettingsError('unknown_action', 'Supported actions: select, select_preview_scene, clear_preview_scene, new_session');
         });
-        return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
+        return browserJson(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error) {
-        return Response.json({ error: { code: (error as any).code ?? 'settings_failed', message: String((error as Error).message) } },
+        return browserJson({ error: { code: (error as any).code ?? 'settings_failed', message: String((error as Error).message) } },
           { status: error instanceof TaskError || error instanceof SessionTrashError ? error.status : 400 });
       }
     } };
   ctx.effect(() => ctx.connection.fetch.register({ ...settingsRoute, path: '/api/harless/settings' }), 'harless-settings-api');
   registerSessionTrashRoute(ctx, trash, serialize);
+  ctx.effect(() => protectPublicSessionOutput(controller), 'geneloop-public-session-output');
   ctx.effect(() => protectDeletedSessions(controller, trash), 'harless-trash-session-guards');
   ctx.inject?.(['sessionQuery'], (scope: any) => scope.effect(() => protectDeletedSessionQuery(scope.sessionQuery, trash, privateLanes.isPrivate)));
   ctx.effect(() => protectDeletedSessionFiles(undefined, ctx.fileUploads, trash), 'harless-trash-upload-guards');

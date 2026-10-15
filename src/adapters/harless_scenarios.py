@@ -7,6 +7,7 @@ import os
 import re
 from pathlib import Path
 from .scenario import prepare_scenario
+from .harless_product_prompt import product_persona
 
 IDENTITY = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
 WORKSPACE = '__HARLESS_SESSION_WORKSPACE__'
@@ -75,7 +76,8 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
         if row.get('adapter') not in (None, 'ppt', 'workspace', 'files', 'literature', 'data-report'): raise ValueError('unsupported scene adapter')
         path = (root / row['scenario']).resolve(strict=True)
         prepared = (prepared_default if row['id'] == default_id else
-                    prepare_scenario(path, case=row.get('case', ''), session_workspace=WORKSPACE if row.get('adapter') else None))
+                    prepare_scenario(path, case=row.get('case', ''), session_workspace=WORKSPACE if row.get('adapter') else None,
+                                     web_deployment=True))
         scene.update(allowed_tools=prepared['allowed_tools'], config_sha256=prepared['config_sha256'],
                      scenario_version=1, scenario=row['scenario'], case=prepared['case'],
                      embedding_endpoint=embedding_endpoint, embedding_model=embedding_model)
@@ -137,9 +139,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 _bind_legacy_rsi(root, rsi, scene, prepared)
         if row['id'] != default_id:
             preset = output / 'presets' / scene['preset']; preset.mkdir(parents=True, mode=0o700, exist_ok=True)
-            rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
-                'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
-                'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}},
+            rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': product_persona()},
                 *([] if row.get('adapter') else prepared['mcp_rows'])]
             rendered = json.dumps(rows, ensure_ascii=False, indent=2)
             for token, expression in prepared['environment_references'].items(): rendered = rendered.replace(json.dumps(token), expression)

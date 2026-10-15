@@ -118,7 +118,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
             tools: { restrict(value) { agent.allow = value; return () => {}; },
               guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
               schemas() { return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
-            systemPrompt: { variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
+            systemPrompt: { suppressRuntimeContext() { return () => {}; }, variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
               section(row) { agent.instruction = row.text==='{{harless_scene_literal}}'?agent.variables.get('harless_scene_literal')():row.text; return () => {}; } },
             on() {},
           } };
