@@ -143,7 +143,20 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 value=os.environ.get(rsi['bundle_from_env'])
                 if value:
                     from .harless_rsi_bundle import load_scene_bundle
-                    try:scene.update(load_scene_bundle(root,Path(value),row['id']))
+                    try:
+                        bundle = load_scene_bundle(root,Path(value),row['id'])
+                        if row['id'] == 'paper-proofreading':
+                            cert = json.loads(Path(bundle['certification_path']).read_text())
+                            expected = cert['file_locks'].get('paper-flow-shadow.json')
+                            if expected:
+                                flow = Path(value).resolve(strict=True) / 'paper-flow-shadow.json'
+                                if (flow.is_symlink() or not flow.is_file() or
+                                    flow.stat().st_size > 1_000_000 or
+                                    hashlib.sha256(flow.read_bytes()).hexdigest() != expected):
+                                    raise ValueError('paper flow sidecar changed')
+                                bundle.update(paper_flow_shadow=str(flow),
+                                              paper_flow_shadow_sha256=expected)
+                        scene.update(bundle)
                     except (ValueError,OSError,KeyError):scene['rsi_unavailable_reason']='runtime_bundle_certification_invalid'
                 else:scene['rsi_unavailable_reason']='runtime_bundle_not_deployed'
                 rsi = None

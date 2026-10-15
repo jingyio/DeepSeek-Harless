@@ -308,6 +308,22 @@ class PaperOutput:
                                if field not in row)
         return missing
 
+    @staticmethod
+    def _extra_patch_fields(patch):
+        extra = []
+        for name, schema_key in (('references', 'reference_required'),
+                                 ('sources', 'source_required'), ('issues', 'issue_required')):
+            for index, row in enumerate(patch.get(name, []) if isinstance(patch.get(name, []), list) else []):
+                if isinstance(row, dict):
+                    extra.extend(f'{name}[{index}].{field}' for field in row
+                                 if field not in INPUT_SCHEMA[schema_key])
+        checks = patch.get('citation_checks', {})
+        for name, row in (checks.items() if isinstance(checks, dict) else []):
+            if isinstance(row, dict):
+                extra.extend(f'citation_checks.{name}.{field}' for field in row
+                             if field not in INPUT_SCHEMA['citation_result_required'])
+        return extra
+
     def stage(self, patch, expected_draft_sha256=''):
         workspace, grant, sources = self._task(writable=True)
         if not sources or sources.get('audit.json') is not None:
@@ -339,6 +355,12 @@ class PaperOutput:
                 return {'staged': False, 'draft_sha256': current if draft_path.exists() else None,
                         'validation_error': 'paper_audit_patch_missing_record_fields',
                         'missing_fields': missing[:16], 'missing_field_count': len(missing),
+                        'semantic_quality_accepted': False}
+            extra = self._extra_patch_fields(patch)
+            if extra:
+                return {'staged': False, 'draft_sha256': current if draft_path.exists() else None,
+                        'validation_error': 'paper_audit_patch_extra_record_fields',
+                        'extra_fields': extra[:16], 'extra_field_count': len(extra),
                         'semantic_quality_accepted': False}
             report = draft['report']
             if 'remove_reference_number' in patch:
@@ -422,6 +444,12 @@ class PaperOutput:
             if draft.get('task_id') != grant['task_id'] or draft.get('source_versions') != sources:
                 raise ValueError('paper_audit_source_changed')
             report = draft['report']
+            extra = self._extra_patch_fields(report)
+            if extra:
+                return {'finalized': False, 'draft_sha256': expected_draft_sha256,
+                        'validation_error': 'paper_audit_patch_extra_record_fields',
+                        'extra_fields': extra[:16], 'extra_field_count': len(extra),
+                        'semantic_quality_accepted': False}
             try:
                 validate_audit(report)
             except ValueError as error:

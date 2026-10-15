@@ -1,5 +1,9 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-15：论文旧流程 Shadow 同包与交付修复（PR #19 开发分支，未部署）
+
+- 旧库 6 条只读候选及 3 条报告流程映射经旧轨迹/当前 Schema 核对后加入私有 Shadow sidecar，同包保留两条已认证只读 Motif 与 PDF 排版工具；旧候选不获 Execute 权限。首次旧真实论文 Shadow 28 请求有 4 个候选但 PDF 覆盖 201/203，任务失败。修复模型生成报告的额外字段在暂存时拒绝后，仅 Shadow 复测完成 34 条参考文献报告及 8 页 PDF、覆盖 198/198：17 请求、4 工具错误已恢复、0 Verified Skip、代理估费 $0.045906192。此前同题 Origin 18 请求只作参照，不再重复；当前无可归因的 RSI 成本增益。V100 私有 v8 包已重编、无模型论文场景矩阵通过，公网成员服务未切换。详见[论文交接](paper-proofreading.md)及[实验记录](../experiments/paper-flow-unification-20261015-v1.md)。
+
 ## 2026-10-15：旧真实论文复测与 Motif 协议核对（PR #19 开发分支，未发布）
 
 - 三次真实 Origin 共 82 请求/$0.190340832 代理估费，前两次失败，第三次完成 7 页 PDF 但参考文献 15 条，与旧实验二 34 条报告差距明显；不得宣称质量或费用收益复现。旧实验一 9 条 Shadow 候选未整体迁入，6 个相关现有工具的参数 Schema 相同；私有 v5 包只有两条认证只读 Motif。旧实验二冻结 PDF 工具已接入，但由模型调用，非 Verified Skip。生产未切换，下一步是当前任务绑定下重编旧只读候选、人工评审报告及同题对照。见[论文交接](paper-proofreading.md)、[真实输入记录](../experiments/paper-real-source-main-20261015-v1.md)和[协议核对](../experiments/paper-motif-protocol-audit-20261015-v1.md)。

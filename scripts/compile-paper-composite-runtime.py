@@ -61,14 +61,16 @@ def save(path: Path, value: object):
 
 
 def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
-                    renderer_root: Path, output: Path):
+                    renderer_root: Path, output: Path, flow_shadow: Path | None = None):
     private = (ROOT / '.local').resolve()
     sources = [citation_dir, uploaded_dir, schemas_path, renderer_root]
+    if flow_shadow is not None: sources.append(flow_shadow)
     sources = [p.resolve(strict=True) for p in sources]
     output = output.resolve()
     if any(not p.is_relative_to(private) for p in [*sources, output]):
         raise ValueError('paper composite sources and output must remain private')
-    citation_dir, uploaded_dir, schemas_path, renderer_root = sources
+    citation_dir, uploaded_dir, schemas_path, renderer_root = sources[:4]
+    flow_shadow = sources[4] if len(sources) == 5 else None
     if output.exists(): raise FileExistsError(output)
     raw_schema = read(schemas_path)
     scenario = read(ROOT / 'scenarios/paper_proofreading/scenario.json')
@@ -125,6 +127,19 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
         'input_version': '0' * 64, 'bindings': {}, 'source_versions': {
             READ_PAIR[0]: '@observed', READ_PAIR[1]: '@from_anchor',
             CITATION_PAIR[0]: '@observed', CITATION_PAIR[1]: '@from_anchor'}})
+    flow_count = 0
+    if flow_shadow is not None:
+        bridge = read(flow_shadow)
+        from src.adapters.native_motif_compiler import digest
+        body = {k: v for k, v in bridge.items() if k != 'manifest_digest'}
+        if (bridge.get('schema_version') != 1 or bridge.get('kind') != 'paper_flow_current_shadow' or
+                bridge.get('execution_policy') != 'shadow_only' or
+                bridge.get('current_tool_schemas_sha256') != sha(schemas_path) or
+                digest(body) != bridge.get('manifest_digest') or
+                len(bridge.get('candidates', [])) != 6 or len(bridge.get('report_migrations', [])) != 3):
+            raise ValueError('paper flow shadow bridge is not current')
+        save(runtime / 'paper-flow-shadow.json', bridge)
+        flow_count = len(bridge['candidates'])
     save(output / 'capabilities.json', {
         'schema_version': 1, 'read_motifs': [list(pair) for pair in wanted],
         'citation_records': {'tool': 'mcp__paper_checks__read_pinned_citation_records',
@@ -138,6 +153,8 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
             'guard': 'task_grant_and_report_sha256_and_reviewed_renderer',
             'renderer_manifest_sha256': sha(renderer_root / 'package/manifest.json'),
             'renderer_review_sha256': sha(renderer_root / 'review.json')},
+        'legacy_flow_shadow_candidates': flow_count,
+        'legacy_report_migrations': 3 if flow_count else 0,
         'quality_cost_promoted': False})
     code = ['src/adapters/harless_rsi_binding.ts', 'src/adapters/harless_rsi_bundle.py',
             'src/adapters/harless_task_scope.ts', 'src/adapters/harless_paper_renderer.py',
@@ -145,16 +162,20 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
             'scenarios/paper_proofreading/server.py', 'scenarios/paper-submission/checks.py',
             'src/adapters/paper_bibliography.py', 'src/adapters/arxiv_metadata.py',
             'src/adapters/crossref_metadata.py', 'src/adapters/paper_query_recovery.py',
-            'src/adapters/dsh_web_tasks.ts', 'src/motif_core/online_skill_runtime.mjs']
+            'src/adapters/dsh_web_tasks.ts', 'src/adapters/harless_scenarios.py',
+            'src/adapters/harless_paper_flow_shadow.ts',
+            'src/motif_core/online_skill_runtime.mjs']
     evidence = {'citation_library_sha256': sha(citation_dir / 'library.json'),
                 'uploaded_library_sha256': sha(uploaded_dir / 'library.json'),
                 'current_mcp_schema_sha256': sha(schemas_path),
                 'renderer_deployment_sha256': sha(renderer_root / 'deployment.json'),
                 'source_artifact_digests': [by_pair[p]['certified_digest'] for p in wanted],
-                'migrated_citation_artifact_digest': migrated['certified_digest']}
+                'migrated_citation_artifact_digest': migrated['certified_digest'],
+                'flow_shadow_sha256': sha(flow_shadow) if flow_shadow else None}
     save(output / 'evidence-lock.json', evidence)
     report = {'status': 'compiled_read_subset_and_guarded_output_tool',
               'artifact_count': len(wanted), 'pdf_auto_execute': False,
+              'flow_shadow_candidates': flow_count,
               'old_shadow_rate_is_not_new_skip_rate': True,
               'renderer_quality_reviewed': False}
     save(output / 'learning-report.json', report)
@@ -168,6 +189,7 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
         'file_locks': {p.name: sha(p) for p in runtime.iterdir() if p.is_file()},
         'code_locks': {name: sha(ROOT / name) for name in sorted(code)}})
     return {'runtime': str(runtime), 'read_motifs': len(wanted),
+            'flow_shadow_candidates': flow_count,
             'pdf_export': 'guarded_model_tool', 'model_requests': 0}
 
 
@@ -175,9 +197,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('citation-library', 'uploaded-library', 'schemas', 'renderer-deployment', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
+    parser.add_argument('--flow-shadow', type=Path)
     args = parser.parse_args()
     print(json.dumps(compile_runtime(args.citation_library, args.uploaded_library,
-                                     args.schemas, args.renderer_deployment, args.output)))
+                                     args.schemas, args.renderer_deployment, args.output,
+                                     args.flow_shadow)))
 
 
 if __name__ == '__main__': main()

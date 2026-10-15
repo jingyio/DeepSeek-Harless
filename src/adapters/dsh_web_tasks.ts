@@ -10,6 +10,7 @@ import { isAgentLoopRequest, createUserMessage, createAssistantMessage } from '@
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
+import { createPaperFlowShadowObserver } from './harless_paper_flow_shadow.ts';
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
 import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, sceneShortcut, parseSceneShortcut, SettingsError } from './harless_settings.ts';
@@ -55,6 +56,7 @@ type Task = {
   humans: Map<string, string>; current_humans: Set<string>;
   sources: { resource_id: string; version: string; sha256: string }[];
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
+  paper_flow_shadow_sha256?: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
   model_option: ModelOption; reasoning_effort?: WebReasoningEffort; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; source_pending?: boolean; scope_sha256: string | null;
   budget_session_id: string;
@@ -116,7 +118,8 @@ export function apply(ctx: any) {
   const memberRestricted = brokerMode && config.allowed_tools.length === 0;
   const registeredScenes = config.scenes?.map(row => {
     if (!memberRestricted) return row;
-    const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas, certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = row;
+    const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas, certified_tool_schemas, certified_tool_schemas_sha256,
+      paper_flow_shadow, paper_flow_shadow_sha256, ...safe } = row;
     const instructions = '当前会话仅开放 GeneLoop 普通对话；没有文件或场景工具。不要声称已读取文件或完成生成。';
     return { ...safe, allowed_tools: [], preset: 'sss-disabled-' + row.id,
       config_sha256: digest({ scene: row.id, parent: row.config_sha256 ?? null, role: 'member_chat_only', allowed_tools: [] }),
@@ -178,6 +181,7 @@ export function apply(ctx: any) {
     // A started Harness session has an immutable preset. Imported history must
     // not acquire a new MCP composition or reuse an obsolete tool surface.
     const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas,
+      paper_flow_shadow, paper_flow_shadow_sha256,
       certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = scene;
     const instructions = '此会话为升级前保留的历史对话，只支持继续文字问答。当前没有文件或场景工具，不要声称已读取文件或完成生成；需要工作区工具时请用户新建会话。';
     return { ...safe, allowed_tools: [], instructions, instructions_sha256: sha(instructions),
@@ -946,6 +950,7 @@ export function apply(ctx: any) {
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
       scene, selection: Object.freeze({ ...selection }), tools, workspace, scene_options: options, scene_inputs: sceneInputs, source_pending: sourcePending, scope_sha256: scopeDigest(workspace, scene),
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
+      paper_flow_shadow_sha256: fileSha(scene.paper_flow_shadow),
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output,
       humans: priorHumans, current_humans: new Set(), sources,
       model_option: chosenModel, reasoning_effort: chosenReasoning, budget_session_id: budgetSessionId,
@@ -983,6 +988,7 @@ export function apply(ctx: any) {
       delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
       scene_sha256: task.scene.config_sha256, instructions: instructionsFor(task.scene, task.source_pending), selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
+      paper_flow_shadow_sha256: task.paper_flow_shadow_sha256,
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256,
       bound_binding_sha256: task.bound_binding_sha256, certification_sha256:task.scene.certification_sha256,
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, scope_sha256: task.scope_sha256, user_id: principal,
@@ -1001,6 +1007,7 @@ export function apply(ctx: any) {
       workspace: task.workspace, scope_sha256: task.scope_sha256,
       runtime_file_locks:task.scene.runtime_file_locks,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: task.reasoning_effort ?? null, compression: false,
+      paper_flow_shadow_sha256: task.paper_flow_shadow_sha256,
       budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit === 0 ? null : config.request_limit,
         run_usd: config.run_budget_usd, run_requests: config.run_request_limit === 0 ? null : config.run_request_limit, reset_history: false },
       run_config: '../../effective-config.json', manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256, scene_registry_sha256: config.scene_registry_sha256 });
@@ -1036,10 +1043,24 @@ export function apply(ctx: any) {
       const binding = scene.binding_policy ? pinned(join(task.output,'bound-motif-task.json'),task.bound_binding_sha256!) : pinned(scene.task, task.binding_sha256);
       binding.session_id = task.request.session_id; binding.task_id = task.request.task_id;
       json(join(task.output, 'bound-motif-task.json'), binding);
-      task.interceptor = createOnlineInterceptor({ manifest,
+      const core = createOnlineInterceptor({ manifest,
         task: binding, mode: task.request.mode, minSimilarity: 0.8, minMargin: 0.1,
         similarity: scene.matching_policy==='structural_only' ? structuralOnlySimilarity : loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
         audit: (row: unknown) => audit(task, row) });
+      // The migrated flows only observe the same frozen task and tool results.
+      // The certified core remains the sole path that can bypass a model call.
+      if(scene.paper_flow_shadow && task.request.mode==='shadow'){
+        const flow=createPaperFlowShadowObserver(
+          pinned(scene.paper_flow_shadow,task.paper_flow_shadow_sha256!),binding,task.tools,
+          (row:unknown)=>audit(task,row));
+        task.interceptor={
+          observe(sessionId:string,exec:any,result:any){core.observe(sessionId,exec,result);flow.observe(sessionId,exec,result);},
+          intercept(sessionId:string,options:any,next:any){
+            flow.beforeModel(sessionId,options.tools??[]);
+            return core.intercept(sessionId,options,next);
+          },
+        };
+      }else task.interceptor=core;
     } catch (error) {
       task.interceptor = undefined; task.fallback_reason = (error as Error).message === 'library_tool_schema_mismatch' ? 'library_tool_schema_mismatch' : 'no_valid_certified_library';
       audit(task, { kind: 'motif_library_invalid', error_type: (error as Error).name });
@@ -1058,6 +1079,7 @@ export function apply(ctx: any) {
         (task.scene.runtime_file_locks && Object.entries(task.scene.runtime_file_locks).some(([path,expected])=>fileSha(path)!==expected)) ||
         (task.scene.tool_schemas && fileSha(task.scene.tool_schemas) !== task.scene.certified_tool_schemas_sha256) ||
         fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256 ||
+        fileSha(task.scene.paper_flow_shadow) !== task.paper_flow_shadow_sha256 ||
         (task.scene.runtime_library && fileSha(task.scene.runtime_library)!==task.scene.runtime_library_sha256)) {
       throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
     }

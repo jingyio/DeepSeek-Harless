@@ -14,6 +14,7 @@ export type Scene = {
   certification_scope?: string; quality_cost_promoted?: boolean;
   output_unavailable_reason?: string; renderer_root?: string; font_root?: string; runtime_file_locks?: Record<string,string>;
   paper_renderer_root?: string;
+  paper_flow_shadow?: string; paper_flow_shadow_sha256?: string;
   pdf_toolchain_root?: string;
   certified_tool_schema_variants?: any[][];
   runtime_kind?: 'ppt_read_v1' | 'data_receipts_v3' | 'paper_shadow_v1';

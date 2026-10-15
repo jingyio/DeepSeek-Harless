@@ -128,6 +128,13 @@ def test_model_generated_audit_is_bound_to_task_sources_and_grant(tmp_path):
     assert not list((workspace / 'outputs' / 'paper-audits').rglob('draft.json'))
     first = output.stage({'scope': 'Only the uploaded main.tex was checked.'})
     assert first['staged'] is True
+    extra = output.stage({'issues': [{'priority': 'P2', 'number_or_location': 'main.tex',
+        'problem': 'Missing source', 'finding': 'Citation has no bibliography entry',
+        'recommended_fix': 'Check the source', 'evidence': 'main.tex'}]}, first['draft_sha256'])
+    assert extra['staged'] is False
+    assert extra['validation_error'] == 'paper_audit_patch_extra_record_fields'
+    assert extra['extra_fields'] == ['issues[0].evidence']
+    assert extra['draft_sha256'] == first['draft_sha256']
     too_many = output.stage({'notes': ['check'] * 10}, first['draft_sha256'])
     assert too_many == {'staged': False, 'draft_sha256': first['draft_sha256'],
                         'validation_error': 'paper_audit_batch_limit',
