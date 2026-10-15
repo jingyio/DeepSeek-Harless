@@ -1,5 +1,9 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-15：PR #19 合并前真实论文场景复测
+
+- V100 私有 v8 包按产品每任务 24 请求限制，再完成一轮真实论文 Shadow/RSI On：19 请求、34 条参考文献报告、10 页 PDF、机械覆盖 208/208，1 个工具错误在同任务恢复；4 候选、0 Verified Skip。输出 15,763 token，先前同题 Origin 为 12,116，另一轮完成的 Shadow 为 10,034；没有稳定的输出 token 或 RSI 费用节省证据。代码和证据在[论文交接](paper-proofreading.md)与[实验记录](../experiments/paper-flow-unification-20261015-v1.md)，公网未切换。合并前可审阅 PR #19，合并后仍需按最新代码锁部署私有 v8 包并验证成员网关。
+
 ## 2026-10-15：论文旧流程 Shadow 同包与交付修复（PR #19 开发分支，未部署）
 
 - 旧库 6 条只读候选及 3 条报告流程映射经旧轨迹/当前 Schema 核对后加入私有 Shadow sidecar，同包保留两条已认证只读 Motif 与 PDF 排版工具；旧候选不获 Execute 权限。首次旧真实论文 Shadow 28 请求有 4 个候选但 PDF 覆盖 201/203，任务失败。修复模型生成报告的额外字段在暂存时拒绝后，仅 Shadow 复测完成 34 条参考文献报告及 8 页 PDF、覆盖 198/198：17 请求、4 工具错误已恢复、0 Verified Skip、代理估费 $0.045906192。此前同题 Origin 18 请求只作参照，不再重复；当前无可归因的 RSI 成本增益。V100 私有 v8 包已重编、无模型论文场景矩阵通过，公网成员服务未切换。详见[论文交接](paper-proofreading.md)及[实验记录](../experiments/paper-flow-unification-20261015-v1.md)。
