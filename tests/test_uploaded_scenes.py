@@ -67,6 +67,17 @@ def test_paper_text_read_handle_views_and_no_external_inputs(tmp_path):
     with pytest.raises(ValueError,match='escapes'):s.read_sources(scope['source_id'])
 
 
+def test_paper_accepts_full_flat_source_set_without_raising_other_scene_limit(tmp_path):
+    root = tmp_path/'paper'; root.mkdir()
+    for index in range(16): put(root, f'section-{index}.tex', 'Text.')
+    assert len(PaperEvidence(root).list_files()['files']) == 16
+    with pytest.raises(ValueError, match='scene_input_limit'):
+        SessionFiles(root).list_files()
+    put(root, 'section-16.tex', 'Extra.')
+    with pytest.raises(ValueError, match='scene_input_limit'):
+        PaperEvidence(root).list_files()
+
+
 def test_file_path_symlink_hardlink_and_versions(tmp_path):
     r=tmp_path/'files';r.mkdir();put(r,'a.txt','one');s=SessionFiles(r)
     with pytest.raises(ValueError,match='file_not_in_session'):s.read('../a.txt')

@@ -1,5 +1,10 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-15：论文新库全任务复测（PR #19 分支，未发布）
+
+- 论文 Web 平铺文件上限增至 16，其他场景保留 8；私有复合库随代码锁重编译为 v7。15 份旧论文资料通过准入，原 `sections/...` 路径无法原样保留；隔离副本改写 9 处 `\input` 路径后，真实源码/引文工具与获准 PDF 导出通过无模型检查，原件未动。
+- 同条件 Origin/Shadow/Execute 真实对照未完成：原样任务 Origin 两次、兼容副本 Origin 一次及短请求诊断一次，均在首个 DeepSeek 请求得到 HTTP 503，合计 4 请求/$0.0295977 保守预估，未知账单；0 工具/0 跳过，不得宣称新库收益。现有本地完整测试 673 Python 通过、193 跳过；Node 450 通过、3 跳过、1 项因 macOS `/var` 与 `/private/var` 路径等价断言失败，非本次修改的用户隔离代码。详情见 [论文实验记录](../experiments/paper-composite-full-20261015-v1.md)。
+
 ## 2026-10-15：论文旧能力复用与复合 Motif（PR #19 待审）
 
 - [PR #19](https://github.com/jingyio/DeepSeek-Harless/pull/19) 的分支 `codex/harless-motif-libraries-20261014` 已整合 main `67e8445`，在 V100 隔离检出重新抓取论文 17 个真实 MCP Schema，复用旧引用库和当前上传读取轨迹编译两条只读 Motif；旧 PDF 排版程序接入同一论文场景的任务授权工具。共用既有 Harness/RSI Runtime，未改账号管理或上游核心，公网进程未切换。

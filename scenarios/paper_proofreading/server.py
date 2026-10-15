@@ -24,6 +24,9 @@ from checks import PaperEvidence as CitationEvidence
 
 
 class PaperEvidence(SessionFiles):
+    def __init__(self, directory):
+        super().__init__(directory, max_files=16)
+
     def scope_version(self):
         rows = self.list_files()['files']
         return hashlib.sha256(json.dumps({'files': rows, 'checker': hashlib.sha256(

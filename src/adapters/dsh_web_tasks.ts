@@ -867,7 +867,10 @@ export function apply(ctx: any) {
       if (forSession(request.sessionId)) throw new TaskError('comparison_requires_new_session', '已有普通任务的会话请保留，新建会话开始双路对照。', 409);
       const scene = sceneFor(selected.scene), parent = agents.get(request.sessionId);
       if (!Array.isArray(content) || !content.length || content.some((part: any) => !['text', 'file'].includes(part.type)) ||
-          content.filter((part: any) => part.type === 'file').length > 8) throw new TaskError('unsupported_input', '请发送文字和最多 8 份场景资料。');
+          content.filter((part: any) => part.type === 'file').length >
+            (selected.scene === 'paper-proofreading' ? 16 : 8))
+        throw new TaskError('unsupported_input', selected.scene === 'paper-proofreading'
+          ? '请发送文字和最多 16 份论文资料。' : '请发送文字和最多 8 份场景资料。');
       const text = content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n');
       if (!text.trim() || text.length > 10000) throw new TaskError('invalid_request', '请填写不超过 10000 字的任务。');
       const sourceFiles:Record<string,any>={};

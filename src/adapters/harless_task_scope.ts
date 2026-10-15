@@ -94,7 +94,8 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     if (part.type !== 'file') continue;
     const ref = ctx.fileUploads.resolve(agent, part.receiptId);
     if (!ref) throw Error('file_receipt_not_owned');
-    if (inputs.length >= 8 || ref.bytes > 20 * 1024 * 1024) throw Error('scene_input_limit');
+    const maxInputs = scene.id === 'paper-proofreading' ? 16 : 8;
+    if (inputs.length >= maxInputs || ref.bytes > 20 * 1024 * 1024) throw Error('scene_input_limit');
     const chunks: Buffer[] = []; let bytes = 0;
     for await (const chunk of ctx.attachments.readFileStream(ref)) {
       bytes += chunk.length; if (bytes > 20 * 1024 * 1024) throw Error('scene_input_limit');

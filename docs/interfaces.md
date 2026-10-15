@@ -451,6 +451,8 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 
 `harless_task_scope.ts` 仅负责服务器分配的 Session cwd、私有 preset、批准上传文件、PPT job 与 Files 任务授权；共享匹配/执行仍由现有在线 Runtime 提供。PPT `{slides,template,allow_output}` 经任务 API `request.scene_options` 设置并冻结，默认6页/academic/只读；Web空 Session 只能只读初始化。任务响应含 `user_id/selected_mode/scene_options/scene_inputs`；完整有效配置与 scope/library/schema 摘要保存于私有任务目录。
 
+论文场景的任务输入上限为 16 份平铺文件，通用、PPT、数据与 Files 场景仍为 8 份；服务端在任务准入和 `SessionFiles.list_files()` 两层执行相同边界。该上限容纳单篇论文的多个 `.tex` 与 `.bib`，但不解释目录结构：引用 `sections/...` 的原始 LaTeX 包仍需后续安全的相对路径或压缩包协议，不能仅靠增加文件数声称全稿检查。
+
 当前用户边界是一个可信 principal 一个独立 Harness 启动；启动器接受 `--user-id`，客户端不能指定 cwd/工作区、库或命令。上传收据通过官方 Agent scope 解析后复制，重新确认时验证字节摘要。多账号 gateway 仍需账户负责人接入并联合验收。场景安装、登记字段、限额、拒绝原因与已验证边界见 [Harless 控制协议](harless-controls.md)；本节更新旧“仅前端预览”描述，不改写旧实验结论。
 
 ### 账号会话跨部署恢复（2026-10-14）
