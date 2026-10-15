@@ -17,6 +17,48 @@ USAGE = {"prompt_tokens": 12, "prompt_cache_hit_tokens": 8,
 
 
 class WebTaskBudgetTests(unittest.TestCase):
+    def test_cumulative_checkpoint_survives_routed_admission_crash_and_cap_expansion(self):
+        checkpoint = self.root / 'cumulative.json'
+        self.root.mkdir(parents=True, exist_ok=True)
+        checkpoint.write_text(json.dumps({'request_count': 248, 'reserved_usd': 0.105}))
+        state = State(cap_usd=1, output_cap=100, request_limit=1000,
+                      record=self.root / 'continued-ledger.jsonl', checkpoint=checkpoint)
+        registry = TaskBudgetRegistry(run_state=state, tasks_root=self.root / 'continued',
+                                      task_request_limit=24, max_task_budget_usd=0.23)
+        registry.register('1' * 32, 'turn-one', 0.23)
+        registry.activate('turn-one')
+        route = registry.state_for({'x-deepseek-harness-session-id': 'turn-one'})
+        booked = route.book(BODY)
+        carried = State(cap_usd=1, output_cap=100, request_limit=1000,
+                        record=state.record, checkpoint=checkpoint)
+        self.assertEqual(carried.request_count, 249)
+        self.assertGreater(carried.reserved_usd, 0.105)
+        route.settle(booked[0], booked[1], 200, USAGE)
+        recovered = State(cap_usd=1, output_cap=100, request_limit=1000,
+                          record=state.record, checkpoint=checkpoint)
+        self.assertEqual(recovered.request_count, 249)
+        self.assertAlmostEqual(recovered.reserved_usd, state.reserved_usd)
+        self.assertGreater(recovered.reserved_usd, 0.105)
+        for bad in ({'request_count': -1, 'reserved_usd': 0},
+                    {'request_count': 248, 'reserved_usd': float('nan')},
+                    {'request_count': True, 'reserved_usd': 0}):
+            checkpoint.write_text(json.dumps(bad))
+            with self.assertRaises(ValueError):
+                State(cap_usd=1, output_cap=100, request_limit=1000,
+                      record=state.record, checkpoint=checkpoint)
+
+    def test_active_route_never_charges_a_different_model(self):
+        session = self.register()
+        with self.assertRaises(PermissionError): self.registry.active_state_for({})
+        self.registry.activate(session)
+        route = self.registry.active_state_for({})
+        self.assertEqual(route.model, 'deepseek-flash')
+        with self.assertRaises(ValueError): route.book(b'{"model":"deepseek-v4-pro","max_tokens":10}')
+        self.assertEqual(self.registry.stats(session)['upstream_requests'], 0)
+        other = self.register(2)
+        self.registry.activate(other)
+        with self.assertRaises(PermissionError): self.registry.active_state_for({})
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / ".local" / "web" / "run"
@@ -109,9 +151,43 @@ class WebTaskBudgetTests(unittest.TestCase):
         self.assertEqual(routes[2].state.request_count, 0)
         self.assertEqual(self.run.request_count, 4)
         self.assertEqual(self.registry.stats(routes[2].session_id)["global_request_limit"], 4)
-        for invalid in (0, -1, True, "2"):
+        for invalid in (-1, True, False, "2", 1.5):
             with self.assertRaisesRegex(ValueError, "task_request_limit"):
                 TaskBudgetRegistry(run_state=self.run, tasks_root=self.root / "other", task_request_limit=invalid)
+
+    def test_unlimited_task_and_global_counts_preserve_usage_and_dollar_guards(self):
+        for limit in (None, 0):
+            with self.subTest(limit=limit):
+                self.run = State(cap_usd=1, output_cap=100, request_limit=limit,
+                                 record=self.root / f'unlimited-{limit}.jsonl')
+                self.registry = TaskBudgetRegistry(run_state=self.run,
+                    tasks_root=self.root / f'unlimited-{limit}', task_request_limit=limit)
+                route = self.active()
+                for _ in range(25):
+                    booked = route.book(BODY)
+                    self.assertIsNotNone(booked)
+                    route.settle(booked[0], booked[1], 200, USAGE)
+                stats = self.registry.stats(route.session_id)
+                self.assertIsNone(stats['request_limit'])
+                self.assertIsNone(stats['global_request_limit'])
+                self.assertEqual(stats['upstream_requests'], 25)
+                self.assertEqual(stats['global_upstream_requests'], 25)
+                route.state.cap_usd = route.state.reserved_usd
+                self.assertIsNone(route.book(BODY))
+                self.assertEqual(self.run.request_count, 25)
+                route.state.cap_usd = 0.5
+                self.run.cap_usd = self.run.reserved_usd
+                self.assertIsNone(route.book(BODY))
+                self.assertEqual(self.run.request_count, 25)
+
+    def test_unlimited_task_does_not_inherit_count_cap_but_global_cap_still_applies(self):
+        route = self.active()
+        self.assertIsNone(route.state.request_limit)
+        for _ in range(4):
+            booked = route.book(BODY)
+            route.settle(booked[0], booked[1], 200, USAGE)
+        self.assertIsNone(route.book(BODY))
+        self.assertEqual(self.run.request_count, 4)
 
     def test_atomic_parallel_booking_enforces_global_dollars(self):
         _, reservation_usd, _ = reservation(BODY, max_output=100)

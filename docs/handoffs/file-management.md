@@ -1,3 +1,14 @@
+# 文件管理当前交接
+
+- 更新时间：2026-10-15；当前开发分支 `feature/rsi-research-agent`，只推个人分支，不合入 main。
+- 已完成：GeneLoop 原生 `/management`，副本内复制/移动/重命名/建目录默认执行；高风险执行和恢复原生逐计划确认；持久化经验库、Python 学习与独立认证、TypeScript 续接、费用/失败封存、原任务恢复及报告下载。
+- 真实验证：普通整理 0 次确认；覆盖和恢复各确认一次；永久删除拒绝后不改文件；已登记外部根复制需确认；文件提交后进程中断并恢复，原预算及日志不重置；前端新任务验证 1 次模型请求跳过。全部调试、失败、费用和旧原最终集保留。
+- 验证与当前限制：[实验记录](../experiments/management-native-20261015.md)、[共享接口](../changes/management-autonomous-rsi.md)。完整回归 Python 1050 / Node 717 通过，5 可选跳过；未主张总体净收益或任意新 MCP 支持。当前跨任务自动撤销仍需适配。
+- 配置：`npm run management -- --real-model`；日常真实库 `daily-management-real-v3`；任务最高 USD5/96步和请求/4000输出/2修复，原系列1000、学习25。凭证、原轨迹、备份和原认证证据只在私有 `.local/`。
+- 公开库：`examples/motif-library/management-v3-native`，当前兼容的原始两节点数组读取政策；公开摘要不授予生产执行权限，新环境独立认证。旧库和旧认证保留。
+
+## 历史交接（按原记录保留）
+
 # file-management 当前交接
 
 ## 最新本地状态：2026-10-15持久化/批量/恢复
@@ -132,6 +143,13 @@
 ## 最新协作要求：本地验收后再推送（2026-10-13）
 
 用户暂停后续推送，已推送基线为dfe4fcc；后续改动先留本地，等待用户明确恢复GitHub同步。下一轮优先把TaskScene与计划授权/版本/持久化恢复组合验证，再接本地动态任务前端，然后用新跨流程留出比较Harness/普通脚本/Motif的合格总成本。恢复不能重置原权限、预算或修复次数，影响读取图时需重新认证。原testpdf副本权限、DeepSeek配置和1000USD系列预算保持，所有接口改动、失败和费用继续归档。本次只更新本地交接，未启动新付费实验。
+
+## 2026-10-14：Files Web 产品接入（待审）
+
+- 分支 `codex/harless-research-branches-20261014` 的 PR #14 增加 `Files` 前后端场景。菜单只发送服务器 ID `files` 与 `allow_output` 选项；Registry 绑定 `web-scenario.json` 的 13 MCP 工具和 `web-prompt.md`。用户/Session/Task 工作目录、上传收据、预算与既有 RSI Runtime 继续使用公共路径。
+- `PlanScene` 保留实验原有限制，同时新增 `FM_WEB_WORKSPACE` 服务器绑定的 Web 任务副本范围；只读任务以空写授权启动，写任务须有批准上传文件。任务配置摘要隔开预览前后状态，避免持久化计划串扰。Web 只允许受限复制、移动、隔离及同授权恢复，最多 6 步，不接通任意主机文件或实验库。
+- V100 四项新单测已验证只读拒绝、跨工作区拒绝、预览后来源变化隔离、授权复制/恢复、4 MiB Office XML 上限与 Excel 元数据边界；含 Registry 共 10 项通过。完整五场景免费 Harness 检查通过 30 组合/25 冻结草稿、5 场景实际 MCP/上传、空文件可写提交拒绝与双用户隔离。两名 bwrap 成员共 10 个五场景草稿及隔离通过。真实 DeepSeek Flash 只读任务 4 请求/4 MCP/0 工具错误/0 Verified Skip，预算代理估费 USD 0.001964256，账单未核对。人工办公材料质量、浏览器交互与认证库发布未验收。
+- 入口：`npm run web:scenes:check`；定向：`$SSS_PYTHON -m pytest -q tests/test_file_web_scene.py tests/test_harless_scenarios.py`。公共契约见 `docs/interfaces.md`、`docs/harless-controls.md`。私有输入、凭证、原始日志和历史库留 `.local/`，未进 Git。回退 Files Registry 项及 Web scope 适配，不改旧实验记录。
 
 ## 最新：重命名/转换/空文本契约修复及新留出完成（2026-10-13）
 

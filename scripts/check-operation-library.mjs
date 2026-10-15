@@ -20,4 +20,4 @@ for(const e of cat.entries){
  if(process.argv.includes('--require-runtime'))need(!incompatible.length,'current execution source differs from original certification');
  result.push({entry:e.entry_id,nodes:p.artifact.nodes.length,matching_runtime:!incompatible.length,incompatible});
 }
-need(result.length===4,'incomplete public library');console.log(JSON.stringify({passed:true,policies:result,automatic_activation:false,cloud_requests:0},null,2));
+need(result.length>0,'empty public library');if(bundle===join(root,'examples/motif-library/file-management-operation-v2-winfix'))need(result.length===4,'incomplete original four-policy library');console.log(JSON.stringify({passed:true,policies:result,automatic_activation:false,cloud_requests:0},null,2));

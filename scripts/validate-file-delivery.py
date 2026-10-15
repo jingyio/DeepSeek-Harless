@@ -8,6 +8,7 @@ from common import DATA,digest,save,snapshot
 from report_study import verify_report,benchmark_targets
 from operation_contract import verify_operations
 from operation_contract_v2 import verify_operations_v2
+from management_contract import verify_management
 from verify import verify as legacy_verify
 from task_contract import verify_task,scope_errors
 from workflow_contract import verify_workflow
@@ -32,7 +33,9 @@ def check(task_file,task_sha,delivery_root,archive_root,round_no,payload):
     task_file=private(task_file);delivery=private(delivery_root);archive=private(archive_root)
     if hashlib.sha256(task_file.read_bytes()).hexdigest()!=task_sha:raise ValueError('frozen task changed; permissions cannot widen')
     spec=json.loads(task_file.read_text());workspace=Path(spec['workspace'])
-    if workspace.is_symlink() or not workspace.resolve().is_relative_to(DATA.resolve()) or not (workspace/'.experiment-copy').is_file():
+    management=spec.get('management_contract')=='sss-management-v3'
+    valid_root=workspace.resolve().is_relative_to(DATA.resolve()) or management and workspace.resolve().is_relative_to((ROOT/'.local/management-copies').resolve())
+    if workspace.is_symlink() or not valid_root or not (workspace/'.experiment-copy').is_file():
         raise ValueError('workspace outside authorized experimental copies')
     current=snapshot(workspace)
     if archive.is_relative_to(delivery) or delivery.is_relative_to(archive):raise ValueError('archive and delivery must be disjoint')
@@ -47,9 +50,9 @@ def check(task_file,task_sha,delivery_root,archive_root,round_no,payload):
         receipt.get('status') in ('delivered','delivered_with_gaps') and receipt.get('artifact_sha256')==digest(report)
         and receipt.get('input_sha256')==digest(spec) and Path(receipt.get('artifact','')).resolve()==report_path.resolve())
     verify=verify_operations_v2 if spec.get('operation_contract',{}).get('validation_version')=='sss-file-operation-quality-v2' else verify_operations if spec.get('operation_contract') else verify_workflow if spec.get('workflow_contract') else verify_task if spec.get('task_contract') else verify_report if spec.get('report_contract') else legacy_verify
-    review=verify(spec,report if receipt_ok else None,delivery,payload.get('events',[]))
+    review=verify_management(spec,report if receipt_ok else {},delivery) if management else verify(spec,report if receipt_ok else None,delivery,payload.get('events',[]))
     if not receipt_ok and 'no actual submit_report receipt' not in review['errors']:review['errors'].append('no verified current submit_report receipt')
-    if report and report.get('final_snapshot')!=current:review['errors'].append('published report snapshot differs from current workspace; publish current results again')
+    if report and (report.get('final_tree',{}).get('workspace',{}).get('files') if management else report.get('final_snapshot'))!=current:review['errors'].append('published report snapshot differs from current workspace; publish current results again')
     review['passed']=not review['errors']
     repairable=True
     if spec.get('workflow_contract'):

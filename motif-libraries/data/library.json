@@ -1,0 +1,1217 @@
+{
+  "schema_version": 1,
+  "kind": "benchmark_workspace_receipt_motifs",
+  "scope": "benchmark-local v3; manually designed tool/authorization surface; observed receipt transfers only",
+  "selection": "exact binding + explicit plan permission; no semantic embedding",
+  "contracts": {
+    "mcp__research_report__inspect_study": {
+      "required_params": [],
+      "output_fields": [],
+      "execution": "semantic"
+    },
+    "mcp__research_report__approve_analysis": {
+      "required_params": [
+        "study_id",
+        "plan"
+      ],
+      "output_fields": [
+        "plan_id"
+      ],
+      "execution": "semantic"
+    },
+    "mcp__research_report__run_analysis": {
+      "required_params": [
+        "plan_id"
+      ],
+      "output_fields": [
+        "analysis_id"
+      ],
+      "execution": "workspace_idempotent"
+    },
+    "mcp__research_report__verify_analysis": {
+      "required_params": [
+        "analysis_id"
+      ],
+      "output_fields": [
+        "verified_id"
+      ],
+      "execution": "workspace_idempotent"
+    },
+    "mcp__research_report__build_evidence": {
+      "required_params": [
+        "verified_id"
+      ],
+      "output_fields": [
+        "evidence_id"
+      ],
+      "execution": "workspace_idempotent"
+    },
+    "mcp__research_report__approve_presentation": {
+      "required_params": [
+        "evidence_id",
+        "presentation"
+      ],
+      "output_fields": [
+        "presentation_id"
+      ],
+      "execution": "semantic"
+    },
+    "mcp__research_report__render_figures": {
+      "required_params": [
+        "presentation_id"
+      ],
+      "output_fields": [
+        "figure_bundle_id"
+      ],
+      "execution": "workspace_idempotent"
+    },
+    "mcp__research_report__verify_figures": {
+      "required_params": [
+        "figure_bundle_id"
+      ],
+      "output_fields": [
+        "packet_id"
+      ],
+      "execution": "workspace_idempotent"
+    },
+    "mcp__research_report__submit_report_text": {
+      "required_params": [
+        "packet_id",
+        "report_text"
+      ],
+      "output_fields": [
+        "text_id"
+      ],
+      "execution": "semantic"
+    },
+    "mcp__research_report__compose_report": {
+      "required_params": [
+        "text_id"
+      ],
+      "output_fields": [
+        "draft_id"
+      ],
+      "execution": "workspace_idempotent"
+    },
+    "mcp__research_report__layout_report": {
+      "required_params": [
+        "draft_id"
+      ],
+      "output_fields": [
+        "layout_id"
+      ],
+      "execution": "workspace_idempotent"
+    },
+    "mcp__research_report__audit_layout": {
+      "required_params": [
+        "layout_id"
+      ],
+      "output_fields": [
+        "report_id"
+      ],
+      "execution": "workspace_idempotent"
+    },
+    "mcp__research_report__verify_report": {
+      "required_params": [
+        "report_id"
+      ],
+      "output_fields": [
+        "verification_id"
+      ],
+      "execution": "workspace_idempotent"
+    },
+    "mcp__research_report__deliver_report": {
+      "required_params": [
+        "verification_id"
+      ],
+      "output_fields": [
+        "delivery_id"
+      ],
+      "execution": "workspace_idempotent"
+    }
+  },
+  "contracts_digest": "d3bfbe7a265b6b7918f6181f0309db810cba0b4f5e626ed3b3bca5eeeac06a47",
+  "tool_schemas": {
+    "mcp__research_report__approve_analysis": {
+      "type": "object",
+      "properties": {
+        "study_id": {
+          "title": "Study Id",
+          "type": "string"
+        },
+        "plan": {
+          "additionalProperties": true,
+          "title": "Plan",
+          "type": "object"
+        }
+      },
+      "required": [
+        "study_id",
+        "plan"
+      ],
+      "title": "approve_analysisArguments"
+    },
+    "mcp__research_report__approve_presentation": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "presentation": {
+          "additionalProperties": true,
+          "title": "Presentation",
+          "type": "object"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "presentation"
+      ],
+      "title": "approve_presentationArguments"
+    },
+    "mcp__research_report__audit_layout": {
+      "type": "object",
+      "properties": {
+        "layout_id": {
+          "title": "Layout Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "layout_id"
+      ],
+      "title": "audit_layoutArguments"
+    },
+    "mcp__research_report__build_evidence": {
+      "type": "object",
+      "properties": {
+        "verified_id": {
+          "title": "Verified Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verified_id"
+      ],
+      "title": "build_evidenceArguments"
+    },
+    "mcp__research_report__compose_report": {
+      "type": "object",
+      "properties": {
+        "text_id": {
+          "title": "Text Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text_id"
+      ],
+      "title": "compose_reportArguments"
+    },
+    "mcp__research_report__deliver_report": {
+      "type": "object",
+      "properties": {
+        "verification_id": {
+          "title": "Verification Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verification_id"
+      ],
+      "title": "deliver_reportArguments"
+    },
+    "mcp__research_report__inspect_study": {
+      "type": "object",
+      "properties": {},
+      "title": "inspect_studyArguments"
+    },
+    "mcp__research_report__layout_report": {
+      "type": "object",
+      "properties": {
+        "draft_id": {
+          "title": "Draft Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "draft_id"
+      ],
+      "title": "layout_reportArguments"
+    },
+    "mcp__research_report__render_figures": {
+      "type": "object",
+      "properties": {
+        "presentation_id": {
+          "title": "Presentation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "presentation_id"
+      ],
+      "title": "render_figuresArguments"
+    },
+    "mcp__research_report__run_analysis": {
+      "type": "object",
+      "properties": {
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_id"
+      ],
+      "title": "run_analysisArguments"
+    },
+    "mcp__research_report__submit_report_text": {
+      "type": "object",
+      "properties": {
+        "packet_id": {
+          "title": "Packet Id",
+          "type": "string"
+        },
+        "report_text": {
+          "$ref": "#/$defs/ReportText"
+        }
+      },
+      "required": [
+        "packet_id",
+        "report_text"
+      ],
+      "$defs": {
+        "ReportSection": {
+          "additionalProperties": false,
+          "description": "One body section, in the already approved order. No extra fields.",
+          "properties": {
+            "heading": {
+              "description": "Copy the exact corresponding approved outline heading. Put scientific roles only in presentation.report.outline, not here.",
+              "title": "Heading",
+              "type": "string"
+            },
+            "paragraphs": {
+              "description": "Write the complete body yourself. Bind ALL scientific numbers to available {{name}} tokens. Legal existing figure labels such as 图1/Figure 1 and consecutive list markers such as （1）…；（2）… are formatting. Do not write source hashes or paths in prose; they are retained automatically in sidecar records.",
+              "items": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 12,
+              "minItems": 1,
+              "title": "Paragraphs",
+              "type": "array"
+            },
+            "figure_indices": {
+              "description": "Required zero-based indexes of actual approved figures placed in this section. Use [] if none. Across all sections include every actual figure exactly once. Body references 图1/Figure 1 use one-based labels.",
+              "items": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "title": "Figure Indices",
+              "type": "array"
+            }
+          },
+          "required": [
+            "heading",
+            "paragraphs",
+            "figure_indices"
+          ],
+          "title": "ReportSection",
+          "type": "object"
+        },
+        "ReportText": {
+          "additionalProperties": false,
+          "description": "Full model-written body, not a template or permission to invent numbers.",
+          "properties": {
+            "sections": {
+              "description": "Exactly the approved headings in order. Write methods, results, interpretation, diagnostics and limitations. Across the body use {{estimate}},{{ci_low}},{{ci_high}},{{p_value}},{{n}},{{excluded_rows}}. State synthetic-data limitations when source metadata says synthetic and state that this analysis does not establish causality. Use {{confidence_pct}}%, {{null_value}} and {{unit_increment}} instead of literal confidence/zero/unit-count numbers.",
+              "items": {
+                "$ref": "#/$defs/ReportSection"
+              },
+              "maxItems": 10,
+              "minItems": 1,
+              "title": "Sections",
+              "type": "array"
+            },
+            "allow_deterministic_continuation": {
+              "description": "REQUIRED explicit JSON boolean, no default. true authorizes assembly, layout and verification of THIS submitted text; false leaves continuation to the model. It never authorizes changing scientific prose.",
+              "title": "Allow Deterministic Continuation",
+              "type": "boolean"
+            },
+            "research_options": {
+              "description": "Supply at least the returned research_options_min when the user requests alternative studies; otherwise may omit. These model-written fields are inserted into an existing approved next_steps/limitations section.",
+              "items": {
+                "$ref": "#/$defs/ResearchOption"
+              },
+              "maxItems": 4,
+              "title": "Research Options",
+              "type": "array"
+            },
+            "comparison_summary": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Required when research_options is nonempty: compare their objectives and trade-offs using actual evidence; all scientific numbers use {{name}} tokens. Otherwise omit this field or put ordinary discussion in sections.",
+              "title": "Comparison Summary"
+            }
+          },
+          "required": [
+            "sections",
+            "allow_deterministic_continuation"
+          ],
+          "title": "ReportText",
+          "type": "object"
+        },
+        "ResearchOption": {
+          "additionalProperties": false,
+          "description": "An LLM-written study choice; this schema does not judge its merit.",
+          "properties": {
+            "name": {
+              "description": "A distinct research/sampling option name; do not add fields beyond name,rationale,tradeoff.",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "rationale": {
+              "description": "Explain why this option serves the actual findings/question. All quantitative values use verified {{name}} tokens.",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Rationale",
+              "type": "string"
+            },
+            "tradeoff": {
+              "description": "Explain costs, assumptions and limitations; describe untested scientific benefits as conditional hypotheses.",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Tradeoff",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "rationale",
+            "tradeoff"
+          ],
+          "title": "ResearchOption",
+          "type": "object"
+        }
+      },
+      "title": "submit_report_textArguments"
+    },
+    "mcp__research_report__verify_analysis": {
+      "type": "object",
+      "properties": {
+        "analysis_id": {
+          "title": "Analysis Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "analysis_id"
+      ],
+      "title": "verify_analysisArguments"
+    },
+    "mcp__research_report__verify_figures": {
+      "type": "object",
+      "properties": {
+        "figure_bundle_id": {
+          "title": "Figure Bundle Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "figure_bundle_id"
+      ],
+      "title": "verify_figuresArguments"
+    },
+    "mcp__research_report__verify_report": {
+      "type": "object",
+      "properties": {
+        "report_id": {
+          "title": "Report Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id"
+      ],
+      "title": "verify_reportArguments"
+    }
+  },
+  "tool_schemas_digest": "aac77b4946c0ed7900a7b4e5e2afdc732dcbaf57c6f30fb0eb34b6c56a40657d",
+  "training_cases": [
+    "v3_train_materials",
+    "v3_train_ml"
+  ],
+  "certification_case": "v3_cert_environment",
+  "artifacts": [
+    {
+      "from_tool": "mcp__research_report__approve_analysis",
+      "from_field": "plan_id",
+      "to_tool": "mcp__research_report__run_analysis",
+      "to_param": "plan_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_SZLe3rqfTg9NHZUkMU648833",
+              "to_call_id": "call_00_F96AkVrmp3wgIjO2gHZ99643",
+              "from_output_sha256": "121a8f37b22fdeea4b26346beeec5b37def31005d52292467730de8c52217919",
+              "to_arguments_sha256": "8eee25a5d16ed21069456a1958d2d491194e19824a8b4f5fd99710224adcd942"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_yfKUvloeSWzTLXZI4Elf4543",
+              "to_call_id": "call_00_J7sQ3mbDX67A99BRiBqO6577",
+              "from_output_sha256": "339ed3d46e5d18abe0925df629c4c1835172faa1ef42c1d002865e642e835c87",
+              "to_arguments_sha256": "da1a55c9d71dd4ea294c50cda3554e32300a438e3b921e16c446e6044a5d7e37"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_rtQa6wjqfDUVM1qnhvip7599",
+            "to_call_id": "call_00_ZUspvjtvrN2WrAShErbM5727",
+            "from_output_sha256": "5ce942759ff929344831011a6f96063e5abc2cd08262c6383470c598bfd3615a",
+            "to_arguments_sha256": "fe9ef2a8ba74a2fb5f5c56a0575361879293cdbf118de8b119c570570701cb66"
+          }
+        ]
+      },
+      "certified_digest": "774f151340663a2218b162e53b2786234e1df8cc0c1b8fbf2fd4059429fff5fc",
+      "motif_id": "receipt-774f151340663a22"
+    },
+    {
+      "from_tool": "mcp__research_report__approve_presentation",
+      "from_field": "presentation_id",
+      "to_tool": "mcp__research_report__render_figures",
+      "to_param": "presentation_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_pmCaa2CiTIkMNTZhAB9C0985",
+              "to_call_id": "call_00_Cs45OuTNE7auIvvTrQTK1328",
+              "from_output_sha256": "607b6d73529adb380346aaa44e96cb3966ae9740ad0e963997a6d17ebd95722d",
+              "to_arguments_sha256": "775a2f315e343236b2709051ca756ee81272910c496d9aecff04f15419eb0422"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_cQ1nHTuM4CGsiKmBvt890758",
+              "to_call_id": "call_00_eKPJQCLPtmMEuE0i9Z5K0883",
+              "from_output_sha256": "3a9e3a9fde5740415fb2da5463a9cc0866e1d315865ef2911c22e1ab7e148c2d",
+              "to_arguments_sha256": "83296a9a612f6c2f7abeb72c58d42e3643e572bd6f00a4049af66beaa1c135fc"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_A6FhZZwnpGmnki8zdIpt5791",
+            "to_call_id": "call_00_EhPROy5ZW94oAn4dOpXi1015",
+            "from_output_sha256": "5c64d15b9e0c42e4086fa94e25079aad8c7191710531d6612b0cc4d171f12dba",
+            "to_arguments_sha256": "57130fdc26acb55d41cd9fc2b22b435a5c3d5ff7ed881600b413d5f0a0a224bc"
+          }
+        ]
+      },
+      "certified_digest": "abab519e82ba77f4e6368ec6231fe56ea6e4fa74fefd4fbd2e497528f47f0331",
+      "motif_id": "receipt-abab519e82ba77f4"
+    },
+    {
+      "from_tool": "mcp__research_report__audit_layout",
+      "from_field": "report_id",
+      "to_tool": "mcp__research_report__verify_report",
+      "to_param": "report_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_1YXeLNa3eFgiQUKGD1xl4974",
+              "to_call_id": "call_00_brlJBGf2VRPqnHikKONw8915",
+              "from_output_sha256": "7e5a6774e2cdb3b5bcb5f537896ead29102002a49c1c0020b5134dd8f48294e3",
+              "to_arguments_sha256": "8018ac10d6cf698dd07994d645663036d1047d499ffc4c8556cf0d6ca18a2b98"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_F2BPgL5xdg8Msii0i6To6305",
+              "to_call_id": "call_00_JnwQExVJOVAMPqb95gVV2516",
+              "from_output_sha256": "724966da534b4d366a82816d3fb61910507796c9cb63e933c22544dfd7eefa43",
+              "to_arguments_sha256": "9d31bfdf8ba3ef32752b307c2c9b59b735b7621c570c4e73dc7b465765db71b8"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_miyRfNQS2AZyobGNKExY9322",
+            "to_call_id": "call_00_42KaQjnuOjIgyY0576cm9699",
+            "from_output_sha256": "6c1feffe70a20a44e5149944f38da902885ea8543f827302346f8e34a6292399",
+            "to_arguments_sha256": "8aec942b14a34c06cd35f8b2da2e9997ac0d4ce6571af8f2ed171ff980c99c69"
+          }
+        ]
+      },
+      "certified_digest": "87978c0319691abacbb460b30b6661ba983f5b5351f19ae66e78c7f37cc428a6",
+      "motif_id": "receipt-87978c0319691aba"
+    },
+    {
+      "from_tool": "mcp__research_report__compose_report",
+      "from_field": "draft_id",
+      "to_tool": "mcp__research_report__layout_report",
+      "to_param": "draft_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_JCkyUtTIbxckia4hfiFL7800",
+              "to_call_id": "call_00_N33FFH2GqhVsC4Wc5IMc1547",
+              "from_output_sha256": "c5059f4804118cb994025c20fc7814ecb30ceeda788135f5d12b0136618e038d",
+              "to_arguments_sha256": "23639e21c8f6c9f5857a0f02ee64bed79e70ab687eed1abac6e3ac73f8b08824"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_hzBnFPm2aZz0kKFCfmhC9817",
+              "to_call_id": "call_00_eXcCTjKy4AC70iglh7jP8439",
+              "from_output_sha256": "da3c43402f3a95ac3dd6bbb7512882ed5b4ac3f34e084fc762866b9b7286f550",
+              "to_arguments_sha256": "04b145da20673d39c15418361044c02561e107fef9539c3fbc5f2281610db9e2"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_mzBUCvfik5npqJLMUMMZ0327",
+            "to_call_id": "call_00_TBWYrXDwK831QJhFbekY1574",
+            "from_output_sha256": "1e4a0a7d6fd61418362d2adbc0e128bd30005e7f49f8e54327e2ccf8fc7f5a45",
+            "to_arguments_sha256": "cd1639756b9366696cf721dab6ec75bc0a9d2817049027f3de84d0a803ad835c"
+          }
+        ]
+      },
+      "certified_digest": "7d5f8eb62168666b8d253cb9e722f750a2302fbaac4a6afaf484c175f0e14c93",
+      "motif_id": "receipt-7d5f8eb62168666b"
+    },
+    {
+      "from_tool": "mcp__research_report__layout_report",
+      "from_field": "layout_id",
+      "to_tool": "mcp__research_report__audit_layout",
+      "to_param": "layout_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_N33FFH2GqhVsC4Wc5IMc1547",
+              "to_call_id": "call_00_1YXeLNa3eFgiQUKGD1xl4974",
+              "from_output_sha256": "efa55600efd8ed098e22c9de92e0fb332295be154e7b5361aa5971ddedb7e143",
+              "to_arguments_sha256": "13e06d4535a6df56faf587871f71b5f8fed8f720d298d6f6f92a7bb441cbfe86"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_eXcCTjKy4AC70iglh7jP8439",
+              "to_call_id": "call_00_F2BPgL5xdg8Msii0i6To6305",
+              "from_output_sha256": "aab1fb12e51fc76228c0479dab85e3fb790474e1f5ad5aed77e11797b02280da",
+              "to_arguments_sha256": "1b3af6be2595ee18ecdd997ab475bbb51596e6b71d7e0739d8cae511ac79700a"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_TBWYrXDwK831QJhFbekY1574",
+            "to_call_id": "call_00_miyRfNQS2AZyobGNKExY9322",
+            "from_output_sha256": "a37577d818c9ed08178c68db324cb23168d4d964566e45edb0acc1cc2d8b4700",
+            "to_arguments_sha256": "2cee4e27e77028326d7a5168310a4ccb37d85c25435a3786913f774f26df3eff"
+          }
+        ]
+      },
+      "certified_digest": "ff132a10b740e8ab95caedd4c294c31d96fb49b71f7a6ef0a38954f280ddc845",
+      "motif_id": "receipt-ff132a10b740e8ab"
+    },
+    {
+      "from_tool": "mcp__research_report__render_figures",
+      "from_field": "figure_bundle_id",
+      "to_tool": "mcp__research_report__verify_figures",
+      "to_param": "figure_bundle_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_Cs45OuTNE7auIvvTrQTK1328",
+              "to_call_id": "call_00_ZsEcdWmJxh386jBFqLnL5461",
+              "from_output_sha256": "55f88eda2784101b4fd3f29e43ffc5839210e1e78b701c45b700710e8ced5eb3",
+              "to_arguments_sha256": "81f066b8718e0dacc16c257cc9dc2a74038e6b61090a488b566fdf79722b3da9"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_eKPJQCLPtmMEuE0i9Z5K0883",
+              "to_call_id": "call_00_inUfhtSFbuRQo4G1RW888896",
+              "from_output_sha256": "e687db4728c9462eccba54b971f120ec31422d2a9890df225f6522656a37d099",
+              "to_arguments_sha256": "e728357accc90e2b580934ed3d573114836e7dfe029ef1c239824b6f6c97df93"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_EhPROy5ZW94oAn4dOpXi1015",
+            "to_call_id": "call_00_L8A46cAV4Q7Bkx3wNoti5898",
+            "from_output_sha256": "f470557609197b015d7ea1172628b436a47479443d45accfa8929ae47a494631",
+            "to_arguments_sha256": "ce6fa25f9070bfc7ceb06a9e6c3b5dbd9d2a848895377821302f67bbb93404ba"
+          }
+        ]
+      },
+      "certified_digest": "b69e72b4690bc487726165c5bfad6c37b058ac79d87642a60f2c24863cafa1b2",
+      "motif_id": "receipt-b69e72b4690bc487"
+    },
+    {
+      "from_tool": "mcp__research_report__run_analysis",
+      "from_field": "analysis_id",
+      "to_tool": "mcp__research_report__verify_analysis",
+      "to_param": "analysis_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_F96AkVrmp3wgIjO2gHZ99643",
+              "to_call_id": "call_00_zuYiZIvyczNm13v4hT186672",
+              "from_output_sha256": "52cb9aa3bafe734b2b796696df024b19b71a0e0aed347b83d95ea34eae385801",
+              "to_arguments_sha256": "e6beacfa5c51f4373993882e1169049c98e840d6fbf35c26fd5a874629a3313d"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_J7sQ3mbDX67A99BRiBqO6577",
+              "to_call_id": "call_00_sSagzsEpQ0f7ERErGeb09808",
+              "from_output_sha256": "0eca9161d844cb07c0455ed58d38eb28a05af1901f5342039af07410df96e0b5",
+              "to_arguments_sha256": "85b33bf34fd09e43ffaa4a6aed4a6570ad59422bc32750be5be1a63285df47b6"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_ZUspvjtvrN2WrAShErbM5727",
+            "to_call_id": "call_00_MggBU1Vl8x71CB99Hm5k8383",
+            "from_output_sha256": "028029f341d60a919428ccac4e7c598ec728eec1a89fea34773213ac3e23faa8",
+            "to_arguments_sha256": "8fd37af5820c503bfadc26f09a3fbd57e33f9e2555aa6746cc5af3ddfd258e13"
+          }
+        ]
+      },
+      "certified_digest": "6e9fb8f54c19f08e9d212cbde60685b13aad59b3254548abed500aa1b931cfbf",
+      "motif_id": "receipt-6e9fb8f54c19f08e"
+    },
+    {
+      "from_tool": "mcp__research_report__submit_report_text",
+      "from_field": "text_id",
+      "to_tool": "mcp__research_report__compose_report",
+      "to_param": "text_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_1KoO5yotJon57h8FZwGq9843",
+              "to_call_id": "call_00_JCkyUtTIbxckia4hfiFL7800",
+              "from_output_sha256": "677017a7f81e5a3c166e44d6d6512fdd36bc0f05dc773c0b4f8b254815ddbee1",
+              "to_arguments_sha256": "dd5b165cf31f15bc29506c3fc2e9e7bec7389a9cbe949c8f683fee81841ed9f3"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_qZapJULNfRApon0PMGxi7453",
+              "to_call_id": "call_00_hzBnFPm2aZz0kKFCfmhC9817",
+              "from_output_sha256": "b277bdbe2fcbf8b9be8e0efd93164e3ca13496e433975d8152ba78e2c5a4bc64",
+              "to_arguments_sha256": "ae469d4fb0d63152037b9624f1fc62dca1d8be6e47d19dae3be2fbb7bb24aceb"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_r6kgvPHSI27Q06yYXvGi8384",
+            "to_call_id": "call_00_mzBUCvfik5npqJLMUMMZ0327",
+            "from_output_sha256": "2e13a4d218128330472d1713ffd4c8b32675f4c558bec6829db3cc234e2cd40c",
+            "to_arguments_sha256": "f0b51e21cda275ea921f6444b8f6e95b314d521b506574b1c015698abad67f50"
+          }
+        ]
+      },
+      "certified_digest": "eac5fd91af35d922cdbcd7a63180d60142c5224acebc325873e6a1ad38827f40",
+      "motif_id": "receipt-eac5fd91af35d922"
+    },
+    {
+      "from_tool": "mcp__research_report__verify_analysis",
+      "from_field": "verified_id",
+      "to_tool": "mcp__research_report__build_evidence",
+      "to_param": "verified_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_zuYiZIvyczNm13v4hT186672",
+              "to_call_id": "call_00_FMSBpmOsn1E2MxtpCMAX1133",
+              "from_output_sha256": "52a1c73ba3a312c869548e5647f1f5f451c958755f2de016f36c2c41cd1be72b",
+              "to_arguments_sha256": "33b6e7400fd73412c638aa0b39dd0b71c4dd0f7810ef115b7dce5ab3d754f309"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_sSagzsEpQ0f7ERErGeb09808",
+              "to_call_id": "call_00_LKALoygCJug7JQXUYMCh8763",
+              "from_output_sha256": "d5861ba43160f52780eb21400bd6aec9600c7a7f5cd96f721d24641d03e68886",
+              "to_arguments_sha256": "7a474b6d693b8c8bccb01de5ce529df1b13aeb47e649cac46a5992b94794d01e"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_MggBU1Vl8x71CB99Hm5k8383",
+            "to_call_id": "call_00_3hWzE2408g90CD1a4x8e3034",
+            "from_output_sha256": "8d09f57fabb0356bfecf980ac5b7acea53c98a3a1eb7d3a405ab3c12b83beeb3",
+            "to_arguments_sha256": "2a9730e1a82cfc282ecf3da637f0e3c35dea740e506a88a86cfc06f85ec771dc"
+          }
+        ]
+      },
+      "certified_digest": "41b457017480c24db48b9d152bc10ce8296262510472bf0678def98f582bb4a9",
+      "motif_id": "receipt-41b457017480c24d"
+    },
+    {
+      "from_tool": "mcp__research_report__verify_report",
+      "from_field": "verification_id",
+      "to_tool": "mcp__research_report__deliver_report",
+      "to_param": "verification_id",
+      "policy": "closed_receipt_transfer_after_explicit_llm_authorization",
+      "training_evidence": [
+        {
+          "case_id": "v3_train_materials",
+          "run_id": "v31_train_materials_baseline-1910f1f2",
+          "events_sha256": "58e1a867367fe99c3ca7bc284b3625177173002f27dad73abcbfcd8fcf5ceecb",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_brlJBGf2VRPqnHikKONw8915",
+              "to_call_id": "call_00_2QZ1oEsZRsjJ7ywKt67M0295",
+              "from_output_sha256": "45a6eba4720cd6e083bc3b56ff79cd6c0bd25a90e381be49d999dd89d94b6e57",
+              "to_arguments_sha256": "211a0e33635d3f4af822bb51badb4c45d8b9464aff55e7952059d169ba41e914"
+            }
+          ]
+        },
+        {
+          "case_id": "v3_train_ml",
+          "run_id": "v31_train_ml_baseline-39d038fe",
+          "events_sha256": "020e1c5481fae8768f1351f12f0d85151502a57c90a562c0ed27234874452d99",
+          "witnesses": [
+            {
+              "from_call_id": "call_00_JnwQExVJOVAMPqb95gVV2516",
+              "to_call_id": "call_00_DgOHgHH4Vdso0RSTtk5v4197",
+              "from_output_sha256": "28ce1e921d51e5b702649615d0e6ee316039f8c3d20b423cdb59a4cb7db84703",
+              "to_arguments_sha256": "83ff1aec6b00fa71f2c2888056ccc85db508fbd60c8e1d002c8a4af0e77033f6"
+            }
+          ]
+        }
+      ],
+      "certification_evidence": {
+        "case_id": "v3_cert_environment",
+        "run_id": "v31_cert_environment_baseline-43200d17",
+        "events_sha256": "44cdefa18088553cb02b7968cf133bcd6e9b7e21569259bce54918be8d3b748d",
+        "witnesses": [
+          {
+            "from_call_id": "call_00_42KaQjnuOjIgyY0576cm9699",
+            "to_call_id": "call_00_NcpnGEEwrTXPhURzzenq5922",
+            "from_output_sha256": "4dadb6fcafeab358691fc39215c43beaa7150ab3457702e2a2d9751814aa53a5",
+            "to_arguments_sha256": "5f65493fe2d30351dfc91d5d34bc9e16f79ee60271b2744386000447b3e401f1"
+          }
+        ]
+      },
+      "certified_digest": "17b04ce537c3aea28f9b137497a07160d9ff5b76409beb762c8c97e9b0967156",
+      "motif_id": "receipt-17b04ce537c3aea2"
+    }
+  ],
+  "benchmark_version": 3,
+  "certification_meaning": "independent successful trajectory witness, not a formal proof",
+  "comparison_protocol": "free_presentation_and_narrative",
+  "semantic_barriers": [
+    "approve_analysis",
+    "approve_presentation",
+    "submit_report_text"
+  ],
+  "semantic_decision_evidence": [
+    {
+      "case_id": "v3_train_materials",
+      "run_id": "v31_train_materials_baseline-1910f1f2",
+      "decisions": [
+        {
+          "tool": "mcp__research_report__approve_analysis",
+          "call_id": "call_00_SZLe3rqfTg9NHZUkMU648833",
+          "arguments_sha256": "eee77e75e9f2d96c56f45ebc65128e7f4a249669f79687879489739587bdbbd1"
+        },
+        {
+          "tool": "mcp__research_report__approve_presentation",
+          "call_id": "call_00_pmCaa2CiTIkMNTZhAB9C0985",
+          "arguments_sha256": "3eb5591b27b90ab6373442def3cc3bb1d7caef8d3b30935463a6a1ad447cfccc"
+        },
+        {
+          "tool": "mcp__research_report__submit_report_text",
+          "call_id": "call_00_1KoO5yotJon57h8FZwGq9843",
+          "arguments_sha256": "98c8d5e9db8dfad1b925eab53a197c7b7f30ac720a2e7e4f3aa9bc458e1bd00c"
+        }
+      ]
+    },
+    {
+      "case_id": "v3_train_ml",
+      "run_id": "v31_train_ml_baseline-39d038fe",
+      "decisions": [
+        {
+          "tool": "mcp__research_report__approve_analysis",
+          "call_id": "call_00_yfKUvloeSWzTLXZI4Elf4543",
+          "arguments_sha256": "e9b6a6f3d5dbaa2cb02c89695ab26e16975f0c20ae4945d89020d048af4ca983"
+        },
+        {
+          "tool": "mcp__research_report__approve_presentation",
+          "call_id": "call_00_cQ1nHTuM4CGsiKmBvt890758",
+          "arguments_sha256": "6f3b5504c8d224afccf109513881bcb6c997d02659d5b88f6c115e7db0480b66"
+        },
+        {
+          "tool": "mcp__research_report__submit_report_text",
+          "call_id": "call_00_qZapJULNfRApon0PMGxi7453",
+          "arguments_sha256": "ba1653e21aab1379739ee49716906a69e434d74faeca03f7f15caf844887159b"
+        }
+      ]
+    },
+    {
+      "case_id": "v3_cert_environment",
+      "run_id": "v31_cert_environment_baseline-43200d17",
+      "decisions": [
+        {
+          "tool": "mcp__research_report__approve_analysis",
+          "call_id": "call_00_rtQa6wjqfDUVM1qnhvip7599",
+          "arguments_sha256": "0e227fe5f127303cafdddfd35bd134223ac04629174b72fb3917f31722dad49c"
+        },
+        {
+          "tool": "mcp__research_report__approve_presentation",
+          "call_id": "call_00_A6FhZZwnpGmnki8zdIpt5791",
+          "arguments_sha256": "40836d6b2f4621d74df67d7e9bf12fa54861ec4675844bb52e44c2705a4dd0e1"
+        },
+        {
+          "tool": "mcp__research_report__submit_report_text",
+          "call_id": "call_00_r6kgvPHSI27Q06yYXvGi8384",
+          "arguments_sha256": "868561345b6b087cb963e675594335e0e2cf66bdcaebae7f39a66cfca9dcd545"
+        }
+      ]
+    }
+  ],
+  "training_csv_sha256": [
+    "6781226002fdb5b44ce2863a4df2acf4fbc665a5512b029a7f3bd27f01d34ea6",
+    "fed2eac182bfe5e8ae1e12359c5363881dff20538f2a9178ff8949e223723791"
+  ],
+  "certification_csv_sha256": "ed13a412b0c1cb2dcf833b881748556569fd677a8f55c15d8e90d979c67a8859",
+  "observed_authorized_edge_coverage": [
+    {
+      "from_tool": "mcp__research_report__approve_analysis",
+      "from_field": "plan_id",
+      "to_tool": "mcp__research_report__run_analysis",
+      "to_param": "plan_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    },
+    {
+      "from_tool": "mcp__research_report__approve_presentation",
+      "from_field": "presentation_id",
+      "to_tool": "mcp__research_report__render_figures",
+      "to_param": "presentation_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    },
+    {
+      "from_tool": "mcp__research_report__audit_layout",
+      "from_field": "report_id",
+      "to_tool": "mcp__research_report__verify_report",
+      "to_param": "report_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    },
+    {
+      "from_tool": "mcp__research_report__compose_report",
+      "from_field": "draft_id",
+      "to_tool": "mcp__research_report__layout_report",
+      "to_param": "draft_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    },
+    {
+      "from_tool": "mcp__research_report__layout_report",
+      "from_field": "layout_id",
+      "to_tool": "mcp__research_report__audit_layout",
+      "to_param": "layout_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    },
+    {
+      "from_tool": "mcp__research_report__render_figures",
+      "from_field": "figure_bundle_id",
+      "to_tool": "mcp__research_report__verify_figures",
+      "to_param": "figure_bundle_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    },
+    {
+      "from_tool": "mcp__research_report__run_analysis",
+      "from_field": "analysis_id",
+      "to_tool": "mcp__research_report__verify_analysis",
+      "to_param": "analysis_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    },
+    {
+      "from_tool": "mcp__research_report__submit_report_text",
+      "from_field": "text_id",
+      "to_tool": "mcp__research_report__compose_report",
+      "to_param": "text_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    },
+    {
+      "from_tool": "mcp__research_report__verify_analysis",
+      "from_field": "verified_id",
+      "to_tool": "mcp__research_report__build_evidence",
+      "to_param": "verified_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    },
+    {
+      "from_tool": "mcp__research_report__verify_report",
+      "from_field": "verification_id",
+      "to_tool": "mcp__research_report__deliver_report",
+      "to_param": "verification_id",
+      "training_case_ids": [
+        "v3_train_materials",
+        "v3_train_ml"
+      ],
+      "training_task_count": 2,
+      "independently_witnessed": true,
+      "eligible": true
+    }
+  ],
+  "learned_chains": [
+    {
+      "tools": [
+        "mcp__research_report__submit_report_text",
+        "mcp__research_report__compose_report",
+        "mcp__research_report__layout_report",
+        "mcp__research_report__audit_layout",
+        "mcp__research_report__verify_report",
+        "mcp__research_report__deliver_report"
+      ],
+      "motif_ids": [
+        "receipt-eac5fd91af35d922",
+        "receipt-7d5f8eb62168666b",
+        "receipt-ff132a10b740e8ab",
+        "receipt-87978c0319691aba",
+        "receipt-17b04ce537c3aea2"
+      ],
+      "edge_count": 5
+    },
+    {
+      "tools": [
+        "mcp__research_report__approve_analysis",
+        "mcp__research_report__run_analysis",
+        "mcp__research_report__verify_analysis",
+        "mcp__research_report__build_evidence"
+      ],
+      "motif_ids": [
+        "receipt-774f151340663a22",
+        "receipt-6e9fb8f54c19f08e",
+        "receipt-41b457017480c24d"
+      ],
+      "edge_count": 3
+    },
+    {
+      "tools": [
+        "mcp__research_report__approve_presentation",
+        "mcp__research_report__render_figures",
+        "mcp__research_report__verify_figures"
+      ],
+      "motif_ids": [
+        "receipt-abab519e82ba77f4",
+        "receipt-b69e72b4690bc487"
+      ],
+      "edge_count": 2
+    }
+  ],
+  "library_digest": "3416f820c1ce38635ae98ec471fc12cc1e555a42220f6d27e8f13e4a0deea740"
+}

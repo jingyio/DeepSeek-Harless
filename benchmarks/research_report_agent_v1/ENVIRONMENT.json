@@ -1,0 +1,22 @@
+{
+  "python": "3.12.15 (main, Oct  3 2026, 01:03:07) [Clang 22.1.3 ]",
+  "platform": "Linux-5.4.0-149-generic-x86_64-with-glibc2.35",
+  "packages": {
+    "deepseek-harness-runtime-bin": "0.1.5rc1",
+    "mcp-types": "2.2.0",
+    "deepseek-harness-sdk": "0.1.5rc1",
+    "mcp": "2.2.0",
+    "reportlab": "5.0.1",
+    "pillow": "12.3.0",
+    "matplotlib": "3.11.2",
+    "pymupdf": "1.28.2",
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "statsmodels": "0.15.0",
+    "scipy": "1.18.1"
+  },
+  "node": "v22.23.3",
+  "dsh": "0.1.5-rc.3",
+  "branch": "feature/data-analysis-agent",
+  "commit": "2368235f274329be6227a8393b850633cb943da4"
+}

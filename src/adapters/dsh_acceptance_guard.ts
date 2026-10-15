@@ -68,7 +68,7 @@ export function createAcceptanceGuard(policy: Policy, evaluate: (round: number, 
     state: () => ({ repairs, checks, accepted }),
   };
 }
-function verifier(policy: Policy, sessionId: string, taskSha: string) {
+export function verifier(policy: Policy, sessionId: string, taskSha: string) {
   const archive = join(policy.archive_root, createHash('sha256').update(policy.job_file ? resolve(policy.job_file) : sessionId).digest('hex'));
   return (round: number, receipt: any, events: any[], signal: AbortSignal) => new Promise<any>((accept, reject) => {
     const child = spawn(policy.python, [join(policy.project_root, 'scripts/validate-file-delivery.py'),

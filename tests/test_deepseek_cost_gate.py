@@ -5,10 +5,60 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.adapters.deepseek_cost_gate import State, observed_peak_cost, reservation, response_usage
+from src.adapters.deepseek_cost_gate import (State, normalize_request_limit, request_limit_argument,
+    observed_peak_cost, reservation, response_usage)
 
 
 class DeepSeekCostGateTests(unittest.TestCase):
+    def test_explicit_unlimited_normalization_rejects_invalid_counts(self) -> None:
+        for value in (None, 0):
+            self.assertIsNone(normalize_request_limit(value))
+        self.assertEqual(normalize_request_limit(24), 24)
+        self.assertIsNone(request_limit_argument('0'))
+        self.assertEqual(request_limit_argument('24'), 24)
+        for value in (-1, True, False, 1.5, '24'):
+            with self.assertRaises(ValueError):
+                normalize_request_limit(value)
+        for value in ('-1', '1.5', 'null'):
+            with self.assertRaises(ValueError):
+                request_limit_argument(value)
+
+    def test_unlimited_requests_keep_dollar_limit_and_cumulative_checkpoint(self) -> None:
+        body = b'{"model":"deepseek-flash","max_tokens":100,"messages":[]}'
+        usage = {'prompt_tokens': 1, 'prompt_cache_hit_tokens': 0,
+                 'prompt_cache_miss_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2}
+        with tempfile.TemporaryDirectory() as temporary:
+            checkpoint = Path(temporary) / 'cumulative.json'
+            checkpoint.write_text(json.dumps({'request_count': 1000, 'reserved_usd': 0.1}))
+            state = State(cap_usd=1, output_cap=100, request_limit=0,
+                          record=Path(temporary) / 'gate.jsonl', checkpoint=checkpoint)
+            for _ in range(25):
+                booked = state.book(body)
+                self.assertIsNotNone(booked)
+                state.settle(booked[0], booked[1], 200, usage)
+            recovered = State(cap_usd=1, output_cap=100, request_limit=None,
+                              record=state.record, checkpoint=checkpoint)
+            self.assertEqual(recovered.request_count, 1025)
+            self.assertAlmostEqual(recovered.reserved_usd, 0.1 + 25 * observed_peak_cost('deepseek-flash', usage))
+            recovered.cap_usd = recovered.reserved_usd
+            self.assertIsNone(recovered.book(body))
+            self.assertEqual(recovered.request_count, 1025)
+
+    def test_configured_glm_usage_is_priced_without_cache_fields(self) -> None:
+        rates = {'glm-4.6': (2.0, 8.0)}
+        body = b'{"model":"glm-4.6","max_tokens":100,"messages":[]}'
+        usage = response_usage('application/json',
+            b'{"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}')
+        self.assertEqual(usage['prompt_cache_miss_tokens'], 12)
+        with tempfile.TemporaryDirectory() as temporary:
+            state = State(cap_usd=1, output_cap=100, record=Path(temporary) / 'gate.jsonl',
+                          rates=rates, cache_rates={'glm-4.6': 2.0})
+            booked = state.book(body)
+            observed, released = state.settle(booked[0], booked[1], 200, usage)
+            self.assertAlmostEqual(observed, (12 * 2 + 3 * 8) / 1_000_000)
+            self.assertGreater(released, 0)
+            with self.assertRaises(ValueError): state.book(b'{"model":"deepseek-flash","max_tokens":10}')
+
     def test_request_limit_survives_usage_settlement(self) -> None:
         body = b'{"model":"deepseek-flash","max_tokens":100,"messages":[]}'
         with tempfile.TemporaryDirectory() as temporary:

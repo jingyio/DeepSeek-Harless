@@ -1,12 +1,13 @@
 /** Cross-platform entry point. No shell scripts or platform-specific venv paths. */
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+// Node's dotenv parser never executes shell expressions and preserves existing env.
 const dotenv = join(root, '.env');
 if (existsSync(dotenv)) {
-  if (!process.loadEnvFile) throw new Error('读取 .env 需要 Node.js 20.12+；推荐 Node 22。');
+  if (!process.loadEnvFile) throw new Error('读取 .env 需要 Node.js 20.12+；推荐项目已验收的 Node 22。');
   process.loadEnvFile(dotenv);
 }
 const suffix = process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python';
@@ -25,12 +26,15 @@ if (action === 'setup') {
   run(python, ['-m', 'venv', '.venv-sss']);
   run(join(root, '.venv-sss', suffix), ['-m', 'pip', 'install', '-r', 'requirements.txt']);
 } else if (action === 'test') {
-  run(python, ['-m', 'pytest', 'tests', '-q']);
+  const ci = process.env.CI === 'true';
+  if (ci) mkdirSync(join(root, '.local/ci'), { recursive: true });
+  run(python, ['-m', 'pytest', 'tests', '-q', ...(ci ? ['--junitxml=.local/ci/python-results.xml'] : [])]);
   const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
   if (nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 18)) {
     run(process.execPath, ['scripts/build-continuation-policy.mjs', '--check']);
   }
-  run(process.execPath, ['--test', 'tests/test_online_motif_frontier.mjs', 'tests/test_dsh_online_motif.mjs', 'tests/test_dsh_scenario_guard.mjs', 'tests/test_distributed_motif_library.mjs', 'tests/test_approved_plan_continuation.mjs', 'tests/test_dsh_web_policy.mjs', 'tests/test_web_task_request.mjs', 'tests/test_dsh_web_tasks.mjs', 'tests/test_dsh_completion_guard.mjs', 'tests/test_code_container.mjs', 'tests/test_entry_motif.mjs', 'tests/test_terminal_motif.mjs', 'tests/test_collection_motif.mjs', 'tests/test_collection_script.mjs', 'tests/test_plan_motif.mjs', 'tests/test_collection_reentry.mjs', 'tests/test_acceptance_guard.mjs', 'tests/test_file_workflow_job.mjs', 'tests/test_durable_plan_gate.mjs', 'tests/test_workflow_experiment.mjs', 'tests/test_learned_script.mjs', 'tests/test_script_adaptation.mjs', 'tests/test_experience_selection.mjs', 'tests/test_continuous_rsi.mjs', 'tests/test_operation_graph.mjs']);
+  const nodeTests = readdirSync(join(root, 'tests')).filter(name => /^test_.*\.mjs$/.test(name)).sort().map(name => 'tests/' + name);
+  run(process.execPath, ['--test', ...(ci ? ['--test-reporter=tap', '--test-reporter-destination=stdout', '--test-reporter=junit', '--test-reporter-destination=.local/ci/node-results.xml'] : []), ...nodeTests]);
 } else if (action === 'scenario') {
   run(python, ['scripts/run-scenario.py', ...args]);
 } else if (action === 'web') {

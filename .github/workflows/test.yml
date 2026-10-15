@@ -22,5 +22,8 @@ jobs:
       - run: npm ci
       - run: npm run setup
       - run: npm test
+      - name: Annotate test failures
+        if: failure()
+        run: python scripts/annotate-ci-failures.py .local/ci/python-results.xml .local/ci/node-results.xml
       - run: npm run smoke
       - run: npm run motif:check

@@ -55,6 +55,7 @@ def frame(record):
         raise ValueError('successful real task and sealed lifecycle required')
     if record['metrics'].get('acceptance_repairs'):raise ValueError('repaired task retained but not clean training')
     origin=private(record['origin']);run=private(record['run_dir']);spec=read(origin/'task.json')
+    if spec.get('learning_eligible') is False:raise ValueError('RSI-off task retained but excluded from learning')
     root=origin.parent.parent;queue=read(root/'queue'/(record['session_id']+'.json'))
     record_path=root/'records'/(record['session_id']+'.json')
     if sha(record_path)!=queue['record_sha256'] or not queue['sealed_after_cost_and_acceptance']:
@@ -107,7 +108,7 @@ def operation_observations(events):
 
 def verify_original_events(record,run,events):
     """Annotations may join attempts; every Runtime event must remain an exact native row."""
-    if record.get('adapter')!='file_operations_v2':return
+    if record.get('adapter') not in ('file_operations_v2','management_v3'):return
     files=record['metrics'].get('attempt_files',record['metrics'].get('native_session_files',[]))
     if not files:raise ValueError('original native attempt files missing')
     originals={};seen=set()
@@ -251,7 +252,7 @@ def material(cfg, job, label, origin, role, registry_file=None):
         raise ValueError('no effectful certification adapter; preserve task for ordinary Harness')
     work=Path(cfg['workspace_roots'][0])/'rsi-materials'/job.name/label
     if work.exists():
-        if cfg.get('adapter')!='file_operations_v2':raise ValueError('partly prepared material retained; no overwrite')
+        if cfg.get('adapter') not in ('file_operations_v2','management_v3'):raise ValueError('partly prepared material retained; no overwrite')
         # The complete material marker precedes any paid child. Keep the old
         # partial bytes and prepare a fresh sibling, never reuse uncertain input.
         if directory.exists():directory.rename(job/'materials'/('interrupted-preparation-'+label+'-'+uuid4().hex[:8]))
@@ -270,6 +271,10 @@ def material(cfg, job, label, origin, role, registry_file=None):
                 p.write_text(p.read_text()+'\nIndependent material '+nonce+'\n');changes+=1
         if not changes:raise ValueError('adapter cannot produce independent bytes without changing task rules')
     spec.update(task_id='rsi-'+job.name+'-'+label,workspace=str(work),initial_snapshot=snapshot(work))
+    if cfg.get('adapter')=='management_v3':
+        from management_tools import tree
+        spec.update(workspace_marker_sha256=sha(work/'.experiment-copy'),initial_tree={'workspace':tree(work)})
+        if spec.get('external_roots'):raise ValueError('certification cannot automatically approve external directories')
     durable(directory/'input.json',spec,exclusive=True)
     prompt=directory/'prompt.md';prompt.write_text(enrollment['prompt']);prompt.chmod(0o600)
     scenario=read(enrollment['scenario_file']);scenario['prompt']=str(prompt);durable(directory/'scenario.json',scenario,exclusive=True)
@@ -294,7 +299,7 @@ def run_material(cfg, job, label, origin, role, registry=None):
         durable(outcome,existing[0],exclusive=True);return existing[0]
     marker=job/(label+'-started.json')
     pending=[p for p in (Path(cfg['state_root'])/'runs').glob('*/enrollment.json') if read(p).get('candidate_job')==str(job) and read(p)['spec']['task_id']=='rsi-'+job.name+'-'+label]
-    if marker.exists() and cfg.get('adapter')!='file_operations_v2':raise ValueError('interrupted paid task retained; no cold request/budget reset')
+    if marker.exists() and cfg.get('adapter') not in ('file_operations_v2','management_v3'):raise ValueError('interrupted paid task retained; no cold request/budget reset')
     if len(pending)>1:raise ValueError('ambiguous original certification enrollment')
     if not marker.exists():durable(marker,{'material_sha256':sha(directory/'material.json'),'role':role},exclusive=True)
     limits=cfg['limits'];env={**__import__('os').environ,'FM_TASK_FILE':str(directory/'input.json'),'FM_OUTPUT':str(directory/'delivery')}
@@ -308,7 +313,7 @@ def run_material(cfg, job, label, origin, role, registry=None):
         status=subprocess.run(args,cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT).returncode
     matches=[r for r in records(cfg['state_root']) if r.get('candidate_job')==str(job) and read(Path(r['origin'])/'task.json')['task_id']=='rsi-'+job.name+'-'+label]
     if len(matches)!=1:
-        if cfg.get('adapter')=='file_operations_v2':raise RecoveryPending('original certification interrupted; resume its enrollment and original budget')
+        if cfg.get('adapter') in ('file_operations_v2','management_v3'):raise RecoveryPending('original certification interrupted; resume its enrollment and original budget')
         raise ValueError('child failed before sealing; exit '+str(status))
     durable(outcome,matches[0],exclusive=True);return matches[0]
 
@@ -368,6 +373,7 @@ def certify_job(cfg,root,job,candidate):
           'payload_sha256':sha(policy_file),'candidate_lock_file':str(job/'candidate-lock.json'),'candidate_lock_sha256':sha(job/'candidate-lock.json'),
           'native_review':read(job/'native-review.json'),'reviews':reviews,'failures':failures,'holdout_used':False,
           'quality_and_permission_required':True,'net_benefit_required':False,'runtime_source':runtime_source,
+          **({'material_quality_contract':'sss-management-quality-v3'} if cfg.get('adapter')=='management_v3' else {}),
           **({'certification_contract':'sss-operation-certification-v2'} if v2 else {})}
     cert_file=job/'certificate.json'
     if not cert_file.exists():durable(cert_file,cert,exclusive=True)

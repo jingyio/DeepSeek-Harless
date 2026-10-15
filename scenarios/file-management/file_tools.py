@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import os
+import re
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
@@ -30,7 +31,14 @@ class FileScene:
         self.spec = copy.deepcopy(spec)
         self.root = Path(spec['workspace']).resolve()
         self.output = Path(output).resolve()
-        if (not self.root.is_relative_to(DATA.resolve()) or self.root == DATA.resolve()
+        web_workspace = os.environ.get('FM_WEB_WORKSPACE')
+        if spec.get('scope_kind') == 'harless_web_task':
+            if (not web_workspace or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', str(spec.get('task_id', '')))
+                    or self.root != (Path(web_workspace).resolve() / 'inputs')
+                    or self.output != (Path(web_workspace).resolve() / 'file-results' /
+                                       (spec['task_id'] + '-' + digest(spec)[:16]))):
+                raise ValueError('web file task outside server-bound session scope')
+        elif (not self.root.is_relative_to(DATA.resolve()) or self.root == DATA.resolve()
                 or not self.output.is_relative_to((ROOT/'.local').resolve())):
             raise ValueError('experiment workspace/output outside allowed scope')
         if not (self.root / '.experiment-copy').is_file():
@@ -99,21 +107,32 @@ class FileScene:
 
     def parse(self, path):
         ext = path.suffix.lower()
+        def xml_bytes(archive, name):
+            if self.spec.get('scope_kind') != 'harless_web_task':
+                return archive.read(name)
+            member = archive.getinfo(name)
+            if member.file_size > 4 * 1024 * 1024:
+                raise ValueError('Office XML exceeds Web task parsing limit')
+            with archive.open(member) as stream:
+                data = stream.read(4 * 1024 * 1024 + 1)
+            if len(data) > 4 * 1024 * 1024:
+                raise ValueError('Office XML exceeds Web task parsing limit')
+            return data
         if ext in ('.txt', '.md', '.csv'):
             return 'readable', path.read_text(encoding='utf-8'), {}
         if ext == '.docx':
             with zipfile.ZipFile(path) as z:
-                xml = ET.fromstring(z.read('word/document.xml'))
+                xml = ET.fromstring(xml_bytes(z, 'word/document.xml'))
                 text = '\n'.join(''.join(p.itertext()) for p in xml.findall('.//{*}p'))
                 return 'readable', text, {}
         if ext == '.xlsx':
             with zipfile.ZipFile(path) as z:
                 strings = []
                 if 'xl/sharedStrings.xml' in z.namelist():
-                    strings = [''.join(si.itertext()) for si in ET.fromstring(z.read('xl/sharedStrings.xml'))]
+                    strings = [''.join(si.itertext()) for si in ET.fromstring(xml_bytes(z, 'xl/sharedStrings.xml'))]
                 rows = []
                 for name in sorted(n for n in z.namelist() if n.startswith('xl/worksheets/sheet') and n.endswith('.xml')):
-                    xml = ET.fromstring(z.read(name))
+                    xml = ET.fromstring(xml_bytes(z, name))
                     for row in xml.findall('.//{*}row'):
                         values=[]
                         for cell in row:
@@ -122,6 +141,17 @@ class FileScene:
                             if cell.get('t') == 's': value = strings[int(value)]
                             values.append(value or '')
                         rows.append(values)
+                        if self.spec.get('scope_kind') == 'harless_web_task' and len(rows) > 10000:
+                            raise ValueError('Excel exceeds Web task row parsing limit')
+                if self.spec.get('scope_kind') == 'harless_web_task':
+                    stream = io.StringIO(); writer = csv.writer(stream)
+                    for row in rows:
+                        writer.writerow(row)
+                        if stream.tell() > 6000:
+                            break
+                    preview = [[str(value)[:200] for value in row[:32]] for row in rows[:50]]
+                    return 'readable', stream.getvalue(), {'rows': preview, 'row_count': len(rows),
+                                                            'rows_truncated': len(rows) > 50}
                 stream=io.StringIO(); csv.writer(stream).writerows(rows)
                 return 'readable', stream.getvalue(), {'rows': rows}
         if ext == '.pdf':

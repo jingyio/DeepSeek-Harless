@@ -1,0 +1,150 @@
+[
+  {
+    "id": "replacement-with-unchanged-object-count",
+    "input": {
+      "before_report": {
+        "scope": "synthetic-diagnostic",
+        "citation_issues": [],
+        "references": [
+          {
+            "key": "a",
+            "arxiv_id": "diagnostic-id",
+            "differences": [],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [],
+            "status": "示例"
+          },
+          {
+            "key": "a",
+            "arxiv_id": "diagnostic-id",
+            "differences": [],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [],
+            "status": "示例"
+          },
+          {
+            "key": "b",
+            "arxiv_id": "diagnostic-id",
+            "differences": [],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [],
+            "status": "示例"
+          }
+        ]
+      },
+      "after_report": {
+        "scope": "synthetic-diagnostic",
+        "citation_issues": [],
+        "references": [
+          {
+            "key": "b",
+            "arxiv_id": "diagnostic-id",
+            "differences": [],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [],
+            "status": "示例"
+          },
+          {
+            "key": "c",
+            "arxiv_id": "diagnostic-id",
+            "differences": [],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [],
+            "status": "示例"
+          },
+          {
+            "key": "c",
+            "arxiv_id": "diagnostic-id",
+            "differences": [],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [],
+            "status": "示例"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "before_count": 3,
+      "after_count": 3,
+      "before_duplicate_key_count": 1,
+      "added_key_count": 1,
+      "removed_key_count": 1,
+      "after_duplicate_key_count": 1
+    }
+  },
+  {
+    "id": "empty-current-report",
+    "input": {
+      "before_report": {
+        "scope": "synthetic-diagnostic",
+        "citation_issues": [],
+        "references": [
+          {
+            "key": "a",
+            "arxiv_id": "diagnostic-id",
+            "differences": [],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [],
+            "status": "示例"
+          },
+          {
+            "key": "a",
+            "arxiv_id": "diagnostic-id",
+            "differences": [],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [],
+            "status": "示例"
+          },
+          {
+            "key": "b",
+            "arxiv_id": "diagnostic-id",
+            "differences": [],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [],
+            "status": "示例"
+          }
+        ]
+      },
+      "after_report": {
+        "scope": "synthetic-diagnostic",
+        "citation_issues": [],
+        "references": []
+      }
+    },
+    "expected": {
+      "before_count": 3,
+      "after_count": 0,
+      "before_duplicate_key_count": 1,
+      "added_key_count": 0,
+      "removed_key_count": 2,
+      "after_duplicate_key_count": 0
+    }
+  }
+]

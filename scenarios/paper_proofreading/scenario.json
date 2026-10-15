@@ -1,0 +1,8 @@
+{
+  "schema_version":1,"name":"paper_proofreading","prompt":"prompt.md",
+  "servers":[{"server_name":"paper_checks","transport":"stdio","command":"${PYTHON}",
+    "args":["${PROJECT_ROOT}/scenarios/paper_proofreading/server.py","${SESSION_WORKSPACE}/inputs"],"cwd":"${PROJECT_ROOT}"},
+    {"server_name":"paper_trace_rsi","transport":"stdio","command":"node",
+    "args":["--experimental-strip-types","${PROJECT_ROOT}/scenarios/paper_proofreading/revision_session.ts","${SESSION_WORKSPACE}"],"cwd":"${PROJECT_ROOT}"}],
+  "allowed_tools":["mcp__paper_checks__list_inputs","mcp__paper_checks__pin_document","mcp__paper_checks__read_pinned_document","mcp__paper_checks__pin_paper_sources","mcp__paper_checks__read_pinned_paper_sources","mcp__paper_trace_rsi__read_task_state","mcp__paper_trace_rsi__apply_revision_plan","mcp__paper_trace_rsi__triage_revision_audit","mcp__paper_trace_rsi__export_revision_report"]
+}

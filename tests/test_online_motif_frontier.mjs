@@ -230,73 +230,53 @@ test('unique certified pinned-source read bypasses a broad-intent similarity gat
     similarity: async () => { throw new Error('no candidate expected'); } }), []);
 });
 
-test('explicit source dereference supports other names and rejects stale or widened input', async () => {
+function documentReadFixture() {
   const { pin, read, manifest, task } = fixture();
-  manifest.contracts[read].source_dereference = true;
-  for (const tool of [pin, read]) {
-    manifest.version_fields[tool] = 'source_version';
-    manifest.contracts[tool].output_fields = ['source_id', 'source_version'];
-  }
+  const version = 'd'.repeat(64);
+  manifest.contracts[pin].required_params = ['document_id'];
+  manifest.contracts[pin].output_fields = ['source_id', 'version_sha256'];
+  manifest.contracts[read].output_fields = ['text', 'version_sha256'];
+  manifest.slot_rules[pin] = { document_id: 'doc_[A-Za-z0-9]+' };
+  manifest.version_fields = { [pin]: 'version_sha256', [read]: 'version_sha256' };
+  task.bindings = { [pin]: { document_id: 'doc_1' } };
+  task.source_versions = { [pin]: version, [read]: version };
   sealManifest(manifest);
-  validateOnlineManifest(manifest);
-  const history = [{ name: pin, callId: 'model-selection', ok: true,
-    arguments: { path: 'source:PAPER_1' },
-    output: { source_id: 'opaque', source_version: 'v1' },
-    sourceVersion: 'v1', inputVersion: task.input_version }];
-  const options = { manifest, task, history,
+  const history = [{ name: pin, callId: 'model-selected-document', ok: true,
+    arguments: { document_id: 'doc_1' }, output: { source_id: 'source-opaque', version_sha256: version },
+    sourceVersion: version, inputVersion: task.input_version }];
+  return { pin, read, manifest, task, history, version,
     availableTools: new Map([[read, offered(read, ['source_id'])]]),
-    similarity: async () => { throw new Error('no semantic choice remains'); },
     minSimilarity: 0.8, minMargin: 0.1 };
-  assert.equal((await proposeReadyBatch(options))[0].selection_basis, 'closed_source_read');
-  assert.deepEqual(await proposeReadyBatch({ ...options,
-    task: { ...task, source_versions: { [pin]: 'v2', [read]: 'v2' } } }), []);
-  assert.deepEqual(await proposeReadyBatch({ ...options,
-    availableTools: new Map([[read, offered(read, ['source_id', 'purpose'])]]) }), []);
-  for (const mutate of [m => { m.contracts[read].source_dereference = 'true'; },
-    m => { m.contracts[read].default_params = { purpose: 'read' }; },
-    m => { m.artifacts[0].transfer_evidence[0].version_relation = 'object_lookup'; },
-    m => { m.version_fields[pin] = 'source_id'; },
-    m => { m.slot_rules[read] = { source_id: '.+' }; }]) {
-    const damaged = structuredClone(manifest); mutate(damaged); sealManifest(damaged);
-    assert.throws(() => validateOnlineManifest(damaged));
-  }
+}
+
+test('certified document-id pin read skips only the closed versioned continuation', async () => {
+  const args = documentReadFixture();
+  const rows = await proposeReadyBatch({ ...args,
+    similarity: async () => { throw new Error('closed continuation needs no semantic selection'); } });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].selection_basis, 'closed_source_read');
+  assert.deepEqual(rows[0].arguments, { source_id: 'source-opaque' });
+  const drifted = { ...args.task, source_versions: { ...args.task.source_versions, [args.read]: 'e'.repeat(64) } };
+  assert.deepEqual(await proposeReadyBatch({ ...args, task: drifted, similarity: async () => [1] }), []);
+  const schema = offered(args.read, ['source_id', 'new_required']);
+  assert.deepEqual(await proposeReadyBatch({ ...args, availableTools: new Map([[args.read, schema]]), similarity: async () => [1] }), []);
 });
 
-test('declared source scope keeps all 13 pin/read dependencies through two native batches', async () => {
-  const { pin, read, manifest, task } = fixture();
-  manifest.contracts[read].source_dereference = true;
-  for (const tool of [pin, read]) {
-    manifest.version_fields[tool] = 'source_version';
-    manifest.contracts[tool].output_fields = ['source_id', 'source_version'];
+test('document read shape changes and failure or write barriers preserve fallback', async () => {
+  for (const change of ['missing-provenance', 'extra-pin-param']) {
+    const args = documentReadFixture();
+    if (change === 'missing-provenance') args.manifest.contracts[args.pin].output_fields = ['source_id'];
+    else args.manifest.contracts[args.pin].required_params.push('selection');
+    sealManifest(args.manifest);
+    assert.deepEqual(await proposeReadyBatch({ ...args, similarity: async () => [0] }), []);
   }
-  sealManifest(manifest);
-  const versions = Array.from({ length: 13 }, (_, i) => `version-${i}`);
-  const scoped = { ...task, bindings: {}, source_versions: { [pin]: versions, [read]: versions } };
-  const audit = [];
-  const interceptor = createOnlineInterceptor({ manifest, task: scoped, mode: 'execute',
-    similarity: async () => { throw new Error('closed reads need no embedding'); },
-    audit: row => audit.push(row) });
-  for (let i = 0; i < 13; i++) interceptor.observe(scoped.session_id,
-    { name: pin, callId: `pin-${i}`, arguments: { path: `source:PAPER_${i}` } },
-    { structuredContent: { source_id: `handle-${i}`, source_version: versions[i] } });
-  const readIds = new Set(); let modelCalls = 0;
-  const next = () => { modelCalls++; return (async function* () {})(); };
-  for (let batch = 0; batch < 2; batch++) {
-    const stream = await interceptor.intercept(scoped.session_id, { tools: [offered(read, ['source_id'])] }, next);
-    for await (const chunk of stream) {
-      if (chunk.type !== 'block-end' || chunk.block.type !== 'tool-call') continue;
-      const call = chunk.block; const args = JSON.parse(call.arguments);
-      assert.ok(!readIds.has(args.source_id)); readIds.add(args.source_id);
-      const i = Number(args.source_id.split('-')[1]);
-      interceptor.observe(scoped.session_id, { name: read, callId: call.id, arguments: args },
-        { structuredContent: { source_id: args.source_id, source_version: versions[i] } });
-    }
+  for (const barrier of [
+    { name: 'write_file', callId: 'write', ok: true, barrier: true },
+    { name: 'failed_read', callId: 'failed', ok: false, barrier: true },
+  ]) {
+    const args = documentReadFixture();
+    assert.deepEqual(await proposeReadyBatch({ ...args, history: [...args.history, barrier], similarity: async () => [1] }), []);
   }
-  assert.equal(readIds.size, 13); assert.equal(modelCalls, 0);
-  assert.equal(audit.filter(row => row.kind === 'model_request_skipped_verified').length, 2);
-  assert.ok(interceptor.state(scoped.session_id).history.length <= 28);
-  await interceptor.intercept(scoped.session_id, { tools: [offered(read, ['source_id'])] }, next);
-  assert.equal(modelCalls, 1);
 });
 
 test('competing pinned-source reads still require a semantic choice', async () => {

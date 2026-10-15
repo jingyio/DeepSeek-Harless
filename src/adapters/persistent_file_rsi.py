@@ -2,7 +2,7 @@
 from pathlib import Path
 import os
 from .continuous_rsi import ROOT,DATA,STATE_HOME,load_config,initialize,writer_lock
-from src.motif_core.offline.experience_registry import durable,read
+from src.motif_core.offline.experience_registry import durable,read,sha
 def default_config(real):
     name='daily-files-real-v2' if real else 'daily-files-mock-v2';file=STATE_HOME/(name+'.json')
     with writer_lock(STATE_HOME,'daily-profile'):
@@ -20,6 +20,8 @@ def status(config):
         if not j.is_dir():continue
         stage='active' if (j/'activation.json').exists() else 'rejected' if (j/'failure.json').exists() else 'certifying'
         jobs.append({'id':j.name,'status':stage})
+    active=[e for e in library['entries'] if e['state']=='active']
+    compatible=[e for e in active if all((ROOT/n).is_file() and sha(ROOT/n)==h for n,h in e.get('runtime_source',{}).items())]
     pool=read(root/'pool.json')['runs'];enabled=cfg['mode']=='learn' and cfg['auto_worker'] and cfg['provider_mode']=='real'
     worker=read(root/'worker.lock') if (root/'worker.lock').exists() else None
     alive=False
@@ -27,7 +29,7 @@ def status(config):
         from .process_state import process_exists
         alive=process_exists(worker['pid'])
     return {'persistent':True,'provider_mode':cfg['provider_mode'],'learning_enabled':enabled,'library_generation':library['generation'],
-      'active_motifs':sum(e['state']=='active' for e in library['entries']),'disabled_motifs':sum(e['state']=='disabled' for e in library['entries']),
+      'active_motifs':len(compatible),'registered_active_motifs':len(active),'version_invalid_motifs':len(active)-len(compatible),'disabled_motifs':sum(e['state']=='disabled' for e in library['entries']),
       'certification':jobs,'worker_running':alive,'recorded_tasks':len(pool),'estimated_cost_usd':sum(v.get('cost_usd',0) for v in pool.values()),
       'reserved_upper_usd':sum(v['cap_usd'] for v in pool.values() if v['status']=='reserved'),'learning_cap_usd':cfg['learning_cap_usd'],
       'series_cap_usd':cfg['series_cap_usd'],'actual_paid_usd':0 if cfg['provider_mode']=='mock' else None,'cost_basis':'proxy_estimate_not_provider_bill'}

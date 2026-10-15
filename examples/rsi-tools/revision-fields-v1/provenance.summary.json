@@ -1,0 +1,18 @@
+{
+  "source_candidate_sha256": "dec62f90106a80f650547285d8d0361e540cacd68338f0e69a53a17f3bb688bf",
+  "retained_outputs": [
+    "existing_fields_preserved",
+    "top_level_preserved"
+  ],
+  "selection_basis": "development_test_12_of_14_full_candidate_passed_before_independent_projection",
+  "parent_learning_status": "interrupted_not_promoted",
+  "rejected_duplicate_counter_not_retained": true,
+  "source_experiment": "paper-rsi-revision-shadow-20261011-v6",
+  "compilation_experiment": "paper-rsi-revision-counts-20261011-v5",
+  "private_independent_cases": 21,
+  "public_synthetic_cases": 3,
+  "loadable_frozen_library": false,
+  "exported_existing_model_binding": "mismatched",
+  "exported_output": "changed_existing_records",
+  "new_independent_cases_for_export": 0
+}

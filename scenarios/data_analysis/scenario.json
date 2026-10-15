@@ -1,0 +1,6 @@
+{
+  "schema_version":1,"name":"research_data_analysis","prompt":"prompt.md",
+  "servers":[{"server_name":"data_analysis","transport":"stdio","command":"${PYTHON}",
+    "args":["${PROJECT_ROOT}/scenarios/data_analysis/server.py","${SESSION_WORKSPACE}/inputs"],"cwd":"${PROJECT_ROOT}"}],
+  "allowed_tools":["mcp__data_analysis__list_inputs","mcp__data_analysis__pin_dataset","mcp__data_analysis__read_pinned_dataset_summary","mcp__data_analysis__correlate_pinned_columns"]
+}

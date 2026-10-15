@@ -136,7 +136,7 @@ test('DeepSeek Harless tasks use authenticated Connection API routes and protect
     f.webRoutes.get('/tasks').handler({ authorized: true }, {
       writeHead(status) { result.status = status; }, end(value) { result.body = value; },
     });
-    assert.equal(result.status, 200); assert.match(result.body, /DeepSeek Harless 任务工作台/);
+    assert.equal(result.status, 200); assert.match(result.body, /GeneLoop 任务工作台/);
   } finally { await f.close(); }
 });
 

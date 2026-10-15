@@ -1,4 +1,257 @@
-# 主线当前交接
+# DeepSeek Harless 主线当前交接
+
+## 2026-10-15：产品身份、消息隐私与过程折叠（当前，已发布）
+
+- 发布：`codex/geneloop-message-privacy` 经 [PR #29](https://github.com/jingyio/DeepSeek-Harless/pull/29) 合并为 `926704c64dc27cddd0284bf64632b033da66b369`，正式运行同一提交，四项 Windows/Linux CI 全通过。只调整 Web 产品身份、浏览器公开输出和聊天展示，研究 CLI 提示默认不变，不修改上游 Harness。
+- 已完成：共享 `config/geneloop-persona.json`，新建/恢复 Web Agent 均绑定产品身份并抑制运行环境注入；Session page/follow/list/search/control 与任务/对照视图使用分离投影，原始 journal、用户消息、用户文件和执行上下文不改写；补原生 RPC 与 WS 错误/元信息投影。
+- 前端：普通聊天默认最终回答，过程按钮展开/收起工具、上下文、早期回复与推理文字，生成中保留真实增量和简明状态。复用原生最终正文 renderer，复制/分支等尾部动作保留；只接管 chat node 插槽，不改 trace。对照标题 Baseline / Motif，Shadow 标注“影子评估”，回退文案使用“普通模式”。
+- 已验证：Linux 全量 Python 755 通过/193 条件跳过，最终完整 Node 629 通过/3 条件跳过；本机最终 75 项前端/输出/传输/gateway 与 49 项任务回归通过。真实普通聊天默认最终答复、工具按钮反复开关、复制及历史恢复通过；数据双栏各 1 个 Off 请求，均为 GeneLoop，自结束前分别观察到 9/7 个增量正文长度。
+- 兼容：PPT 仅刷新共享 task scope 的产品身份代码锁及登记摘要；学习边、来源/权限守卫、工具契约与训练证书未变。新增直接依赖 `ws@8.21.3`；私有部署须同步共享 persona JSON，保留原 Home/output、账号与预算账本。
+- 正式复核：112 份旧 preset 仅 persona 改动，MCP 绑定保持；3 个账号、16 份来源与 234 份成品 SHA、2 个可访问旧对照终态/评分保持；7 份旧 PPT preset initialize/list 和 65 个代码锁通过。预算进程未重启，公网登录页 200；交互验收使用 stage，未改生产凭据。部署/只读核验新增模型请求 0。收据与后续边界见 [本轮记录](../experiments/geneloop-message-privacy-20261015-v1.md)。
+- 权限/预算与边界：沿用已授权真实验收及部署范围，每任务费用约束和原累计账本不变；数据双栏实际 2 请求估费 0.00236868 美元，普通聊天另有 3 个模型步骤。正式复核前后共享累计 799 请求/估费 0.548624454 美元，不能用总量变化推算本轮费用。显示过滤不是工具授权或全格式敏感信息检测，不将本轮作为科研质量、成本收益或全面安全审计结论。26 个 stage 任务终态后已关闭测试服务和临时转发，私有记录保留。
+
+## 2026-10-15：场景流式、推理开关和 PDF/Word 附件（历史，已发布）
+
+- 发布：`codex/scene-stream-thinking` 经 [PR #27](https://github.com/jingyio/DeepSeek-Harless/pull/27) 合入 main `3bb96877f246aa418d5faf4b1577973cfa12e072`，正式 release `geneloop-workspace-trash` 已部署该提交；最终四项 Windows/Linux CI 全通过。此前线上 `b4712d6` 的切换收据与数据保持。
+- 已完成：SSE 只在收到有效快照后视为可用，始终保留只读恢复；真实 DeepSeek On/Off 选择和每轮冻结；取消场景级附件扩展名拒绝，补 PDF/DOC/DOCX 等只读正文提取及明确未解析状态；报告从混合附件中找数据表并保留其余资料。
+- 已验证：完整 Node 594 通过/3 条件跳过；完整 Python 初次 924 通过/1 个旧 PPT 锁失败，更新独立兼容锁后定向通过。另有报告、附件、推理、消息严格 JSON、连接失效回归；Linux 成员依赖 29 项通过、独立沙箱实际解析 PDF/DOC/DOCX、65 个 PPT 锁和五组真实 MCP schema 通过。
+- 真实链路：混合 Word/PDF/未知二进制与 Off/On 两轮共 5 请求；截图三文件报告共 26 请求，两侧 PDF 实际下载 SHA 通过；Off→On→Off 带旧工具历史共 5 请求通过。浏览器同一对话 data→ppt→paper 与生成中部分正文可见。详情和失败证据见 [本轮记录](../experiments/geneloop-scene-stream-attachments-20261015-v1.md)。
+- 部署：新增可选 `memberSceneDeployment.antiwordRoot`，可信解析依赖只读映射，旧 PDF 路径保留。切换前 59 个任务空闲；只重启应用，原预算进程、Home/output 和 3 个账号保留。运行指针为私有 `current-runtime.json`，旧部署收据不覆盖。
+- 最终复核：Windows 附件 31 项、Linux 附件/报告 51 项通过；线上 7 份旧 PPT preset 实际初始化、3 个旧 job、20 处报告配置、16 份来源与 234 个成品 SHA、3 个旧对照终态/评分通过。On/Off 模型目录、实际进程解析器配置、公网登录页 200 与品牌资源通过，新增模型请求 0。生产旧诊断凭据失效，未改密码或新增账号，浏览器认证验收使用隔离 stage。
+- 边界：文字层读取不等于扫描件 OCR 或图片/版式核查；未知二进制可以上传但诚实提示未解析。论文仍 Shadow，数据统计仍需真实表格；Baseline 报告有一次工具错误后恢复，未把该用例当作科研质量或普遍成本收益证明。
+- 授权：真实测试、合并及部署延续；累计费用/请求次数/额外输出上限 null，每任务 $0.23 保留。上线复核前后原账本均为 785 请求 / $0.540679206 代理估费，实付未知，未清零或重启预算。已有网页须整页刷新（Ctrl+F5）加载新客户端。
+- 收尾：确认隔离 stage 的 22 个任务均空闲后，关闭临时 owner/gateway、本机 SSH 转发及本轮测试标签；测试资料和证据保留，生产进程不受影响。
+
+## 2026-10-15：工作区折叠、回收站与螺旋图标（历史，已发布）
+
+- 发布：`codex/workspace-collapse-chat-delete` 经 [PR #25](https://github.com/jingyio/DeepSeek-Harless/pull/25) 合入 main `747b080`，正式 release `geneloop-workspace-trash` 已部署；四项 Windows/Linux CI 通过。保留原 Home/output、3 账号及数据，708 次/$0.472179990 旧账本未清零。
+- 已完成：工作区名称再次点击可折叠，补齐实际公开 slot 包装层的右侧边距；持久可恢复对话回收站、账号隔离、原生搜索和事件跟随保护；加粗无字渐变螺旋 SVG；合成数据报告测试包。
+- 最新授权：取消累计 1 美元费用上限、请求次数上限及单次文字输入/输出额外限制；每任务 0.23 美元保留，账本不清零。输出 null 表示省略请求参数，服务商原生容量仍存在。
+- 已验证：服务器完整 Python 888、Node 574 通过/3 条件跳过；定向预算 Python 49、Node 71、私有切换辅助 10 项通过；回收站实际 API 24 项通过。实际页面展开/折叠、原生删除/恢复及不刷新继续发送成功，额外 1 次真实请求。部署预检发现共享 scope 的单个 PPT 兼容锁过期，最小锁修正后 65 锁、20 项守卫、3 项 Node binding、五组实际允许 Schema 通过，原训练证书未改。
+- 负例与资料：首次报告仅 Motif 成功，Baseline 受旧 1000 tokens 限制截断；第二轮辅助 metadata 的非法 style 导致 59 次请求，修正后通过真实工具零模型预检。首次回收站 400 未写入，统一同步重启后未复现，失败记录保留。详情见 [本轮记录](../experiments/geneloop-workspace-trash-20261015-v1.md)。
+- 最终真实验收：null 输出配置下 Baseline 16 请求、Motif 7 请求，工具错误均 0；各 2 页 PDF+6 图，数值独立复算/4 页视觉/API及浏览器下载 SHA/异账号 404 通过。Motif 的 R²/n 在正文而非全部集中表中，保留该遵从限制，未重发。累计 731 请求/$0.489095010 代理估费；余额查询可用 52.48 元。
+- 上线复验：7 份旧 PPT preset、3 旧 job、20 报告工作区中的16来源/234成品 SHA、4旧comparison终态/评分/任务读取通过，0新增模型。原预检与切换收据保留；回退不降低历史消费。
+- 当前线上：文件名显示收尾经 [PR #26](https://github.com/jingyio/DeepSeek-Harless/pull/26) 合入并部署 `b4712d6`；仅规范已验证成品按钮的文件名，保留原文/真实下载/SHA与未知路径语义。定向 56 项、四项 CI 与实际浏览器原生按钮下载 SHA 通过，0 新模型。共享预算进程未重启、731 次账本保持；旧部署回执独立保留。临时 stage/SSH 转发/测试标签已关闭，数据与证据保留。用户整页刷新即可加载最新客户端。
+
+## 2026-10-15：连续场景、工作区与请求限制（历史，已部署）
+
+- 分支/发布：`codex/conversation-workflow` 经 [PR #24](https://github.com/jingyio/DeepSeek-Harless/pull/24) 合入 main `58c10ac`，新版已正式部署，新预算服务的真实流式复验通过。用户授权真实测试持续有效。
+- 行为：同一可见对话支持 `/data` → `/ppt` → `/chat`，每侧承接自己的历史与通过 SHA 验证的成品。工具范围变化只轮换私有执行子会话；侧栏/搜索不显示这些子会话。早轮分支截断后续历史、独立复制资料、按原题名 `（1）（2）` 编号，评分不串用。
+- 界面：恢复文件夹、工作区概览、置顶/改名/删除和组内新会话；删除分组保留聊天和文件。按用户最新要求去掉展开箭头，点击名称行展开；菜单和新建按钮固定右侧，长名称省略。全局无衬线字体，保留数学和代码各自的渲染。
+- 流式与预算：前端 SSE 单调快照、工具生命周期与真实文字增量；费用 gate 改为实时转发，不缓存整个回答，下游断开后仍结算上游费用。终态历史在旧预算路由消失后读取持久统计，不清零；活动任务仍拒绝无预算路由运行。用户明确取消次数上限，任务及累计次数使用 `null`，累计 **$1** 费用上限和历史用量保留。
+- 已验证：服务器最终完整 Python 875 通过、Node 553 通过/3 原生容器条件跳过/0 失败；另有报告专项 38 项、gateway 专项 11 项及实际成员沙箱字体读取/SHA/中文字形注册通过。三场景免费 MCP/上传/隔离、真实双账号连续场景与分支、16 个文件下载 SHA/响应头、15 个越权请求拒绝已完成；详细计数、失败和最终追加验证见 [本轮实验](../experiments/geneloop-conversation-workflow-20261015-v1.md)。论文仍为 Shadow，不宣称模型跳过或普遍降本。
+- 部署与回退：owner 33102 / gateway 33101，保留原 Home/output/3 账号、工作区和用户资料。第三次切换成功；前两次私有部署辅助脚本失败及回滚证据保留，涉及预算退出后的恢复、回滚健康判断/旧字体白名单（首轮原始抛错未记录），以及首轮遗留未用预算目录触发防重入。后者核实无 policy/checkpoint 后归档，32 份 preset 原字节核对后重试。成功切换时累计 620 请求/$0.410495478，未重置或新增模型消费。回滚只恢复入口/配置并保留消费；私有启动规格、账号、原始日志和产物不提交 Git。
+- 上线后复核：零模型检查通过 7 份旧 PPT preset 的真实 MCP 初始化/21 工具、16 份旧报告 preset 的配置 SHA/字体/入口；10 个工作区 458 条文件中来源及成品未变，仅审计日志合法追加。3 个旧 comparison 完成状态和评分保留，但文件列表为空，不能当作旧成品下载验证。
+- 上线流式：两个普通聊天分别有 338/325 次终态前文字增长，同一可见会话 `/data` 两侧各 6 次增量，全部 completed。4 个任务的实时/持久统计均为各 1 请求、0 工具，实际配置为 `deepseek-official/deepseek-flash`、off、1000 输出 tokens；答案 SHA 与 API/文件/comparison 一致。新增 4 请求后累计 624/$0.412557114 代理估费，实付未知。私有验收脚本两次字段误读的失败报告及 SHA 保留；最终只读补充收据通过、0 新调用，未覆盖负例。
+
+## 2026-10-15：场景删除同步与旧界面清理（历史，已部署）
+
+- 发布：[PR #23](https://github.com/jingyio/DeepSeek-Harless/pull/23) 四项 Windows/Linux CI 成功，main `afda5205ce6de88280ac9bd7471a0010e953c7c3`；正式 release `geneloop-scene-clear`、owner 33102 / gateway 33101。运行树与验收代码一致，3 个原账号及 Home/output/用户数据保持。
+- 修复：删除完整场景标记或退格至未完成前缀立即显示普通 `/chat`，后台串行取消；迟到绑定不得复活已取消场景。正常发送自动清空保留场景续聊。已执行场景切普通模式使用新会话保留旧历史，只转移未发送输入/附件；切换其他会话不抢焦点、不覆盖已有草稿。
+- 界面：工作区名称无悬停提示或主机目录；公开 slots 移除重复 preset 选择器和精确内测声明；移除旧独立论文浮窗，`/paper` 保留。未修改前一轮文字/上传共用完整场景工具链及三场景库。
+- 验证：服务器完整 Node 517 通过、3 条件跳过、0 失败；成员浏览器 data/ppt 删除与刷新、真实普通两轮、双账号并行场景与跨账号 404 通过；所有者浏览器正常认证后无旧入口。上线后认证首页脚本及公网登录复验通过。记录见 [本轮实验](../experiments/geneloop-scene-clear-20261015-v1.md)。
+- 权限/预算：用户授权合并、部署及受限付费验收保持；累计上限 1000 次/$1 不变，上线后共享累计 539 次/$0.353289618 预约估费，实付未知。测试服务与本机转发已关闭，正式隧道、原预算进程保留；旧 release/预设备份可用于入口回退，不回滚用户数据。
+- 接手：已有浏览器标签页须整页刷新（Ctrl+F5）加载内联脚本，不能把连接恢复当成版本更新。旧截图来源于缓存页面为合理推测，未在用户原标签页证实；本轮不声称大规模压测或供应商长期可用性。
+
+## 2026-10-15：用户工作区与统一场景流程（历史）
+
+- 分支 `codex/user-scene-workspace-flow`，基于 main `8325cb5`；用户授权修复、真实付费验收及部署保持。三场景库不重训、不改上游 Harness。
+- 修复：隐藏内部 preset/header 标识与工作区真实路径；工作区选择后顶端新会话始终创建新聊天；空标题用“新会话”；选择场景即时蓝色标识且不丢失后台等待期间的输入。旧论文修订入口将在部署配置移除，`/paper` 工具保留。
+- 用户补充后的最终语义：文字、附件、两者组合均走完整场景工具及 DSH / Motif 执行；由模型决定是否调用工具，来源检查在具体工具侧。数据 Motif 在资料经工具准备后懒绑定，PPT 无来源不能伪造认证轨迹。任意轮上传新资料用新隔离子会话，父会话、旧文件/评分不变；同一来源文字续聊仍复用子会话。
+- 已验证：服务器 Python 861、最终 Node 507 通过/3 条件跳过，smoke 18题/83来源；真实浏览器工作区/即时蓝色标识及两账号权限测试通过。旧历史8并发48项读/下载SHA/评分与越权拒绝通过，0模型。最终完整工具版本双账号三场景各两轮共24请求通过；数据直接上传→聊天→新上传及PPT读取→聊天→新上传各3轮通过，0工具错误、历史评分/子会话隔离保持。PPT两次真实已验证读取复用；有效库下无附件问答额外通过，不伪造来源或节省收益。
+- 诊断修复：PPT兼容性锁未更新导致回退，以及多行/长上下文不满足结构元数据scalar契约均被实际测试发现。更新独立兼容性记录，内部intent规范化至500字符，完整模型请求/用户文件/原训练证书不变。发布前65代码锁及测试/发布运行树一致。
+- 记录：[本轮实验](../experiments/geneloop-user-scene-flow-20261015-v1.md)。私有 `.local/paired-stage` 保留全部有效配置、调用、失败与恢复；累计1000次/$1不变，本轮447→533次，保守预约估值$0.350628846，实付未知；官方余额最后55.17元、可调用。503/超时及初次PPT回退负例保留，不混用初版和最终结果。
+- 已发布：[PR #22](https://github.com/jingyio/DeepSeek-Harless/pull/22) 四项Windows/Linux CI通过并合入main `ddb26f526afdcb8adf7df17311fe0dcfee068989`，正式release `geneloop-user-scene-flow`运行该代码。owner33102/gateway33101、3原账号及Home/output/预算保留，切换前38任务空闲；旧论文悬浮插件已移除。
+- 部署复验：5份旧PPT预设实际加载21工具，原job/checkpoint不变；3相关旧会话settings、登录与Logo校验通过，0模型/预算未变。公网浏览器登录页正常；服务器直接请求Cloudflare公网地址出网路由不可达，记录为环境负例。部署继承Node22 PATH再生成PPT配置；备份回退仅入口，不回滚用户数据。临时隧道及供应商可用性仍为外部限制，不宣称大规模压测或科研质量保证。
+
+## 2026-10-15：命名工作区、斜杠与历史 PPT 恢复（历史）
+
+- 范围/版本：基于 main `4442199`，分支 `codex/workspaces-scene-input-fixes`；修复用户本轮截图中的工作区目录浏览、场景输入/切换、PPT 挂载和统计占位符。已有三场景库不重训、上游 Harness 不修改。
+- 已完成：账号内命名工作区与幂等创建；严格场景前缀、手动短命令发送、蓝色原生标识、取消过期请求和文本/附件双重草稿校验；当前 job 范围的 PPT TS/Python 联动与精确旧检查点兼容；报告摘要证据绑定、终态恢复重审和过期评分失效。
+- 已验证：服务器根 Python 861 通过、Node 495 通过/3 Docker 条件跳过，smoke 18题/83来源；最新编辑器定向36项、报告15项通过。真实 PPT MCP→PDF读取→PPTX/PDF/PNG及SHA通过；实际旧检查点受限副本恢复通过，原件不动。双账号命名工作区/幂等/跨目录与ID拒绝通过；浏览器命名创建、`/d`筛选、手打`/ppt`空格蓝色标识通过。
+- 真实模型负例：首次两次503，第一次恢复中论文双路及数据baseline成功、数据motif仍503。用户随后明确授权付费重试并查询额度，官方余额接口返回可调用；成功路保留，有界恢复见下一条。上限1000次/$1不变，实付未知。
+- 最终恢复：只重试失败路并接续后两轮，两个账号各三轮Baseline/Motif、同一子会话续聊、旧成品下载SHA、评分持久化与异账号404全部通过。额外10次含失败尝试，累计447次/$0.291552966保守预约估值。先前503及失败轨迹保留，不重发成功结果，不重置预算。
+- 记录：[本轮实验](../experiments/geneloop-workspaces-scenes-20261015-v1.md)；私有验收结果位于测试服务器`paired-stage`和`geneloop-ppt-private-scope-*`，不提交日志、用户文件或凭证。中文紧接短命令在Enter时路由，空格或菜单选择在输入阶段生成蓝色标识。
+- 发布完成：[PR #21](https://github.com/jingyio/DeepSeek-Harless/pull/21) 四项Windows/Linux CI全部成功，合入main `a9aa9b493df5839be4a38649b7b4b8aa7381dee2`；正式release `geneloop-workspaces-scenes`运行该代码。owner33102/gateway33101、3原账号、Home/output及预算均保留。切换前38任务空闲；双账号8并发40项读取/下载SHA/评分持久与越权拒绝通过（0模型）。测试后端与本机转发已停止，累计预算进程保留。
+- 正式PPT复核：第一次实际initialize发现部署脚本以旧PATH生成子进程配置，调用Node16；已将owner policy、gateway memberPolicy和5份旧PPT preset的PATH固定到Node22，并重启验收。5份preset均返回21工具、原job SHA不变；相关3论文会话settings与login/logo正常，0模型且预算未变。这5份配置共用1个job，当前没有checkpoint；旧checkpoint恢复证据来自前述受限副本，不能冒称生产恢复。
+- 接手注意：生成PPT配置前必须继承已验证owner Node22的PATH；只给主服务Node22不保证MCP子进程版本。新bound preset的原生hero目录缓存首次可能短暂显示内部ID，刷新后恢复名称；本次未改上游Seat。若新版已写检查点，旧版可能拒绝，优先前向恢复而不回滚用户文件。临时Cloudflare隧道和服务商503仍是外部限制，未做大规模容量或科研质量评审。
+
+## 2026-10-15：GeneLoop 品牌、双栏与下载修复（当前）
+
+- 范围/版本：基于 main `67e8445`，分支 `codex/geneloop-delivery-polish`；修复双栏 Markdown、成品下载、网络恢复和 GeneLoop 品牌。不重新训练、不改上游 Harness，保留三场景已有库与论文 Shadow 边界。
+- 已完成：双栏复用原生 Markdown，白名单文件引用和校验后浏览器下载；数据报告/图表证据链、旧任务漏收恢复与过期评分失效；终态停止轮询、退避重连、请求超时、同 ID 历史快照不覆盖新状态、POST 不确定时只读取核对；用户提供 Logo 接入登录/账户/原生品牌 slots。
+- 已验证：服务器 Node **470 通过 / 3 Docker 条件跳过**；Python 首轮 **857 通过 / 4 文献 PDF 环境失败**，修正测试 Poppler 包装器后 **4 项复跑全部通过**，共 861 项有通过记录。无模型 smoke 18 题/83 来源通过。两个真实隔离账号、三场景历史结果、23 个成品 SHA/下载头、评分保存及跨账号读取/下载/评分 404 通过；浏览器实际下载 PPT PDF、数据报告 PDF 并核对本地 SHA。
+- 真实模型反例：新双账号三轮计划因供应商 HTTP 503 中断，唯一有界恢复也为 503，停止新增调用；成功侧未重发，子会话 ID 不变。**本次新三轮验收未完成**，不以旧版本成功替代。完整证据和截图旧任务未交付原因见 [本轮记录](../experiments/geneloop-delivery-20261015-v1.md)。
+- 权限/预算：用户授权最终部署及 main 推送持续有效；累计 cap **1000 次 / $1** 保持。新增 4 请求，累计 428，保守预约估值 $0.220798302（含失败用量未知的保留额，账单未知）；不再重试绕过供应商繁忙。
+- 发布完成：[PR #20](https://github.com/jingyio/DeepSeek-Harless/pull/20) 四项 Windows/Linux CI 全成功，已合入 main `68d51c735bd52c5d6fdfc43a5eb3471887d9f650`，正式 release `geneloop-delivery-polish` 运行该提交。owner 33102 / gateway 33101 不变；切换前检查 36 个历史任务空闲，三个原有账号逐记录一致，Home/output/文件/评分及预算进程保留。公网登录 200、新 Logo SHA 一致，浏览器确认 GeneLoop 页面；旧 release 和精确预设备份保留，可回退入口，不回滚用户数据。
+- 最终并发复核：两个隔离账号、并发 8、40 个只读请求，本人 20 个 200、跨账号 20 个 404、错误 0，10 次下载 SHA/attachment 头全通过，总耗时约 249ms（仅该服务器回环小样本）。最终客户端浏览器 PNG 下载 SHA 通过，窄屏纵向排列、无页面错误；该检查为 0 模型请求，不等于大规模压测或新的三轮模型验收。
+- 限制/接手：公网依旧依赖现有临时 Cloudflare 隧道；未做大规模压测或科研质量评审。更早预发布诊断自定义事件的冷恢复负例原样保留。供应商恢复后可在剩余累计预算内补真实并发三轮验收，不能把本轮功能诊断写成模型稳定性保证。
+
+## 2026-10-14：已有三库与双路聊天（历史）
+
+- 目标/范围：按用户最新要求完成 PPT、论文、数据三个已有库及双路前后端；不重新训练，文献训练库不在本次发布范围。初始分支 `codex/paired-scenario-comparison` 基于 main `669d9bc`；PR #17、追加修复 PR #18 均已合并，当前生产 main 为 `2f4c8d22f633058f00a4871bc120a9bc7969acaf`。
+- 已完成：Git 目录 `motif-libraries/`；PPT 原只读边、数据原 10 回执、论文原 Shadow；`harless_comparison.ts` 父/子会话、持久评分、幂等、失败单侧恢复；`harless_comparison_artifacts.ts` 有守卫的冻结下载；原生场景标签、两栏输出和 1–5 分；论文旧审计/修订程序及真实数据报告工具接入。
+- 已验证：V100 初次完整回归 860 Python / 447 Node 通过，追加修复阶段 861 Python / 449 Node 通过，3 Docker 条件跳过；字体修复后的文档/工作流 36 项通过。冷恢复关键 Node 54 项、预算 11 项及 smoke 通过。两个真实 bwrap 账号并发，三场景模型与实际成品交付、多轮、冷重启、同子会话恢复、评分/下载、跨账号拒绝通过；浏览器两栏、评分保存、`/p` 候选及蓝色 `/ppt` 确认。各阶段结果与最终生产复验见 [验收与负例](../experiments/trained-three-scenes-20261014-v1.md)。
+- 修复与边界：冷 Agent 恢复前不能仅依赖持久模型选择；标准 user/message 元数据替代不可重放自定义事件；数据来源在提交冻结，数值模板原样绑定。数据字体回退使用现有 DejaVuSans 保留科学字符，严格完整性审计不变；只公开本任务真实成功交付回执与当前 SHA 一致的 PDF，任务失败状态及评分禁用仍保留。先前布局修订、缺字及总结超限触达单任务 24 请求 cap 的失败保留，不以新成功覆盖。论文只做 Shadow，不宣称模型跳过、真实性或成本优势；没有大规模压测、人工科研质量验收。
+- 部署配置：管理员启用 `comparison_scenes` 三 ID；成员只读挂载源代码、库、Python/数字依赖、PPT 渲染/字体/PDF安装。canonical 依赖路径不可使用跨层符号链接。新 checkout 须保留生产 DSH_HOME、账号和原 output；信任私有配置的 `HARLESS_PRIVATE_ROOT` 支持 output 在旧目录，不迁走用户数据。成品与评分保存在账号本地运行区，原始轨迹不进 Git。
+- 权限/预算：用户批准累计 1000 次/$1，保留用量；迁接快照 248 次/$0.105100122 代理估费，账单未知。`serve-web-budget.py` 要求现有私有 checkpoint，调用前落盘；原预算进程没有重启。后续流量从该快照累计，不以重启、新会话绕过 cap。
+- 最终生产数据验收：PR #18 合并版首轮 Baseline 为 17 请求/16 工具/0 工具错误/1 PDF，Motif 为 6 请求/15 工具/0 工具错误/10 次已验证跳过/1 PDF；第二、三轮每侧各 1 请求、0 工具，已有成品保留。下载 SHA、评分、跨账号 GET/score 返回 404 均通过。这是该合成任务的功能结果，不证明科学质量或普遍净降本；先前失败和费用均保留。
+- 发布/回退：当前 release `harless-three-scenes-delivery-fix`，运行代码 main `2f4c8d2`，owner 33102 / gateway 33101 保持；PR #18 四项 Windows/Linux CI 成功。此前生产 PPT/论文真实三轮与文件、评分、隔离通过，论文仅 Shadow；追加修复、数据最终验收和负例见实验记录。历史失败数据任务的已验证 PDF 恢复、下载 SHA 与跨账号下载 404 通过，失败状态和评分禁用保留，额外模型请求为 0。两个临时生产账号及其登录会话已移除，三个原有账号记录、用户文件与历史保留；测试文件与日志保留，隔离测试后端和本机测试转发已停止。保留旧代码检出、私有启动规格、policy、Home/output；回退只换入口代码，不能重置预算、账号、文件、任务索引或评分。
+
+## 先前四功能整合记录
+
+## 2026-10-14：四功能分支兼容整合
+
+- 用户本次明确授权兼容检查通过后合并到 main，覆盖旧交接里的“只提交、不合并”。来源为 PPT、论文、数据分析、文献处理四分支，另保留 PR #15 成员边界修复。
+- 主线整合入口：[PR #16](https://github.com/jingyio/DeepSeek-Harless/pull/16)，集成实现 `003e115`、`60e1cf0`、`9e8ea7e` 至 `53bd67b`；#14 已合入 #13，#15 已合入 main，全部相关来源包含在整合历史中。最终 main commit 与合并状态以 PR 实际记录为准。
+- 服务器完整依赖通过：根 856 Python / 436 Node（3 Docker 跳过），PPT 291 Python / 118 Node，smoke、motif、控制/真实 MCP 上传/双 principal 越权检查；代码快照的四项 Windows/Ubuntu CI 成功。详情见 [本轮记录](../experiments/four-scenario-main-integration-20261014-v1.md)。无新增云模型费用，不作为新的科学质量或节省证据。
+- 正式 Web 进程、用户数据与累计预算不切换；服务器隔离检出同步 main 复验。文献产品上传绑定、四场景双栏比较/评分尚未上线，不以研究分支合并替代该验收。
+- 以下记录保留各历史版本的权限与结论；其“当前/待审/未合并”是当时状态，以本节和 GitHub 实际状态为准。
+
+## 2026-10-14：斜杠场景与成员边界（当前）
+
+- 更新时间与交接人：2026-10-14，Codex；用户授权修复、真实受限测试、部署与提交 PR，继续不代替用户合并。
+- 范围/版本：PR #11 的历史续聊与原生场景引用 `0fb57ad` 已合入 main `2ad349a`。新增分支 `codex/member-workspace-hardening`，实现 `a47f76e`/`0b5955c`；后续仅文档。[PR #15](https://github.com/jingyio/DeepSeek-Harless/pull/15) 已创建，待审、未合并。
+- 已完成：`harless_web_client/client.js` 原生前缀候选/蓝色引用与草稿保护；`dsh_web_tasks.ts` 工作区 ID 创建、冷会话恢复、场景锁定与同场景续聊；`dsh_member_workspace.ts`/`harless_member_file_scope.ts` 公开文件 Fetch/Lookup 边界；账号网关成员 profile 轮询、关闭浏览器连接和启动中后端。
+- 已验证：最终 Linux 165 Python / 93 Node、smoke、motif:check 全通过。三组双账号各三轮真实对话，重启与隔离通过；PPT 浏览器两轮、截图对应的早期会话两轮；真实成员同名文件独立、6 类 API 越界拒绝、工作区与字节重启恢复。见 [本轮记录](../experiments/slash-member-recovery-20261014-v1.md)。
+- 部署/数据：正式检出 `0b5955c`，owner 33102 / gateway 33101 保持；3080 原模型预算服务未重启。保留所有正式账号、Home、工作区、output 和迁移核验备份。原论文工作区没有覆盖；测试账户和凭证只在私有 `.local/`，结束清理测试后端，不清空历史日志。
+- 权限/预算：有效 deepseek-flash、Origin、off、输出 1000；本轮 22 请求估费 0.004509264 美元。观测累计 46 请求/0.008586282 美元，上限 0.23 美元/250 请求保持，账单未核对；公共说明 `docs/harless-account-gateway.md` 与 `docs/interfaces.md` 已同步。
+- 限制/下一步：未做大规模容量压测或 PPT 成品质量验收；Paper/Data 仍由部署可用性拒绝。迁入的锁定历史为文字兼容，新工具需新会话。审阅新 PR 后由用户合并；后续升级保持同 Home/output，并验证新增工具的账号文件边界。
+- 回退：保留私有启动规格、policy 与访问 URL 文件；可回退 `2ad349a`，但会恢复较宽成员文件预览和旧连接退出行为。回退不删除用户文件、归属/任务索引，不重置预算，不改写私人原件。
+
+## 2026-10-14：跨部署续聊恢复（历史，PR #11 已合并）
+
+- 范围与版本：分支 `codex/persistent-chat-recovery` 基于 main `6ade286`；实现提交 `373eadd`（含 `5e1ecbe`），后续为文档。修复历史可见但升级后发送被拒绝，以及旧锁定 preset 无新版工具导致的二次失败。
+- 接口：归属持久化至账号 `DSH_HOME`，按 Home/principal 隔离；私有 `ownership_legacy_outputs` 只导入同 Home 的明确旧目录，成员清空此配置。外部旧目录迁入的会话为文字续聊，`conversation_only:true`；附件及新版工具需新会话。正常重启不移除当前会话工具。
+- 验证：Linux 全量 165 Python / 78 Node 通过；两临时账号并发各三轮真实模型对话，第三轮在网关与成员后端重启后完成，跨账号访问拒绝；实际报错旧会话两轮续聊通过；公网登录表单正常。详见 [实验记录](../experiments/chat-session-recovery-20261014-v1.md)。
+- 部署与数据：正式隔离检出运行 `373eadd`；端口保持 owner 33102 / gateway 33101，原 3080 模型预算进程继续运行。保存旧启动配置与迁移前 policy；DSH Home、workspace、output 和三个生产账号保留，临时验收账号清理。原论文根工作区未重置，私有配置与日志未提交。
+- 预算：有效 `deepseek-flash`、baseline、reasoning off、输出 cap 1000；本次新增 14 请求，代理估费 0.001674612 美元；当前运行累计 17 请求 / 0.002159760 美元，上限 0.23 美元 / 250 请求未重置，账单未核对。
+- 后续与限制：PR 仅提交审阅，不合并。两个并发账号验证不代表容量压测；旧迁移会话为文字模式，新工具要新会话。临时 Cloudflare 隧道不在本修复范围。今后升级保留账号 Home、工作区及任务 output，回退不删除归属/任务数据、不重置预算。
+
+## 2026-10-14：多场景前后端桥接
+## 2026-10-14：Files 产品场景接入（独立 PR #14，待审）
+
+- 本次在 `codex/harless-research-branches-20261014` 添加第五个场景 `Files`（ID `files`）；`/harless` 原生菜单从服务器 Registry 取标签与选项，任务加载 `scenarios/file-management/web-scenario.json` 的 13 工具、Prompt 和每任务文件范围。成员部署白名单只接受该固定 MCP 文件和服务器 Session 路径。共用现有 Harness Agent/RSI Runtime，不新增执行器，不改账号管理或上游 DSH。
+- 默认只读盘点、读取、查重、索引与检索；用户显式开启“允许整理任务副本”并上传文件后，任务才冻结最多 6 步 `copy/move/quarantine` 授权，目标限 `organized/`、`copies/`、`quarantine/`，复用 `PlanScene` 的预览、同计划授权、执行与恢复收据。预览后上传使用任务配置摘要分离持久状态；无文件的可写任务提交拒绝。用户原件、其他 Session 和其他用户目录不在范围内。
+- Files 当前没有产品认证 Motif Library。Origin 与 Shadow 使用普通 Harness；Execute On 拒绝，RSI Off 保留选择但实际 Origin。私有实验库与历史费用结果不算产品 Execute 认证或 Verified Skip。
+- 已验证：V100 四项 Files 范围/权限/恢复/压缩 XML 与 Excel 元数据边界单测及 Registry 共 10 项通过；五场景免费 Harness 检查完成 30 组合、25 冻结草稿、5 个实际 MCP/上传、Files 授权草稿与空文件可写提交拒绝及双用户拒绝，0 模型请求。`npm run web:controls:check`、`npm run smoke`、`npm run motif:check` 通过，均免费诊断。真实 DeepSeek Flash Files 只读 Harness 任务完成，4 实际请求/4 MCP/0 工具错误/0 Verified Skip，预算代理估费 USD 0.001964256，实付未知、质量未人工评审。V100 两名实际 bwrap 成员各自完成五场景草稿，共 10 个，MCP/跨账号隔离通过，0 模型请求；浏览器人工点击未完成。本机缺 `mcp`，本地完整 Web 检查不能启动，V100 隔离检出补足该验证。
+- 独立 V100 检出 `/home/jingyij/jjy/.local/integration/harless-research-branches-20261014` 保留了集成代码补丁与私有日志；原 V100 checkout、当前公网服务和 PR #13 未改。本次根 `npm test` 为 597 通过/4 个文献 PDF Harness 测试失败，触发点为该隔离环境的 PDF 解析，Node 阶段因 Python 失败未执行；不能写成全量通过。空环境直接调用 V100 私有 `pdfinfo` 已复现缺少 `libpoppler.so.73`，MCP 子进程传递动态库路径仍需独立核验。PR #14 最新代码提交的 Ubuntu/Windows CI 四项均通过。
+- 接手顺序：1）审阅 PR #14 并在浏览器人工验证 Files 菜单与一次上传任务；2）修正/验证 V100 文献 PDF 子进程的私有工具链环境；3）用当前 PPT 代码与 Schema 重新认证运行包，再决定 PR 合并及公网切换。回退为撤销本 PR，旧四场景不受 Files 选项影响。
+
+## 2026-10-14：科研 RSI 与 PPT 场景分支集成（待审）
+
+- 集成基点为上线准备 PR #13 的 `77931ac`，科研 RSI 来源 `feature/rsi-research-agent@dfe4fcc` 已合并；PPT 来源 `feature/research-ppt-agent@7375185` 的场景实现与匿名 V16/V17 记录正在整合。此集成属于独立后续分支，不改变 PR #13 或当前公网服务。
+- 科研分支新增 `scenarios/literature-notes/`、`scenarios/file-management/`、有界完成/验收守卫及在线 manifest v2 认证能力。冲突的旧 Web/预算/Session 入口保留 PR #13 版本；`prepare_scenario` 同时保留逐 Session 工作区和新场景守卫参数。研究场景仍为显式 CLI/实验入口，未登记为四个产品菜单场景；旧 `web:literature` 因缺任务级来源绑定明确拒绝启动，防止加载错误场景或绕过隔离。私有旧库没有默认为 Execute。
+- PPT 分支新增持续知识库、显式执行策略、失败计划局部恢复、反馈及双路 Web 任务代码。双路 `native-chat` 不继承产品 Mode/RSI，故集成分支不在 `scripts/harness-web.py` 或 `dsh_web_tasks.ts` 注册这条旧入口；默认 `/harless` 仍经统一任务级配置和共享 Runtime。历轮 PDF 与私有数据未搬入 Git。
+- 免费验证：科研合并后根 `npm test` 为408 Python通过/190跳过、168 Node通过/3跳过；`npm run smoke`、`npm run web:controls:check`通过。PPT TypeScript 构建及118 Node通过；本机 Python 279通过/2跳过、10个真实 LibreOffice 渲染断言因本机 PDF 的 CJK 缺字/GID0 被严格拒绝。相同集成树在 V100 固定 Noto/LibreOffice 环境复验为 PPT 291 Python通过、118 Node通过；严格字形守卫保持。`npm run web:scenes:check`、`npm run motif:check`也通过，均0云模型。
+- CI 首次 Ubuntu 根测试597通过/1失败：旧文献 `run-web.py` 以已不存在的 `literature-pdf` 场景别名启动。该实验入口已改为显式拒绝并验证不启动监听；待新 CI 结果。不把缺失的文献任务绑定冒充上线能力。
+- 风险：PPT代码与Prompt版本已变，PR #13 私有 `deployment-v3/runtime` 代码锁在本集成分支失效；新包必须按实际 Schema/代码重新认证和发布，未做之前生产 Execute 应拒绝。本轮未发起真实模型请求，费用新增0；保持既有任务、成员和预算隔离。
+
+## 2026-10-14：四场景上线准备（当前）
+
+- 更新时间与交接人：2026-10-14，Codex。
+- 目标与本次范围：下一任务实际加载四场景MCP/Prompt/权限与统一RSI；补齐成员公共能力部署、PPT认证读链和机械交付，不处理另一协作者负责的旧Session bug。
+- 分支 / commit：`codex/harless-launch-readiness-20261014`，整合main `6ade286`；场景/成员交付验证 `396e2cf`，Windows路径分隔符修复及根回归 `80be6a1`；文档提交见本分支最新历史。桥接PR #8及迁移文档PR #10已合并，本轮 [PR #13](https://github.com/jingyio/DeepSeek-Harless/pull/13) 已推送/未合并，公网未切换。协作者论文工作区及V100原检出保留。
+- 已完成：Registry四真实后端（PPT19/论文5/数据4/通用2工具）；`session_files.py`共用准入版本守卫；PPT下一任务菜单选项；`harless_rsi_bundle.py/harless_rsi_binding.ts`可信五文件包、完整Schema/代码锁/当前上传绑定；`harless_member_scenes.mjs`只读代码/依赖/纯Runtime挂载；CPU渲染及任务内PDF/PNG/report/checkpoint。共用既有online Runtime/Agent循环，不改上游。
+- 已验证：本机/V100根183Python/79Node；smoke18/83来源、controls通过；24组合中21实际冻结草稿/3无库Execute拒绝，四实际MCP/Prompt及两principal跨Task/Session/receipt拒绝。PPT53Node/212Python通过、1静态字体正例先跳过，显式指定字体后该5项组全通过。两个临时成员/8草稿四场景实际MCP及跨账号拒绝、两个成员各一份真实机械PPT/PDF/PNG通过，0模型。真实论文/数据各4HTTP，PPT成功2HTTP/1实际skip，另一次PPT预算失败1HTTP/1局部skip分列。详情 [上线记录](../experiments/harless-launch-readiness-20261014-v1.md)。
+- 配置与数据：公共`config/harless-scenes.json`与四Scenario；私有`HARLESS_PPT_RUNTIME_BUNDLE/HARLESS_PPT_RENDERER_ROOT/HARLESS_PPT_FONT_ROOT`；V100独立检出`.local/integration/harless-launch-20261014`、认证部署`deployment-v3/runtime`、旧库备份`.local/imports/ppt-library-transfer-20261014`。成员配置增加`memberSceneDeployment`，账号/预算/Session接口不变。原轨迹/密钥/产物不进Git，必要私有诊断产物已同步本机。
+- 未完成：公网网关切换和浏览器点击、旧Session恢复（另一协作者）、两真实成员模型并发、完整自主PPT科学/视觉质量及净降本；论文编译/外网参考真实性，数据高级推断。论文/数据/通用无生产认证库，Execute On拒绝，Origin/Shadow实际可用，不误映射样例。
+- 接手下一步：1）审阅PR并在固定检出重建policy/host patch，添加私有成员部署字段，保留现有账号目录/累计账本；2）联合Session修复负责人验收两测试账号连续对话/刷新/场景切换后再切公网；3）真实研究任务独立人评与完整成本对照后决定扩库，不把机械诊断或局部skip当稳定科研收益。
+- 权限与预算：先前桥接14HTTP加本轮11HTTP，累计25HTTP/代理估费0.014689896美元，实付未知；累计0.06美元限制未扩大，自设诊断次数24→25已告知。停止新增付费测试；模型质量/费用后续实验继续核对已有授权，不改公共默认额度。
+- 回退与风险：现有公网进程未改；可撤新成员部署字段、RSI Off或回main `6ade286`，不删除用户文件/Session/账本。PPT工具/代码变更需新部署绑定，旧证据不改；部署共享只读能力不共享私人资料。
+
+## 2026-10-14：多场景前后端桥接（历史）
+
+- 更新时间与交接人：2026-10-14，Codex。
+- 目标与范围：原生 `/harless` 实际选择 Scene/Mode/RSI，统一已有 Runtime；未开发缺失的论文/数据业务后端。
+- 分支/版本：`codex/scene-rsi-bridge` 最初基于 main `62ee46b`，已整合最新 `2a96552`（PR #7），已推送；[PR #8](https://github.com/jingyio/DeepSeek-Harless/pull/8) 已创建，未合并；最终提交以本分支历史为准。原论文/用户隔离工作区保持。
+- 已完成：`harless_scenarios.py`登记；`harless_settings.ts/dsh_web_tasks.ts`真实选择及任务冻结；`harless_task_scope.ts`独立cwd/preset/上传/job；PPT现有19工具及通用文件MCP；生产Execute完整Schema/匹配服务准入，历史诊断分列。无新Agent循环或上游改动。
+- 已验证：V100合并前154 Python/60 Node；合并后165 Python/75 Node通过；PPT53 Node；18题/83来源smoke；控制与新场景/动态协议。合并前后各两项合成来源真实模型任务，累计14请求/10MCP/0工具错误/0实际跳过，见`docs/experiments/harless-scenes-runtime-20261013-v1.md`。生产有库Execute、科研质量和浏览器操作未验收。
+- 配置与数据：生产`config/harless-scenes.json`；诊断`config/harless-diagnostics.json`。私有轨迹/配置/失败保留隔离验收目录，真实runs `907266faee4d40d799eca6ae2fa2109d` / `47ac1c37b74b494391bff14b56ce6b13` 已同步本地`.local/integration/scene-rsi-results/`；密钥仅由既有环境提供，未提交。
+- 未完成与接口依赖：论文/数据正式Scenario尚缺，明确拒绝；PPT生产Library缺，Execute拒绝。已保留PR #7的成员预算broker、Session持久化和连续对话；零工具成员不继承所有者MCP，PPT在成员沙箱尚未部署，明确拒绝。本次没有改变账号、密码或认证模块。PPT页数/模板/输出权限暂用任务API，默认只读。
+- 接手下一步：1. 审阅并合并桥接PR，安装PPT依赖后`npm run web:scenes:check`。2. 用户负责人联合验收gateway隔离；场景负责人登记正式论文/数据MCP与Prompt。3. 用独立任务认证完整Schema/库/来源绑定后，按授权做真实Execute对照。
+- 权限与预算：本次真实联调累计封顶0.06美元/24请求，已用代理估费0.00647472美元/14请求，账单未知，已停止。没有借论文uncapped权限扩大Web预算，无外部写/投稿。
+- 回退与风险：按本分支提交回退；旧诊断明确使用`config/harless-diagnostics.json`。不覆盖共享服务器、不修改协作者工作区、不清理`.local`；单登录实例不能当作单进程多账号。
+
+
+## 2026-10-13 多用户账号网关与连续对话（[PR #7](https://github.com/jingyio/DeepSeek-Harless/pull/7) 待审）
+
+- 范围与代码：分支 `codex/multiuser-web-gateway` 基于 `main` 的 `62ee46b`；账号网关、邀请码、账户设置、成员独立 DSH Home/工作区、账号预算路由及同一会话逐轮任务在 `scripts/harless_gateway.mjs`、`scripts/web_budget_broker.mjs`、`src/adapters/dsh_web_tasks.ts`。保留主线原生 Harless 场景/模型选择；未纳入服务器论文实验或私有配置。
+- 已验证：服务器独立 Linux worktree 中 `npm test` 为 164 Python、67 Node 全部通过。免费模拟 Web 带 `--public-origin` 启动，认证 303、首页和任务/设置 API 均 200。另用两个临时测试账号同时启动隔离 DSH 后端，双方就绪与首页均 200、进程端口不同；没有真实模型调用。旧检出的 host patch 在新检出上被拒绝，改用同一检出的 patch 后通过。Windows 本机全量测试另有符号链接权限和纯代码节点环境限制，Linux 全量通过。
+- 配置与部署：公共说明见 `docs/harless-account-gateway.md`，账号、邀请码、模型密钥、运行日志和私有论文继续只在 `.local/`。本 PR 未切换正在运行的公网服务；生产切换前需要以最新主线重建私有 host patch，确认 `bubblewrap` 挂载、两个测试账号实际并发和 HTTPS 隧道稳定性。服务器原论文工作区的未提交改动没有改写。
+- 后续：审阅 PR 后在隔离部署上完成双账号浏览器与真实模型预算验收，再安排生产切换。PR 暂不合并；回退为停止可选账号网关并继续使用现有单用户 Web 入口。
+
+## 2026-10-13 原生二级菜单与输入框状态（已推送，PR 待创建）
+
+- 范围：`/harless` 原生选择器改为 Scenes、Mode、RSI 二级菜单；Scenes 新增 New Scene，使用当前服务器运行时探索。PPT、Paper Proofreading、Research Data Analysis 仍只预览且阻止误用样例工具。Mode 显示 Origin/Shadow/Execute，协议 Origin 仍为 `baseline`；RSI 默认 On，切换模式不自动改变开关，Off 的下一任务按 Origin 执行。输入框加入加粗 Harless 状态标签。
+- 分支与文件：`codex/harless-picker-ui`，从 `b330bb4` 起包含原生菜单、输入框状态、模型选择与 GLM 配置；已合入最新 `origin/main`（`856c02c`），提交 `fd06213`，当前完整 HEAD 为 merge commit。对应代码、文档和回归测试已提交并推送到同名远程分支。
+- 已验证：合并后 `SSS_PYTHON=/Users/apple/Desktop/SSS/.venv312/bin/python npm test` 通过 153 项 Python、56 项 Node；纯离线与模拟控制服务，模型费用为零。3094 的本机预览运行 ID 为 `9b844f86fc6f4481bb36992dad328720`，认证地址留在 `.local/web/runs/<RUN_ID>/access-url.txt`。用户确认本功能完成；真实模型任务与场景运行时仍未接入。
+- 下一步：创建面向 `main` 的 PR。三个正式场景的 MCP、权限与交付仍待接入，New Scene 当前复用服务器已配置运行时。此变更不扩大付费或外部写入授权；不要提交 `.local` 或认证地址。
+
+## 2026-10-13 原生 Harless 选择菜单（当前）
+
+- 目标与本次范围：用户要求像 Harness 原生模型选择框一样操作，界面用英文，只显示 PPT、Paper Proofreading、Research Data Analysis，不展示样例场景。按用户确认，这三项本次仅做可选界面，运行时接入后续完成。
+- 分支与改动：`codex/harless-picker-ui`；新增 `src/adapters/harless_web_client/` 双端包，使用 Harness `commandUi.decorate({kind:'popupSelect'})` 装饰裸 `/harless`；移除注入 DOM 的旧悬浮菜单及输入框观察器。后台新增 `select_preview_scene` / `clear_preview_scene`，选中尚未接通的场景后以 `scene_not_connected` 阻止任务，避免误用样例工具。
+- 已验证：本机 `npm test` 151 Python、52 Node 全部通过；本机免费模拟 Web 启动成功，认证 HTML 含原生客户端插件登记且不含旧菜单注入。未操作用户浏览器，真实点击与视觉效果由用户验证；未调用模型，费用为零。
+- 配置与数据：真实运行时场景仍登记在 `config/harless-scenes.json`，三个界面预览标签在 Web 适配器中；私有启动产物留在 `.local/`。V100 3094 专用预览已部署 `c147400`，服务监听 `127.0.0.1:3094`；正式 3080 与原论文工作区不变。
+- 未完成与下一步：用户测试 3094 的原生菜单与英文选项；之后分别接入三个场景的 MCP、权限、输入与交付。未接通前选择这三项会拒绝任务。多人账号与文件隔离、跨启动选择恢复仍未实现。
+- 回退与风险：回退本分支的原生客户端包和服务器预览选择接口；不清理 `.local`。若原生菜单未加载，保留 `/harless` 参数命令作诊断入口。
+
+## 2026-10-13 输入框菜单与页面清理（历史）
+
+- 最新修复：用户反馈选中 `/harless` 后页面卡住。`52d245f` 曾直接编辑原生输入框，可能与 Harness 输入框更新互相触发；本次移除此编辑，仅观察命令状态并打开设置菜单，同一段输入最多触发一次。新增重复变更回归测试；Node 语法、新测试及 11 项 Web 定向测试通过。浏览器交互按用户要求由用户测试，当前仍未验证；`/harless` 文本可能留在输入框，需根据反馈继续完善。
+- 当前预览：V100 专用 3094 实例将更新到本次修复提交；正式 3080 与原论文工作区不变。本次无模型调用及费用。
+
+- 目标与范围：保留聊天输入框旁的 Harless 场景/RSI/模式选择；移除独立 `/tasks`、`/sss`、`/harless` 页面、悬浮入口及真实模式预算确认弹窗。原生聊天发送后直接执行，服务端预算约束保留。
+- 分支 / commit / 工作区：`codex/harless-picker-ui`，基于合并后的 main `b330bb4`；选择菜单 `e45338f`、页面清理 `359d0bf`、直接发送 `cb7efb2`，尚未推送。原论文工作区未改动。
+- 已完成：移除两个旧 HTML 面板和命令打开旧面板的轮询；旧页面地址返回 302 跳转聊天首页。裸 `/harless` 提示使用输入框旁菜单，具体场景/模式快捷命令保留。删除真实模式预算弹窗，原生消息发送时由服务端登记、激活预算并提交；显式任务 API 的预览/提交和全部兼容路由保留。
+- 已验证：Node JS/TS 语法、Python 编译、diff 检查通过；本次在本机以现有 `.venv312` 运行 `npm test`，151 项 Python 与 50 项 Node 通过。真实模式原生发送的夹具检查了直接派发、预算只激活一次、重复请求不重跑，以及页面不再注入弹窗；这是模拟控制服务，不是付费或浏览器验收。本次零模型调用。
+- 实验结论：此前 `harless-controls-20261013-v1` 真实运行记录未更改；本次仅前端入口与文档调整，不新增真实 API 测试或费用。
+- 配置与数据：场景登记仍在 `config/harless-scenes.json`；V100 独立副本 `.local/validation/harless-picker-cb7efb2/` 已检出本提交并通过 11 项 Web 任务 Node 定向检查。专用 tmux `harless-controls-preview` / 3094 仍运行此前版本，尚未切换；不触碰正式 3080 或私有运行数据。
+- 未完成与下一步：V100 主目录为他人正在修改的论文工作区，3094 原预览副本也有未提交改动；独立副本已就绪，3094 切换暂停，不能覆盖两处工作。浏览器确认直接发送、菜单和旧页面跳转仍待完成。多人账号与文件隔离、跨启动设置恢复仍未实现。
+- 权限与预算：本次删除与 UI 检查不调用模型，预计真实 API 费用为零；真实调用继续遵循项目既有授权与预算。
+- 回退与风险：本次是可逆 UI 路由/面板删除；不清理 `.local`。跨用户隔离尚未实现。
+
+## 2026-10-09 至 10-10 历史交接（当时状态）
+
+- 2026-10-10 本机连接修复：3086 手工隧道再次消失，改为专用受限 SSH 账号与用户 LaunchAgent 自动重连，并追加本地地址代理绕过。主动断开测试约 2 秒恢复，现有认证/任务页/API 均 HTTP 200；原服务器运行、预算和 3 请求/4 MCP 统计保留，本次零模型调用。浏览器刷新待用户确认；运维配置、回退及限制见 `docs/handoffs/harness-web.md`。此记录随 PR #2 更新，原论文工作区其他修改保留；尚未合入 main。
+
+- 2026-10-11 完整请求/调度通道：新增trace_rsi_batch_compiler.py、dsh_trace_rsi_batch_shadow.ts、paper-rsi-batch-shadow.py及免费文字审计；原工具/旧提示不改，新协议baseline/Shadow共享。v1仍0/5严格；v2两合格正常Session冻结后，三个预定Shadow各2/5，共6/15=40%；其中一条字段保留失败，合格两条仍4/10=40%。对应原生请求费用23.1%，实际跳过/省费0；完整论文质量、真实多工具重复认证未完成。两端335 Python/177 Node和服务器免费smoke通过；全部新失败/学习共51请求，新增代理估费0.091044，累计6.166612/8美元，账单未知。用户允许有限性能下降，质量/费用取舍分别报告。私有结果已回本地，未提交/推送，继续暂停execute。详见docs/experiments/paper-rsi-batch-shadow-20261011-v2.md和论文交接。
+
+- 2026-10-11 状态续接学习：新增trace_rsi_state_compiler.py/dsh_trace_rsi_state_shadow.ts/paper-rsi-state-shadow.py，原工具与提示不变；从两条原正常轨迹的2正/2负例学出“当前同版本尚未检查”的条件，训练新增模型请求0。免费历史回放拒绝2结束误预测、保留4正确预测；三条真实Shadow各5请求、完整工具调度匹配5/15，严格0/15、实际跳过0，结构/字段保留通过。新任务无末尾单独重读，因此新结束分支未前瞻认证；另有检查+读取批次未完整匹配，保留反例。298 Python/162 Node两端免费回归、服务器无模型smoke通过；新增估费0.028743美元，历史累计6.075568/8美元，实付未知。详见docs/experiments/paper-rsi-state-shadow-20261011-v1.md。代码未提交/推送，继续暂停execute；下一步完整批次与控制文字交接。
+
+- 2026-10-11 生成工具正常使用闭环：新增 trace-rsi-task-server.ts、trace_rsi_motif_compiler.py、dsh_trace_rsi_shadow.ts 与 paper-rsi-generated-task.py。两条合格正常轨迹编译 read/write→生成检查工具两条局部边，冻结后两条新范围 Shadow 共局部匹配4/12、严格0/12、实际跳过0；各有结束阶段错误预测，不能开启execute。结构/既有字段保留通过，语义未评审，同论文故障注入不是跨论文认证。v1字段保留失败和v2零请求工具顺序启动失败均保留；v1–v3新增40请求/约0.070375美元，历史累计6.046825/8美元，账单未知。最终免费292 Python/158 Node回归，服务器无模型smoke通过；私有数据已回同步，代码未提交/推送。详见docs/experiments/paper-rsi-generated-task-shadow-20261011-v3.md及论文交接。下一步学习状态条件及控制交接，继续暂停新execute。
+
+- 2026-10-11 新增轨迹驱动RSI入口：20条真实bash保留，2源脚本可有界内存重放；DeepSeek自主选择并生成triage_catalog_coverage，3开发/12未见源反例/实际MCP通道通过，全部23有效源反例一致。公开原程序见examples/rsi-tools/trace-coverage-v1/；不是新Motif图，尚未采集后续正常使用/Shadow，实际跳过0。两次失败保留；本轮308学习请求/代理新增0.274440美元，累计5.976450/8美元，实付未知。265 Python/139 Node两端免费回归通过，含成功试用守卫；未提交/推送。详见docs/experiments/paper-rsi-trace-tools-20261011-v3.md与论文交接；下一步用生成工具的正常轨迹学习调度，继续暂停execute。
+
+- 2026-10-11 DeepSeek工具生成RSI闭环：原生Cordis学习/修复程序→11独立结构样例→冻结TS MCP→2正常修订轨迹→1局部Motif→第3任务Shadow；学习92请求、三任务各4，本轮104请求/代理新增0.089141532美元。生成工具可复用，但留出旁白导致严格整请求0/4、实际跳过0，语义未评审、无降本结论。252 Python/113 Node免费回归；详见docs/experiments/paper-rsi-tool-learning-20261011-v1.md及论文交接。继续暂停execute，累计5.70201003/8美元，实付未知；未提交/未推送，其他场景改动保留。下一步审阅旁白职责并接长修订/恢复，不重复同条件基线。
+
+- 2026-10-11 晚间论文 RSI 已结束：一篇论文十种变体，13 baseline/21 Shadow/34运行/616真实请求；严格匹配21.4%→32.5%→27.4%，最佳单任务50%，实际跳过0。最终9局部候选+1查询信封，新增校验失败读取候选本轮未触发；第三轮1次无产物交付失败及语义错误保留。两端252 Python/109 Node通过，代码/结果/交接同步，未提交/推送。累计代理估费5.612869/8美元，账单未知；继续暂停execute，不再重复同库付费运行。详见 docs/experiments/paper-rsi-overnight-20261011-v3.md 与论文交接，其他场景改动保留。
+- 2026-10-11 论文局部编译/Shadow审计：新增Python离线编译器、TS只读预测器及共享Schema；从两条正常baseline挖掘write→check（2 Session）与edit→check（1 Session候选），冻结后回放两条留出shadow。5预测中3严格整请求、1含旁白匹配、1下一操作反例；严格仍3/17，实际跳过/新API/新增费用0，不是前瞻盲测或独立论文认证。逐请求3整请求/10局部/4语义或恢复缺口；失败编辑后缺当前产物读取是具体下一步。两端239 Python/107 Node通过，新文件及私有结果同步，未提交/推送；各端原Web文档差异保留。预算沿用累计4.86830662/上限5.84521046美元。见 docs/experiments/paper-shadow-compiler-audit-20261011-v1.md；继续暂停execute。
+
+- 2026-10-10 论文shadow审计优先：按负责人新要求暂停新execute，先看理论请求替代、bash工具化及动态局部复用。本次0模型/0新增费用；最新两shadow严格3/17，人工复核一条纯调度旁白后候选4/17=23.5%，不覆盖旧统计、不算认证/实际收益。已有citation局部边/链为协议认证，参数原型7归三能力族，多查询缺留出；最新复合工具/Hook尚未学为Motif。审计记录 docs/experiments/paper-shadow-reuse-audit-20261010-v1.md，预算沿用下条，不新跑自动执行。
+
+- 2026-10-10 论文复合取证/自动检查最新：负责人已批准追加1美元，新累计封顶5.84521046，旧预算/失败不改。主稿baseline/shadow/execute请求8/9/7、短稿6/8/7，六次完成且覆盖/结构/来源守卫通过；execute各两次自动检查含修复，显式检查0。合计baseline与execute均14请求、execute估费高30.3%；shadow完整机会3/17=17.6%，实际Motif拦截0、工程Hook尚未学习，语义未盲评，20%/总体降本未达成。两端227 Python/102 Node通过，源码/文档/证据双端同步、未提交/推送。新增0.09451318、累计代理4.86830662、余额上界0.97690384美元，账单未知，模型运行已结束。详见 docs/experiments/paper-composite-delivery-20261010-v2.md 与论文交接；下一步扩编译/证据与查询恢复，不继续无变化重测。
+
+- 2026-10-10 论文活动引用/批查询最新：三节点及局部边由真实工具轨迹编译，严格citation_id直接读取守卫已接TS诊断插件。batch baseline/shadow10/19请求、完整机会1/19、实际跳过0，范围15/15但语义未盲评；7工具阶段基线19请求预算拒绝、无产物，发现猜错case_id后已改善错误反馈，真实恢复待验证。两端215 Python/93 Node，私有证据双端同步、未提交/推送。累计代理4.739188258/上限4.84521046美元、余额上界0.106022202，账单未知。20%和完整流程未达成。当前无模型实验运行，默认Coding/Web不改变。见 docs/handoffs/paper-submission.md 及 docs/experiments/paper-citation-batch-bounded-20261010-v1.md；保留以下历史状态，不用旧余额开启新实验。
+
+- 2026-10-10 论文 bash 工具化：已人工从真实轨迹提炼 opt-in 只读 `read_pinned_paper_references(source_id, keys)`，一次返回完整BibTeX/来源哈希/缺失/重复；默认6工具，`SSS_PAPER_REFERENCE_RECORDS=1` 时7工具。服务器真实stdio MCP 34条原文匹配、伪造句柄拒绝、来源未变；两端201 Python/88 Node通过，本次模型/API费用0，累计预算不变。新工具未自动成为Motif、未接当前原生续接/Web，也未证明调用下降。代码/私有证据双端同步，未提交/未推送，Web工作不覆盖。详见 `docs/experiments/paper-bash-toolization-20261010-v1.md`，下一步活动引用图/产物校验工具化，再采集新工具正常轨迹学习调度。
+
+- 2026-10-10 论文 RSI 当前进展：已实现正常轨迹→不可覆盖版本库→下一任务固定库→完成后再编译的参数闭环，新增从轨迹提取的 TS Crossref 查询；私有 round-0001～0004 原型 1/6/6/7。两次真实 shadow 25/34 请求、完整纯工具机会3/0、实际跳过0，尚未证明覆盖或调用随学习增长；标题守卫修正、模型改写参数/使用 bash 的偏离均保留。两端最终195 Python/88 Node通过，阶段集合15/15、来源未变，语义质量未盲评。累计代理约4.415383/冻结上限4.84521046，剩余上界0.429827美元，账单未知。本次未提交/未推送，Web并行工作不覆盖；当前任务/库/代码/配置摘要在私有 manifest/round 中。详见 `docs/experiments/paper-rsi-sequential-20261010-v1.md`、`docs/paper-rsi-loop.md` 和论文场景交接。下一步编译受限解析归并脚本、减少额外选择请求，再用真实新稿/新论文验证；新增模板不称作独立认证或降本。下列论文段落为此前阶段状态，以本段最新交接为准。
+
+- 2026-10-10 两次真实 shadow 复验：同一冻结库/同一论文，confirm-a/b 请求 40/17，选定结果 23/23、30/30 全通过，完整纯工具机会 2/40、3/17，合计 5/57=8.8%；实际跳过 0，20% 尚不稳定。两份阶段产物集合均 15/15，来源哈希未变，语义质量未盲评；新费用约 0.102378，累计代理约 4.295005/上限4.84521046，余额上界0.550205，账单未知。逐请求分析明确 7 次选择协议响应，以及未绑定集合和 bash 片段；这些不是认证跳过。当前未形成 RSI 自动学习/发布闭环，下一步从正常轨迹编译参数化查询/脚本与恢复节点、把选择协议并入必要判断，再冻结新库开展留出 shadow；不继续相同库付费重测，加入脚本/Code Mode 对照。专项 7 项本地/服务器免费诊断通过，新数据两端同步，代码未提交/未推送。详见 `docs/experiments/paper-shadow-confirmation-20261010-v1.md`，私有新运行与分析仍位于 continuation-v2 根，suffix 不是独立任务；当前入口固定原稿/阶段任务、未接完整 PDF/Web。前次 execute 动作类型已更正为 8 读取+3 查询（2 请求）。
+
+- 2026-10-10 shadow 评测主线：负责人最新要求以 shadow 为主，`paper-reference-continuation.py` 默认模式已改 shadow（仍默认预览、付费须 --call-model；显式 execute 保留）。新增 `scripts/evaluate-shadow-continuation.py` 分析既有真实 root Session 的完整请求边界，不新跑模型。旧 v2 shadow 4 批/30 项全验证，3 次纯工具请求机会、1 次含文本需审阅；Codex 初阅后者仅调度说明，未改自动分类。实际跳过/直接跳过节省均 0、反事实费用未知，不能将候选数冒充收益。两端免费 177 Python/80 Node，本次新增费用 0，累计仍约 4.19263/冻结上限4.84521046。记录 `docs/experiments/paper-shadow-evaluation-20261010-v1.md`，私有派生 `shadow-evaluation-v2.json` 与 `shadow-text-review-v1.json`；原轨迹/账本/质量缺陷保留。代码未提交/未推送；下一步负责人独立评审风险等级，再新增真实输入配置开展 shadow，当前入口仍固定原稿，suffix 不是独立任务。
+
+
+- 2026-10-10 连续接管真实阶段测试：`paper-reference-continuation-20261010-v2` 已完成，主稿 34 引用键中的 15 个 arXiv 条目由模型选批，三组最终均精确覆盖 15/15。baseline/shadow/execute 真实请求 50/15/25；shadow 4 批验证 30 项，execute 4 批中两批原生已到齐，另两批 8 次读取 + 3 次查询通过并实际跳过 2 请求（逐批复核更正，原始总数不变），无 unverified。6 次新运行（含 v1 范围/等级失败）新增估费约 0.31265，含历史累计约 4.19263，冻结封顶 4.84521046，余额上界 0.65258，账单未知；不重置费用。最终两端 172 Python/80 Node，本地无模型 smoke 18/83 通过。模型选择与目录协议是手工适配，结构原型仍从历史轨迹编译；未做跨论文认证，未接 Web/完整 PDF。输出集合通过但语义质量未盲评，存在 P1/版本证据判断差异；不能将 50→25 全归因于仅 2 次拦截或宣称合格降本。新增入口 `scripts/paper-reference-continuation.py` 默认预览，模型绑定 v2 schema、连续恢复/同批去重在 `dsh_parameter_motif.ts`，质检入口 `scripts/check-reference-continuation.py`。代码和公共小改动未提交/未推送，既有 Web 并行改动保留；实验详情见 `docs/experiments/paper-reference-continuation-20261010-v2.md`，私有轨迹/交付/代码历史位于同名 `.local/paper-reference/`。下一步：先锁定字段证据与风险判断质量，再做等条件对照、脚本节点及独立论文验证。
+
+
+- 2026-10-10 本机连接修复：3086 手工隧道再次消失，改为专用受限 SSH 账号与用户 LaunchAgent 自动重连，并追加本地地址代理绕过。主动断开测试约 2 秒恢复，现有认证/任务页/API 均 HTTP 200；原服务器运行、预算和 3 请求/4 MCP 统计保留，本次零模型调用。浏览器刷新待用户确认；运维配置、回退及限制见 `docs/handoffs/harness-web.md`。公共交接已随 `f212141` 推送至正式待审 PR #2；原论文工作区其他修改保留，尚未合并 main。
+
+- 2026-10-09 官方真实聊天修复：见 `docs/experiments/native-chat-confirm-20261009-v1.md`。原 `session/prompt` 直接报错已改为待确认任务与原生预算弹窗；确认前/重试/取消均 0 模型调用，确认后真实 3 请求/4 MCP/来源核验通过。当前 3086 运行 `ebd724e8f4464b72b5cbc797210da350`，每任务/启动上限 0.247 美元，承接旧支出后累计估费约 0.003950 美元、账单未核对。146 Python、45 Node、13 组协议诊断通过；真实浏览器点击仍待负责人确认。原论文分支不切换，公共修复随 PR #2 发布。
+
+- 2026-10-09 真实 Web 恢复与 API 验收：见 `docs/experiments/web-real-recovery-20261009-v1.md`。3086 运行 `9ea9d68a37a44627ad3ab1d545678c37` 已后台恢复，baseline/execute 两项真实任务各 3 请求/4 MCP/0 错误，来源核验通过、独立 Session，execute 无库回退；合计代理估费约 0.002485 美元（总上限 0.25，账单待核对）。旧运行零调用，记录保留。真实浏览器点击仍待负责人确认；认证 URL 换行修复避免复制进终端提示符。
 
 ## 最新本地状态：2026-10-15持久化/批量/恢复
 
@@ -307,8 +560,23 @@ TaskScene新契约修复全局重命名、明确转换原件/产物读取，以�
 ## 此前 main 的交接（历史同步状态）
 
 - **更新时间与交接人**：2026-10-09，Codex 根据项目负责人的要求整理；后续主线负责人由课题组确定。
-- **目标与本次范围**：提供三位同学可共同使用的 Motif / DeepSeek Harness / 自定义 MCP 底座。本次补齐随仓库分发的历史 Motif 库、公开证据、免费重编译及 Harness 验收入口，按用户要求提交和推送最新主线。
-- **分支与版本**：`main`，运行底座提交为 `9388ed0`；本次提交见 `git log -1`。远端为 `origin`（`jingyio/DeepSeek-Harless`），用户已授权推送当前最新 main；实际同步状态按 `git status -sb` 与远端提交核验。归档分支为本地 `archive`（`810edf4`）与 `archive-pre-cleanup-20261009`（`1d7ec26`），本次不单独推送归档分支。
+- **目标与本次范围**：提供四人共用的 Motif / DeepSeek Harness / 自定义 MCP 底座；用户兼任项目负责人及论文生成/投稿场景负责人。当前补齐前后端动态任务、三模式与独立统计，产品统一名为 DeepSeek Harless，保留已分发历史库和 SDK 入口；不替代论文场景开发。
+- **当前分支与版本**：公共改动位于 `feature/web-task-api`，基于已合入冻结 Web 的 `origin/main`（`bdf934f`）；在线代码提交 `8168f83` 已推送，[PR #2](https://github.com/jingyio/DeepSeek-Harless/pull/2) 已创建，按负责人授权转为待审，尚未合入 main。后续交接提交以该分支 Git 历史为准。原本地与服务器的 `feature/paper-submission` 工作目录和未提交论文材料保留；实验发生时的旧 commit/dirty 配置仍以各实验快照为准。
+
+
+- **更新时间与交接人**：2026-10-09，Codex 根据项目负责人的要求整理；后续主线负责人由课题组确定。
+- **目标与本次范围**：提供四人共用的 Motif / DeepSeek Harness / 自定义 MCP 底座；用户兼任项目负责人及论文生成/投稿场景负责人。当前补齐前后端动态任务、三模式与独立统计，产品统一名为 DeepSeek Harless，保留已分发历史库和 SDK 入口；不替代论文场景开发。
+- **当前分支与版本**：公共改动位于 `feature/web-task-api`，基于已合入冻结 Web 的 `origin/main`（`bdf934f`）；在线代码提交 `8168f83` 已推送，正式待审 [PR #2](https://github.com/jingyio/DeepSeek-Harless/pull/2) 已创建，尚未合入 main。后续交接提交以该分支 Git 历史为准。原本地与服务器的 `feature/paper-submission` 工作目录和未提交论文材料保留；实验发生时的旧 commit/dirty 配置仍以各实验快照为准。
+- **公共 Web 当前新增状态**：默认 `npm run web` 动态入口，`--frozen` 兼容旧固定题面回归；产品页面 `/tasks`、API `/api/harless/tasks`，旧地址兼容。后端接收文字、JSON instruction/content/user messages、图片、官方文件 receipt 和服务器 resource_id；三模式逐任务固定，无有效认证库或输入不适配时回到普通 Harness。一个启动连续多任务，一任务一 Session、单活跃，记录独立。免费一键代码完成，真实模式仍预算预览与确认；goal/队列编辑不能绕过任务绑定。详见 `docs/handoffs/harness-web.md` 与 `docs/interfaces.md`。
+- **公共 Web 最新验证与边界**：服务器 Node 22.23.3 / Python 3.10.8 通过 146 Python、44 Node、冻结 11 组、动态 HTTP/MCP 13 组、smoke 18 题/83 来源及 Motif 闭环，这些诊断无真实 API 费用。正式动态 3080 运行 `f91a53c78a524bbaa3fb935fd68c8b4f` 保持运行，浏览器认证进入 `/tasks`，产品标题/免费一键/三模式可见；同一运行无重启提交两项不同题面 `2057d2c5580d466d8efea9c385ad491a`、`ae83a4b3ad104fc7a4d0bf5760198de5`，各 completed/5 模拟请求/4 真实只读 MCP/实付 0、独立 Session、无额度表单或再次确认，刷新保留。私有截图 `.local/web-review/browser-live-multi-tasks.jpg`。同版本 3084 另已验证文字 baseline、JSON messages execute 缺库普通回退及另一聊天任务，截图 `.local/web-review/browser-free-one-click.jpg`；诊断 3084 与旧冻结 3080 均精确停止、资料保留。记录 `docs/experiments/dynamic-web-tasks-20261009-v1.md`；真实 Web、科研质量、费用收益、Windows Web 和多用户隔离未验证，预算/纯代码仍 Python。
+- **后续测试执行与权限**：用户现已持续授权测试目的真实 DeepSeek API；涉及模型行为的端到端、场景和效果/成本验收默认使用服务器 `npm run web:real` / `npm run scenario:real`，不再用固定回复替代。单元、错误注入和无模型 smoke 仍为确定性诊断。运行前说明有效预算，先沿用既有 0.25 美元任务/整启动限额及实际请求上限做最小测试；超额、外部写操作和投稿另确认，不通过重启循环绕过限额。私有密钥不展示。正式 3080 仍是 mock，真实 SDK 结果不能当作真实 Web 验收。
+- **真实 SDK/API/MCP 已验证**：`web:real` / `scenario:real` 显式入口已完成；服务器原变量为 `DEEPSEEK_APIKEY`，已在项目根私有 `.env` 补规范 `DEEPSEEK_API_KEY` 并设权限 `600`，未展示值。`scenario:real` 的 example/baseline、`reasoning_effort="off"`、0.25 美元上限、单请求输出 1000 token、8 步运行退出 0，耗时 9.729 秒；运行 `7929653e0d9d4828bf46e4ff49394abd`，Session `sss-105f45630d444789bccf467f3718006a`。3 次真实上游请求均 HTTP 200，4 次真实 MCP（2 pin/2 read）、0 工具错误；两个来源的 ID、SHA、读取正文和回答引用逐项一致。prompt 2712 token（缓存命中 1536/未命中 1176）、output 1043、total 3755，代理估费约 0.001614 美元，账单实付未核对。记录见 `docs/experiments/deepseek-real-api-smoke-20261009-v1.md`；原目录 `.local/runs/7929653e0d9d4828bf46e4ff49394abd/`，原始轨迹、答案与 `verification.json` 已同步两端 `.local/experiments/deepseek-real-api-smoke-20261009-v1/`。支持基本连通，任务仍用合成来源，质量未盲评，无收益结论；既有 3080 未重启。
+- **当前接手优先级**：1. 项目负责人审阅公共改动，按可验收范围提交/PR，不混入私人材料和他人工作，再让同学同步。2. 各场景在服务器用真实 API 联调入口接自己的 MCP、真实输入；论文场景在独立 PR 推进，其交接不纳入本公共 PR。3. 固定质量标准、任务与配置，在已授权预算内执行最小真实验收并记录用量/人工修订；预算扩展另确认。不要再把模拟结果作为新增模型行为验收。
+
+## 已有基础与历史验证
+
+以下保留主线整理、分发、平台与服务器安装的历史依据；其中旧分支、测试数量、未实现前端等描述按发生时记录，当前状态以上述新增状态及 Web/论文交接为准。
+
 - **已完成**：通用场景入口 `scripts/run-scenario.py`、场景配置适配 `src/adapters/scenario.py`、SDK 启动边界 `src/adapters/harness_runtime.py`、工具白名单与在线 Motif 插件；保留 Motif 核心及许可来源、18 项冻结科研夹具。入口见 `README.md`，协议见 `docs/interfaces.md`，合作方式见 `docs/collaboration.md`。
 - **已验证**：此前在 macOS 及不含历史 `.local` 数据的临时目录执行 `npm test`，通过 133 项 Python、24 项 Node 测试；`npm run smoke` 通过 18 题、读取 83 个来源对象。另有本机模拟 Provider 的真实 SDK/MCP/预算代理闭环。以上属于离线协议与回归检查。本次纯文档修改检查 diff 和路径一致性，未重复运行模型或整套测试。
 - **最近复核（2026-10-09）**：回答项目结构与连通性问题时，在当前本机重新执行 `npm test` 和 `npm run smoke`，仍通过 133 项 Python、24 项 Node 及全部 18 题工具检查；包含真实 Harness 对本机模拟 Provider 的三次请求、两次 MCP 调用。没有付费云调用或新的科研效果结论。当前在线路径为场景配置 → Python SDK → Node Harness → 可选 JS Motif 插件 → MCP；Python controller 为独立结构执行路径。新场景接入 Harness 后，要另行收集轨迹、编译认证 library 并配置任务/embedding 才能启用 Motif。现有 `docs/collaboration.md` 未提交修改属于用户工作，本次保留。
@@ -322,8 +590,12 @@ TaskScene新契约修复全局重命名、明确转换原件/产物读取，以�
   2. 三位同学各开场景分支，复制 `scenarios/example/`，实现最小只读 MCP 链路；验收包括正常调用、版本/权限拒绝检查及各自场景交接记录。
   3. 选定真实独立研究决定，冻结任务、来源、基线、配置和质量标准；先预览预算，获得对应调用权限后再做付费对照。
 - **干净分发复核与提交范围**：在临时干净副本（没有旧 `.local`，复用已安装依赖）通过完整 `motif:check`；重编译和场景 shadow 预览均通过。此前未提交的三位同学姓名分工按用户的“推送当前最新代码”要求纳入；语义客户端待提交改动绕过跨平台适配，推送前修正回 `create_harness` 统一边界，`reasoning_effort="off"` 仍由该边界设置。没有修改 SDK 上游核心。
-- **权限与预算**：当前授权涵盖本地备份、主线整理、样例库开发及最新 main 提交和推送。此前整理和本次验收没有新增付费模型支出；团队后续总预算与剩余额度未知。没有授权本次发送邮件、写外部应用或开始新的付费实验。
+- **历史阶段权限与预算**：此前授权涵盖本地备份、主线整理、样例库开发及最新 main 提交和推送，整理与模拟验收无新增付费支出，当时没有新增真实实验授权。当前测试目的真实 API 持续授权以顶部新约定为准；发送邮件、外部写操作、实际投稿及超额支出仍需另确认。
 - **Windows CI 修复（2026-10-09）**：用户提供首次 Windows CI 的 8 个失败，已定位为 LF/CRLF 原始字节哈希、cp1252 解码中文和不适用的 Unix 模式位断言；前两份哈希差已由换行转换精确复现。新增 `.gitattributes`、入口 UTF-8 配置、显式文本读写及平台限定的模式位检查；保留冻结哈希与所有非模式位安全验收。本机仍通过 136 项 Python、29 项 Node。推送后以对应平台 CI 为准；细节见 `docs/experiments/windows-ci-compatibility.md`。未调用付费模型。
 - **回退与风险**：文档可按对应提交单独回退；完整历史可从两个归档分支查阅。不要直接把全部 archive 合回 main，也不要删除 `.local/`。通用入口的 `--call-model` 会启用付费调用；有副作用的 MCP 还需服务端权限、预览和确认。
 
 - **Windows CI 验证结果**：修复提交 `c05127f` 的 [运行 37888988141](https://github.com/jingyio/DeepSeek-Harless/actions/runs/37888988141) 中，Ubuntu 与 Windows 均完成并通过 `npm ci`、环境安装、`npm test`、`npm run smoke`、`npm run motif:check`。本地 `core.autocrlf=true` 干净检出额外验证了 79 个冻结文件的原始哈希。当前已验证离线及模拟闭环，不能扩大为所有真实应用/MCP 或付费云实验的支持结论。
+- **远程开发源码同步（2026-10-09）**：按用户授权，将 `main` 的 `2368235f274329be6227a8393b850633cb943da4` 及完整主线 Git 历史恢复到指定服务器 `/root/autodl-tmp/jjy`，`origin` 指向原 GitHub 仓库；本条交接更新尚未提交，也随源码同步。未传输本机 `.local/`、密钥、虚拟环境、`node_modules` 或缓存；归档分支未单独迁移。远端为 Linux x86_64，现有 Conda Python 为 3.10.8，未找到 Node.js；开发依赖尚未安装，未运行远端测试或付费任务。接手先准备 Node.js 20+ 与 Python 3.12，再按 `README.md` 执行 `npm ci`、`npm run setup` 和免费检查。此次只授权源码同步，没有新增模型支出；SSH 凭证不写入仓库。
+- **后续执行约定（2026-10-09，用户明确）**：用户负责论文生成与投稿场景，本地操作与审阅，后续 Agent 计算在服务器执行；运行前同步代码和输入，运行后同步交付与必要结果。已简短写入 `AGENTS.md`；本次仅更新文档，不安装环境或运行实验，文档改动未提交、未推送。
+- **环境要求修正（2026-10-09）**：Python 3.12 是已有 CI/本机验收版本，不能据此推断 3.10 不兼容。`src/`、`scripts/`、`tests/` 通过 3.10 语法解析；已安装固定直接依赖的元数据允许 3.10。远端 Ubuntu 22.04、x86_64、内核 5.4、glibc 2.35 满足 Node.js 22 官方 Linux 二进制平台条件；尚未安装 Node 或完成 Python 3.10 依赖安装及运行回归；远端依赖 dry-run 解析未完成后已停止，不构成不兼容证据。已修正 `README.md`，下一步优先核验现有 Python 3.10 与 Node 22 的免费闭环。最终展示采用本地浏览器访问服务器任务接口；该前端/API 尚未实现。本次没有付费调用。
+- **服务器免费闭环已完成（2026-10-09）**：更新上一条待验证状态。用户授权后在服务器安装项目隔离的 Node 22.23.3 / npm 10.9.9，沿用 Conda Python 3.10.8 创建 `.venv-sss`；依赖一致性检查、136 项 Python 与 29 项 Node 测试、18 题 / 83 对象 MCP smoke、4 个 Motif 重编译与 Harness baseline/shadow/execute/旧版本回退均通过，场景入口保持预览。没有为适配 3.10 修改源码；付费 API 请求为 0。记录见 `docs/experiments/server-python310-free-loop-20261009-v1.md`；配置与原始日志在两端 `.local/experiments/server-python310-free-loop-20261009-v1/`，启动先 `source .local/remote-env.sh`。安装中的慢速下载中止与缓存恢复已记录，不是功能失败。当前文档及验收记录未提交、未推送；用户 `reference/` 文件保留。下一步可在此环境接论文生成与投稿的最小 MCP 场景；尚未安装论文编译工具、联调真实论文或实现前端/API，付费任务及实际投稿仍需授权。

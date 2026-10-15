@@ -1,0 +1,181 @@
+[
+  {
+    "id": "allowed-identifier-only-change",
+    "input": {
+      "before_report": {
+        "scope": "synthetic-diagnostic",
+        "citation_issues": [],
+        "references": [
+          {
+            "key": "a",
+            "arxiv_id": "old-id",
+            "differences": [
+              "保留原判断"
+            ],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [
+              "source-one",
+              "source-two"
+            ],
+            "status": "示例"
+          }
+        ]
+      },
+      "after_report": {
+        "scope": "synthetic-diagnostic",
+        "citation_issues": [],
+        "references": [
+          {
+            "key": "a",
+            "arxiv_id": "new-id",
+            "differences": [
+              "保留原判断"
+            ],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [
+              "source-one",
+              "source-two"
+            ],
+            "status": "示例"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "existing_fields_preserved": true,
+      "top_level_preserved": true,
+      "changed_existing_records": []
+    }
+  },
+  {
+    "id": "source-order-changed",
+    "input": {
+      "before_report": {
+        "scope": "synthetic-diagnostic",
+        "citation_issues": [],
+        "references": [
+          {
+            "key": "a",
+            "arxiv_id": "old-id",
+            "differences": [
+              "保留原判断"
+            ],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [
+              "source-one",
+              "source-two"
+            ],
+            "status": "示例"
+          }
+        ]
+      },
+      "after_report": {
+        "scope": "synthetic-diagnostic",
+        "citation_issues": [],
+        "references": [
+          {
+            "key": "a",
+            "arxiv_id": "new-id",
+            "differences": [
+              "保留原判断"
+            ],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [
+              "source-two",
+              "source-one"
+            ],
+            "status": "示例"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "existing_fields_preserved": false,
+      "top_level_preserved": true,
+      "changed_existing_records": [
+        {
+          "key": "a",
+          "arxiv_id": "new-id",
+          "differences": [
+            "保留原判断"
+          ],
+          "evidence_status": "示例",
+          "formal_version": "未判断",
+          "next_action": "保留",
+          "priority": "—",
+          "source_urls": [
+            "source-two",
+            "source-one"
+          ],
+          "status": "示例"
+        }
+      ]
+    }
+  },
+  {
+    "id": "top-level-state-changed",
+    "input": {
+      "before_report": {
+        "scope": "synthetic-diagnostic",
+        "citation_issues": [],
+        "references": [
+          {
+            "key": "a",
+            "arxiv_id": "old-id",
+            "differences": [
+              "保留原判断"
+            ],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [
+              "source-one",
+              "source-two"
+            ],
+            "status": "示例"
+          }
+        ]
+      },
+      "after_report": {
+        "scope": "different-scope",
+        "citation_issues": [],
+        "references": [
+          {
+            "key": "a",
+            "arxiv_id": "new-id",
+            "differences": [
+              "保留原判断"
+            ],
+            "evidence_status": "示例",
+            "formal_version": "未判断",
+            "next_action": "保留",
+            "priority": "—",
+            "source_urls": [
+              "source-one",
+              "source-two"
+            ],
+            "status": "示例"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "existing_fields_preserved": true,
+      "top_level_preserved": false,
+      "changed_existing_records": []
+    }
+  }
+]

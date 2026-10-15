@@ -4,7 +4,7 @@
   const endpoint = '/api/harless/tasks';
   const dialog = document.createElement('dialog');
   dialog.id = 'harless-native-confirmation';
-  dialog.setAttribute('aria-label', '确认 DeepSeek Harless 任务');
+  dialog.setAttribute('aria-label', '确认 GeneLoop 任务');
   dialog.style.cssText = 'max-width:620px;width:calc(100% - 48px);border:1px solid #ddd;border-radius:14px;padding:24px;background:white;color:#202124;';
   const element = (tag, text) => { const node = document.createElement(tag); node.textContent = text; dialog.append(node); return node; };
   element('h2', '确认本次任务与预算');
@@ -32,7 +32,9 @@
   function close() { if (dialog.open) dialog.close(); current = null; }
   function show(task) {
     current = task; error.textContent = '';
-    summary.textContent = `模式：${task.mode}；场景：${task.capability_profile}；本任务上限：$${task.budget_usd}；全局上限：$${task.stats?.global_budget_usd ?? '见工作台'}。`;
+    const runCap = task.stats?.global_budget_usd;
+    const runBudget = runCap === null ? '不限' : runCap === undefined ? '见工作台' : `$${runCap}`;
+    summary.textContent = `模式：${task.mode}；场景：${task.capability_profile}；本任务上限：$${task.budget_usd}；全局上限：${runBudget}。`;
     input.textContent = task.input_preview || JSON.stringify(task.input_summary, null, 2);
     effects.textContent = '仅使用服务器配置的 MCP；写入操作仍需场景工具自身确认。新任务不会重置全局预算。';
     link.href = '/tasks?task_id=' + encodeURIComponent(task.task_id);

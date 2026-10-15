@@ -23,6 +23,7 @@ export type RequestContext = {
   max_budget_usd: number;
   default_profile: string;
   allowed_profiles: readonly string[];
+  /** Encoded image payload safety limit; user text is not length-capped. */
   max_content_bytes?: number;
   max_parts?: number;
   max_messages?: number;
@@ -138,7 +139,7 @@ export function normalizeWebTaskRequest(input: unknown, context: RequestContext)
     const row = object(value, field);
     if (row.type === 'text') {
       keys(row, ['type', 'text'], field);
-      const value = text(row.text, `${field}.text`); countBytes(value, field);
+      const value = text(row.text, `${field}.text`);
       return { type: 'text', text: value };
     }
     if (row.type === 'file') {

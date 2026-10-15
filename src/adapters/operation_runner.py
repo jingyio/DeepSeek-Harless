@@ -15,9 +15,12 @@ from src.motif_core.offline.experience_registry import durable,digest
 def initialize_job(file,task,delivery,limits):
     import sys
     sys.path.insert(0,str(ROOT/'scenarios/file-management'))
-    from operation_tools_v2 import operation_version
+    if json.loads(Path(task).read_text()).get('management_contract'):
+        from management_tools import execution_version as operation_version
+    else:
+        from operation_tools_v2 import operation_version
     if not Path(file).exists():command(file,'init',{'task_file':str(task),'delivery_root':str(delivery),'execution_version_sha256':operation_version(),
-        'limits':{**limits,'max_requests':limits['max_steps']}})
+        'limits':{**limits,'max_requests':limits.get('max_requests',limits['max_steps'])}})
     s=command(file,'state')['state']
     if s['task_sha256']!=sha(task) or s['execution_version_sha256']!=operation_version():raise ValueError('frozen durable task/version changed')
     return s

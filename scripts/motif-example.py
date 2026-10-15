@@ -159,7 +159,7 @@ def next_fixture_action(values, event_id):
                   'source_versions': {key: reads[key]['version_sha256'] for key in sorted(reads)}}
 
 
-def provider_handler(event_id, *, with_usage=False, request_limit=24):
+def provider_handler(event_id, *, with_usage=False, request_limit=24, action_selector=None):
     class LocalFixtureProvider(BaseHTTPRequestHandler):
         calls = []
         embedding_calls = 0
@@ -184,10 +184,11 @@ def provider_handler(event_id, *, with_usage=False, request_limit=24):
                 answer = json.dumps(data).encode()
                 self.send_response(200); self.send_header('Content-Type', 'application/json')
             elif self.path == '/v1/chat/completions':
-                if len(self.calls) >= request_limit:
+                if request_limit is not None and len(self.calls) >= request_limit:
                     raise ValueError('local fixture request limit reached')
                 self.calls.append(body)
-                tool, args = next_fixture_action(tool_observations(body['messages']), event_id)
+                observations = tool_observations(body['messages'])
+                tool, args = action_selector(observations, event_id, body) if action_selector else next_fixture_action(observations, event_id)
                 delta = {'role': 'assistant'}
                 if tool:
                     delta['tool_calls'] = [{'index': 0, 'id': 'fixture-call-' + str(len(self.calls)),

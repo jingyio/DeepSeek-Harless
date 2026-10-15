@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "kind": "paper_batch_shadow_v1",
+  "execution_policy": "shadow_only",
+  "original_file_sha256": "1159cfcfb428e3d14215d8ec0f202488315195a23bc9d58ce42fac822cd04bf2",
+  "original_manifest_digest": "40a0052ba7be7f3e57e0f279be2865798e1804a10095c496153f7f4fa6ae0d95",
+  "tools": [
+    {
+      "name": "mcp__paper_trace_rsi__apply_revision_plan",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "report_sha256": {
+            "type": "string"
+          },
+          "plan": {
+            "type": "object",
+            "properties": {
+              "set_ids": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "arxiv_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "arxiv_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "keep_once_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "remove_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "add_records": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "arxiv_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "待进一步核验"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "arxiv_id",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "set_ids",
+              "keep_once_keys",
+              "remove_keys",
+              "add_records"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "report_sha256",
+          "plan"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp__paper_trace_rsi__export_revision_report",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "input_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "input_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp__paper_trace_rsi__read_task_state",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp__paper_trace_rsi__triage_revision_audit",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "input_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "input_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "motifs": [
+    {
+      "motif_id": "trace-rsi-batch-79c5b30d39c18952",
+      "anchor": "mcp__paper_trace_rsi__triage_revision_audit",
+      "batch": [
+        {
+          "tool": "mcp__paper_trace_rsi__export_revision_report",
+          "arguments_binding": {
+            "input_id": "/input_id"
+          },
+          "result_kind": "private_artifact_output",
+          "effect": "private_current_report_export"
+        }
+      ],
+      "training_session_count": 2,
+      "support": "repeated_sessions",
+      "status": "shadow_candidate"
+    },
+    {
+      "motif_id": "trace-rsi-batch-a4745d7c241b8bd7",
+      "anchor": "mcp__paper_trace_rsi__apply_revision_plan",
+      "batch": [
+        {
+          "tool": "mcp__paper_trace_rsi__triage_revision_audit",
+          "arguments_binding": {
+            "input_id": "/input_id"
+          },
+          "result_kind": "candidate_output"
+        }
+      ],
+      "training_session_count": 2,
+      "support": "repeated_sessions",
+      "status": "shadow_candidate"
+    }
+  ],
+  "scope": "normal_case_sessions_same_paper",
+  "limitations": [
+    "同论文正常案例及独立 Session，不是跨论文认证。",
+    "批次来自完整下一请求的声明、派发、结果；不编造场景 DAG 或工具顺序。",
+    "只支持冻结候选句柄和实际无参状态读取；未知项、失败或收据变化拒绝整批。",
+    "返回正文留在私有轨迹；库的结果契约与摘要需由当前版本在线复核。",
+    "单 Session 候选保留；至少两个独立 Session 支持才允许 Shadow 预测。",
+    "完整工具集合不覆盖科研旁白；文字原样保存，严格无文本机会须另计。",
+    "未从本批学习结束条件；重复检查的在线保守拒绝不称学习所得守卫。",
+    "摘要不认证来源签名，不授权执行、模型跳过或费用节省。"
+  ],
+  "witness_sha256": "830502c5fd698c4bef246aea253666cab69c4fd38c12945ab9ccedb6e0490c42"
+}

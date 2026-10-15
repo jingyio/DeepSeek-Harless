@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "literature_session",
+  "prompt": "web-task.md",
+  "servers": [{"server_name": "literature_web", "transport": "stdio", "command": "${PYTHON}",
+    "args": ["${PROJECT_ROOT}/scenarios/literature-notes/session_tools.py"], "cwd": "${PROJECT_ROOT}",
+    "env": {"SSS_PDF_WEB_TASK": "${SESSION_WORKSPACE}/literature"}}],
+  "allowed_tools": [
+    "mcp__literature_web__list_pdfs", "mcp__literature_web__prepare_pdf", "mcp__literature_web__search_pdf_text",
+    "mcp__literature_web__pin_pdf_context", "mcp__literature_web__read_pinned_pdf_context",
+    "mcp__literature_web__read_pdf_evidence_plan", "mcp__literature_web__preview_research_notes",
+    "mcp__literature_web__read_claim_repair_packet", "mcp__literature_web__search_claim_evidence",
+    "mcp__literature_web__read_claim_evidence_plan", "mcp__literature_web__submit_claim_repair",
+    "mcp__literature_web__read_final_synthesis", "mcp__literature_web__deliver_research_notes"
+  ]
+}

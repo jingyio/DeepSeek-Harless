@@ -114,7 +114,7 @@ def launch(scenario, fixture='normal'):
     base = 'http://127.0.0.1:3083'
     with (logs / f'{run_id}.log').open('w', encoding='utf-8') as log:
         child = subprocess.Popen([sys.executable, str(ROOT / 'scripts/harness-web.py'),
-            '--scenario', scenario, '--mode', 'baseline', '--port', '3083',
+            '--scenario', scenario, '--scene-registry', 'config/harless-diagnostics.json', '--mode', 'baseline', '--port', '3083',
             '--run-id', run_id, '--fixture', fixture], cwd=ROOT,
             stdout=log, stderr=subprocess.STDOUT)
         try:
@@ -129,16 +129,21 @@ def launch(scenario, fixture='normal'):
             opener = client()
             status, _ = request(opener, base, '/api/harless/tasks')
             assert status == 401, f'Unauthenticated task API accepted: {status}'
-            try:
-                opener.open(base + '/tasks', timeout=10)
-                raise AssertionError('Unauthenticated task panel accepted')
-            except urllib.error.HTTPError as error:
-                assert error.code == 401
             with opener.open((output / 'access-url.txt').read_text(encoding='utf-8'), timeout=20) as response:
                 assert response.status == 200
-            with opener.open(base + '/tasks', timeout=20) as response:
+            with opener.open(base + '/', timeout=20) as response:
                 assert response.status == 200
-                assert 'DeepSeek Harless 任务工作台' in response.read().decode('utf-8')
+                index = response.read().decode('utf-8')
+                assert 'deepseek-harless-web-client' in index
+                assert 'DeepSeek Harless 任务工作台' not in index
+            status, listing = request(opener, base, '/api/harless/tasks')
+            assert status == 200 and any(row['model'] == 'deepseek-flash' for row in listing['model_options'])
+            try:
+                with opener.open(base + '/tasks', timeout=10) as response:
+                    old_page = response.read().decode('utf-8')
+            except urllib.error.HTTPError as error:
+                old_page = error.read().decode('utf-8', errors='replace')
+            assert 'DeepSeek Harless 任务工作台' not in old_page
             yield opener, base, output
         finally:
             if child.poll() is None:
@@ -186,12 +191,14 @@ def example_checks():
             'inputs': [{'resource_id': 'unregistered-resource'}]}})
         rows.append({'group': 'strict-input-and-resource-denials', 'passed': True})
 
-        execute = preview(opener, base, {'instruction': '阅读笔记，检查现有实验是否可比。', 'mode': 'execute'})
-        submit(opener, base, execute)
-        execute = wait_task(opener, base, execute['task_id'])
-        assert execute['mode'] == 'execute' and statistics(execute)['verified_skips'] == 0
-        assert statistics(execute)['upstream_requests'] == 5
-        rows.append(summary('no-library-safe-fallback', execute))
+        code = denied(opener, base, {'action': 'preview', 'request': {'instruction': '阅读笔记，检查现有实验是否可比。', 'mode': 'execute'}})
+        assert code == 'execute_unavailable', code
+        fallback = preview(opener, base, {'instruction': '阅读笔记，检查现有实验是否可比。', 'mode': 'shadow'})
+        submit(opener, base, fallback)
+        fallback = wait_task(opener, base, fallback['task_id'])
+        assert fallback['fallback_reason'] == 'no_certified_library' and statistics(fallback)['verified_skips'] == 0
+        assert statistics(fallback)['upstream_requests'] == 5
+        rows.append(summary('no-library-shadow-fallback-and-execute-denial', fallback))
 
         # 文件必须绑定同一 draft/session；上传后的旧摘要不能授权新内容。
         file_task = preview(opener, base, {'instruction': '读取笔记并核对附加的说明文件。'})

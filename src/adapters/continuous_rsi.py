@@ -42,6 +42,11 @@ LEARNER += ['src/motif_core/offline/operation_graph_v1.py','src/motif_core/opera
     'scenarios/file-management/operation_prepare_v2.py','src/adapters/operation_job.ts','src/adapters/file_workflow_job.ts',
     'src/adapters/operation_budget.py','src/adapters/operation_runner.py','src/adapters/persistent_file_rsi.py',
     'src/adapters/persistent_web_budget.py','src/adapters/process_state.py','src/adapters/dsh_acceptance_guard.ts','src/adapters/scenario.py']
+LEARNER += ['scenarios/file-management/management_tools.py','scenarios/file-management/management_contract.py',
+    'scenarios/file-management/management_prepare.py','src/adapters/dsh_web_tasks_legacy.ts','src/adapters/dsh_geneloop_tasks.ts',
+    'scripts/harness-web-legacy.py','scripts/harness-geneloop.py']
+LEARNER += ['scenarios/file-management/management_web.py','scenarios/file-management/management_native.py',
+    'src/adapters/harless_management.ts','src/adapters/harless_task_scope.ts','src/adapters/harless_web_client/client.js','scenarios/file-management/management_study.py']
 
 
 def private(path):
@@ -119,7 +124,9 @@ def load_config(path):
     roots=[]
     for value in cfg['workspace_roots']:
         p=Path(value).absolute()
-        if not p.is_relative_to(DATA.absolute()) or p==DATA.absolute() or any(q.is_symlink() for q in (p,*p.parents)):
+        management_root=ROOT/'.local/management-copies'
+        in_management=cfg.get('adapter')=='management_v3' and p.is_relative_to(management_root.absolute()) and p!=management_root.absolute()
+        if (not in_management and (not p.is_relative_to(DATA.absolute()) or p==DATA.absolute())) or any(q.is_symlink() for q in (p,*p.parents)):
             raise ValueError('RSI workspace roots require specific authorized experiment copies')
         roots.append(str(p.resolve()))
     if not roots: raise ValueError('no authorized RSI workspace')
@@ -204,8 +211,10 @@ def reserve(cfg, session, cap):
         current=series_accounting()
         pending=sum(r['cap_usd'] for p in STATE_HOME.glob('*/pool.json') for r in read(p)['runs'].values() if r['status']=='reserved')
         if current['estimated_usd']+pending+cap>cfg['series_cap_usd']: raise ValueError('original series budget exhausted')
-        learned=sum(r['cost_usd'] for r in pool['runs'].values() if r['status']=='settled' and r['role']!='ordinary')
-        booked=sum(r['cap_usd'] for r in pool['runs'].values() if r['status']=='reserved' and r['role']!='ordinary')
+        # A new adapter/version cannot receive a fresh independent learning cap.
+        all_runs=[r for p in STATE_HOME.glob('*/pool.json') for r in read(p)['runs'].values()]
+        learned=sum(r['cost_usd'] for r in all_runs if r['status']=='settled' and r['role']!='ordinary')
+        booked=sum(r['cap_usd'] for r in all_runs if r['status']=='reserved' and r['role']!='ordinary')
         if cfg['role']!='ordinary' and learned+booked+cap>cfg['learning_cap_usd']:
             raise ValueError('continuous learning budget exhausted')
         pool['runs'][session]={'status':'reserved','cap_usd':cap,'role':cfg['role'],'pid':os.getpid(),'reserved_at':time.time()}
@@ -269,7 +278,7 @@ def enroll(config_file, prepared, session, out, args, env):
     limits=cfg['limits']
     if args.budget_usd>limits['budget_usd'] or args.max_steps>limits['max_steps'] or args.max_output>limits['max_output']:
         raise ValueError('ordinary run exceeds original RSI task bounds')
-    if not prepared.get('acceptance_guard') or prepared['acceptance_guard'].get('durable_job') and cfg.get('adapter')!='file_operations_v2':
+    if not prepared.get('acceptance_guard') or prepared['acceptance_guard'].get('durable_job') and cfg.get('adapter') not in ('file_operations_v2','management_v3'):
         raise ValueError('continuous read tasks require the original independent file acceptance guard')
     if prepared['acceptance_guard']['max_repairs']>limits['max_repairs']: raise ValueError('repair grant exceeds original RSI limits')
     task_file=private(env.get('FM_TASK_FILE') or os.environ.get('FM_TASK_FILE',''))
@@ -304,14 +313,15 @@ def enroll(config_file, prepared, session, out, args, env):
                 'task_sha256':sha(task_file),'prompt_sha256':prepared['prompt_sha256'],
                 'runtime_sha256':sha(ROOT/'src/adapters/dsh_experience.ts'),'audit_file':str(out/'experience-audit.jsonl')}
     durable(out/'experience-binding.json',experience,exclusive=True)
-    binding={'session_id':session,'task_file':str(task_file),'task_sha256':sha(task_file),'observer_sha256':sha(ROOT/'src/adapters/dsh_continuous_rsi.ts'),
+    actual_session=env.get('SSS_RSI_ACTUAL_SESSION',session)
+    binding={'session_id':actual_session,'task_file':str(task_file),'task_sha256':sha(task_file),'observer_sha256':sha(ROOT/'src/adapters/dsh_continuous_rsi.ts'),
              'allowed_tools':prepared['allowed_tools'],'event_file':str(out/'rsi-lifecycle.jsonl'),'schema_file':str(out/'rsi-runtime-schemas.json')}
     durable(out/'rsi-binding.json',binding,exclusive=True)
     if scene:
         from src.motif_core.offline.operation_graph import catalog
         operation={**experience,'scope':scene.scope(spec),'catalog':catalog(schemas),'runtime_source':source_map(scene.runtime_sources()),
-                   'session_id':session,'allowed_tools':prepared['allowed_tools'],
-                   **({'job_file':env['FM_JOB_FILE']} if cfg.get('adapter')=='file_operations_v2' else {})}
+                   'session_id':actual_session,'allowed_tools':prepared['allowed_tools'],
+                   **({'job_file':env['FM_JOB_FILE']} if cfg.get('adapter') in ('file_operations_v2','management_v3') else {})}
         durable(out/'operation-binding.json',operation,exclusive=True)
         env['SSS_OPERATION_BINDING']=str(out/'operation-binding.json')
     gate='dsh_operation_motif.ts' if scene else 'dsh_experience.ts'
@@ -320,11 +330,11 @@ def enroll(config_file, prepared, session, out, args, env):
     durable(out/'rsi.patch.yml',patch,exclusive=True)
     env.update(SSS_EXPERIENCE_BINDING=str(out/'experience-binding.json'),SSS_CONTINUOUS_RSI_BINDING=str(out/'rsi-binding.json'))
     context={'config':cfg,'origin':str(origin),'out':str(out),'spec':spec,'delivery':str(delivery),'task_file':str(task_file),
-             'registry_file':str(registry_file),'registry_sha256':sha(registry_file),'session_id':session,'scenario_file':str(args.scenario.resolve()),
+             'registry_file':str(registry_file),'registry_sha256':sha(registry_file),'session_id':session,'actual_session_id':actual_session,'scenario_file':str(args.scenario.resolve()),
              'scenario_sha256':sha(args.scenario),'prompt_sha256':digest(prepared['prompt']),
              'prompt':prepared['prompt'],'source_sha256':digest(source_map()),'arguments':{'model':args.model,'budget_usd':args.budget_usd,
                'max_steps':args.max_steps,'max_output':args.max_output},'candidate_job':cfg.get('candidate_job'),
-             **({'job_file':env['FM_JOB_FILE']} if cfg.get('adapter')=='file_operations_v2' else {})}
+             **({'job_file':env['FM_JOB_FILE']} if cfg.get('adapter') in ('file_operations_v2','management_v3') else {})}
     durable(origin/'enrollment.json',context,exclusive=True)
     return context,str(out/'rsi.patch.yml')
 
@@ -337,7 +347,7 @@ def seal(context, metrics):
         if prior['source_sha256']!=context['source_sha256'] or prior['task_sha256']!=sha(origin/'task.json'):raise ValueError('original seal binding changed')
         metrics=prior['metrics']
     lifecycle=[json.loads(l) for l in (out/'rsi-lifecycle.jsonl').read_text().splitlines()] if (out/'rsi-lifecycle.jsonl').exists() else []
-    signals=[r for r in lifecycle if r.get('kind')=='task_lifecycle_end' and r.get('session_id')==session]
+    signals=[r for r in lifecycle if r.get('kind')=='task_lifecycle_end' and r.get('session_id')==context.get('actual_session_id',session)]
     ledger=out/'cost-ledger.jsonl'
     cost_review=ledger_accounting(ledger,metrics);accounted=cost_review['accounting_complete']
     http_rows=[json.loads(l) for l in ledger.read_text().splitlines()] if ledger.exists() else []
@@ -348,7 +358,7 @@ def seal(context, metrics):
     policy_digest=selected[0]['entry_id'] if selected else None
     steps=[r for r in audit if r['kind'] in ('collection_model_request_bypassed_verified','operation_model_request_bypassed_verified')]
     actual_schemas_ok=False
-    signal_ok=len(signals)==1 or cfg.get('adapter')=='file_operations_v2' and len(signals)>=1
+    signal_ok=len(signals)==1 or cfg.get('adapter') in ('file_operations_v2','management_v3') and len(signals)>=1
     if (out/'rsi-runtime-schemas.json').exists() and signal_ok:
         actual=read(out/'rsi-runtime-schemas.json');expected=read(origin/'tool-schemas.json')
         actual_schemas_ok=all(digest(actual)==s['runtime_schema_sha256'] and s['binding_sha256']==sha(out/'rsi-binding.json') for s in signals) and all(

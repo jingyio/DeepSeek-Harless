@@ -2,7 +2,7 @@
 
 The control endpoint is loopback-only and token authenticated. Registration is
 immutable and inactive until a confirmed task is activated. Every model call
-reserves against both its task cap and the unchanged whole-launch cap. It logs
+reserves against its task cap and any configured whole-launch cap. It logs
 only counters/usage and identities, never prompt bodies or authentication keys.
 """
 from __future__ import annotations
@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import parse_qs, urlsplit
 
-from src.adapters.deepseek_cost_gate import State, reservation
+from src.adapters.deepseek_cost_gate import (State, normalize_request_limit, normalize_output_limit,
+    reservation, validate_cost_cap)
 
 TASK_ID = re.compile(r"^[a-f0-9]{32}$")
 USAGE_FIELDS = ("prompt_tokens", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens",
@@ -35,11 +36,12 @@ def session_identity(value: Any) -> str:
 class RoutedState:
     """State-compatible book/settle/log facade for one registered task."""
     def __init__(self, registry: TaskBudgetRegistry, task_id: str, session_id: str,
-                 state: State):
+                 state: State, model: str):
         self.registry = registry
         self.task_id = task_id
         self.session_id = session_id
         self.state = state
+        self.model = model
         self.active = False
         self.cancelled = False
         self.denials = 0
@@ -51,7 +53,10 @@ class RoutedState:
         self.active_session_id=session_id;self.current_pending=set()
 
     def book(self, body: bytes) -> tuple[int, str, float, int] | None:
-        model, dollars, ceiling = reservation(body, max_output=self.state.output_cap)
+        model, dollars, ceiling = reservation(body, max_output=self.state.output_cap,
+                                              rates=self.state.rates)
+        if model != self.model:
+            raise ValueError('request model differs from confirmed task model')
         run = self.registry.run_state
         # All routed admissions/settlements share this lock. Holding both State
         # locks makes the two reservations atomic even against other readers.
@@ -60,7 +65,7 @@ class RoutedState:
                 self.denials += 1
                 return None
             for state in (run, self.state):
-                if (state.reserved_usd + dollars > state.cap_usd or
+                if ((state.cap_usd is not None and state.reserved_usd + dollars > state.cap_usd) or
                         (state.request_limit is not None and state.request_count >= state.request_limit)):
                     self.denials += 1
                     return None
@@ -72,6 +77,7 @@ class RoutedState:
                 state.reserved_usd += dollars
                 state.request_count += 1
                 state.pending[state.request_count] = dollars
+                state.checkpoint_locked()
             request_id = self.state.request_count
             self._global_ids[request_id] = run.request_count
             self.current_pending.add(request_id)
@@ -132,19 +138,18 @@ class TaskBudgetRegistry:
     def __init__(self, *, run_state: State, tasks_root: Path,
                  max_task_budget_usd: float | None = None,
                  task_request_limit: int | None = None):
-        if (not isinstance(run_state.cap_usd, (int, float)) or isinstance(run_state.cap_usd, bool)
-                or not math.isfinite(run_state.cap_usd) or run_state.cap_usd < 0
-                or type(run_state.output_cap) is not int or run_state.output_cap < 1):
-            raise ValueError("invalid whole-launch budget state")
+        validate_cost_cap(run_state.cap_usd)
+        normalize_output_limit(run_state.output_cap)
         maximum = run_state.cap_usd if max_task_budget_usd is None else max_task_budget_usd
         if (not isinstance(maximum, (int, float)) or isinstance(maximum, bool)
-                or not math.isfinite(maximum) or not 0 <= maximum <= run_state.cap_usd):
-            raise ValueError("task maximum must not exceed whole-launch cap")
+                or not math.isfinite(maximum) or maximum < 0
+                or (run_state.cap_usd is not None and maximum > run_state.cap_usd)):
+            raise ValueError("a finite task maximum is required and must not exceed whole-launch cap")
         self.run_state = run_state
         self.max_task_budget_usd = float(maximum)
-        if task_request_limit is not None and (type(task_request_limit) is not int or task_request_limit < 1):
-            raise ValueError("task_request_limit must be a positive integer")
-        self.task_request_limit = run_state.request_limit if task_request_limit is None else task_request_limit
+        # An unlimited task does not inherit a request-count cap. The independent
+        # global count/dollar checks remain enforced by RoutedState.book().
+        self.task_request_limit = normalize_request_limit(task_request_limit, 'task_request_limit')
         self.tasks_root = Path(tasks_root).resolve()
         if ".local" not in self.tasks_root.parts:
             raise ValueError("task ledgers must stay inside a private .local directory")
@@ -154,11 +159,12 @@ class TaskBudgetRegistry:
         self.by_task: dict[str, RoutedState] = {}
         self.route_denials = 0
 
-    def register(self, task_id: str, session_id: str, budget_usd: float,job_file=None,ledger_file=None) -> dict[str, Any]:
+    def register(self, task_id: str, session_id: str, budget_usd: float,model: str = 'deepseek-flash',job_file=None,ledger_file=None) -> dict[str, Any]:
         if not isinstance(task_id, str) or TASK_ID.fullmatch(task_id) is None:
             raise ValueError("task_id must be 32 lowercase hexadecimal characters")
         session_id = session_identity(session_id)
         restoring=bool(job_file and ledger_file and Path(ledger_file).is_file())
+        if model not in self.run_state.rates:raise ValueError('task model is not priced by the server')
         if (not isinstance(budget_usd, (int, float)) or isinstance(budget_usd, bool)
                 or not math.isfinite(budget_usd) or budget_usd<0 or budget_usd>self.max_task_budget_usd and not restoring):
             raise ValueError("task budget exceeds the server maximum")
@@ -166,7 +172,7 @@ class TaskBudgetRegistry:
             existing = self.by_session.get(session_id) or self.by_task.get(task_id)
             if existing is not None:
                 if (existing.task_id != task_id or existing.session_id != session_id
-                        or existing.state.cap_usd != budget_usd):
+                        or existing.state.cap_usd != budget_usd or existing.model != model):
                     raise ValueError("immutable task registration conflicts")
                 return self.stats(session_id)
             directory = self.tasks_root / task_id
@@ -185,14 +191,14 @@ class TaskBudgetRegistry:
                 if not job_file:raise ValueError("task ledger exists; register a new task identity") from error
             else:os.close(descriptor)
             state = State(cap_usd=float(budget_usd), output_cap=self.run_state.output_cap,
-                          request_limit=self.task_request_limit, record=ledger)
-            route = RoutedState(self, task_id, session_id, state)
+                          request_limit=self.task_request_limit, record=ledger,rates=self.run_state.rates,cache_rates=self.run_state.cache_rates)
+            route = RoutedState(self, task_id, session_id, state, model)
             if job_file:
                 from .operation_budget import command
                 from .continuous_rsi import private
                 job_file=private(job_file);s=command(job_file,'state')['state']
-                if s['limits']['budget_usd']!=budget_usd or not restoring and (s['limits']['max_requests']!=self.task_request_limit or s['limits']['max_output']!=state.output_cap):raise ValueError('original task budget binding changed')
-                if restoring:state.request_limit=s['limits']['max_requests'];state.output_cap=s['limits']['max_output']
+                if s['limits']['budget_usd']!=budget_usd or not restoring and ((self.task_request_limit is not None and s['limits']['max_requests']>self.task_request_limit) or (state.output_cap is not None and s['limits']['max_output']>state.output_cap)):raise ValueError('original task budget binding changed')
+                state.request_limit=s['limits']['max_requests'];state.output_cap=s['limits']['max_output']
                 route.job_file=str(job_file);state.request_count=s['requests'];state.reserved_usd=s['spent_units']/1e9
                 state.pending={int(k):v['amount']/1e9 for k,v in s['pending'].items()}
                 rows=[json.loads(l) for l in ledger.read_text().splitlines()]
@@ -266,7 +272,9 @@ class TaskBudgetRegistry:
     def alias(self,session_id,alias_session_id):
         with self.lock:
             r=self._route(session_id);alias_session_id=session_identity(alias_session_id)
-            if not r.job_file or r.active or r.cancelled or alias_session_id in self.by_session:raise ValueError('invalid original task continuation alias')
+            previous=self.by_session.get(alias_session_id)
+            if not r.job_file or r.active or r.cancelled or previous is not None and (previous.active or previous.current_pending):raise ValueError('invalid original task continuation alias')
+            if previous is not None and previous is not r and not previous.cancelled:raise ValueError('previous conversation budget has not closed')
             self.by_session[alias_session_id]=r;r.active_session_id=alias_session_id
             return self.stats(session_id)
 
@@ -286,6 +294,19 @@ class TaskBudgetRegistry:
             if route.job_file and session_id!=route.active_session_id:raise PermissionError('prior task session cannot issue new requests')
             return route
 
+    def active_state_for(self, _headers: Mapping[str, str]) -> RoutedState:
+        """Route a token-authenticated adapter that cannot forward session headers.
+
+        Dynamic Web admission permits only one running task. Refuse ambiguous
+        routing instead of charging a different session's ledger.
+        """
+        with self.lock:
+            active = [route for route in self.by_session.values() if route.active and not route.cancelled]
+            if len(active) != 1:
+                self.route_denials += 1
+                raise PermissionError('exactly one active task is required')
+            return active[0]
+
     def stats(self, session_id: str) -> dict[str, Any]:
         with self.lock:
             route = self._route(session_id)
@@ -293,6 +314,7 @@ class TaskBudgetRegistry:
                 return {"task_id": route.task_id, "session_id": route.session_id,
                         "active": route.active, "cancelled": route.cancelled,
                         "budget_usd": route.state.cap_usd,
+                        "model": route.model,
                         "request_limit": route.state.request_limit,
                         "output_cap": route.state.output_cap,
                         "upstream_requests": route.state.request_count,
@@ -374,7 +396,8 @@ def create_control_server(host: str, port: int, registry: TaskBudgetRegistry, *,
                 if self.path=='/tasks/recover':expected={'session_id','owner_pid'}
                 if self.path=='/tasks/alias':expected={'session_id','alias_session_id'}
                 if self.path=='/tasks/register' and isinstance(value,dict) and 'job_file' in value:expected|={'job_file','ledger_file'}
-                if not isinstance(value, dict) or set(value) != expected:
+                allowed = expected | ({'model'} if self.path == '/tasks/register' else set())
+                if not isinstance(value, dict) or not expected <= set(value) or not set(value) <= allowed:
                     raise ValueError("invalid task budget control fields")
                 self.reply(200, routes[self.path](**value))
             except KeyError:

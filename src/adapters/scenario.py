@@ -11,7 +11,11 @@ NAME = re.compile(r'^[a-z][a-z0-9_]{0,31}$')
 ENV_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
 
-def prepare_scenario(path: Path, *, case: str = '', tool_presentation: str = 'native', entry_motif: bool = False) -> dict:
+def prepare_scenario(path: Path, *, case: str = '', session_workspace: str | None = None,
+                     tool_presentation: str = 'native', entry_motif: bool = False,
+                     web_deployment: bool = False) -> dict:
+    if type(web_deployment) is not bool:
+        raise ValueError('web_deployment must be boolean')
     if type(entry_motif) is not bool or entry_motif and tool_presentation != 'native':
         raise ValueError('entry Motif requires native tool presentation')
     if tool_presentation not in ('native', 'ptc'):
@@ -25,6 +29,8 @@ def prepare_scenario(path: Path, *, case: str = '', tool_presentation: str = 'na
     if case and not NAME.fullmatch(case):
         raise ValueError('invalid case name')
     substitutions = {'PROJECT_ROOT': str(ROOT), 'PYTHON': sys.executable, 'CASE': case}
+    if session_workspace is not None:
+        substitutions['SESSION_WORKSPACE'] = session_workspace
     references = {}
     required_env = []
 
@@ -122,6 +128,9 @@ def prepare_scenario(path: Path, *, case: str = '', tool_presentation: str = 'na
         insert['insert'].append({'id': 'sss-container-code-runtime',
             'name': (ROOT / 'src/adapters/dsh_code_container.ts').as_uri()})
     base += '\n- id: system-prompt\n  config:\n    personaPrefix: You complete the requested task using the permitted MCP evidence.\n    personaSuffix: Cite source IDs and versions. Do not invent evidence or perform unapproved writes.\n'
+    if web_deployment:
+        from .harless_product_prompt import product_system_prompt
+        base += '\n- ' + json.dumps({'id': 'system-prompt', 'config': product_system_prompt()}, ensure_ascii=False) + '\n'
     # JSON is valid YAML; environment tags contain quoted JS expressions.
     rendered = base + '\n- ' + json.dumps(insert, ensure_ascii=False, indent=2).replace('\n', '\n  ') + '\n'
     for token, expression in references.items():

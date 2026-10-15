@@ -1,0 +1,42 @@
+{
+  "study_id": "geneloop-synthetic-materials-demo-v1",
+  "title": "合成材料养护时间与抗压强度：网页功能测试",
+  "description": "纯合成测试数据，不来自真实材料实验。40个独立模拟试件；用于验证数据读取、缺失值处理、线性回归、绘图与PDF报告交付。不能用于真实工程判断。",
+  "synthetic": true,
+  "source_status": "synthetic",
+  "study_design": "独立模拟观测；每个试件只有一次测量，无配对或重复测量。分析描述线性关联，不推断因果关系。",
+  "columns": {
+    "specimen_id": "唯一试件编号，仅作标识，不进入回归",
+    "curing_days": "自变量：养护时间，单位天",
+    "compressive_strength_mpa": "因变量：抗压强度，单位MPa；空白表示缺失"
+  },
+  "units": {
+    "curing_days": "天",
+    "compressive_strength_mpa": "MPa"
+  },
+  "analysis_request": {
+    "outcome": "compressive_strength_mpa",
+    "predictor": "curing_days",
+    "method": "简单线性回归，含截距",
+    "missing_policy": "完整案例分析；不填补缺失，报告排除数量",
+    "confidence_level": 0.95,
+    "test_sidedness": "two-sided"
+  },
+  "report_requirements": {
+    "language": "zh",
+    "page_mode": "max",
+    "pages": 3,
+    "style": "brief",
+    "figure_count": 2
+  },
+  "provenance": {
+    "generator": "LCG32 (a=1664525,c=1013904223) + Box-Muller",
+    "seed": 20261015,
+    "generating_equation": "strength_MPa = 12 + 0.8 * curing_days + Normal(0, 2.5^2)",
+    "rounding": "强度保留两位小数",
+    "intentional_missing_ids": [
+      "SIM-009",
+      "SIM-028"
+    ]
+  }
+}

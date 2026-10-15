@@ -9,19 +9,25 @@
     "smoke": "node scripts/project.mjs smoke",
     "scenario": "node scripts/project.mjs scenario",
     "scenario:real": "node scripts/project.mjs scenario --call-model",
+    "ppt": "node scripts/project.mjs python -m scenarios.research_ppt.trial",
+    "ppt:feedback": "node scripts/project.mjs python -m scenarios.research_ppt.feedback_learning",
     "web": "node scripts/project.mjs web",
     "web:real": "node scripts/project.mjs web --real-model",
     "web:check": "node scripts/project.mjs python scripts/check-harness-web.py",
     "web:tasks:check": "node scripts/project.mjs python scripts/check-web-tasks.py",
     "motif:check": "node scripts/project.mjs python scripts/motif-example.py check",
     "motif:rebuild": "node scripts/project.mjs python scripts/motif-example.py rebuild",
+    "web:scenes:check": "node scripts/project.mjs python scripts/check-harless-scenes.py",
+    "web:controls:check": "node scripts/project.mjs python scripts/check-harless-controls.py",
     "build:continuation": "node scripts/build-continuation-policy.mjs",
     "web:literature": "node scripts/project.mjs python scenarios/literature-notes/run-web.py",
-    "code:check": "node scripts/project.mjs python scripts/check-code-mode.py"
+    "code:check": "node scripts/project.mjs python scripts/check-code-mode.py",
+    "management": "node scripts/project.mjs python scripts/harness-geneloop.py --scenario files --mode execute --budget-usd 5 --request-limit 96 --run-budget-usd 25 --run-request-limit 4000 --max-output 4000"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.5-rc.3",
-    "@deepseek-ai/dsh-llm": "0.1.5-rc.3"
+    "@deepseek-ai/dsh-llm": "0.1.5-rc.3",
+    "ws": "8.21.3"
   },
   "engines": {
     "node": ">=20"

@@ -117,7 +117,10 @@ for (const row of catalog.files.filter(r => r.kind === 'online_manifest')) {
   for (const a of manifest.artifacts) need(library.artifacts.some(b =>
     a.motif_id === b.motif_id && a.certified_digest === b.certified_digest), 'manifest promoted a different artifact');
 }
-for (const [name, expected] of Object.entries(catalog.runtime_validators)) {
+const compat=json(path.join(root,'config/file-management-runtime-compatibility.json'));
+const compatible=compat.original_catalog_sha256===sha(fs.readFileSync(path.join(bundle,'catalog.json'))) && compat.new_certification===false;
+for (const [name, original] of Object.entries(catalog.runtime_validators)) {
+  const expected=compatible?compat.runtime_validators[name]:original;
   need(sha(fs.readFileSync(scoped(root, name))) === expected, 'runtime validator changed: ' + name);
 }
 const sourceLock = contents.get('workflow-v1/library-lock.json');

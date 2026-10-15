@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "name": "research_ppt_delivery",
+  "prompt": "prompt.md",
+  "servers": [{
+    "server_name": "ppt", "transport": "stdio", "command": "node",
+    "args": ["${PROJECT_ROOT}/scenarios/research_ppt/dist/mcp-adapter.js"],
+    "cwd": "${PROJECT_ROOT}", "tool_call_timeout_ms": 300000,
+    "env": {
+      "SSS_PPT_JOB": {"from_env": "SSS_PPT_JOB"},
+      "SSS_PPT_DELIVERY_PYTHON": "${PYTHON}"
+    }
+  }],
+  "allowed_tools": [
+    "mcp__ppt__list_inputs", "mcp__ppt__list_templates", "mcp__ppt__pin_source",
+    "mcp__ppt__read_source", "mcp__ppt__read_page", "mcp__ppt__extract_figure",
+    "mcp__ppt__inspect_deck", "mcp__ppt__deliver_deck", "mcp__ppt__read_deck_plan",
+    "mcp__ppt__list_restorable_decks", "mcp__ppt__render_deck", "mcp__ppt__restyle_deck",
+    "mcp__ppt__revise_deck", "mcp__ppt__validate_deck", "mcp__ppt__build_delivery",
+    "mcp__ppt__render_delivery", "mcp__ppt__revise_delivery",
+    "mcp__ppt__pin_deck_pages", "mcp__ppt__read_pinned_deck_pages",
+    "mcp__ppt__read_pending_plan", "mcp__ppt__repair_pending_plan"
+  ]
+}

@@ -67,7 +67,7 @@ def main():
             args.rsi_config=default_config(True)
     if args.rsi_resume or args.rsi_config:
         from src.adapters.continuous_rsi import load_config
-        v2=args.rsi_resume or load_config(args.rsi_config).get('adapter')=='file_operations_v2'
+        v2=args.rsi_resume or load_config(args.rsi_config).get('adapter') in ('file_operations_v2','management_v3')
         if v2:
             if args.mode!='baseline' or args.tool_presentation!='native' or any((args.entry_policy,args.terminal_policy,args.collection_policy,args.collection_script,args.plan_policy,args.reentry_policy,args.file_job)):
                 parser.error('durable RSI owns its original native task and experience selection')
