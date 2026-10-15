@@ -115,6 +115,16 @@ test('Choosing PPT from /harless retains a visible token and preserves other dra
   await f.decoration.ui.onSelect(rows.find(row => row.id === 'mode:shadow'), session);
   assert.equal(f.values.get('alice').selection.mode, 'shadow');
 });
+
+test('Scene launcher inserts a leading chip into an existing draft and retains attachments', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
+  input.setDraft('请生成报告'); input.addAttachments(['paper']);
+  await f.trigger.candidates({ sessionId: 'alice' }, { query: '', position: 'leading' });
+  await f.pick('alice', 'ppt', 0);
+  assert.equal(input.state.getSnapshot().draft, '/ppt 请生成报告');
+  assert.deepEqual(Array.from(input.state.getSnapshot().attachmentIds), ['paper']);
+  assert.equal(f.values.get('alice').selection.scene, 'ppt');
+});
 test('Flat native task options preserve other options and refuse frozen or unoffered choices', async () => {
   const f=fixture(),session={sessionId:'alice'},current=f.values.get('alice');
   current.selection.scene='ppt';current.scene_options={slides:6,template:'academic'};
