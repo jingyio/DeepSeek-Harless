@@ -34,6 +34,24 @@ def example_analysis(design='independent_groups', allow=True):
     return {'analysis': analysis, 'allow_deterministic_continuation': allow}
 
 
+class EvidenceTokenFormattingTests(unittest.TestCase):
+    def test_confidence_percent_requires_percent_token_without_rewriting_other_values(self):
+        evidence = {'available_placeholders': {
+            'confidence': {'value': .95, 'display': '0.95', 'source': 'approved_plan.confidence'},
+            'confidence_pct': {'value': 95, 'display': '95', 'source': 'approved_plan.confidence*100'},
+            'estimate': {'value': .95, 'display': '0.95', 'source': 'verified_analysis.checked_metrics'},
+        }}
+        for sign in ('%', '％'):
+            errors, bindings = [], []
+            w._bind('{{confidence}} '+sign, 'body', evidence, errors, bindings)
+            self.assertEqual(errors[0]['code'], 'confidence_unit_mismatch')
+        errors, bindings = [], []
+        text = w._bind('{{confidence_pct}}% confidence; proportion {{confidence}}; effect {{estimate}}%',
+                       'body', evidence, errors, bindings)
+        self.assertEqual(errors, [])
+        self.assertEqual(text, '95% confidence; proportion 0.95; effect 0.95%')
+
+
 def example_presentation(design='independent_groups', allow=True):
     study = c.get_study()
     report = {'title': '真实工具回归测试报告', 'style': 'technical', 'page_mode': 'auto', 'pages': None,

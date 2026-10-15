@@ -55,8 +55,6 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
     if (!body) { reads.push(id); if (reads.length > 20) throw Error('Unbounded settings GET loop'); }
     let value = values.get(id);
     if (!body && beforeGet) { const snapshot = structuredClone(value); await beforeGet(); return { ok:true,json:async()=>snapshot }; }
-    if (body?.action === 'select' && locked && body.selection.scene !== value.selection.scene)
-      return { ok: false, json: async () => ({ error: { code: 'scene_requires_new_session', message: '新建会话' } }) };
     if (body?.action === 'new_session') {
       const freshId = ++freshCount === 1 ? 'fresh' : 'fresh' + freshCount;
       makeInput(freshId, ''); value = values.get(freshId); value.session_id = freshId;
@@ -133,15 +131,17 @@ test('Flat native task options preserve other options and refuse frozen or unoff
   await assert.rejects(f.decoration.ui.onSelect(choice,session),/已固定/);
   assert.equal(f.posts.length,count);
 });
-test('Changing a locked scene creates a separate session and hands off the draft and attachments', async () => {
-  const f = fixture({ locked:true }), old = f.inputs.get('alice'); old.addAttachments(['receipt']);
+test('Changing a started scene keeps the visible session, draft and attachments', async () => {
+  const f = fixture({ locked:true, allAvailable:true }), old = f.inputs.get('alice'); old.addAttachments(['receipt']);
+  f.values.get('alice').selection.scene='research-data-analysis';
   await f.pick('alice');
-  assert.equal(f.values.get('alice').selection.scene, 'new-scene');
-  assert.equal(f.inputs.get('fresh').state.getSnapshot().draft, '/ppt 请生成报告');
-  assert.deepEqual(f.opened, ['fresh']); assert.equal(old.state.getSnapshot().draft, '');
-  assert.equal(f.rebinds[0].id, 'fresh'); assert.equal(old.state.getSnapshot().attachmentIds.length, 0);
-  assert.equal(f.posts.filter(row => row.action === 'new_session').length, 1);
+  assert.equal(f.values.get('alice').selection.scene,'ppt');
+  assert.equal(old.state.getSnapshot().draft,'/ppt 请生成报告');
+  assert.deepEqual(old.state.getSnapshot().attachmentIds,['receipt']);
+  assert.deepEqual(f.opened,[]);assert.deepEqual(f.rebinds,[]);
+  assert.ok(f.posts.every(row=>row.action==='select'&&row.session_id==='alice'));
 });
+
 test('A draft edited during a scene request is preserved without applying a stale insertion', async () => {
   const f = fixture({ beforePost: async (_body, inputs) => inputs.get('alice').setDraft('新写的文字') });
   await f.pick('alice');
@@ -253,70 +253,47 @@ test('A typed PPT prefix followed immediately by Chinese overrides a previous Da
   n.controller.dispose();
 });
 
-test('Typed Enter on a locked scene hands off its native draft and attachments, then submits once', async () => {
-  const f = fixture({ locked: true }), input = f.inputs.get('alice'); input.setDraft('/ppt 做科研汇报'); input.addAttachments(['paper']);
-  const n = nativeController(f.trigger, input); await flush(); input.setPhase('adjudicating');
-  assert.equal(await n.controller.adjudicate('/ppt 做科研汇报', new AbortController().signal, { attachments: 1 }), 'handled');
-  assert.equal(f.opened.length, 0); assert.equal(f.submissions.length, 0, 'must wait until the original input is unfrozen');
-  input.setPhase('plain'); await flush();
-  assert.deepEqual(f.opened, ['fresh']); assert.equal(f.submissions.length, 1); assert.equal(f.submissions[0].id, 'fresh');
-  assert.equal(f.submissions[0].draft, '/ppt 做科研汇报'); assert.deepEqual(f.submissions[0].attachmentIds, ['paper']);
-  assert.equal(input.state.getSnapshot().draft, ''); assert.deepEqual(input.state.getSnapshot().attachmentIds, []);
-  assert.equal(f.values.get('alice').selection.scene, 'new-scene'); n.controller.dispose();
+test('Typed Enter on a started scene routes the existing conversation before native submit', async () => {
+  const f=fixture({locked:true}),input=f.inputs.get('alice');input.setDraft('/ppt 做科研汇报');input.addAttachments(['paper']);
+  const n=nativeController(f.trigger,input);await flush();input.setPhase('adjudicating');
+  assert.equal(await n.controller.adjudicate('/ppt 做科研汇报',new AbortController().signal,{attachments:1}),undefined);
+  assert.equal(f.values.get('alice').selection.scene,'ppt');
+  assert.equal(input.state.getSnapshot().draft,'/ppt 做科研汇报');
+  assert.deepEqual(input.state.getSnapshot().attachmentIds,['paper']);
+  assert.deepEqual(f.opened,[]);assert.equal(f.submissions.length,0,'native input owns the one submit');n.controller.dispose();
 });
 
-test('Attachment changes without a draft revision during handoff preserve the edited draft and never submit removed files', async () => {
-  let revision;
-  const f = fixture({ locked: true, beforePost: async (body, inputs) => {
-    if (body.action !== 'new_session') return;
-    const input = inputs.get('alice'); revision = input.state.getSnapshot().draftRev;
-    input.removeAttachment('old-paper'); input.addAttachments(['new-paper']);
-    assert.equal(input.state.getSnapshot().draftRev, revision, 'native attachment changes do not advance draftRev');
-  } }), input = f.inputs.get('alice'); input.setDraft('/ppt 我的报告'); input.addAttachments(['old-paper']);
-  const n = nativeController(f.trigger, input); await flush(); input.setPhase('adjudicating');
-  assert.equal(await n.controller.adjudicate('/ppt 我的报告', new AbortController().signal, { attachments: 1 }), 'handled');
-  input.setPhase('plain'); await flush();
-  assert.equal(f.submissions.length, 0); assert.equal(f.opened.length, 0); assert.equal(f.rebinds.length, 0);
-  assert.equal(input.state.getSnapshot().draft, '/ppt 我的报告'); assert.equal(input.state.getSnapshot().draftRev, revision);
-  assert.deepEqual(input.state.getSnapshot().attachmentIds, ['new-paper']);
-  assert.deepEqual(f.inputs.get('fresh').state.getSnapshot().attachmentIds, []);
-  assert.match(input.notices.at(-1).text, /附件已改变/); n.controller.dispose();
+test('A manual scene pick preserves attachments edited while the server prepares the scene', async () => {
+  const f=fixture({locked:true,allAvailable:true,beforePost:async(body,inputs)=>{
+    if(body.action==='select'){const input=inputs.get('alice');input.removeAttachment('old');input.addAttachments(['new']);}
+  }}),input=f.inputs.get('alice');
+  await f.trigger.candidates({sessionId:'alice'},{query:'p',position:'leading'});
+  input.setDraft('/p 计划');input.addAttachments(['old']);await f.pick('alice');
+  assert.equal(f.values.get('alice').selection.scene,'ppt');assert.deepEqual(input.state.getSnapshot().attachmentIds,['new']);
+  assert.equal(input.notices.length,0);assert.equal(f.submissions.length,0);assert.equal(f.opened.length,0);
 });
 
-test('A failed native reference insertion cannot turn a retained draft into an automatic submission', async () => {
-  let selects = 0;
-  const f = fixture({ locked: true, beforePost: async body => {
-    if (body.action === 'select' && ++selects === 2) {
-      // A concurrently completed selection now allows the same-session route.
-      f.values.get('alice').selection.scene = 'ppt'; f.inputs.get('alice').failInsert = true;
-    }
-  } }), input = f.inputs.get('alice'); input.setDraft('/ppt 保留草稿'); input.addAttachments(['paper']);
-  const n = nativeController(f.trigger, input); await flush(); input.setPhase('adjudicating');
-  assert.equal(await n.controller.adjudicate('/ppt 保留草稿', new AbortController().signal, { attachments: 1 }), 'handled');
-  input.failInsert = true; input.setPhase('plain'); await flush();
-  assert.equal(selects, 1); assert.equal(f.submissions.length, 0); assert.equal(input.inserts.length, 0);
-  assert.equal(input.state.getSnapshot().draft, '/ppt 保留草稿'); assert.deepEqual(input.state.getSnapshot().attachmentIds, ['paper']);
-  assert.match(input.notices.at(-1).text, /输入已改变/); n.controller.dispose();
+test('A failed native reference insertion leaves the started conversation unsent', async () => {
+  const f=fixture({locked:true,allAvailable:true}),input=f.inputs.get('alice');
+  await f.trigger.candidates({sessionId:'alice'},{query:'p',position:'leading'});
+  input.setDraft('/p 保留草稿');input.addAttachments(['paper']);input.failInsert=true;await f.pick('alice');
+  assert.equal(f.posts.length,0);assert.equal(f.submissions.length,0);assert.equal(f.opened.length,0);
+  assert.equal(input.state.getSnapshot().draft,'/p 保留草稿');assert.deepEqual(input.state.getSnapshot().attachmentIds,['paper']);
+  assert.match(input.notices.at(-1).text,/输入已改变/);
 });
 
-test('A new attachment added to the target before auto-submit keeps the target draft unsent', async () => {
-  const f = fixture({ locked: true, onOpen: (id, inputs) => queueMicrotask(() => inputs.get(id).addAttachments(['paper', 'added-after-handoff'])) });
-  const input = f.inputs.get('alice'); input.setDraft('/ppt 论文报告'); input.addAttachments(['paper']);
-  const n = nativeController(f.trigger, input); await flush(); input.setPhase('adjudicating');
-  assert.equal(await n.controller.adjudicate('/ppt 论文报告', new AbortController().signal, { attachments: 1 }), 'handled');
-  input.setPhase('plain'); await flush();
-  assert.deepEqual(f.opened, ['fresh']); assert.equal(f.submissions.length, 0);
-  assert.equal(f.inputs.get('fresh').state.getSnapshot().draft, '/ppt 论文报告');
-  assert.deepEqual(f.inputs.get('fresh').state.getSnapshot().attachmentIds, ['paper', 'added-after-handoff']); n.controller.dispose();
+test('Scene selection never creates a target that could overwrite another conversation draft', async () => {
+  const f=fixture({locked:true,allAvailable:true}),input=f.inputs.get('alice'),other=f.inputs.get('bob');
+  other.setDraft('另一份草稿');other.addAttachments(['other-file']);await f.pick('alice');
+  assert.equal(f.inputs.size,2);assert.equal(f.opened.length,0);assert.equal(f.submissions.length,0);
+  assert.equal(other.state.getSnapshot().draft,'另一份草稿');assert.deepEqual(other.state.getSnapshot().attachmentIds,['other-file']);
 });
 
-test('Aborted typed handoff never creates or submits a new session and keeps the old draft', async () => {
-  const f = fixture({ locked: true }), input = f.inputs.get('alice'); input.setDraft('/ppt 保留');
-  const n = nativeController(f.trigger, input); await flush(); const abort = new AbortController(); input.setPhase('adjudicating');
-  assert.equal(await n.controller.adjudicate('/ppt 保留', abort.signal, { attachments: 0 }), 'handled');
-  abort.abort(); input.setPhase('plain'); await flush();
-  assert.equal(f.posts.some(row => row.action === 'new_session'), false); assert.equal(f.submissions.length, 0);
-  assert.equal(input.state.getSnapshot().draft, '/ppt 保留'); n.controller.dispose();
+test('Aborted typed selection never creates or submits a session and keeps the original draft', async () => {
+  const f=fixture({locked:true}),input=f.inputs.get('alice');input.setDraft('/ppt 保留');
+  const n=nativeController(f.trigger,input);await flush();const abort=new AbortController();abort.abort();input.setPhase('adjudicating');
+  await assert.rejects(n.controller.adjudicate('/ppt 保留',abort.signal,{attachments:0}));
+  assert.equal(f.posts.length,0);assert.equal(f.submissions.length,0);assert.equal(input.state.getSnapshot().draft,'/ppt 保留');n.controller.dispose();
 });
 
 test('Leaving a session during a failed scene pick aborts the request and suppresses its old toast', async () => {
@@ -425,35 +402,24 @@ test('Native submit clearing and reopening an empty draft keep a scene for ordin
   assert.equal(f.values.get('alice').selection.scene, 'research-data-analysis'); assert.equal(f.posts.length, 0);
 });
 
-test('Deleting a token from a frozen scene hands the unsent text and attachments to a normal chat', async () => {
-  const f = fixture({ locked: true, allAvailable: true }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
-  f.values.get('alice').selection.scene = 'research-data-analysis';
-  await f.trigger.candidates(session, { query: 'd', position: 'leading' });
-  input.setDraft('/data 另一个问题'); input.addAttachments(['draft-file']); input.setDraft('另一个问题'); await flush();
-  assert.equal(f.values.get('alice').selection.scene, 'research-data-analysis', 'immutable history keeps its original scene');
-  assert.equal(f.values.get('fresh').selection.scene, 'new-scene'); assert.deepEqual(f.opened, ['fresh']);
-  assert.equal(f.inputs.get('fresh').state.getSnapshot().draft, '另一个问题');
-  assert.deepEqual(Array.from(f.inputs.get('fresh').state.getSnapshot().attachmentIds), ['draft-file']);
-  assert.equal(input.state.getSnapshot().draft, ''); assert.deepEqual(input.state.getSnapshot().attachmentIds, []);
-  assert.equal(f.blocks.has('alice'), false); assert.equal(f.submissions.length, 0);
+test('Deleting a started scene token resets its current conversation without moving input or files', async () => {
+  const f=fixture({locked:true,allAvailable:true}),input=f.inputs.get('alice'),session={sessionId:'alice'};
+  f.values.get('alice').selection.scene='research-data-analysis';await f.trigger.candidates(session,{query:'d',position:'leading'});
+  input.setDraft('/data 另一个问题');input.addAttachments(['draft-file']);input.setDraft('另一个问题');await flush();
+  assert.equal(f.values.get('alice').selection.scene,'new-scene');assert.equal(input.state.getSnapshot().draft,'另一个问题');
+  assert.deepEqual(input.state.getSnapshot().attachmentIds,['draft-file']);assert.equal(f.opened.length,0);assert.equal(f.rebinds.length,0);
+  assert.equal(f.blocks.has('alice'),false);assert.equal(f.submissions.length,0);
 });
 
-test('A frozen-scene reset completed in the background waits for the addressed chat to reopen', async () => {
-  let release, reached; const gate = new Promise(resolve => release = resolve), created = new Promise(resolve => reached = resolve);
-  const f = fixture({ locked: true, allAvailable: true, beforePost: async body => {
-    if (body.action === 'new_session') { reached(); await gate; }
-  } }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
-  f.values.get('alice').selection.scene = 'ppt';
-  await f.trigger.candidates(session, { query: 'p', position: 'leading' });
-  input.setDraft('/ppt 草稿'); input.addAttachments(['paper']); input.setDraft('草稿'); await created;
-  f.setCurrent('bob'); release(); await flush();
-  assert.equal(f.opened.length, 0); assert.equal(f.blocks.has('alice'), true);
-  assert.equal(input.state.getSnapshot().draft, '草稿'); assert.equal(f.inputs.get('bob').state.getSnapshot().draft, '/p 请生成报告');
-  f.setCurrent('alice'); await flush();
-  assert.deepEqual(f.opened, ['fresh']); assert.equal(f.values.get('fresh').selection.scene, 'new-scene');
-  assert.equal(f.inputs.get('fresh').state.getSnapshot().draft, '草稿');
-  assert.deepEqual(Array.from(f.inputs.get('fresh').state.getSnapshot().attachmentIds), ['paper']);
-  assert.equal(f.blocks.has('alice'), false); assert.equal(f.posts.filter(row => row.action === 'new_session').length, 1);
+test('A started scene reset in the background updates only its addressed chat without navigation', async () => {
+  let release,reached;const gate=new Promise(resolve=>release=resolve),posted=new Promise(resolve=>reached=resolve);
+  const f=fixture({locked:true,allAvailable:true,beforePost:async body=>{if(body.selection?.scene==='new-scene'){reached();await gate;}}});
+  const input=f.inputs.get('alice');f.values.get('alice').selection.scene='ppt';
+  await f.trigger.candidates({sessionId:'alice'},{query:'p',position:'leading'});input.setDraft('/ppt 草稿');input.addAttachments(['paper']);input.setDraft('草稿');await posted;
+  f.setCurrent('bob');release();await flush();
+  assert.equal(f.opened.length,0);assert.equal(f.blocks.has('alice'),false);assert.equal(input.state.getSnapshot().draft,'草稿');
+  assert.equal(f.values.get('alice').selection.scene,'new-scene');assert.equal(f.inputs.get('bob').state.getSnapshot().draft,'/p 请生成报告');
+  assert.deepEqual(input.state.getSnapshot().attachmentIds,['paper']);assert.equal(f.inputs.size,2);
 });
 
 test('A new pick made during a pending reset wins after the serialized reset completes', async () => {
@@ -485,20 +451,10 @@ test('A late cold settings read cannot revive a manually typed scene deleted bef
   assert.equal(f.posts.length, 1); assert.equal(f.blocks.has('alice'), false);
 });
 
-test('A deferred reset never overwrites another draft entered in its new target chat', async () => {
-  let release, reached; const gate = new Promise(resolve => release = resolve), created = new Promise(resolve => reached = resolve);
-  const f = fixture({ locked: true, allAvailable: true, beforePost: async body => {
-    if (body.action === 'new_session') { reached(); await gate; }
-  } }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
-  f.values.get('alice').selection.scene = 'ppt';
-  await f.trigger.candidates(session, { query: 'p', position: 'leading' });
-  input.setDraft('/ppt 原草稿'); input.addAttachments(['original']); input.setDraft('原草稿'); await created;
-  f.setCurrent('bob'); release(); await flush();
-  f.setCurrent('fresh'); f.inputs.get('fresh').setDraft('另一份草稿'); f.inputs.get('fresh').addAttachments(['different']);
-  f.setCurrent('alice'); await flush();
-  assert.equal(f.inputs.get('fresh').state.getSnapshot().draft, '另一份草稿');
-  assert.deepEqual(f.inputs.get('fresh').state.getSnapshot().attachmentIds, ['different']);
-  assert.deepEqual(f.opened, ['fresh2']); assert.equal(f.inputs.get('fresh2').state.getSnapshot().draft, '原草稿');
-  assert.deepEqual(Array.from(f.inputs.get('fresh2').state.getSnapshot().attachmentIds), ['original']);
-  assert.equal(f.blocks.has('alice'), false); assert.equal(f.submissions.length, 0);
+test('A backend scene-switch failure retains the original draft and cannot create a surprise conversation', async () => {
+  const f=fixture({locked:true,allAvailable:true,beforePost:()=>{const error=Error('请等待当前请求完成');error.code='scene_requires_new_session';throw error;}});
+  const input=f.inputs.get('alice');input.setDraft('/p 原草稿');input.addAttachments(['original']);await f.pick('alice');
+  assert.equal(f.inputs.size,2);assert.equal(f.opened.length,0);assert.equal(f.submissions.length,0);
+  assert.equal(input.state.getSnapshot().draft,'/p 原草稿');assert.deepEqual(input.state.getSnapshot().attachmentIds,['original']);
+  assert.equal(f.posts.some(row=>row.action==='new_session'),false);
 });

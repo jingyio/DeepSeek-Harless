@@ -1,10 +1,10 @@
 /** Dynamic business tasks on the official Harness Web/Session lifecycle. */
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { basename, extname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
-import { isAgentLoopRequest, createUserMessage } from '@deepseek-ai/dsh-llm';
+import { isAgentLoopRequest, createUserMessage, createAssistantMessage } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
@@ -20,13 +20,16 @@ import {createComparisonService} from './harless_comparison.ts';
 import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
 import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
 import {bindReportAnswer} from './harless_report_answer.ts';
+import {createTaskProgress} from './harless_task_progress.ts';
+import {createSessionBranchService,sessionBranchTitle} from './harless_session_branch.ts';
 import {registerManagedWorkspaceRoutes} from './harless_managed_workspaces.ts';
+import {registerPrivateLanes} from './harless_private_lanes.ts';
 
 export const name = 'sss-web-tasks';
-export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController'];
+export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController'];
 type Policy = {
   output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number;
-  mode: ExecutionMode; budget_usd: number; request_limit?: number; run_budget_usd?: number; run_request_limit?: number; capability_profile: string;
+  mode: ExecutionMode; budget_usd: number; request_limit?: number | null; run_budget_usd?: number; run_request_limit?: number | null; capability_profile: string;
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   budget_broker_endpoint?: string;
   budget_task_prefix?: string;
@@ -77,6 +80,7 @@ export function apply(ctx: any) {
       !['mock', 'real'].includes(config.provider_mode)) throw Error('Invalid dynamic Web policy');
   mkdirSync(join(config.output, 'tasks'), { recursive: true, mode: 0o700 });
   const tasks = new Map<string, Task>(), sessions = new Map<string, string>();
+  const progress = new Map<string, ReturnType<typeof createTaskProgress>>();
   const brokerMode = config.budget_broker_endpoint !== undefined;
   if (config.comparison_scenes && (!brokerMode || !Array.isArray(config.comparison_scenes) || config.comparison_scenes.some(id => !['ppt', 'paper-proofreading', 'research-data-analysis', 'literature'].includes(id)))) throw Error('Invalid comparison policy');
   let comparisons: ReturnType<typeof createComparisonService> | undefined;
@@ -224,19 +228,25 @@ export function apply(ctx: any) {
       throw new TaskError('scene_not_connected', '该场景暂不可用：' + sceneFor(next.scene).unavailable_reason, 409);
     if (sessionId) {
       if (next.scene !== current.scene) {
-        // A started preset is immutable. Refuse before changing saved/UI state.
-        const snapshot = await controller.inspect(sessionId);
-        if (boundSessions.has(sessionId) || comparisons?.hasSession(sessionId) || legacyChatSessions.has(sessionId) || snapshot.events.some((event: any) =>
-            ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)))
-          throw new TaskError('scene_requires_new_session', '当前会话已开始，切换场景需要新建会话；原聊天会保留。', 409);
-        if (!agents.has(sessionId)) await original.selectModel({ sessionId,
-          provider: (modelSelections.get(sessionId) ?? defaultModel).provider,
-          model: (modelSelections.get(sessionId) ?? defaultModel).model, reasoningEffort: 'off' }, new AbortController().signal);
-        const agent = agents.get(sessionId);
-        const scene = sceneFor(next.scene);
-        if (!scene.unavailable_reason) {
-          await selectPreset!(agent, sessionPreset(config.output, workspaceFor(sessionId), scene));
-          bindScene(agent, scene);
+        const previous = forSession(sessionId);
+        if ((previous && !terminal.has(previous.status)) || comparisons?.busy(sessionId))
+          throw new TaskError('session_busy', '请等待当前回复完成或取消后再切换场景。', 409);
+        if (comparisons?.isLane(sessionId)) throw new TaskError('comparison_child', '请在原对话中选择场景。', 409);
+        // The visible conversation routes to immutable private task agents.
+        // Never mount a different tool composition over its earlier tool log.
+        const routed = Boolean(brokerMode && config.comparison_scenes?.length &&
+          (config.comparison_scenes.includes(next.scene) || comparisons?.hasSession(sessionId) || legacyChatSessions.has(sessionId) || (await controller.inspect(sessionId)).meta.isSeeded));
+        if (!routed) {
+          const snapshot = await controller.inspect(sessionId);
+          if (boundSessions.has(sessionId) || legacyChatSessions.has(sessionId) || snapshot.events.some((event: any) =>
+              ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)))
+            throw new TaskError('scene_requires_new_session', '该任务的工具范围已固定，请在支持场景切换的对话中继续。', 409);
+          if (!agents.has(sessionId)) await original.selectModel({ sessionId,
+            provider: (modelSelections.get(sessionId) ?? defaultModel).provider,
+            model: (modelSelections.get(sessionId) ?? defaultModel).model, reasoningEffort: 'off' }, new AbortController().signal);
+          const scene = sceneFor(next.scene);
+          await selectPreset!(agents.get(sessionId), sessionPreset(config.output, workspaceFor(sessionId), scene));
+          bindScene(agents.get(sessionId), scene);
         }
       }
       selections.set(sessionId, next);
@@ -248,6 +258,13 @@ export function apply(ctx: any) {
   const workspaceFor = (id: string) => {
     const path = workspaces.get(id) ?? sessionWorkspace(config.output, id);
     workspaces.set(id, path); return path;
+  };
+  const readBranchInputs = (id: string) => {
+    try {
+      const state = JSON.parse(readFileSync(join(workspaceFor(id), 'branch-inputs.json'), 'utf8'));
+      if (state.version !== 1 || state.principal !== principal || state.session_id !== id) throw Error('branch_input_scope_mismatch');
+      return state;
+    } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
   };
   const selectPreset = ctx.agentPresets?.select.bind(ctx.agentPresets);
   // DSH history persists across deployments, so its admission record must
@@ -401,6 +418,7 @@ export function apply(ctx: any) {
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, source_pending: task.source_pending ?? false,
       effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
       stats: task.stats, sources: task.sources,
+      ...(progress.has(task.request.task_id) ? {progress: progress.get(task.request.task_id)!.snapshot().progress, activity: progress.get(task.request.task_id)!.snapshot().activity} : {}),
       ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
         'ledger.jsonl', 'motif-audit.jsonl', ...(task.answer ? ['answer.md'] : [])] } : {}) };
   }
@@ -441,12 +459,13 @@ export function apply(ctx: any) {
       model_option: modelOptions.find(option => option.model === state.model && option.provider === state.provider) ?? defaultModel };
     try { task.answer = readFileSync(join(output, 'answer.md'), 'utf8'); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    tasks.set(taskId, task); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
+    tasks.set(taskId, task); progress.set(taskId, createTaskProgress({answer:task.answer,progress:state.progress,activity:state.activity})); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
     if (!selections.has(request.session_id)) selections.set(request.session_id, { ...task.selection });
     if (!modelSelections.has(request.session_id)) modelSelections.set(request.session_id, task.model_option);
+    if (terminal.has(task.status)) progress.get(taskId)?.finish(task.status);
     if (!terminal.has(task.status)) {
       task.status = 'failed'; task.failure = 'frontend_restarted_before_completion'; task.finished_at = utc();
-      record(task);
+      progress.get(taskId)?.finish('failed'); record(task);
       task.closing = (async () => {
         await broker('/unbind', { session_id: request.session_id, budget_session_id: task.budget_session_id });
         await control('/tasks/cancel', { session_id: task.budget_session_id });
@@ -458,7 +477,7 @@ export function apply(ctx: any) {
   for (const id of ownedSessions) {
     const actualScene = forSession(id)?.scene.id ?? (legacyChatSessions.has(id) ? defaults.scene : undefined);
     const selected = selections.get(id);
-    if (actualScene && selected?.scene !== actualScene) selections.set(id, { ...(selected ?? defaults), scene: actualScene });
+    if (!(brokerMode && config.comparison_scenes?.length) && actualScene && selected?.scene !== actualScene) selections.set(id, { ...(selected ?? defaults), scene: actualScene });
   }
   if (ownedSessions.size) saveSettings();
   function audit(task: Task, row: any) {
@@ -470,8 +489,15 @@ export function apply(ctx: any) {
   }
   async function refresh(task: Task) {
     await task.closing;
-    const counters = await control('/tasks/stats?session_id=' + encodeURIComponent(task.budget_session_id));
-    Object.assign(task.stats, counters.stats ?? counters);
+    let counters;
+    try { counters = await control('/tasks/stats?session_id=' + encodeURIComponent(task.budget_session_id), undefined, terminal.has(task.status)); }
+    catch (error) {
+      // A replaced budget process may no longer retain an old task route. Its
+      // persisted final usage is still evidence, never a new zero-cost budget.
+      // Active tasks and authorization/response errors remain fail-closed.
+      if (!terminal.has(task.status) || !(error instanceof TypeError || (error as Error).name === 'TimeoutError')) throw error;
+    }
+    if (counters) Object.assign(task.stats, counters.stats ?? counters);
     task.stats.model_requests = Number(task.stats.upstream_requests ?? 0);
     task.stats.actual_paid_usd = config.provider_mode === 'mock' ? 0 : null;
     if (task.started_at) task.stats.elapsed_seconds =
@@ -484,6 +510,7 @@ export function apply(ctx: any) {
   function finish(task: Task, status: string, failure: string | null = null) {
     if (terminal.has(task.status)) return;
     task.status = status; task.failure = failure; task.finished_at = utc();
+    progress.get(task.request.task_id)?.finish(status);
     record(task);
     // Every terminal task closes its proxy admission; in-flight calls still settle.
     // Release the launch slot only after budget ownership is retired.
@@ -494,6 +521,8 @@ export function apply(ctx: any) {
     })().catch((error) => { task.failure = 'budget_close_failed: ' + String(error); record(task); });
   }
   const controller = ctx.sessionController;
+  const privateLanes = registerPrivateLanes(ctx, config.output, principal, id => comparisons?.isLane(id) ?? false);
+  const privateCreations = new WeakSet<object>();
   const original = { create: controller.create.bind(controller), prompt: controller.prompt.bind(controller),
     cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller) };
   const titledSessions = new Set<string>();
@@ -541,6 +570,9 @@ export function apply(ctx: any) {
   }
   controller.create = (request: any) => {
     const result = creation.then(async () => {
+      const privateCreation = privateCreations.has(request);
+      if (request.sessionId && privateLanes.isPrivate(request.sessionId) && !privateCreation)
+        throw new TaskError('comparison_child', '请在原对话中继续。', 409);
       if (request.agentPreset && !scenes.some(scene => scene.preset === request.agentPreset)) throw new TaskError('profile_not_allowed', 'Use the server-configured GeneLoop preset');
       if (request.sessionId && !ownedSessions.has(request.sessionId)) {
         // Official Web supplies a fresh client-generated ID. Allow only a proven
@@ -566,7 +598,7 @@ export function apply(ctx: any) {
       const workspace = workspaceFor(id);
       const priorPreset = ownedSessions.has(id) ? (await controller.inspect(id)).meta.agentPreset : undefined;
       let location = request.workspaceId !== undefined ? { workspaceId: request.workspaceId } : { cwd: workspace };
-      if (request.workspaceId === undefined && ctx.workspaceRegistry) {
+      if (!privateCreation && request.workspaceId === undefined && ctx.workspaceRegistry) {
         const group = await ctx.workspaceRegistry.create(priorPreset ? (await controller.inspect(id)).meta.cwd : workspace, chosen.label);
         location = { workspaceId: group.id };
       }
@@ -593,7 +625,122 @@ export function apply(ctx: any) {
     });
     creation = result.catch(() => undefined); return result;
   };
-  controller.fork = () => { throw new TaskError('fork_not_supported', 'Create a new task to preserve its input, budget and trace binding'); };
+  let branchSeqMap = new Map<number, number>();
+  const branches = createSessionBranchService(config.output, principal, {
+    ensureOwned: async id => { await ensureOwned(id); if (comparisons?.isLane(id)) throw new TaskError('comparison_child', '请在原对话中创建分支。', 409); },
+    inspect: id => controller.inspect(id),
+    listTitles: async () => { const titles: string[] = []; for (const id of ownedSessions) { try { const snapshot=await controller.inspect(id); titles.push(sessionBranchTitle(snapshot.meta,snapshot.events)); } catch {} } return titles; },
+    projectEvents: (source, events) => {
+      const projected: any[] = [];
+      for (const event of events) {
+        // Preserve native history as a detached seed. Comparison outputs live
+        // in account storage, so materialize their current text without IDs
+        // that could mutate original ratings or attach original runtime tools.
+        projected.push(event);
+        const reference = event.type === 'user/message' && event.data.harless_comparison;
+        if (!reference) continue;
+        const saved = comparisons?.snapshot(source, reference.id);
+        if (!saved || !['completed','failed','cancelled'].includes(saved.status)) throw new TaskError('branch_turn_incomplete', '请等待所选回复完成后创建分支。', 409);
+        const text = Object.entries(saved.lanes).map(([name, value]: [string, any]) =>
+          (saved.presentation === 'single' ? '' : (name === 'baseline' ? 'Baseline · DSH\n' : 'Motif · DSH\n')) + (value.answer_display ?? value.answer ?? '')).join('\n\n');
+        const option = modelSelections.get(source) ?? defaultModel;
+        projected.push({ type:'assistant/message', time:event.time, surfaceOp:'append',
+          data:{ turn:reference.turn ?? 1, step:0, stream:[], harless_branch_context:true, message:createAssistantMessage({content:[{type:'text',text}], source:{provider:option.provider,model:option.model}}) } });
+      }
+      // Filter old non-surface provenance dependencies only on synthesized
+      // result rows; original event indices retain their relative ordering.
+      const seqMap = new Map(events.map((event, index) => [event.seq, projected.indexOf(event)]));
+      branchSeqMap = seqMap;
+      return projected.map((event, index) => { const row = structuredClone(event); row.seq = index;
+        if (Array.isArray(row.sourceEventSeqs)) row.sourceEventSeqs = row.sourceEventSeqs.map((seq: number) => seqMap.get(seq));
+        if (row.surfaceOp && typeof row.surfaceOp === 'object') {
+          const startSeq = seqMap.get(row.surfaceOp.startSeq)!;
+          let endSeq = seqMap.get(row.surfaceOp.endSeq)!;
+          while (endSeq + 1 < projected.length && !events.includes(projected[endSeq + 1])) endSeq++;
+          row.surfaceOp = {...row.surfaceOp,startSeq,endSeq};
+          row.sourceEventSeqs = [...new Set([...(row.sourceEventSeqs ?? []), ...projected.flatMap((candidate, position) =>
+            position >= startSeq && position <= endSeq && !events.includes(candidate) && candidate.surfaceOp ? [position] : [])])].sort((a: number,b: number)=>a-b);
+        }
+        return row;
+      });
+    },
+    async createSeeded({ sessionId, sourceSessionId, title, seed, inheritedEventCount, sourceAtSeq }) {
+      if (!ctx.agents?.create || !ctx.agentPresets?.mount) throw new TaskError('branch_unavailable', '当前服务暂不能创建分支，请稍后重试。', 409);
+      const workspace = workspaceFor(sessionId), scene = sceneFor(scenes.some(row => row.id === 'new-scene') ? 'new-scene' : defaults.scene);
+      const selected = selections.get(sourceSessionId) ?? defaults;
+      const option = modelSelections.get(sourceSessionId) ?? defaultModel;
+      const group = ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(sourceSessionId));
+      const preset = sessionPreset(config.output, workspace, scene);
+      // A fork starts its own tool scope. Prior event evidence is readable
+      // history; the next routed send will allocate fresh task input copies.
+      ownedSessions.add(sessionId); selections.set(sessionId, { ...selected }); modelSelections.set(sessionId, option);
+      const sourceEvents = (await controller.inspect(sourceSessionId)).events.filter((event: any) => event.seq <= sourceAtSeq);
+      const store = comparisonArtifacts(config.output), inherited = readBranchInputs(sourceSessionId);
+      const snapshot: any = {version:1,principal,session_id:sessionId,inherited_event_count:inheritedEventCount,lanes:{},context:{}};
+      const inheritedCut = inherited?.inherited_event_count ?? 0;
+      const inCut = (row: any) => Number.isSafeInteger(row.source_seq) && row.source_seq <= sourceAtSeq;
+      const mappedSeq = (seq: number) => branchSeqMap.get(seq) ?? (() => { throw new TaskError('branch_history_unavailable','分支历史位置暂不可用。',409); })();
+      if (inherited && !Number.isSafeInteger(inherited.inherited_event_count))
+        throw new TaskError('branch_history_unavailable','旧分支资料缺少历史位置，请从原对话创建分支。',409);
+      for (const lane of ['baseline','motif']) {
+        const destination = join(workspace,'inherited',lane), directory = join(destination,'outputs');
+        mkdirSync(directory,{recursive:true,mode:0o700});
+        const names = new Map<string,string>(), sourceSeqs = new Map<string,number>(), seen = new Set<string>(); let total = 0;
+        const copy = (name: string, bytes: Uint8Array, sourceSeq: number) => {
+          const version = sha(bytes);if(seen.has(version)||names.size>=32||bytes.length>20*1024*1024||total+bytes.length>80*1024*1024)return;
+          const safe = basename(name).replace(/[^\p{L}\p{N}._-]/gu,'_').slice(-110);
+          const filename = `${names.size+1}-${safe}${extname(safe).toLowerCase()==='.json'?'.txt':''}`;
+          writeFileSync(join(directory,filename),bytes,{mode:0o600,flag:'wx'}); names.set('outputs/'+filename,safe);sourceSeqs.set('outputs/'+filename,mappedSeq(sourceSeq));seen.add(version);total+=bytes.length;
+        };
+        const history: any[] = (inherited?.context?.[lane] ?? []).filter(inCut).map((row:any)=>({...row,source_seq:mappedSeq(row.source_seq)}));
+        for (const event of sourceEvents) {
+          if (event.seq < inheritedCut) continue;
+          const ref = event.type==='user/message' && event.data.harless_comparison;
+          if (ref) {
+            const saved = comparisons?.snapshot(sourceSessionId,ref.id);
+            const sourceLane = saved?.presentation==='single'?'baseline':lane;
+            const result = saved?.lanes[sourceLane];
+            if (!saved || !result) throw new TaskError('branch_history_unavailable','分支历史结果暂不可用。',409);
+            history.push({source_seq:mappedSeq(event.seq),user:event.data.content.filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n').slice(-2000),assistant:(result.answer_display??result.answer??'').slice(-5000)});
+          } else if (!event.data?.harless_branch_context && ['user/message','assistant/message'].includes(event.type)) {
+            history.push({source_seq:mappedSeq(event.seq),[event.type==='user/message'?'user':'assistant']:(event.data.content??event.data.message?.content??[]).filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n').slice(-5000)});
+          }
+        }
+        // Newest verified report precedes chart files and original sources.
+        const comparisonsAtCut = sourceEvents.filter((event:any)=>event.type==='user/message'&&event.data.harless_comparison).reverse();
+        for (const event of comparisonsAtCut) {
+          const saved = comparisons!.snapshot(sourceSessionId,event.data.harless_comparison.id)!;
+          const sourceLane = saved.presentation==='single'?'baseline':lane;
+          const files = [...(saved.lanes[sourceLane]?.artifacts??[])].sort((a:any,b:any)=>Number(/(?:research_)?report\.pdf$/i.test(b.name))-Number(/(?:research_)?report\.pdf$/i.test(a.name)));
+          for (const row of files) copy(row.name,store.read(saved.id,sourceLane,row),event.seq);
+        }
+        for (const row of (inherited?.lanes?.[lane]??[]).filter(inCut)) copy(row.name,store.read(sourceSessionId,lane,row),row.source_seq);
+        for (const event of [...sourceEvents].reverse()) if(event.type==='user/message') for(const part of event.data.content??[]) {
+          if(part.type!=='file'||!part.attachment||part.attachment.bytes>20*1024*1024)continue;
+          const ref=part.attachment,chunks:Buffer[]=[];let bytes=0;
+          for await(const chunk of ctx.attachments.readFileStream(ref)){bytes+=chunk.length;if(bytes>20*1024*1024)throw new TaskError('scene_input_limit','分支资料过大。');chunks.push(Buffer.from(chunk));}
+          const data=Buffer.concat(chunks);if(bytes!==ref.bytes||(typeof ref.sha256==='string'&&sha(data)!==ref.sha256))throw new TaskError('file_bytes_changed','分支资料版本已改变。');
+          copy(ref.name,data,event.seq);
+        }
+        snapshot.lanes[lane]=store.snapshot(sessionId,lane,0,destination).map((row:any)=>({...row,name:names.get(row.name)??row.name,source_seq:sourceSeqs.get(row.name)}));
+        snapshot.context[lane]=history;
+      }
+      json(join(workspace,'branch-inputs.json'),snapshot);
+      try {
+        await ctx.agents.create({ sessionId, seed, inheritedEventCount,
+          meta:{ cwd:group?.path ?? workspace, parentSession:sourceSessionId, isSeeded:true, agentPreset:preset },
+          agentOptions:{ provider:option.provider, model:option.model },
+          setup:async (agentCtx: any) => { await ctx.agentPresets.mount(agentCtx,preset); },
+        });
+      } catch (error) { ownedSessions.delete(sessionId); selections.delete(sessionId); modelSelections.delete(sessionId); throw error; }
+      if (group) await group.attachSession(sessionId);
+      await controller.rename({sessionId,title});
+      if (optionSelections.has(sourceSessionId)) optionSelections.set(sessionId,structuredClone(optionSelections.get(sourceSessionId)!));
+      saveOwnership();saveSettings();saveModels();
+      await original.selectModel({sessionId,provider:option.provider,model:option.model,...(option.provider==='harless-glm'?{}:{reasoningEffort:'off'})},new AbortController().signal);
+    },
+  });
+  controller.fork = (request: any) => serialize(() => branches.fork(request));
   // Native queue editing would change the approved content after its digest was
   // shown. Edits use a new task/preview rather than silently mutating this binding.
   controller.updateQueue = () => { throw new TaskError('queue_edit_not_supported', 'Preview a new task before changing queued input', 409); };
@@ -729,7 +876,7 @@ export function apply(ctx: any) {
       budget_usd: request.budget_usd, model: chosenModel.model });
     json(join(output, 'budget-route.json'), { session_id: request.session_id, budget_session_id: budgetSessionId });
     boundSessions.add(request.session_id); saveOwnership();
-    tasks.set(taskId, task); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
+    tasks.set(taskId, task); progress.set(taskId, createTaskProgress()); sessions.set(request.session_id, taskId); requests.set(request.request_id, taskId);
     json(join(output, 'session-header.json'), snapshot.meta);
     for (const event of snapshot.events) appendFileSync(join(output, 'events.jsonl'), JSON.stringify(event) + '\n', { mode: 0o600 });
     updateDraft(task);
@@ -765,8 +912,8 @@ export function apply(ctx: any) {
       workspace: task.workspace, scope_sha256: task.scope_sha256,
       runtime_file_locks:task.scene.runtime_file_locks,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
-      budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit,
-        run_usd: config.run_budget_usd, run_requests: config.run_request_limit, reset_history: false },
+      budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit === 0 ? null : config.request_limit,
+        run_usd: config.run_budget_usd, run_requests: config.run_request_limit === 0 ? null : config.run_request_limit, reset_history: false },
       run_config: '../../effective-config.json', manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256, scene_registry_sha256: config.scene_registry_sha256 });
     record(task);
   }
@@ -875,8 +1022,10 @@ export function apply(ctx: any) {
       firstText.text = shortcut.text;
     }
     const selected = selections.get(request.sessionId)!;
-    if (comparisons && config.comparison_scenes?.includes(selected.scene) && !legacyChatSessions.has(request.sessionId)) {
-      if (forSession(request.sessionId)) throw new TaskError('comparison_requires_new_session', '已有普通任务的会话请保留，新建会话开始双路对照。', 409);
+    if (comparisons && (config.comparison_scenes?.includes(selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
+      const priorTask = forSession(request.sessionId);
+      if (priorTask && !terminal.has(priorTask.status)) throw new TaskError('session_busy', '请等待当前回复完成或取消后再发送。', 409);
+      await priorTask?.closing;
       const scene = sceneFor(selected.scene), parent = agents.get(request.sessionId);
       if (!Array.isArray(content) || !content.length || content.some((part: any) => !['text', 'file'].includes(part.type)) ||
           content.filter((part: any) => part.type === 'file').length > 8) throw new TaskError('unsupported_input', '请发送文字和最多 8 份场景资料。');
@@ -890,7 +1039,13 @@ export function apply(ctx: any) {
         return { name: ref.name, bytes: ref.bytes, digest: digest(ref) };
       });
       return comparisons.admit(request.sessionId, { ...request, content }, {
-        scene: selected.scene, options: optionSelections.get(request.sessionId)?.[selected.scene] ?? {},
+        scene: selected.scene, options: {...(scene.adapter === 'ppt' ? {allow_output:true} : {}),...(optionSelections.get(request.sessionId)?.[selected.scene] ?? {})},
+        prior_context_by_lane: readBranchInputs(request.sessionId)?.context,
+        presentation: config.comparison_scenes?.includes(selected.scene) ? 'paired' : 'single',
+        prior_context: (await controller.inspect(request.sessionId)).events.filter((event: any) =>
+          (event.type === 'user/message' && !event.data.harless_comparison) || (event.type === 'assistant/message' && !event.data.harless_branch_context)).slice(-12).map((event: any) => ({
+            [event.type === 'user/message' ? 'user' : 'assistant']: (event.data.content ?? event.data.message?.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n').slice(-3000),
+          })),
         model: (modelSelections.get(request.sessionId) ?? defaultModel).model, input_sha256: digest([text, files]),source_files:sourceFiles,
       });
     }
@@ -909,8 +1064,9 @@ export function apply(ctx: any) {
       owns: ensureOwned,
       ready: () => active === null,
       async createLane(parent, scene, lane) {
-        const group = ctx.workspaceRegistry?.list().find((row: any) => row.sessionIds.includes(parent));
-        const created = await controller.create({ agentPreset: sceneFor(scene).preset, ...(group ? { workspaceId: group.id } : {}) });
+        const request = { sessionId: privateLanes.reserve(parent), agentPreset: sceneFor(scene).preset };
+        privateCreations.add(request);
+        const created = await controller.create(request);
         // Only the comparison Host admits child turns. Native prompt rejects direct child mutation.
         await controller.rename({ sessionId: created.sessionId, title: lane === 'baseline' ? 'Baseline DSH' : 'Motif DSH' });
         return created.sessionId;
@@ -918,6 +1074,7 @@ export function apply(ctx: any) {
       async prepare(turn, lane, requestId) { return serialize(async () => {
         requireIdle(); const child = turn.lanes[lane].session_id;
         await ensureOwned(turn.session_id); await ensureOwned(child);
+        if (comparisons!.parentFor(child) !== turn.session_id) throw new TaskError('comparison_scope_mismatch', '对话执行范围不匹配。', 403);
         const previous = forSession(child), content: any[] = [];
         for (const part of turn.input) {
           if (part.type === 'text') { content.push(part); continue; }
@@ -930,6 +1087,51 @@ export function apply(ctx: any) {
             data: ctx.attachments.readFileStream(ref), signal: new AbortController().signal });
           content.push({ type: 'file', receiptId: uploaded.receiptId });
         }
+        if (!previous && !turn.input.some((part: any) => part.type === 'file')) {
+          const target = sceneFor(turn.scene);
+          const accepts = (name: string) => {
+            const suffix = extname(name).toLowerCase();
+            if (target.adapter === 'ppt') return ['.pdf','.pptx'].includes(suffix);
+            if (target.id === 'research-data-analysis') return ['.csv','.tsv','.json'].includes(suffix);
+            if (target.id === 'paper-proofreading') return ['.pdf','.tex','.bib','.bbl','.log','.md','.txt','.json'].includes(suffix);
+            if (target.adapter === 'literature') return suffix === '.pdf';
+            return false;
+          };
+          const carried: { name: string; sha256: string }[] = [], seen = new Set<string>();
+          const carry = async (name: string, bytes: Uint8Array) => {
+            const hash = sha(bytes);
+            if (carried.length >= 8 || bytes.length > 20 * 1024 * 1024 || seen.has(hash)) return;
+            const uploaded = await ctx.fileUploads.uploadStream({ sessionId: child, name: basename(name),
+              data: (async function* () { yield bytes; })(), signal: new AbortController().signal });
+            content.push({ type: 'file', receiptId: uploaded.receiptId }); seen.add(hash); carried.push({name: basename(name), sha256:hash});
+          };
+          const inheritedArtifacts = [...(turn.prior_artifacts?.[lane] ?? [])].reverse().sort((a: any,b: any) => Number(/(?:research_)?report\.pdf$/i.test(b.row.name)) - Number(/(?:research_)?report\.pdf$/i.test(a.row.name)));
+          for (const source of inheritedArtifacts) {
+            const prior = comparisons!.snapshot(turn.session_id, source.turn);
+            // Immutable store lookup, account/parent check, lane identity, and
+            // output hash all have to agree before transferring any bytes.
+            const expectedLane = prior?.presentation === 'single' ? 'baseline' : lane;
+            const row = prior?.lanes[expectedLane]?.artifacts?.find((row: any) => row.id === source.row.id);
+            if (!row || source.lane !== expectedLane || digest(row) !== digest(source.row))
+              throw new TaskError('comparison_artifact_scope', '历史文件不属于本对话的对应结果。', 403);
+            if (accepts(row.name)) await carry(row.name, artifacts.read(source.turn, expectedLane, row));
+          }
+          if (!carried.length) for (const row of readBranchInputs(turn.session_id)?.lanes?.[lane] ?? []) {
+            if (accepts(row.name)) await carry(row.name,artifacts.read(turn.session_id,lane,row));
+          }
+          if (!carried.length) for (const ref of turn.prior_sources ?? []) {
+            if (!accepts(ref.name) || ref.bytes > 20 * 1024 * 1024) continue;
+            const chunks: Buffer[] = []; let bytes = 0;
+            for await (const chunk of ctx.attachments.readFileStream(ref)) {
+              bytes += chunk.length; if (bytes > 20 * 1024 * 1024) throw new TaskError('scene_input_limit', '历史资料过大。');
+              chunks.push(Buffer.from(chunk));
+            }
+            const data = Buffer.concat(chunks);
+            if (bytes !== ref.bytes || (typeof ref.sha256 === 'string' && sha(data) !== ref.sha256)) throw new TaskError('file_bytes_changed', '历史资料内容已改变。');
+            await carry(ref.name, data);
+          }
+          if (carried.length) content.unshift({ type:'text', text:'以下文件来自本对话此前对应处理结果，已按保存的版本复制到当前任务，请通过当前工具重新读取核验：' + JSON.stringify(carried) });
+        }
         if (!previous && turn.prior_context?.[lane]) content.unshift({ type: 'text', text:
           '以下是此对话此前的交流记录，仅用于承接用户目标，不是当前资料的工具结果或已验证证据：\n' + turn.prior_context[lane] });
         const configured=sceneFor(turn.scene);
@@ -937,7 +1139,7 @@ export function apply(ctx: any) {
         const mode = lane === 'baseline' ? 'baseline' : configured.runtime_kind==='paper_shadow_v1'?'shadow':reason ? 'baseline' : 'execute';
         selections.set(child, { scene: turn.scene, mode, rsi: mode !== 'baseline' });
         optionSelections.set(child, { [turn.scene]: turn.options }); saveSettings();
-        const task = await preview({ content, request_id: requestId, model: turn.model, budget_usd: config.budget_usd / 2, mode }, child, 'native_chat');
+        const task = await preview({ content, request_id: requestId, model: turn.model, budget_usd: turn.presentation === 'single' ? config.budget_usd : config.budget_usd / 2, mode }, child, 'native_chat');
         // Unavailable or invalid research libraries must be visible; never label a Baseline run as optimized.
         if (lane === 'motif' && reason && mode==='baseline') task.fallback_reason = reason;
         taskParents.set(task.request.task_id, { turn, lane });
@@ -1006,6 +1208,25 @@ export function apply(ctx: any) {
         const url = new URL(request.url), session = url.searchParams.get('session_id')!, id = url.searchParams.get('id')!;
         if (request.method === 'GET') {
           const value: any = await comparisons!.view(session, id), lane = url.searchParams.get('lane'), file = url.searchParams.get('file');
+          if (url.searchParams.get('stream') === '1' && !file) {
+            let stop: (() => void) | undefined, heartbeat: ReturnType<typeof setInterval> | undefined, closed = false;
+            const encoder = new TextEncoder();
+            const body = new ReadableStream({
+              async start(stream) {
+                const close = () => { closed = true; stop?.(); if (heartbeat) clearInterval(heartbeat); request.signal.removeEventListener('abort', close); try { stream.close(); } catch {} };
+                request.signal.addEventListener('abort', close, { once: true });
+                try {
+                  stop = await comparisons!.subscribe(session, id, snapshot => {
+                    if (!closed) try { stream.enqueue(encoder.encode('event: snapshot\ndata: ' + JSON.stringify(snapshot) + '\n\n')); } catch { close(); }
+                  });
+                  if (closed || request.signal.aborted) close();
+                  else heartbeat = setInterval(() => { try { stream.enqueue(encoder.encode(': keepalive\n\n')); } catch { close(); } }, 15000);
+                } catch { close(); }
+              },
+              cancel() { closed = true; stop?.(); if (heartbeat) clearInterval(heartbeat); },
+            });
+            return new Response(body, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' } });
+          }
           if (file) {
             const row = lane && value.lanes[lane]?.artifacts.find((item: any) => item.id === file);
             if (!row) throw new TaskError('artifact_not_found', '找不到这个结果文件。', 404);
@@ -1038,7 +1259,8 @@ export function apply(ctx: any) {
     agent.ctx.on('tools/result', (execution: any, result: any) => forSession(agent.session.id)?.interceptor?.observe(agent.session.id, execution, result));
   }, { global: true });
   ctx.on('session/event', (session: any, event: any) => {
-    const task = forSession(session.id); if (!task) return;
+    const task = forSession(session.id); if (!task || task.status !== 'running') return;
+    progress.get(task.request.task_id)?.event(event);
     appendFileSync(join(task.output, 'events.jsonl'), JSON.stringify(event) + '\n', { mode: 0o600 });
     // Controller has already validated and transformed receipt/image input here.
     if (event.type === 'user/message' && event.data.source?.kind === 'user' && task.status === 'running') {
@@ -1080,7 +1302,11 @@ export function apply(ctx: any) {
       tools_order: requestedTools.map((tool: any) => tool.name), tools_sha256: digest(requestedTools),
       human_message_sha256: humans.map((message: any) => digest(message.content)), mode: task.request.mode });
     task.stats.llm_decisions = Number(task.stats.llm_decisions) + 1; record(task);
-    return (async function* () { yield* task.interceptor ? await task.interceptor.intercept(request.sessionId, request, next) : next(); })();
+    const live = progress.get(task.request.task_id) ?? createTaskProgress(); progress.set(task.request.task_id, live); live.beginAttempt();
+    return (async function* () {
+      const stream = task.interceptor ? await task.interceptor.intercept(request.sessionId, request, next) : next();
+      for await (const chunk of stream) { live.chunk(chunk); task.answer = live.snapshot().answer; yield chunk; }
+    })();
   }, { global: true });
   const taskRoute = { methods: ['GET', 'POST'] as const, requestBody: 'buffered' as const,
     fetch: async (request: Request) => {
@@ -1162,7 +1388,9 @@ export function apply(ctx: any) {
           if(body.action==='set_scene_options'){
             const current=settingsView(body.session_id);
             if(typeof body.session_id!=='string')throw new SettingsError('session_required','请选择所属 Session');
-            if (current.scene_locked) throw new TaskError('scene_requires_new_session', '场景选项已固定，请在新会话中设置。', 409);
+            const routed = Boolean(comparisons && config.comparison_scenes?.includes(current.selection.scene) && !comparisons.isLane(body.session_id));
+            if (routed && (comparisons!.busy(body.session_id) || (forSession(body.session_id) && !terminal.has(forSession(body.session_id)!.status)))) throw new TaskError('session_busy', '请等待当前回复完成或取消后再调整选项。', 409);
+            if (current.scene_locked && !routed) throw new TaskError('scene_requires_new_session', '场景选项已固定，请在新会话中设置。', 409);
             const options=sceneOptions(body.options,sceneFor(current.selection.scene));
             optionSelections.set(body.session_id,{...(optionSelections.get(body.session_id)??{}),[current.selection.scene]:options});
             saveSettings();return settingsView(body.session_id);

@@ -1,6 +1,7 @@
 /** Trusted scene deployment into the existing per-account bwrap; no auth changes. */
-import { readdirSync, realpathSync, statSync, existsSync } from 'node:fs';
-import { join, relative, dirname, basename, isAbsolute, sep } from 'node:path';
+import { readdirSync, realpathSync, statSync, existsSync, lstatSync, readlinkSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { join, relative, dirname, basename, isAbsolute, sep, resolve, posix } from 'node:path';
 
 const inside = (base, value) => value === base || (!relative(base, value).startsWith('..') && !isAbsolute(relative(base, value)));
 export function memberSceneDeployment(policy, deployment) {
@@ -45,7 +46,7 @@ export function memberSceneDeployment(policy, deployment) {
     mounts.push({source:renderer,target:renderer});
   }
   if(fonts){
-    const names=new Set(['fonts-static.conf','NotoSansCJKsc-Regular.otf','LICENSE.txt']);
+    const names=new Set(['fonts-static.conf','NotoSansCJKsc-Regular.otf','LICENSE.txt','wqy-microhei.ttc','WQY-COPYRIGHT.txt']);
     if(!existsSync(join(fonts,'NotoSansCJKsc-Regular.otf')) || readdirSync(fonts,{withFileTypes:true}).some(f=>!f.isFile() || !names.has(f.name)))
       throw Error('Member fonts must contain only fixed public font resources');
     mounts.push({source:fonts,target:fonts});
@@ -56,6 +57,13 @@ export function memberSceneDeployment(policy, deployment) {
     if(basename(source)!=='node_modules')throw Error('PPT dependencies must be an installed node_modules directory');
     // Preserve the target of an installation symlink without exposing its parent checkout.
     mounts.push({source,target:source});
+    if(lstatSync(pptModules).isSymbolicLink()){
+      // A release path may itself be a symlink to the real dependency store.
+      // Mounting only realpath leaves the first hop dangling inside bwrap.
+      const link=readlinkSync(pptModules);
+      const target=isAbsolute(link)?resolve(link):posix.resolve('/app/scenarios/research_ppt',link.split(sep).join('/'));
+      if(target!==source)mounts.push({source,target});
+    }
   }
   if (deployment.libraryRoot) {
     const source = realpathSync(deployment.libraryRoot);
@@ -110,12 +118,19 @@ export function memberSceneDeployment(policy, deployment) {
       cfg.command=cfg.command === 'node' ? 'node' : executable;
       cfg.cwd='/app'; cfg.args=cfg.args.map(translate);
       const env=cfg.env ?? {};
-      const permittedEnv=scene.adapter==='data-report'?['HARLESS_REPORT_WORKSPACE','HARLESS_PRIVATE_ROOT']:scene.adapter==='literature' ? ['SSS_PDF_WEB_TASK','PATH','LD_LIBRARY_PATH'] :
+      const permittedEnv=scene.adapter==='data-report'?['HARLESS_REPORT_WORKSPACE','HARLESS_PRIVATE_ROOT','HARLESS_REPORT_FONT']:scene.adapter==='literature' ? ['SSS_PDF_WEB_TASK','PATH','LD_LIBRARY_PATH'] :
         scene.adapter==='files' ? ['FM_WEB_WORKSPACE','FM_TASK_FILE','FM_OUTPUT'] :
         cfg.serverName==='paper_trace_rsi'?['HARLESS_PRIVATE_ROOT']:
         ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH','HARLESS_PRIVATE_ROOT'];
       if (Object.keys(env).some(k=>!permittedEnv.includes(k)))
         throw Error('Member scene environment contains unapproved authority');
+      if(scene.adapter==='data-report' && ('HARLESS_REPORT_FONT' in env || scene.report_font_sha256!==undefined)){
+        const font=fonts && join(fonts,'wqy-microhei.ttc');
+        if(!font || env.HARLESS_REPORT_FONT!==font || !existsSync(font) ||
+           !/^[a-f0-9]{64}$/.test(scene.report_font_sha256 ?? '') ||
+           createHash('sha256').update(readFileSync(font)).digest('hex')!==scene.report_font_sha256)
+          throw Error('Member report font requires the matching fixed public font and SHA-256');
+      }
       if(scene.adapter==='literature'){
         if((env.PATH || env.LD_LIBRARY_PATH) && (!pdf || scene.pdf_toolchain_root!==pdf ||
             env.PATH!==join(pdf,'bin')+':/usr/bin:/bin' || env.LD_LIBRARY_PATH!==join(pdf,'lib/x86_64-linux-gnu')))

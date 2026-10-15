@@ -72,9 +72,16 @@ window.__ModuleLoader__.load({
       window.__installGeneLoopWorkspaces?.(ctx, React, primitives);
       const command = ctx.get('commandUi'), triggers = ctx.get('inputTriggers');
       const sessions = ctx.get('sessions'), conversation = ctx.get('conversation');
+      // The server allocates branch suffixes atomically. Native client-side
+      // incrementing only sees one source and would rename every branch (1).
+      if (typeof sessions.fork === 'function') {
+        const originalFork = sessions.fork;
+        sessions.fork = function (options) { return originalFork.call(this, { ...options, increaseTitle: false }); };
+        ctx.effect(() => () => { sessions.fork = originalFork; }, 'harless: durable branch names');
+      }
       const h = React.createElement;
       const busyComparisons = new Map();
-      const busyReason = '左右两侧正在运行，请等待完成或取消本次对照。';
+      const busyReason = '正在处理当前请求，请等待完成或停止生成。';
       function updateBusy(session,id,busy){
         const group=busyComparisons.get(session)||new Map(), count=(group.get(id)||0)+(busy?1:-1);
         if(count>0)group.set(id,count);else group.delete(id);
@@ -120,7 +127,7 @@ window.__ModuleLoader__.load({
           let result;
           try { result = await response.json(); } catch { throw apiError(response.status || 502, '服务器未返回有效结果，请稍后刷新。'); }
           if (!response.ok || result.error) throw apiError(response.status, result.error?.message);
-          if (result.id !== value.id || result.session_id !== value.session_id || !result.lanes?.baseline || !result.lanes?.motif)
+          if (result.id !== value.id || result.session_id !== value.session_id || !result.lanes?.baseline || (result.presentation !== 'single' && !result.lanes?.motif))
             throw apiError(502, '服务器未返回当前对照结果。');
           return result;
         });
@@ -141,10 +148,21 @@ window.__ModuleLoader__.load({
       function ComparisonNode({ node }) {
         const [value, setValue] = React.useState(node.data), [error, setError] = React.useState(''), [saving, setSaving] = React.useState(false);
         const [connection, setConnection] = React.useState(''), [downloads, setDownloads] = React.useState({});
+        const [branching, setBranching] = React.useState(false), branchBusy = React.useRef(false);
         const generation = React.useRef(0), actionBusy = React.useRef(false), downloadBusy = React.useRef(new Set());
         const alive = React.useRef(true), transferControllers = React.useRef(new Set()), refreshNow = React.useRef(() => {});
+        const streamConnected = React.useRef(false);
+        const streamBlocked = React.useRef(false);
+        const snapshotRevision = React.useRef(Number(node.data.snapshot_revision ?? -1));
+        const acceptSnapshot = next => {
+          const revision = Number(next.snapshot_revision ?? -1);
+          if (Number.isSafeInteger(revision) && revision < snapshotRevision.current) return false;
+          if (Number.isSafeInteger(revision)) snapshotRevision.current = revision;
+          setValue(next); return true;
+        };
         React.useEffect(() => {
-          alive.current = true; setDownloads({}); setError(''); setConnection(''); setSaving(false);
+          alive.current = true; streamBlocked.current = false; setDownloads({}); setError(''); setConnection(''); setSaving(false);
+          snapshotRevision.current = Number(node.data.snapshot_revision ?? -1);
           actionBusy.current = false; downloadBusy.current.clear(); generation.current++;
           return () => { alive.current = false; for (const abort of transferControllers.current) abort.abort(); };
         }, [node.data.id, node.data.session_id]);
@@ -160,14 +178,16 @@ window.__ModuleLoader__.load({
             const revision = generation.current;
             try {
               const next = await comparisonRequest(node.data, undefined, abort.signal);
+              let applied = false;
               if (!abort.signal.aborted && revision === generation.current && !actionBusy.current) {
-                setValue(next); setConnection(''); failures = 0;
+                applied = acceptSnapshot(next); setConnection(''); failures = 0;
               }
-              if (!settled(next) || actionBusy.current) delay = document.hidden ? 8000 : 1800;
+              if (((!applied || !settled(next)) && !streamConnected.current) || actionBusy.current) delay = document.hidden ? 8000 : 1800;
             } catch (e) {
               if (!abort.signal.aborted) {
                 failures++;
                 const denied = [401, 403, 404].includes(e.status);
+                if (denied) streamBlocked.current = true;
                 setConnection(networkMessage(e) + (denied ? '' : ' 正在自动重连…'));
                 if (!denied) delay = Math.min(30000, 1800 * 2 ** Math.min(failures, 5));
               }
@@ -182,6 +202,36 @@ window.__ModuleLoader__.load({
             window.removeEventListener('online', wake); window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake); };
         }, [node.data.id, node.data.session_id]);
         React.useEffect(() => {
+          if (settled(value) || !window.EventSource) return;
+          let stream, retryTimer, disposed = false, failures = 0;
+          const connect = () => {
+            if (disposed || streamBlocked.current) return;
+            stream = new window.EventSource(comparisonUrl(value) + '&stream=1', { withCredentials: true });
+            stream.onopen = () => { if (!disposed) { streamConnected.current = true; failures = 0; } };
+            stream.onmessage = event => {
+              if (disposed || streamBlocked.current || actionBusy.current) return;
+              try {
+                const next = JSON.parse(event.data);
+                if (next.id !== value.id || next.session_id !== value.session_id || !next.lanes?.baseline
+                  || (next.presentation !== 'single' && !next.lanes?.motif)) throw Error('Invalid stream result');
+                if (!acceptSnapshot(next)) return;
+                generation.current++; setConnection('');
+                if (settled(next)) { disposed = true; streamConnected.current = false; stream.close(); }
+              } catch { stream.onerror(); }
+            };
+            stream.addEventListener('snapshot', stream.onmessage);
+            stream.onerror = () => {
+              stream.close(); streamConnected.current = false;
+              if (disposed || streamBlocked.current) return;
+              // A stream reconnect is read-only. Never replay a paid request.
+              void refreshNow.current();
+              retryTimer = setTimeout(connect, Math.min(30000, 2000 * 2 ** Math.min(failures++, 4)));
+            };
+          };
+          connect();
+          return () => { disposed = true; streamConnected.current = false; clearTimeout(retryTimer); stream?.close(); };
+        }, [value.id, value.session_id, settled(value)]);
+        React.useEffect(() => {
           if (settled(value)) return;
           updateBusy(value.session_id, value.id, true);
           return () => updateBusy(value.session_id, value.id, false);
@@ -191,12 +241,21 @@ window.__ModuleLoader__.load({
           actionBusy.current = true; generation.current++; setSaving(true); setError('');
           const revision = generation.current, abort = new AbortController(); transferControllers.current.add(abort);
           const current = () => alive.current && generation.current === revision && !abort.signal.aborted;
-          try { const next = await comparisonRequest(value, body, abort.signal); if (current()) { setValue(next); setConnection(''); } }
+          try { const next = await comparisonRequest(value, body, abort.signal); if (current()) { acceptSnapshot(next); setConnection(''); } }
           catch (e) { if (current()) setError(networkMessage(e) + (!e.status || e.status === 408 ? ' 将重新读取状态，请勿重复提交。' : '')); }
           finally {
             transferControllers.current.delete(abort);
             if (alive.current && generation.current === revision) { actionBusy.current = false; setSaving(false); void refreshNow.current(); }
           }
+        };
+        const fork = async () => {
+          if (branchBusy.current || !Number.isSafeInteger(node.anchorSeq) || !sessions.fork) return;
+          branchBusy.current = true; setBranching(true); setError('');
+          try {
+            const id = await sessions.fork({ sessionId: value.session_id, atSeq: node.anchorSeq, increaseTitle: false });
+            if (alive.current) sessions.open(id);
+          } catch (error) { if (alive.current) setError(error.message || '分支暂时未能创建，请重试。'); }
+          finally { branchBusy.current = false; if (alive.current) setBranching(false); }
         };
         const download = async (lane, file) => {
           const key = lane + ':' + file.id;
@@ -233,6 +292,9 @@ window.__ModuleLoader__.load({
         const labels = { preparing: '准备中', queued: '等待执行', running: '运行中', completed: '回复完成', failed: '失败', cancelled: '已取消' };
         const pane = lane => {
           const result = value.lanes[lane], files = result.artifacts || [], title = lane === 'baseline' ? 'Baseline · DSH' : result.mode === 'shadow' ? 'Motif · Shadow' : 'Motif · DSH';
+          const single = value.presentation === 'single';
+          const activity = Array.isArray(result.activity) ? result.activity : [];
+          const progressLabel = result.progress?.label || (!settled(result) ? labels[result.status] : '查看执行过程');
           const captureLink = event => {
             const link = event.target.closest?.('a'); if (!link) return;
             const raw = link.getAttribute('href') || '', file = artifactFor(files, raw);
@@ -245,8 +307,12 @@ window.__ModuleLoader__.load({
           const mentions = { resolve: raw => { const file = artifactFor(files, raw); return file ? {
             title: file.name, label: '下载 ' + file.name.split('/').pop(), open: () => { void download(lane, file); },
           } : undefined; } };
-          return h('section', { key: lane, className: 'harless-paired-pane', 'aria-label': title },
-            h('header', null, h('strong', null, title), h('span', { role: 'status' }, result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
+          return h('section', { key: lane, className: 'harless-paired-pane' + (single ? ' harless-single-pane' : ''), 'aria-label': single ? '回复' : title },
+            !single && h('header', null, h('strong', null, title), h('span', { role: 'status' }, result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
+            (activity.length > 0 || !settled(result)) && h('details', { className: 'harless-activity' },
+              h('summary', null, h('span', { role: 'status', 'aria-live': 'polite' }, progressLabel)),
+              activity.length > 0 && h('ol', null, ...activity.map((entry, index) => h('li', { key: index, 'data-status': entry.status },
+                h('span', null, entry.label), h('small', null, ({ running: '进行中', completed: '完成', failed: '未完成' })[entry.status] || ''))))),
             result.fallback_reason && h('p', { className: 'harless-paired-notice' }, '优化未启用，已回退普通 DSH：' + result.fallback_reason),
             result.failure && h('p', { role: 'alert', className: 'harless-paired-notice' }, result.failure),
             h('div', { className: 'harless-paired-answer', onClickCapture: captureLink }, (result.answer_display ?? result.answer)
@@ -262,18 +328,21 @@ window.__ModuleLoader__.load({
                   h('span', { className: 'harless-paired-download-label' }, status?.phase === 'pending' ? '准备中…' : '下载')),
                   status && h('small', { role: status.phase === 'error' ? 'alert' : 'status', className: status.phase === 'error' ? 'harless-paired-error' : 'harless-paired-muted' }, status.message));
               }))),
-            result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
+            !single && result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
             h('footer', null, h('small', null, `模型请求 ${result.stats?.upstream_requests || 0} · ${result.mode === 'shadow' ? '预测候选 ' + (result.stats?.shadow_candidates || 0) : '已验证跳过 ' + (result.stats?.verified_skips || 0)}`),
               ['failed', 'cancelled'].includes(result.status) && settled(value) && h('button', { type: 'button', disabled: saving, onClick: () => action({ action: 'retry', lane }) }, '重试此侧'),
-              h('fieldset', { disabled: !value.scoring_available || saving, 'aria-label': title + '评分' }, h('legend', null, value.scoring_available ? '结果评分' : '两侧完成后评分'),
+              !single && h('fieldset', { disabled: !value.scoring_available || saving, 'aria-label': title + '评分' }, h('legend', null, value.scoring_available ? '结果评分' : '两侧完成后评分'),
                 ...[1, 2, 3, 4, 5].map(score => h('label', { key: score, className: value.scores[lane] === score ? 'selected' : '' }, h('input', {
                   type: 'radio', name: value.id + '-' + lane, value: score, checked: value.scores[lane] === score,
                   onChange: () => action({ action: 'rate', lane, score, revision: value.score_revision, output_sha256: result.output_sha256 }) }), score)))));
         };
         return h('div', { className: 'harless-paired', 'data-comparison-id': value.id },
           h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired-pane fieldset{display:flex;flex-wrap:wrap;gap:6px;border:0;padding:0;min-width:0}.harless-paired-pane legend{font-size:12px;color:var(--dsw-alias-label-secondary,inherit);margin-bottom:8px}.harless-paired-pane fieldset label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid #8885;border-radius:8px;padding:6px 8px;min-height:32px;cursor:pointer}.harless-paired-pane label.selected{color:var(--dsw-alias-link,#729cf7);border-color:currentColor;background:#729cf719}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-pane fieldset:disabled{opacity:.45}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;margin:0 0 8px}.harless-paired-files{list-style:none;padding:0;display:grid;gap:8px}.harless-paired-files li{min-width:0}.harless-paired-files a{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 12px;border:1px solid #8884;border-radius:10px;color:var(--dsw-alias-link,#729cf7);text-decoration:none}.harless-paired-files a:hover{background:#8881}.harless-paired-filename{min-width:0;overflow-wrap:anywhere}.harless-paired-download-label{flex-shrink:0;font-size:12px}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin-top:5px}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
-          h('div', { className: 'harless-paired-grid' }, pane('baseline'), pane('motif')),
-          !settled(value) && h('button', { type: 'button', disabled: saving, onClick: () => action({ action: 'cancel' }), style: { marginTop: 12 } }, '取消本次对照'),
+          h('style', null, `.harless-single-pane{border:0;border-radius:0;padding:0;background:transparent}.harless-activity{font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary,inherit);margin:12px 0}.harless-activity summary{cursor:pointer}.harless-activity ol{padding-left:20px;margin:8px 0}.harless-activity li{padding:4px 0}.harless-activity li small{margin-left:12px}.harless-activity li[data-status=running]{color:var(--dsw-alias-state-business-primary,#729cf7)}`),
+          h('div', { className: value.presentation === 'single' ? 'harless-single' : 'harless-paired-grid' }, pane('baseline'), value.presentation !== 'single' && pane('motif')),
+          !settled(value) && h('button', { type: 'button', disabled: saving, onClick: () => action({ action: 'cancel' }), style: { marginTop: 12 } }, '停止生成'),
+          settled(value) && typeof sessions.fork === 'function' && Number.isSafeInteger(node.anchorSeq)
+            && h('button', { type: 'button', disabled: branching, onClick: fork, 'aria-label': '在新对话中分支', style: { marginTop: 12 } }, branching ? '正在创建分支…' : '在新对话中分支'),
           connection && h('div', { role: 'status', className: 'harless-paired-connection' }, connection,
             h('button', { type: 'button', onClick: () => refreshNow.current() }, '重新连接'),
             connection.includes('登录') && h('a', { href: '/login', style: { marginLeft: 8 } }, '登录')),
@@ -310,7 +379,7 @@ window.__ModuleLoader__.load({
         return { start: match[1].length, end: match[0].length, draftRev: state.draftRev };
       }
       const sceneToken = draft => /^(\s*)\/([a-z][a-z0-9_-]*)(?=$|\s|[\u3400-\u9fff])/i.exec(draft);
-      const choiceVersions = new Map(), draftWatches = new Map(), suppressDraftReset = new Set(), deferredResets = new Map();
+      const choiceVersions = new Map(), draftWatches = new Map(), suppressDraftReset = new Set();
       const resetReason = '正在切换为普通对话…';
       const cancelledChoice = () => { const error = Error('场景选择已取消'); error.name = 'AbortError'; return error; };
       function displaySelection(id, scene) {
@@ -345,10 +414,9 @@ window.__ModuleLoader__.load({
         });
         draftWatches.set(id, off);
       }
-      async function resetScene(session, handoffRetries = 1) {
+      async function resetScene(session) {
         const id = session.sessionId, previous = choosing.get(id), version = (choiceVersions.get(id) || 0) + 1;
         choiceVersions.set(id, version); revisions.set(id, (revisions.get(id) || 0) + 1);
-        deferredResets.delete(id);
         displaySelection(id, 'new-scene');
         const blocks = conversation.blocks, existing = blocks?.storeFor(id).getSnapshot();
         if (!existing || existing.reason === resetReason) blocks?.set(id, { reason: resetReason });
@@ -358,48 +426,14 @@ window.__ModuleLoader__.load({
           // mount settle, then overwrite it; never race a reset against a pick.
           await previous?.catch(() => {});
           if (!current()) return;
-          let next;
-          try { next = await request(session, { action: 'select', session_id: id, selection: { scene: 'new-scene' } }); }
-          catch (error) {
-            if (error.code !== 'scene_requires_new_session') throw error;
-            if (!current()) return;
-            next = await request(session, { action: 'new_session', inherit_session: id, selection: { scene: 'new-scene' } });
-            if (!current()) return;
-            await sessions.refresh();
-            if (!current()) return;
-            const targetDraft = draftSnapshot(inputFor(next.session_id));
-            const handoff = () => {
-              if (!current()) return;
-              const oldInput = inputFor(id), draft = draftSnapshot(oldInput), fresh = inputFor(next.session_id);
-              if (draft.phase !== 'plain') throw Error('请等待当前发送完成后再切换普通对话');
-              if (targetDraft.draft || targetDraft.attachmentIds.length || !sameDraft(fresh, targetDraft, targetDraft.attachmentIds)) {
-                // The addressed target is already visible in the session list.
-                // Never overwrite text/files entered there while we waited.
-                if (handoffRetries > 0) { void resetScene(session, handoffRetries - 1); return; }
-                throw Error('新普通会话已有输入，两边草稿均已保留。请刷新页面后重试。');
-              }
-              fresh.setDraft(draft.draft);
-              if (draft.attachmentIds.length) {
-                if (!fresh.addAttachments(draft.attachmentIds)) throw Error('附件未能转移，原输入已保留');
-                conversation.rebindDraftFiles(next.session_id, draft.attachmentIds);
-                for (const attachment of draft.attachmentIds) oldInput.removeAttachment(attachment);
-              }
-              suppressDraftReset.add(id);
-              try { oldInput.setDraft(''); } finally { suppressDraftReset.delete(id); }
-              displaySelection(id, undefined); clearResetBlock(id);
-              publish(next.session_id, next); sessions.open(next.session_id);
-              fresh.notify('info', '已切换为普通对话，原场景聊天已保留。');
-            };
-            // Finishing a background mount must never steal another chat's
-            // focus. Complete the addressed handoff if this chat is reopened.
-            if (!isCurrent(session)) deferredResets.set(id, handoff); else handoff();
-            return;
-          }
+          // The visible conversation owns the scene choice. Immutable tool
+          // agents are rotated privately by the server; drafts never move.
+          const next = await request(session, { action: 'select', session_id: id, selection: { scene: 'new-scene' } });
           if (current()) draftSelections.delete(id);
           publish(id, next); // Canonical state may change under a newer draft overlay.
         })();
         choosing.set(id, operation);
-        try { await operation; if (current() && !deferredResets.has(id)) clearResetBlock(id); }
+        try { await operation; if (current()) clearResetBlock(id); }
         catch (error) {
           if (current()) {
             blocks?.set(id, { reason: '普通对话切换失败，请刷新页面后重试。' });
@@ -413,8 +447,6 @@ window.__ModuleLoader__.load({
           if (!id) return;
           try {
             watchDraft({ sessionId: id });
-            const handoff = deferredResets.get(id);
-            if (handoff) { deferredResets.delete(id); handoff(); }
           } catch (error) {
             if (conversation.blocks?.storeFor(id).getSnapshot()?.reason === resetReason)
               conversation.blocks.set(id, { reason: '普通对话切换失败，请刷新页面后重试。' });
@@ -442,7 +474,6 @@ window.__ModuleLoader__.load({
           throw Error('候选已更新，请按当前输入重新选择场景');
         const previous = choosing.get(session.sessionId), version = (choiceVersions.get(session.sessionId) || 0) + 1;
         choiceVersions.set(session.sessionId, version);
-        deferredResets.delete(session.sessionId);
         // Commit the native chip synchronously. The backend may need to mount
         // an MCP; that must not delay visual acknowledgement of a valid pick.
         let expectedSpan = span, optimistic = false;
@@ -465,42 +496,8 @@ window.__ModuleLoader__.load({
             && !(optimistic && !automatic && knownDraftScene(session.sessionId, oldInput.state.getSnapshot().draft) === id))
             throw Error('输入或附件已改变，请重新选择场景');
           if (!fromCommand && !('/' + shortcut(scene)).startsWith(token)) throw Error('候选已更新，请按当前输入重新选择场景');
-          let next;
-          try {
-            next = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: id } }, guard.signal);
-            checkChoice();
-          } catch (error) {
-            checkChoice();
-            if (error.code !== 'scene_requires_new_session') throw error;
-            // A scene switch cannot rewrite an immutable started preset. Create
-            // an addressed new session and hand off only the unchanged draft.
-            if (!sameDraft(oldInput, expectedSpan, initial.attachmentIds)) throw Error('输入或附件已改变，请重新选择场景');
-            const draft = initial;
-            next = await request(session, { action: 'new_session', inherit_session: session.sessionId, selection: { scene: id } }, guard.signal);
-            checkChoice();
-            await sessions.refresh();
-            checkChoice();
-            const fresh = inputFor(next.session_id);
-            if (!sameDraft(oldInput, expectedSpan, draft.attachmentIds)) {
-              fresh.notify('info', '新场景会话已创建；原输入有新修改，已保留在原会话。');
-              throw Error('输入或附件已改变，原输入已保留；请在会话列表打开新场景。');
-            }
-            fresh.setDraft(draft.draft);
-            if (!fresh.insertReference(reference(scene), { ...span, draftRev: fresh.state.getSnapshot().draftRev }))
-              throw Error('无法保留输入，请重新打开新场景会话');
-            if (draft.attachmentIds.length) {
-              if (!fresh.addAttachments(draft.attachmentIds)) throw Error('附件未能转移，原输入已保留');
-              conversation.rebindDraftFiles(next.session_id, draft.attachmentIds);
-              for (const attachment of draft.attachmentIds) oldInput.removeAttachment(attachment);
-            }
-            suppressDraftReset.add(session.sessionId);
-            try { oldInput.setDraft(''); } finally { suppressDraftReset.delete(session.sessionId); }
-            command.popupFor(sessions.scope(session.sessionId)).dismiss();
-            displaySelection(session.sessionId, undefined); clearResetBlock(session.sessionId);
-            publish(next.session_id, next); guard.dispose(); sessions.open(next.session_id);
-            fresh.notify('info', `已新建 ${scene.label} 会话，原聊天已保留。`);
-            return { input: fresh, state: draftSnapshot(fresh), sessionId: next.session_id };
-          }
+          const next = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: id } }, guard.signal);
+          checkChoice();
           if (!optimistic && !sameDraft(oldInput, expectedSpan, initial.attachmentIds)
             && !knownDraftScene(session.sessionId, oldInput.state.getSnapshot().draft)) {
             void resetScene(session); throw cancelledChoice();
@@ -529,28 +526,6 @@ window.__ModuleLoader__.load({
         } finally { guard.dispose(); if (choosing.get(session.sessionId) === operation) choosing.delete(session.sessionId); }
       }
       const report = (session, error) => { if (!isCurrent(session) || error.name === 'AbortError') return; try { inputFor(session.sessionId).notify('error', error.message); } catch {} };
-      function handOffAfterSubmit(session, scene, span, signal) {
-        // A handled adjudication returns the native machine to plain. Wait for
-        // that public state before moving a frozen draft and its attachments.
-        const input = inputFor(session.sessionId), frozenAttachments = [...input.state.getSnapshot().attachmentIds];
-        let off = () => {}, offSession = () => {}, timer, done = false;
-        const stop = () => { done = true; off(); offSession(); clearTimeout(timer); signal.removeEventListener('abort', stop); };
-        const check = () => {
-          if (done || input.state.getSnapshot().phase === 'adjudicating') return;
-          stop();
-          if (signal.aborted || !isCurrent(session) || !sameDraft(input, span, frozenAttachments)) return;
-          void chooseScene(session, scene.id, span, false, true).then(target => {
-            // Submit exactly the explicitly requested draft once. A user edit
-            // during handoff wins and remains unsent in its addressed session.
-            if (!signal.aborted && isCurrent(target) && sameDraft(target.input, target.state, target.state.attachmentIds))
-              target.input.submit();
-          }).catch(error => report(session, error));
-        };
-        off = input.state.subscribe(check);
-        offSession = sessions.list?.subscribe(() => { if (!isCurrent(session)) stop(); }) || (() => {});
-        signal.addEventListener('abort', stop, { once: true });
-        timer = setTimeout(stop, 30000);
-      }
       // The native trigger recomputes candidates after every character and owns
       // keyboard/IME handling, span CAS, atomic chip deletion and undo.
       ctx.effect(() => triggers.registerSource({ trigger: '/', name: 'harless-scenes', order: -10,
@@ -594,14 +569,9 @@ window.__ModuleLoader__.load({
           if (value.selection.scene === scene.id) return;
           try {
             const selected = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: scene.id } }, guard.signal);
-            if (!isCurrent(session)) return 'handled';
+            if (!isCurrent(session) || guard.signal.aborted) return 'handled';
             publish(session.sessionId, selected);
-          } catch (error) {
-            if (!isCurrent(session)) return 'handled';
-            if (error.code !== 'scene_requires_new_session') throw error;
-            handOffAfterSubmit(session, scene, leadingSpan(session.sessionId), signal);
-            return 'handled';
-          }
+          } catch (error) { if (!isCurrent(session) || guard.signal.aborted) return 'handled'; throw error; }
           } finally { guard.dispose(); }
         },
         lexicon: session => cache.get(session.sessionId)?.scenes.map(shortcut),

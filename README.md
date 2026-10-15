@@ -6,9 +6,11 @@
 
 四场景研究代码的分支整合与兼容验收见 [当前整合记录](docs/experiments/four-scenario-main-integration-20261014-v1.md)。论文生成工具/轨迹 RSI 的显式实验入口在 [论文场景](scenarios/paper-submission/README.md)，文献处理在 [文献场景](scenarios/literature-notes/README.md)。研究 CLI 与统一 Web 的工具契约不同，分支合并不会自动赋予旧实验库产品 Execute 权限；文献的任务级 Web 绑定和双栏评分仍需单独验收。
 
-Web 场景快捷入口支持 `/ppt`、`/paper`、`/data`、`/chat`，输入前缀即可选择并显示有色标识；`/harless` 同时列出场景、模式和 RSI。可用性由当前账号的实际部署决定。已有会话切换场景会新建对应会话并保留原聊天与未改写的草稿；同一场景的文字续聊保留上下文。详见 [场景与账号控制](docs/harless-controls.md)。
+Web 场景快捷入口支持 `/ppt`、`/paper`、`/data`、`/chat`，输入前缀即可选择并显示有色标识，也可直接输入完整短命令和请求；`/harless` 保留场景、模式与 RSI 控制。启用三场景对照的账号部署允许在同一可见对话中先 `/data` 再 `/ppt`，无需新建聊天；后台按场景轮换独立任务子会话，承接有界历史，并重新核验可用来源与交付文件。正在运行的回复须完成或取消后再切换。删除未发送的场景标记会切回普通对话；正常发送后的编辑器清空不取消已选场景。详见 [场景与账号控制](docs/harless-controls.md)。
 
 面向用户的工作区只需填写名称，目录由服务器按账号分配；选中工作区后，“新会话”在该工作区创建独立聊天。界面不显示服务器目录或内部 preset ID，场景候选选中后立即显示蓝色标识，后台继续完成准备。文字、附件及二者组合都进入同一场景的 DSH / Motif 流程，保留完整工具，由模型判断直接回答、询问资料或调用工具；没有附件不会被发送入口拒绝。资料验证在实际工具调用时进行，Motif 仍只复用满足原有证据与权限条件的轨迹。三场景对照支持在同一可见对话中继续上传资料，每批新来源使用独立处理子会话并分别承接两侧近期讨论，原资料、结果与评分保留，不把旧来源回执用于新文件。
+
+工作区侧栏保留文件夹图标、折叠和操作菜单；点击名称进入工作区概览，可置顶、改名或删除分组。删除前说明影响，既有聊天移至“未分组”，记录与文件保留。聊天支持从已完成回复创建独立分支，名称按原名追加 `（1）`、`（2）` 等编号；编号按账号持久保存，分支不共享原任务评分或写入权限。对照场景及切回的普通聊天显示真实回答增量和模型/工具执行状态；重连只读取状态，不重放付费请求。接口与边界见 [接口契约](docs/interfaces.md#连续场景流式状态与对话分支2026-10-15)。
 
 GeneLoop 是本项目的产品名称，界面使用用户提供的 GeneLoop Logo。MotifAgent 的迁移内核负责有证据支持的结构执行；底层 DeepSeek Harness（DSH）负责 Agent 循环、语义判断、工具派发和会话，其来源与许可证归属保持不变。场景通过 MCP 扩展。模型选择仍显示真实提供商和模型名称；历史环境变量、协议标识、`/harless` 命令及仓库目录保持兼容，不因品牌更名修改其含义。
 
@@ -91,11 +93,11 @@ npm run web -- --scenario portfolio-v1 --mode execute
 /harless status
 ```
 
-Mode 菜单显示 Origin、Shadow、Execute；Origin 在协议中仍为 `baseline`。RSI 默认 On，切换模式不改变开关；Off 保留所选模式，但下一任务按 Origin 执行。没有认证库或本地匹配服务时 Execute 会被服务端拒绝；Shadow 可以运行并明确记录普通 Harness 回退。菜单选择本身不调用模型，默认用于之后创建的会话。一个 Session 仍只绑定一个 Task，不复用旧预算或证据。
+Mode 菜单显示 Origin、Shadow、Execute；Origin 在协议中仍为 `baseline`。RSI 默认 On，切换模式不改变开关；Off 保留所选模式，但下一任务按 Origin 执行。没有有效认证库或所需匹配服务时 Execute 会被服务端拒绝；Shadow 可以运行并明确记录普通 Harness 回退。菜单选择本身不调用模型，只影响后续任务；每轮独立登记任务及预算，不能沿用旧任务授权或证据绕过新输入检查。
 
 目前登记 `example`、`portfolio-v1`、`portfolio-v2` 三个合成资料场景；新增场景由服务器维护登记表和 MCP 配置。PPT MCP 与自动持续学习发布尚未实现。可选的 Linux 账号网关提供邀请码注册、独立 Harness Home/工作区及按账号隔离的预算路由；它需要单独配置并通过反向代理公开，直接运行 `npm run web` 仍是单用户开发入口。配置与限制见[账号网关部署说明](docs/harless-account-gateway.md)，任务接口见 [Harless 控制接口](docs/harless-controls.md)。
 
-后台保留双层预算：每任务默认 0.25 美元/24 次，全启动默认 0.25 美元/256 次，每请求最多 1000 输出 token；新任务不重置全局限制。任务上限用 `--budget-usd/--request-limit` 配置，全启动用 `--run-budget-usd/--run-request-limit` 配置。固定 `reasoning_effort="off"`，默认关闭压缩；请求、缓存输入/输出 token、费用和 verified skips 仍完整记录，代理估值需与账单核对。免费模拟不展示额度表单，实际支出为零。
+后台保留双层费用预算：每任务与全启动默认各 0.25 美元，每请求最多 1000 输出 token；请求次数默认不限，新任务不重置累计费用与请求计数。任务费用用 `--budget-usd` 配置，全启动费用用 `--run-budget-usd` 配置；可选 `--request-limit/--run-request-limit` 正整数仍支持次数上限，CLI `0` 或配置 `null` 表示不限次数。固定 `reasoning_effort="off"`，默认关闭压缩；请求、缓存输入/输出 token、费用和 verified skips 仍完整记录，代理估值需与账单核对。免费模拟不展示额度表单，实际支出为零。
 
 真实连接在服务器根目录的私有 `.env` 填写 `DEEPSEEK_API_KEY` 或 `HARLESS_GLM_API_KEY`；GLM 还要配置 `HARLESS_GLM_MODEL`、官方 `HARLESS_GLM_BASE_URL` 和两项保守的美元/百万 token 价格，字段见 `.env.example`。密钥只由服务器读取；浏览器 API 仅收到模型名称和可用状态，不读取 `.env`。不要提交或发送密钥。统一 npm 入口通过 Node `loadEnvFile` 读取它（要求 Node 20.12+），已有环境变量优先。填写密钥不会自动调用付费模型：
 

@@ -25,7 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.adapters.scenario import prepare_scenario
 from src.adapters.harless_scenarios import prepare_scene_registry
-from src.adapters.deepseek_cost_gate import State, create_server, PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION
+from src.adapters.deepseek_cost_gate import (State, create_server, normalize_request_limit,
+    request_limit_argument, PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION)
 from src.adapters.web_task_budget import TaskBudgetRegistry, create_control_server
 
 
@@ -252,8 +253,10 @@ def main():
     parser.add_argument('--public-origin', help='exact HTTPS gateway origin; backend remains on loopback, no proxy or account isolation is created')
     parser.add_argument('--run-id', help='optional unique 32-character hexadecimal output identity')
     parser.add_argument('--budget-usd', type=float, default=defaults['budget_usd'])
-    parser.add_argument('--request-limit', type=int, default=defaults['request_limit'])
-    parser.add_argument('--run-request-limit', type=int, default=256, help='whole-launch request cap across all tasks')
+    parser.add_argument('--request-limit', type=request_limit_argument, default=defaults['request_limit'],
+                        help='per-task request cap; 0 means unlimited (default)')
+    parser.add_argument('--run-request-limit', type=request_limit_argument, default=defaults.get('run_request_limit'),
+                        help='whole-launch request cap across all tasks; 0 means unlimited (default)')
     parser.add_argument('--run-budget-usd', type=float, default=defaults['budget_usd'], help='whole-launch budget, never reset by a new task')
     parser.add_argument('--fixture', choices=['normal', 'stale', 'tool-failure', 'provider-failure', 'outside-tool', 'delay'],
                         default='normal', help='mock-only failure injection for diagnostics')
@@ -268,10 +271,15 @@ def main():
         parser.error('Motif modes require the portfolio-v1 historical library scenario')
     if args.fixture in ('stale', 'tool-failure') and (args.mode != 'execute' or args.scenario != 'portfolio-v1'):
         parser.error('stale/tool-failure fixtures require portfolio-v1 execute')
-    if not 1024 <= args.port <= 65535 or args.request_limit < 1 or not math.isfinite(args.budget_usd) or args.budget_usd < 0:
-        parser.error('invalid port, request limit or budget')
-    if not math.isfinite(args.run_budget_usd) or not args.budget_usd <= args.run_budget_usd <= 100 or args.run_request_limit < 1:
-        parser.error('whole-launch budget must cover task cap and be <=100; request limit must be positive')
+    try:
+        args.request_limit = normalize_request_limit(args.request_limit)
+        args.run_request_limit = normalize_request_limit(args.run_request_limit, 'run_request_limit')
+    except ValueError as error:
+        parser.error(str(error))
+    if not 1024 <= args.port <= 65535 or not math.isfinite(args.budget_usd) or args.budget_usd < 0:
+        parser.error('invalid port or budget')
+    if not math.isfinite(args.run_budget_usd) or not args.budget_usd <= args.run_budget_usd <= 100:
+        parser.error('whole-launch budget must cover task cap and be <=100')
     if bool(args.manifest) != bool(args.task): parser.error('--manifest and --task must be supplied together')
     if args.real_model and (args.frozen or args.fixture != 'normal'):
         parser.error('real provider cannot use frozen/failure fixtures')

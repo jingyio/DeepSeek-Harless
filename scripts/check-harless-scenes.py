@@ -106,7 +106,7 @@ def main():
             text = {'new-scene':'列出上传的文件，读取文件文本，引用真实文件名和 SHA256；不要猜路径。',
                     'ppt':'调用 list_inputs，pin_source 并 read_source 读取 doc_1，简短概括其文本，引用来源句柄与 SHA256。只读检查，不生成幻灯片。',
                     'paper-proofreading':'调用 list_inputs，按实际文件名和 SHA256 使用 pin_document、read_pinned_document 阅读论文文本，给出一句措辞修改建议并引用来源版本。',
-                    'research-data-analysis':'调用 list_inputs，按实际文件名和 SHA256 使用 pin_dataset、read_pinned_dataset_summary 计算 x 的均值和缺失数，简短回答并引用来源版本。',
+                    'research-data-analysis':'调用 inspect_study 读取本任务已上传数据的结构，简短说明实际变量、观测数和缺失情况；只检查资料，不生成报告。',
                     'files':'调用 read_task 和 list_files 盘点获准文件；pin_file 并 read_file 读取文本，引用 file_id 和 SHA256。不要整理或写入。'}[scene]
             if scene=='ppt' and args.mode=='execute':
                 text='当前已上传 doc_1。请直接调用 pin_source(document_id="doc_1") 固定它，再读取其内容，用一句话概括并引用真实来源句柄和版本。只读检查，不生成幻灯片。'
@@ -122,8 +122,12 @@ def main():
             draft = web.api(alice, base, {'action': 'upload', 'task_id': draft['task_id'], 'name': name,
                 'data': base64.b64encode(data).decode()})
             frozen = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())
-            prefix = {'ppt':'mcp__ppt__','new-scene':'mcp__workspace__','paper-proofreading':'mcp__paper_checks__','research-data-analysis':'mcp__data_analysis__','files':'mcp__file_management__'}[scene]
-            assert frozen['tools'] and all(tool['name'].startswith(prefix) for tool in frozen['tools'])
+            prefixes = {'ppt':('mcp__ppt__',),'new-scene':('mcp__workspace__',),
+                        'paper-proofreading':('mcp__paper_checks__','mcp__paper_trace_rsi__'),
+                        'research-data-analysis':('mcp__research_report__',),'files':('mcp__file_management__',)}[scene]
+            assert frozen['tools'] and all(tool['name'].startswith(prefixes) for tool in frozen['tools'])
+            registered = next(row for row in json.loads((output/'policy.json').read_text())['scenes'] if row['id']==scene)
+            assert {tool['name'] for tool in frozen['tools']} == set(registered['allowed_tools'])
             assert frozen['instructions'] and frozen['instructions_sha256']
             assert frozen['user_id'] == 'scene-check-alice' and frozen['selection']['mode'] == args.mode
             assert frozen['workspace'].startswith(str(output)) and draft['scene_inputs']
@@ -136,7 +140,9 @@ def main():
             other = 'ppt' if scene == 'new-scene' else 'new-scene'
             locked = settings(alice, base, {'action': 'select', 'session_id': draft['session_id'],
                 'selection': {'scene': other, 'mode': 'execute', 'rsi': False}}, expected=409)
-            assert locked['error']['code'] == 'scene_requires_new_session'
+            # A prepared task still owns its frozen scope until completion or
+            # cancellation; scene switching must not mutate that preview.
+            assert locked['error']['code'] == 'session_busy'
             assert settings(alice, base, session=draft['session_id'])['current_task']['scene'] == scene
             next_choice = settings(alice, base, {'action': 'new_session', 'inherit_session': draft['session_id'],
                 'selection': {'scene': other, 'mode': 'execute', 'rsi': False}})
