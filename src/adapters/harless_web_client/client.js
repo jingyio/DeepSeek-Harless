@@ -81,6 +81,52 @@ window.__ModuleLoader__.load({
       }
       const h = React.createElement;
       const busyComparisons = new Map();
+      // The journal stores the submission snapshot, not its eventual result.
+      // Keep recent authenticated snapshots across chat/trace navigation only;
+      // never persist private replies in browser storage.
+      const comparisonSnapshots = new Map(), comparisonObservers = new Map();
+      const comparisonRatings = new Map(), ratingObservers = new Map();
+      let comparisonIdentity = 0;
+      const comparisonKey = value => value.session_id + ':' + value.id;
+      const olderSnapshot = (next, previous) => previous && (
+        Number(next.snapshot_epoch ?? 0) < Number(previous.snapshot_epoch ?? 0)
+        || (Number(next.snapshot_epoch ?? 0) === Number(previous.snapshot_epoch ?? 0)
+          && (Number(next.snapshot_revision ?? -1) < Number(previous.snapshot_revision ?? -1)
+            || (Number(next.snapshot_revision ?? -1) === Number(previous.snapshot_revision ?? -1)
+              && Number(next.score_revision ?? -1) < Number(previous.score_revision ?? -1)))));
+      const rememberedSnapshot = value => {
+        const cached = comparisonSnapshots.get(comparisonKey(value));
+        return cached && !olderSnapshot(cached, value) ? cached : value;
+      };
+      function rememberSnapshot(value) {
+        const key = comparisonKey(value);
+        if (olderSnapshot(value, comparisonSnapshots.get(key))) return false;
+        comparisonSnapshots.delete(key); comparisonSnapshots.set(key, value);
+        if (comparisonSnapshots.size > 40) comparisonSnapshots.delete(comparisonSnapshots.keys().next().value);
+        for (const listener of comparisonObservers.get(key) || []) listener(value);
+        return true;
+      }
+      const ratingSnapshot = key => {
+        const state = comparisonRatings.get(key);
+        return { key, pending: Object.fromEntries([...(state?.intents || [])].map(([lane, intent]) => [lane, intent.score])),
+          saving: state?.saving || false, error: state?.error || '' };
+      };
+      function publishRating(key, reconcile = false) {
+        const value = ratingSnapshot(key);
+        for (const listener of ratingObservers.get(key) || []) listener(value, reconcile);
+      }
+      function discardComparisonMemory(message = '') {
+        comparisonIdentity++;
+        for (const [key, state] of comparisonRatings) {
+          state.intents.clear(); state.saving = false; state.error = message; state.abort?.abort(); publishRating(key);
+        }
+        comparisonRatings.clear(); comparisonSnapshots.clear();
+      }
+      ctx.effect(() => {
+        const leavePage = () => discardComparisonMemory();
+        window.addEventListener?.('pagehide', leavePage);
+        return () => { window.removeEventListener?.('pagehide', leavePage); leavePage(); };
+      }, 'harless: account-scoped comparison memory');
       const busyReason = '正在处理当前请求，请等待完成或停止生成。';
       function updateBusy(session,id,busy){
         const group=busyComparisons.get(session)||new Map(), count=(group.get(id)||0)+(busy?1:-1);
@@ -121,16 +167,81 @@ window.__ModuleLoader__.load({
         } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
       }
       async function comparisonRequest(value, body, signal) {
+        const identity = comparisonIdentity;
         return withDeadline(signal, 30000, async requestSignal => {
           const response = await fetch(comparisonUrl(value), { method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', signal: requestSignal,
             ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, session_id: value.session_id, id: value.id }) } : {}) });
+          if (identity !== comparisonIdentity) throw apiError(401);
+          if ([401, 403].includes(response.status)) {
+            const error = apiError(response.status); discardComparisonMemory(error.message); throw error;
+          }
           let result;
           try { result = await response.json(); } catch { throw apiError(response.status || 502, '服务器未返回有效结果，请稍后刷新。'); }
+          if (identity !== comparisonIdentity) throw apiError(401);
           if (!response.ok || result.error) throw apiError(response.status, result.error?.message);
           if (result.id !== value.id || result.session_id !== value.session_id || !result.lanes?.baseline || (result.presentation !== 'single' && !result.lanes?.motif))
             throw apiError(502, '服务器未返回当前对照结果。');
           return result;
         });
+      }
+      function saveRating(value, lane, score) {
+        const key = comparisonKey(value), authoritative = rememberedSnapshot(value), output = authoritative.lanes[lane]?.output_sha256;
+        if (!authoritative.scoring_available || !output) return;
+        let state = comparisonRatings.get(key);
+        if (!state) {
+          state = { confirmed: authoritative, intents: new Map(), saving: false, error: '' }; comparisonRatings.set(key, state);
+        }
+        if (state.intents.get(lane)?.score === score || (!state.intents.has(lane) && authoritative.scores[lane] === score)) return state.work;
+        // The queue belongs to the page, not a mounted card. An explicit last
+        // choice keeps saving when the user navigates to another conversation.
+        state.intents.set(lane, { score, output }); state.error = ''; state.saving = true; publishRating(key);
+        if (state.work) return state.work;
+        state.abort = new AbortController();
+        const identity = comparisonIdentity, active = () => comparisonRatings.get(key) === state && identity === comparisonIdentity && !state.abort.signal.aborted;
+        const work = (async () => {
+          try {
+            while (active() && state.intents.size) {
+              const [name, intent] = state.intents.entries().next().value, latest = rememberedSnapshot(state.confirmed);
+              if (!latest.scoring_available || latest.lanes[name]?.output_sha256 !== intent.output) {
+                state.intents.clear(); state.error = '结果已更新，请确认新结果后重新评分。'; break;
+              }
+              if (latest.scores[name] === intent.score) { state.intents.delete(name); publishRating(key); continue; }
+              try {
+                const next = await comparisonRequest(latest, { action: 'rate', lane: name, score: intent.score,
+                  revision: latest.score_revision, output_sha256: intent.output }, state.abort.signal);
+                if (!active()) return;
+                state.confirmed = next; rememberSnapshot(next);
+              } catch (error) {
+                if (!active()) return;
+                state.error = networkMessage(error) + (!error.status || error.status === 408 ? ' 将重新读取状态，请勿重复提交。' : '');
+                // A lost response may already have committed. Read before
+                // sending a newer choice; never replay the uncertain POST.
+                try {
+                  if ([401, 403, 404].includes(error.status)) throw error;
+                  const next = await comparisonRequest(latest, undefined, state.abort.signal);
+                  if (!active()) return;
+                  state.confirmed = next; rememberSnapshot(next);
+                } catch {
+                  if (!active()) return;
+                  state.intents.clear(); break;
+                }
+              }
+              if (state.intents.get(name) === intent) state.intents.delete(name);
+              publishRating(key);
+            }
+          } finally {
+            if (active()) {
+              state.work = null; state.saving = false; publishRating(key, true);
+              if (!state.error) comparisonRatings.delete(key);
+              // Keep failed-save notices bounded just like confirmed replies.
+              if (comparisonRatings.size > 40) for (const [oldKey, oldState] of comparisonRatings) {
+                if (!oldState.saving) comparisonRatings.delete(oldKey);
+                if (comparisonRatings.size <= 40) break;
+              }
+            }
+          }
+        })();
+        state.work = work; return work;
       }
       function artifactFor(files, raw) {
         let path = String(raw || '').trim();
@@ -213,7 +324,14 @@ window.__ModuleLoader__.load({
         }));
       }
       function ComparisonNode({ node, traceOnly = false }) {
-        const [value, setValue] = React.useState(node.data), [error, setError] = React.useState(''), [saving, setSaving] = React.useState(false);
+        const key = comparisonKey(node.data), initial = rememberedSnapshot(node.data);
+        const [snapshot, setValue] = React.useState(initial), [error, setError] = React.useState(''), [saving, setSaving] = React.useState(false);
+        const value = comparisonKey(snapshot) === key ? snapshot : initial;
+        const [loadedKey, setLoadedKey] = React.useState(comparisonSnapshots.has(key) || settled(initial) ? key : '');
+        const hydrated = loadedKey === key || comparisonSnapshots.has(key) || settled(initial);
+        const serverSnapshot = React.useRef(initial);
+        const [ratingState, setRatingState] = React.useState(ratingSnapshot(key));
+        const ratings = ratingState.key === key ? ratingState : ratingSnapshot(key), pendingRatings = ratings.pending;
         const [connection, setConnection] = React.useState(''), [downloads, setDownloads] = React.useState({});
         const [branching, setBranching] = React.useState(''), branchBusy = React.useRef(false);
         const [copied, setCopied] = React.useState(''), [traceLane, setTraceLane] = React.useState('baseline');
@@ -222,23 +340,41 @@ window.__ModuleLoader__.load({
         const streamConnected = React.useRef(false);
         const streamBlocked = React.useRef(false);
         const closeLiveStream = React.useRef(() => {});
-        const snapshotRevision = React.useRef(Number(node.data.snapshot_revision ?? -1));
         const acceptSnapshot = next => {
-          const revision = Number(next.snapshot_revision ?? -1);
-          if (Number.isSafeInteger(revision) && revision < snapshotRevision.current) return false;
-          if (Number.isSafeInteger(revision)) snapshotRevision.current = revision;
-          setValue(next); return true;
+          if (olderSnapshot(next, serverSnapshot.current) || !rememberSnapshot(next)) return false;
+          serverSnapshot.current = next; setValue(next); setLoadedKey(comparisonKey(next)); return true;
         };
         React.useEffect(() => {
           alive.current = true; streamBlocked.current = false; setDownloads({}); setError(''); setConnection(''); setSaving(false);
           setCopied(''); setBranching(''); branchBusy.current = false; setTraceLane('baseline');
-          snapshotRevision.current = Number(node.data.snapshot_revision ?? -1);
+          serverSnapshot.current = initial;
           actionBusy.current = false; downloadBusy.current.clear(); generation.current++;
           return () => { alive.current = false; for (const abort of transferControllers.current) abort.abort(); };
         }, [node.data.id, node.data.session_id]);
         // Persisted start-event data may be reassembled with a fresh object while
         // GET already holds newer results. Reset only when viewing another turn.
-        React.useEffect(() => { setValue(node.data); }, [node.data.id, node.data.session_id]);
+        React.useEffect(() => { setValue(initial); setLoadedKey(comparisonSnapshots.has(key) || settled(initial) ? key : ''); }, [node.data.id, node.data.session_id]);
+        React.useEffect(() => {
+          // Chat and trajectory can both render the same turn. A result saved
+          // by either view must also update the other without a stale flash.
+          const listener = next => {
+            if (!alive.current || olderSnapshot(next, serverSnapshot.current)) return;
+            serverSnapshot.current = next; setValue(next); setLoadedKey(key);
+          };
+          const group = comparisonObservers.get(key) || new Set(); group.add(listener); comparisonObservers.set(key, group);
+          return () => { group.delete(listener); if (!group.size) comparisonObservers.delete(key); };
+        }, [node.data.id, node.data.session_id]);
+        React.useEffect(() => {
+          let wasSaving = ratingSnapshot(key).saving;
+          const listener = (next, reconcile) => {
+            setRatingState(next);
+            if (wasSaving && !next.saving && reconcile) void refreshNow.current();
+            wasSaving = next.saving;
+          };
+          setRatingState(ratingSnapshot(key));
+          const group = ratingObservers.get(key) || new Set(); group.add(listener); ratingObservers.set(key, group);
+          return () => { group.delete(listener); if (!group.size) ratingObservers.delete(key); };
+        }, [node.data.id, node.data.session_id]);
         React.useEffect(() => {
           const abort = new AbortController(); let timer, failures = 0, pending = false, rerun = false;
           const poll = async () => {
@@ -277,15 +413,16 @@ window.__ModuleLoader__.load({
         }, [node.data.id, node.data.session_id]);
         React.useEffect(() => {
           if (settled(value) || !window.EventSource) return;
+          const identity = comparisonIdentity;
           let stream, retryTimer, stallTimer, disposed = false, failures = 0;
           const stopStream = () => { clearTimeout(stallTimer); stream?.close(); streamConnected.current = false; };
           const close = () => { disposed = true; clearTimeout(retryTimer); stopStream(); };
           closeLiveStream.current = close;
           const connect = () => {
-            if (disposed || streamBlocked.current) return;
+            if (disposed || streamBlocked.current || identity !== comparisonIdentity) return;
             const current = new window.EventSource(comparisonUrl(node.data) + '&stream=1', { withCredentials: true });
             stream = current;
-            const alive = () => !disposed && stream === current && !streamBlocked.current;
+            const alive = () => !disposed && stream === current && !streamBlocked.current && identity === comparisonIdentity;
             const watch = () => { clearTimeout(stallTimer); stallTimer = setTimeout(() => { if (alive()) current.onerror(); }, 10000); };
             // Only an authenticated snapshot establishes stream liveness.
             current.onopen = () => { if (alive()) watch(); };
@@ -315,12 +452,12 @@ window.__ModuleLoader__.load({
           return () => { close(); if (closeLiveStream.current === close) closeLiveStream.current = () => {}; };
         }, [node.data.id, node.data.session_id, settled(value)]);
         React.useEffect(() => {
-          if (settled(value)) return;
+          if (!hydrated || settled(value)) return;
           updateBusy(value.session_id, value.id, true);
           return () => updateBusy(value.session_id, value.id, false);
-        }, [value.session_id, value.id, value.status]);
+        }, [value.session_id, value.id, value.status, hydrated]);
         const action = async body => {
-          if (actionBusy.current) return;
+          if (actionBusy.current || comparisonRatings.get(key)?.saving) return;
           actionBusy.current = true; generation.current++; setSaving(true); setError('');
           const revision = generation.current, abort = new AbortController(); transferControllers.current.add(abort);
           const current = () => alive.current && generation.current === revision && !abort.signal.aborted;
@@ -330,6 +467,10 @@ window.__ModuleLoader__.load({
             transferControllers.current.delete(abort);
             if (alive.current && generation.current === revision) { actionBusy.current = false; setSaving(false); void refreshNow.current(); }
           }
+        };
+        const rate = (lane, score) => {
+          if (actionBusy.current) return;
+          setError(''); return saveRating(serverSnapshot.current, lane, score);
         };
         const fork = async lane => {
           const output = value.lanes[lane].output_sha256;
@@ -392,6 +533,15 @@ window.__ModuleLoader__.load({
           finally { downloadBusy.current.delete(key); transferControllers.current.delete(abort); }
         };
         const labels = { preparing: '准备中', queued: '等待执行', running: '运行中', completed: '回复完成', failed: '失败', cancelled: '已取消' };
+        if (!hydrated) return h('div', { className: 'harless-paired-loading', 'data-comparison-id': value.id, 'aria-busy': true },
+          h('style', null, '.harless-paired-loading{width:100%;margin:18px 0}.harless-paired-loading-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.harless-paired-loading section{border:1px solid #8885;border-radius:16px;padding:18px;min-width:0}.harless-paired-loading p{font-size:13px;color:var(--dsw-alias-label-secondary,inherit);line-height:1.6}@media(max-width:650px){.harless-paired-loading-grid{grid-template-columns:1fr}}'),
+          traceOnly ? h('p', { role: 'status' }, '正在加载此轮轨迹…') : h('div', { className: 'harless-paired-loading-grid' },
+            ...(value.presentation === 'single' ? ['baseline'] : ['baseline', 'motif']).map(lane => h('section', { key: lane },
+              h('strong', null, value.presentation === 'single' ? '回复' : lane === 'baseline' ? 'Baseline' : 'Motif'),
+              h('p', { role: 'status' }, '正在加载此轮结果…')))),
+          connection && h('div', { role: 'status', className: 'harless-paired-connection' }, connection,
+            h('button', { type: 'button', onClick: () => refreshNow.current() }, '重新连接'),
+            connection.includes('登录') && h('a', { href: '/login', style: { marginLeft: 8 } }, '登录')));
         const pane = lane => {
           const result = value.lanes[lane], files = result.artifacts || [], title = lane === 'baseline' ? 'Baseline' : result.mode === 'shadow' ? 'Motif · 影子评估' : 'Motif';
           const single = value.presentation === 'single';
@@ -451,7 +601,7 @@ window.__ModuleLoader__.load({
                 h('button', { type: 'button', className: 'harless-message-icon', 'aria-label': '复制 ' + title + ' 回复', title: copied === lane ? '已复制' : '复制', disabled: !answer, onClick: () => copy(lane) }, messageIcon('copy')),
                 ...['up', 'down'].map(vote => h('button', { key: vote, type: 'button', className: 'harless-message-icon',
                   'aria-label': (vote === 'up' ? '赞 ' : '踩 ') + title + ' 回复', title: vote === 'up' ? '赞' : '踩', 'aria-pressed': result.feedback === vote,
-                  disabled: saving || !settled(result) || !result.output_sha256,
+                  disabled: saving || ratings.saving || !settled(result) || !result.output_sha256,
                   onClick: () => action({ action: 'feedback', lane, vote: result.feedback === vote ? null : vote, output_sha256: result.output_sha256 }) }, messageIcon(vote))),
                 h('button', { type: 'button', className: 'harless-message-icon', 'aria-label': '从 ' + title + ' 在新对话中分支',
                   title: branching === lane ? '正在创建分支…' : '在新对话中分支', disabled: !!branching || !settled(value) || !result.output_sha256,
@@ -461,11 +611,13 @@ window.__ModuleLoader__.load({
                   messageIcon('clock'), durationLabel(result.duration_ms ?? (Number.isFinite(result.stats?.elapsed_seconds) ? result.stats.elapsed_seconds * 1000 : undefined))),
                 copied === lane && h('span', { role: 'status', className: 'harless-paired-muted' }, '已复制')),
               h('small', null, `模型请求 ${result.stats?.upstream_requests || 0} · ${result.mode === 'shadow' ? '预测候选 ' + (result.stats?.shadow_candidates || 0) : '已验证跳过 ' + (result.stats?.verified_skips || 0)}`),
-              ['failed', 'cancelled'].includes(result.status) && settled(value) && h('button', { type: 'button', disabled: saving, onClick: () => action({ action: 'retry', lane }) }, '重试此侧'),
-              !single && h('fieldset', { disabled: !value.scoring_available || saving, 'aria-label': title + '评分' }, h('legend', null, value.scoring_available ? '结果评分' : '两侧完成后评分'),
-                ...[1, 2, 3, 4, 5].map(score => h('label', { key: score, className: value.scores[lane] === score ? 'selected' : '' }, h('input', {
-                  type: 'radio', name: value.id + '-' + lane, value: score, checked: value.scores[lane] === score,
-                  onChange: () => action({ action: 'rate', lane, score, revision: value.score_revision, output_sha256: result.output_sha256 }) }), score)))));
+              ['failed', 'cancelled'].includes(result.status) && settled(value) && h('button', { type: 'button', disabled: saving || ratings.saving, onClick: () => action({ action: 'retry', lane }) }, '重试此侧'),
+              !single && h('fieldset', { disabled: !value.scoring_available || saving, 'aria-label': title + '评分', 'aria-busy': pendingRatings[lane] !== undefined },
+                h('legend', null, value.scoring_available ? '结果评分' : '两侧完成后评分'),
+                ...[1, 2, 3, 4, 5].map(score => h('label', { key: score, className: (pendingRatings[lane] ?? value.scores[lane]) === score ? 'selected' : '' }, h('input', {
+                  type: 'radio', name: value.id + '-' + lane, value: score, checked: (pendingRatings[lane] ?? value.scores[lane]) === score,
+                  onChange: () => rate(lane, score) }), score))),
+              !single && pendingRatings[lane] !== undefined && h('small', { role: 'status', className: 'harless-paired-muted' }, '正在保存评分…')));
         };
         if (traceOnly) {
           const lane = value.lanes[traceLane] ? traceLane : 'baseline', result = value.lanes[lane];
@@ -497,7 +649,7 @@ window.__ModuleLoader__.load({
           connection && h('div', { role: 'status', className: 'harless-paired-connection' }, connection,
             h('button', { type: 'button', onClick: () => refreshNow.current() }, '重新连接'),
             connection.includes('登录') && h('a', { href: '/login', style: { marginLeft: 8 } }, '登录')),
-          error && h('div', { role: 'alert', className: 'harless-paired-error' }, error));
+          (error || ratings.error) && h('div', { role: 'alert', className: 'harless-paired-error' }, error || ratings.error));
       }
       ctx.effect(() => ctx.uiConversation.events.register({ kind: 'harless-comparison', target: 'chat',
         match: event => event.type === 'user/message' && event.data.harless_comparison ? { id: event.data.harless_comparison.id, role: 'start' } : null,

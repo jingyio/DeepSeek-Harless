@@ -412,7 +412,7 @@ export function apply(ctx: any) {
   });
   if (indexedTasks.length !== indexedCount) saveTaskIndex();
   let creation: Promise<unknown> = Promise.resolve();
-  let active: string | null = null;
+  const active = new Map<string, { comparison?: string; provider: string }>();
   // Serial admission prevents two preview/submit retries from creating duplicate work.
   let admission: Promise<unknown> = Promise.resolve();
   const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -568,8 +568,16 @@ export function apply(ctx: any) {
       (Date.parse(task.finished_at ?? utc()) - Date.parse(task.started_at)) / 1000;
     record(task); return view(task, true);
   }
-  function requireIdle() {
-    if (active) throw new TaskError('task_busy', 'Another task is running; wait or cancel it', 409);
+  function canStart(comparison?: string, provider?: string) {
+    if (!active.size) return true;
+    // Only the two isolated lanes of this exact comparison may share a slot.
+    // DeepSeek forwards the session header through the turn-budget broker;
+    // legacy headerless adapters must retain unambiguous single-task routing.
+    return Boolean(brokerMode && comparison && provider === 'deepseek-official' && active.size < 2 &&
+      [...active.values()].every(row => row.comparison === comparison && row.provider === provider));
+  }
+  function requireIdle(comparison?: string, provider?: string) {
+    if (!canStart(comparison, provider)) throw new TaskError('task_busy', 'Another task is running; wait or cancel it', 409);
   }
   function finish(task: Task, status: string, failure: string | null = null) {
     if (terminal.has(task.status)) return;
@@ -581,7 +589,7 @@ export function apply(ctx: any) {
     task.closing = (async () => {
       await broker('/unbind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       await control('/tasks/cancel', { session_id: task.budget_session_id });
-      if (active === task.request.task_id) active = null;
+      active.delete(task.request.task_id);
     })().catch((error) => { task.failure = 'budget_close_failed: ' + String(error); record(task); });
   }
   const controller = ctx.sessionController;
@@ -1087,7 +1095,7 @@ export function apply(ctx: any) {
     }
     if (task.fallback_reason) audit(task, { kind: 'motif_fallback', reason: task.fallback_reason });
   }
-  async function submit(task: Task, confirmation: unknown, signal: AbortSignal) {
+  async function submit(task: Task, confirmation: unknown, signal: AbortSignal, comparison?: string) {
     if (confirmation !== task.confirmation_digest) throw new TaskError('confirmation_changed', 'Input/configuration changed; preview and confirm again', 409);
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
@@ -1109,7 +1117,9 @@ export function apply(ctx: any) {
     }
     // Source materialization/validation belongs to the selected tool call.
     // A greeting, explanation or planning turn need not prepare a report.
-    requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
+    requireIdle(comparison, task.model_option.provider);
+    active.set(task.request.task_id, {comparison, provider: task.model_option.provider});
+    task.status = 'running'; task.started_at = utc(); record(task);
     try {
       const attachmentContext = await sceneAttachmentContext(task.workspace, task.scene_inputs);
       if (scopeDigest(task.workspace, task.scene) !== task.scope_sha256)
@@ -1196,7 +1206,8 @@ export function apply(ctx: any) {
     const artifacts = comparisonArtifacts(config.output), taskParents = new Map<string, any>();
     comparisons = createComparisonService(config.output, principal, {
       owns: ensureOwned,
-      ready: () => active === null,
+      parallel: turn => findModel(turn.model).provider === 'deepseek-official',
+      ready: turn => canStart(turn.id, findModel(turn.model).provider),
       async createLane(parent, scene, lane) {
         const request = { sessionId: privateLanes.reserve(parent), agentPreset: sceneFor(scene).preset };
         privateCreations.add(request);
@@ -1206,7 +1217,8 @@ export function apply(ctx: any) {
         return created.sessionId;
       },
       async prepare(turn, lane, requestId) { return serialize(async () => {
-        requireIdle(); const child = turn.lanes[lane].session_id;
+        requireIdle(turn.id, findModel(turn.model).provider); const child = turn.lanes[lane].session_id;
+        if (turn.cancellation_requested) throw new TaskError('comparison_cancelled', '任务已取消。', 409);
         await ensureOwned(turn.session_id); await ensureOwned(child);
         if (comparisons!.parentFor(child) !== turn.session_id) throw new TaskError('comparison_scope_mismatch', '对话执行范围不匹配。', 403);
         const previous = forSession(child), content: any[] = [];
@@ -1278,7 +1290,10 @@ export function apply(ctx: any) {
         // Unavailable or invalid research libraries must be visible; never label a Baseline run as optimized.
         if (lane === 'motif' && reason && mode==='baseline') task.fallback_reason = reason;
         taskParents.set(task.request.task_id, { turn, lane });
-        try { await submit(task, task.confirmation_digest, new AbortController().signal); }
+        try {
+          if (turn.cancellation_requested) { finish(task, 'cancelled', 'user_cancelled'); await task.closing; return {task_id:task.request.task_id}; }
+          await submit(task, task.confirmation_digest, new AbortController().signal, turn.id);
+        }
         catch (error) { finish(task, 'failed', 'comparison_admission_failed'); await task.closing; throw error; }
         return { task_id: task.request.task_id };
       }); },
@@ -1375,12 +1390,14 @@ export function apply(ctx: any) {
           return browserJson(value, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
-        const result = await serialize(async () => body.action === 'rate' ? await comparisons!.rate(body.session_id, body.id, body.lane, body.score, body.revision, body.output_sha256)
+        const feedbackAction = body.action === 'rate' || body.action === 'feedback';
+        const perform = async () => body.action === 'rate' ? await comparisons!.rate(body.session_id, body.id, body.lane, body.score, body.revision, body.output_sha256)
           : body.action === 'feedback' ? await comparisons!.feedback(body.session_id,body.id,body.lane,body.vote,body.output_sha256)
           : body.action === 'fork' ? await forkComparison(body)
           : body.action === 'retry' ? await comparisons!.retry(body.session_id, body.id, body.lane)
           : body.action === 'cancel' ? await comparisons!.cancel(body.session_id, body.id)
-          : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })());
+          : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })();
+        const result = await (feedbackAction ? perform() : serialize(perform));
         return browserJson(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error: any) { return browserJson({ error: { code: error.code ?? 'comparison_failed', message: error.message } }, { status: error.status ?? 400 }); }
     } }), 'harless-comparison-api');
@@ -1434,7 +1451,7 @@ export function apply(ctx: any) {
   }, { global: true });
   ctx.on('llm/stream', (request: any, next: any) => {
     const task = forSession(request.sessionId);
-    if (!task || task.status !== 'running' || active !== task.request.task_id ||
+    if (!task || task.status !== 'running' || !active.has(task.request.task_id) ||
         request.provider !== task.model_option.provider || request.model !== task.model_option.model ||
         request.reasoningEffort !== task.reasoning_effort ||
         request.maxTokens !== (config.max_output_tokens ?? undefined) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');

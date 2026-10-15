@@ -1410,6 +1410,39 @@ test('Legacy progress rebuilds anchored tools once and preserves saved activitie
  });
 });
 
+test('DeepSeek comparison admits both isolated budget routes before either completes and keeps unrelated work blocked',options,async()=>{
+ const scenes=[{...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]}];
+ const f=await fixture({broker:true,scenes,capability_profile:'research-data-analysis',comparison_scenes:['research-data-analysis']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'parallel-lanes',mode:'queue',content:[{type:'text',text:'compare this synthetic question'}]},new AbortController().signal);
+  const compare=async()=>{const request=new Request('http://local/api/harless/comparisons?session_id='+sessionId+'&id='+sent.comparison_id);request.authorized=true;return (await f.routes.get('/api/harless/comparisons').fetch(request)).json();};
+  let rows=[];
+  for(let i=0;i<100;i++){
+   rows=(await f.api()).value.tasks.filter(task=>task.status==='running'&&f.promptCalls.some(call=>call.requestId===task.request_id));
+   if(rows.length===2)break;await new Promise(r=>setTimeout(r,10));
+  }
+  assert.equal(rows.length,2,'both model loops must be active before either receives a completion event');
+  assert.notEqual(rows[0].session_id,rows[1].session_id);
+  const routes=rows.map(task=>f.brokerRoutes.get(task.session_id));assert.equal(new Set(routes).size,2);
+  for(const route of routes)assert.equal(f.registrations.get(route).budget_usd,.125,'the existing total budget stays divided equally');
+  const next=async function*(){yield {type:'text-delta',index:0,text:'independent live result'};};
+  for(const task of rows)for await(const chunk of f.stream(f.modelRequest(task,{tools:f.agents.get(task.session_id).ctx.tools.schemas()}),next)){}
+  assert.throws(()=>f.stream(f.modelRequest(rows[0],{sessionId:rows[1].session_id}),next),/envelope/,'one lane cannot spend through the other lane request');
+  const unrelated=await f.preview('an unrelated task');assert.equal((await f.submit(unrelated)).value.error.code,'task_busy');
+  await f.complete(rows[0]);assert.equal(f.brokerRoutes.has(rows[0].session_id),false);assert.equal(f.brokerRoutes.get(rows[1].session_id),routes[1]);
+  for await(const chunk of f.stream(f.modelRequest(rows[1],{tools:f.agents.get(rows[1].session_id).ctx.tools.schemas()}),next)){}
+  assert.equal((await f.submit(unrelated)).value.error.code,'task_busy','finishing one side does not release the other side budget slot');
+  await f.complete(rows[1]);
+  let done;for(let i=0;i<100;i++){done=await compare();if(done.status==='completed')break;await new Promise(r=>setTimeout(r,10));}
+  assert.equal(done.status,'completed');assert.equal(f.brokerRoutes.size,0);
+  assert.equal((await f.submit(unrelated)).status,200);await f.complete(unrelated);
+  const prompts=f.promptCalls.length;await f.restart();const reads=f.controlCalls.length;
+  assert.equal((await compare()).status,'completed');assert.equal(f.controlCalls.length,reads,'complete restored snapshots do not wait for budget statistics');
+  assert.equal(f.promptCalls.length,prompts,'reload never resubmits either lane');
+ }finally{await f.close();}
+});
+
 test('paired native steps reach SSE, scoped trace, feedback and a single-lane branch without leaking the opposite answer',options,async()=>{
  const scenes=[{...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]}];
  const f=await fixture({broker:true,scenes,capability_profile:'research-data-analysis',comparison_scenes:['research-data-analysis']});

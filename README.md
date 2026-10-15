@@ -1,5 +1,7 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+DeepSeek 场景对照的 Baseline / Motif 两侧并行执行，各自保留会话、工具范围和任务预算；同一对话的下一轮仍等待当前轮结束。历史结果切换时恢复已确认的状态，首次读取显示加载状态；评分点击立即反馈，后台保存，站内切换不会丢失已选择的评分。无 Session 路由的旧模型适配器继续串行执行。
+
 会话开始后会根据用户内容生成简短名称；同一工作区自动重名时追加编号，手动改名和分支名保持。模型菜单按服务器实际可用目录提供 Flash / Pro；当前共享服务器可用 Flash Off / On、Pro Off。Pro On 的原生默认输出预约超过既有每任务预算，菜单会解释原因，不暗中缩短输出或更换模型。
 
 场景对照在生成中逐段保留真实文字增量，并显示思考、工具和 MCP 执行状态。每侧末尾提供复制、赞/踩、分支、用量与耗时；轨迹页可切换普通对话与对照任务，再分别查看 Baseline / Motif，已验证的 Motif 模型请求跳过用绿色标识。实现、真实模型与浏览器证据见 [本轮验收](docs/experiments/geneloop-live-workflow-20261015-v1.md)。
@@ -59,7 +61,7 @@ npm run scenario:real -- --budget-usd 0.25 --max-steps 16
 
 ## 官方 Harness Web 与动态任务入口
 
-SDK 的 `npm run scenario` 继续保留。`npm run web` 默认启动 Harness Web 与 GeneLoop 任务接口：任务从官方聊天提交，`/harless` 使用 Harness 原生命令菜单选择场景、RSI 和执行模式。每项任务有独立 Session、模式、预算和记录，同一时刻只执行一个任务；不再提供独立任务工作台页面或悬浮入口。服务器已验证 Node 22.23.3、Python 3.10.8；TypeScript 插件需要支持原生类型剥离的 Node，其他平台的 Web 尚未验证。
+SDK 的 `npm run scenario` 继续保留。`npm run web` 默认启动 Harness Web 与 GeneLoop 任务接口：任务从官方聊天提交，`/harless` 使用 Harness 原生命令菜单选择场景、RSI 和执行模式。每项任务有独立 Session、模式、预算和记录；同一轮 DeepSeek 对照的两侧并行，普通任务及其他轮次仍串行调度；不再提供独立任务工作台页面或悬浮入口。服务器已验证 Node 22.23.3、Python 3.10.8；TypeScript 插件需要支持原生类型剥离的 Node，其他平台的 Web 尚未验证。
 
 在服务器项目目录启动，本地建立端口转发：
 
