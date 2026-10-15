@@ -23,7 +23,7 @@ export type ComparisonHost = {
   createLane(parent: string, scene: string, lane: LaneName): Promise<string>;
   prepare(turn: any, lane: LaneName, requestId: string): Promise<{ task_id: string }>;
   submit(taskId: string): Promise<void>;
-  inspect(taskId: string, context?: { turn: any; lane: LaneName }): Promise<any>;
+  inspect(taskId: string, context?: { turn: any; lane: LaneName; recoverMissing?: boolean }): Promise<any>;
   cancel(taskId: string): Promise<void>;
   publish(parent: string, turn: any, request?: any): Promise<void>;
   ready?(): boolean;
@@ -52,7 +52,16 @@ export function createComparisonService(output: string, principal: string, host:
   const view = (t: Turn) => ({ id: t.id, session_id: t.session_id, scene: t.scene, status: t.status,
     input_sha256: t.input_sha256, created_at: t.created_at, score_revision: t.score_revision, scores: { ...t.scores },
     scoring_available: lanes.every(name => t.lanes[name].status === 'completed'),
-    lanes: Object.fromEntries(lanes.map(name => [name, { ...t.lanes[name], artifacts: t.lanes[name].artifacts ?? [] }])) });
+    lanes: Object.fromEntries(lanes.map(name => {
+      const lane = t.lanes[name], artifacts = (lane.artifacts ?? []).filter(row=>
+        t.scene!=='research-data-analysis'||row.verification==='data-report-delivery-v1');
+      const delivery_status = artifacts.length ? 'available' : terminal.has(lane.status) ? 'not_delivered' : 'pending';
+      return [name, { ...lane, artifacts, delivery_status,
+        delivery_message: delivery_status === 'available' ? '结果文件已保存，可下载到本地。'
+          : delivery_status === 'pending' ? '结果文件会在生成并通过交付检查后显示。'
+          : t.scene === 'research-data-analysis' ? '本轮尚无通过交付校验的报告。模型回复结束不表示报告已成功生成。'
+          : '本轮没有可下载的结果文件。' }];
+    })) });
   async function get(session: string, id: string) {
     await host.owns(session);
     const t = state.turns.find(t => t.id === id && t.session_id === session);
@@ -136,6 +145,7 @@ export function createComparisonService(output: string, principal: string, host:
     sourceFor: (session:string,requestId:string,receipt:string) =>
       state.turns.find(t=>t.session_id===session&&t.request_id===requestId)?.source_files?.[receipt],
     isLane: (id: string) => Object.values(state.threads).some((thread: any) => Object.values(thread.lanes).includes(id)),
+    parentFor: (id: string) => Object.entries(state.threads).find(([, thread]: any) => Object.values(thread.lanes).includes(id))?.[0] ?? null,
     async admit(session: string, request: any, context: any) { return locked(async () => {
       await host.owns(session);
       if (disposed) throw new ComparisonError('comparison_stopping', '服务正在重启，请稍后再试。');
@@ -183,13 +193,18 @@ export function createComparisonService(output: string, principal: string, host:
       // call. Ownership is checked above; original failure status stays visible.
       if (terminal.has(t.status)) for (const name of lanes) {
         const lane = t.lanes[name], key = `${t.id}/${name}/${lane.attempt}`;
-        if (!['failed', 'cancelled'].includes(lane.status) || !lane.task_id || lane.artifacts?.length || reconciledDeliveries.has(key)) continue;
+        const needsDeliveryAudit=t.scene==='research-data-analysis'&&lane.artifacts?.some(row=>row.verification!=='data-report-delivery-v1');
+        if (!terminal.has(lane.status) || !lane.task_id || (lane.artifacts?.length&&!needsDeliveryAudit) || reconciledDeliveries.has(key)) continue;
         try {
-          const task = await host.inspect(lane.task_id, { turn: t, lane: name });
-          if (task.deliveries?.length && ['completed', 'failed', 'budget_exhausted', 'cancelled'].includes(task.status)) {
+          const task = await host.inspect(lane.task_id, { turn: t, lane: name, recoverMissing: true });
+          if (Array.isArray(task.deliveries) && hash(task.deliveries)!==hash(lane.artifacts??[]) &&
+              ['completed', 'failed', 'budget_exhausted', 'cancelled'].includes(task.status)) {
             lane.artifacts = task.deliveries;
-            lane.failure = (lane.failure ?? '这一路未完成。') + ' 已完成的文件通过交付校验，可下载。';
+            if (lane.status !== 'completed'&&task.deliveries.length) lane.failure = (lane.failure ?? '这一路未完成。') + ' 已完成的文件通过交付校验，可下载。';
             lane.output_sha256 = hash([lane.answer, lane.artifacts]);
+            // A recovered file changes the rated output; stale ratings cannot
+            // silently apply to the newly available version.
+            if (t.scores[name] !== undefined) { delete t.scores[name]; t.score_revision++; }
             save(); await publish(t);
           }
           reconciledDeliveries.add(key);

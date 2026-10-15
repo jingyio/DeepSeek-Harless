@@ -1,7 +1,7 @@
 /** Deterministic coordination/ownership diagnostics, never a model quality test. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,sep} from 'node:path';
 import {createComparisonService} from '../src/adapters/harless_comparison.ts';
@@ -22,6 +22,7 @@ test('Concurrent send is idempotent; each user/chat and lane keeps a distinct mu
  const f=fixture();try{
   const [a,b]=await Promise.all([f.send(),f.send()]);assert.equal(a.comparison_id,b.comparison_id);await f.wait(a.comparison_id);
   assert.equal(f.submitted.length,2);assert.deepEqual(f.created,['a-baseline','a-motif']);
+  assert.equal(f.service.parentFor('a-motif'),'a');assert.equal(f.service.parentFor('foreign'),null);
   await assert.rejects(f.send('a','one','changed'),/不能更改/);
   const second=await f.send('a','two','follow up');const v=await f.wait(second.comparison_id);assert.equal(f.created.length,2);assert.equal(v.lanes.baseline.session_id,'a-baseline');
   const other=await f.send('b','one');const bview=await f.wait(other.comparison_id,'b');assert.equal(bview.lanes.motif.answer,'b/motif');
@@ -74,6 +75,50 @@ test('Old budget failure recovers only verified downloads without rerunning or a
   await resumed.view('a',a.comparison_id);assert.equal(inspected,4);assert.equal(f.submitted.length,2);
   await assert.rejects(resumed.rate('a',a.comparison_id,'motif',5,0,recovered.lanes.motif.output_sha256),/两侧都完成/);
   resumed.dispose();
+ }finally{f.close();}
+});
+
+test('Completed text without a delivered report stays explicit; old verified delivery repair invalidates stale rating',async()=>{
+ const f=fixture();try{
+  const a=await f.send('a','one','make a report',{...context,scene:'research-data-analysis'});
+  const first=await f.wait(a.comparison_id);
+  assert.equal(first.lanes.baseline.status,'completed');
+  assert.equal(first.lanes.baseline.delivery_status,'not_delivered');
+  assert.match(first.lanes.baseline.delivery_message,/不表示报告已成功生成/);
+  await f.service.rate('a',a.comparison_id,'baseline',2,0,first.lanes.baseline.output_sha256);
+  f.service.dispose();let inspected=0;
+  const resumed=createComparisonService(f.root,'account-a',{...f.host,inspect:async(id,context)=>{
+   inspected++;assert.equal(context.recoverMissing,true);
+   return{...f.tasks.get(id),deliveries:context.lane==='baseline'?[{id:'verified-pdf',sha256:'b'.repeat(64),verification:'data-report-delivery-v1'}]:[]};
+  }},{pollMs:1});
+  const repaired=await resumed.view('a',a.comparison_id);
+  assert.equal(repaired.status,'completed');assert.equal(repaired.lanes.baseline.failure,undefined);
+  assert.equal(repaired.lanes.baseline.delivery_status,'available');
+  assert.deepEqual(repaired.scores,{});assert.equal(repaired.score_revision,2);
+  await assert.rejects(resumed.rate('a',a.comparison_id,'baseline',5,1,first.lanes.baseline.output_sha256),/已更新/);
+  await resumed.view('a',a.comparison_id);assert.equal(inspected,2);assert.equal(f.submitted.length,2);
+  resumed.dispose();
+ }finally{f.close();}
+});
+
+test('Legacy data drafts fail closed during recovery outages and are removed without rerunning paid work',async()=>{
+ const f=fixture();try{
+  const a=await f.send('a','one','make a report',{...context,scene:'research-data-analysis'});
+  await f.wait(a.comparison_id);f.service.dispose();
+  const path=join(f.root,'comparisons.json'),state=JSON.parse(readFileSync(path,'utf8'));
+  state.turns[0].lanes.motif.artifacts=[{id:'old-unverified-draft',sha256:'c'.repeat(64)}];
+  state.turns[0].scores.motif=5;writeFileSync(path,JSON.stringify(state));
+  let available=false;
+  const resumed=createComparisonService(f.root,'account-a',{...f.host,inspect:async id=>{
+   if(!available)throw Error('temporary budget connection loss');return{...f.tasks.get(id),deliveries:[]};
+  }},{pollMs:1});
+  const duringOutage=await resumed.view('a',a.comparison_id);
+  assert.deepEqual(duringOutage.lanes.motif.artifacts,[],'unverified cached downloads must not leak when inspection fails');
+  available=true;const repaired=await resumed.view('a',a.comparison_id);
+  assert.deepEqual(repaired.lanes.motif.artifacts,[]);assert.equal(repaired.lanes.motif.delivery_status,'not_delivered');
+  assert.equal(repaired.scores.motif,undefined);assert.equal(repaired.score_revision,1);
+  assert.equal(JSON.parse(readFileSync(path,'utf8')).turns[0].lanes.motif.artifacts.length,0);
+  assert.equal(f.submitted.length,2);resumed.dispose();
  }finally{f.close();}
 });
 

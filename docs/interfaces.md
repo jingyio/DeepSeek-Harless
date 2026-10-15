@@ -597,6 +597,8 @@ Python 从正常基线编译 `source_bound_readonly_batch_shadow` v1：当前任
 
 `GET /api/harless/comparisons?session_id=...&id=...` 返回两侧状态、回答、实际模式、库哈希、统计、结果文件及评分。加 `lane` 和 `file` 下载已冻结且哈希复核的结果副本。所有操作先校验当前账号归属，文件列表不暴露上传内容、配置、模型凭证或原始日志。
 
+每侧增加 `delivery_status: available | not_delivered | pending` 与 `delivery_message`，区分模型回复结束和文件交付。数据报告结果需成功交付回执及当前 SHA，图表沿同计划/来源证据链准入；历史补收须属于该任务的有界工具事件。恢复文件列表改变时更新 `output_sha256` 并失效该侧旧评分。`settings` 对双栏子会话返回 `comparison_parent_session_id`，用于返回父会话查看双栏及下载。
+
 数据报告完成 `deliver_report` 后，后续模型总结仍可能失败或触达请求上限。此时保留失败状态和禁用评分，但成功交付回执、质量标志及文件 SHA 全部匹配的 PDF 仍可下载；布局草稿不开放。旧失败记录首次读取时可恢复这类已交付文件，不重跑任务、不产生模型费用，也不将失败伪装成成功。
 
 `POST /api/harless/comparisons` 支持 `rate`、`retry`、`cancel`。评分需 `{session_id,id,lane,score,revision,output_sha256}`，两侧完成才接受 1–5 整数，以结果哈希和 revision 防止过期覆盖；评分与修改记录落在账号私有目录。重试仅重跑失败一侧，成功结果保持；重启把未完成任务标为中断，不自动启动新付费请求。原生 `user/message` 的 `harless_comparison` 元数据及标准 `turn/start/end` 定位双栏，持久化 GET 提供实时状态并支持刷新恢复；不写入当前 Harness 无法恢复的未知事件类型。

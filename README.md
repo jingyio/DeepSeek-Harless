@@ -1,4 +1,4 @@
-# DeepSeek Harless：Motif × DeepSeek Harness × 自定义 MCP
+# GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
 已有 PPT、论文、数据分析 Motif 库已统一到版本化的 [motif-libraries/](motif-libraries/README.md)。管理员在成员 Web policy 配置 `comparison_scenes: ["ppt", "paper-proofreading", "research-data-analysis"]` 后，原生 `/ppt`、`/paper`、`/data` 聊天分别执行 Baseline 与 Motif 两路，保留各自多轮历史、交付文件与 1–5 分评分；论文原库按其授权运行 Shadow。资料通过原生附件上传，账号隔离与预算沿用现有服务。库缺失或兼容锁失效会明确回退，不能把回退记为优化成功。
 
@@ -8,7 +8,7 @@
 
 Web 场景快捷入口支持 `/ppt`、`/paper`、`/data`、`/chat`，输入前缀即可选择并显示有色标识；`/harless` 同时列出场景、模式和 RSI。可用性由当前账号的实际部署决定。已有会话切换场景会新建对应会话并保留原聊天与未改写的草稿；同一场景的文字续聊保留上下文。详见 [场景与账号控制](docs/harless-controls.md)。
 
-DeepSeek Harless 是本项目统一的产品名称；当前仓库是供场景开发使用的最小主线。MotifAgent 的迁移内核负责有证据支持的结构执行；DeepSeek Harness（DSH）负责 Agent 循环、语义判断、工具派发和会话。场景通过 MCP 扩展。历史环境变量、协议标识和目录保持兼容，不因产品更名修改其含义。
+GeneLoop 是本项目的产品名称，界面使用用户提供的 GeneLoop Logo。MotifAgent 的迁移内核负责有证据支持的结构执行；底层 DeepSeek Harness（DSH）负责 Agent 循环、语义判断、工具派发和会话，其来源与许可证归属保持不变。场景通过 MCP 扩展。模型选择仍显示真实提供商和模型名称；历史环境变量、协议标识、`/harless` 命令及仓库目录保持兼容，不因品牌更名修改其含义。
 
 既有论文/DeepSeek 对照继续使用真实 DeepSeek API；共享 Web 现在可按服务器配置选择 GLM。服务器先加载 `.local/remote-env.sh`，在私有 `.env` 配置所需模型密钥（SDK 场景仍需 `DEEPSEEK_API_KEY`）；Web 用 `npm run web:real`，SDK 场景用 `npm run scenario:real -- --scenario scenarios/example/scenario.json --budget-usd 0.25`。Web 每任务与整次启动均默认上限 0.25 美元；SDK 每次运行默认上限 0.25 美元，运行前核对预览与有效配置，超出既有上限另行确认。已完成一次 SDK/Harness/MCP 的真实 API 闭环：3 次 HTTP 200、4 次工具、来源引用一致，见[最小真实调用记录](docs/experiments/deepseek-real-api-smoke-20261009-v1.md)。3080 的历史服务为模拟模式；3086 真实 Web 后端两项任务已通过，浏览器点击体验仍待确认，见[连接恢复与真实 Web 验收](docs/experiments/web-real-recovery-20261009-v1.md)。
 
@@ -45,7 +45,7 @@ npm run scenario:real -- --budget-usd 0.25 --max-steps 16
 
 ## 官方 Harness Web 与动态任务入口
 
-SDK 的 `npm run scenario` 继续保留。`npm run web` 默认启动官方 Web 与 DeepSeek Harless 任务接口：任务从官方聊天提交，`/harless` 使用 Harness 原生命令菜单选择场景、RSI 和执行模式。每项任务有独立 Session、模式、预算和记录，同一时刻只执行一个任务；不再提供独立任务工作台页面或悬浮入口。服务器已验证 Node 22.23.3、Python 3.10.8；TypeScript 插件需要支持原生类型剥离的 Node，其他平台的 Web 尚未验证。
+SDK 的 `npm run scenario` 继续保留。`npm run web` 默认启动 Harness Web 与 GeneLoop 任务接口：任务从官方聊天提交，`/harless` 使用 Harness 原生命令菜单选择场景、RSI 和执行模式。每项任务有独立 Session、模式、预算和记录，同一时刻只执行一个任务；不再提供独立任务工作台页面或悬浮入口。服务器已验证 Node 22.23.3、Python 3.10.8；TypeScript 插件需要支持原生类型剥离的 Node，其他平台的 Web 尚未验证。
 
 在服务器项目目录启动，本地建立端口转发：
 
@@ -177,7 +177,7 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 
 后续工程结果见 [V10](docs/experiments/research-ppt-v10-product-20261012.md) 与 [V11](docs/experiments/research-ppt-v11-scientific-design-20261012.md)：V10 在两份相同明确标题编辑任务中由普通入口省去模型；V11 增加科研原图、结果、方法页型并交付三组同内容对照和一份真实新稿。两者都不称新增 RSI。原始轨迹、来源及 PPT 仅保存在私有区，独立科学/视觉人评与完整生成净成本仍未证明。
 
-### Harless 多场景 Web
+### GeneLoop 多场景 Web
 
 `npm run web` / `web:real` 默认打开 `new-scene` 普通 Harness + Session 文件工具；`/harless` 的场景菜单直接选择服务端登记配置。PPT 连接现有19工具交付后端（需按 `scenarios/research_ppt/README.md` 安装依赖并构建），论文校对5工具、数据分析4工具及通用场景2工具均有正式后端。当前仅PPT的冻结只读来源链有生产认证库；其他场景 Shadow 记录无库回退，Execute On 明确拒绝。RSI Off 保留模式选择并实际采用 Origin。PPT 代码或Prompt变化会使旧部署包的版本锁失效，须重新认证后才可恢复 Execute。
 
