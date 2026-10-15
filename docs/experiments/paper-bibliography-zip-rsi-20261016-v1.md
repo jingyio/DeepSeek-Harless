@@ -1,0 +1,33 @@
+# 原始论文 ZIP 的书目读取 Motif：局部真实验证
+
+- 实验 ID：`paper-bibliography-training-20261016`；状态：局部 Shadow 机会已观察，完整论文审查收益未验证。
+- 代码基点：`codex/harless-motif-libraries-20261014`，合并 `main` 后的 `2afad5c` 加本记录对应的分支改动。V100 隔离检出为 `/home/jingyij/jjy/.local/integration/paper-archive-20261016`。原始论文、运行事件、账本、编译库和认证报告均在该检出的忽略目录 `.local/paper-bibliography-training-20261016/` 或 `.local/web/runs/`，不进入 Git。
+
+## 问题和任务边界
+
+此前 Web 将真实论文简化为平铺的部分源码，无法读取原 ZIP 的嵌套目录和完整书目；旧 Motif 预测的 pin/read 调用也与当前批量证据工具不一致。因此先验证一个明确的局部结构步骤：模型从当前任务的 `collect_current_local_citation_evidence` 返回的 `source_id`，继续调用 `read_pinned_bibliography_first_page`。若真实模型不重复该调用，或 Shadow 在当前任务来源上预测错误，这个局部库便不可用。
+
+输入是用户原始论文 ZIP，SHA-256 为 `7aafe2468ac50d69c23c3dab719213b47406b2c33efe55dc911c361f25360027`。无模型读取确认 315 条 BibTeX 记录、314 个唯一键、34 个活跃引用键，完整书目可分 27 页读取。真实模型任务只检查原始书目前 12 条的字面字段、重复键和局部格式问题；不做外部真实性、正式版本、整篇报告或 PDF 验收。训练、验证和 Shadow 采用同一原始论文，但使用不同的附加问题；它们不是独立论文的泛化试验。
+
+当前场景的 22 个实际 MCP Schema 摘要为 `6d87213131ba435930f12c01fb3ef406d6243494e4d5aaeb9c4929f9799a5fe1`。模型为真实 `deepseek-flash`，推理 Off；Web 每任务上限 $0.23、启动累计费用和请求次数不限、无额外输出上限。账本费用是 `conservative_peak_estimate_not_provider_bill`，实际账单未知。每条任务使用独立 Session，上传相同获准 ZIP，原件 SHA 在运行后不变。启动命令由私有 `run.py` 固定上述参数；公开编译入口为 `scripts/compile-paper-composite-runtime.py`。
+
+## 轨迹、认证与负例
+
+在最终 22 工具 Schema 下，`baseline-05` 与 `baseline-06` 连续观察到 `list_inputs → collect_current_local_citation_evidence → read_pinned_bibliography_first_page`，后者还继续读取第 2 页；分别为 3 和 4 次真实模型请求，0 工具错误，估费 $0.009090312 和 $0.009541788。留出的 `heldout-03` 先读取论文源码，之后仍连续出现同一 `collect → first_page` 边，6 次请求、0 错误、估费 $0.008133372。仅认证相邻的只读边，不把先前额外工具或后续论文判断纳入 Motif。认证摘要为 `fad88ff9ae2e8fe1120b15eabcb45f6724d43a2474d0a2a38207ff1942e8a540`，与旧两条只读 Motif 组成 3 条 Motif 的私有 Runtime 包 `composite-v3/runtime`；无模型 Web 预览验证了 Task 的 Manifest/Binding 冻结。
+
+保留负面证据：旧的可选 `page=1` 读法虽曾由 3 条真实轨迹认证，在线闭合来源守卫不接受它，`shadow-01` 为 0 候选、0 跳过；改为固定第一页工具后，`baseline-04` 曾把 `pin_paper_sources` 的句柄误传给书目工具，产生 1 次普通工具错误。于是区分两类句柄，并让后续页工具只接受 `page≥2`。上述失败、重试和旧配置的费用不计作新库收益，也未删除原始记录。
+
+## 冻结库的真实 Shadow
+
+| 运行 | 请求 / 工具错误 | Shadow 候选 / 实际跳过 | 与模型下一完整工具请求核对 | 候选对应请求输出 token / 账本估费 | 全任务账本估费 |
+| --- | ---: | ---: | --- | ---: | ---: |
+| `shadow-03` | 4 / 0 | 1 / 0 | 仅 `read_pinned_bibliography_first_page`；`source_id` 与本轮证据返回值相同 | 97 / $0.00365676 | $0.007358856 |
+| `shadow-04` | 3 / 0 | 1 / 0 | 同上，当前任务的另一句柄 | 109 / $0.00369799 | $0.007268928 |
+
+两次被预测的模型消息另有一句流程旁白，没有新的论文事实判断。它们分别是当次第 3 和第 2 个模型请求。Shadow 始终照常调用模型，所以两轮**实付节省均为 0**；上述金额是这些完整请求在当前账本中的观察成本，只能作为潜在接管机会，不能直接从 Shadow 总费用扣除后宣称 Execute 的实付结果。尤其两次被预测请求的输入缓存未命中约 11.7k token，输出仅 97/109 token，这个局部收益不能代表历史完整报告中以输出 token 为瓶颈的脚本复用收益。答案完成和 0 工具错误由 Web 记录确认，内容质量尚未盲评。
+
+## 结论与下一步
+
+在这份真实论文的局部书目读取任务上，**已观察**两次完整工具请求级 Shadow 命中，说明参数化只读步骤可复用。**未验证** Execute 守卫后的实付节省、不同论文的适用率、完整 315 条参考文献真实性核验，以及历史冻结报告/PDF 脚本与该 Motif 合用后的总成本。PR 合并门槛仍按完整原题面、相同质量范围和总费用衡量；下一步先验证原 ZIP 全任务的报告脚本采用路径，再在同一输入和质量门槛下分别核对脚本复用与 Motif 接管收益，不把本局部比例外推。
+
+V100 隔离检出的无模型回归：`npm run smoke`、`npm run web:controls:check`、`npm run web:scenes:check` 均通过；后者覆盖 28 个可接受的冻结菜单预览、五场景实际 MCP/上传、双用户隔离及论文输出授权。`pytest -q tests/test_harless_rsi_bundle.py tests/test_paper_proofreading_legacy.py` 为 19/19，`node --test tests/test_harless_settings.mjs` 为 5/5。根 `npm test` 首跑为 963 通过、5 失败：一项是本次改动后 PPT 共享绑定文件的兼容哈希尚未刷新，已修正并由上述定向测试验证；另四项旧文献 PDF 解析检查仍在当前环境失败，不与本论文 ZIP 路径或模型收益混作通过。全部无模型测试不计为真实质量或费用证明。

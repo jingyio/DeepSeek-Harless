@@ -1645,10 +1645,15 @@ export function apply(ctx: any) {
           if (body.action === 'upload') {
             if (task.status !== 'awaiting_confirmation') throw new TaskError('task_not_draft', 'Only draft tasks accept attachments', 409);
             if (task.model_option.provider === 'harless-glm') throw new TaskError('unsupported_input', 'The GLM connection currently supports text only', 400);
+            const paperZip = task.scene.id === 'paper-proofreading' &&
+              typeof body.name === 'string' && extname(body.name).toLowerCase() === '.zip';
+            const uploadLimit = paperZip ? 5 * 1024 * 1024 : 256 * 1024;
             if (typeof body.name !== 'string' || !body.name.length || body.name.length > 255 || /[\x00-\x1f]/.test(body.name) ||
-                typeof body.data !== 'string' || body.data.length > 350000 || Buffer.from(body.data, 'base64').toString('base64') !== body.data) throw new TaskError('invalid_upload', 'Invalid file name or canonical base64');
+                typeof body.data !== 'string' || body.data.length > Math.ceil(uploadLimit / 3) * 4 ||
+                Buffer.from(body.data, 'base64').toString('base64') !== body.data) throw new TaskError('invalid_upload', 'Invalid file name or canonical base64');
             const data = Buffer.from(body.data, 'base64');
-            if (!data.length || data.length > 256 * 1024) throw new TaskError('upload_too_large', 'File limit is 256 KiB', 413);
+            if (!data.length || data.length > uploadLimit) throw new TaskError('upload_too_large',
+              paperZip ? 'Paper ZIP limit is 5 MiB' : 'File limit is 256 KiB', 413);
             const uploaded = await ctx.fileUploads.uploadStream({ sessionId: task.request.session_id,
               name: body.name, data: (async function* () { yield data; })(), signal: request.signal });
             const changed = normalizeWebTaskRequest({ content: [...task.request.content, { type: 'file', receiptId: uploaded.receiptId }],

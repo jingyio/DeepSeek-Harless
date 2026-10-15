@@ -344,14 +344,7 @@ class PaperEvidence:
         if diag['unsupported_inputs']:
             raise ValueError('dynamic LaTeX inputs need model review')
         # Active literal declarations only; dormant drafts do not change scope.
-        bibfiles = []
-        for name in diag['active_files']:
-            text = strip_comments(safe_path(source, name).read_text(encoding='utf-8'))
-            for match in re.finditer(r'\\bibliography\s*\{([^}]*)\}', text):
-                for value in match.group(1).split(','):
-                    value = value.strip()
-                    file = safe_path(source, value if value.endswith('.bib') else value + '.bib')
-                    if file not in bibfiles: bibfiles.append(file)
+        bibfiles = self._active_bib_files(source, diag)
         records = []
         for file in bibfiles:
             raw = file.read_bytes(); text = raw.decode('utf-8')
@@ -374,6 +367,60 @@ class PaperEvidence:
                   'reference_authenticity_checked': False, 'rendered_numbering_checked': False}
         if len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > 1000000:
             raise ValueError('record batch exceeds size limit; choose fewer keys')
+        if self.version(case) != version: raise ValueError('source changed during read')
+        return result
+
+    @staticmethod
+    def _active_bib_files(source, diagnostic):
+        bibfiles = []
+        for name in diagnostic['active_files']:
+            text = strip_comments(safe_path(source, name).read_text(encoding='utf-8'))
+            for match in re.finditer(r'\\bibliography\s*\{([^}]*)\}', text):
+                for value in match.group(1).split(','):
+                    value = value.strip()
+                    file = safe_path(source, value if value.endswith('.bib') else value + '.bib')
+                    if file not in bibfiles: bibfiles.append(file)
+        return bibfiles
+
+    def read_bibliography_page(self, source_id: str, page: int):
+        """Read every literal active BibTeX entry in bounded pages, preserving duplicates."""
+        if type(page) is not int or page < 1: raise ValueError('positive_bibliography_page_required')
+        if source_id not in self.handles: raise ValueError('unknown or expired source handle')
+        case, kind, version = self.handles[source_id]
+        if kind != 'sources' or self.version(case) != version:
+            raise ValueError('view or source version changed')
+        row, _, paths = self.paths(case)
+        source = paths['source_dir']
+        diagnostic = source_diagnostics(source, row['main'], None)
+        if diagnostic['unsupported_inputs']:
+            raise ValueError('dynamic LaTeX inputs need model review')
+        records = []
+        for file in self._active_bib_files(source, diagnostic):
+            raw = file.read_bytes()
+            if len(raw) > 1024 * 1024: raise ValueError('bibliography_file_too_large')
+            text = raw.decode('utf-8')
+            if re.search(r'(?m)^\s*@(?!comment\b|string\b|preamble\b)[A-Za-z]+\s*\(', text, re.I):
+                raise ValueError('parenthesized BibTeX entries need parser support')
+            file_sha = hashlib.sha256(raw).hexdigest()
+            for index, item in enumerate(bib_records(text)):
+                records.append({'index': len(records) + 1, 'key': item['key'], 'kind': item['kind'],
+                                'bib_file': str(file.relative_to(source)), 'entry_index_in_bib': index,
+                                'bib_file_sha256': file_sha,
+                                'record_sha256': hashlib.sha256(item['raw'].encode('utf-8')).hexdigest(),
+                                'raw_bibtex': item['raw']})
+            if len(records) > 2000: raise ValueError('bibliography_entry_limit')
+        page_size = 12
+        pages = max(1, (len(records) + page_size - 1) // page_size)
+        if page > pages: raise ValueError('bibliography_page_out_of_range')
+        selected = records[(page - 1) * page_size:page * page_size]
+        result = {'source_id': source_id, 'version_sha256': version,
+                  'scope': 'active_bibliography_literal_entries_not_rendered_numbering',
+                  'page': page, 'page_count': pages, 'page_size': page_size,
+                  'entry_count': len(records), 'records': selected,
+                  'active_cited_keys': diagnostic['cited_keys'],
+                  'authenticity_checked': False, 'rendered_numbering_checked': False}
+        if len(json.dumps(result, ensure_ascii=False).encode('utf-8')) > 128000:
+            raise ValueError('bibliography_page_too_large')
         if self.version(case) != version: raise ValueError('source changed during read')
         return result
 

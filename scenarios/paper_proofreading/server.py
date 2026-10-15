@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from src.adapters.session_files import SessionFiles
 from src.adapters.file_lock import exclusive_lock
 from src.adapters import paper_static_checks
+from src.adapters.paper_archive import materialize_approved_archive
 from src.adapters.paper_query_recovery import validate_queries
 from src.adapters.paper_renderer import INPUT_SCHEMA, audit_pdf_content_coverage, render_renderer, validate_audit
 from mcp.server import MCPServer
@@ -29,6 +30,18 @@ class PaperEvidence(SessionFiles):
     def __init__(self, directory):
         super().__init__(directory, max_files=16)
 
+    def paper_tree(self):
+        rows = self.list_files()['files']
+        tex = [row['name'] for row in rows if Path(row['name']).suffix.lower() == '.tex']
+        has_archive = any(Path(row['name']).suffix.lower() == '.zip' for row in rows)
+        if tex and has_archive: raise ValueError('paper_source_scope_ambiguous')
+        main = 'main.tex' if 'main.tex' in tex else tex[0] if len(tex) == 1 else None
+        if main is not None:
+            return {'root': self.root, 'main': main, 'files': rows}
+        if has_archive:
+            return materialize_approved_archive(self)
+        return None
+
     def scope_version(self):
         rows = self.list_files()['files']
         return hashlib.sha256(json.dumps({'files': rows, 'checker': hashlib.sha256(
@@ -36,7 +49,10 @@ class PaperEvidence(SessionFiles):
 
     def pin_sources(self, main):
         if Path(main).suffix.lower() != '.tex': raise ValueError('latex_main_required')
-        self.read(main, limit=256*1024)
+        tree = self.paper_tree()
+        if tree is None or main != tree['main']: raise ValueError('paper_main_tex_not_unambiguous')
+        if next(row for row in tree['files'] if row['name'] == main)['bytes'] > 256*1024:
+            raise ValueError('paper_text_limit')
         version = self.scope_version()
         handle = 'source-' + uuid4().hex
         self.handles[handle] = (main, version, 'latex')
@@ -47,16 +63,24 @@ class PaperEvidence(SessionFiles):
         if not row or len(row) != 3 or row[2] != 'latex': raise ValueError('wrong_or_unknown_source_view')
         main, version, _ = row
         if self.scope_version() != version: raise ValueError('paper_scope_version_changed')
-        for entry in self.list_files()['files']:
+        tree = self.paper_tree()
+        if tree is None or tree['main'] != main: raise ValueError('paper_scope_version_changed')
+        for entry in tree['files']:
             if Path(entry['name']).suffix.lower() in ('.tex','.bib','.bbl','.log') and entry['bytes']>256*1024:
                 raise ValueError('paper_text_limit')
-        bbl_path = self.root / (Path(main).stem + '.bbl')
-        bbl = self.read(bbl_path.name, limit=256*1024)[0].decode('utf-8') if bbl_path.exists() else None
-        diagnostic = paper_static_checks.source_diagnostics(self.root, main, bbl)
+        bbl_name = str(Path(main).with_suffix('.bbl'))
+        bbl_path = tree['root'] / bbl_name
+        bbl = ((self.read(bbl_name, limit=256*1024)[0].decode('utf-8')
+                if tree['root'] == self.root else
+                paper_static_checks.safe_path(tree['root'], bbl_name).read_text(encoding='utf-8'))
+               if bbl_path.exists() else None)
+        diagnostic = paper_static_checks.source_diagnostics(tree['root'], main, bbl)
         logs = []
-        for entry in self.list_files()['files']:
+        for entry in tree['files']:
             if Path(entry['name']).suffix.lower() == '.log':
-                text = self.read(entry['name'], entry['sha256'], limit=256*1024)[0].decode('utf-8')
+                text = (self.read(entry['name'], entry['sha256'], limit=256*1024)[0].decode('utf-8')
+                        if tree['root'] == self.root else
+                        paper_static_checks.safe_path(tree['root'], entry['name']).read_text(encoding='utf-8'))
                 logs.append({'name': entry['name'], 'diagnostic': paper_static_checks.build_diagnostics(text, None)})
         if self.scope_version() != version: raise ValueError('paper_scope_version_changed')
         return {'source_id': source_id, 'version_sha256': version, 'diagnostic': diagnostic,
@@ -101,6 +125,8 @@ def create_server(directory, renderer_root=None):
         rows = files.list_files()['files']
         if {row['name']: row['sha256'] for row in rows} != approved:
             raise ValueError('paper_citation_approval_changed')
+        # Recheck the ZIP-derived bytes on every call, including after pinning.
+        files.paper_tree()
         epoch = (grant.get('task_id'), tuple(sorted(approved.items())))
         if not isinstance(epoch[0], str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', epoch[0]):
             raise ValueError('paper_citation_task_invalid')
@@ -152,6 +178,18 @@ def create_server(directory, renderer_root=None):
     def read_pinned_citation_records(citation_id: str) -> dict:
         """Read original BibTeX entries for the bound active citation batch."""
         return citations().read_citation_records(citation_id)
+
+    @server.tool(annotations=annotation)
+    def read_pinned_bibliography_page(source_id: str, page: int) -> dict:
+        """Read page two or later with a source_id from collect_current_local_citation_evidence or pin_paper_citations; never use pin_paper_sources' different handle."""
+        if type(page) is not int or page < 2:
+            raise ValueError('bibliography_later_page_required_use_first_page_tool')
+        return citations().read_bibliography_page(source_id, page)
+
+    @server.tool(annotations=annotation)
+    def read_pinned_bibliography_first_page(source_id: str) -> dict:
+        """Read fixed page one using only the source_id from collect_current_local_citation_evidence or pin_paper_citations, not pin_paper_sources."""
+        return citations().read_bibliography_page(source_id, 1)
 
     @server.tool(annotations=annotation)
     def collect_current_local_citation_evidence() -> dict:
@@ -226,15 +264,13 @@ def create_server(directory, renderer_root=None):
 
 
 def create_citation_evidence(files: PaperEvidence):
-    rows = files.list_files()['files']
-    names = {row['name'] for row in rows}
-    tex = [name for name in names if Path(name).suffix.lower() == '.tex']
-    main = 'main.tex' if 'main.tex' in names else tex[0] if len(tex) == 1 else None
-    if main is None:
+    tree = files.paper_tree()
+    if tree is None:
         # The scene may also be used for PDF/text proofreading. Citation tools
         # remain visible but explicitly reject tasks without an unambiguous main.
         return UnavailableCitationEvidence()
-    return CitationEvidence({'current': {'root': str(files.root), 'source_dir': '.', 'main': main}}, files.root)
+    return CitationEvidence({'current': {'root': str(tree['root']), 'source_dir': '.',
+                                          'main': tree['main']}}, files.root.parent)
 
 
 class UnavailableCitationEvidence:

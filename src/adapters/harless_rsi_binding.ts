@@ -41,8 +41,12 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
     throw Error('uploaded_rsi_requires_approved_sources');
   const citationEdge:[string,string,string]=[
     'mcp__paper_checks__pin_paper_citations','mcp__paper_checks__read_pinned_paper_citations','source_id'];
+  const bibliographyEdge:[string,string,string]=[
+    'mcp__paper_checks__collect_current_local_citation_evidence',
+    'mcp__paper_checks__read_pinned_bibliography_first_page','source_id'];
   const allowed=[{tools:pair,field:'source_id'},
-    ...(sceneId==='paper-proofreading'?[{tools:citationEdge.slice(0,2),field:citationEdge[2]}]:[])];
+    ...(sceneId==='paper-proofreading'?[{tools:citationEdge.slice(0,2),field:citationEdge[2]},
+      {tools:bibliographyEdge.slice(0,2),field:bibliographyEdge[2]}]:[])];
   const seen=new Set<string>();
   if(!Array.isArray(manifest.artifacts) || !manifest.artifacts.length ||
      manifest.artifacts.some((row:any)=>{
@@ -80,6 +84,10 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
       ...(seen.has(citationEdge.slice(0,2).join('|'))?{
         [citationEdge[0]]:'@observed',
         [citationEdge[1]]:'@from_anchor',
+      }:{}),
+      ...(seen.has(bibliographyEdge.slice(0,2).join('|'))?{
+        [bibliographyEdge[0]]:'@observed',
+        [bibliographyEdge[1]]:'@from_anchor',
       }:{})}};
 }
 /** A model must choose and pin the source; certified reuse may only dereference that same handle. */

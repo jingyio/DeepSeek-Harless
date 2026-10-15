@@ -29,6 +29,8 @@ spec.loader.exec_module(exporter)
 
 READ_PAIR = ('mcp__paper_checks__pin_paper_sources', 'mcp__paper_checks__read_pinned_paper_sources')
 CITATION_PAIR = ('mcp__paper_checks__pin_paper_citations', 'mcp__paper_checks__read_pinned_paper_citations')
+BIBLIOGRAPHY_PAIR = ('mcp__paper_checks__collect_current_local_citation_evidence',
+                     'mcp__paper_checks__read_pinned_bibliography_first_page')
 # These Session-local paper tools are observed but never emitted by a Motif.
 # They cannot invalidate an unrelated, versioned pin/read edge when they
 # succeed; failures and the PDF write still remain barriers.
@@ -44,6 +46,18 @@ OBSERVED_READS = {
         'required_params': ['source_id'], 'read_only': True,
         'replay_stable': True, 'output_fields': [],
         'description': 'Read another Session-local pinned file.'},
+    BIBLIOGRAPHY_PAIR[0]: {
+        'required_params': [], 'read_only': True, 'replay_stable': False,
+        'observed_anchor': True, 'output_fields': ['source_id', 'version_sha256'],
+        'description': 'Collect local evidence from this approved paper.'},
+    'mcp__paper_checks__read_pinned_bibliography_page': {
+        'required_params': ['source_id', 'page'], 'read_only': True, 'replay_stable': True,
+        'output_fields': ['version_sha256'],
+        'description': 'Read one selected bibliography page.'},
+    BIBLIOGRAPHY_PAIR[1]: {
+        'required_params': ['source_id'], 'read_only': True, 'replay_stable': True,
+        'output_fields': ['version_sha256'],
+        'description': 'Read this source\'s fixed first bibliography page.'},
 }
 
 
@@ -61,16 +75,19 @@ def save(path: Path, value: object):
 
 
 def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
-                    renderer_root: Path, output: Path, flow_shadow: Path | None = None):
+                    renderer_root: Path, output: Path, flow_shadow: Path | None = None,
+                    bibliography_dir: Path | None = None):
     private = (ROOT / '.local').resolve()
     sources = [citation_dir, uploaded_dir, schemas_path, renderer_root]
     if flow_shadow is not None: sources.append(flow_shadow)
+    if bibliography_dir is not None: sources.append(bibliography_dir)
     sources = [p.resolve(strict=True) for p in sources]
     output = output.resolve()
     if any(not p.is_relative_to(private) for p in [*sources, output]):
         raise ValueError('paper composite sources and output must remain private')
     citation_dir, uploaded_dir, schemas_path, renderer_root = sources[:4]
-    flow_shadow = sources[4] if len(sources) == 5 else None
+    flow_shadow = flow_shadow.resolve(strict=True) if flow_shadow is not None else None
+    bibliography_dir = bibliography_dir.resolve(strict=True) if bibliography_dir is not None else None
     if output.exists(): raise FileExistsError(output)
     raw_schema = read(schemas_path)
     scenario = read(ROOT / 'scenarios/paper_proofreading/scenario.json')
@@ -109,7 +126,30 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
                 'contract_signature': contract_signature(list(CITATION_PAIR), parse_tool_contracts(contracts))}
     migrated['certified_digest'] = artifact_signature(migrated)
     _validate_artifact(migrated, parse_tool_contracts(contracts))
-    library = library_from_certified([by_pair[READ_PAIR], migrated])
+    artifacts = [by_pair[READ_PAIR], migrated]
+    bibliography_source_digest = None
+    if bibliography_dir is not None:
+        bibliography = read(bibliography_dir / 'library.json')
+        validate_read_motif_library(bibliography)
+        if len(bibliography['artifacts']) != 1 or tuple(bibliography['artifacts'][0]['tools']) != BIBLIOGRAPHY_PAIR:
+            raise ValueError('expected one witnessed bibliography read edge')
+        bibliography_contracts = read(bibliography_dir / 'contracts.json')
+        old_contracts = parse_tool_contracts(bibliography_contracts)
+        original = bibliography['artifacts'][0]
+        _validate_artifact(original, old_contracts)
+        bibliography_source_digest = original['certified_digest']
+        contracts.update(bibliography_contracts)
+        bound = bind_mcp_descriptions(parse_tool_contracts(contracts),
+                                      {'tools': [{**row, 'inputSchema': row['parameters']} for row in schema]})
+        contracts = {name: {**row, 'description': bound[name].description}
+                     for name, row in contracts.items()}
+        migrated_bibliography = {**original,
+            'contract_signature': contract_signature(list(BIBLIOGRAPHY_PAIR), parse_tool_contracts(contracts))}
+        migrated_bibliography['certified_digest'] = artifact_signature(migrated_bibliography)
+        _validate_artifact(migrated_bibliography, parse_tool_contracts(contracts))
+        artifacts.append(migrated_bibliography)
+        wanted.append(BIBLIOGRAPHY_PAIR)
+    library = library_from_certified(artifacts)
     versions = {name: 'version_sha256' for pair in wanted for name in pair}
     manifest = exporter.export_manifest(library, contracts,
         {CITATION_PAIR[0]: {'case_id': 'current'}}, versions)
@@ -126,7 +166,9 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
         'session_id': 'paper-composite-admission', 'intent': 'Read approved paper sources.',
         'input_version': '0' * 64, 'bindings': {}, 'source_versions': {
             READ_PAIR[0]: '@observed', READ_PAIR[1]: '@from_anchor',
-            CITATION_PAIR[0]: '@observed', CITATION_PAIR[1]: '@from_anchor'}})
+            CITATION_PAIR[0]: '@observed', CITATION_PAIR[1]: '@from_anchor',
+            **({BIBLIOGRAPHY_PAIR[0]: '@observed', BIBLIOGRAPHY_PAIR[1]: '@from_anchor'}
+               if bibliography_dir is not None else {})}})
     flow_count = 0
     if flow_shadow is not None:
         bridge = read(flow_shadow)
@@ -159,6 +201,7 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
     code = ['src/adapters/harless_rsi_binding.ts', 'src/adapters/harless_rsi_bundle.py',
             'src/adapters/harless_task_scope.ts', 'src/adapters/harless_paper_renderer.py',
             'src/adapters/paper_renderer.py', 'src/adapters/session_files.py',
+            'src/adapters/paper_archive.py',
             'scenarios/paper_proofreading/server.py', 'scenarios/paper-submission/checks.py',
             'src/adapters/paper_bibliography.py', 'src/adapters/arxiv_metadata.py',
             'src/adapters/crossref_metadata.py', 'src/adapters/paper_query_recovery.py',
@@ -167,10 +210,14 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
             'src/motif_core/online_skill_runtime.mjs']
     evidence = {'citation_library_sha256': sha(citation_dir / 'library.json'),
                 'uploaded_library_sha256': sha(uploaded_dir / 'library.json'),
+                'bibliography_library_sha256': sha(bibliography_dir / 'library.json') if bibliography_dir else None,
                 'current_mcp_schema_sha256': sha(schemas_path),
                 'renderer_deployment_sha256': sha(renderer_root / 'deployment.json'),
-                'source_artifact_digests': [by_pair[p]['certified_digest'] for p in wanted],
+                'source_artifact_digests': [by_pair[READ_PAIR]['certified_digest'],
+                                            by_pair[CITATION_PAIR]['certified_digest'],
+                                            *([bibliography_source_digest] if bibliography_source_digest else [])],
                 'migrated_citation_artifact_digest': migrated['certified_digest'],
+                'migrated_bibliography_artifact_digest': artifacts[-1]['certified_digest'] if bibliography_dir else None,
                 'flow_shadow_sha256': sha(flow_shadow) if flow_shadow else None}
     save(output / 'evidence-lock.json', evidence)
     report = {'status': 'compiled_read_subset_and_guarded_output_tool',
@@ -198,10 +245,11 @@ def main():
     for name in ('citation-library', 'uploaded-library', 'schemas', 'renderer-deployment', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--flow-shadow', type=Path)
+    parser.add_argument('--bibliography-library', type=Path)
     args = parser.parse_args()
     print(json.dumps(compile_runtime(args.citation_library, args.uploaded_library,
                                      args.schemas, args.renderer_deployment, args.output,
-                                     args.flow_shadow)))
+                                     args.flow_shadow, args.bibliography_library)))
 
 
 if __name__ == '__main__': main()

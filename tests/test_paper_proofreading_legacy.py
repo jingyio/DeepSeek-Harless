@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sys
+from zipfile import ZipFile, ZIP_DEFLATED
 
 import pytest
 from mcp import Client, StdioServerParameters
@@ -55,6 +56,26 @@ def test_historical_local_citation_sequence_reuses_bib_script_without_network(tm
     (tmp_path / 'first' / 'references.bib').write_text('@article{alpha, title={Changed}}')
     with pytest.raises(ValueError, match='version changed'):
         first.read_citation_records(packet['citation_id'])
+
+
+def test_complete_bibliography_is_bounded_and_source_versioned(tmp_path):
+    first = make_paper(tmp_path / 'first')
+    bib = tmp_path / 'first' / 'references.bib'
+    bib.write_text('\n'.join(f'@article{{entry{i}, title={{Title {i}}}}}' for i in range(25)) +
+                   '\n@article{entry0, title={Duplicate}}', encoding='utf-8')
+    pin = first.pin('current', 'sources')
+    page1 = first.read_bibliography_page(pin['source_id'], 1)
+    page3 = first.read_bibliography_page(pin['source_id'], 3)
+    assert page1['entry_count'] == 26
+    assert page1['page_count'] == 3
+    assert [r['index'] for r in page1['records']] == list(range(1, 13))
+    assert [r['key'] for r in page3['records']] == ['entry24', 'entry0']
+    assert page3['authenticity_checked'] is False
+    with pytest.raises(ValueError, match='out_of_range'):
+        first.read_bibliography_page(pin['source_id'], 4)
+    bib.write_text(bib.read_text() + '\n@article{new, title={Later}}', encoding='utf-8')
+    with pytest.raises(ValueError, match='version changed'):
+        first.read_bibliography_page(pin['source_id'], 1)
 
 
 def test_ambiguous_main_and_arbitrary_case_are_rejected(tmp_path):
@@ -277,6 +298,82 @@ def test_local_citation_batch_real_stdio_uses_only_approved_task_sources(tmp_pat
             assert not read.is_error
             assert json.loads(read.content[0].text)['version_sha256'] == packet['version_sha256']
     asyncio.run(call())
+
+
+def test_original_directory_layout_in_approved_zip_is_read_without_flattening(tmp_path):
+    work = tmp_path / 'work'
+    inputs = work / 'inputs'
+    inputs.mkdir(parents=True)
+    archive = inputs / 'submission.zip'
+    with ZipFile(archive, 'w', ZIP_DEFLATED) as out:
+        out.writestr('main.tex', r'\documentclass{article}\begin{document}'
+                     r'\input{sections/intro}\bibliography{references}\end{document}')
+        out.writestr('sections/intro.tex', r'Current work~\cite{alpha}.')
+        out.writestr('references.bib', '@article{alpha, title={A}, year={2020}}\n'
+                     '@article{unused, title={B}, year={2021}}')
+    version = hashlib.sha256(archive.read_bytes()).hexdigest()
+    (work / 'approved-inputs.json').write_text(json.dumps({'files': {'submission.zip': version}}))
+    (work / 'paper-output-grant.json').write_text(json.dumps({
+        'schema_version': 1, 'task_id': 'zip-task', 'allow_output': False, 'audit_sha256': None}))
+    root = Path(__file__).resolve().parents[1]
+
+    async def call():
+        params = StdioServerParameters(command=sys.executable,
+            args=[str(root / 'scenarios/paper_proofreading/server.py'), str(inputs)],
+            cwd=root, env=os.environ.copy())
+        async with Client(params, read_timeout_seconds=30) as client:
+            pin = await client.call_tool('pin_paper_sources', {'main': 'main.tex'})
+            assert not pin.is_error
+            source_id = json.loads(pin.content[0].text)['source_id']
+            wrong_handle = await client.call_tool('read_pinned_bibliography_first_page',
+                                                  {'source_id': source_id})
+            assert wrong_handle.is_error
+            local = await client.call_tool('read_pinned_paper_sources', {'source_id': source_id})
+            assert not local.is_error
+            diagnostic = json.loads(local.content[0].text)['diagnostic']
+            assert diagnostic['active_files'] == ['main.tex', 'sections/intro.tex']
+            assert diagnostic['bib_entry_count'] == 2
+            packet = await client.call_tool('collect_current_local_citation_evidence', {})
+            assert not packet.is_error
+            result = json.loads(packet.content[0].text)
+            assert result['diagnostic']['cited_keys'] == ['alpha']
+            assert [row['key'] for row in result['references']['records']] == ['alpha']
+            wrong_page = await client.call_tool('read_pinned_bibliography_page',
+                                                {'source_id': result['source_id'], 'page': 1})
+            assert wrong_page.is_error
+            full = await client.call_tool('read_pinned_bibliography_first_page',
+                                          {'source_id': result['source_id']})
+            assert not full.is_error
+            listing = json.loads(full.content[0].text)
+            assert listing['entry_count'] == 2
+            assert [row['key'] for row in listing['records']] == ['alpha', 'unused']
+            derived = work / 'paper-archive' / version / 'files' / 'sections' / 'intro.tex'
+            derived.write_text('changed')
+            stale = await client.call_tool('read_pinned_citation_records',
+                {'citation_id': result['citation_id']})
+            assert stale.is_error
+    asyncio.run(call())
+
+
+def test_archive_rejects_traversal_and_ambiguous_source(tmp_path):
+    from src.adapters.paper_archive import materialize_approved_archive
+    work = tmp_path / 'work'
+    inputs = work / 'inputs'
+    inputs.mkdir(parents=True)
+    archive = inputs / 'submission.zip'
+    with ZipFile(archive, 'w') as out:
+        out.writestr('main.tex', 'ok')
+        out.writestr('../outside.tex', 'bad')
+    version = hashlib.sha256(archive.read_bytes()).hexdigest()
+    (work / 'approved-inputs.json').write_text(json.dumps({'files': {'submission.zip': version}}))
+    with pytest.raises(ValueError, match='paper_archive_entry_invalid'):
+        materialize_approved_archive(PaperEvidence(inputs))
+    assert not (work / 'outside.tex').exists()
+    (inputs / 'main.tex').write_text('also supplied')
+    approved = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs.iterdir()}
+    (work / 'approved-inputs.json').write_text(json.dumps({'files': approved}))
+    with pytest.raises(ValueError, match='paper_source_scope_ambiguous'):
+        PaperEvidence(inputs).paper_tree()
 
 
 def test_pdf_export_receipt_can_check_literal_content_and_links_without_claiming_truth(tmp_path, monkeypatch):

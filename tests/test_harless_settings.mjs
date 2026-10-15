@@ -75,6 +75,14 @@ test('paper upload binding freezes admitted bytes and an observed read continuat
         {from_tool:cite,to_tool:cited,from_field:'source_id',to_param:'source_id'}]}]};
     assert.deepEqual(bindApprovedUploadedReadTask(root,inputs,request,composite,'paper-proofreading').source_versions,
       {[pin]:'@observed',[read]:'@from_anchor',[cite]:'@observed',[cited]:'@from_anchor'});
+    const local='mcp__paper_checks__collect_current_local_citation_evidence';
+    const page='mcp__paper_checks__read_pinned_bibliography_first_page';
+    const full={version_fields:{...composite.version_fields,[local]:'version_sha256',[page]:'version_sha256'},
+      artifacts:[...composite.artifacts,{tools:[local,page],transfer_evidence:[
+        {from_tool:local,to_tool:page,from_field:'source_id',to_param:'source_id'}]}]};
+    assert.deepEqual(bindApprovedUploadedReadTask(root,inputs,request,full,'paper-proofreading').source_versions,
+      {[pin]:'@observed',[read]:'@from_anchor',[cite]:'@observed',[cited]:'@from_anchor',
+        [local]:'@observed',[page]:'@from_anchor'});
     assert.throws(()=>bindApprovedUploadedReadTask(root,inputs,request,{...composite,
       artifacts:[...composite.artifacts,{tools:[cited,'mcp__paper_checks__export_current_audit_pdf'],
         transfer_evidence:[]}]},'paper-proofreading'),/tools_unsupported/);
