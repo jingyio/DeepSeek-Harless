@@ -11,6 +11,7 @@ import hashlib
 import html
 import io
 import json
+import os
 import re
 import shutil
 from functools import partial
@@ -18,7 +19,7 @@ from itertools import groupby
 from pathlib import Path
 from typing import Any
 
-ENGINE_VERSION = "streaming-pdf-v2.3"
+ENGINE_VERSION = "streaming-pdf-v2.4"
 AUDIT_POLICY_VERSION = "layout-audit-v2.2"
 # A frame is a planned text area, not the physical paper edge. Small glyph
 # overhangs into its otherwise empty margin are reportable, not lost content.
@@ -106,6 +107,18 @@ def _font(style: str) -> str:
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     name = "ResearchBodySerif" if style == "paper" else "ResearchBodySans"
+    configured = os.environ.get("HARLESS_REPORT_FONT")
+    if configured:
+        path = Path(configured)
+        if not path.is_file() or path.suffix.lower() not in (".ttf", ".ttc"):
+            raise ValueError("Configured report font must be an embeddable TTF/TTC file.")
+        name += "_" + _hash(path)[:12]
+        if name not in pdfmetrics.getRegisteredFontNames():
+            font = TTFont(name, str(path), subfontIndex=0)
+            if not all(font.face.charToGlyph.get(ord(c), 0) for c in "科研报告统计量变量"):
+                raise ValueError("Configured report font lacks required Chinese glyphs.")
+            pdfmetrics.registerFont(font)
+        return name
     candidates = ([Path("C:/Windows/Fonts/simsun.ttc")] if style == "paper" else []) + [
         Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
         Path("C:/Windows/Fonts/msyh.ttc"), Path("/usr/share/fonts/truetype/arphic/ukai.ttc")]

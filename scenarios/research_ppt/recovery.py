@@ -26,6 +26,7 @@ from typing import Any
 
 from scenarios.research_ppt.documents import file_hash, inspect_pptx
 from scenarios.research_ppt.service import PPTService, ROOT, SCENE, private_path
+from scenarios.research_ppt.web_scope import compatible_scope_bindings
 
 FORMAT = "research-ppt-service-checkpoint"
 SCHEMA_VERSION = 2
@@ -149,6 +150,7 @@ class CheckpointPPTService(PPTService):
                  "dist/render.js", "dist/layout-policy-cli.js")
         version = {"scene/" + name: _raw_hash(SCENE / name) for name in names}
         version["scene/recovery.py"] = _raw_hash(Path(__file__).resolve())
+        version["scene/web_scope.py"] = _raw_hash(SCENE / 'web_scope.py')
         # The actual subclass module is part of the online state protocol.
         import inspect
         extension = Path(inspect.getfile(type(self))).resolve()
@@ -414,11 +416,34 @@ class CheckpointPPTService(PPTService):
                 raise CheckpointRejected("checkpoint 格式或schema版本未知")
             if value["payload_sha256"] != _digest({"bindings": value["bindings"], "state": value["state"]}):
                 raise CheckpointRejected("checkpoint 内容摘要变化或破损")
-            if value["bindings"] != self._bindings():
+            compatibility = value["bindings"] != self._bindings() and compatible_scope_bindings(value["bindings"], self._bindings())
+            if value["bindings"] != self._bindings() and not compatibility:
                 raise CheckpointRejected("checkpoint 的job/来源/权限/代码版本已失效")
             discarded = self._install_state(value["state"], discard_changed_previews=True)
             self._guard_current_dependencies()
             self._disk_checkpoint_sha256 = _raw_hash(self.checkpoint_path)
+            if compatibility:
+                # Keep the exact old envelope before any later normal save.
+                # All job, source, permission, deck and preview guards above
+                # still run; this is not a generic code-version migration.
+                backup_path = self.job_path.parent / ('checkpoint-before-web-scope-' + self._disk_checkpoint_sha256 + '.json')
+                if backup_path.is_symlink():
+                    raise CheckpointRejected('checkpoint compatibility backup cannot be a symlink')
+                backup = private_path(backup_path)
+                if os.path.lexists(backup):
+                    if backup.stat().st_nlink != 1 or _raw_hash(backup) != self._disk_checkpoint_sha256:
+                        raise CheckpointRejected('checkpoint compatibility backup changed')
+                else:
+                    raw = self.checkpoint_path.read_bytes()
+                    if hashlib.sha256(raw).hexdigest() != self._disk_checkpoint_sha256:
+                        raise CheckpointRejected('checkpoint changed during compatibility restore')
+                    with backup.open('xb') as stream:
+                        os.chmod(backup, 0o600)
+                        stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+                self.record('checkpoint_web_scope_compatibility', {'original_sha256': self._disk_checkpoint_sha256,
+                            'backup': backup.name, 'previous_versions': value['bindings']['versions'],
+                            'current_versions': self._version_snapshot})
+                self.restore_status['compatibility_migration'] = 'web-job-scope-v1'
             self.restore_status.update(restored=True, discarded_validations=discarded)
             self.record("checkpoint_restored", {"deck_count": len(self.decks),
                         "discarded_validations": discarded, "schema_version": SCHEMA_VERSION})

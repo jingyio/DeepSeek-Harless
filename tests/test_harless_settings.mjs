@@ -1,5 +1,5 @@
 import test from 'node:test';
-import {mkdtempSync,mkdirSync,writeFileSync,rmSync,realpathSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,realpathSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
@@ -38,6 +38,14 @@ test('PPT binding uses approved current versions and never guesses a source hand
     const binding=bindUploadedPptTask(root,inputs,request,manifest);
     assert.deepEqual(binding.bindings,{});assert.equal(binding.source_versions.mcp__ppt__read_source,version);
     assert.equal(binding.task_id,'task-a');assert.equal(binding.session_id,'session-a');
+    const {parseStructuredTask}=await import('../src/motif_core/online_skill_runtime.mjs');
+    const certified=JSON.parse(readFileSync(new URL('../motif-libraries/ppt/online-manifest.json',import.meta.url)));
+    for(const instruction of ['上下文\n当前请求','长请求'.repeat(800)]){
+      job.instruction=instruction;writeFileSync(join(root,'job.json'),JSON.stringify(job));
+      const actual=bindUploadedPptTask(root,inputs,request,certified);
+      assert.doesNotThrow(()=>parseStructuredTask(actual,certified));
+      assert.equal(JSON.parse(readFileSync(join(root,'job.json'))).instruction,instruction,'full model request is never truncated');
+    }
     assert.throws(()=>bindUploadedPptTask(root,inputs,{...request,task_id:'foreign-task'},manifest),/job_scope/);
     writeFileSync(path,'changed bytes');
     assert.throws(()=>bindUploadedPptTask(root,inputs,request,manifest),/source_version/);

@@ -5,8 +5,10 @@ import { randomBytes, createHash, createHmac, timingSafeEqual, scrypt as scryptC
 import { promisify } from 'node:util';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { memberSceneDeployment } from './harless_member_scenes.mjs';
+import { productPersona } from '../src/adapters/harless_product_prompt.ts';
+import { createPublicRemoteBridge, forwardPublicRpc, isNativeRpcResponse, REMOTE_MUX_PATH } from './harless_public_transport.mjs';
 
 const scrypt = promisify(scryptCallback);
 const dummyHash = 'scrypt-v1$anonymous-login$' + scryptSync('dummy-password', 'anonymous-login', 64,
@@ -38,6 +40,15 @@ const passwordValid = value => typeof value === 'string' && value.length >= 10 &
   Buffer.byteLength(value) <= 256;
 const publicUser = user => ({ id: user.id, username: user.username,
   displayName: user.displayName, createdAt: user.createdAt, role: user.role });
+/** Mount just the public product policy, also for legacy chat-only members. */
+export function memberProductProfile() {
+  return {
+    persona: productPersona(),
+    sandboxArgs: ['--dir', '/app/config', '--ro-bind',
+      fileURLToPath(new URL('../config/geneloop-persona.json', import.meta.url)),
+      '/app/config/geneloop-persona.json'],
+  };
+}
 async function hashPassword(password) {
   const salt = random(24);
   const key = await scrypt(password, salt, 64, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
@@ -334,10 +345,10 @@ export function createGateway(config) {
         ...(sceneDeployment ? [{path:sceneDeployment.output+'/presets',trust:'system'}] : [])] };
       store(join(userDir, 'config', 'host.patch.yml'), patch);
       mkdirSync(join(userDir, 'config', 'presets', 'sss-task'), { recursive: true, mode: 0o700 });
-      store(join(userDir, 'config', 'presets', 'sss-task', 'preset.yml'), { name: 'DeepSeek Harless · 我的工作区' });
+      store(join(userDir, 'config', 'presets', 'sss-task', 'preset.yml'), { name: 'GeneLoop · 我的工作区' });
+      const product = memberProductProfile();
       store(join(userDir, 'config', 'presets', 'sss-task', 'agent.cordis.yml'), [{ id: 'sss-persona',
-        name: '@deepseek-ai/dsh-persona', config: { prefix: 'Complete the bounded task within this user workspace.',
-          suffix: 'Do not claim access to another account or private materials.' } }]);
+        name: '@deepseek-ai/dsh-persona', config: product.persona }]);
       const bin = '/opt/node/bin/node';
       const args = ['--unshare-user', '--unshare-pid', '--uid', '1000', '--gid', '1000', '--die-with-parent',
         '--ro-bind', '/usr', '/usr', '--ro-bind', '/bin', '/bin', '--ro-bind', '/lib', '/lib',
@@ -345,6 +356,7 @@ export function createGateway(config) {
         '--tmpfs', '/tmp', '--dir', '/opt', '--ro-bind', config.nodeRoot, '/opt/node',
         '--dir', '/app', '--ro-bind', config.nodeModules, '/app/node_modules',
         '--ro-bind', config.sourceDir, '/app/src', '--bind', userDir, '/user',
+        ...product.sandboxArgs,
         ...(sceneDeployment ? ['--dir','/app/.local','--bind',join(userDir,'tasks'),sceneDeployment.output,
           ...sceneDeployment.mounts.filter(m=>m.target!=='/app/src').flatMap(m=>['--ro-bind',m.source,m.target])] : []),
         '--chdir', '/user/workspace', bin, '/app/node_modules/@deepseek-ai/dsh/lib/bin.js',
@@ -353,7 +365,7 @@ export function createGateway(config) {
       const env = { PATH: '/opt/node/bin:/usr/bin:/bin', HOME: '/user/workspace', DSH_HOME: '/user/dsh',
         SSS_WEB_POLICY: '/user/config/policy.json', DEEPSEEK_API_KEY: delegate(user, 'model'),
         HARLESS_GATEWAY_ENABLED: '1',
-        ...(sceneDeployment ? {SSS_PYTHON:sceneDeployment.python} : {}),
+        ...(sceneDeployment ? {SSS_PYTHON:sceneDeployment.python,...sceneDeployment.attachmentEnvironment} : {}),
         NO_PROXY: 'localhost,127.0.0.1,::1', no_proxy: 'localhost,127.0.0.1,::1',
         LANG: 'C.UTF-8', PYTHONUTF8: '1' };
       const child = spawn('/usr/bin/bwrap', args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -409,20 +421,46 @@ export function createGateway(config) {
   };
   const proxy = async (req, res, user) => {
     const backend = await backendFor(user);
+    // Backend authentication/startup may outlive a browser that has navigated away.
+    if (closing || req.aborted || res.destroyed) return;
+    let responseStream;
     const upstream = http.request({ host: '127.0.0.1', port: backend.port, path: req.url,
       method: req.method, headers: proxyHeaders(req, backend), timeout: 120000 }, response => {
+      responseStream = response;
+      response.once('error', () => { if (!res.destroyed) res.destroy(); });
+      if (res.destroyed) { response.destroy(); upstream.destroy(); return; }
       const headers = { ...response.headers, 'cache-control': response.headers['cache-control'] ?? 'no-store' };
       delete headers['set-cookie']; delete headers['content-security-policy-report-only'];
-      res.writeHead(response.statusCode ?? 502, headers); response.pipe(res);
+      if (isNativeRpcResponse(req, response)) forwardPublicRpc(response, res, headers);
+      else { res.writeHead(response.statusCode ?? 502, headers); response.pipe(res); }
     });
-    upstream.on('error', () => { if (!res.headersSent) send(res, 502, '工作区暂时不可用，请刷新重试。'); else res.destroy(); });
+    const cancel = () => {
+      req.unpipe(upstream);
+      responseStream?.unpipe(res);
+      responseStream?.destroy();
+      upstream.destroy();
+    };
+    // IncomingMessage's normal `close` also fires when a GET body completes;
+    // use response close / request aborted so live SSE subscriptions survive
+    // the request-body end and stop promptly when their browser disconnects.
+    res.once('close', cancel);
+    req.once('aborted', cancel);
+    upstream.on('error', () => { if (res.destroyed) return; if (!res.headersSent) send(res, 502, '工作区暂时不可用，请刷新重试。'); else res.destroy(); });
     req.pipe(upstream);
   };
+  const remoteBridge = createPublicRemoteBridge();
   const server = http.createServer(async (req, res) => {
     try {
       if (!safePath(req.url)) return send(res, 400, '无效地址');
       const url = new URL(req.url, origin), path = url.pathname;
       const user = sessionFor(req);
+      if (path === '/assets/geneloop-spiral.svg' || path === '/assets/geneloop.jpg') {
+        if (!['GET', 'HEAD'].includes(req.method)) return send(res, 405, '', { allow: 'GET, HEAD' });
+        const spiral = path === '/assets/geneloop-spiral.svg';
+        const logo = readFileSync(new URL(spiral ? '../src/adapters/brand/geneloop-spiral.svg' : '../src/adapters/brand/geneloop.jpg', import.meta.url));
+        return send(res, 200, req.method === 'HEAD' ? '' : logo,
+          { 'content-type': spiral ? 'image/svg+xml' : 'image/jpeg', 'cache-control': 'public, max-age=3600' });
+      }
       if (path === '/api/internal/admin' && config.adminToken && req.method === 'POST') {
         const supplied = req.headers['x-harless-admin'];
         const expected = Buffer.from(config.adminToken);
@@ -440,7 +478,7 @@ export function createGateway(config) {
       if (path === '/account' || path === '/login' || path === '/register' || path === '/claim' || path === '/starting') {
         const html = readFileSync(config.accountHtml, 'utf8');
         return send(res, 200, html, { 'content-type': 'text/html; charset=utf-8',
-          'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'self'" });
+          'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'" });
       }
       if (!user) return send(res, 303, '', { location: '/login' });
       if (user.role === 'member' && !backends.has(user.id)) {
@@ -460,8 +498,15 @@ export function createGateway(config) {
       if (!safePath(req.url)) { socket.destroy(); return; }
       const user = sessionFor(req);
       if (!user) { socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); return; }
+      const nativeMux = new URL(req.url, origin).pathname === REMOTE_MUX_PATH;
+      if (nativeMux && req.headers.origin && !requireOrigin(req)) {
+        socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return;
+      }
       const backend = await backendFor(user);
       if (closing || socket.destroyed) { socket.destroy(); return; }
+      if (nativeMux) {
+        remoteBridge.upgrade(req, socket, head, backend, proxyHeaders(req, backend)); return;
+      }
       const upstream = net.connect(backend.port, '127.0.0.1');
       upstream.once('connect', () => {
         const headers = proxyHeaders(req, backend);
@@ -480,6 +525,7 @@ export function createGateway(config) {
   return { server, scopedBudget, db, save, backends, close: () => {
     if (closing) return;
     closing = true;
+    remoteBridge.close();
     // Include booting children, and upgraded/idle browser connections that
     // server.close() otherwise keeps alive during an ordinary SIGTERM restart.
     for (const child of memberChildren) child.kill();

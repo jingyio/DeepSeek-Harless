@@ -25,7 +25,8 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.5-rc.3",
-    "@deepseek-ai/dsh-llm": "0.1.5-rc.3"
+    "@deepseek-ai/dsh-llm": "0.1.5-rc.3",
+    "ws": "8.21.3"
   },
   "engines": {
     "node": ">=20"

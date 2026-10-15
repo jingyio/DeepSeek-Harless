@@ -25,4 +25,6 @@
 
 在隔离检出运行 `node scripts/project.mjs python scripts/check-harless-members.py --render-ppt` 可生成两个临时诊断账号，实际启动bwrap/MCP、检查四场景与跨账号拒绝，再在各自实际挂载内生成一页合成PPT/PDF/PNG。需先配置上述库/渲染依赖；不调用云模型，不证明浏览器、公网或模型自主生成质量，不使用生产账户数据库。
 
+数据报告使用可嵌入的中文字体。部署时从 Ubuntu 官方仓库下载 `fonts-wqy-microhei` 版本 `0.2.0-beta-3`，将包内的 `wqy-microhei.ttc` 与 `copyright` 分别复制为既有私有 `fontRoot` 中的 `wqy-microhei.ttc`、`WQY-COPYRIGHT.txt`；无需修改系统字体或用户资料。该版本包 SHA-256 为 `e7827bca16475a02f29dd7a59208c1790992037a43d64896320572362d1bd79d`，字体 SHA-256 为 `2420e8078af796b19a3f6ef13de527a1a91c1e7171eea115926c614ced1009b3`。字体和安装收据不提交到仓库。生成 policy 时设置 `HARLESS_PPT_FONT_ROOT`，会为数据报告注入固定路径 `HARLESS_REPORT_FONT` 和实际字体 SHA；成员沙箱核验路径、文件及 SHA 后只读挂载。报告引擎校验中文字符覆盖并嵌入字体子集，避免依赖阅读器的中文 CID 字体回退。升级后重建同检出的 policy；旧下载文件保持不变，新排版使用新的引擎版本目录。
+
 回归检查运行 `npm test`，其中包含账号并发注册、登录持久化、跨账号预算拒绝、Web 连续对话及预算路由测试。部署后还需用两个**测试账号**验证：同时登录、各自创建工作区和会话、互相不能访问文件、连续发送两轮、刷新与关闭浏览器后的登录行为，并确认真实 API 成本落在服务器预算内。单元测试不证明公网隧道、服务器资源或真实模型质量可用。

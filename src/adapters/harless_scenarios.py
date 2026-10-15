@@ -7,6 +7,7 @@ import os
 import re
 from pathlib import Path
 from .scenario import prepare_scenario
+from .harless_product_prompt import product_persona
 
 IDENTITY = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
 WORKSPACE = '__HARLESS_SESSION_WORKSPACE__'
@@ -14,6 +15,42 @@ BUNDLE_ENVS = {'ppt':'HARLESS_PPT_RUNTIME_BUNDLE',
                'paper-proofreading':'HARLESS_PAPER_RUNTIME_BUNDLE',
                'research-data-analysis':'HARLESS_DATA_RUNTIME_BUNDLE',
                'new-scene':'HARLESS_GENERAL_RUNTIME_BUNDLE'}
+
+
+def _fixed_dependency(path: Path, *, directory: bool) -> Path:
+    absolute = path.absolute()
+    if (path.is_symlink() or absolute.resolve(strict=True) != absolute or absolute.parent == absolute or
+            not (absolute.is_dir() if directory else absolute.is_file())):
+        raise ValueError('attachment parser requires fixed installation paths')
+    return absolute
+
+
+def _configure_attachment_parsers(scene: dict) -> None:
+    """Forward only explicitly configured, validated public parser resources."""
+    env = {}
+    if os.environ.get('HARLESS_PDF_TOOLCHAIN_ROOT'):
+        root = _fixed_dependency(Path(os.environ['HARLESS_PDF_TOOLCHAIN_ROOT']), directory=True)
+        if any(path.name not in ('bin', 'lib', 'share', 'include') for path in root.iterdir()):
+            raise ValueError('attachment PDF parser must be an isolated Poppler installation')
+        for name in ('pdfinfo', 'pdftotext'):
+            _fixed_dependency(root / 'bin' / name, directory=False)
+        _fixed_dependency(root / 'lib/x86_64-linux-gnu', directory=True)
+        scene['pdf_toolchain_root'] = str(root)
+        env['HARLESS_PDF_TOOLCHAIN_ROOT'] = str(root)
+    if os.environ.get('HARLESS_ANTIWORD_BIN'):
+        binary = _fixed_dependency(Path(os.environ['HARLESS_ANTIWORD_BIN']), directory=False)
+        if binary.name != 'antiword' or binary.parent.name != 'bin' or binary.parent.parent.name != 'usr':
+            raise ValueError('attachment Word parser must use an isolated Antiword package')
+        root = _fixed_dependency(binary.parents[2], directory=True)
+        mappings = _fixed_dependency(root / 'usr/share/antiword', directory=True)
+        _fixed_dependency(mappings / 'UTF-8.txt', directory=False)
+        if any(path.is_symlink() or not path.is_file() or path.name.startswith('.') for path in mappings.iterdir()):
+            raise ValueError('attachment Word mappings must contain only public resource files')
+        scene['antiword_root'] = str(root)
+        env.update(HARLESS_ANTIWORD_BIN=str(binary), ANTIWORDHOME=str(mappings))
+    for row in scene['mcp_rows']:
+        if row['config']['serverName'] == 'research_report':
+            row['config'].setdefault('env', {}).update(env)
 
 
 def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, prepared_default: dict,
@@ -43,15 +80,16 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
         if row.get('adapter') not in (None, 'ppt', 'workspace', 'files', 'literature', 'data-report'): raise ValueError('unsupported scene adapter')
         path = (root / row['scenario']).resolve(strict=True)
         prepared = (prepared_default if row['id'] == default_id else
-                    prepare_scenario(path, case=row.get('case', ''), session_workspace=WORKSPACE if row.get('adapter') else None))
+                    prepare_scenario(path, case=row.get('case', ''), session_workspace=WORKSPACE if row.get('adapter') else None,
+                                     web_deployment=True))
         scene.update(allowed_tools=prepared['allowed_tools'], config_sha256=prepared['config_sha256'],
                      scenario_version=1, scenario=row['scenario'], case=prepared['case'],
                      embedding_endpoint=embedding_endpoint, embedding_model=embedding_model)
         if row.get('adapter'):
             scene.update(adapter=row['adapter'], mcp_rows=prepared['mcp_rows'], environment_references=prepared['environment_references'])
-        if row.get('adapter')=='data-report' or row['id']=='paper-proofreading':
+        if row.get('adapter') in ('data-report','ppt') or row['id']=='paper-proofreading':
             for mcp in scene['mcp_rows']:
-                if mcp['config']['serverName'] in ('research_report','paper_trace_rsi'):
+                if mcp['config']['serverName'] in ('research_report','paper_trace_rsi','ppt'):
                     mcp['config'].setdefault('env',{})['HARLESS_PRIVATE_ROOT']=str(output.resolve())
         if row.get('adapter') == 'literature':
             from .harless_pdf_deployment import configure_pdf_parser
@@ -59,6 +97,17 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             except (OSError, ValueError): scene['unavailable_reason'] = 'literature_pdf_dependencies_missing'
         if row.get('adapter') == 'data-report' and any(importlib.util.find_spec(module) is None for module in ('numpy','pandas','scipy','matplotlib','statsmodels')):
             scene['unavailable_reason'] = 'data_report_python_dependencies_missing'
+        if row.get('adapter') == 'data-report':
+            _configure_attachment_parsers(scene)
+        if row.get('adapter') == 'data-report' and os.environ.get('HARLESS_PPT_FONT_ROOT'):
+            report_font = Path(os.environ['HARLESS_PPT_FONT_ROOT']).resolve() / 'wqy-microhei.ttc'
+            if report_font.is_file() and not report_font.is_symlink():
+                scene['report_font_sha256'] = hashlib.sha256(report_font.read_bytes()).hexdigest()
+                for mcp in scene['mcp_rows']:
+                    if mcp['config']['serverName'] == 'research_report':
+                        mcp['config'].setdefault('env', {})['HARLESS_REPORT_FONT'] = str(report_font)
+            else:
+                scene['unavailable_reason'] = 'data_report_embedded_font_missing'
         if row.get('adapter') == 'ppt':
             from .harless_ppt_deployment import configure_ppt_rendering
             try:configure_ppt_rendering(scene)
@@ -104,14 +153,12 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 _bind_legacy_rsi(root, rsi, scene, prepared)
         if row['id'] != default_id:
             preset = output / 'presets' / scene['preset']; preset.mkdir(parents=True, mode=0o700, exist_ok=True)
-            rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
-                'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
-                'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}},
+            rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': product_persona()},
                 *([] if row.get('adapter') else prepared['mcp_rows'])]
             rendered = json.dumps(rows, ensure_ascii=False, indent=2)
             for token, expression in prepared['environment_references'].items(): rendered = rendered.replace(json.dumps(token), expression)
             (preset / 'agent.cordis.yml').write_text(rendered, encoding='utf-8'); (preset / 'agent.cordis.yml').chmod(0o600)
-            (preset / 'preset.yml').write_text(json.dumps({'name': row['label']}, ensure_ascii=False), encoding='utf-8')
+            (preset / 'preset.yml').write_text(json.dumps({'name': 'GeneLoop · ' + row['label']}, ensure_ascii=False), encoding='utf-8')
             (preset / 'preset.yml').chmod(0o600)
         scenes.append(scene)
     if default_id not in seen:

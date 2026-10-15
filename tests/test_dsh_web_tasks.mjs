@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
+import {comparisonArtifacts} from '../src/adapters/harless_comparison_artifacts.ts';
 import { digest } from '../src/motif_core/online_skill_runtime.mjs';
 import {renderPrompt} from '@deepseek-ai/dsh-system-prompt';
 
@@ -69,14 +71,15 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   const receipts = new Map();
   const storedSessions = new Map();
   const storedHeaders = new Map();
-  const promptCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
+  const promptCalls = [], modelCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
+    emit,
     workspaceRegistry: { list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
       async create(path, title) { const old = [...workspaceGroups.values()].find(row => row.path === path); if (old) return old;
-        const row = { id:'workspace-' + workspaceGroups.size, path, title, sessionIds:[] }; workspaceGroups.set(row.id,row); return row; } },
+        const row = { id:'workspace-' + randomUUID(), path, title, sessionIds:[], async attachSession(id) { if(!this.sessionIds.includes(id)) this.sessionIds.push(id); } }; workspaceGroups.set(row.id,row); return row; } },
     commands: { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } },
-    agentPresets: { async select(agent, preset) { presetCalls.push({ session_id: agent.session.id, preset }); agent.preset = preset; } },
+    agentPresets: { async mount() {}, async select(agent, preset) { presetCalls.push({ session_id: agent.session.id, preset }); agent.preset = preset; } },
     effect(factory) { factory(); },
     on(name, listener) { const rows = listeners.get(name) ?? []; rows.push(listener); listeners.set(name, rows); },
     llm: { registerAdapter(names, adapter) { adapters.push({ names, adapter }); return () => {}; } },
@@ -88,16 +91,20 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
       register(route) { webRoutes.set(route.path, route); return () => {}; },
       tapIndex(transform) { ctx.indexTransform = transform; return () => {}; },
     },
-    attachments: { async *readFileStream(ref) { yield receipts.get(ref.attachmentId).data; } },
+    attachments: { async admitPromptContent(content) { return content; }, async *readFileStream(ref) { yield receipts.get(ref.attachmentId).data; } },
     fileUploads: {
+      bindPrompt() { return { commit() {}, [Symbol.dispose]() {} }; },
       resolve(agent, receipt) { const row = receipts.get(receipt); return row?.session === agent.session.id ? row.ref : undefined; },
-      async uploadStream(request) { let bytes=0; for await (const part of request.data) bytes += part.length;
-        const receiptId = `receipt-${request.sessionId}-${bytes}`;
+      async uploadStream(request) { let bytes=0; const chunks=[]; for await (const part of request.data) {bytes += part.length;chunks.push(Buffer.from(part));}
+        const receiptId = `receipt-${request.sessionId}-${bytes}-${receipts.size}`;
         const ref = { name: request.name, bytes, attachmentId: receiptId };
-        receipts.set(receiptId, { session: request.sessionId, ref, data: Buffer.alloc(bytes, 65) });
+        receipts.set(receiptId, { session: request.sessionId, ref, data: Buffer.concat(chunks) });
         return { receiptId, file: ref };  },
     },
     sessionController: {
+      async list() { return { items: [...storedHeaders].map(([sessionId, meta]) => ({ sessionId, title: meta.title })) }; },
+      async search() { return this.list(); },
+      async page({sessionId}) { return this.inspect(sessionId); },
       async create(request) {
         assert.ok(request.cwd === undefined || request.workspaceId === undefined, 'native create rejects workspaceId together with cwd');
         const id = request.sessionId ?? `mock-session-${agents.size + 1}`;
@@ -107,11 +114,11 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
           const events = storedSessions.get(id) ?? []; storedSessions.set(id, events);
           if (!storedHeaders.has(id)) storedHeaders.set(id, { id, agentPreset: request.agentPreset,
             cwd: request.workspaceId ? workspaceGroups.get(request.workspaceId).path : request.cwd });
-          const agent = { preset: request.agentPreset, session: { id }, guards: guardFns, events, ctx: {
+          const agent = { preset: request.agentPreset, session: { id, snapshotEvents: () => events, append(type,data,extra={}) { const event={type,data,seq:events.length,time:Date.now(),...extra};events.push(event);emit('session/event',agent.session,event);return event;} }, guards: guardFns, events, ctx: {
             tools: { restrict(value) { agent.allow = value; return () => {}; },
               guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
               schemas() { return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
-            systemPrompt: { variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
+            systemPrompt: { suppressRuntimeContext() { return () => {}; }, variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
               section(row) { agent.instruction = row.text==='{{harless_scene_literal}}'?agent.variables.get('harless_scene_literal')():row.text; return () => {}; } },
             on() {},
           } };
@@ -133,11 +140,16 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
         return { meta: storedHeaders.get(id), events: storedSessions.get(id) };
       },
       async cancel() { return { accepted: true }; },
-      async selectModel(request) { await originalController.create({ sessionId: request.sessionId }); return request; },
+      async rename({ sessionId, title }) { storedHeaders.get(sessionId).title = title; return { title }; },
+      async selectModel(request) { modelCalls.push(structuredClone(request)); await originalController.create({ sessionId: request.sessionId }); return request; },
       updateQueue(request) { queueMutations.push(request); return { accepted: true }; },
     },
   };
   const originalController = { ...ctx.sessionController };
+  const originalUploads = { ...ctx.fileUploads };
+  ctx.agents = { async create(request) { const result = await originalController.create({sessionId:request.sessionId,cwd:request.meta.cwd,agentPreset:request.meta.agentPreset});
+    const agent=agents.get(result.sessionId);agent.events.push(...structuredClone(request.seed));Object.assign(storedHeaders.get(result.sessionId),request.meta);
+    await request.setup(agent.ctx,agent);return agent; } };
   try {
     const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
   } catch (error) {
@@ -166,13 +178,17 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     return tagged ? markAgentLoopRequest(body) : body;
   }
   return { ctx, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts, policy, policyPath,
+    async trash(body) { const request = new Request('http://127.0.0.1/api/harless/session-trash', body === undefined ? {} : { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }); request.authorized=true;
+      const response=await routes.get('/api/harless/session-trash').fetch(request); return {status:response.status,value:await response.json()}; },
     async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
     async command(session, rawInput) { return commands.get('harless').handler({ agent: agents.get(session), rawInput, signal: new AbortController().signal }); },
-    promptCalls, queueMutations, controlCalls, directory,
-    registrations, brokerCalls, brokerRoutes, modelRequest, routes, webRoutes,
+    promptCalls, modelCalls, queueMutations, controlCalls, directory,
+    registrations, brokerCalls, brokerRoutes, modelRequest, routes, webRoutes, adapters,
+    async stopControl() { server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); },
     originalController,
     async restart() {
       Object.assign(ctx.sessionController, originalController);
+      Object.assign(ctx.fileUploads, originalUploads);
       listeners.clear(); routes.clear(); webRoutes.clear(); agents.clear();
       const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
     },
@@ -189,6 +205,54 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   };
 }
 
+test('Uncapped task text and output retain guards and omit the adapter default',options,async()=>{
+ const f=await fixture({max_output_tokens:null});try{
+  const original='完整任务输入'.repeat(3000)+'unique-tail';
+  const task=await f.preview(original);await f.submit(task);
+  assert.equal(f.promptCalls[0].content.filter(part=>part.type==='text').map(part=>part.text).join(''),original);
+  const adapter=f.adapters.find(row=>row.names.includes('deepseek-official')).adapter;
+  assert.equal((await adapter.resolveModel('deepseek-official','deepseek-flash')).defaultMaxTokens,undefined);
+  const request=f.modelRequest(task,{maxTokens:undefined});
+  const next=()=> (async function*(){yield {type:'text-delta',delta:'uncapped answer'};})();
+  const received=[];for await(const chunk of f.stream(request,next))received.push(chunk);
+  assert.equal(received.length,1);
+  const recorded=JSON.parse(readFileSync(join(f.directory,'tasks',task.task_id,'model-request-config.json')));
+  assert.equal(recorded.max_output_tokens,null);assert.equal(recorded.output_cap_sent,false);
+  assert.throws(()=>f.stream(f.modelRequest(task,{maxTokens:1000}),next),/Unapproved/);
+  await f.complete(task);
+ }finally{await f.close();}
+});
+
+function assertProductPresentationOnly(ctx) {
+  assert.equal(typeof ctx.indexTransform, 'function');
+  const body = '<main id="native-harness-root"></main><script type="module" src="/native-client.js"></script>';
+  const html = ctx.indexTransform('<!doctype html><html><head><title>DeepSeek Harness</title></head><body>' + body + '</body></html>');
+  const brand = '<script>' + readFileSync(new URL('../src/adapters/geneloop_brand.js', import.meta.url), 'utf8') + '</script>';
+  const account = process.env.HARLESS_GATEWAY_ENABLED === '1' ?
+    '<script>' + readFileSync(new URL('../src/adapters/harless_account_link.js', import.meta.url), 'utf8') + '</script>' : '';
+  // Product branding must be ready before the native client boots. It may not
+  // reintroduce the separate workbench or intercept sending with a dialog.
+  assert.ok(html.indexOf(brand) > html.indexOf('<head>'));
+  assert.ok(html.indexOf(brand) < html.indexOf('</head>'));
+  assert.match(html, /<title>GeneLoop<\/title>/);
+  assert.equal(html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>')), body + account);
+  assert.doesNotMatch(html, /sss-native-confirmation|DeepSeek Harless 任务工作台/);
+}
+
+test('Completed task usage survives a missing or offline budget route while active tasks fail closed',options,async()=>{
+ const f=await fixture({broker:true});try{
+  const task=await f.preview('Preserve historical usage');await f.submit(task);
+  Object.assign([...f.registrations.values()][0],{upstream_requests:7,estimated_cost_usd:0.12,prompt_tokens:1234});
+  await f.complete(task);await f.restart();f.registrations.clear();
+  let result=await f.api(undefined,'?task_id='+task.task_id);assert.equal(result.status,200);assert.equal(result.value.stats.upstream_requests,7);assert.equal(result.value.stats.estimated_cost_usd,0.12);
+  const next=await f.preview('New active task');await f.submit(next);f.registrations.clear();
+  result=await f.api(undefined,'?task_id='+next.task_id);assert.equal(result.status,409);assert.equal(result.value.error.code,'budget_control_failed');
+  await f.stopControl();
+  result=await f.api(undefined,'?task_id='+task.task_id);assert.equal(result.status,200);assert.equal(result.value.stats.prompt_tokens,1234);assert.equal(result.value.stats.estimated_cost_usd,0.12);
+  result=await f.api(undefined,'?task_id='+next.task_id);assert.notEqual(result.status,200);
+ }finally{await f.close();}
+});
+
 test('Harless task APIs remain available without separate workbench or settings pages', options, async () => {
   const f = await fixture();
   try {
@@ -202,7 +266,7 @@ test('Harless task APIs remain available without separate workbench or settings 
       page.handler({}, response);
       assert.equal(response.status, 302); assert.equal(response.headers.Location, '/');
     }
-    assert.equal(f.ctx.indexTransform, undefined);
+    assertProductPresentationOnly(f.ctx);
     const settings = await f.settings();
     assert.equal(settings.status, 200); assert.equal('panels' in settings.value, false);
     const listing = await f.api();
@@ -292,6 +356,48 @@ test('Selected model and empty session survive a Web process restart', options, 
     assert.equal(task.status, 'running');
     await f.complete(task);
   } finally { await f.close(); }
+});
+
+test('Native On/Off selection survives restart, freezes each real request contract, and can change on the next turn', options, async () => {
+  const f = await fixture({ broker:true, max_output_tokens:null });
+  try {
+    const {sessionId}=await f.ctx.sessionController.create({});
+    assert.equal(f.modelCalls.at(-1).reasoningEffort,'off');
+    const select=effort=>f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:effort},new AbortController().signal);
+    for(const effort of ['on','low','max']) await assert.rejects(select(effort),error=>error.code==='model_not_allowed');
+    await select('high'); await f.restart();
+    await f.ctx.sessionController.prompt({sessionId,requestId:'thinking-on',mode:'queue',content:[{type:'text',text:'Explain the method'}]},new AbortController().signal);
+    const first=(await f.api()).value.tasks[0];
+    assert.equal(first.reasoning_effort,'high');assert.equal(f.modelCalls.at(-1).reasoningEffort,'high');
+    await assert.rejects(select('off'),error=>error.code==='model_not_allowed');
+    const next=async function*(){yield {type:'text-delta',index:0,text:'answer'};};
+    assert.throws(()=>f.stream(f.modelRequest(first,{reasoningEffort:'off',maxTokens:undefined}),next),/Unapproved/);
+    for await(const chunk of f.stream(f.modelRequest(first,{reasoningEffort:'high',maxTokens:undefined}),next)){}
+    const firstConfig=JSON.parse(readFileSync(join(f.directory,'tasks',first.task_id,'model-request-config.json')));
+    assert.equal(firstConfig.reasoning_effort,'high');assert.equal(firstConfig.max_output_tokens,null);assert.equal(firstConfig.output_cap_sent,false);
+    await f.complete(first); await select('off');
+    await f.ctx.sessionController.prompt({sessionId,requestId:'thinking-off',mode:'queue',content:[{type:'text',text:'Continue briefly'}]},new AbortController().signal);
+    const second=(await f.api()).value.tasks.at(-1);
+    assert.equal(second.reasoning_effort,'off');assert.equal(second.session_id,first.session_id);
+    for await(const chunk of f.stream(f.modelRequest(second,{maxTokens:undefined}),next)){}
+    assert.equal(JSON.parse(readFileSync(join(f.directory,'tasks',first.task_id,'effective-config.json'))).reasoning_effort,'high');
+    assert.equal(f.registrations.size,2,'reasoning changes never reset or reuse a previous task budget');
+    await f.complete(second);
+    const record=JSON.parse(readFileSync(join(f.directory,readdirSync(f.directory).find(name=>name.startsWith('session-models-')))));
+    assert.equal(record.reasoning_efforts[sessionId],'off');
+  } finally { await f.close(); }
+});
+
+test('Task preview binds reasoning in its confirmation and rejects changing a reused request ID', options, async()=>{
+  const f=await fixture({broker:true});try{
+    const first=await f.preview({instruction:'Diagnose this result',request_id:'same-input',reasoning_effort:'high'});
+    assert.equal(first.reasoning_effort,'high');
+    const duplicate=await f.api({action:'preview',request:{instruction:'Diagnose this result',request_id:'same-input',reasoning_effort:'off'}});
+    assert.equal(duplicate.status,409);assert.equal(duplicate.value.error.code,'request_id_conflict');
+    assert.equal((await f.api()).value.tasks.length,1);
+    const unsupported=await f.api({action:'preview',request:{instruction:'Diagnose',reasoning_effort:'max'}});
+    assert.equal(unsupported.status,400);assert.equal(unsupported.value.error.code,'model_not_allowed');
+  }finally{await f.close();}
 });
 
 test('Submit requires the current confirmation and never reruns a retry; only one task is active', options, async () => {
@@ -390,6 +496,7 @@ test('Legacy blank preset sessions resume only when history and budget registrat
     await assert.rejects(prompt('other-preset'), /outside/);
     await assert.rejects(prompt('legacy-budget'), /already has a task/);
     await prompt('legacy-empty');
+    assert.equal((await f.ctx.sessionController.inspect('legacy-empty')).meta.title,'新会话');
     assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 1);
     assert.equal(f.controlCalls.filter(row => row.path === '/tasks/activate').length, 1);
     assert.equal(f.promptCalls.length, 1);
@@ -590,7 +697,7 @@ test('Real-provider native prompt runs immediately with budget admission and no 
     assert.equal(f.promptCalls.length, 1); assert.equal(f.registrations.size, 1);
     assert.equal(f.controlCalls.filter(call => call.path === '/tasks/activate').length, 1);
     assert.deepEqual(f.promptCalls[0].content, request.content);
-    assert.equal(f.ctx.indexTransform, undefined);
+    assertProductPresentationOnly(f.ctx);
     assert.equal((await f.submit(task)).status, 200); assert.equal(f.promptCalls.length, 1);
     await f.complete(task);
   } finally { await f.close(); }
@@ -674,7 +781,7 @@ test('Running task keeps frozen tools and mode while next-task choices are inher
   try {
     const first=await f.preview('首项任务');await f.submit(first);
     const next=await f.settings({action:'select',session_id:first.session_id,selection:{scene:'other',rsi:false}});
-    assert.equal(next.value.error.code,'scene_requires_new_session');
+    assert.equal(next.value.error.code,'session_busy');
     const unchanged = (await f.settings(undefined, '?session_id=' + first.session_id)).value;
     assert.equal(unchanged.selection.scene,'example');assert.equal(unchanged.current_task.mode,'shadow');
     assert.deepEqual(f.agents.get(first.session_id).allow.allow,['mcp__demo__read_note']);
@@ -748,9 +855,9 @@ test('Session adapter binds private presets and rejects foreign file receipts be
   } finally { await f.close(); }
 });
 
-test('Workspace scene keeps one budgeted chat across text turns and requires a new session for new files', options, async () => {
-  const scene = { ...multiScenes[0], id: 'new-scene', adapter: 'workspace', mcp_rows: [] };
-  const f = await fixture({ broker: true, scenes: [scene], capability_profile: 'new-scene' });
+test('Workspace scene accepts first sources after discussion and rejects replacing bound files', options, async () => {
+  const scene = { ...multiScenes[0], id: 'paper-proofreading', adapter: 'workspace', mcp_rows: [] };
+  const f = await fixture({ broker: true, scenes: [scene], capability_profile: 'paper-proofreading' });
   try {
     const { sessionId } = await f.ctx.sessionController.create({});
     await f.ctx.sessionController.prompt({ sessionId, requestId: 'first', mode: 'queue',
@@ -766,6 +873,12 @@ test('Workspace scene keeps one budgeted chat across text turns and requires a n
     await f.complete(second);
     const uploaded = await f.ctx.fileUploads.uploadStream({ sessionId, name: 'new.txt',
       data: (async function* () { yield Buffer.from('new evidence'); })() });
+    const mounts=f.presetCalls.length;
+    const accepted = await f.api({ action: 'preview', session_id: sessionId,
+      request: { content: [{ type: 'file', receiptId: uploaded.receiptId }] } });
+    assert.equal(accepted.status,200); assert.equal(accepted.value.source_pending,false);
+    assert.equal(f.presetCalls.length,mounts,'first sources use the already mounted lazy workspace adapter');
+    await f.submit(accepted.value);await f.complete(accepted.value);
     const denied = await f.api({ action: 'preview', session_id: sessionId,
       request: { content: [{ type: 'file', receiptId: uploaded.receiptId }] } });
     assert.equal(denied.status, 409);
@@ -901,6 +1014,61 @@ test('Native workspace creation uses one location and scene-switch sessions stay
   } finally {await f.close();}
 });
 
+test('Managed workspace name flow creates grouped chats and preserves legacy groups in both budget modes', options, async () => {
+  for (const broker of [false, true]) {
+    const f = await fixture({ broker, scenes: multiScenes });
+    const post = async (path, data) => {
+      const request = new Request('http://localhost' + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
+      request.authorized = true;
+      const response = await f.routes.get(path).fetch(request);
+      assert.equal(response.status, 200);
+      return response.json();
+    };
+    try {
+      const made = await post('/api/harless/workspaces', { name: '研究项目', request_id: randomUUID() });
+      const adoption = await post('/api/workspace/create', { type: 'client-request', rpcId: 'native-adoption', method: 'workspace/create',
+        payload: { args: { request: { path: made.workspace.path } } } });
+      assert.equal(adoption.result.ok, true);
+      const workspaceId = adoption.result.value.workspace.workspaceId;
+      const first = await f.ctx.sessionController.create({ workspaceId });
+      const second = await f.ctx.sessionController.create({ workspaceId });
+      const group = f.ctx.workspaceRegistry.get(workspaceId);
+      assert.deepEqual(group.sessionIds, [first.sessionId, second.sessionId]);
+      assert.equal((await f.ctx.sessionController.inspect(first.sessionId)).meta.cwd, group.path);
+      assert.equal(made.workspace.path, '/workspaces/' + workspaceId);
+      assert.notEqual(group.path, made.workspace.path, 'host storage is not returned as a browser address');
+      const switched = await f.settings({ action: 'new_session', inherit_session: second.sessionId, selection: { scene: 'other' } });
+      assert.equal(switched.status, 200); assert.ok(group.sessionIds.includes(switched.value.session_id));
+      const oldPath = join(f.directory, 'legacy-project'); mkdirSync(oldPath); writeFileSync(join(oldPath, 'notes.txt'), 'preserve');
+      const legacy = await f.ctx.workspaceRegistry.create(oldPath, '旧工作区');
+      const legacyChat = await f.ctx.sessionController.create({ workspaceId: legacy.id });
+      assert.ok(legacy.sessionIds.includes(legacyChat.sessionId));
+      assert.equal(readFileSync(join(oldPath, 'notes.txt'), 'utf8'), 'preserve');
+      await assert.rejects(f.ctx.sessionController.create({ cwd: oldPath }), error => error.code === 'workspace_not_allowed');
+      await assert.rejects(f.ctx.sessionController.create({ workspaceId: '' }), error => error.code === 'workspace_not_allowed');
+      await f.restart();
+      const reopened = await f.ctx.sessionController.create({ workspaceId });
+      assert.ok(group.sessionIds.includes(reopened.sessionId));
+      assert.equal(f.registrations.size, 0); assert.equal(f.promptCalls.length, 0);
+    } finally { await f.close(); }
+  }
+});
+
+test('Managed chat creation rejects another account workspace ID without registering a session', options, async () => {
+  const alice = await fixture({ broker: true, user_id: 'alice' });
+  const bob = await fixture({ broker: true, user_id: 'bob' });
+  try {
+    const foreign = await alice.ctx.workspaceRegistry.create(alice.directory, 'Alice project');
+    const before = bob.agents.size;
+    await assert.rejects(bob.ctx.sessionController.create({ workspaceId: foreign.id }), error => error.code === 'workspace_not_allowed' && error.status === 403);
+    assert.equal(bob.agents.size, before); assert.deepEqual(foreign.sessionIds, []);
+    const own = await bob.ctx.workspaceRegistry.create(bob.directory, 'Bob project');
+    const accepted = await bob.ctx.sessionController.create({ workspaceId: own.id });
+    assert.deepEqual(own.sessionIds, [accepted.sessionId]);
+    assert.equal(alice.registrations.size + bob.registrations.size, 0);
+  } finally { await bob.close(); await alice.close(); }
+});
+
 test('A scene switch on started history fails before mutation and restart repairs old planned-scene pollution', options, async () => {
   const f = await fixture({ broker:true, scenes:multiScenes });
   try {
@@ -964,4 +1132,200 @@ test('PPT menu options are scoped, model-free, persisted, and cannot modify a pr
     const restored=await f.settings(undefined,'?session_id='+first.sessionId);
     assert.equal(restored.value.scene_options.allow_output,false); assert.equal(restored.value.scene_options.slides,8);
   }finally{await f.close();}
+});
+
+test('Empty file scenes keep normal scene tools and model routing across turns and restart', options, async () => {
+  for (const [id, adapter] of [['ppt','ppt'], ['paper-proofreading','workspace'], ['research-data-analysis','data-report'], ['literature','literature'], ['files','files']]) {
+    const scene = {...multiScenes[0], id, label:id, adapter, mcp_rows:[]};
+    const f = await fixture({ broker:true, scenes:[scene], capability_profile:id });
+    try {
+      const { sessionId } = await f.ctx.sessionController.create({});
+      assert.equal((await f.ctx.sessionController.inspect(sessionId)).meta.title, '新会话');
+      for (let round=0;round<3;round++) {
+        if(round===2) await f.restart();
+        const result=await f.api({action:'preview',session_id:sessionId,request:{instruction:'你好，请介绍你能帮我做什么',request_id:`empty-${round}`}});
+        assert.equal(result.status,200,JSON.stringify(result.value));
+        const task=result.value; assert.equal(task.source_pending,true); assert.deepEqual(task.scene_inputs,[]);
+        assert.deepEqual(f.agents.get(sessionId).allow.allow,scene.allowed_tools);
+        assert.match(f.agents.get(sessionId).instruction,/正常回应问候/);
+        assert.equal((await f.submit(task)).status,200);
+        await f.complete(task);
+      }
+      assert.equal(f.promptCalls.length,3);
+    } finally {await f.close();}
+  }
+});
+
+test('General workspace keeps its tools without requiring uploads', options, async()=>{
+ const scene={...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]};
+ const f=await fixture({broker:true,scenes:[scene],capability_profile:'new-scene'});
+ try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const result=await f.api({action:'preview',session_id:sessionId,request:'创建一份新的笔记'});
+  assert.equal(result.status,200);assert.equal(result.value.source_pending,false);
+  assert.deepEqual(f.agents.get(sessionId).allow.allow,scene.allowed_tools);
+ }finally{await f.close();}
+});
+
+
+test('Completed parent routes ordinary → data → PPT → chat without moving history or mutating prior scopes',options,async()=>{
+ const scenes=[{...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'ppt',preset:'sss-ppt',adapter:'ppt',mcp_rows:[]}];
+ const f=await fixture({broker:true,scenes,capability_profile:'new-scene',comparison_scenes:['research-data-analysis','ppt']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const send=(text,id)=>f.ctx.sessionController.prompt({sessionId,requestId:id,mode:'queue',content:[{type:'text',text}]},new AbortController().signal);
+  await send('Remember ordinary context','ordinary');const first=(await f.api()).value.tasks[0];
+  f.agents.get(sessionId).session.append('assistant/message',{message:{content:[{type:'text',text:'ordinary remembered'}]}});await f.complete(first);
+  let expectedReasoning='high';
+  const selectReasoning=reasoningEffort=>f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort},new AbortController().signal);
+  await selectReasoning('high');
+  const priorScopes=f.presetCalls.length;
+  const compare=async(id,stream=false,parent=sessionId)=>{const request=new Request('http://local/api/harless/comparisons?session_id='+parent+'&id='+id+(stream?'&stream=1':''));request.authorized=true;return f.routes.get('/api/harless/comparisons').fetch(request);};
+  const settle=async (id,parent=sessionId)=>{for(let attempt=0;attempt<200;attempt++){
+    for(const task of (await f.api()).value.tasks)if(task.status==='running'){
+      if(!f.promptCalls.some(row=>row.sessionId===task.session_id&&row.requestId===task.request_id))continue;
+      assert.equal(task.reasoning_effort,expectedReasoning);
+      const modelRequest=f.modelRequest(task,{reasoningEffort:expectedReasoning,tools:f.agents.get(task.session_id).ctx.tools.schemas()});
+      for await(const chunk of f.stream(modelRequest,async function*(){yield {type:'text-delta',index:0,text:'diagnostic partial'};})){}
+      assert.equal(JSON.parse(readFileSync(join(f.directory,'tasks',task.task_id,'model-request-config.json'))).reasoning_effort,expectedReasoning);
+      f.agents.get(task.session_id).session.append('assistant/message',{message:{content:[{type:'text',text:'answer-'+task.scene+'-'+task.session_id}]}});
+      if(task.scene==='ppt'){const outputs=join(f.directory,'sessions',task.session_id,'work','outputs');mkdirSync(outputs,{recursive:true});writeFileSync(join(outputs,'report.pdf'),'pdf-'+task.session_id);}
+      await f.complete(task);
+    }
+    const value=await (await compare(id,false,parent)).json();if(['completed','failed'].includes(value.status)){assert.equal(value.status,'completed',JSON.stringify(value));return value;}await new Promise(r=>setTimeout(r,10));
+  }throw Error('comparison timeout');};
+  const longData='Discuss data '+ '完整单次输入'.repeat(3000)+'data-tail';
+  const data=await send('/data '+longData,'data');
+  await assert.rejects(selectReasoning('off'),error=>error.code==='model_not_allowed');
+  const running=(await f.settings({action:'select',session_id:sessionId,selection:{scene:'ppt'}}));assert.equal(running.value.error.code,'session_busy');
+  const dataView=await settle(data.comparison_id);assert.equal(dataView.session_id,sessionId);
+  assert.equal(JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(turn=>turn.id===data.comparison_id).input[0].text,longData);
+  const parentGroup=f.ctx.workspaceRegistry.list().find(group=>group.sessionIds.includes(sessionId));
+  assert.deepEqual(parentGroup.sessionIds,[sessionId],'comparison lanes must not become workspace chats');
+  assert.equal(f.ctx.workspaceRegistry.list().length,1,'private lanes must not create their own visible groups');
+  for(const lane of Object.values(dataView.lanes))await assert.rejects(f.ctx.sessionController.create({sessionId:lane.session_id,workspaceId:parentGroup.id}),error=>error.code==='comparison_child');
+  const dataState=JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.at(-1);
+  assert.match(dataState.prior_context.baseline,/ordinary remembered/);
+  const ppt=await send('/ppt Use previous findings','ppt'),pptView=await settle(ppt.comparison_id);
+  assert.equal(pptView.session_id,sessionId);assert.notEqual(dataView.lanes.baseline.session_id,pptView.lanes.baseline.session_id);
+  assert.match(JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.at(-1).prior_context.baseline,/answer-research-data-analysis/);
+  await selectReasoning('off');expectedReasoning='off';
+  const chat=await send('/chat Explain the slides','chat'),chatView=await settle(chat.comparison_id);
+  assert.equal(chatView.presentation,'single');assert.deepEqual(Object.keys(chatView.lanes),['baseline']);
+  assert.equal((await f.ctx.sessionController.inspect(sessionId)).events.filter(e=>e.type==='user/message').length,4);
+  const old=(await f.api(undefined,'?task_id='+first.task_id)).value;assert.equal(old.answer,'ordinary remembered');assert.equal(old.scene,'new-scene');
+  assert.ok(f.presetCalls.length>priorScopes);assert.equal(f.presetCalls.filter(row=>row.session_id===sessionId).length,priorScopes);
+  const response=await compare(chat.comparison_id,true);assert.match(response.headers.get('Content-Type'),/event-stream/);const reader=response.body.getReader();
+  const chunk=new TextDecoder().decode((await reader.read()).value);assert.match(chunk,/event: snapshot/);assert.match(chunk,/snapshot_revision/);await reader.cancel();
+  const parentEvents=(await f.ctx.sessionController.inspect(sessionId)).events;
+  // The synthetic native fixture does not number its direct first prompt;
+  // normalize that pre-fixture event exactly as the real Session log does.
+  parentEvents.forEach((event,index)=>event.seq=index);
+  const pptEvent=parentEvents.find(event=>event.data?.harless_comparison?.id===ppt.comparison_id);
+  const branch=await f.ctx.sessionController.fork({sessionId,atSeq:pptEvent.seq});
+  const branchInputs=JSON.parse(readFileSync(join(f.directory,'sessions',branch.sessionId,'work','branch-inputs.json')));
+  for(const lane of ['baseline','motif']){
+    assert.equal(branchInputs.lanes[lane].length,1);
+    assert.equal(comparisonArtifacts(f.directory).read(branch.sessionId,lane,branchInputs.lanes[lane][0]).toString(),'pdf-'+pptView.lanes[lane].session_id);
+    assert.match(JSON.stringify(branchInputs.context[lane]),new RegExp(pptView.lanes[lane].session_id));
+    assert.doesNotMatch(JSON.stringify(branchInputs.context[lane]),new RegExp(pptView.lanes[lane==='baseline'?'motif':'baseline'].session_id));
+  }
+  const branchEvents=(await f.ctx.sessionController.inspect(branch.sessionId)).events;
+  const dataAnchor=branchEvents.find(event=>event.type==='user/message'&&event.data.content?.some(part=>part.text?.includes('Discuss data'))).seq;
+  const earlier=await f.ctx.sessionController.fork({sessionId:branch.sessionId,atSeq:dataAnchor});
+  const earlierInputs=JSON.parse(readFileSync(join(f.directory,'sessions',earlier.sessionId,'work','branch-inputs.json')));
+  for(const lane of ['baseline','motif']){
+    assert.equal(earlierInputs.lanes[lane].length,0,'later PPT delivery cannot cross a nested branch cutoff');
+    assert.match(JSON.stringify(earlierInputs.context[lane]),new RegExp(dataView.lanes[lane].session_id));
+    assert.doesNotMatch(JSON.stringify(earlierInputs.context[lane]),new RegExp(pptView.lanes[lane].session_id));
+  }
+  const continued=await f.ctx.sessionController.prompt({sessionId:branch.sessionId,requestId:'branch-continue',mode:'queue',content:[{type:'text',text:'/ppt Continue from the report'}]},new AbortController().signal);
+  const continuedView=await settle(continued.comparison_id,branch.sessionId);
+  for(const lane of ['baseline','motif']){
+    const work=join(f.directory,'sessions',continuedView.lanes[lane].session_id,'work');
+    const job=JSON.parse(readFileSync(join(work,'job.json')));assert.equal(job.allow_output,true);assert.equal(job.inputs.length,1);
+    assert.equal(readFileSync(job.inputs[0].path,'utf8'),'pdf-'+pptView.lanes[lane].session_id);
+  }
+  await f.restart();assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'new-scene');
+  const historyBefore=JSON.stringify((await f.ctx.sessionController.inspect(sessionId)).events);
+  assert.equal((await f.trash({action:'delete',session_id:sessionId})).status,200);
+  const deleted=(await f.trash()).value.deleted_session_ids;
+  for(const turn of [dataView,pptView,chatView])for(const lane of Object.values(turn.lanes)){
+    assert.ok(deleted.includes(lane.session_id));assert.equal((await f.api(undefined,'?task_id='+lane.task_id)).status,404);
+  }
+  assert.equal((await compare(ppt.comparison_id)).status,404);
+  assert.ok((await f.ctx.sessionController.list({})).items.every(row=>row.sessionId!==sessionId));
+  assert.ok((await f.ctx.sessionController.inspect(branch.sessionId)).events.length>0,'visible branch is independent of source deletion');
+  for(const lane of ['baseline','motif'])assert.equal(comparisonArtifacts(f.directory).read(branch.sessionId,lane,branchInputs.lanes[lane][0]).toString(),'pdf-'+pptView.lanes[lane].session_id);
+  await f.restart();assert.equal((await f.trash()).value.sessions.length,1);
+  assert.equal((await f.trash({action:'restore',session_id:sessionId})).status,200);
+  assert.equal(JSON.stringify((await f.ctx.sessionController.inspect(sessionId)).events),historyBefore);
+  assert.equal((await compare(ppt.comparison_id)).status,200);
+ }finally{await f.close();}
+});
+
+test('Native fork creates independently numbered fresh scopes in the same account workspace',options,async()=>{
+ const f=await fixture({broker:true,scenes:multiScenes});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});const source=f.agents.get(sessionId);
+  await f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'high'},new AbortController().signal);
+  source.session.append('turn/start',{turn:1});
+  source.session.append('user/message',{id:'u',role:'user',source:{kind:'user'},content:[{type:'text',text:'original'}]},{surfaceOp:'append'});
+  source.session.append('assistant/message',{turn:1,step:0,stream:[],message:{id:'a',role:'assistant',source:{kind:'model',provider:'deepseek-official',model:'deepseek-flash'},content:[{type:'text',text:'answer'}]}},{surfaceOp:'append'});
+  source.session.append('turn/end',{turn:1,reason:{kind:'completed'}});
+  await f.ctx.sessionController.rename({sessionId,title:'Research'});
+  const [a,b]=await Promise.all([f.ctx.sessionController.fork({sessionId,atSeq:2}),f.ctx.sessionController.fork({sessionId,atSeq:2})]);
+  const first=await f.ctx.sessionController.inspect(a.sessionId),second=await f.ctx.sessionController.inspect(b.sessionId);
+  assert.equal(first.meta.title,'Research（1）');assert.equal(second.meta.title,'Research（2）');
+  assert.notEqual(a.sessionId,b.sessionId);assert.equal(first.events[1].data.content[0].text,'original');
+  for(const id of [a.sessionId,b.sessionId])assert.equal(f.modelCalls.filter(row=>row.sessionId===id).at(-1).reasoningEffort,'high');
+  assert.equal(first.meta.parentSession,sessionId);assert.equal(first.meta.cwd,(await f.ctx.sessionController.inspect(sessionId)).meta.cwd);
+  await assert.rejects(f.ctx.sessionController.fork({sessionId:'foreign'}),error=>error.code==='session_not_owned');
+  assert.equal(f.registrations.size,0);
+  await f.restart();
+  await f.ctx.sessionController.prompt({sessionId:a.sessionId,requestId:'fork-on',mode:'queue',content:[{type:'text',text:'Continue independently'}]},new AbortController().signal);
+  const forkTask=(await f.api()).value.tasks.at(-1);assert.equal(forkTask.reasoning_effort,'high');await f.complete(forkTask);
+ }finally{await f.close();}
+});
+
+
+test('Task API exposes real text chunks and tool activity before completion and retains safe progress on restart',options,async()=>{
+ const f=await fixture({broker:true});try{
+  const task=await f.preview({instruction:'stream fixture'});await f.submit(task);
+  const stream=f.stream(f.modelRequest(task),async function*(){yield {type:'text-delta',index:0,text:'first'};yield {type:'text-delta',index:0,text:' second'};});
+  const iterator=stream[Symbol.asyncIterator]();await iterator.next();
+  let live=(await f.api(undefined,'?task_id='+task.task_id)).value;assert.equal(live.answer,'first');assert.equal(live.progress.status,'running');
+  await iterator.next();live=(await f.api(undefined,'?task_id='+task.task_id)).value;assert.equal(live.answer,'first second');await iterator.next();
+  f.emit('session/event',f.agents.get(task.session_id).session,{type:'tool/call',data:{name:'mcp__demo__read_note',callId:'safe',arguments:{path:'/private/server'}}});
+  live=(await f.api(undefined,'?task_id='+task.task_id)).value;assert.equal(live.activity[0].label,'读取资料');assert.doesNotMatch(JSON.stringify(live.activity),/private/);
+  await f.complete(task);await f.restart();live=(await f.api(undefined,'?task_id='+task.task_id)).value;
+  assert.equal(live.progress.status,'completed');assert.equal(live.activity[0].status,'failed','a tool without a real result is never presented as success');
+ }finally{await f.close();}
+});
+
+test('Trash rejects active tasks and isolates direct APIs; restoring retains task history and original workspace',options,async()=>{
+ const f=await fixture({broker:true,dshHome:true});try{
+  const task=await f.preview('synthetic deletion target'), other={session_id:(await f.ctx.sessionController.create({})).sessionId};await f.submit(task);
+  assert.equal((await f.trash({action:'delete',session_id:task.session_id})).status,409);
+  assert.equal((await f.trash({action:'delete',session_id:'foreign'})).status,404);
+  await f.complete(task);const group=f.ctx.workspaceRegistry.list().find(row=>row.sessionIds.includes(task.session_id));
+  const history=JSON.stringify((await f.ctx.sessionController.inspect(task.session_id)).events),calls=f.controlCalls.length;
+  assert.equal((await f.trash({action:'delete',session_id:task.session_id})).status,200);
+  assert.equal(f.controlCalls.length,calls,'deletion never starts or cancels model work');
+  assert.equal((await f.api(undefined,'?task_id='+task.task_id)).status,404);
+  assert.ok((await f.api()).value.tasks.every(row=>row.task_id!==task.task_id));
+  assert.ok((await f.settings()).value.sessions.every(row=>row.session_id!==task.session_id));
+  assert.equal((await f.settings(undefined,'?session_id='+task.session_id)).status,404);
+  assert.throws(()=>f.ctx.sessionController.create({sessionId:task.session_id}),ApiSessionNotFound);
+  assert.throws(()=>f.ctx.sessionController.fork({sessionId:task.session_id}),ApiSessionNotFound);
+  assert.throws(()=>f.ctx.sessionController.page({sessionId:task.session_id}),ApiSessionNotFound);
+  assert.ok((await f.ctx.sessionController.search({})).items.some(row=>row.sessionId===other.session_id));
+  await f.restart();assert.throws(()=>f.ctx.sessionController.inspect(task.session_id),ApiSessionNotFound);
+  assert.equal((await f.trash({action:'restore',session_id:task.session_id})).status,200);
+  assert.equal(JSON.stringify((await f.ctx.sessionController.inspect(task.session_id)).events),history);
+  assert.equal((await f.api(undefined,'?task_id='+task.task_id)).status,200);
+  assert.ok(group.sessionIds.includes(task.session_id));assert.equal((await f.trash()).value.sessions.length,0);
+ }finally{await f.close();}
 });

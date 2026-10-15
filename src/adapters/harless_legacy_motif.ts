@@ -7,15 +7,27 @@ import {digest,observation} from '../motif_core/online_skill_runtime.mjs';
 const sha=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
 export function validateExistingData(library:any){validateLibrary(library);}
 export function dataInterceptor(library:any,workspace:string,mode:string,audit:(row:any)=>void){
+  validateLibrary(library);
   const root=join(workspace,'report/sources/cases/uploaded'),run=join(workspace,'outputs/report');
-  const source_files=['data.csv','study.json','task.txt'].map(name=>({path:join(root,name),sha256:sha(readFileSync(join(root,name)))}));
-  const csv=source_files[0].sha256;
-  if([...library.training_csv_sha256,library.certification_csv_sha256].includes(csv))throw Error('training_source_not_prospective');
-  const task={workspace:run,workspace_id:'workspace-'+sha(Buffer.from(run)).slice(0,24),
-    source_files,csv_sha256:csv,study_version:digest(Object.fromEntries(source_files.map(row=>[row.path.split('/').pop(),row.sha256])))};
-  const delegate=createReportInterceptor({library,task,mode,audit});
-  return{observe(_session:string,exec:any,result:any){delegate.observe(exec,result);},
-    intercept(_session:string,request:any,next:any){return delegate.intercept(request,next);}};
+  let delegate:any, invalid=false;
+  // The original tool prepares validated sources on demand. Before that,
+  // the same Motif interceptor simply delegates to the ordinary DSH model.
+  const ready=()=>{
+    if(delegate||invalid)return delegate;
+    try{
+      const source_files=['data.csv','study.json','task.txt'].map(name=>({path:join(root,name),sha256:sha(readFileSync(join(root,name)))}));
+      const csv=source_files[0].sha256;
+      if([...library.training_csv_sha256,library.certification_csv_sha256].includes(csv))throw Error('training_source_not_prospective');
+      const task={workspace:run,workspace_id:'workspace-'+sha(Buffer.from(run)).slice(0,24),
+        source_files,csv_sha256:csv,study_version:digest(Object.fromEntries(source_files.map(row=>[row.path.split('/').pop(),row.sha256])))};
+      delegate=createReportInterceptor({library,task,mode,audit});
+    }catch(error:any){
+      if(error.code!=='ENOENT'){invalid=true;audit({kind:'motif_fallback',reason:error.message});}
+    }
+    return delegate;
+  };
+  return{observe(_session:string,exec:any,result:any){ready()?.observe(exec,result);},
+    intercept(_session:string,request:any,next:any){const active=ready();return active?active.intercept(request,next):next();}};
 }
 export function paperShadowInterceptor(library:any,schemas:any[],audit:(row:any)=>void){
   if(library.kind!=='paper_batch_shadow_v1'||library.execution_policy!=='shadow_only'||!Array.isArray(library.motifs))throw Error('invalid_existing_paper_shadow_library');

@@ -24,6 +24,7 @@ import zipfile
 from defusedxml import ElementTree as ET
 
 from .documents import file_hash, safe_zip, pptx_slide_paths
+from .web_scope import private_root, web_private_root
 
 ROOT = Path(__file__).resolve().parents[2]
 NS = {
@@ -37,9 +38,9 @@ MAX_SLIDES = 30
 
 def _private(path: Path) -> Path:
     root = ROOT.resolve()
-    private = (root / '.local').resolve()
+    private = private_root(root)
     resolved = path.resolve()
-    if not private.is_relative_to(root) or not resolved.is_relative_to(private):
+    if (web_private_root() is None and not private.is_relative_to(root)) or not resolved.is_relative_to(private):
         raise ValueError('验收输入和产物必须位于仓库 .local，不能通过链接越界')
     return resolved
 

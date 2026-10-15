@@ -25,7 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.adapters.scenario import prepare_scenario
 from src.adapters.harless_scenarios import prepare_scene_registry
-from src.adapters.deepseek_cost_gate import State, create_server, PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION
+from src.adapters.harless_product_prompt import product_persona, product_system_prompt
+from src.adapters.deepseek_cost_gate import (State, create_server, normalize_request_limit,
+    request_limit_argument, cost_cap_argument, PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION)
 from src.adapters.web_task_budget import TaskBudgetRegistry, create_control_server
 
 
@@ -104,18 +106,16 @@ def prepare(args, output, endpoint):
     if scenario.suffix != '.json':
         scenario = ROOT / ({'new-scene': 'scenarios/general/scenario.json', 'ppt': 'scenarios/research_ppt/web-scenario.json',
                             'files': 'scenarios/file-management/web-scenario.json'}.get(args.scenario, f'scenarios/{args.scenario}/scenario.json'))
-    prepared = prepare_scenario(scenario, session_workspace='__HARLESS_SESSION_WORKSPACE__', case=args.case or ('l_retrieval_persistence' if args.scenario == 'portfolio-v1' else ''))
+    prepared = prepare_scenario(scenario, session_workspace='__HARLESS_SESSION_WORKSPACE__', case=args.case or ('l_retrieval_persistence' if args.scenario == 'portfolio-v1' else ''), web_deployment=True)
     preset = output / 'presets/sss-task'
     preset.mkdir(parents=True, mode=0o700)
-    rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': {
-        'prefix': 'Complete the bounded task using only the permitted MCP evidence.',
-        'suffix': 'Cite source IDs and versions. Do not invent evidence. Writes require tool-side preview and confirmation.'}}, *([] if args.scenario in ('new-scene', 'ppt', 'files') else prepared['mcp_rows'])]
+    rows = [{'id': 'sss-persona', 'name': '@deepseek-ai/dsh-persona', 'config': product_persona()}, *([] if args.scenario in ('new-scene', 'ppt', 'files') else prepared['mcp_rows'])]
     rendered = json.dumps(rows, ensure_ascii=False, indent=2)
     for token, expression in prepared['environment_references'].items():
         rendered = rendered.replace(json.dumps(token), expression)
-    (preset / 'agent.cordis.yml').write_text(rendered)
+    (preset / 'agent.cordis.yml').write_text(rendered, encoding='utf-8')
     (preset / 'agent.cordis.yml').chmod(0o600)
-    save(preset / 'preset.yml', {'name': f'DeepSeek Harless {prepared["name"]}（{"真实模型" if args.real_model else "免费模拟"}）'})
+    save(preset / 'preset.yml', {'name': f'GeneLoop · {prepared["name"]}（{"真实模型" if args.real_model else "免费模拟"}）'})
     canonical_prompt_sha = hashlib.sha256(prepared['prompt'].strip().encode()).hexdigest()
     policy = {'output': str(output), 'prompt_sha256': canonical_prompt_sha,
               'allowed_tools': prepared['allowed_tools'], 'endpoint': endpoint,
@@ -170,6 +170,12 @@ def prepare(args, output, endpoint):
     disabled = ['llm-deepseek', 'session-title-llm', 'llm-retry',
                 'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']
     patch = [{'id': name, 'disabled': True} for name in disabled]
+    patch.extend([{'id': 'system-prompt', 'config': product_system_prompt()},
+                  # Upstream overlays replace the whole config, so preserve
+                  # this launcher's --no-open and exact trusted-host contract.
+                  {'id': 'web-runtime', 'config': {'openBrowser': False, 'printUrl': True,
+                    'surfaceContext': False,
+                    'trustedHosts': [urlsplit(args.public_origin).netloc] if args.public_origin else []}}])
     if args.glm:
         patch.append({'id': 'llm-pi-ai', 'config': {'providers': {'harless-glm': {
             'displayName': 'GLM', 'apiKeyEnv': 'HARLESS_GLM_API_KEY',
@@ -187,7 +193,7 @@ def prepare(args, output, endpoint):
         {'insert': [{'id': 'sss-web-policy', 'name': (ROOT / 'src/adapters/dsh_web_policy.ts' if args.frozen else
             ROOT / 'src/adapters/harless_web_client/index.mjs').as_uri()}]}]
     save(output / 'host.patch.yml', patch)
-    (output / 'prompt.md').write_text(prepared['prompt']); (output / 'prompt.md').chmod(0o600)
+    (output / 'prompt.md').write_text(prepared['prompt'], encoding='utf-8'); (output / 'prompt.md').chmod(0o600)
     snapshot = {**public, 'host': '127.0.0.1', 'port': args.port,
                 'public_origin': args.public_origin, 'mode': args.mode, 'scenario': args.scenario,
                 'budget_usd': args.budget_usd, 'request_limit': args.request_limit,
@@ -216,9 +222,10 @@ def prepare(args, output, endpoint):
         for path in [scenario, ROOT / 'config/harness-web.json', ROOT / 'src/adapters' /
                      ('dsh_web_policy.ts' if args.frozen else 'dsh_web_tasks.ts'),
                      ROOT / 'src/adapters/deepseek_cost_gate.py', ROOT / 'scripts/harness-web.py',
+                     ROOT / 'config/geneloop-persona.json', ROOT / 'src/adapters/harless_product_prompt.py',
                      ROOT / 'scripts/motif-example.py', ROOT / 'package-lock.json',
                      *([] if args.frozen else [ROOT / 'src/adapters/web_task_request.ts',
-                       ROOT / 'src/adapters/web_task_budget.py',
+                       ROOT / 'src/adapters/web_task_budget.py', ROOT / 'src/adapters/harless_product_prompt.ts',
                        ROOT / 'src/adapters/harless_settings.ts', ROOT / 'src/adapters/harless_scenarios.py',
                        ROOT / 'src/adapters/harless_web_client/index.mjs',
                        ROOT / 'src/adapters/harless_web_client/package.json',
@@ -253,11 +260,14 @@ def main():
     parser.add_argument('--public-origin', help='exact HTTPS gateway origin; backend remains on loopback, no proxy or account isolation is created')
     parser.add_argument('--run-id', help='optional unique 32-character hexadecimal output identity')
     parser.add_argument('--budget-usd', type=float, default=defaults['budget_usd'])
-    parser.add_argument('--request-limit', type=int, default=defaults['request_limit'])
     parser.add_argument('--max-output-tokens', type=int, default=defaults['max_output_tokens'],
-                        help='per-model-request output cap; budget proxy enforces the same value')
-    parser.add_argument('--run-request-limit', type=int, default=256, help='whole-launch request cap across all tasks')
-    parser.add_argument('--run-budget-usd', type=float, default=defaults['budget_usd'], help='whole-launch budget, never reset by a new task')
+                        help='optional per-model-request output cap; default follows the provider')
+    parser.add_argument('--request-limit', type=request_limit_argument, default=defaults['request_limit'],
+                        help='per-task request cap; 0 means unlimited (default)')
+    parser.add_argument('--run-request-limit', type=request_limit_argument, default=defaults.get('run_request_limit'),
+                        help='whole-launch request cap across all tasks; 0 means unlimited (default)')
+    parser.add_argument('--run-budget-usd', type=cost_cap_argument, default=defaults['budget_usd'],
+                        help='whole-launch cost cap; 0 means unlimited, accounting never resets per task')
     parser.add_argument('--fixture', choices=['normal', 'stale', 'tool-failure', 'provider-failure', 'outside-tool', 'delay'],
                         default='normal', help='mock-only failure injection for diagnostics')
     args = parser.parse_args()
@@ -271,12 +281,18 @@ def main():
         parser.error('Motif modes require the portfolio-v1 historical library scenario')
     if args.fixture in ('stale', 'tool-failure') and (args.mode != 'execute' or args.scenario != 'portfolio-v1'):
         parser.error('stale/tool-failure fixtures require portfolio-v1 execute')
-    if not 1024 <= args.port <= 65535 or args.request_limit < 1 or not math.isfinite(args.budget_usd) or args.budget_usd < 0:
-        parser.error('invalid port, request limit or budget')
-    if not 100 <= args.max_output_tokens <= 8000:
+    try:
+        args.request_limit = normalize_request_limit(args.request_limit)
+        args.run_request_limit = normalize_request_limit(args.run_request_limit, 'run_request_limit')
+    except ValueError as error:
+        parser.error(str(error))
+    if args.max_output_tokens is not None and not 100 <= args.max_output_tokens <= 8000:
         parser.error('max output tokens must be between 100 and 8000')
-    if not math.isfinite(args.run_budget_usd) or not args.budget_usd <= args.run_budget_usd <= 100 or args.run_request_limit < 1:
-        parser.error('whole-launch budget must cover task cap and be <=100; request limit must be positive')
+    if not 1024 <= args.port <= 65535 or not math.isfinite(args.budget_usd) or args.budget_usd < 0:
+        parser.error('invalid port or budget')
+    if args.budget_usd > 100 or (args.run_budget_usd is not None and
+            not args.budget_usd <= args.run_budget_usd <= 100):
+        parser.error('whole-launch budget must cover task cap and be <=100')
     if bool(args.manifest) != bool(args.task): parser.error('--manifest and --task must be supplied together')
     if args.real_model and (args.frozen or args.fixture != 'normal'):
         parser.error('real provider cannot use frozen/failure fixtures')
@@ -342,7 +358,8 @@ def main():
         args.glm_gate_token = token_hex(32)
         glm_gate = create_server('127.0.0.1', 0, args.glm['base_url'], state,
             state_selector=registry.active_state_for, allowed_models={args.glm['model']},
-            chat_path='/chat/completions', allow_files=False, gate_token=args.glm_gate_token)
+            chat_path='/chat/completions', allow_files=False, gate_token=args.glm_gate_token,
+            omit_sdk_output_limit=args.max_output_tokens is None)
         args.glm_gate_endpoint = f'http://127.0.0.1:{glm_gate.server_port}/v1'
         servers.append(glm_gate)
     for server in servers:
@@ -385,7 +402,7 @@ def main():
             snapshot['observed_tools_order'] = [row['function']['name'] for row in first['tools']]
             snapshot['observed_tools_sha256'] = hashlib.sha256(json.dumps(first['tools'], sort_keys=True).encode()).hexdigest()
             save(output / 'effective-config.json', snapshot)
-    print('DeepSeek Harless Web：' + ('真实模型 API；聊天发送后直接执行，服务端预算约束生效。' if args.real_model else '模拟模型，实际费用为 0。'), flush=True)
+    print('GeneLoop Web：' + ('真实模型 API；聊天发送后直接执行，服务端预算约束生效。' if args.real_model else '模拟模型，实际费用为 0。'), flush=True)
     print('私有输出目录：' + str(output), flush=True)
     try:
         for _ in range(300):
@@ -399,7 +416,7 @@ def main():
                     (output / 'public-access-url.txt').write_text(public_url + '\n')
                     (output / 'public-access-url.txt').chmod(0o600)
                     print('HTTPS 网关登录地址仅保存在 public-access-url.txt；网关须另行配置。', flush=True)
-                print('官方 Web 已启动；认证地址仅保存在 access-url.txt。' + ('冻结题面见 prompt.md。' if args.frozen else '认证后在聊天输入框旁选择 Harless 场景与模式。'), flush=True)
+                print('官方 Web 已启动；认证地址仅保存在 access-url.txt。' + ('冻结题面见 prompt.md。' if args.frozen else '认证后在聊天输入框旁选择 GeneLoop 场景与模式。'), flush=True)
                 break
             time.sleep(0.1)
         if not (output / 'access-url.txt').exists(): raise RuntimeError('Web startup failed; inspect private startup.log')

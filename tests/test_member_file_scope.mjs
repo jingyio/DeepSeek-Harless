@@ -9,8 +9,8 @@ test('Scene task mount alias is allowed only for the same directory identity',op
  const directory=mkdtempSync(join(tmpdir(),'harless-member-files-alias-'));
  try{
   const own=join(directory,'own'),foreign=join(directory,'foreign');mkdirSync(own);mkdirSync(foreign);
-  assert.deepEqual(memberTaskRoots(own,join(directory,'absent')),[join(own,'sessions')]);
-  assert.deepEqual(memberTaskRoots(own,own),[join(own,'sessions'),join(own,'sessions')]);
+  assert.deepEqual(memberTaskRoots(own,join(directory,'absent')),[join(own,'sessions'),join(own,'managed-workspaces')]);
+  assert.deepEqual(memberTaskRoots(own,own),[join(own,'sessions'),join(own,'managed-workspaces'),join(own,'sessions'),join(own,'managed-workspaces')]);
   assert.throws(()=>memberTaskRoots(own,foreign),/只允许/);
  }finally{assert.ok(resolve(directory).startsWith(resolve(tmpdir())+sep));rmSync(directory,{recursive:true,force:true});}
 });
@@ -60,7 +60,8 @@ test('Member plugin registers guarded RPC routes and the shared stream scope loo
   connection:{fetch:{register(route){routes.set(route.path,route);}}},
   typert:{lookups:{get(){return configured?{resolve:configured}:original;},configure(key,resolver){assert.equal(key,'workspaceFileScope');configured=resolver;}}},
   typertGateway:{async invoke(request){calls.push(request);return {absolutePath:request.args.path,text:'own bytes'};}}};
- await apply(ctx);assert.equal(routes.size,9);assert.equal(calls[0].bootstrap,'/user/workspace');
+ await apply(ctx);assert.equal(routes.size,6);assert.equal(calls[0].bootstrap,'/user/workspace');
+ for(const endpoint of ['workspace/create','directoryPicker/list','directoryPicker/createDirectory'])assert.equal(routes.has('/api/'+endpoint),false);
  await assert.rejects(configured('internal'),/只允许/);await assert.rejects(configured('foreign'),/只允许/);
  const endpoint='workspaceFiles/read',route=routes.get('/api/'+endpoint);
  const send=async(path,method=endpoint)=>route.fetch(new Request('http://localhost/api/'+endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:'audit',method,payload:{args:{workspaceFileScopeId:'own',path,range:{}}}})}));

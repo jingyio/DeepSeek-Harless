@@ -30,7 +30,7 @@ PPT 通过服务器 `HARLESS_PPT_RUNTIME_BUNDLE` 加载 `online-manifest.json/li
 
 论文包 `HARLESS_PAPER_RUNTIME_BUNDLE` 可由 `scripts/compile-paper-composite-runtime.py` 从已有独立轨迹认证库和当前 20 工具完整 Schema 编译：`pin_paper_sources → read_pinned_paper_sources` 与 `pin_paper_citations → read_pinned_paper_citations` 两条只读 Motif。新增 `collect_current_local_citation_evidence()` 复用历史 BibTeX 解析脚本及 pin→检查→读取原文的本地序列，一次返回当前任务的字面诊断、原文、版本和 `citation_id`；它不联网、不判断引用真实性，是模型显式调用的复合工具，不能计为 Verified Skip。旧库中 `read_pinned_citation_records` 后继保留为普通模型工具，尚未迁移成自动跳过；已有 Shadow 匹配率不是这份新包的实测跳过率。PDF 固定脚本经 `HARLESS_PAPER_RENDERER_ROOT` 单独部署，菜单 `PDF 输出` 默认关闭。用户可上传论文资料，模型用 `stage_current_audit → finalize_current_audit` 在本任务目录生成并冻结报告；已有 `audit.json` 仍可作为输入。之后 `read_current_audit → export_current_audit_pdf(report_sha256)` 只写新的任务输出目录。生成报告和导出均为模型显式工具调用，不记 Verified Skip；格式和字面覆盖检查不认证论文结论或 PDF 视觉质量。引用句柄与报告绑定当前任务的批准输入，任务或文件版本变化会失效。上述两个环境变量均由管理员在服务端设置，前端不能提供路径。
 
-论文选择“生成报告 PDF 新副本”后，任务必须有新 PDF 和字段覆盖收据才标记完成；模型提前停下时在同一 Session/预算内最多两次普通 Harness 续行，仍未交付则标失败。单次模型输出默认上限为 4000 token，预算代理继续执行原任务/启动费用及请求上限；此调整源于 [仅上传论文资料的真实闭环](experiments/paper-generated-report-20261015-v1.md)中 1000 token 连续触顶。该小型任务完成不证明科研质量或 RSI 净收益。
+论文选择“生成报告 PDF 新副本”后，任务必须有新 PDF 和字段覆盖收据才标记完成；模型提前停下时在同一 Session/预算内最多两次普通 Harness 续行，仍未交付则标失败。当前主线默认不额外限制单次模型输出；[仅上传论文资料的真实闭环](experiments/paper-generated-report-20261015-v1.md)在隔离实验中显式使用 4000 token，1000 token 的历史轮次连续触顶。预算代理继续执行配置的费用及请求上限；该小型任务完成不证明科研质量或 RSI 净收益。
 
 管理员可用 `scripts/publish-ppt-runtime.py --dataset ... --schemas ... --output ...` 从两个独立正常轨迹及一份留出重新编译；或用 `--compiled-manifest` 对未变化且全部证据锁仍有效的认证 IR 更新部署绑定，不重新运行留出、也不改旧证书。完整实际 Harness Schema 为认证输入，不从当前任务临时凑出认证。历史 `example/portfolio` 只在 `config/harless-diagnostics.json`，不出现在产品映射。
 
@@ -45,21 +45,29 @@ Files 的 Word/Excel XML 单成员读取上限 4 MiB，Excel 最多解析 10,000
 
 ## 用户、Session 与任务冻结
 
-GET 另返回 `conversation_only:boolean`：经管理员从其他旧运行目录迁入的历史会话为 `true`，允许保留上下文的文字续聊，继续使用逐轮预算，但不加载新版场景工具或修改已锁定的旧 preset。向此类会话提交附件返回 `409 new_session_required`；文件任务或新版工具需要新会话。普通会话及当前目录内正常重启的会话为 `false`。
+GET 另返回 `conversation_only:boolean`：标识经管理员准入的旧历史会话。旧 preset 不被原地改写；启用对照路由的账号可继续在同一可见会话中选择新版场景，由新的私有子会话处理文字和附件。未启用此路由的部署仍保留旧会话的文字续聊限制。普通会话及当前目录内正常重启的会话为 `false`。
 
-GET 中的场景行含 `shortcut`，另返回 `scene_locked`。设置首次访问允许认领该 Home 下、使用已登记 preset 且没有历史/来源继承的普通空会话；未知历史继续返回 404。已绑定会话切换场景返回 `409 scene_requires_new_session`，在保存或改工具之前拒绝，不让界面假选择影响普通续聊。Mode/RSI 的修改只用于后续任务，不改变正在执行的配置。
+GET 中的场景行含 `shortcut`，另返回 `scene_locked`；后者说明已有执行范围冻结，不代表必须新建可见聊天。启用 `comparison_scenes` 和逐轮预算 broker 的账号，可在同一父会话切换已部署的对照场景，并切回普通聊天；子任务的 preset、资料与预算仍独立。运行中返回 `409 session_busy`，子会话不能绕过父会话直接切换。未启用路由的固定任务仍可返回 `409 scene_requires_new_session`。设置首次访问只认领符合规则的账号内空会话，未知历史返回 404。Mode/RSI 修改只影响后续任务。
 
-`new_session` 可带可选 `selection:{scene,mode,rsi}` 和 `inherit_session`，验证归属后创建新会话并继承所属工作区。浏览器选择新场景时，如果原会话已锁定，会创建对应场景会话并转移未被改写的草稿及附件；原聊天保留，发生编辑竞争则保留原输入而不覆盖。界面使用原生 span/revision 守卫和 reference chip，不修改上游编辑器。迟到的设置请求不会覆盖刚保存的选择。
+`new_session` 仍支持可选 `selection:{scene,mode,rsi}` 和 `inherit_session`，供明确的新建操作使用；验证归属后继承工作区。正常场景切换保存当前父会话选择，不新建可见聊天或迁移草稿。界面使用原生 span/revision 守卫和 reference chip；迟到响应不得覆盖用户的新输入或新选择。删除未发送的场景标记保存普通 `new-scene` 选择，正常提交自动清空编辑器则保留场景续聊。
 
-网关模式下，原生 `workspaceId` 由同一账号的 Harness 注册表验证，并只以该 ID 创建会话，不再同时传入 `cwd`。独立非网关模式仍拒绝客户端位置字段。未指定工作区时登记服务器分配的位置；场景 MCP 输入与 job 继续在服务器分配的 Session 私有目录中。有逐轮预算 broker 时，通用和 PPT 对话可在相同场景、相同已批准输入与权限下连续多轮。新增文件或改变 PPT `scene_options` 要求新 Session，不能借后续文字提高输出权限。
+网关模式下，原生 `workspaceId` 由同一账号的 Harness 注册表验证，并只以该 ID 创建会话，不再同时传入 `cwd`。独立非网关模式仍拒绝客户端位置字段。MCP 输入与 job 继续保存在服务器分配的 Session 私有目录中。同场景、同来源批次的文字续聊复用对应子会话；切换场景或上传新批次轮换私有子会话，父会话与旧结果不变。PPT 等已冻结 `scene_options` 的直接修改仍受限制，不能借场景切换提高已执行任务的权限。
 
-完整前导 `/ppt` 等别名在发送时由服务端核验并去除控制词，再用所属场景处理剩余文字；只有控制词时不调用模型。路径（如 `/ppt/file`）和普通文字不当作场景指令。已有会话直接输入另一个场景并发送仍会明确要求新会话；从候选中选择会完成上述新建和草稿交接。
+完整前导 `/ppt` 等别名在发送时由服务端核验并去除控制词，再用所属场景处理剩余文字；只有控制词时不调用模型。路径（如 `/ppt/file`）和普通文字不当作场景指令。手动输入与候选选择走相同的场景保存和任务路由；切换后的来源只从本账号、本父会话的对应历史中取得，按目标格式与保存的 SHA 重新检查。此前的数据报告可作为后续 PPT 的输入，未经交付验证的草稿不能自动传给下一场景。
 沿用已完成的账号网关和 bwrap 隔离。管理员在私有网关配置增加 `memberSceneDeployment:{projectRoot,pythonExecutable,pythonRoots,libraryRoot?,rendererRoot?,fontRoot?,paperRendererRoot?}`。它只挂载只读公共代码/安装依赖、纯 Runtime 库和审阅过的论文渲染包；私有库位于独立 `/app/private-motif-library`，不遮住仓库已有的 `motif-libraries/`；拒绝整个用户目录、继承凭证、原始轨迹、私人输入和任意启动命令。每名成员的输入、设置、Session、输出和预算路由仍属自己的环境；没有该部署字段的旧配置继续明确使用 chat-only 策略，不继承所有者资料。
 Files 的成员部署白名单仅接受固定 `scenarios/file-management/plan_tools.py` 与由服务端 Session 工作区生成的 `FM_WEB_WORKSPACE/FM_TASK_FILE/FM_OUTPUT` 三项路径；不会把用户输入转换成 MCP 启动命令或主机文件路径。
 
 任务冻结 Scene/配置版本、选择与实际模式、RSI、Prompt、完整工具 Schema/权限、库/Manifest/认证及动态绑定摘要、软件文件摘要、Provider/输出 cap、任务及启动预算、用户/Session/Task、上传/job 摘要。确认后变化拒绝。库、配置切换不修改运行中的任务；费用、请求上限和错误恢复沿用原代理。旧会话迁移由另一协作者处理，本次不改归属校验。
 
-附件复用官方 `fileUploads.resolve` 和所属 Agent；最多 8 文件、每文件 20 MiB，简易任务上传 API 仍限 256 KiB。两个账号不能读取对方 Task、Session、receipt、输入或轨迹。五场景可以依次创建新任务；重绑定 Files/PPT 使用新 Session，普通 workspace 连续纯文字对话保留主线行为。
+附件复用官方 `fileUploads.resolve` 和所属 Agent；最多 8 文件、每文件 20 MiB，简易任务上传 API 仍限 256 KiB。两个账号不能读取对方 Task、Session、receipt、输入或轨迹。资料复制和工具重新绑定发生在私有执行子会话内，不能通过复用父会话绕过来源与权限核验；未发布的场景不因切换机制自动获得产品能力。
+
+## 流式反馈、分支与工作区
+
+`GET /api/harless/comparisons?session_id=...&id=...&stream=1` 提供 SSE `snapshot`，包含真实回答增量、`progress` 和有界 `activity`；15 秒心跳维持空闲连接。状态来自实际模型流及工具调用/结果，不伪造执行步骤，也不返回推理正文、原始参数或服务器目录。双栏仍遵循当前任务队列，不能把流式展示理解为两次模型调用必定并行。切回普通模式使用 `presentation:"single"`，不显示双栏评分。断线回退到只读 GET/重连，服务重启中断的任务须显式重试；浏览器离开会释放上游订阅。
+
+“在新对话中分支”按所选已完成回复的事件边界复制历史，创建新 Session 并继承工作区。名称追加 `（1）`、`（2）` 等账号内持久编号，避开已有同名分支；失败预约也不会重复使用编号。对照回答转换为独立历史文字，不携带原任务或评分修改引用，后续任务获得新的工具范围和预算。未完成的回复不能分支。
+
+工作区名称打开概览，原会话草稿保留；文件夹按钮折叠列表，“新会话”创建在所选工作区。省略号菜单提供置顶、设置名称与删除分组；删除前明确说明对话移至“未分组”，文件与历史保留。工作区名称悬停无目录提示。置顶通过已认证的 `GET/POST /api/harless/workspaces/preferences` 按账号保存，POST 只接受 `{workspace_id,pinned:boolean}`，陌生或已删除 ID 返回 404。
 
 ## 验证入口
 

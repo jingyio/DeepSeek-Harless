@@ -3,57 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <title>账户 · DeepSeek Harless</title>
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" type="image/svg+xml" href="/assets/geneloop-spiral.svg?v=1">
+  <title>GeneLoop</title>
   <style>
-    :root{font-family:Inter,"PingFang SC","Microsoft YaHei",Arial,sans-serif;color:#f4f4f5;background:#141416;font-synthesis:none}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh}button,input{font:inherit}button{cursor:pointer}a{color:inherit}a:hover{color:#b8cafa}
-    :focus-visible{outline:2px solid #91aefa;outline-offset:3px} [hidden]{display:none!important}
-    .brand{display:flex;align-items:center;gap:9px;color:#fafafa;text-decoration:none;font-size:21px;font-weight:690;letter-spacing:-.9px}
-    .brand svg{width:27px;height:27px;flex:none}.tag{font-size:10px;font-weight:700;letter-spacing:.3px;padding:2px 5px;border-radius:3px;background:#d7d7dc;color:#29292e}
+    :root{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Arial,sans-serif;color:#f4f4f5;background:#141416;font-synthesis:none;-webkit-font-smoothing:antialiased}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh}button,input{font:inherit}button{cursor:pointer}a{color:inherit}a:hover{color:#a7d2cb}
+    :focus-visible{outline:2px solid #88beb5;outline-offset:3px} [hidden]{display:none!important}
+    .brand{display:flex;align-items:center;gap:11px;color:#fafafa;text-decoration:none;font-size:27px;font-weight:650;letter-spacing:-.7px}
+    .brand-mark{display:inline-block;width:38px;height:38px;flex:none}.brand-mark img{display:block;width:100%;height:100%;object-fit:contain}
     .auth{min-height:100vh;display:grid;grid-template-columns:minmax(0,1.08fr) minmax(420px,.92fr)}
     .story{position:relative;overflow:hidden;border-right:1px solid #303037;padding:34px clamp(30px,5vw,80px);display:flex;flex-direction:column;justify-content:space-between;background:#171719}
     .story:before{content:"";position:absolute;width:780px;height:780px;border:1px solid #2b2d36;border-radius:50%;left:-335px;top:20%;pointer-events:none}
     .story:after{content:"";position:absolute;width:520px;height:520px;border:1px solid #292b34;border-radius:50%;left:-203px;top:36%;pointer-events:none}
     .story>*{position:relative;z-index:1}.story-main{max-width:580px}
     .story h1{font-size:clamp(36px,4vw,62px);letter-spacing:-2.8px;line-height:1.18;margin:0;font-weight:650}
-    .story h1 span{color:#9bb7ff}
+    .story h1 span{color:#f4f4f5}
     .foot{font-size:12px;color:#777781}
     .auth-side{display:flex;align-items:center;justify-content:center;padding:42px 26px;background:#141416}
     .card{width:min(430px,100%)}.card h2{font-size:29px;letter-spacing:-.9px;font-weight:650;margin:0 0 10px}.hint{color:#a8a8b1;line-height:1.7;font-size:14px;margin:0 0 31px}
     .field{margin:0 0 18px}.field label{display:block;font-size:13px;color:#d5d5dd;margin:0 0 8px;font-weight:550}.field input{width:100%;height:45px;border:1px solid #3c3c44;border-radius:9px;background:#222226;color:#fff;padding:0 13px;outline:0;transition:border-color .15s,box-shadow .15s}
-    .field input:focus{border-color:#8aa7f6;box-shadow:0 0 0 3px #7799ff25}.field input::placeholder{color:#73737f}.field small{display:block;color:#8f8f99;font-size:12px;margin-top:7px}
-    .primary{width:100%;height:46px;border:0;background:#7395ee;color:#111a31;border-radius:9px;font-weight:700;margin-top:5px;transition:background .16s}.primary:hover{background:#8cadff}.primary:disabled{opacity:.55;cursor:wait}
+    .field input:focus{border-color:#79b0a7;box-shadow:0 0 0 3px #79b0a725}.field input::placeholder{color:#73737f}.field small{display:block;color:#8f8f99;font-size:12px;margin-top:7px}
+    .primary{width:100%;height:46px;border:0;background:#80b6ad;color:#102e36;border-radius:9px;font-weight:700;margin-top:5px;transition:background .16s}.primary:hover{background:#a1cec5}.primary:disabled{opacity:.55;cursor:wait}
     .minor{border:1px solid #44444c;border-radius:8px;color:#dedee4;background:#25252a;padding:9px 14px}.minor:hover{background:#303037}
-    .switch{font-size:13px;color:#92929c;margin:23px 0 0}.switch a{color:#a9c1ff;text-decoration:none;font-weight:600}.switch a:hover{text-decoration:underline}
+    .switch{font-size:13px;color:#92929c;margin:23px 0 0}.switch a{color:#a7d2cb;text-decoration:none;font-weight:600}.switch a:hover{text-decoration:underline}
     .notice{font-size:13px;line-height:1.55;min-height:1.5em;color:#f6a7a7;margin:12px 0 0}.notice.ok{color:#9ed8b6}
     .account{min-height:100vh;display:grid;grid-template-columns:250px minmax(0,1fr);background:#141416}
     .aside{background:#1b1b1e;border-right:1px solid #303036;padding:25px 14px;display:flex;flex-direction:column}.aside .brand{margin:0 10px 53px}
     .nav-label{color:#777781;font-size:12px;margin:0 12px 10px}.nav a,.nav button{display:block;width:100%;text-align:left;text-decoration:none;padding:11px 13px;border:0;border-radius:8px;color:#bdbdc5;background:transparent;font-size:14px}
     .nav a:hover,.nav button:hover{background:#29292e;color:#fff}.nav a.active{background:#303137;color:#fff}.aside-bottom{margin-top:auto;border-top:1px solid #33333a;padding:13px 6px 0}
-    .avatar{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#3a4d73;color:#e2ebff;font-weight:700}
+    .avatar{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#315d64;color:#d7ece8;font-weight:700}
     .identity{display:flex;align-items:center;gap:10px;padding:9px 7px 17px}.identity span{font-size:13px;font-weight:600}.identity small{display:block;color:#888892;font-size:11px;font-weight:400;margin-top:3px}
     .content{padding:clamp(28px,5vw,70px);max-width:990px;width:100%}.crumb{font-size:12px;color:#9999a3;margin-bottom:24px}.content h1{font-size:32px;letter-spacing:-1.2px;margin:0 0 8px}.intro{color:#a7a7b0;font-size:14px;line-height:1.7;margin:0 0 36px}
     .section{border-top:1px solid #34343b;padding:28px 0;display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr);gap:25px}.section h2{font-size:16px;font-weight:650;margin:0 0 7px}.section p{color:#8e8e98;font-size:13px;line-height:1.6;margin:0}
     .section .field{max-width:400px}.section .primary{width:auto;min-width:150px;padding:0 19px}.meta{color:#a7a7b1;font-size:13px;line-height:2.2}.meta strong{color:#e3e3e7;font-weight:550}
-    .invite-code{display:block;max-width:400px;overflow-wrap:anywhere;background:#22262f;border:1px solid #465576;border-radius:9px;padding:15px;color:#c5d6ff;font:600 14px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;margin-top:14px}
-    .mobile-brand{display:none}.load{min-height:100vh;display:grid;place-items:center;padding:24px;color:#aaaab2}.loading-card{width:min(100%,440px);padding:36px;border:1px solid #303037;border-radius:18px;background:#1b1b1f;box-shadow:0 24px 70px #0005}.loading-card .brand{margin-bottom:38px}.loading-card h2{color:#f4f4f5;font-size:24px;margin:0 0 10px}.loading-card p{line-height:1.6;margin:0 0 20px}.loading-dot{width:10px;height:10px;border-radius:50%;background:#89aaff;box-shadow:0 0 0 6px #89aaff20;animation:pulse 1.5s infinite}@keyframes pulse{50%{opacity:.4;transform:scale(.8)}}.loading-card a{color:#a9bfff;text-decoration:none}
-    @media(max-width:900px){.auth{grid-template-columns:1fr}.story{display:none}.auth-side{min-height:100vh}.mobile-brand{display:block;margin:0 0 66px}.account{grid-template-columns:1fr}.aside{padding:17px 20px;border-right:0;border-bottom:1px solid #303036}.aside .brand{margin:0 0 18px}.aside .nav-label,.aside-bottom{display:none}.nav{display:flex;gap:5px}.nav a,.nav button{width:auto}.content{padding:29px 22px}.section{grid-template-columns:1fr;gap:17px}}
+    .invite-code{display:block;max-width:400px;overflow-wrap:anywhere;background:#22262f;border:1px solid #426e73;border-radius:9px;padding:15px;color:#c3e2dc;font:600 14px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;margin-top:14px}
+    .mobile-brand{display:none}.load{min-height:100vh;display:grid;place-items:center;padding:24px;color:#aaaab2}.loading-card{width:min(100%,440px);padding:36px;border:1px solid #303037;border-radius:18px;background:#1b1b1f;box-shadow:0 24px 70px #0005}.loading-card .brand{margin-bottom:38px}.loading-card h2{color:#f4f4f5;font-size:24px;margin:0 0 10px}.loading-card p{line-height:1.6;margin:0 0 20px}.loading-dot{width:10px;height:10px;border-radius:50%;background:#80b6ad;box-shadow:0 0 0 6px #80b6ad20;animation:pulse 1.5s infinite}@keyframes pulse{50%{opacity:.4;transform:scale(.8)}}.loading-card a{color:#a7d2cb;text-decoration:none}
+    @media(max-width:900px){.auth{grid-template-columns:1fr}.story{display:none}.auth-side{min-height:100vh}.mobile-brand{display:flex;margin:0 0 52px}.account{grid-template-columns:1fr}.aside{padding:17px 20px;border-right:0;border-bottom:1px solid #303036}.aside .brand{margin:0 0 18px}.aside .nav-label,.aside-bottom{display:none}.nav{display:flex;gap:5px}.nav a,.nav button{width:auto}.content{padding:29px 22px}.section{grid-template-columns:1fr;gap:17px}}
     @media(max-width:460px){.auth-side{padding:26px 22px}.card h2{font-size:26px}.section .primary{width:100%}}
-    @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important}}
+    @media(prefers-color-scheme:light){
+      :root{color:#1d2d35;background:#f9fafb}.brand{color:#23445c}.story{background:#f1f5f5;border-color:#dce4e4}.story:before,.story:after{border-color:#dce6e5}.story h1 span{color:inherit}.foot{color:#61757c}
+      .auth-side,.account{background:#f9fafb}.hint,.intro{color:#5e6b72}.field label{color:#34454d}.field input{background:#fff;border-color:#ced8db;color:#172d38}.field small,.switch{color:#65747c}.switch a{color:#2e6c69}.primary{background:#2d6369;color:#fff}.primary:hover{background:#24565d}
+      .aside{background:#f1f5f5;border-color:#dce4e4}.nav a,.nav button{color:#40545e}.nav a:hover,.nav button:hover{background:#e3ebeb;color:#183e4b}.nav a.active{background:#dfe9e9;color:#163e4c}.aside-bottom,.section{border-color:#d5dfe0}.section p,.crumb,.meta{color:#607179}.meta strong{color:#213d49}.invite-code{background:#edf5f3;border-color:#a8c7c2;color:#24545a}.notice{color:#a12a32}.notice.ok{color:#287254}
+      .load{color:#5e6b72}.loading-card{background:#fff;border-color:#dce4e4;box-shadow:0 16px 48px #1837440c}.loading-card h2{color:#23445c}.loading-card a{color:#2e6c69}
+    }
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important}}
   </style>
 </head>
 <body>
-  <div id="loading" class="load"><div class="loading-card"><a href="/" class="brand">deepseek <span class="tag">HARNESS</span></a><div class="loading-dot" aria-hidden="true"></div><h2>正在打开工作区</h2><p id="loading-note" role="status">首次进入时，独立工作区需要几秒钟启动。</p><a id="loading-retry" href="/starting" hidden>重新尝试</a></div></div>
+  <div id="loading" class="load"><div class="loading-card"><a href="/" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></span><span>GeneLoop</span></a><div class="loading-dot" aria-hidden="true"></div><h2>正在打开工作区</h2><p id="loading-note" role="status">首次进入时，独立工作区需要几秒钟启动。</p><a id="loading-retry" href="/starting" hidden>重新尝试</a></div></div>
   <div id="auth" class="auth" hidden>
     <aside class="story">
-      <a href="/login" class="brand"><svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M3 13c4-6 9-8 15-6-2 2-2 5-1 7 3 1 6 1 8-1-1 6-6 10-12 10C7 23 3 19 3 13Z" fill="currentColor"/><circle cx="17.5" cy="11" r="1.3" fill="#1a1a1d"/><path d="M5 12 1 9m19 7 5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>deepseek <span class="tag">HARNESS</span></a>
+      <a href="/login" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></span><span>GeneLoop</span></a>
       <div class="story-main"><h1>你的研究空间，<br><span>从这里开始。</span></h1></div>
-      <div class="foot">DeepSeek Harless · 团队工作空间</div>
+      <div class="foot">GeneLoop · 研究工作空间</div>
     </aside>
     <main class="auth-side"><div class="card">
-      <a href="/login" class="brand mobile-brand">deepseek <span class="tag">HARNESS</span></a>
-      <section id="login-view" hidden><h2>欢迎回来</h2><p class="hint">登录账号，继续你在 Harness 中的工作。</p>
+      <a href="/login" class="brand mobile-brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></span><span>GeneLoop</span></a>
+      <section id="login-view" hidden><h2>欢迎回来</h2><p class="hint">登录账号，继续你在 GeneLoop 中的工作。</p>
         <form id="login-form"><div class="field"><label for="login-user">用户名</label><input id="login-user" name="username" autocomplete="username" required></div><div class="field"><label for="login-pass">密码</label><input id="login-pass" name="password" type="password" autocomplete="current-password" required></div><button class="primary">登录</button></form>
         <p id="login-error" class="notice" role="status"></p><p class="switch">第一次使用？ <a href="/register">使用邀请码注册</a></p>
       </section>
@@ -68,7 +75,7 @@
     </div></main>
   </div>
   <div id="account" class="account" hidden>
-    <aside class="aside"><a href="/" class="brand">deepseek <span class="tag">HARNESS</span></a><div class="nav-label">账户设置</div><nav class="nav"><a href="/account" class="active">个人资料与安全</a><a href="/">返回工作区</a></nav><div class="aside-bottom"><div class="identity"><div id="avatar" class="avatar"></div><span id="side-name"></span></div><div class="nav"><button id="logout">退出登录</button></div></div></aside>
+    <aside class="aside"><a href="/" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></span><span>GeneLoop</span></a><div class="nav-label">账户设置</div><nav class="nav"><a href="/account" class="active">个人资料与安全</a><a href="/">返回工作区</a></nav><div class="aside-bottom"><div class="identity"><div id="avatar" class="avatar"></div><span id="side-name"></span></div><div class="nav"><button id="logout">退出登录</button></div></div></aside>
     <main class="content"><div class="crumb">设置 / 账户</div><h1>账户设置</h1><p class="intro">管理你的登录信息。更改会保存在服务器，下次登录继续使用。</p>
       <section class="section"><div><h2>个人资料</h2><p>这个名称显示在你的账户中。</p></div><div><form id="profile-form"><div class="field"><label for="profile-name">显示名称</label><input id="profile-name" name="displayName" maxlength="40" required></div><div class="field"><label for="profile-user">用户名</label><input id="profile-user" name="username" minlength="3" maxlength="32" pattern="[a-zA-Z][a-zA-Z0-9_-]{2,31}" required></div><button class="primary">保存资料</button></form><p id="profile-error" class="notice" role="status"></p></div></section>
       <section class="section"><div><h2>密码与安全</h2><p>修改密码后，所有设备都需要重新登录。</p></div><div><form id="password-form"><div class="field"><label for="current-pass">当前密码</label><input id="current-pass" name="currentPassword" type="password" autocomplete="current-password" required></div><div class="field"><label for="new-pass">新密码</label><input id="new-pass" name="newPassword" type="password" minlength="10" autocomplete="new-password" required><small>至少 10 位</small></div><div class="field"><label for="repeat-pass">确认新密码</label><input id="repeat-pass" name="repeatPassword" type="password" minlength="10" autocomplete="new-password" required></div><button class="primary">修改密码</button></form><p id="password-error" class="notice" role="status"></p></div></section>
@@ -78,6 +85,7 @@
   </div>
   <script>
     (()=>{'use strict';const $=id=>document.getElementById(id), path=location.pathname;
+      document.title=({'/login':'登录','/register':'注册','/account':'账户设置','/claim':'激活账号','/starting':'正在打开工作区'}[path]||'工作区')+' · GeneLoop';
       const show=id=>{$('loading').hidden=true;$(id).hidden=false};
       const notice=(id,message,ok=false)=>{const node=$(id);node.textContent=message;node.classList.toggle('ok',ok)};
       async function api(path,body){const res=await fetch('/api/account/'+path,{method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await res.json();if(!res.ok)throw Error(data.error||'操作失败，请稍后重试');return data}

@@ -433,6 +433,9 @@ def _bind(text, field, evidence, errors, bindings, figure_count=0):
     remaining = TOKEN.sub('', text)
     if unknown:
         errors.append({'field': field, 'code': 'unknown_placeholder', 'names': unknown, 'message': 'Use only available_placeholders names.'})
+    if re.search(r'\{\{confidence\}\}\s*[%％]', text) and 'confidence' in catalog:
+        errors.append({'field': field, 'code': 'confidence_unit_mismatch',
+            'message': 'confidence is a proportion from the approved plan; use {{confidence_pct}}% for percent confidence, or {{confidence}} without a percent sign.'})
     if '{' in remaining or '}' in remaining:
         errors.append({'field': field, 'code': 'malformed_placeholder', 'message': 'Use exactly {{name}} with no expressions or single braces.'})
     remaining, formatting = _formatting_numbers(remaining, field, figure_count, errors)

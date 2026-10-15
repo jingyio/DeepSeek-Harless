@@ -6,8 +6,9 @@
   "model": "deepseek-flash",
   "reasoning_effort": "off",
   "compression": false,
-  "request_limit": 24,
+  "request_limit": null,
+  "run_request_limit": null,
   "budget_usd": 0.25,
-  "max_output_tokens": 4000,
+  "max_output_tokens": null,
   "real_models_enabled": false
 }

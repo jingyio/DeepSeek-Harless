@@ -25,7 +25,7 @@ const shortcutNames: Record<string, string> = { ppt: 'ppt', 'paper-proofreading'
 export function sceneShortcut(scene: Scene): string { return shortcutNames[scene.id] ?? scene.id; }
 /** Only a leading, complete scene token is a control; paths and prose stay text. */
 export function parseSceneShortcut(text: string, scenes: readonly Scene[]) {
-  const match = /^\s*\/([a-z][a-z0-9_-]*)(?=\s|$)/i.exec(text);
+  const match = /^\s*\/([a-z][a-z0-9_-]*)(?=\s|$|[^\x00-\x7F])/i.exec(text);
   const scene = match && scenes.find(row => sceneShortcut(row) === match[1].toLowerCase());
   return scene ? { scene: scene.id, text: text.slice(match![0].length).trimStart() } : undefined;
 }
@@ -85,7 +85,7 @@ export function parseHarlessCommand(rawInput: string): Command {
   if (words.length > 2) throw new SettingsError('invalid_command', '请使用 /harless <场景>、mode、rsi、list 或 status');
   if (action === 'mode' || action === 'rsi') {
     if (words.length === 1) return { kind: 'panel', section: action };
-    if (action === 'rsi' && !['on', 'off'].includes(value)) throw new SettingsError('invalid_rsi', '用 /harless rsi on 或 off，或使用输入框旁的 Harless 菜单');
+    if (action === 'rsi' && !['on', 'off'].includes(value)) throw new SettingsError('invalid_rsi', '用 /harless rsi on 或 off，或使用输入框旁的 GeneLoop 菜单');
     return { kind: 'change', patch: { [action]: action === 'rsi' ? value === 'on' : value === 'origin' ? 'baseline' : value } };
   }
   if (words.length !== 1) throw new SettingsError('invalid_command', '场景名不接受附加参数');

@@ -68,7 +68,7 @@ def main():
             snapshot = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())
             assert snapshot['tools'] and all(tool['name'].startswith('mcp__research_portfolio_fixture__') for tool in snapshot['tools'])
             changed = settings({'action':'select', 'session_id':session, 'selection':{'scene':'example','rsi':False}}, expected=409)
-            assert changed['error']['code'] == 'scene_requires_new_session'
+            assert changed['error']['code'] == 'session_busy'
             assert settings(session=session)['selection']['scene'] == 'portfolio-v1'
             assert web.api(opener, base, task_id=draft['task_id'])['confirmation_digest'] == draft['confirmation_digest']
             inherited = settings({'action':'new_session','inherit_session':session,

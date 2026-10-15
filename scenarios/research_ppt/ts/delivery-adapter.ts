@@ -1,7 +1,7 @@
 /** 科研 PPT 有限 MCP 交付适配器。没有模型循环、任意代码执行或自动科学修订。 */
 import { createHash } from 'node:crypto';
 import { readFile, realpath, stat, appendFile } from 'node:fs/promises';
-import { resolve, relative, isAbsolute, sep } from 'node:path';
+import { resolve, relative, isAbsolute, sep, dirname } from 'node:path';
 
 export type Obj = Record<string, unknown>;
 export type Backend = (name: string, args: Obj) => Promise<Obj>;
@@ -35,9 +35,10 @@ async function fileHash(path: string): Promise<string> { return createHash('sha2
 export function inside(root: string, path: string): boolean {
   const rel = relative(root, path); return rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel);
 }
-export async function privateFile(root: string, path: string): Promise<string> {
+export async function privateFile(root: string, path: string, privateRoot?: string): Promise<string> {
   const full = await realpath(resolve(path));
-  if (!inside(resolve(root, '.local'), full) || !(await stat(full)).isFile())
+  const boundary = await realpath(privateRoot ?? resolve(root, '.local'));
+  if (!(await stat(boundary)).isDirectory() || !inside(boundary, full) || !(await stat(full)).isFile())
     fail('path_scope_rejected', '只允许本仓库私有任务与交付文件。');
   return full;
 }
@@ -160,10 +161,14 @@ export class DeliveryAdapter {
   private dependencies = new Map<string, string>();
   private jobHash = '';
   private constructor(readonly root: string, readonly jobPath: string, readonly job: Job, private backend: Backend,
-    readonly auditPath: string, readonly inputVersion: string) {}
+    readonly auditPath: string, readonly inputVersion: string, readonly privateRoot?: string) {}
 
-  static async create(rootPath: string, jobPath: string, backend: Backend, dependencyFiles: string[], allowEmptyReadOnly = false): Promise<DeliveryAdapter> {
-    const root = await realpath(rootPath); const path = await privateFile(root, jobPath);
+  static async create(rootPath: string, jobPath: string, backend: Backend, dependencyFiles: string[], allowEmptyReadOnly = false, webPrivateRoot?: string): Promise<DeliveryAdapter> {
+    // The server may preserve account data across code releases. Admission uses
+    // its trusted private root; subsequent access is narrowed to this one job.
+    if (webPrivateRoot && !allowEmptyReadOnly) fail('path_scope_rejected', '外置任务目录只适用于显式 Web 会话。');
+    const root = await realpath(rootPath); const path = await privateFile(root, jobPath, webPrivateRoot);
+    const privateRoot = webPrivateRoot ? dirname(path) : undefined;
     const raw = await readFile(path, 'utf8'); const value: unknown = JSON.parse(raw);
     if (!object(value) || !Number.isSafeInteger(value.slides) || Number(value.slides) < 1 || Number(value.slides) > 30
       || typeof value.allow_output !== 'boolean' || !Array.isArray(value.inputs) || (!value.inputs.length && (!allowEmptyReadOnly || value.allow_output !== false)) || value.inputs.length > 8
@@ -172,7 +177,7 @@ export class DeliveryAdapter {
     const job = value as Job;
     // 与 PPTService.input_version 的 Python json.dumps 默认空格精确一致。
     const inputVersion = createHash('sha256').update(JSON.stringify(job.inputs.map(row => row.version_sha256)).replace(/,/g, ', ')).digest('hex');
-    const self = new DeliveryAdapter(root, path, job, backend, resolve(path, '../delivery-adapter-audit.jsonl'), inputVersion);
+    const self = new DeliveryAdapter(root, path, job, backend, resolve(path, '../delivery-adapter-audit.jsonl'), inputVersion, privateRoot);
     self.jobHash = await fileHash(path);
     for (const file of dependencyFiles) {
       const resolved = await realpath(file);
@@ -195,7 +200,7 @@ export class DeliveryAdapter {
   async guard(): Promise<void> {
     if (await fileHash(this.jobPath) !== this.jobHash) fail('job_version_changed', '任务、预算或权限版本变化，停止使用旧进程。');
     for (const row of this.job.inputs) {
-      const path = await privateFile(this.root, String(row.path));
+      const path = await privateFile(this.root, String(row.path), this.privateRoot);
       if (await fileHash(path) !== row.version_sha256) fail('source_version_changed', '来源版本已变化，请重新准备任务。');
     }
     for (const [path, expected] of this.dependencies) if (await fileHash(path) !== expected)
@@ -220,12 +225,12 @@ export class DeliveryAdapter {
     if (!text(result.deck_id) || !text(result.validation_id) || !hash(result.file_sha256) || result.input_version !== this.inputVersion
       || result.editable !== true || !Array.isArray(result.artifacts) || result.artifacts.length < this.job.slides + 1)
       fail('delivery_contract_rejected', '交付缺少完整版本和真实预览证据。');
-    const target = await privateFile(this.root, String(result.path));
+    const target = await privateFile(this.root, String(result.path), this.privateRoot);
     if (await fileHash(target) !== result.file_sha256) fail('artifact_version_changed', 'PPT已变化，交付失效。');
     let pdf = 0; const pages = new Set<number>();
     for (const artifact of result.artifacts) {
       if (!object(artifact) || typeof artifact.path !== 'string' || !hash(artifact.sha256)) fail('delivery_contract_rejected', '预览产物缺少SHA证据。');
-      const path = await privateFile(this.root, artifact.path);
+      const path = await privateFile(this.root, artifact.path, this.privateRoot);
       if (await fileHash(path) !== artifact.sha256) fail('preview_artifact_version_changed', '实际PDF或PNG变化，交付失效。');
       if (artifact.kind === 'pdf') pdf += 1;
       else if (artifact.kind === 'preview' && Number.isSafeInteger(artifact.page) && Number(artifact.page) >= 1 && Number(artifact.page) <= this.job.slides) {
@@ -335,7 +340,7 @@ export class DeliveryAdapter {
 /** 明确实际运行依赖；不将无关实验控制器纳入在线版本。 */
 export async function dependencyFiles(root: string, backendServer: string, adapterDirectory: string): Promise<string[]> {
   const scene=resolve(root,'scenarios/research_ppt');
-  const runtimeFiles=['service.py','server.py','delivery_server.py','recovery.py','documents.py','revision.py',
+  const runtimeFiles=['service.py','server.py','delivery_server.py','recovery.py','web_scope.py','documents.py','revision.py',
     'validation.py','restyle.py','generated_tools.py','figure_catalog.py','document_cache.py','knowledge_library.py','layout_learning.py',
     'contracts.json','version-fields.json','delivery-contracts.json','delivery-version-fields.json','package-lock.json',
     'dist/render.js','dist/layout-policy.js','dist/layout-policy-cli.js',

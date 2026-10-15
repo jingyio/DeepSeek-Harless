@@ -1,5 +1,21 @@
 # 科研 PPT 当前交接
 
+## 2026-10-15 辅助附件准入的运行兼容复核
+
+本次独立审阅以 `2a03e22` 为基线，检查共享 `harless_task_scope.ts` 与 `dsh_web_tasks.ts` 的 PPT 输入路径。附件入口接收并保存 Word、需求文本等辅助文件，但 `job.json.inputs` 与 `bindUploadedPptTask` 使用相同的 PDF/PPTX 子集；混合上传保留原上传顺序对应的 `document_id`，不重新编号。只有辅助文件时保持 `source_pending`、空 PPT job 和 `allow_output: false`，不创建已认证读取绑定。PPT 工具不会因此把辅助附件当作可 pin/read 的来源。
+
+原上传 receipt 归属、字节数、文件 SHA、任务 job 身份、符号链接/硬链接/真实路径检查不变；所有附件仍进入批准快照和 `scopeDigest`。新增正文提取只读已批准副本，校验来源 SHA，发送前再核验完整 scope。现有 `pin_source`/`read_source` 参数契约、完整工具 schema、执行器和原训练产物未改。提取文本可影响模型的内容判断，不构成原 Motif 新能力或质量/费用认证。
+
+已完成零模型诊断：从基线源码与当前源码分别绑定空来源、单 PDF、单 PPTX 和大小写混合 PDF/PPTX 四组，返回行、保存字节、job、批准快照及 scope 摘要逐项一致；混合辅助附件只将 PDF/PPTX 版本交给旧绑定，来源篡改、job 不匹配、无归属 receipt 和字节数变化仍拒绝，辅助文件改动使 scope 失效。`node --test tests/test_harless_report_inputs.mjs` 四项、`python -m pytest -q tests/test_harless_rsi_bundle.py` 六项通过；后者允许本机尚未构建的可选 `dist/` 文件缺失，不代表完整部署锁已验证。此处未运行真实模型或实际 MCP 初始化，不能把这些诊断称为实际工具/模型验收。
+
+仅更新运行兼容记录中的 scope 源码锁（`a7b2c4dafba7d9babb7effc17f32961df4dac62aba0a29f28842483cab49ab3d`）及 `entry.json` 对该记录的摘要；原 certificate、library、manifest 与 schema 文件不改。部署前仍须核验最终源码/构建产物的全部 65 锁，实际 MCP 在 1/6/8/10/12 页的完整允许 schema，与混合附件/仅辅助附件的上传、当前来源绑定和既有读取守卫；由根任务统一执行并追加实际结果。更改 scope 后须重新审阅摘要，不沿用本次锁。
+
+## 2026-10-15 输入限制取消后的运行兼容复核
+
+共享 `harless_task_scope.ts` 仅取消 literature 分支的 4000 字符限制，导致 PPT 部署兼容锁失效；PPT 任务绑定、来源权限、SHA 与已学习 pin/read 读取路径均未改。此次只更新 `runtime-bindings.json` 的该文件锁与明确复核说明，并同步 `entry.json` 摘要；原训练证书、库、manifest 和 schema 文件逐字节保留，不构成重新训练或质量/成本晋级。
+
+服务器私有诊断树已验证完整 65 个代码锁、20 项库/场景/编译守卫测试；实际 MCP initialize/list 在 1/6/8/10/12 页均返回 21 个工具，按既有 Web 允许列表选取的完整 19 工具 schema 与五个登记变体相等，job 字节未改变。模型调用与工具调用均为 0；生产切换由根任务统一执行。新增源码锁回归可在未构建 PPT 的根测试中发现共享源码漂移，存在构建产物时再核对完整运行包。
+
 ## 2026-10-14 后续分支集成
 
 `feature/research-ppt-agent@7375185` 的 V16/V17 场景代码、反馈、局部恢复与持久库实验已纳入独立集成分支；历史真实实验仍按原记录解释。双路主聊天代码位于场景内，但未接入默认 `/harless`：其现有契约只支持本地操作人，且不继承 Mode/RSI，不能覆盖 PR #13 的统一 Runtime 与成员路径。匿名实验 Markdown 已复制；历轮 PDF 与私有产物不入 Git。

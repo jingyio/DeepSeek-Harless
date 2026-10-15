@@ -4,6 +4,20 @@
 
 成员账号的文件与工作区 API 在独立 `bubblewrap` 后端中额外校验：`workspaceFiles/{read,readAll,readBytes,readRelated,stat,list}` 经公开 Fetch 路由限制到 header 派生的会话工作区；`workspace/create` 与 `directoryPicker/{list,createDirectory}` 限制到该账号的 workspace/sessions 目录。路径按 realpath 校验，拒绝父目录与符号链接越界；失败以原生 RPC envelope 的 `gateway/forbidden` 返回。公开 `workspaceFileScope` Lookup 限制包括 WebSocket changes feed 在内的根目录，未知/跨账号 Session 不得到 scope。详见 [账号网关](harless-account-gateway.md)。
 
+## GeneLoop Web 产品身份与消息展示（2026-10-15）
+
+`config/geneloop-persona.json` 是 Web 产品身份的共同配置，包含 `prefix`、`suffix` 和固定为 `false` 的 `includeRuntimeContext`。Python Web 启动器、场景 registry 与 TypeScript 会话 preset 使用同一配置；`prepare_scenario(..., web_deployment=False)` 默认保持研究 CLI 的原提示。运行中的 Web Agent 通过公开 `systemPrompt.section` 与 `suppressRuntimeContext()` 绑定产品规则，旧 preset 恢复后也应用，退出作用域时释放。该绑定不更换场景工具、原有证据规则或权限；真实模型与提供商名称仍据实际配置显示。
+
+`harless_public_output.ts` 为浏览器生成分离的展示对象：覆盖 Session controller 的 `page`、`follow`、`list`、`search` 和 `control` 的相关返回值，以及任务/对照 JSON 与 SSE 快照。它处理已知框架标识和常见主机绝对路径，系统提示只显示应用设置的通知；公开 header/summary 省略 `cwd`，工作区分组继续依赖 `workspaceId` 与 `sessionIds`。原始 journal、执行所用 `inspect()`、用户来源消息、排队用户输入和附件/交付文件字节不因此改写。评分标识、输出 SHA、事件序号、游标与下载回执保持原协议。
+
+实时文字只暂存可能跨帧组成内部标识或路径的尾段，普通文字继续增量输出；恢复快照和后续增量共用该流的投影状态。工具参数的零散 JSON 不直接展示，完整安全块与持久调用仍提供过程信息。展示投影不是执行授权，不能替代会话归属、工具权限或文件 SHA 校验，也不承诺识别任意未知格式的敏感内容。
+
+网关 `scripts/harless_public_transport.mjs` 只投影原生 unary JSON RPC 的失败 envelope，以及 `/api/remote.mux` WebSocket 的错误和已识别 `$events` 元信息。错误保留可接受的 code、给出用户提示并清空内部 details；host home、会话新增事件 cwd 和会话错误详情不对外展示。成功 RPC 字节、无关流、客户端请求、二进制和文件内容保持；SSE 与下载不作为普通 JSON RPC 缓存改写。`ws` 固定为直接运行依赖，双向连接关闭和背压仍由代理处理。
+
+普通聊天通过公开 `conversation.chat.node` 插槽汇总每个回合的过程，默认仅显示最终回答；生成中显示当前真实回答和状态。工具、上下文、早期消息与推理文字按需展开，可再次收起，新会话/回合默认折叠。最终正文复用已注册的原生 assistant renderer，保留 Markdown、图片、授权文件入口；`turn-tail` 复制、评分和分支操作未被替换，错误与中断提示保留。上游 Compact 的回答边界决定承载节点，避免旧节点被外层隐藏；本修改不接管 trace 目标，也不修改上游源码。对照标题只改展示名称 Baseline / Motif，协议仍使用 `baseline`、`execute`、`shadow`。
+
+PPT 的本轮兼容锁仅更新共享 `harless_task_scope.ts` 产品身份组合所需代码 SHA 及其 `runtime-bindings.json` 登记摘要；原学习边、上传来源归属与字节摘要、job 绑定、工具参数和完整 MCP schema 不变，不是新训练证书。检查结果与尚待补充的真实/UI/发布验收见 [本轮记录](experiments/geneloop-message-privacy-20261015-v1.md)。
+
 ## 官方 Web 与统一任务接口（0.1.5-rc.3）
 
 `npm run web` → `scripts/harness-web.py` → 官方 `dsh --profile web --patch <私有 host overlay>`。执行、会话、队列、模型消息和工具调度归官方 Harness；SDK 的 `run-scenario.py` 与 `harness_runtime.py` 保留。场景配置定义能力，不再固定一次用户任务。默认动态策略为 `src/adapters/dsh_web_tasks.ts`，请求规范化在 `web_task_request.ts`，双层预算路由在 `web_task_budget.py`；浏览器通过 `src/adapters/harless_web_client/` 装饰原生 `/harless` 命令，选择场景/模式/RSI。独立 `/tasks`、`/sss` 与 `/harless` 页面已移除，旧地址跳转聊天首页；任务 API 保留，历史代码/环境变量标识保持兼容。
@@ -68,7 +82,7 @@
 
 `paper-rsi-patch-task.py`提供full/baseline/compile/shadow/execute，默认preview免费。本轮新权限仅来自当前私有授权文件；Shadow library自身不授予execute。`dsh_trace_rsi_batch_execute.ts`要求同图至少两个独立纯工具正常Session，混合文字见证仍保留；按当前来源/代码/schema顺序与收据判断有界后继，由Harness派发真实MCP并逐项核验，失败后停止接管。actual HTTP请求、verified skip和未核验跳过分别记录。`--strict-tool-channel`只重申消息格式，所有新对照条件共享相同提示，实质冲突、恢复说明和最终依据不得省略。
 
-真实算法样例和初版对照见[V1实验记录](experiments/paper-rsi-local-patch-execute-20261012-v1.md)。最新[V4](experiments/paper-rsi-local-view-execute-20261012-v4.md)三项同工具真实请求15→9、六次全部核验、估费下降13.24%；仅局部结构修订，前期反例保留、学习未摊平。学习/重试/恢复记入累计额度；默认产品费用上限仍1美元。当前仍依赖私有历史输入和Python控制器，不是完整生产插件、Windows模型验收或Web产品。
+真实算法样例和初版对照见[V1实验记录](experiments/paper-rsi-local-patch-execute-20261012-v1.md)。最新[V4](experiments/paper-rsi-local-view-execute-20261012-v4.md)三项同工具真实请求15→9、六次全部核验、估费下降13.24%；仅局部结构修订，前期反例保留、学习未摊平。学习/重试/恢复记入累计账本；当前共享服务器预算策略见下文“预算、模型与记录”，历史实验上限不追改。当前仍依赖私有历史输入和Python控制器，不是完整生产插件、Windows模型验收或Web产品。
 
 ## DeepSeek 自生成检查工具与 RSI 接缝（前次固定目标原型，2026-10-11）
 
@@ -104,7 +118,7 @@ library/在线 manifest 新增可选 `certification_scope`（`independent_decisi
 
 `npm run web` → `scripts/harness-web.py` → 官方 `dsh --profile web --patch <私有 host overlay>`。执行、会话、队列、模型消息和工具调度归官方 Harness；SDK 的 `run-scenario.py` 与 `harness_runtime.py` 保留。场景配置定义能力，不再固定一次用户任务。默认动态策略为 `src/adapters/dsh_web_tasks.ts`，请求规范化在 `web_task_request.ts`，双层预算路由在 `web_task_budget.py`，DeepSeek Harless 界面为同源 `/tasks`。旧 `/sss` 是兼容别名，历史代码/环境变量标识保持不变。
 
-后续涉及模型的联调与场景验收统一走真实 API：`npm run web:real` 等价于 `npm run web -- --real-model`；`npm run scenario:real` 等价于 `npm run scenario -- --call-model`。前者仍通过工作台预览确认任务，后者直接执行预算预览后的一次场景；均保留原有预算代理。用户已授权此测试用途，默认使用用户指定的 1 美元上限，扩大上限或外部副作用另行确认。纯单元、无模型 smoke 和故障注入仅作开发诊断；真实调用失败不得用模拟成绩替代。SDK 真实最小场景已完成 3 次 HTTP 200 与 4 次 MCP，见[真实调用记录](experiments/deepseek-real-api-smoke-20261009-v1.md)；现有 3080 模拟服务未重启，真实 Web 后端最小闭环已通过，浏览器交互仍待验收，见[恢复记录](experiments/web-real-recovery-20261009-v1.md)。
+后续涉及模型的联调与场景验收统一走真实 API：`npm run web:real` 等价于 `npm run web -- --real-model`；`npm run scenario:real` 等价于 `npm run scenario -- --call-model`。前者仍通过工作台预览确认任务，后者直接执行预算预览后的一次场景；均保留原有预算代理。用户已授权此测试用途；当前共享服务器已取消原累计 1 美元上限，继续保留每任务 0.23 美元；Web 不额外限制单次文字输入或输出长度，其余独立入口按有效配置执行。扩大任务上限或外部副作用另行确认。纯单元、无模型 smoke 和故障注入仅作开发诊断；真实调用失败不得用模拟成绩替代。SDK 真实最小场景已完成 3 次 HTTP 200 与 4 次 MCP，见[真实调用记录](experiments/deepseek-real-api-smoke-20261009-v1.md)；现有 3080 模拟服务未重启，真实 Web 后端最小闭环已通过，浏览器交互仍待验收，见[恢复记录](experiments/web-real-recovery-20261009-v1.md)。
 
 ### 前端提交与任务生命周期
 
@@ -173,15 +187,15 @@ Harness 原生 `SessionPromptRequest.content` 的实际格式为：
 
 ### 预算、模型与记录
 
-每任务默认 0.25 美元/24 次，全启动默认 0.25 美元/256 次，每请求最多 1000 输出 token。前端预算只能下调服务器任务上限；`--budget-usd/--request-limit` 定任务上限，`--run-budget-usd/--run-request-limit` 定全启动上限。`TaskBudgetRegistry` 先不可变注册，原生聊天随发送激活；显式 API 经 submit 激活。预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子占用两层额度，完整成功用量两层结算，新任务不重置全局限制。
+通用入口每任务与全启动默认各 0.25 美元，请求次数默认不限。Web 不对单次用户文字另设长度上限；输出配置 `max_output_tokens: null` 时，移除适配器的默认输出值并在真实模型请求中省略 `max_tokens`，不截断模型返回。服务商自身的上下文容量、输出容量和未指定参数时的默认值仍适用。上传容量、账号/路径权限及 HTTP 协议安全边界继续保留。前端预算只能下调服务器任务费用上限；`harness-web.py --budget-usd` 定任务上限，`--run-budget-usd` 定全启动上限，后者显式 `0` 表示取消累计费用限制。累计 cap 在 policy/effective config/统计中以 `null` 表示不限，禁止使用 Infinity 或巨大数代替；内部 `State(cap_usd=0)` 仍代表零费用预算。可选 `--request-limit/--run-request-limit` 正整数保留次数限制；CLI `0`、配置/统计中的 `null` 表示不限次数，仍完整累计请求与费用。`TaskBudgetRegistry` 在累计无限时仍要求显式的有限任务费用上限；先不可变注册，原生聊天随发送激活，显式 API 经 submit 激活。预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子记录任务与累计费用，检查仍有效的上限，完整成功用量两层结算，新任务不重置累计账本。
 
-私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。固定 provider/model、`reasoning_effort="off"`、输出 cap，关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
+私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。每任务固定已选 provider/model、`reasoning_effort="off"` 和输出配置（允许 `null`），关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
 
 默认模拟模式无实际支出；`npm run web:real` 显式开放 DeepSeek 连接，官方聊天发送后直接执行并产生真实模型费用。服务器私有根 `.env` 通过统一 `scripts/project.mjs` 的 `loadEnvFile` 加载（Node 20.12+，已有环境值优先），字段见 `.env.example`。SDK 基本连通已通过真实 API 验证；当前直接发送的真实 Web 浏览器流程尚未验收。其他收费 MCP 和人工费用也不在这份模型代理额度内。
 
-每任务默认 1 美元/24 次，全启动默认 1 美元/256 次，每请求最多 1000 输出 token。前端预算只能下调服务器任务上限；`--budget-usd/--request-limit` 定任务上限，`--run-budget-usd/--run-request-limit` 定全启动上限。`TaskBudgetRegistry` 先不可变注册，确认后激活；预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子占用两层额度，完整成功用量两层结算，新任务不重置全局限制。
+用户于 2026-10-15 明确取消当前共享服务器原有累计 1 美元费用上限，请求次数同样不限。独立预算进程使用 `serve-web-budget.py --request-limit 0 --task-request-limit 0 --budget-usd 0 --task-budget-usd 0.23 --max-output 0`；必须沿用原 `--checkpoint`，保留累计已用次数、费用和任务账本，不能清零。该进程生成的私有 `policy.json` 将 `run_budget_usd/request_limit/run_request_limit/max_output_tokens` 记录为 `null`、`budget_usd` 仍为 `0.23`。账号启动策略须同步这些字段；重启预算进程后也须同步新的代理与控制端点。切换时先停止新请求并等待活动任务结算，再停止旧预算进程并复制最新账本；失败恢复不能用较旧 checkpoint 覆盖新消费。
 
-私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。固定 provider/model、`reasoning_effort="off"`、输出 cap，关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
+省略输出参数仍须预约费用：按 [DeepSeek 官方请求契约](https://api-docs.deepseek.com/api/create-chat-completion/)的默认输出计算，关闭思考时为 8192 token，开启思考为 65536，`max` effort 为 131072。这些数值仅用于计费预约，不写入请求或裁剪输出；真实完整用量到达后结算，缺失用量保留预约。未知模型的默认值/容量必须先登记，不能按零输出计费绕过任务预算；GLM 4.6 等已知模型按 [官方最大输出容量](https://docs.z.ai/api-reference/llm/chat-completion)保守预约。可选 GLM 代理在输出配置为 `null` 时移除 pi-ai SDK 自动填入的输出参数，按实际出站正文预约费用。长输入或更高价模型仍可能达到有限任务费用上限，此时按金额拒绝，不偷偷缩减输入或输出。
 
 默认模拟模式无实际支出；`npm run web:real` 显式开放 DeepSeek 连接，仍须工作台预览确认。服务器私有根 `.env` 通过统一 `scripts/project.mjs` 的 `loadEnvFile` 加载（Node 20.12+，已有环境值优先），字段见 `.env.example`。真实模式拒绝原生聊天直接执行付费任务。SDK 基本连通已通过真实 API 验证，真实 Web 尚未验收；其他收费 MCP 和人工费用也不在这份模型代理额度内。
 
@@ -447,7 +461,7 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 
 2026-10-15 论文扩展：`paper-proofreading` 的 `paper_checks` MCP 现有 16 个工具，并与 4 个 `paper_trace_rsi` 工具同属正式论文场景（共 20 个）。当前 Session 的 `inputs/` 和 `approved-inputs.json` 是引用取证的唯一来源；`case_id` 只能为 `current`，任务变更或字节版本变化使旧句柄失效。`collect_current_local_citation_evidence()` 在同一只读调用中复用历史脚本的 pin→检查活动引用→读取原始 BibTeX 序列，返回字面诊断、原文、版本和可继续查询的 `citation_id`；不联网、不认证事实、不是 Motif 跳过。服务端可选配置 `HARLESS_PAPER_RUNTIME_BUNDLE` 加载两条已认证的只读 Motif；运行时仍共用 `online_skill_runtime.mjs`，任务绑定 `@observed/@from_anchor`，不自动调用有副作用工具。`scene_options.allow_output` 对论文默认 false；true 时可上传论文资料或已有 `audit.json`，冻结 `paper-output-grant.json` 的 task ID、权限、批准输入及已有报告 SHA。模型可用 `stage_current_audit(scope?, references?, sources?, issues?, citation_checks?, notes?, expected_draft_sha256?)` 分段保存任务私有草稿，用 `finalize_current_audit(expected_draft_sha256)` 验证格式和来源版本并冻结；模型生成的报告不代表事实认证。`read_current_audit` 返回已有或生成的报告及 SHA；`export_current_audit_pdf(report_sha256)` 仅用管理员 `HARLESS_PAPER_RENDERER_ROOT` 指向的审核包输出新的任务 PDF，并返回带版本摘要及 `content_coverage`（页数、文本层、字段字面覆盖、链接对象数）的收据；字段保留不认证论文真实性或视觉质量。旧引用原文后继、报告生成及 PDF 导出均由模型显式调用，不能计作 Motif 跳过。完整边界与配置见 [控制说明](harless-controls.md)。
 
-论文 `allow_output=true` 表示本任务须交付 PDF。Agent 将停时如尚无当前任务的 PDF/覆盖收据，服务端最多用两条带 `task-acceptance-repair` 来源的提示在原 Session 内继续普通 Harness；所有额外请求计入原任务预算。仍无文件时状态为 `failed`，原因 `paper_pdf_not_delivered`。Web 默认单次输出上限调整为 4000 token，也可由管理员用 `harness-web.py --max-output-tokens` 在 100–8000 范围内显式设定；同一值写入有效配置并由预算代理限制，任务/启动费用与请求上限不变。不同输出上限的实验必须分开比较。
+论文 `allow_output=true` 表示本任务须交付 PDF。Agent 将停时如尚无当前任务的 PDF/覆盖收据，服务端最多用两条带 `task-acceptance-repair` 来源的提示在原 Session 内继续普通 Harness；所有额外请求计入原任务预算。仍无文件时状态为 `failed`，原因 `paper_pdf_not_delivered`。当前 Web 主线默认不额外限制单次模型输出（`max_output_tokens:null`）；隔离论文实验显式使用 4000 token。管理员仍可用 `harness-web.py --max-output-tokens` 在 100–8000 范围内设定，生效值写入任务配置并由预算代理限制；费用与请求上限按当前产品配置执行。不同输出上限的实验必须分开比较。
 
 生产菜单从 `config/harless-scenes.json` 获取 `ppt/paper-proofreading/research-data-analysis/files/new-scene`；通过 `POST /api/harless/settings` 的 `selection` 选择实际场景。`selected_mode/rsi/mode` 分别记录模式选择、独立开关和实际模式。RSI Off 即实际 baseline，不抹去模式选择。缺正式后端拒绝任务；生产 Execute 缺完整认证 schema、manifest/任务绑定或可用匹配服务拒绝准入。
 
@@ -469,9 +483,9 @@ Web 会话归属使用持久 `DSH_HOME` 与可信 `principal` 作为 scope，记
 
 场景目录行新增 `shortcut`，设置响应新增 `scene_locked:boolean`。客户端通过原生 input trigger source、reference chip 和 per-session input API 实现前缀候选与有色标识。`/ppt`、`/paper`、`/data`、`/chat` 分别绑定四个既有产品场景；只解析输入开头的完整控制词，剩余文字按普通任务处理。未部署场景拒绝选择；纯控制词不建立付费任务。
 
-`select` 在场景已绑定时返回 `409 scene_requires_new_session`，不改变持久选择。`new_session` 支持可选 selection 覆盖，inherit_session 必须属于当前账号；新会话沿用其本地工作区，界面只在 draft revision 未变时交接输入。设置 GET 会先经过归属验证，因此普通、未使用的本地空会话可直接打开菜单，而陌生历史仍被拒绝。旧客户端保存的“下次场景”与真实绑定不一致时，恢复为任务的实际场景；旧任务配置保持冻结。
+启用 `comparison_scenes` 与逐轮预算 broker 的账号，`select` 可修改已完成父会话的后续场景，不改写已有任务 preset；下一次发送由新私有子会话执行。运行中返回 `409 session_busy`，未知/跨账号会话仍先拒绝。未启用路由的固定任务才保留 `409 scene_requires_new_session`。`new_session` 是明确的新建操作，支持可选 selection 覆盖；inherit_session 必须属于当前账号，新会话继承其工作区。`scene_locked` 保留冻结范围的兼容标识，客户端不能仅凭它新建聊天。
 
-原生会话创建不再同时给出 workspaceId 和 cwd；网关中的工作区 ID 交给同账号注册表核验，未指定时创建服务器位置对应的记录。MCP workspace/input/job 仍是服务器分配的 Session 路径。相同 PPT job 与输入可跨文字轮次复用，不重新选择已锁定 preset；新增文件或改变输出/页数等 scene_options 仍要求新 Session。详见 [控制协议](harless-controls.md)。
+原生会话创建不再同时给出 workspaceId 和 cwd；网关中的工作区 ID 交给同账号注册表核验。MCP workspace/input/job 仍是服务器分配的私有路径。同场景、同来源文字续聊保留对应子会话；切换场景或新上传会轮换私有执行子会话，保留父聊天和旧结果。已冻结输出/页数等 scene_options 的直接变更仍受单独检查，不能更改旧任务权限。详见 [控制协议](harless-controls.md)。
 用户边界沿用账号网关的独立 Harness/bwrap 与预算代理；启动器接受可信 `--user-id`，客户端不能指定 cwd/工作区、库或命令。上传收据经官方 Agent scope 解析，确认时检查字节摘要；任务 `approved-inputs.json` 同时约束后端 pin/read，不允许重新 pin 接受确认后漂移的文件。两成员真实环境部署诊断见 [上线准备记录](experiments/harless-launch-readiness-20261014-v1.md)。
 
 ### 2026-10-14 场景选项、认证与成员部署
@@ -601,12 +615,60 @@ Python 从正常基线编译 `source_bound_readonly_batch_shadow` v1：当前任
 固定当前revision-report.md导出在所有平台先拒绝已有符号链接/硬链接/非普通文件，使用私有随机临时文件O_EXCL写入、当前报告版本复核和rename替换，不依赖Windows缺失的O_NOFOLLOW，最终清理临时文件。catalog绑定使用平台basename，仍要求源目录文件及SHA完全匹配。上述保护不扩大Runtime写入权限或自动迁移旧manifest。
 # 已有三库的原生双路对照
 
-成员 policy 的 `comparison_scenes` 为管理员白名单，默认关闭；只在既有 scoped budget broker 的账户进程内启用。`session/prompt` 对指定场景返回 `{accepted:true, comparison_id}`，仍使用现有 DSH Session、任务提交和模型循环。每个父 Session 固定两个独立子 Session；后续文字分别追加到各自历史，换资料或场景需新会话。同一 requestId 的相同发送幂等，变更内容拒绝。
+成员 policy 的 `comparison_scenes` 为管理员白名单，默认关闭；只在既有 scoped budget broker 的账户进程内启用。`session/prompt` 对指定场景返回 `{accepted:true, comparison_id}`，仍使用现有 DSH Session、任务提交和模型循环。每个父 Session 的当前来源批次有两个独立子 Session；后续文字分别追加到各自历史。新上传或场景切换在同一父会话中轮换私有子会话，历史文件/结果/评分保留；切回普通聊天用单路 `presentation:"single"`。同一 requestId 的相同发送幂等，变更内容拒绝。
 
 `GET /api/harless/comparisons?session_id=...&id=...` 返回两侧状态、回答、实际模式、库哈希、统计、结果文件及评分。加 `lane` 和 `file` 下载已冻结且哈希复核的结果副本。所有操作先校验当前账号归属，文件列表不暴露上传内容、配置、模型凭证或原始日志。
+
+每侧增加 `delivery_status: available | not_delivered | pending` 与 `delivery_message`，区分模型回复结束和文件交付。数据报告结果需成功交付回执及当前 SHA，图表沿同计划/来源证据链准入；历史补收须属于该任务的有界工具事件。恢复文件列表改变时更新 `output_sha256` 并失效该侧旧评分。`settings` 对双栏子会话返回 `comparison_parent_session_id`，用于返回父会话查看双栏及下载。
 
 数据报告完成 `deliver_report` 后，后续模型总结仍可能失败或触达请求上限。此时保留失败状态和禁用评分，但成功交付回执、质量标志及文件 SHA 全部匹配的 PDF 仍可下载；布局草稿不开放。旧失败记录首次读取时可恢复这类已交付文件，不重跑任务、不产生模型费用，也不将失败伪装成成功。
 
 `POST /api/harless/comparisons` 支持 `rate`、`retry`、`cancel`。评分需 `{session_id,id,lane,score,revision,output_sha256}`，两侧完成才接受 1–5 整数，以结果哈希和 revision 防止过期覆盖；评分与修改记录落在账号私有目录。重试仅重跑失败一侧，成功结果保持；重启把未完成任务标为中断，不自动启动新付费请求。原生 `user/message` 的 `harless_comparison` 元数据及标准 `turn/start/end` 定位双栏，持久化 GET 提供实时状态并支持刷新恢复；不写入当前 Harness 无法恢复的未知事件类型。
 
 PPT 复用已有只读库；数据通过 `report_session.py` 绑定上传 CSV/TSV 和可选研究 JSON，沿用已有 V3 工具及许可回执；论文通过 `revision_session.ts` 调用已有程序，保留所有上传字段并对窄审计 schema 做结构投影，Shadow 不授权模型跳过。
+
+
+### GeneLoop 托管工作区与场景输入
+
+`POST /api/harless/workspaces` 接受 `{name, request_id}`，在账号私有 output 下按 principal 哈希和随机 ID 分配目录，名称不作为路径。相同 request_id 重试返回同一工作区；同账号重名返回冲突，不同账号可用同名。原生 `workspace/create` 仅采用该账号已登记路径；目录浏览/新建任意路径入口关闭。`session/create` 只接受当前 registry 的 workspaceId，后台工具工作目录仍按 Session 隔离。旧已登记工作区保留，切换场景继承工作区分组。
+
+原生斜杠候选每字符按场景名做前缀匹配；选项通过 draft revision、当前 token、会话与附件快照校验，过期请求不能覆写新输入。手动完整 `/ppt 请求`、`/data请求` 在发送前进行场景选择；后端只剥离首个完整场景 token，不识别 `/pptx`、路径或正文中的斜杠。按空格或选择菜单项使用原生蓝色引用；不修改上游编辑器。支持路由的已开始会话切换场景仍使用原父会话，不转移草稿到另一聊天。删除未发送的完整标记会保存普通 `new-scene` 选择；正常提交自动清空编辑器不取消场景。
+
+数据回答可附带 `answer_display` 与 `answer_binding`，原 `answer`、原始事件及 answer.md 不变。展示值只来自该任务时间窗内成功 `build_evidence` 的回执和同工作区哈希匹配记录；多来源歧义或未知变量显示“未绑定”，代码示例保留。展示内容改变时更新 output_sha256 并失效旧评分，不把旧评分套到新展示上。
+
+PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历史 output 可分离；适配器准入后将 Python 工具与交付守卫收窄到一个 job 目录。CLI 默认目录边界不变，单独环境变量不能启用外置 Web 路径。历史 checkpoint 的目录修复兼容仅接受精确已审查版本，保留原始检查点与审计，未知版本继续拒绝。
+# 用户场景与工作区展示补充（2026-10-15）
+
+- 公共 Workspace 投影的 `path` 为 `/workspaces/<workspaceId>`，仅作当前账号内不透明位置标识；真实路径只留服务器 registry。创建/重命名/follow 响应一致，`workspace/create` 仍校验归属和受管目录，不能用其他账号的 ID 或任意路径注册目录。
+- 资料场景无附件任务提供 `source_pending: true`，它仅记录来源状态，不切换工具集合、单独聊天流程或执行模式。原场景提示与完整工具保留，追加由模型判断直接回答/询问资料/调用工具的交互规则。数据来源由实际工具懒准备，数据 Motif 在来源可用后绑定原认证库；没有可复用轨迹时委托正常 DSH。PPT 没有来源时无法绑定受证据约束的只读轨迹，保留该明确回退原因。有效配置保存实际 instructions/hash、`tools` 与 `offered_allowed_tools`。
+- 三场景对照允许任意轮上传新的资料批次，新建两侧文件子会话，父会话、此前结果与评分不变。每侧只接收自己的近期讨论，按长度有界；新旧子会话均保持不可直接发送的控制边界。新批次启用原有库与交付守卫，旧资料不被覆盖；原工具的来源版本与权限约束继续执行。
+
+## 连续场景、流式状态与对话分支（2026-10-15）
+
+同一父会话的场景、来源批次或单双栏呈现变化，会建立新的执行子会话；父会话 ID、标题、工作区与已有结果保持。后台传入有界近期交流，明确其只是历史而非当前工具证据。无新上传时，可复制本父会话对应侧的已校验交付文件；按目标场景接受格式、文件数/大小、身份和 SHA 重新准入，没有可用交付时再检查历史来源。例如数据报告 PDF 可传给 PPT；不能从另一用户、另一父会话或另一对照侧取得资料，也不能把历史成功当作本轮工具结果。
+
+`GET /api/harless/comparisons?session_id=...&id=...&stream=1` 是已认证的 SSE 读取接口，事件名 `snapshot`，内容沿用普通 GET，并带单调的 `snapshot_revision`、`presentation:"paired"|"single"` 和每路 `progress/activity`。15 秒发送注释心跳；模型实际文本流写入当前回答，工具生命周期形成有界活动列表，不公开推理正文、原始参数或主机路径。后台按既有队列推进两路，流式呈现不保证并行模型执行。客户端用版本拒绝过期快照，终态关闭流，断线只做 GET 与 SSE 重连，不重放发送；切换页面会释放订阅和网关上游连接。
+
+原生 `session/fork` 复用公开 seeded-session 接口。`atSeq` 定位已完成轮次边界，未提供时选最后完成轮次；边界之后的消息不继承。服务端先校验账号归属，再持久化编号并创建独立 Session，标题为原名加 `（1）`、`（2）` 等，扫描现有标题避免冲突；失败预约不会复用编号。新分支继承工作区与模型/场景选择，获得自己的工具范围、输入副本和预算。对照输出投影为独立历史文字，移除可修改原任务/评分的引用；未完成的对照回复拒绝分支。
+
+工作区概览通过公开 keyed `main` slot 展示；选中工作区不清除原聊天草稿，新建聊天仍在所选组内。文件夹按钮负责折叠；菜单提供设置名称、置顶和删除分组。`GET /api/harless/workspaces/preferences` 返回 `{pinned_workspace_ids:string[]}`；POST 接受 `{workspace_id:string,pinned:boolean}`，在同账号私有索引中持久化，未知或已删除 ID 返回 404，不返回路径。删除调用公共 workspace delete，仅删除分组登记；界面确认后将原聊天显示为未分组，保留会话日志与文件。
+
+以上为当前代码契约；浏览器、服务器和真实模型验收结果分别记录在对应实验与主线交接中，接口实现本身不构成部署或科研质量证明。
+
+## 会话回收站与工作区折叠（2026-10-15）
+
+`GET /api/harless/session-trash` 返回当前账号的最近删除记录；`POST` 接受 `{action:"delete"|"restore",session_id}`。这是可恢复删除，保留同一会话 ID、原工作区关系、历史和文件，不复用原生永久删除事件。活动任务或待处理输入返回 `409 session_busy`；未知或其他账号的 ID 不可操作。删除时同时隐藏私有执行子会话，已独立复制的可见分支仍可使用。原工作区已删除时，恢复的聊天显示在未分组。
+
+墓碑在账号私有目录持久化。列表、全文搜索、打开、分支、发送、上传、工具结果和文件读取统一检查；全文搜索在原生匹配数量限制之前排除已删除记录，避免它们遮住有效结果。`GET /api/harless/session-trash?stream=1` 为同账号 SSE，仅通知 `{changed:true}`，客户端重新读取列表；原生会话流在删除期间暂停，恢复后继续，避免同 ID 恢复后永久禁用输入。
+
+工作区名称行同时支持展开和收起，选中状态不强制重新展开。工作区连接按稳定 ID 与会话归属复用空草稿，不比较已脱敏的目录标识；已有文字或附件的草稿不会被新建操作覆盖。会话菜单和当前对话顶部提供移入回收站，侧栏“最近删除”始终提供恢复入口。
+
+## 场景实时更新、推理选择与通用附件（2026-10-15）
+
+客户端收到有效 `snapshot` 才认定 SSE 正常工作，HTTP `open` 本身不证明数据已送达。流正常时仍保留低频只读 GET 恢复；静默连接会重建，权限拒绝终止重试，切换会话会丢弃旧连接的迟到回调。以上恢复不重新提交模型请求。任务在模型调用前失败时，公开结果标记 `delivery_status:"not_started"`，页面显示“任务未启动”，不描述为报告交付失败；只有已知公开错误码映射用户提示，原始异常保留私有诊断。
+
+DeepSeek 原生模型目录展示 Off / On，内部值分别为 `off` / `high`。默认 Off；会话、分支、场景执行子会话保存选择，比较任务按本轮冻结，确认摘要和幂等指纹包括 On。提供商请求由原生适配器序列化为 `thinking.disabled` 或 `thinking.enabled + reasoning_effort:high`；未配置推理能力的模型不显示假开关。推理不会自动调整费用或添加输出 token 上限。
+
+上传准入不再按场景限制文件扩展名，所有附件仍校验所属账号、回执、容量、字节和 SHA。工具输入只引用其能处理的来源子集，其他附件作为参考资料保留。只读提取器读取 PDF 文字层、Word DOCX 正文和表格、Office 表格/演示文本及普通文本；旧 DOC 使用已部署的 antiword。文档视觉元素不宣称已审阅，扫描文字标记待 OCR，未知或损坏内容提供明确读取状态。提取全文作为用户资料传入原生 DSH 请求，不增加工具权限、不执行宏或附件代码、不信任附件中的系统指令。
+
+数据工具 `inspect_study` 同时返回参考资料与 `report_ready`。没有可分析表、存在多表或表格无效时，仍允许正常模型问答；实际请求统计工具时才说明所缺条件。真实统计仍基于明确的 CSV/TSV，不能从 PDF/Word 臆造数据。研究要求派生为冻结的 intake 请求，原件与原始消息不改写；旧已生成报告维持原来源快照和版本。原始上传资料可在同一父会话跨场景携带，生成成品仍按目标工具支持类型筛选。

@@ -184,7 +184,7 @@ def provider_handler(event_id, *, with_usage=False, request_limit=24, action_sel
                 answer = json.dumps(data).encode()
                 self.send_response(200); self.send_header('Content-Type', 'application/json')
             elif self.path == '/v1/chat/completions':
-                if len(self.calls) >= request_limit:
+                if request_limit is not None and len(self.calls) >= request_limit:
                     raise ValueError('local fixture request limit reached')
                 self.calls.append(body)
                 observations = tool_observations(body['messages'])

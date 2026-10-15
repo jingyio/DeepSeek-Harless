@@ -4,11 +4,12 @@ import http from 'node:http';
 import net from 'node:net';
 import { once } from 'node:events';
 import { createHash, createHmac } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGateway, createOwnerClaim, createInvites } from '../scripts/harless_gateway.mjs';
 import { memberSceneDeployment } from '../scripts/harless_member_scenes.mjs';
+import WebSocket, { WebSocketServer } from 'ws';
 
 test('Scene deployment mounts code read-only and keeps user data and credentials out', t => {
   const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-scene-deploy-')));
@@ -55,6 +56,106 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   const unsafeFiles=structuredClone(files);
   unsafeFiles.mcp_rows[0].config.env.FM_OUTPUT='/owner/private';
   assert.throws(()=>memberSceneDeployment({...policy,scenes:[unsafeFiles]},deployment),/server-bound task workspace/);
+  const dependencyStore=join(root,'dependencies/node_modules'), releaseLink=join(root,'release/node_modules');
+  mkdirSync(dependencyStore,{recursive:true});mkdirSync(join(root,'release'));mkdirSync(join(root,'scenarios/research_ppt'));
+  symlinkSync(dependencyStore,releaseLink,process.platform==='win32'?'junction':'dir');
+  symlinkSync(releaseLink,join(root,'scenarios/research_ppt/node_modules'),process.platform==='win32'?'junction':'dir');
+  const linked=memberSceneDeployment(policy,deployment);
+  assert.ok(linked.mounts.some(row=>row.source===realpathSync(dependencyStore)&&row.target===releaseLink),
+    'the dependency mount must resolve the first release symlink inside the member namespace');
+  assert.ok(!linked.mounts.some(row=>row.source===join(root,'release')),'never expose a whole release checkout');
+});
+
+test('data report fonts require the fixed mounted resource and its matching digest', t => {
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-report-font-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for(const name of ['scenarios','python/bin','fonts'])mkdirSync(join(root,name),{recursive:true});
+  const python=join(root,'python/bin/python');writeFileSync(python,'test dependency');
+  writeFileSync(join(root,'python/pyvenv.cfg'),'test installation');
+  const fontRoot=join(root,'fonts'), font=join(fontRoot,'wqy-microhei.ttc');
+  writeFileSync(join(fontRoot,'NotoSansCJKsc-Regular.otf'),'existing public PPT font');
+  writeFileSync(join(fontRoot,'WQY-COPYRIGHT.txt'),'public font license');
+  writeFileSync(font,'public report font fixture');
+  const scene={id:'data',adapter:'data-report',allowed_tools:['mcp__research_report__inspect_study'],
+    report_font_sha256:createHash('sha256').update(readFileSync(font)).digest('hex'),
+    mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',config:{serverName:'research_report',transport:'stdio',
+      command:python,cwd:root,args:[join(root,'scenarios/data_analysis/report_session.py')],
+      env:{HARLESS_REPORT_WORKSPACE:'__HARLESS_SESSION_WORKSPACE__',HARLESS_REPORT_FONT:font}}}]};
+  const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')],fontRoot};
+  const deploy=(value=scene,options=deployment)=>memberSceneDeployment({scenes:[value]},options);
+  const result=deploy();
+  assert.equal(result.scenes[0].mcp_rows[0].config.env.HARLESS_REPORT_FONT,font);
+  assert.ok(result.mounts.some(row=>row.source===fontRoot && row.target===fontRoot));
+  assert.throws(()=>deploy(scene,{...deployment,fontRoot:undefined}),/matching fixed public font/);
+  const wrongPath=structuredClone(scene);wrongPath.mcp_rows[0].config.env.HARLESS_REPORT_FONT=join(fontRoot,'NotoSansCJKsc-Regular.otf');
+  assert.throws(()=>deploy(wrongPath),/matching fixed public font/);
+  assert.throws(()=>deploy({...scene,report_font_sha256:undefined}),/matching fixed public font/);
+  assert.throws(()=>deploy({...scene,report_font_sha256:'0'.repeat(64)}),/matching fixed public font/);
+  const absentEnv=structuredClone(scene);delete absentEnv.mcp_rows[0].config.env.HARLESS_REPORT_FONT;
+  assert.throws(()=>deploy(absentEnv),/matching fixed public font/);
+  delete absentEnv.report_font_sha256;
+  assert.doesNotThrow(()=>deploy(absentEnv),'legacy scenes without a configured report font remain valid');
+  writeFileSync(join(fontRoot,'private-data.json'),'private');
+  assert.throws(()=>deploy(),/only fixed public font resources/);
+  rmSync(join(fontRoot,'private-data.json'));
+  rmSync(font);
+  assert.throws(()=>deploy(),/matching fixed public font/);
+});
+
+test('attachment parsers map only verified public dependencies into member and report environments', t => {
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-attachment-deploy-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for(const name of ['scenarios','python/bin','pdf/bin','pdf/lib/x86_64-linux-gnu','pdf/share',
+    'antiword/usr/bin','antiword/usr/share/antiword'])mkdirSync(join(root,name),{recursive:true});
+  const python=join(root,'python/bin/python');writeFileSync(python,'test Python');
+  writeFileSync(join(root,'python/pyvenv.cfg'),'test installation');
+  const pdf=join(root,'pdf'),antiword=join(root,'antiword'),binary=join(antiword,'usr/bin/antiword'),mapping=join(antiword,'usr/share/antiword');
+  for(const name of ['pdfinfo','pdftotext'])writeFileSync(join(pdf,'bin',name),'public parser');
+  writeFileSync(binary,'public Word parser');writeFileSync(join(mapping,'UTF-8.txt'),'public character mapping');
+  writeFileSync(join(antiword,'operator-private.json'),'must not be mounted');
+  const scene={id:'data',adapter:'data-report',allowed_tools:['mcp__research_report__inspect_study'],
+    pdf_toolchain_root:pdf,antiword_root:antiword,mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',config:{
+      serverName:'research_report',transport:'stdio',command:python,cwd:root,args:[join(root,'scenarios/data_analysis/report_session.py')],
+      env:{HARLESS_REPORT_WORKSPACE:'__HARLESS_SESSION_WORKSPACE__',HARLESS_PDF_TOOLCHAIN_ROOT:pdf,HARLESS_ANTIWORD_BIN:binary,ANTIWORDHOME:mapping}}}]};
+  const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')],pdfToolchainRoot:pdf,antiwordRoot:antiword};
+  const deploy=(value=scene,options=deployment)=>memberSceneDeployment({scenes:[value]},options);
+  const result=deploy(),env=result.scenes[0].mcp_rows[0].config.env;
+  assert.deepEqual(result.attachmentEnvironment,{HARLESS_PDF_TOOLCHAIN_ROOT:'/opt/harless/pdf',
+    HARLESS_ANTIWORD_BIN:'/opt/harless/antiword/bin/antiword',ANTIWORDHOME:'/opt/harless/antiword/share/antiword'});
+  for(const [key,value] of Object.entries(result.attachmentEnvironment))assert.equal(env[key],value);
+  assert.ok(result.mounts.some(row=>row.source===binary&&row.target===env.HARLESS_ANTIWORD_BIN));
+  assert.ok(result.mounts.some(row=>row.source===mapping&&row.target===env.ANTIWORDHOME));
+  assert.ok(result.mounts.some(row=>row.source===pdf&&row.target===pdf),'old bound PDF presets retain their read-only installation');
+  assert.ok(result.mounts.every(row=>row.source!==antiword&&row.source!==root));
+  assert.equal(result.scenes[0].pdf_toolchain_root,'/opt/harless/pdf');
+  const wrong=structuredClone(scene);wrong.mcp_rows[0].config.env.HARLESS_ANTIWORD_BIN='/owner/private/antiword';
+  assert.throws(()=>deploy(wrong),/matching fixed installation/);
+  assert.throws(()=>deploy(scene,{...deployment,antiwordRoot:undefined}),/matching fixed installation/);
+  assert.throws(()=>deploy(scene,{...deployment,pdfToolchainRoot:undefined}),/matching fixed installation/);
+  const missingMetadata=structuredClone(scene);delete missingMetadata.antiword_root;
+  assert.throws(()=>deploy(missingMetadata),/matching fixed installation/);
+  const link=join(root,'redirected-word');symlinkSync(antiword,link,process.platform==='win32'?'junction':'dir');
+  assert.throws(()=>deploy(scene,{...deployment,antiwordRoot:link}),/without redirected paths/);
+  const privateMap=join(mapping,'private-dir');mkdirSync(privateMap);
+  assert.throws(()=>deploy(),/only fixed public resource files/);
+});
+
+test('literature uses the mapped PDF environment while package links cannot expose private directories', t => {
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-pdf-deploy-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for(const name of ['scenarios','python/bin','pdf/bin','pdf/lib/x86_64-linux-gnu','pdf/share','private'])mkdirSync(join(root,name),{recursive:true});
+  const python=join(root,'python/bin/python');writeFileSync(python,'test Python');writeFileSync(join(root,'python/pyvenv.cfg'),'test installation');
+  const pdf=join(root,'pdf');for(const name of ['pdfinfo','pdftotext'])writeFileSync(join(pdf,'bin',name),'public parser');
+  const scene={id:'literature',adapter:'literature',allowed_tools:[],pdf_toolchain_root:pdf,mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',config:{
+    serverName:'literature_web',transport:'stdio',command:python,cwd:root,args:[join(root,'scenarios/literature-notes/session_tools.py')],
+    env:{SSS_PDF_WEB_TASK:'__HARLESS_SESSION_WORKSPACE__/literature',PATH:join(pdf,'bin')+':/usr/bin:/bin',LD_LIBRARY_PATH:join(pdf,'lib/x86_64-linux-gnu')}}}]};
+  const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')],pdfToolchainRoot:pdf};
+  mkdirSync(join(pdf,'share/public-docs'));
+  symlinkSync(join(pdf,'share/public-docs'),join(pdf,'share/package-docs'),process.platform==='win32'?'junction':'dir');
+  const env=memberSceneDeployment({scenes:[scene]},deployment).scenes[0].mcp_rows[0].config.env;
+  assert.equal(env.PATH,'/opt/harless/pdf/bin:/usr/bin:/bin');assert.equal(env.LD_LIBRARY_PATH,'/opt/harless/pdf/lib/x86_64-linux-gnu');
+  symlinkSync(join(root,'private'),join(pdf,'share/redirect'),process.platform==='win32'?'junction':'dir');
+  assert.throws(()=>memberSceneDeployment({scenes:[scene]},deployment),/link escapes/);
 });
 
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
@@ -73,7 +174,7 @@ test('gateway shutdown closes an idle browser connection and finishes promptly',
     const timer=setTimeout(()=>reject(Error('gateway shutdown remained blocked by browser socket')),1000);timer.unref();
   })]);
 });
-async function fixture(t) {
+async function fixture(t, handleUpstream) {
   const dir = mkdtempSync(join(tmpdir(), 'harless-gateway-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const seen = [];
@@ -83,6 +184,7 @@ async function fixture(t) {
       res.writeHead(303, { location: '/', 'set-cookie': 'dsh-auth-test=secret-internal; HttpOnly; Path=/' });
       res.end(); return;
     }
+    if (handleUpstream?.(req, res)) return;
     res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': 'dsh-auth-test=never-public' });
     res.end(JSON.stringify({ path: req.url }));
   });
@@ -107,6 +209,70 @@ async function fixture(t) {
     async restart() { await close(gateway.server); gateway = createGateway(config); port = await listen(gateway.server); } };
 }
 
+test('disconnecting an HTTP event stream releases its backend subscription without ending sibling streams', { timeout: 5000 }, async t => {
+  const active = new Map(), stopped = [];
+  let f;
+  t.after(() => { for (const response of active.values()) response.destroy(); f?.gateway.close(); });
+  f = await fixture(t, (req, res) => {
+    if (!req.url.startsWith('/api/harless/events/')) return false;
+    active.set(req.url, res);
+    res.once('close', () => { active.delete(req.url); stopped.push(req.url); });
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
+    res.write('event: ready\ndata: {}\n\n');
+    return true;
+  });
+  const code = createOwnerClaim(f.gateway);
+  const claimed = await f.request('/api/account/claim', { method: 'POST', body: {
+    claimCode: code, username: 'owner', displayName: 'Owner', password: 'long-enough-test-password',
+  } });
+  assert.equal(claimed.status, 200);
+  const cookie = claimed.headers.get('set-cookie').split(';')[0];
+  const openStream = path => new Promise((resolve, reject) => {
+    const request = http.get(f.base() + path, { headers: { cookie }, agent: false }, response => {
+      response.once('error', () => {}); // Expected on deliberate downstream cancellation.
+      response.once('data', chunk => resolve({ request, response, first: chunk.toString() }));
+    });
+    request.once('error', reject);
+  });
+  const [left, right] = await Promise.all([openStream('/api/harless/events/left'), openStream('/api/harless/events/right')]);
+  assert.match(left.first, /event: ready/); assert.match(right.first, /event: ready/);
+  assert.equal(active.size, 2, 'GET body completion must not cancel a live event stream');
+  const leftClosed = once(active.get('/api/harless/events/left'), 'close', { signal: AbortSignal.timeout(2000) });
+  left.response.destroy(); left.request.destroy(); await leftClosed;
+  assert.deepEqual(stopped, ['/api/harless/events/left']);
+  assert.equal(active.size, 1);
+  const nextChunk = once(right.response, 'data', { signal: AbortSignal.timeout(2000) });
+  active.get('/api/harless/events/right').write('event: progress\ndata: {"step":2}\n\n');
+  assert.match((await nextChunk)[0].toString(), /"step":2/);
+  const json = await f.request('/api/harless/tasks', { cookie });
+  assert.equal(json.status, 200); assert.deepEqual(await json.json(), { path: '/api/harless/tasks' });
+  const rightClosed = once(active.get('/api/harless/events/right'), 'close', { signal: AbortSignal.timeout(2000) });
+  right.response.destroy(); right.request.destroy(); await rightClosed;
+  assert.equal(active.size, 0);
+});
+
+test('browser disconnect before response headers cancels the pending upstream HTTP request', { timeout: 5000 }, async t => {
+  let received;
+  const arrived = new Promise(resolve => { received = resolve; });
+  let f, backend, downstream;
+  t.after(() => { downstream?.destroy(); backend?.res.destroy(); f?.gateway.close(); });
+  f = await fixture(t, (req, res) => {
+    if (req.url !== '/api/harless/slow-stream') return false;
+    received({ req, res }); return true;
+  });
+  const code = createOwnerClaim(f.gateway);
+  const claimed = await f.request('/api/account/claim', { method: 'POST', body: {
+    claimCode: code, username: 'owner', displayName: 'Owner', password: 'long-enough-test-password',
+  } });
+  const cookie = claimed.headers.get('set-cookie').split(';')[0];
+  downstream = http.get(f.base() + '/api/harless/slow-stream', { headers: { cookie }, agent: false });
+  downstream.on('error', () => {});
+  backend = await arrived;
+  const closed = once(backend.res, 'close', { signal: AbortSignal.timeout(2000) });
+  downstream.destroy(); await closed;
+  assert.equal(backend.res.destroyed, true);
+});
+
 test('gateway shutdown closes both sides of an upgraded browser connection',async t=>{
  const f=await fixture(t);let backendSocket;
  f.upstream.on('upgrade',(_req,socket)=>{backendSocket=socket;socket.resume();socket.once('end',()=>socket.end());socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');});
@@ -122,6 +288,111 @@ test('gateway shutdown closes both sides of an upgraded browser connection',asyn
   f.gateway.close();
   await Promise.race([Promise.all([stopped,downstream,upstream]),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('upgraded connection prevented gateway shutdown')),1000);timer.unref();})]);
  } finally {socket.destroy();backendSocket?.destroy();f.gateway.close();}
+});
+
+test('native RPC errors hide server diagnostics while success and downloads retain exact bytes', async t => {
+  const secret='/home/operator/deployment/private.py',success=Buffer.from(JSON.stringify({type:'server-response',rpcId:'r1',result:{ok:true,value:{text:secret,data:'AAECAw=='}}},null,2));
+  const f=await fixture(t,(req,res)=>{
+    if(req.url==='/api/session/failure'){
+      const bytes=Buffer.from(JSON.stringify({type:'server-response',rpcId:'r2',result:{ok:false,error:{code:'gateway/internal',message:secret,details:{stack:secret}}}}));
+      res.writeHead(200,{'content-type':'application/json','content-length':bytes.length,'etag':'private-etag','set-cookie':'backend=private'});res.end(bytes);return true;
+    }
+    if(req.url==='/api/session/compressed'){
+      assert.equal(req.headers['accept-encoding'],'identity');
+      res.writeHead(200,{'content-type':'application/json','content-encoding':'gzip'});res.end(success);return true;
+    }
+    if(['/api/session/page','/api/session/modelCatalog','/api/session/download'].includes(req.url)){
+      res.writeHead(200,{'content-type':'application/json',...(req.url.endsWith('download')?{'content-disposition':'attachment; filename="user.json"'}:{})});res.end(success);return true;
+    }
+  });
+  const claim=createOwnerClaim(f.gateway),account=await f.request('/api/account/claim',{method:'POST',body:{claimCode:claim,username:'owner',displayName:'Owner',password:'long-password-123'}});
+  assert.equal(account.status,200);const cookie=account.headers.get('set-cookie').split(';')[0];
+  const failed=await f.request('/api/session/failure',{method:'POST',cookie,body:{type:'client-request'}}),raw=Buffer.from(await failed.arrayBuffer());
+  assert.equal(failed.status,200);assert.equal(failed.headers.get('etag'),null);assert.equal(failed.headers.get('set-cookie'),null);
+  assert.equal(Number(failed.headers.get('content-length')),raw.length);assert.ok(!raw.includes(Buffer.from(secret)));
+  assert.equal(JSON.parse(raw).result.error.code,'gateway/internal');assert.equal(f.seen.at(-1).cookie,'dsh-auth-test=secret-internal');
+  for(const path of ['/api/session/page','/api/session/modelCatalog','/api/session/download']){
+    const response=await f.request(path,{method:'POST',cookie,body:{type:'client-request'}});
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()),success);
+  }
+  const compressed=await f.request('/api/session/compressed',{method:'POST',cookie,body:{type:'client-request'}});
+  assert.equal(compressed.status,502);assert.equal(compressed.headers.get('content-encoding'),null);
+  assert.ok(!(await compressed.text()).includes(secret));
+});
+
+test('native mux projects extra public events with authenticated headers, fragments, heartbeat and binary forwarding', {timeout:10000}, async t => {
+  const f=await fixture(t),wss=new WebSocketServer({noServer:true});let backend,handshake;
+  f.upstream.on('upgrade',(req,socket,head)=>{handshake=req.headers;wss.handleUpgrade(req,socket,head,ws=>{backend=ws;wss.emit('connection',ws,req);});});
+  t.after(()=>{for(const ws of wss.clients)ws.terminate();wss.close();f.gateway.close();});
+  const claim=createOwnerClaim(f.gateway),account=await f.request('/api/account/claim',{method:'POST',body:{claimCode:claim,username:'owner',displayName:'Owner',password:'long-password-123'}});
+  assert.equal(account.status,200);const cookie=account.headers.get('set-cookie').split(';')[0];
+  const opened=once(wss,'connection');
+  const client=new WebSocket(f.base().replace(/^http/,'ws')+'/api/remote.mux',{headers:{cookie,origin}});
+  client.on('error',()=>{});t.after(()=>client.terminate());
+  await Promise.all([once(client,'open'),opened]);
+  assert.equal(handshake.cookie,'dsh-auth-test=secret-internal');
+  assert.equal(handshake.origin,'http://127.0.0.1:'+f.config.ownerPort);assert.notEqual(handshake.cookie,cookie);
+  const request=JSON.stringify({type:'open',streamId:'events',endpoint:'$events',payload:{args:{}}});
+  let got=once(backend,'message');client.send(request);assert.equal((await got)[0].toString(),request);
+  const ready=JSON.stringify({type:'item',streamId:'events',value:{type:'ready',clientId:'live',host:{home:'/home/operator/中文'}}});
+  const readyBytes=Buffer.from(ready),cut=readyBytes.indexOf(Buffer.from('中文'))+1;
+  let incoming=once(client,'message');backend.send(readyBytes.subarray(0,cut),{binary:false,fin:false});backend.send(readyBytes.subarray(cut),{binary:false,fin:true});
+  assert.equal(JSON.parse((await incoming)[0]).value.host.home,'');
+  for(const value of [
+    {type:'item',streamId:'events',value:{type:'emit',event:'api-session/added',args:[{sessionId:'one',cwd:'/home/operator/work',running:false,blank:true,updatedAt:1}]}},
+    {type:'item',streamId:'events',value:{type:'emit',event:'api-session/error',args:['one','Error /home/operator/stack']}},
+    {type:'error',streamId:'other',error:{code:'gateway/internal',message:'/home/operator',details:{path:'/app/private'}}},
+  ]){
+    incoming=once(client,'message');backend.send(JSON.stringify(value));const data=(await incoming)[0];assert.ok(!data.toString().includes('/home/'));assert.ok(!data.toString().includes('/app/'));
+  }
+  const untouched=JSON.stringify({type:'item',streamId:'follow',value:{type:'event',event:{seq:1,data:{userText:'/home/user/upload.txt'}}}});
+  incoming=once(client,'message');backend.send(untouched);assert.equal((await incoming)[0].toString(),untouched);
+  const binary=Buffer.from([0,128,255,1]);got=once(backend,'message');client.send(binary);let [bytes,isBinary]=await got;assert.deepEqual(bytes,binary);assert.equal(isBinary,true);
+  incoming=once(client,'message');backend.send(binary);[bytes,isBinary]=await incoming;assert.deepEqual(bytes,binary);assert.equal(isBinary,true);
+  const pong=once(backend,'pong');backend.ping('browser-heartbeat');assert.equal((await pong)[0].toString(),'browser-heartbeat');
+  // A burst shares one carrier; a slow send callback may pause reads but cannot
+  // reorder/deduplicate dense follow indices or block sibling cancellation.
+  const burst=Array.from({length:64},(_,index)=>JSON.stringify({type:'item',streamId:index%2?'right':'left',value:{index,text:'增量'.repeat(500)}}));
+  const received=[];
+  const complete=new Promise(resolve=>{
+    const collect=data=>{received.push(data.toString());if(received.length===burst.length){client.off('message',collect);resolve();}};
+    client.on('message',collect);
+  });
+  for(const frame of burst)backend.send(frame);
+  const cancel=JSON.stringify({type:'cancel',streamId:'left'});
+  got=once(backend,'message');client.send(cancel);
+  assert.equal((await got)[0].toString(),cancel);await complete;assert.deepEqual(received,burst);
+  const stopped=once(backend,'close');client.close(1000);await stopped;
+});
+
+test('native mux browser cancellation releases a pending upstream handshake', {timeout:5000}, async t => {
+  const f=await fixture(t);let backend;
+  const arrived=new Promise(resolve=>f.upstream.on('upgrade',(_req,socket)=>{backend=socket;socket.on('error',()=>{});socket.once('end',()=>socket.end());socket.resume();resolve();}));
+  t.after(()=>{backend?.destroy();f.gateway.close();});
+  const claim=createOwnerClaim(f.gateway),account=await f.request('/api/account/claim',{method:'POST',body:{claimCode:claim,username:'owner',displayName:'Owner',password:'long-password-123'}});
+  const cookie=account.headers.get('set-cookie').split(';')[0];
+  const client=new WebSocket(f.base().replace(/^http/,'ws')+'/api/remote.mux',{headers:{cookie,origin}});
+  client.on('error',()=>{});t.after(()=>client.terminate());await arrived;
+  const closed=once(backend,'close',{signal:AbortSignal.timeout(2000)});
+  client.terminate();await closed;assert.equal(backend.destroyed,true);
+});
+
+test('native mux rejects anonymous or foreign-origin connections and shutdown cancels both sockets', {timeout:10000}, async t => {
+  const f=await fixture(t),wss=new WebSocketServer({noServer:true});let upgrades=0;
+  f.upstream.on('upgrade',(req,socket,head)=>{upgrades++;wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws));});
+  t.after(()=>{for(const ws of wss.clients)ws.terminate();wss.close();f.gateway.close();});
+  const claim=createOwnerClaim(f.gateway),account=await f.request('/api/account/claim',{method:'POST',body:{claimCode:claim,username:'owner',displayName:'Owner',password:'long-password-123'}});
+  assert.equal(account.status,200);const cookie=account.headers.get('set-cookie').split(';')[0],url=f.base().replace(/^http/,'ws')+'/api/remote.mux';
+  for(const [headers,status] of [[{origin},401],[{cookie,origin:'https://foreign.example'},403]]){
+    const ws=new WebSocket(url,{headers});ws.on('error',()=>{});
+    const response=await new Promise(resolve=>ws.once('unexpected-response',(_request,response)=>{response.resume();resolve(response.statusCode);ws.terminate();}));
+    assert.equal(response,status);
+  }
+  assert.equal(upgrades,0);
+  const opened=once(wss,'connection'),client=new WebSocket(url,{headers:{cookie,origin}});client.on('error',()=>{});
+  await once(client,'open');const [backend]=await opened;
+  const closed=Promise.all([once(client,'close'),once(backend,'close'),once(f.gateway.server,'close')]);
+  f.gateway.close();await closed;
 });
 
 test('owner claim, login, profile, password, logout and persistence', async t => {

@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 from uuid import uuid4
 from .documents import file_hash, parse_document, inspect_pptx, pdf_page_geometry
+from .web_scope import private_root, web_private_root
 
 SCENE = Path(__file__).resolve().parent
 ROOT = SCENE.parents[1]
@@ -38,8 +39,8 @@ def validate_minimum_original_figures(value, slides: int, operation: str) -> Non
 
 def private_path(path: Path) -> Path:
     resolved = path.resolve()
-    if not resolved.is_relative_to((ROOT / '.local').resolve()):
-        raise ValueError('运行数据必须位于仓库 .local')
+    if not resolved.is_relative_to(private_root(ROOT)):
+        raise ValueError('运行数据必须位于当前私有任务范围')
     return resolved
 
 
@@ -84,6 +85,8 @@ class PPTService:
             raise ValueError('persistent_library 必须是明确布尔配置')
         self.library = None
         if self.job.get('persistent_library'):
+            if web_private_root() is not None:
+                raise ValueError('Web job cannot use the shared CLI document library')
             from .knowledge_library import PersistentLibrary
             if (self.job.get('library_schema_version') != 1 or
                     not isinstance(self.job.get('library_tenant'), str) or
@@ -98,7 +101,8 @@ class PPTService:
         self.handles, self.decks = {}, {}
         self.deck_records, self.validations = {}, {}
         self.catalogs = {}
-        self.rsi = private_path(Path(self.job.get('rsi_dir', ROOT / '.local/research-ppt/rsi')))
+        default_rsi = self.job_path.parent / 'rsi' if web_private_root() is not None else ROOT / '.local/research-ppt/rsi'
+        self.rsi = private_path(Path(self.job.get('rsi_dir', default_rsi)))
         self.rsi.mkdir(parents=True, exist_ok=True)
 
     def record(self, kind: str, data: dict):
@@ -111,7 +115,7 @@ class PPTService:
         if row is not None and self.library is not None:
             return self.library.cache_directory(row['library_resource_id'],
                 tenant_id=self.job['library_tenant'], job_id=self.job['job_id'])
-        return ROOT / '.local/research-ppt/document-cache'
+        return self.job_path.parent / 'document-cache' if web_private_root() is not None else ROOT / '.local/research-ppt/document-cache'
 
     def page_geometry(self, row: dict, page: int):
         self.current(row)
@@ -211,6 +215,8 @@ class PPTService:
                          '图注和可见图形几何支持的裁图候选；图件含义与完整性仍需审阅')}
 
     def current(self, row: dict):
+        if web_private_root() is not None:
+            private_path(Path(row['path']))
         from .knowledge_library import validate_job_components
         self.component_descriptors = validate_job_components(self.job, library=self.library)
         if self.library is not None:
