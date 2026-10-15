@@ -23,7 +23,7 @@ const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
-async function fixture({ broker = false, dshHome = false, fixtureSchemas: schemaOverride, fixture_schemas, ...overrides } = {}) {
+async function fixture({ broker = false, dshHome = false, fixtureSchemas: schemaOverride, fixture_schemas, strictMountedTools = false, ...overrides } = {}) {
   const fixtureSchemas = schemaOverride ?? fixture_schemas ?? toolSchemas;
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
@@ -72,6 +72,11 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   const storedSessions = new Map();
   const storedHeaders = new Map();
   const promptCalls = [], modelCalls = [], queueMutations = [], adapters = [], commands = new Map(), presetCalls = [];
+  const mountedNames = preset => {
+    if (!strictMountedTools) return undefined;
+    const rows = JSON.parse(readFileSync(join(directory, 'presets', preset, 'agent.cordis.yml'), 'utf8'));
+    return rows.flatMap(row => row.config?.fixture_tools ?? []);
+  };
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
     emit,
@@ -79,7 +84,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
       async create(path, title) { const old = [...workspaceGroups.values()].find(row => row.path === path); if (old) return old;
         const row = { id:'workspace-' + randomUUID(), path, title, sessionIds:[], async attachSession(id) { if(!this.sessionIds.includes(id)) this.sessionIds.push(id); } }; workspaceGroups.set(row.id,row); return row; } },
     commands: { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } },
-    agentPresets: { async mount() {}, async select(agent, preset) { presetCalls.push({ session_id: agent.session.id, preset }); agent.preset = preset; } },
+    agentPresets: { async mount() {}, async select(agent, preset) { presetCalls.push({ session_id: agent.session.id, preset }); agent.preset = preset; agent.mountedTools = mountedNames(preset); } },
     effect(factory) { factory(); },
     on(name, listener) { const rows = listeners.get(name) ?? []; rows.push(listener); listeners.set(name, rows); },
     llm: { registerAdapter(names, adapter) { adapters.push({ names, adapter }); return () => {}; } },
@@ -114,8 +119,11 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
           const events = storedSessions.get(id) ?? []; storedSessions.set(id, events);
           if (!storedHeaders.has(id)) storedHeaders.set(id, { id, agentPreset: request.agentPreset,
             cwd: request.workspaceId ? workspaceGroups.get(request.workspaceId).path : request.cwd });
-          const agent = { preset: request.agentPreset, session: { id, snapshotEvents: () => events, append(type,data,extra={}) { const event={type,data,seq:events.length,time:Date.now(),...extra};events.push(event);emit('session/event',agent.session,event);return event;} }, guards: guardFns, events, ctx: {
-            tools: { restrict(value) { agent.allow = value; return () => {}; },
+          const mountedPreset = request.agentPreset ?? storedHeaders.get(id)?.agentPreset;
+          const agent = { preset: mountedPreset, mountedTools: mountedNames(mountedPreset), session: { id, snapshotEvents: () => events, append(type,data,extra={}) { const event={type,data,seq:events.length,time:Date.now(),...extra};events.push(event);emit('session/event',agent.session,event);return event;} }, guards: guardFns, events, ctx: {
+            tools: { restrict(value) {
+                if(strictMountedTools){const unknown=value.allow.filter(name=>!agent.mountedTools.includes(name));if(unknown.length)throw Error('tools.restrict() unknown global tools: '+unknown.join(', '));}
+                agent.allow = value; return () => {}; },
               guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
               schemas() { return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
             systemPrompt: { suppressRuntimeContext() { return () => {}; }, variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
@@ -319,6 +327,37 @@ test('GLM selection binds the preview, task budget, and model admission', option
   } finally { await f.close(); }
 });
 
+test('Pro Off persists and binds the exact native route while unavailable On cannot admit or change a task',options,async()=>{
+  const models=[{provider:'deepseek-official',model:'deepseek-flash',label:'DeepSeek V4.1 Flash',available:true},
+    {provider:'deepseek-official',model:'deepseek-v4-pro',label:'DeepSeek V4 Pro',available:true,
+      reasoning_unavailable:{high:'On 暂不可用：当前任务预算 $0.23 不足，请先选择 Off。'}}];
+  const f=await fixture({broker:true,max_output_tokens:null,models,budget_usd:.23});
+  try{
+    const {sessionId}=await f.ctx.sessionController.create({});
+    const select=(model,reasoningEffort)=>f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model,reasoningEffort},new AbortController().signal);
+    await select('deepseek-flash','high');
+    const before=f.modelCalls.length;
+    await assert.rejects(select('deepseek-v4-pro','high'),error=>error.code==='model_budget_unavailable'&&/Off/.test(error.message));
+    assert.equal(f.modelCalls.length,before);assert.equal(f.registrations.size,0);
+    await select('deepseek-v4-pro','off');
+    await f.restart();
+    await f.ctx.sessionController.prompt({sessionId,requestId:'native-pro',mode:'queue',content:[{type:'text',text:'Check these findings'}]},new AbortController().signal);
+    const task=(await f.api()).value.tasks[0];
+    assert.equal(task.model,'deepseek-v4-pro');assert.equal(task.reasoning_effort,'off');
+    assert.equal([...f.registrations.values()].find(row=>row.task_id===task.task_id).model,'deepseek-v4-pro');
+    const request=f.modelRequest(task,{model:'deepseek-v4-pro',reasoningEffort:'off',maxTokens:undefined});
+    for await(const chunk of f.stream(request,async function*(){yield {type:'text-delta',text:'Pro diagnostic'};})){}
+    assert.throws(()=>f.stream({...request,model:'deepseek-flash'},async function*(){}),/Unapproved task model/);
+    const audit=JSON.parse(readFileSync(join(f.directory,'tasks',task.task_id,'model-request-config.json')));
+    assert.equal(audit.model,'deepseek-v4-pro');assert.equal(audit.output_cap_sent,false);
+    await f.complete(task);
+    const registrations=f.registrations.size;
+    const invalid=await f.api({action:'preview',request:{instruction:'Do not admit',model:'deepseek-v4-pro',reasoning_effort:'high'}});
+    assert.equal(invalid.status,400);assert.equal(invalid.value.error.code,'model_budget_unavailable');
+    assert.equal(f.registrations.size,registrations);
+  }finally{await f.close();}
+});
+
 test('Native model picker selection is used by the next chat task', options, async () => {
   const f = await fixture({ models: [
     { provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true },
@@ -496,7 +535,7 @@ test('Legacy blank preset sessions resume only when history and budget registrat
     await assert.rejects(prompt('other-preset'), /outside/);
     await assert.rejects(prompt('legacy-budget'), /already has a task/);
     await prompt('legacy-empty');
-    assert.equal((await f.ctx.sessionController.inspect('legacy-empty')).meta.title,'新会话');
+    assert.equal((await f.ctx.sessionController.inspect('legacy-empty')).meta.title,'Blank session upgrade');
     assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 1);
     assert.equal(f.controlCalls.filter(row => row.path === '/tasks/activate').length, 1);
     assert.equal(f.promptCalls.length, 1);
@@ -1266,6 +1305,40 @@ test('Completed parent routes ordinary → data → PPT → chat without moving 
  }finally{await f.close();}
 });
 
+test('Forks mount the inherited registered scene in a fresh scope and cold recovery keeps its original tool roster after routing changes',options,async()=>{
+ const scenes=[['new-scene','workspace','mcp__workspace__list_files'],['research-data-analysis','data-report','mcp__research_report__inspect_study'],
+  ['paper-proofreading','files','mcp__paper__inspect_document'],['ppt','ppt','mcp__ppt__inspect_deck']].map(([id,adapter,tool])=>({
+   id,label:id,preset:'sss-'+id,adapter,allowed_tools:[tool],config_sha256:'a'.repeat(64),
+   mcp_rows:[{id:'fixture-'+id,name:'fixture-mcp',config:{fixture_tools:[tool],workspace:'__HARLESS_SESSION_WORKSPACE__'}}],
+  }));
+ const fixtureSchemas=scenes.flatMap(scene=>scene.allowed_tools.map(name=>({...toolSchemas[0],name})));
+ for(const scene of scenes){
+  const f=await fixture({broker:true,strictMountedTools:true,fixtureSchemas,scenes,capability_profile:'new-scene',comparison_scenes:['research-data-analysis','paper-proofreading','ppt']});
+  try{
+   const {sessionId}=await f.ctx.sessionController.create({agentPreset:scene.preset});const agent=f.agents.get(sessionId);
+   agent.session.append('turn/start',{turn:1});
+   agent.session.append('user/message',{id:'user',source:{kind:'user'},content:[{type:'text',text:'source history'}]},{surfaceOp:'append'});
+   agent.session.append('assistant/message',{turn:1,step:0,stream:[],message:{content:[{type:'text',text:'completed answer'}]}},{surfaceOp:'append'});
+   agent.session.append('turn/end',{turn:1,reason:{kind:'completed'}});
+   const branch=await f.ctx.sessionController.fork({sessionId,atSeq:2}),child=f.agents.get(branch.sessionId);
+   assert.notEqual(child.preset,agent.preset,'never reuse the source preset');
+   assert.deepEqual(child.allow.allow,scene.allowed_tools,scene.id);assert.deepEqual(child.mountedTools,scene.allowed_tools,scene.id);
+   const mounted=JSON.parse(readFileSync(join(f.directory,'presets',child.preset,'agent.cordis.yml'))).find(row=>row.id==='fixture-'+scene.id);
+   assert.equal(mounted.config.workspace,join(f.directory,'sessions',branch.sessionId,'work'));
+   assert.equal((await f.settings(undefined,'?session_id='+branch.sessionId)).value.selection.scene,scene.id);
+   assert.equal(JSON.parse(readFileSync(join(f.directory,'sessions',branch.sessionId,'work','branch-inputs.json'))).mounted_scene,scene.id);
+   const next=scene.id==='ppt'?'research-data-analysis':'ppt';
+   assert.equal((await f.settings({action:'select',session_id:branch.sessionId,selection:{scene:next}})).status,200);
+   assert.deepEqual(child.mountedTools,scene.allowed_tools,'routing does not broaden immutable parent tools');
+   await f.restart();
+   await f.ctx.sessionController.selectModel({sessionId:branch.sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off'},new AbortController().signal);
+   assert.deepEqual(f.agents.get(branch.sessionId).allow.allow,scene.allowed_tools,'cold restoration binds actual mounted scope');
+   assert.equal((await f.settings(undefined,'?session_id='+branch.sessionId)).value.selection.scene,next,'next-send scene is preserved independently');
+   assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0);
+  }finally{await f.close();}
+ }
+});
+
 test('Native fork creates independently numbered fresh scopes in the same account workspace',options,async()=>{
  const f=await fixture({broker:true,scenes:multiScenes});
  try{
@@ -1303,6 +1376,88 @@ test('Task API exposes real text chunks and tool activity before completion and 
   await f.complete(task);await f.restart();live=(await f.api(undefined,'?task_id='+task.task_id)).value;
   assert.equal(live.progress.status,'completed');assert.equal(live.activity[0].status,'failed','a tool without a real result is never presented as success');
  }finally{await f.close();}
+});
+
+test('Legacy progress rebuilds anchored tools once and preserves saved activities without an anchor',options,async t=>{
+ for(const anchored of [true,false])await t.test(anchored?'exact task anchor':'missing task anchor',async()=>{
+  const f=await fixture({broker:true});try{
+   const task=await f.preview({instruction:'legacy progress fixture'});await f.submit(task);
+   const session=f.agents.get(task.session_id).session;
+   f.emit('session/event',session,{type:'tool/call',data:{name:'mcp__demo__read_note',callId:'legacy-read'}});
+   f.emit('session/event',session,{type:'tool/result',data:{message:{source:{callId:'legacy-read'},content:[]}}});
+   f.emit('session/event',session,{type:'assistant/message',data:{message:{id:'legacy-answer',content:[{type:'text',text:'Legacy final answer.'}]}}});
+   await f.complete(task);
+   const output=join(f.directory,'tasks',task.task_id),statePath=join(output,'task-state.json'),eventsPath=join(output,'events.jsonl');
+   const saved=JSON.parse(readFileSync(statePath,'utf8'));delete saved.trace;delete saved.messages;
+   writeFileSync(statePath,JSON.stringify(saved));
+   const events=readFileSync(eventsPath,'utf8').trim().split('\n').map(line=>JSON.parse(line));
+   if(!anchored)for(const event of events)if(event.type==='user/message')event.data.source.rpcId='different-task';
+   events.unshift({type:'tool/call',data:{name:'mcp__foreign__list_files',callId:'foreign-read'}});
+   writeFileSync(eventsPath,events.map(event=>JSON.stringify(event)).join('\n')+'\n');
+   const evidence=readFileSync(eventsPath,'utf8'),request=readFileSync(join(output,'task.json'),'utf8'),calls=f.promptCalls.length;
+   for(let restart=0;restart<2;restart++){
+    await f.restart();const restored=(await f.api(undefined,'?task_id='+task.task_id)).value;
+    assert.equal(restored.progress.status,'completed');assert.equal(restored.answer,'Legacy final answer.');
+    assert.deepEqual(restored.activity,[{label:'读取资料',tool:'mcp__demo__read_note',status:'completed'}]);
+    assert.equal(restored.trace.filter(row=>row.kind==='tool').length,anchored?1:0);
+    assert.deepEqual(restored.messages.map(row=>row.text),anchored?['Legacy final answer.']:[]);
+    assert.doesNotMatch(JSON.stringify(restored.trace),/foreign/);
+   }
+   assert.equal(f.promptCalls.length,calls,'history recovery cannot submit a new model task');
+   assert.equal(readFileSync(eventsPath,'utf8'),evidence,'recovery leaves the original journal unchanged');
+   assert.equal(readFileSync(join(output,'task.json'),'utf8'),request);
+  }finally{await f.close();}
+ });
+});
+
+test('paired native steps reach SSE, scoped trace, feedback and a single-lane branch without leaking the opposite answer',options,async()=>{
+ const scenes=[{...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]}];
+ const f=await fixture({broker:true,scenes,capability_profile:'research-data-analysis',comparison_scenes:['research-data-analysis']});
+ let reader;
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'live-steps',mode:'queue',content:[{type:'text',text:'inspect then explain'}]},new AbortController().signal);
+  const base='http://local/api/harless/comparisons?session_id='+sessionId+'&id='+sent.comparison_id;
+  const call=async(query='',body)=>{const request=new Request(base+query,body?{method:'POST',body:JSON.stringify({session_id:sessionId,id:sent.comparison_id,...body}),headers:{'Content-Type':'application/json'}}:{});request.authorized=true;return f.routes.get('/api/harless/comparisons').fetch(request);};
+  reader=(await call('&stream=1')).body.getReader();await reader.read();
+  const processed=new Set();let partialObserved=false,done;
+  for(let i=0;i<100;i++){
+   const rows=(await f.api()).value.tasks;
+   for(const task of rows)if(task.status==='running'&&!processed.has(task.task_id)){
+    if(!f.promptCalls.some(row=>row.sessionId===task.session_id&&row.requestId===task.request_id))continue;
+    processed.add(task.task_id);const agent=f.agents.get(task.session_id),marker=processed.size===1?'BASELINE-ONLY':'MOTIF-ONLY';
+    for await(const chunk of f.stream(f.modelRequest(task,{tools:agent.ctx.tools.schemas()}),async function*(){yield {type:'text-delta',index:0,text:marker+' 我先检查资料。'};})){}
+    if(!partialObserved){
+     for(let n=0;n<12;n++){
+      let timer;const frame=await Promise.race([reader.read(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('missing real progress SSE')),1000);})]).finally(()=>clearTimeout(timer));
+      const text=new TextDecoder().decode(frame.value);if(text.includes('我先检查资料')){partialObserved=true;assert.ok(text.includes('streaming'));break;}
+     }
+    }
+    agent.session.append('assistant/message',{message:{id:marker+'-first',content:[{type:'text',text:marker+' 我先检查资料。'}]}});
+    agent.session.append('tool/call',{callId:marker+'-call',name:'mcp__demo__read_note',arguments:{path:'/home/private/source'}});
+    agent.session.append('tool/result',{message:{source:{callId:marker+'-call'},content:[]}});
+    for await(const chunk of f.stream(f.modelRequest(task,{tools:agent.ctx.tools.schemas()}),async function*(){yield {type:'text-delta',index:0,text:marker+' 最终结论。'};})){}
+    agent.session.append('assistant/message',{message:{id:marker+'-last',content:[{type:'text',text:marker+' 最终结论。'}]}});
+    await f.complete(task);
+   }
+   done=await(await call()).json();if(done.status==='completed')break;await new Promise(r=>setTimeout(r,15));
+  }
+  assert.equal(done.status,'completed');assert.equal(partialObserved,true);assert.equal(done.lanes.baseline.messages.length,2);
+  assert.ok(done.lanes.baseline.trace.some(row=>row.kind==='tool'));assert.doesNotMatch(JSON.stringify(done.lanes.baseline.trace),/private/);
+  const trace=await(await call('&trace=1&lane=baseline&limit=1')).json();assert.equal(trace.items.length,1);assert.equal(trace.has_more,true);
+  const feedback=await(await call('',{action:'feedback',lane:'baseline',vote:'up',output_sha256:done.lanes.baseline.output_sha256})).json();assert.equal(feedback.lanes.baseline.feedback,'up');
+  const branch=await(await call('',{action:'fork',lane:'motif',output_sha256:done.lanes.motif.output_sha256})).json();assert.ok(branch.sessionId,JSON.stringify(branch));
+  const history=JSON.stringify((await f.ctx.sessionController.inspect(branch.sessionId)).events);assert.match(history,/MOTIF-ONLY/);assert.doesNotMatch(history,/BASELINE-ONLY/);
+  const context=JSON.parse(readFileSync(join(f.directory,'sessions',branch.sessionId,'work','branch-inputs.json'))).context;
+  for(const lane of ['baseline','motif']){assert.match(JSON.stringify(context[lane]),/MOTIF-ONLY/);assert.doesNotMatch(JSON.stringify(context[lane]),/BASELINE-ONLY/);}
+  f.ctx.agentPresets.mount=async()=>{throw Error('tools.restrict() unknown global tools: mcp__private__read_secret /home/internal/preset.yml');};
+  const failed=await call('',{action:'fork',lane:'baseline',output_sha256:done.lanes.baseline.output_sha256});
+  const failedBody=await failed.json();assert.equal(failed.status,409);assert.equal(failedBody.error.code,'branch_unavailable');
+  assert.match(failedBody.error.message,/原对话与结果已保留/);assert.doesNotMatch(JSON.stringify(failedBody),/tools\.restrict|mcp__|private|internal|preset/);
+  const privateFailures=readdirSync(join(f.directory,'sessions')).flatMap(id=>{try{return[JSON.parse(readFileSync(join(f.directory,'sessions',id,'work','branch-initialization-error.json')))];}catch{return[];}});
+  assert.equal(privateFailures.length,1);assert.match(privateFailures[0].message,/tools\.restrict/);
+  await reader.cancel();reader=undefined;
+ }finally{await reader?.cancel();await f.close();}
 });
 
 test('Trash rejects active tasks and isolates direct APIs; restoring retains task history and original workspace',options,async()=>{

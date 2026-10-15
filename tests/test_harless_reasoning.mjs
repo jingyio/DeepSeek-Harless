@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
-import { WebDeepSeekAdapter, webReasoningEffort } from '../src/adapters/harless_reasoning.ts';
+import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels } from '../src/adapters/harless_reasoning.ts';
 
 test('Native model discovery offers Off/On while the installed adapter sends the supported wire values',async()=>{
   const requests=[];
@@ -17,7 +17,13 @@ test('Native model discovery offers Off/On while the installed adapter sends the
   try {
     const options=resolveAdapterOptions({baseURL:`http://127.0.0.1:${server.address().port}`,reasoningEffort:'off'});
     delete options.maxTokens;
-    const adapter=new WebDeepSeekAdapter({options:()=>options,resolveApiKey:async()=>'local-diagnostic-only',resolveUserId:()=> 'diagnostic',prepareExtensions:async()=>({fields:{},accept:async()=>{}})});
+    const configured=[{provider:'deepseek-official',model:'deepseek-flash',label:'DeepSeek V4.1 Flash',available:true},
+      {provider:'deepseek-official',model:'deepseek-v4-pro',label:'DeepSeek V4 Pro',available:true,reasoning_unavailable:{high:'On 暂不可用：当前任务预算不足。'}}];
+    options.models=webDeepSeekModels(options.models,configured);
+    const adapter=new WebDeepSeekAdapter({options:()=>options,resolveApiKey:async()=>'local-diagnostic-only',resolveUserId:()=> 'diagnostic',prepareExtensions:async()=>({fields:{},accept:async()=>{}})},configured);
+    const catalog=await adapter.listModels('deepseek-official');
+    assert.deepEqual(catalog.map(row=>row.id),['deepseek-flash','deepseek-v4-pro']);
+    assert.deepEqual(catalog[0].inputModalities,['text','image']);assert.deepEqual(catalog[1].inputModalities,['text']);
     const model=await adapter.resolveModel('deepseek-official','deepseek-flash');
     assert.deepEqual(model.reasoning.efforts.map(row=>[row.id,row.name]),[['off','Off'],['high','On']]);
     assert.equal(model.reasoning.defaultEffort,'off');assert.equal(model.defaultMaxTokens,undefined);
@@ -32,8 +38,25 @@ test('Native model discovery offers Off/On while the installed adapter sends the
     assert.equal(requests.length,2);
     assert.deepEqual(requests[0].thinking,{type:'disabled'});assert.ok(!('reasoning_effort' in requests[0]));
     assert.deepEqual(requests[1].thinking,{type:'enabled'});assert.equal(requests[1].reasoning_effort,'high');
+    const pro=await adapter.prepareCall('deepseek-official','deepseek-v4-pro');
+    assert.equal(pro.model.context.contextWindow,options.models.find(row=>row.id==='deepseek-v4-pro').contextWindow);
+    assert.equal(pro.model.reasoning.efforts.find(row=>row.id==='high').name,'On（当前预算不可用）');
+    for await(const chunk of pro.stream({provider:'deepseek-official',model:'deepseek-v4-pro',reasoningEffort:'off',
+      messages:[{id:'pro-user',role:'user',content:[{type:'text',text:'Contract check'}]}]})){}
+    assert.equal(requests[2].model,'deepseek-v4-pro');assert.deepEqual(requests[2].thinking,{type:'disabled'});
     for(const request of requests) {assert.equal(request.stream,true);assert.ok(!('max_tokens' in request));}
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+});
+
+test('Model availability keeps the configured route and reports unavailable reasoning without fallback',()=>{
+  const pro={provider:'deepseek-official',model:'deepseek-v4-pro',label:'Pro',available:true,
+    reasoning_unavailable:{high:'On 暂不可用：当前任务预算 $0.23 不足。'}};
+  assert.equal(webReasoningAvailability(pro,'off'),'off');
+  assert.throws(()=>webReasoningAvailability(pro,'high'),/预算 \$0.23/);
+  const native=resolveAdapterOptions({}).models;
+  const unavailable=webDeepSeekModels(native,[{...pro,available:false}]);assert.deepEqual(unavailable,[]);
+  assert.throws(()=>webDeepSeekModels(native,[{...pro,model:'deepseek-v4-flash'}]),/not supported/);
+  assert.throws(()=>webDeepSeekModels(native,[{...pro,model:'invented-model'}]),/not supported/);
 });
 
 test('Unsupported provider effort combinations fail without claiming a fake toggle',()=>{
