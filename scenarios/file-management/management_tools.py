@@ -1,6 +1,6 @@
 """Autonomous copy-workspace operations; risky effects need host-issued approval."""
 from __future__ import annotations
-import copy,json,os,shutil
+import copy,json,os,shutil,errno
 from pathlib import Path,PurePosixPath
 from typing import Literal
 from uuid import uuid4
@@ -24,11 +24,12 @@ class ManagementAction(BaseModel):
     destination:str|None=Field(default=None,max_length=180)
     destination_root:str='workspace'
 
-def tree(root):
+def tree(root,ignored=()):
     files={};directories=[]
     for p in sorted(Path(root).rglob('*')):
         if p.is_symlink():raise ValueError('symlink outside management authority')
         n=p.relative_to(root).as_posix()
+        if n in ignored:continue
         if p.is_file():files[n]=sha(p)
         elif p.is_dir():directories.append(n)
         else:raise ValueError('unsupported workspace object')
@@ -66,13 +67,13 @@ class ManagementScene(OperationSceneV2):
           'initial_snapshot_sha256':digest(spec['initial_tree']),'result_read_allowed':True}
         self.execution_version=execution_version();self.report_contract={'version':'sss-file-report-v3','kind':'task_result'}
         self.task_read=False;self.search_receipts={};self.collections={};self.collection_results={}
-        self.plans={};self.receipts={};self.result_handles={};self.handles={};self.reads={};self.index={};self.journals={};self.external_read_grants=[]
+        self.plans={};self.receipts={};self.result_handles={};self.handles={};self.reads={};self.index={};self.journals={};self.external_read_grants=[];self.local_staging={}
         self.expected_tree=copy.deepcopy(spec['initial_tree']);self.sync_files()
         if self.state_file.exists():
             s=json.loads(self.state_file.read_text())
             if s['state_sha256']!=digest({k:v for k,v in s.items() if k!='state_sha256'}) or s['input_sha256']!=self.input_digest or s['execution_version']!=execution_version():raise ValueError('original management task/version/state changed')
             self.expected_tree=s['expected_tree']
-            for k in (*self.fields,'journals','external_read_grants'):setattr(self,k,s[k])
+            for k in (*self.fields,'journals','external_read_grants','local_staging'):setattr(self,k,s[k])
             actual=self.actual_tree();allowed=[self.expected_tree]
             for j in self.journals.values():
                 if j['status'] in ('executing','restoring') and j.get('flight'):allowed += [j['flight']['before'],j['flight']['after']]
@@ -80,11 +81,11 @@ class ManagementScene(OperationSceneV2):
             self.expected_tree=actual;self.sync_files()
         elif self.actual_tree()!=self.expected_tree:raise ValueError('initial management material changed')
         self.persist()
-    def actual_tree(self):return {key:tree(p) for key,p in self.roots.items()}
+    def actual_tree(self):return {key:tree(p,[v['path'] for v in self.local_staging.values() if v['root']==key]) for key,p in self.roots.items()}
     def sync_files(self):self.expected={key+'/'+name:h for key,t in self.expected_tree.items() for name,h in t['files'].items()}
     def persist(self):
         body={'input_sha256':self.input_digest,'execution_version':execution_version(),'expected_tree':self.expected_tree,
-          'journals':self.journals,'external_read_grants':self.external_read_grants,**{k:getattr(self,k) for k in self.fields}}
+          'journals':self.journals,'external_read_grants':self.external_read_grants,'local_staging':self.local_staging,**{k:getattr(self,k) for k in self.fields}}
         body['state_sha256']=digest(body);atomic(self.state_file,body)
         for pid,j in self.journals.items():atomic(self.output/'journals'/f'{pid}.json',j)
     def guard(self):
@@ -103,7 +104,7 @@ class ManagementScene(OperationSceneV2):
     def resolve_path(self,key,name):
         if key not in self.roots or not isinstance(name,str) or not 1<=len(name)<=180 or '\\' in name or any(ord(c)<32 for c in name):raise ToolError('invalid registered relative path')
         p=PurePosixPath(name)
-        if p.is_absolute() or any(c in ('..','.') for c in name.split('/')) or p.parts[0] in RESERVED:raise ToolError('path outside copy grant')
+        if p.is_absolute() or any(c in ('..','.') for c in name.split('/')) or p.parts[0] in RESERVED or any(c.startswith('.sss-management-') for c in p.parts):raise ToolError('path outside copy grant')
         result=self.roots[key]/p
         if not result.resolve().is_relative_to(self.roots[key]) or any(q.is_symlink() for q in (result,*result.parents) if q.is_relative_to(self.roots[key])):raise ToolError('path escapes registered copy')
         return result
@@ -232,14 +233,14 @@ class ManagementScene(OperationSceneV2):
                 elif e['kind']=='unlink':path.unlink()
                 else:
                     if sha(Path(e['staged']))!=e['sha256']:raise ToolError('staged bytes changed')
-                    if e['kind']=='replace':os.replace(e['staged'],path)
-                    else:os.link(e['staged'],path)
+                    self.publish_bytes(e['staged'],path,e['kind']=='replace')
                 if getattr(self,'crash_after_effect',None)==len(j['completed']):raise SystemExit('recorded management effect boundary')
             self.expected_tree=self.actual_tree();self.sync_files()
             if self.expected_tree!=flight['after']:raise ToolError('effect footprint changed')
             j['boundaries'].append(flight);j['completed'].append(e);j.pop('flight',None);self.persist()
         for a in p['actions']:
             if a['op']=='read':self.external_read_grants.append(a['source_root']+'/'+a['source'])
+        self.clean_local_staging()
         j.update(status='executed_verified',after=copy.deepcopy(self.expected_tree));self.persist()
         self.receipts[plan_id]={'plan_id':plan_id,'status':'executed_verified','operation_count':len(p['actions']),'snapshot_sha256':digest(self.expected_tree),'journal_sha256':digest(j)}
         self.persist();return self.receipt(plan_id)
@@ -253,6 +254,36 @@ class ManagementScene(OperationSceneV2):
                 n=a['destination_root']+'/'+a['destination'];files.append({'file_id':self.file_id(n),'path':a['destination'],'root_id':a['destination_root'],'sha256':self.expected[n]})
                 if a['destination_root']!='workspace':self.external_read_grants.append(n)
         self.persist();v={'status':'verified_plan_results','receipt_id':receipt_id,'files':files,'directories':directories,'primary_file_id':files[0]['file_id'] if len(files)==1 else None};atomic(self.output/'result-inspections'/f'{receipt_id}.json',v);return self.stamp(v)
+    def publish_bytes(self,source,target,replace=False):
+        source=Path(source);target=Path(target)
+        try:
+            (os.replace if replace else os.link)(source,target);return
+        except OSError as error:
+            if error.errno!=errno.EXDEV and getattr(error,'winerror',None)!=17:raise
+        # Only a specifically journaled private temporary file is ignored by
+        # the user-tree guard. Unknown similarly named files remain visible.
+        key=digest({'source':str(source),'target':str(target),'replace':replace})
+        root=next(k for k,p in self.roots.items() if target.is_relative_to(p))
+        name=target.parent/('.sss-management-'+key[:32]+'.tmp')
+        descriptor={'root':root,'path':name.relative_to(self.roots[root]).as_posix()}
+        if self.local_staging.get(key) not in (None,descriptor):raise ToolError('original local staging changed')
+        if key not in self.local_staging:
+            if name.exists() or name.is_symlink():raise ToolError('local staging collision')
+            self.local_staging[key]=descriptor;self.persist()
+        if name.is_symlink():raise ToolError('local staging symlink refused')
+        if name.exists():name.unlink()
+        with source.open('rb') as src,name.open('xb') as dst:
+            shutil.copyfileobj(src,dst);dst.flush();os.fsync(dst.fileno())
+        if sha(name)!=sha(source):raise ToolError('local staging bytes changed')
+        (os.replace if replace else os.link)(name,target)
+        if name.exists():name.unlink()
+        self.local_staging.pop(key);self.persist()
+    def clean_local_staging(self):
+        for key,v in list(self.local_staging.items()):
+            p=self.roots[v['root']]/v['path']
+            if p.is_symlink():raise ToolError('local staging symlink refused')
+            if p.exists():p.unlink()
+            self.local_staging.pop(key);self.persist()
     def restore_sha(self,plan_id):
         j=self.journals[plan_id]
         return digest({'plan_sha256':self.plans[plan_id]['plan_sha256'],'direction':'restore','before':j.get('restore_before',self.expected_tree)})
@@ -279,6 +310,9 @@ class ManagementScene(OperationSceneV2):
         # Each reverse boundary is persisted before touching the corresponding path.
         todo=list(reversed(list(zip(j['completed'],j['boundaries']))))
         j.update(status='restoring',restored_count=j.get('restored_count',0));self.persist()
+        # Abandoned target-volume copies must be removed before undoing their
+        # parent directories. They never became user-visible file effects.
+        self.clean_local_staging()
         for e,b in todo[j['restored_count']:]:
             self.active()
             current=self.actual_tree()
@@ -292,12 +326,12 @@ class ManagementScene(OperationSceneV2):
                     saved=self.output/'backups'/plan_id/e['root']/e['path']
                     if sha(saved)!=j['backups'][e['root']+'/'+e['path']]:raise ToolError('restoration backup changed')
                     temp=self.output/'restore-staging'/uuid4().hex;temp.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(saved,temp)
-                    if e['kind']=='replace':os.replace(temp,path)
-                    else:os.link(temp,path)
+                    self.publish_bytes(temp,path,e['kind']=='replace')
             self.expected_tree=self.actual_tree()
             if self.expected_tree!=b['before']:raise ToolError('restoration effect footprint changed')
             j['restore_boundaries'].append(j['flight']);self.sync_files();j['restored_count']+=1;j.pop('flight',None);self.persist()
         if self.expected_tree!=j['before']:raise ToolError('restoration postcondition differs')
+        self.clean_local_staging()
         j.update(status='restored_verified',after=self.expected_tree);self.persist();return self.stamp({'plan_id':plan_id,'status':'restored_verified'})
     def submit_report(self,summary:str,file_ids:list[str],gaps:list[str]):
         self.active()

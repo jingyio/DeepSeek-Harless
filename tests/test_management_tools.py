@@ -146,3 +146,70 @@ def test_snapshot_compares_original_user_tree_and_records_empty_directories(case
     r=s.compare_snapshot();assert r['added']==['workspace/new/note.txt']
     assert r['added_directories']==['workspace/empty','workspace/new'] and not r['modified'] and not r['deleted']
     assert not any('.experiment-copy' in n for n in r['unchanged'])
+
+@pytest.mark.parametrize('replace',[False,True])
+def test_cross_volume_publication_and_restore_keep_atomic_user_tree(case,monkeypatch,replace):
+    s,spec,w,x,out=case
+    import errno,os
+    link,swap=os.link,os.replace
+    def cross_link(src,dst):
+        if Path(src).is_relative_to(out) and (Path(dst).is_relative_to(w) or Path(dst).is_relative_to(x)):raise OSError(errno.EXDEV,'cross-volume diagnostic')
+        return link(src,dst)
+    def cross_swap(src,dst):
+        if Path(src).is_relative_to(out) and (Path(dst).is_relative_to(w) or Path(dst).is_relative_to(x)):raise OSError(errno.EXDEV,'cross-volume diagnostic')
+        return swap(src,dst)
+    monkeypatch.setattr(os,'link',cross_link);monkeypatch.setattr(os,'replace',cross_swap)
+    p=s.preview_actions([{'op':'overwrite' if replace else 'copy','source':'note.txt','destination':'existing.txt' if replace else 'new/copy.txt'}])
+    if replace:approve(s,p)
+    r=s.execute_plan(p['plan_id']);assert not s.local_staging
+    if replace:s.approve_restore(p['plan_id'],s.restore_sha(p['plan_id']),{'outcome':'allowed-once','approval_event_id':'fixture-inverse','session_id':'session-alice','task_sha256':s.input_digest})
+    s.restore_plan(p['plan_id']);assert s.actual_tree()==spec['initial_tree'] and not s.local_staging
+
+@pytest.mark.parametrize('phase',['partial-copy','published'])
+@pytest.mark.parametrize('direction',['resume','restore'])
+@pytest.mark.parametrize('replace',[False,True])
+def test_cross_volume_process_exit_keeps_partial_bytes_private_and_recovers(case,monkeypatch,phase,direction,replace):
+    s,spec,w,x,out=case
+    import errno,os,shutil
+    link,swap,copy_bytes=os.link,os.replace,shutil.copyfileobj
+    crashed=False
+    def publication(fn,src,dst):
+        nonlocal crashed
+        if Path(src).is_relative_to(out) and Path(dst).is_relative_to(w):
+            raise OSError(errno.EXDEV,'cross-volume diagnostic')
+        result=fn(src,dst)
+        if phase=='published' and Path(src).name.startswith('.sss-management-') and not crashed:
+            crashed=True;raise SystemExit('local publication interrupted')
+        return result
+    def partial(src,dst,*args,**kwargs):
+        nonlocal crashed
+        if phase=='partial-copy' and Path(dst.name).name.startswith('.sss-management-') and not crashed:
+            dst.write(src.read(3));dst.flush();crashed=True
+            raise SystemExit('local copy interrupted')
+        return copy_bytes(src,dst,*args,**kwargs)
+    monkeypatch.setattr(os,'link',lambda src,dst:publication(link,src,dst))
+    monkeypatch.setattr(os,'replace',lambda src,dst:publication(swap,src,dst))
+    monkeypatch.setattr(shutil,'copyfileobj',partial)
+    p=s.preview_actions([{'op':'overwrite' if replace else 'copy','source':'note.txt','destination':'existing.txt' if replace else 'new/copy.txt'}])
+    if replace:approve(s,p)
+    with pytest.raises(SystemExit):s.execute_plan(p['plan_id'])
+    assert s.local_staging
+    target=w/('existing.txt' if replace else 'new/copy.txt')
+    if phase=='partial-copy':
+        assert (target.read_text()=='old destination') if replace else not target.exists()
+    recovered=ManagementScene(spec,out);recovered.read_task()
+    assert not any('.sss-management-' in r['path'] for r in recovered.list_files()['files'])
+    if direction=='resume':
+        result=recovered.execute_plan(p['plan_id'])
+        assert target.read_text()=='original bytes' and not recovered.local_staging
+        assert recovered.execute_plan(p['plan_id'])['receipt_id']==result['receipt_id']
+    if replace:recovered.approve_restore(p['plan_id'],recovered.restore_sha(p['plan_id']),{'outcome':'allowed-once','approval_event_id':'fixture-inverse','session_id':'session-alice','task_sha256':recovered.input_digest})
+    recovered.restore_plan(p['plan_id'])
+    assert recovered.actual_tree()==spec['initial_tree'] and not recovered.local_staging
+    assert not list(w.rglob('.sss-management-*'))
+
+def test_unknown_staging_file_is_never_hidden_from_recovery(case):
+    s,spec,w,x,out=case
+    (w/'.sss-management-unknown.tmp').write_text('foreign bytes')
+    with pytest.raises(Exception,match='unrecorded'):ManagementScene(spec,out)
+    with pytest.raises(Exception,match='outside recorded'):s.list_files()
