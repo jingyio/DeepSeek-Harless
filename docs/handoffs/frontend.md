@@ -1,5 +1,12 @@
 # 前端接入当前科研Agent分支
 
+## GeneLoop /management 接入（2026-10-15）
+
+- 基线main `2a03e22`，开发分支`codex/geneloop-management`。`/management`选择内部Files场景，旧`/files`兼容；配置显示“文件管理”，原默认只读与整理副本授权沿用。
+- 客户端使用settings返回的`scenes[].shortcut=management`；按原工作区/会话流程上传文件，命令选择不调用模型。
+- 52项快捷命令与原生任务分发确定性检查通过；详细接口与范围见[命令接入](../changes/geneloop-management-command.md)。本次未部署线上，不把命令接入当成17工具v2 RSI契约迁移。
+- 已完成的持续RSI代码及4份原始策略另已上传`feature/rsi-research-agent`（`f397645`，Windows进程检测随后修复），原始日志/数据/证书仍私有。
+
 ## 最新文件任务契约（2026-10-13）
 
 重命名/转换/空文本的新TaskScene最终24次新留出均通过机器验收。使用既有分支更新后的`scenarios/file-management/task_tools.py`作为MCP入口，保持原14工具、stdio配置及`FM_TASK_FILE`/`FM_OUTPUT`变量；场景继续显式`acceptance_guard={"kind":"file_management","max_repairs":2}`。旧服务和旧任务不会自动升级口径。
