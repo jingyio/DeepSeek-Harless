@@ -20,12 +20,13 @@ export type Scene = {
 };
 export type Selection = { scene: string; mode: ExecutionMode; rsi: boolean };
 const shortcutNames: Record<string, string> = { ppt: 'ppt', 'paper-proofreading': 'paper',
-  'research-data-analysis': 'data', 'new-scene': 'chat' };
+  'research-data-analysis': 'data', files: 'management', 'new-scene': 'chat' };
 export function sceneShortcut(scene: Scene): string { return shortcutNames[scene.id] ?? scene.id; }
 /** Only a leading, complete scene token is a control; paths and prose stay text. */
 export function parseSceneShortcut(text: string, scenes: readonly Scene[]) {
   const match = /^\s*\/([a-z][a-z0-9_-]*)(?=\s|$|[^\x00-\x7F])/i.exec(text);
-  const scene = match && scenes.find(row => sceneShortcut(row) === match[1].toLowerCase());
+  const token = match?.[1].toLowerCase();
+  const scene = match && scenes.find(row => sceneShortcut(row) === token || (row.id === 'files' && token === 'files'));
   return scene ? { scene: scene.id, text: text.slice(match![0].length).trimStart() } : undefined;
 }
 export class SettingsError extends Error {

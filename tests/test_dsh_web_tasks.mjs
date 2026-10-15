@@ -1272,3 +1272,20 @@ test('Trash rejects active tasks and isolates direct APIs; restoring retains tas
   assert.ok(group.sessionIds.includes(task.session_id));assert.equal((await f.trash()).value.sessions.length,0);
  }finally{await f.close();}
 });
+
+test('Management selection is model-free and its native task keeps the Files read-only grant',options,async()=>{
+ const scene={...multiScenes[0],id:'files',label:'文件管理',adapter:'files',mcp_rows:[]};
+ const f=await fixture({broker:true,scenes:[scene],capability_profile:'files'});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const prompt=(text,id)=>f.ctx.sessionController.prompt({sessionId,requestId:id,mode:'queue',content:[{type:'text',text}]},new AbortController().signal);
+  await prompt('/management','management-selection');assert.equal(f.promptCalls.length,0);assert.equal(f.registrations.size,0);
+  const settings=await f.settings(undefined,'?session_id='+sessionId);assert.equal(settings.value.scenes[0].shortcut,'management');
+  await prompt('/management 先讨论盘点需求','management-first');let task=(await f.api()).value.tasks[0];
+  assert.equal(task.scene,'files');assert.notEqual(task.scene_options.allow_output,true);assert.equal(f.promptCalls[0].content[0].text,'先讨论盘点需求');await f.complete(task);
+  const path=join(f.directory,'sessions',sessionId,'work','file-task.json'),spec=JSON.parse(readFileSync(path,'utf8'));
+  assert.deepEqual(spec.allowed_operations,[]);assert.equal(spec.write_grant.max_actions,0);
+  await prompt('/files 继续讨论检索范围','management-legacy');task=(await f.api()).value.tasks.find(t=>t.request_id==='management-legacy');assert.equal(task.scene,'files');
+  assert.equal(JSON.parse(readFileSync(path,'utf8')).write_grant.max_actions,0);await f.complete(task);
+ }finally{await f.close();}
+});

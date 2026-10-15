@@ -641,3 +641,8 @@ PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历
 
 工作区名称行同时支持展开和收起，选中状态不强制重新展开。工作区连接按稳定 ID 与会话归属复用空草稿，不比较已脱敏的目录标识；已有文字或附件的草稿不会被新建操作覆盖。会话菜单和当前对话顶部提供移入回收站，侧栏“最近删除”始终提供恢复入口。
 
+
+
+## GeneLoop文件管理快捷入口（2026-10-15）
+
+Files内部ID仍为`files`，`/api/harless/settings`的`scenes[].shortcut`现为`management`，界面标记与快捷菜单使用这一字段；`/management`为公开入口，旧`/files`为兼容别名。只处理消息开头的完整token，不能把正文或`/management/path`作为控制命令。`scene_options.allow_output`的原授权与预算保持。见[接入说明](changes/geneloop-management-command.md)。

@@ -1,12 +1,14 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+文件管理现在使用 `/management`：上传待处理文件，说明盘点、读取、查重、检索或整理需求；默认只读，在场景菜单开启“允许整理任务副本”后才可按预览和授权整理。旧 `/files` 仍可使用。内部场景ID保持`files`，现有会话和权限绑定沿用。
+
 已有 PPT、论文、数据分析 Motif 库已统一到版本化的 [motif-libraries/](motif-libraries/README.md)。管理员在成员 Web policy 配置 `comparison_scenes: ["ppt", "paper-proofreading", "research-data-analysis"]` 后，原生 `/ppt`、`/paper`、`/data` 聊天分别执行 Baseline 与 Motif 两路，保留各自多轮历史、交付文件与 1–5 分评分；论文原库按其授权运行 Shadow。资料通过原生附件上传，账号隔离与预算沿用现有服务。库缺失或兼容锁失效会明确回退，不能把回退记为优化成功。
 
 持续部署可使用 `scripts/serve-web-budget.py`，显式指定私有 output、现有累计 checkpoint 和获准上限；缺少 checkpoint 会拒绝启动，禁止因重启清零。用户于 2026-10-15 取消当前共享服务器累计 1 美元费用上限，配置使用 `--budget-usd 0`（policy 的 `run_budget_usd: null`），请求次数也不限；每任务 0.23 美元继续保留。按后续指示，Web 单次文字输入不设应用长度上限，输出使用 `max_output_tokens: null` 并省略请求 `max_tokens`，保留服务商原生容量边界。调用前持久化预约费用，未知使用量继续占用任务预算，累计账本照常记录。Linux 服务器的真实三场景功能验收和失败边界见 [联调记录](docs/experiments/trained-three-scenes-20261014-v1.md)。
 
 四场景研究代码的分支整合与兼容验收见 [当前整合记录](docs/experiments/four-scenario-main-integration-20261014-v1.md)。论文生成工具/轨迹 RSI 的显式实验入口在 [论文场景](scenarios/paper-submission/README.md)，文献处理在 [文献场景](scenarios/literature-notes/README.md)。研究 CLI 与统一 Web 的工具契约不同，分支合并不会自动赋予旧实验库产品 Execute 权限；文献的任务级 Web 绑定和双栏评分仍需单独验收。
 
-Web 场景快捷入口支持 `/ppt`、`/paper`、`/data`、`/chat`，输入前缀即可选择并显示有色标识，也可直接输入完整短命令和请求；`/harless` 保留场景、模式与 RSI 控制。启用三场景对照的账号部署允许在同一可见对话中先 `/data` 再 `/ppt`，无需新建聊天；后台按场景轮换独立任务子会话，承接有界历史，并重新核验可用来源与交付文件。正在运行的回复须完成或取消后再切换。删除未发送的场景标记会切回普通对话；正常发送后的编辑器清空不取消已选场景。详见 [场景与账号控制](docs/harless-controls.md)。
+Web 场景快捷入口支持 `/ppt`、`/paper`、`/data`、`/management`、`/chat`，输入前缀即可选择并显示有色标识，也可直接输入完整短命令和请求；`/harless` 保留场景、模式与 RSI 控制。启用三场景对照的账号部署允许在同一可见对话中先 `/data` 再 `/ppt`，无需新建聊天；后台按场景轮换独立任务子会话，承接有界历史，并重新核验可用来源与交付文件。正在运行的回复须完成或取消后再切换。删除未发送的场景标记会切回普通对话；正常发送后的编辑器清空不取消已选场景。详见 [场景与账号控制](docs/harless-controls.md)。
 
 面向用户的工作区只需填写名称，目录由服务器按账号分配；选中工作区后，“新会话”在该工作区创建独立聊天。界面不显示服务器目录或内部 preset ID，场景候选选中后立即显示蓝色标识，后台继续完成准备。文字、附件及二者组合都进入同一场景的 DSH / Motif 流程，保留完整工具，由模型判断直接回答、询问资料或调用工具；没有附件不会被发送入口拒绝。资料验证在实际工具调用时进行，Motif 仍只复用满足原有证据与权限条件的轨迹。三场景对照支持在同一可见对话中继续上传资料，每批新来源使用独立处理子会话并分别承接两侧近期讨论，原资料、结果与评分保留，不把旧来源回执用于新文件。
 
