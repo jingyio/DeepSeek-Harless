@@ -26,8 +26,8 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
     { id: 'research-data-analysis', label: 'Data', available: false },
     { id: 'new-scene', label: 'Chat', available: true }];
   if (allAvailable) for (const scene of scenes) scene.available = true;
-  const values = new Map(), inputs = new Map(), posts = [], opened = [], rebinds = [], reads = [], submissions = [];
-  let registered, decoration, trigger, statusComponent;
+  const values = new Map(), inputs = new Map(), posts = [], opened = [], rebinds = [], reads = [], submissions = [], blocks = new Map(), statusUpdates = [];
+  let registered, decoration, trigger, statusComponent, freshCount = 0;
   function makeInput(id, draft = '/p 请生成报告') {
     values.set(id, { selection: { scene: 'new-scene', mode: 'baseline', rsi: true }, scenes, scene_locked: locked });
     let state = { draft, draftRev: 1, phase: 'plain', attachmentIds: [] }; const listeners = new Set();
@@ -57,7 +57,10 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
     if (!body && beforeGet) { const snapshot = structuredClone(value); await beforeGet(); return { ok:true,json:async()=>snapshot }; }
     if (body?.action === 'select' && locked && body.selection.scene !== value.selection.scene)
       return { ok: false, json: async () => ({ error: { code: 'scene_requires_new_session', message: '新建会话' } }) };
-    if (body?.action === 'new_session') { makeInput('fresh', ''); value = values.get('fresh'); value.session_id = 'fresh'; }
+    if (body?.action === 'new_session') {
+      const freshId = ++freshCount === 1 ? 'fresh' : 'fresh' + freshCount;
+      makeInput(freshId, ''); value = values.get(freshId); value.session_id = freshId;
+    }
     if (body) value.selection = { ...value.selection, ...body.selection };
     if (body?.action === 'set_scene_options') value.scene_options = body.options;
     return { ok: true, json: async () => structuredClone(value) };
@@ -67,10 +70,14 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
   const setCurrent = id => { current = id; for (const fn of sessionListeners) fn(); };
   const sessions = { scope: id => inputs.has(id) ? { id } : undefined, refresh: async () => {}, open(id) { opened.push(id); setCurrent(id); onOpen?.(id, inputs); },
     list: { getSnapshot: () => ({ current }), subscribe(fn) { sessionListeners.add(fn); return () => sessionListeners.delete(fn); } } };
-  registered.factory(name => name === 'react' ? {} : undefined).apply({
+  registered.factory(name => name === 'react' ? {
+    useState: initial => [initial, value => statusUpdates.push(value)], useEffect: effect => effect(),
+    createElement: (type, props, ...children) => ({ type, props, children }),
+  } : undefined).apply({
     get: name => ({ commandUi: { decorate(spec) { decoration = spec; return () => {}; }, popupFor: () => ({ dismiss() {} }) },
       inputTriggers: { registerSource(spec) { trigger = spec; return () => {}; } }, sessions,
-      conversation: { input: { for: scope => inputs.get(scope.id) }, rebindDraftFiles: (id, ids) => rebinds.push({ id, ids }) } })[name],
+      conversation: { input: { for: scope => inputs.get(scope.id) }, rebindDraftFiles: (id, ids) => rebinds.push({ id, ids }),
+        blocks: { storeFor: id => ({ getSnapshot: () => blocks.get(id) }), set: (id, value) => value ? blocks.set(id, value) : blocks.delete(id) } } })[name],
     uiConversation: { events: { register() { return () => {}; } } },
     effect: install => install(), slots: { inject(_name, install) { install(); }, register(spec, component) { if(spec.name==='conversation.input.left')statusComponent = component; } },
   });
@@ -79,7 +86,8 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
     trigger.onPick({ session: { sessionId: id }, candidate: { value: scene }, span: { start: 0, end: tokenLength, draftRev: rev } });
     for (let i = 0; i < 15; i++) await new Promise(resolve => setImmediate(resolve));
   };
-  return { decoration, trigger, inputs, posts, opened, values, pick, statusComponent, rebinds, reads, submissions, setCurrent };
+  return { decoration, trigger, inputs, posts, opened, values, pick, statusComponent, rebinds, reads, submissions, blocks, setCurrent,
+    statusUpdates, observeStatus: (sessionId = 'alice') => statusComponent({ sessionId, openSession: id => sessions.open(id) }) };
 }
 test('Scene slash source filters each prefix and uses native reference chips', async () => {
   const f = fixture(), session = { sessionId: 'alice' };
@@ -210,6 +218,7 @@ test('Real native enter adjudication routes typed complete scenes before allowin
     assert.equal(await n.controller.adjudicate(line, new AbortController().signal, { attachments: 0 }), undefined);
     assert.equal(f.values.get('alice').selection.scene, scene);
     assert.equal(input.state.getSnapshot().draft, line, 'default native send retains the original request');
+    input.setDraft(''); // Native commit clears while leaving adjudication, not a user deletion.
     input.setPhase('plain');
   }
   const count = f.posts.length;
@@ -357,4 +366,139 @@ test('Typing after an immediate scene chip is normal and never sends or loses th
  assert.equal(input.state.getSnapshot().draft,'/data 请帮我规划分析');assert.deepEqual(input.state.getSnapshot().attachmentIds,['latest']);
  assert.equal(input.notices.length,0);assert.equal(f.submissions.length,0);
  assert.equal(f.values.get('alice').selection.scene,'research-data-analysis');
+});
+
+test('Deleting a selected scene token resets only its session and preserves remaining text and files', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
+  await f.trigger.candidates(session, { query: 'd', position: 'leading' }); input.setDraft('/d 分析计划');
+  await f.pick('alice', 'research-data-analysis'); input.addAttachments(['csv']);
+  input.setDraft('分析计划');
+  assert.match(f.blocks.get('alice').reason, /普通对话/);
+  await flush();
+  assert.equal(f.values.get('alice').selection.scene, 'new-scene');
+  assert.equal(input.state.getSnapshot().draft, '分析计划'); assert.deepEqual(input.state.getSnapshot().attachmentIds, ['csv']);
+  assert.equal(f.blocks.has('alice'), false); assert.equal(f.submissions.length, 0);
+  assert.equal(f.posts.filter(row => row.selection?.scene === 'new-scene').length, 1);
+  assert.equal(f.posts.some(row => row.session_id === 'bob'), false);
+});
+
+test('Backspacing a manually typed complete token to a partial prefix clears the old scene', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
+  f.values.get('alice').selection.scene = 'research-data-analysis';
+  await f.trigger.candidates(session, { query: 'd', position: 'leading' });
+  input.setDraft('/data'); input.setDraft('/dat'); await flush();
+  assert.equal(f.values.get('alice').selection.scene, 'new-scene');
+  assert.equal(input.state.getSnapshot().draft, '/dat');
+  const count = f.posts.length;
+  input.setDraft('/da'); input.setDraft('/d'); input.setDraft(''); await flush();
+  assert.equal(f.posts.length, count, 'partial prefixes must not repeatedly rebind a scene');
+});
+
+test('Deleting an optimistic chip waits for its mount and then clears it, never restoring a late result', async () => {
+  let release, reached; const gate = new Promise(resolve => release = resolve), posted = new Promise(resolve => reached = resolve);
+  const f = fixture({ allAvailable: true, beforePost: async body => {
+    if (body.selection?.scene === 'research-data-analysis') { reached(); await gate; }
+  } }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
+  await f.trigger.candidates(session, { query: 'd', position: 'leading' }); input.setDraft('/d');
+  const pick = f.pick('alice', 'research-data-analysis'); await posted;
+  f.observeStatus(); await flush();
+  input.setDraft('普通问题'); assert.match(f.blocks.get('alice').reason, /普通对话/);
+  assert.equal(f.statusUpdates.at(-1).selection.scene, 'new-scene', 'the visible mode changes before the old mount finishes');
+  const cancelledAt = f.statusUpdates.length;
+  release(); await pick; await flush();
+  assert.deepEqual(f.posts.map(row => row.selection.scene), ['research-data-analysis', 'new-scene']);
+  assert.equal(f.values.get('alice').selection.scene, 'new-scene');
+  assert.equal(input.state.getSnapshot().draft, '普通问题'); assert.equal(input.inserts.length, 1);
+  assert.equal(input.notices.length, 0); assert.equal(f.blocks.has('alice'), false);
+  assert.ok(f.statusUpdates.slice(cancelledAt).every(value => value.selection.scene === 'new-scene'), 'late scene reads and mount results cannot restore the cancelled badge');
+});
+
+test('Native submit clearing and reopening an empty draft keep a scene for ordinary multi-turn continuation', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
+  f.values.get('alice').selection.scene = 'research-data-analysis'; input.setDraft('');
+  f.trigger.warm(session); await flush();
+  assert.equal(f.posts.length, 0, 'loading an empty composer is not a cancellation');
+  input.setDraft('/data 第一轮'); input.setPhase('adjudicating');
+  await f.trigger.matchEnter(session, '/data 第一轮', new AbortController().signal);
+  input.setDraft(''); input.setPhase('plain'); await flush();
+  f.setCurrent('bob'); f.setCurrent('alice'); input.setDraft('继续上一轮'); await flush();
+  assert.equal(f.values.get('alice').selection.scene, 'research-data-analysis'); assert.equal(f.posts.length, 0);
+});
+
+test('Deleting a token from a frozen scene hands the unsent text and attachments to a normal chat', async () => {
+  const f = fixture({ locked: true, allAvailable: true }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
+  f.values.get('alice').selection.scene = 'research-data-analysis';
+  await f.trigger.candidates(session, { query: 'd', position: 'leading' });
+  input.setDraft('/data 另一个问题'); input.addAttachments(['draft-file']); input.setDraft('另一个问题'); await flush();
+  assert.equal(f.values.get('alice').selection.scene, 'research-data-analysis', 'immutable history keeps its original scene');
+  assert.equal(f.values.get('fresh').selection.scene, 'new-scene'); assert.deepEqual(f.opened, ['fresh']);
+  assert.equal(f.inputs.get('fresh').state.getSnapshot().draft, '另一个问题');
+  assert.deepEqual(Array.from(f.inputs.get('fresh').state.getSnapshot().attachmentIds), ['draft-file']);
+  assert.equal(input.state.getSnapshot().draft, ''); assert.deepEqual(input.state.getSnapshot().attachmentIds, []);
+  assert.equal(f.blocks.has('alice'), false); assert.equal(f.submissions.length, 0);
+});
+
+test('A frozen-scene reset completed in the background waits for the addressed chat to reopen', async () => {
+  let release, reached; const gate = new Promise(resolve => release = resolve), created = new Promise(resolve => reached = resolve);
+  const f = fixture({ locked: true, allAvailable: true, beforePost: async body => {
+    if (body.action === 'new_session') { reached(); await gate; }
+  } }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
+  f.values.get('alice').selection.scene = 'ppt';
+  await f.trigger.candidates(session, { query: 'p', position: 'leading' });
+  input.setDraft('/ppt 草稿'); input.addAttachments(['paper']); input.setDraft('草稿'); await created;
+  f.setCurrent('bob'); release(); await flush();
+  assert.equal(f.opened.length, 0); assert.equal(f.blocks.has('alice'), true);
+  assert.equal(input.state.getSnapshot().draft, '草稿'); assert.equal(f.inputs.get('bob').state.getSnapshot().draft, '/p 请生成报告');
+  f.setCurrent('alice'); await flush();
+  assert.deepEqual(f.opened, ['fresh']); assert.equal(f.values.get('fresh').selection.scene, 'new-scene');
+  assert.equal(f.inputs.get('fresh').state.getSnapshot().draft, '草稿');
+  assert.deepEqual(Array.from(f.inputs.get('fresh').state.getSnapshot().attachmentIds), ['paper']);
+  assert.equal(f.blocks.has('alice'), false); assert.equal(f.posts.filter(row => row.action === 'new_session').length, 1);
+});
+
+test('A new pick made during a pending reset wins after the serialized reset completes', async () => {
+  let release, reached; const gate = new Promise(resolve => release = resolve), resetting = new Promise(resolve => reached = resolve);
+  const f = fixture({ allAvailable: true, beforePost: async body => {
+    if (body.selection?.scene === 'new-scene') { reached(); await gate; }
+  } }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
+  await f.trigger.candidates(session, { query: 'd', position: 'leading' }); input.setDraft('/d');
+  await f.pick('alice', 'research-data-analysis'); input.setDraft(''); await resetting;
+  input.setDraft('/p 新计划'); const nextPick = f.pick('alice', 'ppt');
+  assert.equal(input.inserts.at(-1).label, '/ppt');
+  input.setDraft('/ppt 新计划，继续补充说明'); input.addAttachments(['new-file']);
+  release(); await nextPick; await flush();
+  assert.deepEqual(f.posts.map(row => row.selection.scene), ['research-data-analysis', 'new-scene', 'ppt']);
+  assert.equal(f.values.get('alice').selection.scene, 'ppt'); assert.equal(input.state.getSnapshot().draft, '/ppt 新计划，继续补充说明');
+  assert.deepEqual(input.state.getSnapshot().attachmentIds, ['new-file']);
+  assert.equal(input.notices.length, 0); assert.equal(f.blocks.has('alice'), false);
+});
+
+test('A late cold settings read cannot revive a manually typed scene deleted before its catalog loaded', async () => {
+  let release; const gate = new Promise(resolve => release = resolve);
+  const f = fixture({ allAvailable: true, beforeGet: () => gate }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
+  f.values.get('alice').selection.scene = 'research-data-analysis';
+  const waiting = f.trigger.candidates(session, { query: '', position: 'leading' });
+  input.setDraft('/data'); input.setDraft(''); await flush();
+  assert.equal(f.values.get('alice').selection.scene, 'new-scene');
+  release(); await waiting; await flush();
+  assert.equal(f.values.get('alice').selection.scene, 'new-scene');
+  assert.equal(f.posts.length, 1); assert.equal(f.blocks.has('alice'), false);
+});
+
+test('A deferred reset never overwrites another draft entered in its new target chat', async () => {
+  let release, reached; const gate = new Promise(resolve => release = resolve), created = new Promise(resolve => reached = resolve);
+  const f = fixture({ locked: true, allAvailable: true, beforePost: async body => {
+    if (body.action === 'new_session') { reached(); await gate; }
+  } }), input = f.inputs.get('alice'), session = { sessionId: 'alice' };
+  f.values.get('alice').selection.scene = 'ppt';
+  await f.trigger.candidates(session, { query: 'p', position: 'leading' });
+  input.setDraft('/ppt 原草稿'); input.addAttachments(['original']); input.setDraft('原草稿'); await created;
+  f.setCurrent('bob'); release(); await flush();
+  f.setCurrent('fresh'); f.inputs.get('fresh').setDraft('另一份草稿'); f.inputs.get('fresh').addAttachments(['different']);
+  f.setCurrent('alice'); await flush();
+  assert.equal(f.inputs.get('fresh').state.getSnapshot().draft, '另一份草稿');
+  assert.deepEqual(f.inputs.get('fresh').state.getSnapshot().attachmentIds, ['different']);
+  assert.deepEqual(f.opened, ['fresh2']); assert.equal(f.inputs.get('fresh2').state.getSnapshot().draft, '原草稿');
+  assert.deepEqual(Array.from(f.inputs.get('fresh2').state.getSnapshot().attachmentIds), ['original']);
+  assert.equal(f.blocks.has('alice'), false); assert.equal(f.submissions.length, 0);
 });

@@ -152,7 +152,9 @@ test('workspace browser preserves store receivers and top-level New chat targets
  const tree=Browser({wide:true}),nodes=[];
  const visit=node=>{if(!node||typeof node!=='object')return;if(Array.isArray(node)){node.forEach(visit);return;}nodes.push(node);node.children?.forEach(visit);};visit(tree);
  assert.doesNotMatch(JSON.stringify(tree),/\/private\//);
- nodes.find(node=>node.props?.className==='geneloop-workspace-name'&&node.props.title==='课题 B').props.onClick();
+ const workspaceNames=nodes.filter(node=>node.props?.className==='geneloop-workspace-name');
+ assert.ok(workspaceNames.every(node=>!('title' in node.props)), 'workspace names have no hover tooltip');
+ workspaceNames.find(node=>node.children.includes('课题 B')).props.onClick();
  navigation.startSession(); await new Promise(resolve=>setImmediate(resolve));
  assert.equal(created.length,1); assert.equal(created[0].workspaceId,'b');
  navigation.startSession(); await new Promise(resolve=>setImmediate(resolve));

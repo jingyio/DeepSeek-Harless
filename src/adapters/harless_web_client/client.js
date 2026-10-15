@@ -9,13 +9,17 @@ window.__ModuleLoader__.load({
     const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'uiConversation', 'slots', 'workspaces', 'uiWorkspace', 'layout'];
     const endpoint = '/api/harless/settings';
     const observers = new Map(), lexiconObservers = new Map(), cache = new Map(), choosing = new Map(), revisions = new Map();
+    const draftSelections = new Map();
     const aliases = { ppt: 'ppt', 'paper-proofreading': 'paper', 'research-data-analysis': 'data', 'new-scene': 'chat' };
     const shortcut = scene => scene.shortcut || aliases[scene.id] || scene.id;
     const modeLabel = mode => mode === 'baseline' ? 'Origin' : mode[0].toUpperCase() + mode.slice(1);
+    const displayValue = (id, value) => value && draftSelections.has(id) ? { ...value,
+      selection: { ...value.selection, scene: draftSelections.get(id) },
+      ...(draftSelections.get(id) === 'new-scene' ? { paired_comparison: false } : {}) } : value;
     function publish(id, value) {
       const oldNames = cache.get(id)?.scenes.map(shortcut).join('\n');
       cache.set(id, value);
-      for (const listener of observers.get(id) || []) listener(value);
+      for (const listener of observers.get(id) || []) listener(displayValue(id, value));
       // Native controllers refetch candidates when their lexicon changes. A
       // settings read must not invalidate the unchanged lexicon and recursively
       // trigger another settings read while the menu is open.
@@ -45,7 +49,7 @@ window.__ModuleLoader__.load({
     function HarlessStatus({ sessionId, openSession }) {
       const [value, setValue] = React.useState(null);
       React.useEffect(() => {
-        const abort = new AbortController(); setValue(cache.get(sessionId) || null);
+        const abort = new AbortController(); setValue(displayValue(sessionId, cache.get(sessionId)) || null);
         const listener = next => { if (!abort.signal.aborted) setValue(next); };
         const group = observers.get(sessionId) || new Set(); group.add(listener); observers.set(sessionId, group);
         settings({ sessionId }, abort.signal).catch(() => {});
@@ -66,10 +70,6 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       window.__installGeneLoopBrand?.(ctx, React);
       window.__installGeneLoopWorkspaces?.(ctx, React, primitives);
-      ctx.slots.inject('conversation.hero.agentPreset', () => ctx.slots.register(
-        { name: 'conversation.hero.agentPreset', priority: -100 }, () => null));
-      ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register(
-        { name: 'conversation.session.header.actions', id: 'agent-preset', priority: -100 }, () => null));
       const command = ctx.get('commandUi'), triggers = ctx.get('inputTriggers');
       const sessions = ctx.get('sessions'), conversation = ctx.get('conversation');
       const h = React.createElement;
@@ -310,6 +310,120 @@ window.__ModuleLoader__.load({
         return { start: match[1].length, end: match[0].length, draftRev: state.draftRev };
       }
       const sceneToken = draft => /^(\s*)\/([a-z][a-z0-9_-]*)(?=$|\s|[\u3400-\u9fff])/i.exec(draft);
+      const choiceVersions = new Map(), draftWatches = new Map(), suppressDraftReset = new Set(), deferredResets = new Map();
+      const resetReason = '正在切换为普通对话…';
+      const cancelledChoice = () => { const error = Error('场景选择已取消'); error.name = 'AbortError'; return error; };
+      function displaySelection(id, scene) {
+        if (scene) draftSelections.set(id, scene); else draftSelections.delete(id);
+        const value = cache.get(id);
+        if (value) for (const listener of observers.get(id) || []) listener(displayValue(id, value));
+      }
+      function clearResetBlock(id) {
+        const blocks = conversation.blocks;
+        if (blocks?.storeFor(id).getSnapshot()?.reason?.startsWith('普通对话切换失败')
+          || blocks?.storeFor(id).getSnapshot()?.reason === resetReason) blocks.set(id, undefined);
+      }
+      const knownDraftScene = (id, draft) => {
+        const token = sceneToken(draft);
+        if (!token) return undefined;
+        const name = token[2].toLowerCase(), value = cache.get(id);
+        return value ? value.scenes.find(scene => shortcut(scene) === name)?.id
+          : Object.keys(aliases).find(id => aliases[id] === name);
+      };
+      function watchDraft(session) {
+        const id = session.sessionId;
+        if (draftWatches.has(id)) return;
+        const input = inputFor(id); let previous = input.state.getSnapshot();
+        const off = input.state.subscribe(() => {
+          const next = input.state.getSnapshot(), before = previous; previous = next;
+          if (suppressDraftReset.has(id) || before.draftRev === next.draftRev || before.phase !== 'plain' || next.phase !== 'plain') return;
+          // Only an actual edit that removes a complete leading scene token is
+          // a cancellation. Empty drafts on mount, session changes and the
+          // native adjudicating -> committed-draft transition keep the scene.
+          const removed = knownDraftScene(id, before.draft);
+          if (removed && removed !== 'new-scene' && !knownDraftScene(id, next.draft)) void resetScene(session);
+        });
+        draftWatches.set(id, off);
+      }
+      async function resetScene(session, handoffRetries = 1) {
+        const id = session.sessionId, previous = choosing.get(id), version = (choiceVersions.get(id) || 0) + 1;
+        choiceVersions.set(id, version); revisions.set(id, (revisions.get(id) || 0) + 1);
+        deferredResets.delete(id);
+        displaySelection(id, 'new-scene');
+        const blocks = conversation.blocks, existing = blocks?.storeFor(id).getSnapshot();
+        if (!existing || existing.reason === resetReason) blocks?.set(id, { reason: resetReason });
+        const current = () => choiceVersions.get(id) === version;
+        const operation = (async () => {
+          // An aborted HTTP request can still mutate the server. Let the old
+          // mount settle, then overwrite it; never race a reset against a pick.
+          await previous?.catch(() => {});
+          if (!current()) return;
+          let next;
+          try { next = await request(session, { action: 'select', session_id: id, selection: { scene: 'new-scene' } }); }
+          catch (error) {
+            if (error.code !== 'scene_requires_new_session') throw error;
+            if (!current()) return;
+            next = await request(session, { action: 'new_session', inherit_session: id, selection: { scene: 'new-scene' } });
+            if (!current()) return;
+            await sessions.refresh();
+            if (!current()) return;
+            const targetDraft = draftSnapshot(inputFor(next.session_id));
+            const handoff = () => {
+              if (!current()) return;
+              const oldInput = inputFor(id), draft = draftSnapshot(oldInput), fresh = inputFor(next.session_id);
+              if (draft.phase !== 'plain') throw Error('请等待当前发送完成后再切换普通对话');
+              if (targetDraft.draft || targetDraft.attachmentIds.length || !sameDraft(fresh, targetDraft, targetDraft.attachmentIds)) {
+                // The addressed target is already visible in the session list.
+                // Never overwrite text/files entered there while we waited.
+                if (handoffRetries > 0) { void resetScene(session, handoffRetries - 1); return; }
+                throw Error('新普通会话已有输入，两边草稿均已保留。请刷新页面后重试。');
+              }
+              fresh.setDraft(draft.draft);
+              if (draft.attachmentIds.length) {
+                if (!fresh.addAttachments(draft.attachmentIds)) throw Error('附件未能转移，原输入已保留');
+                conversation.rebindDraftFiles(next.session_id, draft.attachmentIds);
+                for (const attachment of draft.attachmentIds) oldInput.removeAttachment(attachment);
+              }
+              suppressDraftReset.add(id);
+              try { oldInput.setDraft(''); } finally { suppressDraftReset.delete(id); }
+              displaySelection(id, undefined); clearResetBlock(id);
+              publish(next.session_id, next); sessions.open(next.session_id);
+              fresh.notify('info', '已切换为普通对话，原场景聊天已保留。');
+            };
+            // Finishing a background mount must never steal another chat's
+            // focus. Complete the addressed handoff if this chat is reopened.
+            if (!isCurrent(session)) deferredResets.set(id, handoff); else handoff();
+            return;
+          }
+          if (current()) draftSelections.delete(id);
+          publish(id, next); // Canonical state may change under a newer draft overlay.
+        })();
+        choosing.set(id, operation);
+        try { await operation; if (current() && !deferredResets.has(id)) clearResetBlock(id); }
+        catch (error) {
+          if (current()) {
+            blocks?.set(id, { reason: '普通对话切换失败，请刷新页面后重试。' });
+            report(session, error);
+          }
+        } finally { if (choosing.get(id) === operation) choosing.delete(id); }
+      }
+      ctx.effect(() => {
+        const attach = () => {
+          const id = sessions.list?.getSnapshot().current;
+          if (!id) return;
+          try {
+            watchDraft({ sessionId: id });
+            const handoff = deferredResets.get(id);
+            if (handoff) { deferredResets.delete(id); handoff(); }
+          } catch (error) {
+            if (conversation.blocks?.storeFor(id).getSnapshot()?.reason === resetReason)
+              conversation.blocks.set(id, { reason: '普通对话切换失败，请刷新页面后重试。' });
+            report({ sessionId: id }, error);
+          }
+        };
+        const off = sessions.list?.subscribe(attach) || (() => {}); attach();
+        return () => { off(); for (const stop of draftWatches.values()) stop(); draftWatches.clear(); };
+      }, 'harless: scene draft cancellation');
       const sameAttachments = (left, right) => left.length === right.length && left.every((id, index) => id === right[index]);
       const draftSnapshot = input => { const state = input.state.getSnapshot(); return { ...state, attachmentIds: [...state.attachmentIds] }; };
       const sameDraft = (input, span, expectedAttachments) => {
@@ -319,16 +433,16 @@ window.__ModuleLoader__.load({
       };
       async function chooseScene(session, id, span, fromCommand = false, automatic = false) {
         // The current span, not a formerly highlighted menu row, owns the pick.
+        watchDraft(session);
         const oldInput = inputFor(session.sessionId), initial = draftSnapshot(oldInput);
         if (!sameDraft(oldInput, span)) throw Error('输入已改变，请重新选择场景');
         const token = initial.draft.slice(span.start, span.end).toLowerCase();
         const known = cache.get(session.sessionId)?.scenes.find(row => row.id === id);
         if (!/^\/[a-z0-9_-]*$/i.test(token) || (fromCommand ? token !== '/harless' : known && !('/' + shortcut(known)).startsWith(token)))
           throw Error('候选已更新，请按当前输入重新选择场景');
-        if (choosing.has(session.sessionId)) {
-          await choosing.get(session.sessionId);
-          throw Error('场景刚刚更新，请按当前输入重新选择');
-        }
+        const previous = choosing.get(session.sessionId), version = (choiceVersions.get(session.sessionId) || 0) + 1;
+        choiceVersions.set(session.sessionId, version);
+        deferredResets.delete(session.sessionId);
         // Commit the native chip synchronously. The backend may need to mount
         // an MCP; that must not delay visual acknowledgement of a valid pick.
         let expectedSpan = span, optimistic = false;
@@ -336,30 +450,36 @@ window.__ModuleLoader__.load({
           if (!oldInput.insertReference(reference(known), span)) throw Error('输入已改变，请重新选择场景');
           optimistic = true;
           expectedSpan = { ...span, draftRev: oldInput.state.getSnapshot().draftRev };
+          displaySelection(session.sessionId, id);
         }
         const guard = watchSession(session);
+        const checkChoice = () => { guard.check(); if (choiceVersions.get(session.sessionId) !== version) throw cancelledChoice(); };
         const operation = (async () => {
-          guard.check();
+          if (previous) await previous.catch(() => {});
+          checkChoice();
           const oldInput = inputFor(session.sessionId);
           const value = cache.get(session.sessionId) || await settings(session, guard.signal), scene = value.scenes.find(row => row.id === id);
-          guard.check();
+          checkChoice();
           if (!scene || scene.available === false) throw Error('该场景暂不可用：' + (scene?.unavailable_reason || '未部署'));
-          if (!sameDraft(oldInput, expectedSpan, initial.attachmentIds)) throw Error('输入或附件已改变，请重新选择场景');
+          if (!sameDraft(oldInput, expectedSpan, initial.attachmentIds)
+            && !(optimistic && !automatic && knownDraftScene(session.sessionId, oldInput.state.getSnapshot().draft) === id))
+            throw Error('输入或附件已改变，请重新选择场景');
           if (!fromCommand && !('/' + shortcut(scene)).startsWith(token)) throw Error('候选已更新，请按当前输入重新选择场景');
           let next;
           try {
             next = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: id } }, guard.signal);
-            guard.check();
+            checkChoice();
           } catch (error) {
+            checkChoice();
             if (error.code !== 'scene_requires_new_session') throw error;
             // A scene switch cannot rewrite an immutable started preset. Create
             // an addressed new session and hand off only the unchanged draft.
             if (!sameDraft(oldInput, expectedSpan, initial.attachmentIds)) throw Error('输入或附件已改变，请重新选择场景');
             const draft = initial;
             next = await request(session, { action: 'new_session', inherit_session: session.sessionId, selection: { scene: id } }, guard.signal);
-            guard.check();
+            checkChoice();
             await sessions.refresh();
-            guard.check();
+            checkChoice();
             const fresh = inputFor(next.session_id);
             if (!sameDraft(oldInput, expectedSpan, draft.attachmentIds)) {
               fresh.notify('info', '新场景会话已创建；原输入有新修改，已保留在原会话。');
@@ -373,13 +493,19 @@ window.__ModuleLoader__.load({
               conversation.rebindDraftFiles(next.session_id, draft.attachmentIds);
               for (const attachment of draft.attachmentIds) oldInput.removeAttachment(attachment);
             }
-            oldInput.setDraft('');
+            suppressDraftReset.add(session.sessionId);
+            try { oldInput.setDraft(''); } finally { suppressDraftReset.delete(session.sessionId); }
             command.popupFor(sessions.scope(session.sessionId)).dismiss();
+            displaySelection(session.sessionId, undefined); clearResetBlock(session.sessionId);
             publish(next.session_id, next); guard.dispose(); sessions.open(next.session_id);
             fresh.notify('info', `已新建 ${scene.label} 会话，原聊天已保留。`);
             return { input: fresh, state: draftSnapshot(fresh), sessionId: next.session_id };
           }
-          publish(session.sessionId, next);
+          if (!optimistic && !sameDraft(oldInput, expectedSpan, initial.attachmentIds)
+            && !knownDraftScene(session.sessionId, oldInput.state.getSnapshot().draft)) {
+            void resetScene(session); throw cancelledChoice();
+          }
+          draftSelections.delete(session.sessionId); clearResetBlock(session.sessionId); publish(session.sessionId, next);
           // A manual pick only selects; typing while its mount completes is
           // normal. Keep those edits. Automatic handoff still requires CAS.
           if (optimistic && !automatic && !sameDraft(oldInput, expectedSpan, initial.attachmentIds))
@@ -391,7 +517,14 @@ window.__ModuleLoader__.load({
         choosing.set(session.sessionId, operation);
         try { return await operation; }
         catch (error) {
-          if (optimistic && sameDraft(oldInput, expectedSpan, initial.attachmentIds)) oldInput.setDraft(initial.draft);
+          if (choiceVersions.get(session.sessionId) === version) {
+            displaySelection(session.sessionId, undefined);
+            clearResetBlock(session.sessionId);
+            if (optimistic && sameDraft(oldInput, expectedSpan, initial.attachmentIds)) {
+              suppressDraftReset.add(session.sessionId);
+              try { oldInput.setDraft(initial.draft); } finally { suppressDraftReset.delete(session.sessionId); }
+            }
+          }
           throw error;
         } finally { guard.dispose(); if (choosing.get(session.sessionId) === operation) choosing.delete(session.sessionId); }
       }
@@ -422,6 +555,7 @@ window.__ModuleLoader__.load({
       // keyboard/IME handling, span CAS, atomic chip deletion and undo.
       ctx.effect(() => triggers.registerSource({ trigger: '/', name: 'harless-scenes', order: -10,
         candidates: async (session, req) => {
+          watchDraft(session);
           if (req.position !== 'leading') return [];
           const query = req.query.toLowerCase();
           if (!/^[a-z0-9_-]*$/.test(query)) return [];
@@ -475,7 +609,7 @@ window.__ModuleLoader__.load({
           const group = lexiconObservers.get(session.sessionId) || new Set(); group.add(listener); lexiconObservers.set(session.sessionId, group);
           return () => { group.delete(listener); if (!group.size) lexiconObservers.delete(session.sessionId); };
         },
-        warm: session => { void settings(session).catch(() => {}); },
+        warm: session => { watchDraft(session); void settings(session).catch(() => {}); },
         codec: { clipboardText: ref => '/' + ref, serialize: async ref => {
           if (!/^[a-z][a-z0-9_-]{0,63}$/.test(ref)) throw Error('无效的场景标识'); return '/' + ref;
         } },
