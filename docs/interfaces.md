@@ -24,7 +24,7 @@ Web 每次发送从本轮序列化文本的前导 `/data`、`/ppt`、`/paper` �
 
 网关 `scripts/harless_public_transport.mjs` 只投影原生 unary JSON RPC 的失败 envelope，以及 `/api/remote.mux` WebSocket 的错误和已识别 `$events` 元信息。错误保留可接受的 code、给出用户提示并清空内部 details；host home、会话新增事件 cwd 和会话错误详情不对外展示。成功 RPC 字节、无关流、客户端请求、二进制和文件内容保持；SSE 与下载不作为普通 JSON RPC 缓存改写。`ws` 固定为直接运行依赖，双向连接关闭和背压仍由代理处理。
 
-普通聊天通过公开 `conversation.chat.node` 插槽汇总每个回合的过程，默认仅显示最终回答；生成中显示当前真实回答和状态。工具、上下文、早期消息与推理文字按需展开，可再次收起，新会话/回合默认折叠。最终正文复用已注册的原生 assistant renderer，保留 Markdown、图片、授权文件入口；`turn-tail` 复制、评分和分支操作未被替换，错误与中断提示保留。上游 Compact 的回答边界决定承载节点，避免旧节点被外层隐藏；普通对话轨迹仍复用原生视图，对照轨迹通过公开插槽补充，不修改上游源码。对照标题只改展示名称 Baseline / Motif，协议仍使用 `baseline`、`execute`、`shadow`。
+普通聊天通过公开 `conversation.chat.node` 插槽汇总每个回合的过程，默认仅显示最终回答；生成中显示当前真实回答和状态。工具、上下文、早期消息与推理文字按需展开，可再次收起，新会话/回合默认折叠。最终正文复用已注册的原生 assistant renderer，保留 Markdown、图片、授权文件入口；`turn-tail` 复制、评分和分支操作未被替换，错误与中断提示保留。上游 Compact 的回答边界决定承载节点，避免旧节点被外层隐藏。轨迹页通过公开 `conversation.view` 插槽、trajectory/chat 快照统一按用户消息 `seq` 与任务 `anchorSeq` 连续分轮，不能沿用旧任务中重复的 native turn 编号；加载全部历史后显示最终轮号。普通及单路任务一列，真正的双路任务左右展示 Baseline/Motif，上方每轮独立选侧、查看事件时间分布；优化标记仅使用实际 `optimized` / `verified_skip`。保留原 inject 的分页/图片加载能力，授权图片镜像到独立 child slot；使用 composer overlay 标记与原生高度变量，保证图表固定、正文可滚动。不修改上游源码。对照标题只改展示名称 Baseline / Motif，协议仍使用 `baseline`、`execute`、`shadow`。
 
 PPT 的本轮兼容锁仅更新共享 `harless_task_scope.ts` 产品身份组合所需代码 SHA 及其 `runtime-bindings.json` 登记摘要；原学习边、上传来源归属与字节摘要、job 绑定、工具参数和完整 MCP schema 不变，不是新训练证书。检查结果与尚待补充的真实/UI/发布验收见 [本轮记录](experiments/geneloop-message-privacy-20261015-v1.md)。
 

@@ -338,20 +338,25 @@ window.__ModuleLoader__.load({
             style: pos || { visibility: 'hidden', left: 0, top: 0 } }, h('strong', null, title),
             h('dl', null, ...rows.flatMap(([name, value]) => [h('dt', { key: name }, name), h('dd', { key: name + '-value' }, value)]))), document.body));
       }
-      function TraceRows({ items }) {
+      function TraceRows({ items, renderImages }) {
         const states = { running: '进行中', completed: '完成', failed: '失败', interrupted: '已中断', cancelled: '已取消', skipped: '已跳过' };
         return h('ol', { className: 'harless-trace-list' }, ...items.map((entry, index) => {
           const skip = entry.verified_skip === true, optimized = entry.optimized === true;
           const label = skip ? '已验证跳过模型请求' : optimized ? '已应用优化' : undefined;
           const detail = entry.text || entry.details;
+          const preview = typeof detail === 'string' ? detail.slice(0, 220) : '';
+          const time = traceTime(entry.time);
           return h('li', { key: entry.id || index, 'data-kind': entry.kind, 'data-optimized': skip || optimized ? 'true' : undefined },
             h('div', { className: 'harless-trace-event' }, h('span', { className: 'harless-trace-dot', 'aria-hidden': true }),
               h('strong', null, entry.label || ({ assistant: '回复', thinking: '正在思考', tool: '工具调用', motif: 'Motif 核验', request: '模型请求' })[entry.kind] || '执行记录'),
               entry.status && h('small', null, states[entry.status] || entry.status),
-              entry.time && h('time', { dateTime: entry.time }, new Date(entry.time).toLocaleTimeString('zh-CN', { hour12: false }))),
+              Number.isFinite(time) && h('time', { dateTime: new Date(time).toISOString() }, new Date(time).toLocaleTimeString('zh-CN', { hour12: false }))),
             label && h('span', { className: 'harless-trace-optimization' }, label),
             entry.tool && h('small', { className: 'harless-trace-tool' }, entry.tool),
-            detail && h('details', null, h('summary', null, '查看详情'), h('pre', null, typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2))));
+            preview && h('p', { className: 'harless-trace-preview' }, preview),
+            renderImages?.(entry.images),
+            entry.args && h('details', null, h('summary', null, '调用参数'), h('pre', null, typeof entry.args === 'string' ? entry.args : JSON.stringify(entry.args, null, 2))),
+            detail && h('details', null, h('summary', null, '展开完整内容'), h('pre', null, typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2))));
         }));
       }
       function ComparisonNode({ node, traceOnly = false, useChat }) {
@@ -379,7 +384,7 @@ window.__ModuleLoader__.load({
           if (hydrated || error || connection) pageLoadRelease.current?.();
         }, [hydrated, error, connection]);
         const [branching, setBranching] = React.useState(''), branchBusy = React.useRef(false);
-        const [copied, setCopied] = React.useState(''), [traceLane, setTraceLane] = React.useState('baseline');
+        const [copied, setCopied] = React.useState('');
         const copyTimer = React.useRef(), copyPending = React.useRef(false);
         const generation = React.useRef(0), actionBusy = React.useRef(false), downloadBusy = React.useRef(new Set());
         const alive = React.useRef(true), transferControllers = React.useRef(new Set()), refreshNow = React.useRef(() => {});
@@ -392,7 +397,7 @@ window.__ModuleLoader__.load({
         };
         React.useEffect(() => {
           alive.current = true; streamBlocked.current = false; setDownloads({}); setError(''); setConnection(''); setSaving(false);
-          setCopied(''); setBranching(''); branchBusy.current = false; setTraceLane('baseline');
+          setCopied(''); setBranching(''); branchBusy.current = false;
           serverSnapshot.current = initial;
           actionBusy.current = false; downloadBusy.current.clear(); generation.current++;
           return () => { alive.current = false; clearTimeout(copyTimer.current); for (const abort of transferControllers.current) abort.abort(); };
@@ -678,24 +683,16 @@ window.__ModuleLoader__.load({
               !single && pendingRatings[lane] !== undefined && h('small', { role: 'status', className: 'harless-paired-muted' }, '正在保存评分…')));
         };
         if (traceOnly) {
-          const lane = value.lanes[traceLane] ? traceLane : 'baseline', result = value.lanes[lane];
-          const laneKeys = Object.keys(value.lanes).filter(key => key === 'baseline' || key === 'motif');
+          const paired = isPairedTrace(value), laneKeys = paired ? ['baseline', 'motif'] : ['baseline'];
           return h('section', { className: 'harless-comparison-trace', 'data-comparison-id': value.id },
-            h('div', { className: 'harless-trace-tabs', role: 'tablist', 'aria-label': '对照执行轨迹', onKeyDown: event => {
-              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-              event.preventDefault();
-              const index = event.key === 'Home' ? 0 : event.key === 'End' ? laneKeys.length - 1
-                : (laneKeys.indexOf(lane) + (event.key === 'ArrowRight' ? 1 : -1) + laneKeys.length) % laneKeys.length;
-              const next = laneKeys[index]; setTraceLane(next); document.getElementById?.(value.id + '-trace-' + next)?.focus();
-            } },
-              ...laneKeys.map(key => h('button', {
-                key, type: 'button', role: 'tab', id: value.id + '-trace-' + key, 'aria-controls': value.id + '-trace-panel',
-                'aria-selected': lane === key, tabIndex: lane === key ? 0 : -1, onClick: () => setTraceLane(key),
-              }, key === 'baseline' ? 'Baseline' : value.lanes[key].mode === 'shadow' ? 'Motif · 影子评估' : 'Motif'))),
-            h('div', { role: 'tabpanel', id: value.id + '-trace-panel', 'aria-labelledby': value.id + '-trace-' + lane, tabIndex: 0 },
-              h('p', { role: 'status', 'aria-live': 'polite', className: 'harless-live-status' }, result.progress?.label || labels[result.status]),
-              result.trace?.length ? h(TraceRows, { items: result.trace }) : h('p', { className: 'harless-paired-muted' },
-                settled(result) ? '此轮没有可用的执行事件。' : '等待实际执行事件…')),
+            h('div', { className: 'harless-trace-columns', 'data-single': paired ? undefined : 'true' }, ...laneKeys.map(lane => {
+              const result = value.lanes[lane];
+              return h('section', { key: lane, className: 'harless-trace-column', 'data-lane': lane },
+                h('header', null, h('strong', null, paired ? lane === 'baseline' ? 'Baseline' : result.mode === 'shadow' ? 'Motif · 影子评估' : 'Motif' : '执行过程'),
+                  h('p', { role: 'status', 'aria-live': 'polite', className: 'harless-live-status' }, result.progress?.label || labels[result.status])),
+                result.trace?.length ? h(TraceRows, { items: result.trace }) : h('p', { className: 'harless-paired-muted' },
+                  settled(result) ? '此轮没有可用的执行事件。' : '等待实际执行事件…'));
+            })),
             connection && h('p', { role: 'status', className: 'harless-paired-connection' }, connection));
         }
         return h('div', { className: 'harless-paired', 'data-comparison-id': value.id },
@@ -923,33 +920,161 @@ window.__ModuleLoader__.load({
         const mirrors = Object.entries(names).map(([name, alias]) => mirrorPublicSlot(name, alias));
         return () => { mirrors.reverse().forEach(dispose => dispose()); stop(); };
       });
-      // Wrap the public trajectory View rather than replacing native history.
-      // Its original inject face still owns image loading and older pages. The
-      // image child uses a separate declared slot: a second owner cannot declare
-      // conversation.trajectory.images again.
+      const unifiedTraceStyle = `
+.geneloop-unified-trace{display:flex;flex-direction:column;height:100%;min-height:0;min-width:0;overflow:hidden;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base,transparent);font-family:var(--dsw-font-family,ui-sans-serif,system-ui,sans-serif);font-size:13px;line-height:1.55}
+.geneloop-unified-trace *{box-sizing:border-box}.geneloop-unified-trace button,.geneloop-unified-trace input{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 8px}.geneloop-unified-trace button{cursor:pointer}.geneloop-unified-trace button:hover{background:var(--dsw-alias-interactive-bg-hover,#8882)}.geneloop-unified-trace button:focus-visible,.geneloop-unified-trace input:focus-visible,.geneloop-unified-trace summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}
+.geneloop-trace-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:10px 16px;border-bottom:1px solid #8883;flex:none}.geneloop-trace-toolbar>div{display:flex;gap:4px}.geneloop-trace-toolbar button[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover,#8882)}.geneloop-trace-count{color:var(--dsw-alias-label-secondary);font-size:12px}.geneloop-trace-toolbar input{margin-left:auto;border-color:#8883;max-width:220px;min-width:100px}.geneloop-trace-history-error{padding:10px 16px;color:var(--dsw-alias-state-error-primary,#e79b85)}
+.geneloop-trace-overview{display:flex;flex:none;max-height:180px;overflow:auto;border-bottom:1px solid #8883;padding:8px 12px 6px;background:var(--dsw-alias-interactive-bg-hover,#8881)}.geneloop-trace-axis{display:flex;flex-direction:column;gap:0;min-width:36px;padding-top:58px;color:var(--dsw-alias-label-secondary);font-size:11px}.geneloop-trace-axis span{height:16px;line-height:16px}.geneloop-trace-chart{display:flex;min-width:0;flex:1;gap:4px}.geneloop-trace-chart-turn{min-width:148px;flex-basis:0;border-left:1px solid #8883;padding:0 5px}.geneloop-trace-jump{display:block!important;font-weight:500!important;white-space:nowrap}.geneloop-trace-lanes{display:flex;gap:2px;height:29px;align-items:center}.geneloop-trace-lanes button{font-size:11px;padding:2px 5px;border-color:#8883;color:var(--dsw-alias-label-secondary)}.geneloop-trace-lanes button[aria-pressed=true]{color:var(--dsw-alias-label-primary);background:#8882;border-color:#8887}.geneloop-trace-lanes button[data-lane=motif][aria-pressed=true]{color:#48c5a1;border-color:#48c5a177;background:#48c5a112}.geneloop-trace-chart-turn:not(:has(.geneloop-trace-lanes)) .geneloop-trace-jump{margin-bottom:29px}.geneloop-trace-plot{height:50px;position:relative;background:repeating-linear-gradient(transparent 0 15px,#8881 15px 16px)}.geneloop-unified-trace .geneloop-trace-mark{position:absolute;border:0;border-radius:2px;padding:0;width:6px;height:7px;min-width:0;background:#ac91c8}.geneloop-unified-trace .geneloop-trace-mark[data-kind="0"]{background:#729cf7}.geneloop-unified-trace .geneloop-trace-mark[data-kind="2"]{background:#d5a55b}.geneloop-unified-trace .geneloop-trace-mark[data-optimized=true]{background:#48c5a1;box-shadow:0 0 0 1px #48c5a177}.geneloop-trace-chart-turn>small{font-size:10px;color:var(--dsw-alias-label-secondary)}
+.geneloop-trace-rounds{overflow:auto;min-height:0;flex:1;padding:8px 20px calc(var(--dsh-composer-height,152px) + 24px)}.geneloop-trace-round{padding:16px 0 24px;border-bottom:1px solid #8883;scroll-margin-top:8px}.geneloop-trace-round>header{display:flex;align-items:center;gap:10px;margin-bottom:14px}.geneloop-trace-round>header strong{font-weight:600;font-size:13px}.geneloop-trace-round>header>span{color:var(--dsw-alias-label-secondary);font-size:12px}.geneloop-trace-user{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;margin:0 0 12px}.geneloop-trace-user>span{color:#87a9f3;background:#729cf718;border-radius:4px;padding:1px 6px;font-size:12px}.geneloop-trace-user>p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;flex:1;min-width:0}.geneloop-trace-user>div{flex-basis:100%}.geneloop-trace-system{color:var(--dsw-alias-label-secondary);padding:10px 0;border-bottom:1px solid #8883}.geneloop-trace-system summary{cursor:pointer}.geneloop-trace-system pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}
+.harless-trace-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.harless-trace-columns[data-single=true]{grid-template-columns:1fr}.harless-trace-column{min-width:0}.harless-trace-column>header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid #8883}.harless-trace-column>header>strong{font-size:13px;font-weight:600}.harless-trace-column[data-lane=motif]>header>strong{color:#48c5a1}.harless-live-status{font-size:12px;color:var(--dsw-alias-label-secondary);margin:0 0 0 auto}.harless-trace-list{list-style:none;padding:0;margin:12px 0}.harless-trace-list>li{position:relative;border-left:2px solid #8883;padding:0 0 18px 14px;margin-left:4px;overflow-wrap:anywhere}.harless-trace-event{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.harless-trace-event strong{font-size:13px;font-weight:500}.harless-trace-event small,.harless-trace-event time,.harless-trace-tool{font-size:11px;color:var(--dsw-alias-label-secondary)}.harless-trace-event time{margin-left:auto;white-space:nowrap}.harless-trace-dot{position:absolute;left:-5px;top:7px;width:8px;height:8px;border-radius:50%;background:#ac91c8}.harless-trace-list>li[data-kind=tool] .harless-trace-dot{background:#d5a55b}.harless-trace-list>li[data-optimized=true]{border-color:#48c5a177}.harless-trace-list>li[data-optimized=true] .harless-trace-dot{background:#48c5a1}.harless-trace-optimization{display:inline-block;font-size:11px;color:#48c5a1;background:#36a38316;border:1px solid #36a38366;border-radius:5px;padding:2px 6px;margin-top:6px}.harless-trace-tool{display:block;margin:4px 0}.harless-trace-list details{margin-top:5px}.harless-trace-list summary{cursor:pointer;color:var(--dsw-alias-label-secondary)}.harless-trace-list pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.65;padding:10px;border:1px solid #8883;border-radius:6px}.harless-trace-preview{margin:5px 0;color:var(--dsw-alias-label-secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}.harless-paired-muted{color:var(--dsw-alias-label-secondary);font-size:12px}
+@media(max-width:650px){.geneloop-trace-toolbar{padding:8px;gap:8px}.geneloop-trace-toolbar input{width:130px}.geneloop-trace-rounds{padding:8px 12px calc(var(--dsh-composer-height,152px) + 24px)}.harless-trace-columns{grid-template-columns:1fr;gap:16px}.geneloop-trace-overview{padding-left:8px}.harless-trace-event time{margin-left:0}}
+`;
+
+      // Unified trajectory uses public snapshots and source sequence anchors.
+      // A user message starts a displayed round, including legacy task messages
+      // whose native turn location stayed on the preceding ordinary turn.
+      const traceTime = value => typeof value === 'number' ? value : Date.parse(value);
+      const traceText = node => (node.blocks || node.content || []).map(part =>
+        part.text || (part.type === 'file' ? '文件：' + (part.attachment?.name || part.attachment?.filename || '附件') : '')).filter(Boolean).join('\n') || node.message || node.text || '';
+      function nativeTraceRows(nodes) {
+        const rows = [];
+        const append = node => {
+          const kind = node.kind === 'tool-result' ? 'tool' : node.kind === 'assistant' ? 'assistant' : node.kind;
+          const tools = (node.blocks || []).filter(block => block.kind === 'tool-call');
+          const reasoning = (node.blocks || []).filter(part => part.kind === 'reasoning').map(part => part.text).filter(Boolean).join('\n');
+          if (reasoning) rows.push({ id: 'thinking-' + node.seq, kind: 'thinking', label: '思考', text: reasoning,
+            time: node.time, status: node.streaming ? 'running' : 'completed' });
+          const text = traceText(node.kind === 'assistant' ? { ...node, blocks: (node.blocks || []).filter(part => part.kind !== 'reasoning') } : node);
+          if (text || (node.blocks || []).some(part => part.kind === 'image') || node.kind !== 'assistant') rows.push({ id: 'native-' + node.seq, kind,
+            label: ({ assistant: '回复', context: '上下文', steering: '补充消息', 'tool-result': '工具调用',
+              'turn-error': '执行失败', 'model-retry': '重试', 'turn-max-tokens': '输出已停止', command: '指令', 'compaction-summary': '历史摘要' })[node.kind] || '执行记录',
+            status: node.isError || node.kind === 'turn-error' ? 'failed' : node.interrupted ? 'interrupted' : node.streaming ? 'running' : 'completed',
+            time: node.time, text, tool: node.call?.name, args: node.call?.argsRaw,
+            images: (node.blocks || node.content || []).filter(part => (part.kind || part.type) === 'image').map(part => part.attachment).filter(Boolean),
+            optimized: false, verified_skip: false });
+          for (const tool of tools) if (!nodes.some(row => row.callId === tool.callId)) rows.push({ id: 'call-' + tool.callId,
+            kind: 'tool', label: '工具调用', tool: tool.name, args: tool.argsRaw, time: node.time, status: node.interrupted ? 'interrupted' : 'running' });
+          for (const child of node.subCalls || []) append({ ...child, seq: child.callId,
+            kind: child.kind || 'tool-result', call: child.call || { name: child.name, argsRaw: child.argsRaw } });
+        };
+        nodes.filter(node => node.kind !== 'user').forEach(append);
+        return rows;
+      }
+      function trajectoryRounds(chat, inspection) {
+        const nodes = [...(inspection.eventNodes || [])].sort((a, b) => a.seq - b.seq);
+        const comparisons = (chat.order || []).map(key => chat.nodes.get(key)).filter(row => row?.kind === 'harless-comparison' && row.visibility !== 'hidden');
+        const anchors = new Map(nodes.filter(node => node.kind === 'user').map(node => [node.seq, { seq: node.seq, user: node }]));
+        for (const comparison of comparisons) {
+          const seq = comparison.anchorSeq;
+          if (!Number.isFinite(seq)) continue;
+          anchors.set(seq, { ...anchors.get(seq), seq, comparison });
+        }
+        const turns = [...anchors.values()].sort((a, b) => a.seq - b.seq).map((turn, i, all) => {
+          const end = all[i + 1]?.seq ?? Infinity;
+          const records = nodes.filter(node => node.seq >= turn.seq && node.seq < end);
+          return { ...turn, number: i + 1, key: 'round-' + turn.seq, records,
+            rows: nativeTraceRows(records) };
+        });
+        const last = turns.at(-1);
+        if (last && inspection.partial?.blocks?.length) last.rows.push(...nativeTraceRows([{ kind: 'assistant', seq: 'partial', streaming: true, blocks: inspection.partial.blocks }]));
+        if (last) for (const call of inspection.runningCalls || []) if (!last.rows.some(row => row.id === 'call-' + call.callId))
+          last.rows.push({ id: 'call-' + call.callId, kind: 'tool', label: '工具调用', tool: call.name, args: call.argsRaw, time: call.time, status: 'running' });
+        return turns;
+      }
+      const isPairedTrace = value => value?.presentation !== 'single' && !!value?.lanes?.baseline && !!value?.lanes?.motif;
+      const traceChartRows = (turn, lane) => {
+        const result = turn.value?.lanes?.[lane];
+        const rows = result ? result.trace || [] : turn.rows;
+        return [{ id: 'input', kind: 'user', label: '输入', time: turn.user?.time || turn.value?.created_at }, ...rows].map(row => ({ ...row,
+          chartLane: ['user', 'context', 'steering'].includes(row.kind) ? 0 : ['tool', 'motif'].includes(row.kind) ? 2 : 1,
+          timestamp: traceTime(row.time) }));
+      };
       ctx.slots.inject('conversation.trajectory.images', () => {
         const original = ctx.slots.entries?.('conversation.view').find(entry => entry.options.id === 'trajectory');
         if (!original) return () => {};
         const imageSlot = 'harless.trajectory.images';
         function ProductTrajectory(owner) {
-          const chat = owner.useChat(value => value);
-          const hasMore = owner.useSession(value => value.hasMore);
-          const rows = chat.order.map(key => chat.nodes.get(key)).filter(row => row?.kind === 'harless-comparison' && row.visibility !== 'hidden');
-          const [selected, setSelected] = React.useState(''), [native, setNative] = React.useState(false);
-          React.useEffect(() => { setSelected(''); setNative(false); }, [owner.sessionId]);
-          const active = rows.find(row => row.data.id === selected) || rows.at(-1);
-          const nativeProps = { ...owner, renderSlot: (name, props, options) => owner.renderSlot(name === 'conversation.trajectory.images' ? imageSlot : name, props, options) };
-          if (!rows.length) return h(original.component, nativeProps);
-          return h('div', { className: 'harless-trajectory-view' },
-            h('style', null, `.harless-trajectory-view{display:flex;flex-direction:column;min-height:0;height:100%;color:var(--dsw-alias-label-primary,inherit);font:inherit}.harless-trajectory-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid #8883;flex:none}.harless-trace-tabs{display:flex;gap:6px;flex-wrap:wrap}.harless-trace-tabs button,.harless-trajectory-toolbar button,.harless-trajectory-toolbar select{font:inherit;font-size:13px;color:inherit;background:transparent;border:1px solid #8884;border-radius:8px;padding:7px 10px;cursor:pointer}.harless-trace-tabs button[aria-selected=true],.harless-trajectory-toolbar button[aria-pressed=true]{color:var(--dsw-alias-state-business-primary,#729cf7);border-color:currentColor;background:#729cf719}.harless-trace-tabs button:focus-visible,.harless-trajectory-toolbar button:focus-visible,.harless-trajectory-toolbar select:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.harless-trajectory-toolbar select{min-width:0;max-width:100%;color-scheme:dark}.harless-trajectory-content{flex:1;min-height:0;overflow:auto;padding:20px}.harless-trajectory-native{flex:1;min-height:0;position:relative}.harless-comparison-trace{width:100%;max-width:960px;margin:0 auto}.harless-trace-list{list-style:none;padding:0;margin:18px 0}.harless-trace-list>li{position:relative;border-left:2px solid #8884;padding:0 0 22px 18px;margin-left:5px;overflow-wrap:anywhere}.harless-trace-event{display:flex;align-items:center;flex-wrap:wrap;gap:8px;line-height:1.6}.harless-trace-event strong{font-size:13px;font-weight:500}.harless-trace-event small,.harless-trace-event time,.harless-trace-tool{font-size:12px;color:var(--dsw-alias-label-secondary,inherit)}.harless-trace-event time{margin-left:auto;white-space:nowrap}.harless-trace-dot{position:absolute;left:-5px;top:7px;width:8px;height:8px;border-radius:50%;background:var(--dsw-alias-label-secondary,#999)}.harless-trace-list>li[data-optimized=true]{border-color:#36a383}.harless-trace-list>li[data-optimized=true] .harless-trace-dot{background:#36a383}.harless-trace-optimization{display:inline-block;font-size:12px;color:#48c5a1;background:#36a38316;border:1px solid #36a38366;border-radius:5px;padding:2px 6px;margin-top:6px}.harless-trace-tool{display:block;margin:4px 0}.harless-trace-list details{margin-top:8px;font-size:13px}.harless-trace-list summary{cursor:pointer;color:var(--dsw-alias-label-secondary,inherit)}.harless-trace-list pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.65;padding:12px;border:1px solid #8883;border-radius:8px}.harless-live-status{font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary,inherit)}@media(max-width:600px){.harless-trajectory-toolbar{padding:12px}.harless-trajectory-content{padding:14px}.harless-trace-event time{margin-left:0}}`),
-            h('div', { className: 'harless-trajectory-toolbar' },
-              h('button', { type: 'button', 'aria-pressed': !native, onClick: () => setNative(false) }, '对照任务'),
-              h('button', { type: 'button', 'aria-pressed': native, onClick: () => setNative(true) }, '普通对话'),
-              !native && h('select', { 'aria-label': '选择对照轮次', value: active.data.id, onChange: event => setSelected(event.target.value) },
-                ...rows.map((row, index) => h('option', { key: row.data.id, value: row.data.id }, `第 ${row.location?.turn?.turn ?? index + 1} 轮 · /${aliases[row.data.scene] || row.data.scene}`))),
-              hasMore && h('button', { type: 'button', onClick: () => owner.loadOlder() }, '加载更早记录')),
-            native ? h('div', { className: 'harless-trajectory-native' }, h(original.component, nativeProps))
-              : h('div', { className: 'harless-trajectory-content' }, h(ComparisonNode, { key: active.data.id, node: active, traceOnly: true })));
+          const chat = owner.useChat(snapshot => snapshot), inspection = owner.useTrajectory(snapshot => snapshot);
+          const session = owner.useSession(snapshot => snapshot);
+          const [lanes, setLanes] = React.useState({}), [query, setQuery] = React.useState(''), [scale, setScale] = React.useState('turn');
+          const [historyError, setHistoryError] = React.useState(''), [retry, setRetry] = React.useState(0), [revision, refresh] = React.useState(0);
+          const rootRef = React.useRef(null), historyBusy = React.useRef(null), historyScope = React.useRef(null);
+          const comparisons = (chat.order || []).map(key => chat.nodes.get(key)).filter(row => row?.kind === 'harless-comparison' && row.visibility !== 'hidden');
+          const identities = comparisons.map(row => comparisonKey(row.data)).join('|');
+          React.useEffect(() => {
+            const scope = {}; historyScope.current = scope; historyBusy.current = null;
+            setLanes({}); setQuery(''); setHistoryError('');
+            return () => { if (historyScope.current === scope) historyScope.current = null; };
+          }, [owner.sessionId]);
+          React.useEffect(() => {
+            const disposers = comparisons.map(row => {
+              const key = comparisonKey(row.data), listener = () => refresh(value => value + 1);
+              const group = comparisonObservers.get(key) || new Set(); group.add(listener); comparisonObservers.set(key, group);
+              return () => { group.delete(listener); if (!group.size) comparisonObservers.delete(key); };
+            });
+            return () => disposers.forEach(stop => stop());
+          }, [owner.sessionId, identities]);
+          React.useEffect(() => {
+            if (!session.hasMore || session.loadingOlder || historyBusy.current || historyError) return;
+            const scope = historyScope.current; historyBusy.current = scope;
+            Promise.resolve().then(() => owner.loadOlder()).then(changed => {
+              if (historyScope.current === scope && changed === false) setHistoryError('更早记录暂未加载，请重试。');
+            }, () => { if (historyScope.current === scope) setHistoryError('读取更早记录失败，请重试。'); }).finally(() => {
+              if (historyBusy.current === scope) historyBusy.current = null;
+              if (historyScope.current === scope) refresh(value => value + 1);
+            });
+          }, [owner.sessionId, session.hasMore, session.loadingOlder, inspection.eventNodes?.[0]?.seq, historyError, retry, revision]);
+          const turns = trajectoryRounds(chat, inspection).map(turn => ({ ...turn,
+            value: turn.comparison ? rememberedSnapshot(turn.comparison.data) : undefined }));
+          const selectedLane = turn => isPairedTrace(turn.value) ? lanes[turn.key] || 'baseline' : 'baseline';
+          const go = key => rootRef.current?.querySelector('[data-round-key="' + key + '"]')?.scrollIntoView({ block: 'start', behavior: 'auto' });
+          const lanePicker = turn => isPairedTrace(turn.value) && h('div', { className: 'geneloop-trace-lanes', role: 'group', 'aria-label': '第 ' + turn.number + ' 轮图示轨迹' },
+            ...['baseline', 'motif'].map(lane => h('button', { type: 'button', key: lane, 'data-lane': lane,
+              'aria-pressed': selectedLane(turn) === lane, onClick: () => setLanes(old => ({ ...old, [turn.key]: lane })) }, lane === 'baseline' ? 'Baseline' : 'Motif')));
+          const textOfTurn = turn => [traceText(turn.user || {}), ...turn.rows.map(row => [row.label, row.text, row.tool].join(' ')),
+            ...Object.values(turn.value?.lanes || {}).flatMap(lane => (lane.trace || []).map(row => [row.label, row.text, row.tool].join(' ')))].join('\n').toLowerCase();
+          const visible = turns.filter(turn => !query.trim() || textOfTurn(turn).includes(query.trim().toLowerCase()));
+          const renderImages = images => images?.length ? owner.renderSlot(imageSlot, { images: images.map(attachment => ({ attachment })), loadImage: owner.loadImage, align: 'start', compact: true }) : null;
+          return h('div', { className: 'harless-trajectory-view geneloop-unified-trace', 'data-conversation-composer-overlay': '', ref: rootRef },
+            h('style', null, unifiedTraceStyle),
+            h('div', { className: 'geneloop-trace-toolbar' },
+              h('div', { role: 'group', 'aria-label': '轨迹排列方式' }, ...[['turn', '按轮次'], ['duration', '按时间'], ['call', '按事件']].map(([key, label]) =>
+                h('button', { key, type: 'button', 'aria-pressed': scale === key, onClick: () => setScale(key) }, label))),
+              h('span', { className: 'geneloop-trace-count', role: 'status' }, session.hasMore ? '正在加载全部轮次…' : '共 ' + turns.length + ' 轮'),
+              h('input', { type: 'search', 'aria-label': '搜索轨迹', placeholder: '搜索轨迹', value: query, onChange: event => setQuery(event.target.value) })),
+            historyError && h('div', { role: 'alert', className: 'geneloop-trace-history-error' }, historyError, h('button', { type: 'button', onClick: () => { setHistoryError(''); setRetry(value => value + 1); } }, '重试')),
+            h('div', { className: 'geneloop-trace-overview', 'aria-label': '所有轮次的执行轨迹图' },
+              h('div', { className: 'geneloop-trace-axis', 'aria-hidden': true }, h('span', null, '输入'), h('span', null, '模型'), h('span', null, '工具')),
+              h('div', { className: 'geneloop-trace-chart' }, ...(session.hasMore ? [] : turns).map(turn => {
+                const rows = traceChartRows(turn, selectedLane(turn)), times = rows.map(row => row.timestamp).filter(Number.isFinite);
+                const start = Math.min(...times), span = Math.max(1, Math.max(...times) - start);
+                // Time scaling uses actual event timestamps, never inferred tool durations.
+                const weight = scale === 'duration' ? span : scale === 'call' ? Math.max(1, rows.length) : 1;
+                return h('div', { key: turn.key, className: 'geneloop-trace-chart-turn', 'data-chart-turn': turn.number, style: { flexGrow: weight } },
+                  h('button', { type: 'button', className: 'geneloop-trace-jump', onClick: () => go(turn.key) }, '第 ' + turn.number + ' 轮'),
+                  lanePicker(turn),
+                  h('div', { className: 'geneloop-trace-plot', 'data-shown-lane': isPairedTrace(turn.value) ? selectedLane(turn) : 'single' },
+                    ...rows.map((row, index) => h('button', { key: row.id || index, type: 'button', className: 'geneloop-trace-mark',
+                      'data-kind': row.chartLane, 'data-optimized': row.verified_skip === true || row.optimized === true ? 'true' : undefined,
+                      'aria-label': '第 ' + turn.number + ' 轮 · ' + row.label + (row.verified_skip ? ' · 已验证优化' : ''),
+                      title: row.label + (row.tool ? ' · ' + row.tool : '') + (Number.isFinite(row.timestamp) ? ' · ' + new Date(row.timestamp).toLocaleTimeString('zh-CN', { hour12: false }) : ''),
+                      style: { left: (scale === 'call' || !Number.isFinite(row.timestamp) ? (index + .5) / Math.max(1, rows.length) : (row.timestamp - start) / span) * 92 + 2 + '%', top: row.chartLane * 16 + 6 + 'px' },
+                      onClick: () => go(turn.key) }))),
+                  isPairedTrace(turn.value) && h('small', null, '图示：' + (selectedLane(turn) === 'baseline' ? 'Baseline' : 'Motif')));
+              }))),
+            h('div', { className: 'geneloop-trace-rounds' },
+              session.hasMore && h('p', { role: 'status' }, historyError ? '请重试以完整显示所有轮次。' : '正在读取完整对话记录…'),
+              ...(inspection.systemPrompts || []).map(prompt => h('details', { key: 'system-' + prompt.seq, className: 'geneloop-trace-system' },
+                h('summary', null, prompt.update ? '系统提示词更新' : '初始系统提示词'), h('pre', null, prompt.text))),
+              !turns.length && h('p', { role: 'status' }, session.openState === 'loading' ? '正在加载轨迹…' : '开始对话后，执行轨迹会显示在这里。'),
+              turns.length > 0 && !visible.length && h('p', { role: 'status' }, '没有匹配的轨迹。'),
+              ...(session.hasMore ? [] : visible).map(turn => h('section', { key: turn.key, className: 'geneloop-trace-round', 'data-round-key': turn.key, 'aria-label': '第 ' + turn.number + ' 轮' },
+                h('header', null, h('strong', null, '第 ' + turn.number + ' 轮'), h('span', null, '/' + (aliases[turn.value?.scene] || turn.value?.scene || 'chat'))),
+                h('div', { className: 'geneloop-trace-user' }, h('span', null, '用户'), h('p', null, traceText(turn.user || {}) || '查看本轮任务'),
+                  renderImages((turn.user?.content || []).filter(part => part.type === 'image').map(part => part.attachment))),
+                turn.comparison ? h(ComparisonNode, { key: turn.comparison.data.id, node: turn.comparison, traceOnly: true })
+                  : h(TraceRows, { items: turn.rows, renderImages }),
+                !turn.comparison && !turn.rows.length && h('p', { className: 'harless-paired-muted' }, '本轮尚无执行记录。')))));
         }
         const removeView = ctx.slots.register({ name: 'conversation.view', ...original.options, priority: -100,
           locale: original.locale, inject: original.inject, ...(original.store ? { store: original.store } : {}),
