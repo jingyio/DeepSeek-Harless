@@ -493,6 +493,8 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 
 `stage_current_audit` 保留 `remove_reference_number` 单行修复，同时增加 `remove_reference_numbers`（最多 40 个不同的一基原行号）；在同一草稿 SHA 和排他锁下从大到小删除并连续重编号。两参数互斥，陈旧 SHA、越界或重复行号拒绝；用于修复已暂存的多行范围，不改变已定稿报告或上传原件。
 
+`finalize_current_audit` 对任务批准的 LaTeX/BibTeX 输入可额外返回 `bibliography_coverage`：`source_entry_count` 是原始记录数，`source_unique_key_count` 是唯一键数，`report_reference_count` 是报告行数，`unreported_unique_keys_lower_bound` 是仅按数量能确定的最小缺口，`count_insufficient` 标明报告行数小于唯一键数。PDF-only 或无法安全解析的输入不返回此字段；字段缺失与数量相等都不证明完整审查或事实正确。报告定稿、导出和 Web 任务状态仍分别遵循原有协议，模型须向用户说明不足的覆盖范围。
+
 论文组合包可选携带 `paper-flow-shadow.json`：离线编译器验证旧库/来源轨迹、当前六个工具参数 Schema 后生成仅供 Shadow 的候选与旧报告流程映射；`compile-paper-composite-runtime.py --flow-shadow` 将其纳入包文件锁。场景 Registry 只从已认证私有包读取该文件；任务预览冻结 `paper_flow_shadow_sha256`，确认前版本变化须重建草稿。Web 的统一在线拦截点仍由已认证 Runtime 执行；此观察器只从当前 Task/Session 工具结果生成 `legacy_paper_flow` 和报告流程审计，不调用工具或跳过模型。Origin 不加载观察器，Execute 也不提升旧候选权限。见[同包验证](experiments/paper-flow-unification-20261015-v1.md)。
 
 当前用户边界是一个可信 principal 一个独立 Harness 启动；启动器接受 `--user-id`，客户端不能指定 cwd/工作区、库或命令。上传收据通过官方 Agent scope 解析后复制，重新确认时验证字节摘要。多账号 gateway 仍需账户负责人接入并联合验收。场景安装、登记字段、限额、拒绝原因与已验证边界见 [Harless 控制协议](harless-controls.md)；本节更新旧“仅前端预览”描述，不改写旧实验结论。

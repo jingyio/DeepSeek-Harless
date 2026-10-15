@@ -220,6 +220,36 @@ def test_report_staging_mcp_schema_exposes_field_types(tmp_path):
     assert 'integer' in {branch['type'] for branch in fields['remove_reference_number']['anyOf']}
 
 
+def test_finalization_reports_partial_approved_bibliography_count(tmp_path):
+    workspace = tmp_path / 'session'
+    inputs = workspace / 'inputs'
+    inputs.mkdir(parents=True)
+    (inputs / 'main.tex').write_text(r'\cite{alpha}\bibliography{references}', encoding='utf-8')
+    (inputs / 'references.bib').write_text(
+        '@article{alpha, title={A}}\n@article{beta, title={B}}\n'
+        '@article{beta, title={Duplicate B}}', encoding='utf-8')
+    approved = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs.iterdir()}
+    (workspace / 'approved-inputs.json').write_text(json.dumps({'files': approved}))
+    (workspace / 'paper-output-grant.json').write_text(json.dumps({
+        'schema_version': 1, 'task_id': 'task-coverage', 'allow_output': True,
+        'audit_sha256': None}))
+    output = PaperOutput(PaperEvidence(inputs), None)
+    checks = {key: {'result': '未完成', 'evidence': 'main.tex', 'limitation': '仅局部核对'}
+              for key in INPUT_SCHEMA['citation_checks_required']}
+    draft = output.stage({'scope': 'Only alpha was checked.', 'references': [{
+        'number': 1, 'key': 'alpha', 'short_title': 'A', 'status': '存疑',
+        'priority': 'P2', 'source_ids': [], 'explanation': '未核验真实性。',
+        'evidence_files': ['references.bib']}], 'citation_checks': checks})
+    assert draft['staged'] is True
+    result = asyncio.run(create_server(inputs).call_tool('finalize_current_audit', {
+        'expected_draft_sha256': draft['draft_sha256']}))
+    finalized = json.loads(result.content[0].text)
+    assert finalized['bibliography_coverage'] == {
+        'source_entry_count': 3, 'source_unique_key_count': 2,
+        'report_reference_count': 1, 'unreported_unique_keys_lower_bound': 1,
+        'count_insufficient': True, 'semantic_quality_accepted': False}
+
+
 def test_compact_bibliography_stage_copies_only_current_pinned_source(tmp_path):
     workspace = tmp_path / 'session'
     inputs = workspace / 'inputs'

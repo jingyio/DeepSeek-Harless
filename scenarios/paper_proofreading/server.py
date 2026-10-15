@@ -290,8 +290,35 @@ def create_server(directory, renderer_root=None):
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
     def finalize_current_audit(expected_draft_sha256: str) -> dict:
-        """Validate and freeze the report; invalid draft content returns a repair reason."""
-        return output.finalize(expected_draft_sha256)
+        """Freeze the report and return current BibTeX count coverage when available.
+
+        A count below the approved bibliography means the report is partial;
+        matching counts alone do not verify bibliographic facts or scope.
+        """
+        bibliography_counts = None
+        try:
+            diagnostic = citations().collect_local_citation_evidence('current')['diagnostic']
+            entries = diagnostic.get('bib_entry_count')
+            unique_keys = diagnostic.get('bib_unique_key_count')
+            if type(entries) is int and type(unique_keys) is int:
+                bibliography_counts = (entries, unique_keys)
+        except (ValueError, OSError, UnicodeError, KeyError):
+            # PDF-only and unsupported-source tasks may still finalize a valid
+            # report; absence of a BibTeX count cannot prove full coverage.
+            pass
+        result = output.finalize(expected_draft_sha256)
+        if result.get('report_sha256') and bibliography_counts:
+            entries, unique_keys = bibliography_counts
+            reported = result['reference_count']
+            result['bibliography_coverage'] = {
+                'source_entry_count': entries,
+                'source_unique_key_count': unique_keys,
+                'report_reference_count': reported,
+                'unreported_unique_keys_lower_bound': max(0, unique_keys - reported),
+                'count_insufficient': reported < unique_keys,
+                'semantic_quality_accepted': False,
+            }
+        return result
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
     def export_current_audit_pdf(report_sha256: str) -> dict:
