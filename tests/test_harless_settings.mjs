@@ -75,3 +75,24 @@ test('paper upload binding freezes admitted bytes and an observed read continuat
     assert.throws(()=>bindApprovedUploadedReadTask(root,inputs,request,manifest,'new-scene'),/requires_approved/);
   }finally{rmSync(root,{recursive:true,force:true});}
 });
+test('paper Motif binding accepts sixteen verified uploads and rejects a seventeenth', {skip:!process.features?.typescript}, async()=>{
+  const {bindApprovedUploadedReadTask}=await import('../src/adapters/harless_rsi_binding.ts');
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'paper-full-binding-')));mkdirSync(join(root,'inputs'));
+  try{
+    const pin='mcp__paper_checks__pin_paper_sources',read='mcp__paper_checks__read_pinned_paper_sources';
+    const manifest={version_fields:{[pin]:'version_sha256',[read]:'version_sha256'},
+      artifacts:[{tools:[pin,read],transfer_evidence:[{from_tool:pin,to_tool:read,from_field:'source_id',to_param:'source_id'}]}]};
+    const inputs=[];
+    for(let index=0;index<17;index++){
+      const file=`section-${index}.tex`,data=Buffer.from(`Section ${index}`),version=createHash('sha256').update(data).digest('hex');
+      writeFileSync(join(root,'inputs',file),data);inputs.push({file,version_sha256:version});
+    }
+    const files=Object.fromEntries(inputs.slice(0,16).map(row=>[row.file,row.version_sha256]));
+    writeFileSync(join(root,'approved-inputs.json'),JSON.stringify({files}));
+    const request={task_id:'task-full',session_id:'session-full',content:[{type:'text',text:'Review full paper'}]};
+    assert.equal(bindApprovedUploadedReadTask(root,inputs.slice(0,16),request,manifest,'paper-proofreading').task_id,'task-full');
+    files[inputs[16].file]=inputs[16].version_sha256;
+    writeFileSync(join(root,'approved-inputs.json'),JSON.stringify({files}));
+    assert.throws(()=>bindApprovedUploadedReadTask(root,inputs,request,manifest,'paper-proofreading'),/requires_approved/);
+  }finally{rmSync(root,{recursive:true,force:true});}
+});

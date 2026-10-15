@@ -34,7 +34,8 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
     'research-data-analysis':['mcp__data_analysis__pin_dataset','mcp__data_analysis__read_pinned_dataset_summary'],
   };
   const pair=pairs[sceneId];
-  if(!pair || !inputs.length || inputs.length>8)throw Error('uploaded_rsi_requires_approved_sources');
+  if(!pair || !inputs.length || inputs.length>(sceneId==='paper-proofreading'?16:8))
+    throw Error('uploaded_rsi_requires_approved_sources');
   const citationEdge:[string,string,string]=[
     'mcp__paper_checks__pin_paper_citations','mcp__paper_checks__read_pinned_paper_citations','source_id'];
   const allowed=[{tools:pair,field:'source_id'},

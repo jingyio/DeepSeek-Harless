@@ -9,14 +9,16 @@
 ## 任务、配置与私有记录
 
 - 来源：V100 私有归档 `paper-full-rsi-integration-20261012-v3/baseline-01` 的 `submission/` 源码与已生成的 `audit.json`，原始文件不变。新 Web 上传不能从零生成 `audit.json`，故本次 PDF 是对该已上传报告的审阅与导出，不能算新生成审查内容。
-- v1 原样上传 15 份文件：`main.tex`、12 个章节、`references.bib`、`audit.json`。Web 原限制 8 份，第 9 份被拒绝，模型请求 0。独立分支扩为论文 16 份，其他场景保留 8；定向 Python 12/12、Node 44/44、专门的 16 文件边界测试 1/1，通过后重新编译 V100 私有 v7 库。
+- v1 原样上传 15 份文件：`main.tex`、12 个章节、`references.bib`、`audit.json`。Web 原限制 8 份，第 9 份被拒绝，模型请求 0。独立分支把论文任务准入、服务读取及 Motif 绑定一并扩为 16 份，其他场景保留 8；定向 Python 12/12、Node 44/44、两个 16 文件边界测试通过，最终重新编译 V100 私有 v8 库。先前 v7 已通过 Origin 准入，但仍有 Motif 绑定的 8 份限制，不能用于 15 文件的 Shadow/Execute。
 - 原样平铺上传仍无法保留旧 `main.tex` 的 9 个 `sections/...` 相对路径；真实 15 文件直测的源码和引文工具都因缺目录拒绝。私有 v2 仅在隔离副本中把这 9 处 `\input{sections/name}` 改为 `\input{name}`，内容文件不改，变更前后 SHA 与位置记于 `.local/paper-composite-full-20261015-v1/transform.json`。因此 v2 可以比较**新场景三模式**，但不是旧 164 请求任务的原样复现。
-- V100 独立工作区 `/home/jingyij/jjy/.local/integration/harless-motif-20261014`，私有库 `.local/paper-composite-20261015-v7/runtime/`。真实模型 `deepseek-flash`、`reasoning_effort=off`、17 工具、每任务最多 240 请求 / $1、整轮最多 720 请求 / $3、单次输出最多 1000 token；这些是隔离实验技术上限，不改公共 Web 额度。所有失败与重试累计记账，账单实际费用未知。
+- V100 独立工作区 `/home/jingyij/jjy/.local/integration/harless-motif-20261014`，最终私有库 `.local/paper-composite-20261015-v8/runtime/`；已发生的 HTTP 503 实验使用 v7，未冒称 v8 效果。真实模型 `deepseek-flash`、`reasoning_effort=off`、17 工具、每任务最多 240 请求 / $1、整轮最多 720 请求 / $3、单次输出最多 1000 token；这些是隔离实验技术上限，不改公共 Web 额度。所有失败与重试累计记账，账单实际费用未知。
 - 私有原始输入、变换、运行脚本、结果和账本均在 `.local/paper-composite-full-20261015-v1/` 与 `...-v2/`，不进 Git。v1 run ID `cf7bea19057049f494102ab6c9245521`、`90ee39ab2d1e4aeca436d8928992e29a`；短请求诊断 run ID `cfde39c516bd463cbf5704537fb4237d`。
 
 ## 已观察结果与失败
 
 - 15 文件在改动后经 Web 任务准入；无模型场景矩阵 27 个有效预览、MCP 和双用户拒绝通过。隔离 v2 副本直接调用真实论文工具：15 文件清单、源码诊断、当前引用诊断与报告读取成功。固定排版工具在获准的新输出目录生成 151,255 字节 PDF，SHA-256 `d12bc67c282c9e99d55ef6526c1bb7a22c5b639aaddb3348b90a22600b78f3a0`，输入哈希未变；收据不证明内容或逐页视觉质量。
+- v8 无模型 Harness/Web 复核 run `c36a01cfccad4ac0b226be62e490c307`：真实 15 份平铺副本逐份上传，选择 Execute，生成当前 Task/Session 的 `bound-motif-task.json`，17 工具，0 模型请求；这只验证启动准入和认证绑定，未产生真实 Verified Skip。
+- 最终本地 `npm test`（指定项目 Python 3.12）为 673 Python 通过、193 条件跳过；Node 452 通过、3 条件跳过、1 失败。失败是未修改的用户隔离测试把 macOS 同一目录的 `/var/...` 与 `/private/var/...` 字符串要求完全相等；没有为使本分支变绿而改动协作者模块。`npm run smoke` 与 `npm run web:controls:check` 通过，V100 论文无模型场景矩阵通过。
 - v1 原样全任务 Origin 两次均在**第一条** DeepSeek 请求得到 HTTP 503 `Service is too busy`，各 1 请求、0 工具、0 跳过，代理分别保守预估 $0.0079971，缺实际 usage。相同 17 工具的短 Origin 请求也在第一条得到相同 503，1 请求、0 工具，预估 $0.0056064。三次合计 3 个真实上游请求、$0.0216006 保守预估，账单待核，均不得记成 Motif 失败或收益。
 - v2 平铺兼容任务 run ID `12a3bafea5554416b71893182f748abf` 同样在 Origin 首请求收到 503，1 请求、0 工具、0 跳过，额外保守预估 $0.0079971。至此本轮合计 4 次真实上游请求、$0.0295977 保守预估，实际账单未知。没有同题完成的 Origin、Shadow、Execute 三臂结果，不能声称新库降低实际请求或费用。
 
