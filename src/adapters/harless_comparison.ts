@@ -2,12 +2,14 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { hasReportPlaceholders, REPORT_ANSWER_BINDING } from './harless_report_answer.ts';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const terminal = new Set(['completed', 'failed', 'cancelled']);
 const lanes = ['baseline', 'motif'] as const;
 type LaneName = typeof lanes[number];
 type Lane = { session_id: string; task_id?: string; status: string; answer?: string; failure?: string;
+  answer_display?: string; answer_binding?: any;
   mode?:string;library_sha256?:string;
   attempt: number; output_sha256?: string; stats?: any; fallback_reason?: string; artifacts?: any[] };
 type Turn = { id: string; session_id: string; request_id: string; fingerprint: string; scene: string;
@@ -49,6 +51,8 @@ export function createComparisonService(output: string, principal: string, host:
   const locked = <T>(fn: () => Promise<T>): Promise<T> => {
     const job = admission.then(fn); admission = job.then(() => undefined, () => undefined); return job;
   };
+  const outputHash = (lane: Lane) => hash([lane.answer, lane.artifacts,
+    ...(lane.answer_display === undefined ? [] : [{ answer_display: lane.answer_display, answer_binding: lane.answer_binding }])]);
   const view = (t: Turn) => ({ id: t.id, session_id: t.session_id, scene: t.scene, status: t.status,
     input_sha256: t.input_sha256, created_at: t.created_at, score_revision: t.score_revision, scores: { ...t.scores },
     scoring_available: lanes.every(name => t.lanes[name].status === 'completed'),
@@ -81,11 +85,12 @@ export function createComparisonService(output: string, principal: string, host:
     if (disposed) return;
     Object.assign(lane, { status: t.cancellation_requested ? 'cancelled' : task.status === 'budget_exhausted' ? 'failed' : task.status === 'awaiting_confirmation' ? 'queued' : task.status,
       answer: task.answer ?? lane.answer ?? '', stats: task.stats, fallback_reason: task.fallback_reason ?? null,
+      answer_display: task.answer_display, answer_binding: task.answer_binding,
       mode:task.mode,library_sha256:task.library_sha256,
       artifacts: task.deliveries ?? [], failure: task.status === 'budget_exhausted'
         ? (task.deliveries?.length ? '已完成的文件通过交付校验，可下载；后续模型回复达到请求或预算上限，未完成的部分与支出均已保留。' : '这一路达到预算或请求上限，结果与已有支出已保留。')
         : task.status === 'failed' ? '这一路运行失败，请查看状态后重试；已校验的交付文件仍可下载。' : undefined });
-    if (terminal.has(lane.status)) lane.output_sha256 = hash([lane.answer, lane.artifacts]);
+    if (terminal.has(lane.status)) lane.output_sha256 = outputHash(lane);
     summary(t); save();
     if (hash(view(t)) !== previous) await publish(t);
   }
@@ -194,18 +199,32 @@ export function createComparisonService(output: string, principal: string, host:
       if (terminal.has(t.status)) for (const name of lanes) {
         const lane = t.lanes[name], key = `${t.id}/${name}/${lane.attempt}`;
         const needsDeliveryAudit=t.scene==='research-data-analysis'&&lane.artifacts?.some(row=>row.verification!=='data-report-delivery-v1');
-        if (!terminal.has(lane.status) || !lane.task_id || (lane.artifacts?.length&&!needsDeliveryAudit) || reconciledDeliveries.has(key)) continue;
+        // A running task can have an unresolved display before finished_at is
+        // known. Re-audit that persisted result after a restart reaches a
+        // terminal state; the per-attempt key below bounds this to one read.
+        const needsAnswerBinding=t.scene==='research-data-analysis'&&hasReportPlaceholders(lane.answer??'')&&
+          (lane.answer_binding?.version!==REPORT_ANSWER_BINDING||lane.answer_binding?.status==='unresolved');
+        if (!terminal.has(lane.status) || !lane.task_id || (lane.artifacts?.length&&!needsDeliveryAudit&&!needsAnswerBinding) || reconciledDeliveries.has(key)) continue;
         try {
           const task = await host.inspect(lane.task_id, { turn: t, lane: name, recoverMissing: true });
-          if (Array.isArray(task.deliveries) && hash(task.deliveries)!==hash(lane.artifacts??[]) &&
-              ['completed', 'failed', 'budget_exhausted', 'cancelled'].includes(task.status)) {
-            lane.artifacts = task.deliveries;
-            if (lane.status !== 'completed'&&task.deliveries.length) lane.failure = (lane.failure ?? '这一路未完成。') + ' 已完成的文件通过交付校验，可下载。';
-            lane.output_sha256 = hash([lane.answer, lane.artifacts]);
-            // A recovered file changes the rated output; stale ratings cannot
-            // silently apply to the newly available version.
-            if (t.scores[name] !== undefined) { delete t.scores[name]; t.score_revision++; }
-            save(); await publish(t);
+          if (['completed', 'failed', 'budget_exhausted', 'cancelled'].includes(task.status)) {
+            let changed = false;
+            if ((!lane.artifacts?.length||needsDeliveryAudit) && Array.isArray(task.deliveries) && hash(task.deliveries)!==hash(lane.artifacts??[])) {
+              lane.artifacts = task.deliveries; changed = true;
+              if (lane.status !== 'completed'&&task.deliveries.length) lane.failure = (lane.failure ?? '这一路未完成。') + ' 已完成的文件通过交付校验，可下载。';
+            }
+            if (needsAnswerBinding && typeof task.answer_display==='string' && task.answer_binding?.version===REPORT_ANSWER_BINDING &&
+                task.answer_binding.source_answer_sha256===createHash('sha256').update(lane.answer??'').digest('hex') &&
+                hash([lane.answer_display,lane.answer_binding])!==hash([task.answer_display,task.answer_binding])) {
+              lane.answer_display=task.answer_display;lane.answer_binding=task.answer_binding;changed=true;
+            }
+            if (changed) {
+              lane.output_sha256 = outputHash(lane);
+              // A recovered file or evidence-bound display changes the rated
+              // output; stale ratings cannot apply to the new version.
+              if (t.scores[name] !== undefined) { delete t.scores[name]; t.score_revision++; }
+              save(); await publish(t);
+            }
           }
           reconciledDeliveries.add(key);
         } catch { /* Existing saved failure remains readable. */ }

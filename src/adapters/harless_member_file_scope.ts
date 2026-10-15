@@ -17,12 +17,12 @@ function canonical(path: string): string {
 }
 /** The scene launcher mounts the same private task directory at two paths. */
 export function memberTaskRoots(taskRoot = '/user/tasks', sceneRoot = '/app/.local/web'): string[] {
-  const roots = [resolve(taskRoot, 'sessions')];
+  const roots = [resolve(taskRoot, 'sessions'), resolve(taskRoot, 'managed-workspaces')];
   if (!existsSync(sceneRoot)) return roots;
   const original = statSync(taskRoot), alias = statSync(sceneRoot);
   if (!original.isDirectory() || !alias.isDirectory() ||
       original.dev !== alias.dev || original.ino !== alias.ino) throw denied();
-  roots.push(resolve(sceneRoot, 'sessions'));
+  roots.push(resolve(sceneRoot, 'sessions'), resolve(sceneRoot, 'managed-workspaces'));
   return roots;
 }
 export function guardMemberFileRpc(gateway: any, lookup: (id: string) => Promise<any>, roots: string[]) {

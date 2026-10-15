@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -74,7 +75,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   const ctx = {
     workspaceRegistry: { list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
       async create(path, title) { const old = [...workspaceGroups.values()].find(row => row.path === path); if (old) return old;
-        const row = { id:'workspace-' + workspaceGroups.size, path, title, sessionIds:[] }; workspaceGroups.set(row.id,row); return row; } },
+        const row = { id:'workspace-' + randomUUID(), path, title, sessionIds:[] }; workspaceGroups.set(row.id,row); return row; } },
     commands: { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } },
     agentPresets: { async select(agent, preset) { presetCalls.push({ session_id: agent.session.id, preset }); agent.preset = preset; } },
     effect(factory) { factory(); },
@@ -915,6 +916,59 @@ test('Native workspace creation uses one location and scene-switch sessions stay
     await f.restart();assert.equal((await f.settings(undefined,'?session_id='+child.value.session_id)).status,200);
     assert.equal(f.registrations.size,0);
   } finally {await f.close();}
+});
+
+test('Managed workspace name flow creates grouped chats and preserves legacy groups in both budget modes', options, async () => {
+  for (const broker of [false, true]) {
+    const f = await fixture({ broker, scenes: multiScenes });
+    const post = async (path, data) => {
+      const request = new Request('http://localhost' + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
+      request.authorized = true;
+      const response = await f.routes.get(path).fetch(request);
+      assert.equal(response.status, 200);
+      return response.json();
+    };
+    try {
+      const made = await post('/api/harless/workspaces', { name: '研究项目', request_id: randomUUID() });
+      const adoption = await post('/api/workspace/create', { type: 'client-request', rpcId: 'native-adoption', method: 'workspace/create',
+        payload: { args: { request: { path: made.workspace.path } } } });
+      assert.equal(adoption.result.ok, true);
+      const workspaceId = adoption.result.value.workspace.workspaceId;
+      const first = await f.ctx.sessionController.create({ workspaceId });
+      const second = await f.ctx.sessionController.create({ workspaceId });
+      const group = f.ctx.workspaceRegistry.get(workspaceId);
+      assert.deepEqual(group.sessionIds, [first.sessionId, second.sessionId]);
+      assert.equal((await f.ctx.sessionController.inspect(first.sessionId)).meta.cwd, made.workspace.path);
+      const switched = await f.settings({ action: 'new_session', inherit_session: second.sessionId, selection: { scene: 'other' } });
+      assert.equal(switched.status, 200); assert.ok(group.sessionIds.includes(switched.value.session_id));
+      const oldPath = join(f.directory, 'legacy-project'); mkdirSync(oldPath); writeFileSync(join(oldPath, 'notes.txt'), 'preserve');
+      const legacy = await f.ctx.workspaceRegistry.create(oldPath, '旧工作区');
+      const legacyChat = await f.ctx.sessionController.create({ workspaceId: legacy.id });
+      assert.ok(legacy.sessionIds.includes(legacyChat.sessionId));
+      assert.equal(readFileSync(join(oldPath, 'notes.txt'), 'utf8'), 'preserve');
+      await assert.rejects(f.ctx.sessionController.create({ cwd: oldPath }), error => error.code === 'workspace_not_allowed');
+      await assert.rejects(f.ctx.sessionController.create({ workspaceId: '' }), error => error.code === 'workspace_not_allowed');
+      await f.restart();
+      const reopened = await f.ctx.sessionController.create({ workspaceId });
+      assert.ok(group.sessionIds.includes(reopened.sessionId));
+      assert.equal(f.registrations.size, 0); assert.equal(f.promptCalls.length, 0);
+    } finally { await f.close(); }
+  }
+});
+
+test('Managed chat creation rejects another account workspace ID without registering a session', options, async () => {
+  const alice = await fixture({ broker: true, user_id: 'alice' });
+  const bob = await fixture({ broker: true, user_id: 'bob' });
+  try {
+    const foreign = await alice.ctx.workspaceRegistry.create(alice.directory, 'Alice project');
+    const before = bob.agents.size;
+    await assert.rejects(bob.ctx.sessionController.create({ workspaceId: foreign.id }), error => error.code === 'workspace_not_allowed' && error.status === 403);
+    assert.equal(bob.agents.size, before); assert.deepEqual(foreign.sessionIds, []);
+    const own = await bob.ctx.workspaceRegistry.create(bob.directory, 'Bob project');
+    const accepted = await bob.ctx.sessionController.create({ workspaceId: own.id });
+    assert.deepEqual(own.sessionIds, [accepted.sessionId]);
+    assert.equal(alice.registrations.size + bob.registrations.size, 0);
+  } finally { await bob.close(); await alice.close(); }
 });
 
 test('A scene switch on started history fails before mutation and restart repairs old planned-scene pollution', options, async () => {

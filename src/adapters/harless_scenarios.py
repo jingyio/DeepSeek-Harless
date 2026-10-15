@@ -45,9 +45,9 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                      embedding_endpoint=embedding_endpoint, embedding_model=embedding_model)
         if row.get('adapter'):
             scene.update(adapter=row['adapter'], mcp_rows=prepared['mcp_rows'], environment_references=prepared['environment_references'])
-        if row.get('adapter')=='data-report' or row['id']=='paper-proofreading':
+        if row.get('adapter') in ('data-report','ppt') or row['id']=='paper-proofreading':
             for mcp in scene['mcp_rows']:
-                if mcp['config']['serverName'] in ('research_report','paper_trace_rsi'):
+                if mcp['config']['serverName'] in ('research_report','paper_trace_rsi','ppt'):
                     mcp['config'].setdefault('env',{})['HARLESS_PRIVATE_ROOT']=str(output.resolve())
         if row.get('adapter') == 'literature':
             from .harless_pdf_deployment import configure_pdf_parser

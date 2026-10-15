@@ -19,7 +19,7 @@ export type PendingPatch = {
   deletions?: number[];
 };
 export type PendingOptions = {
-  root: string; jobPath: string; expectedSlides: number; evidence: PendingEvidence;
+  root: string; jobPath: string; privateRoot?: string; expectedSlides: number; evidence: PendingEvidence;
   guard: () => Promise<void>; audit?: (kind: string, data: Obj) => Promise<void>;
   maxAttempts?: number; maxPatches?: number;
 };
@@ -198,7 +198,7 @@ export class PendingPlanStore {
     if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 6
       || !Number.isSafeInteger(maxPatches) || maxPatches < 1 || maxPatches > 8)
       return reject('invalid_pending_scope', '修复预算只能在每任务6次提交/8次修改上限内收紧。');
-    const root = await realpath(options.root), jobPath = await privateFile(root, options.jobPath);
+    const root = await realpath(options.root), jobPath = await privateFile(root, options.jobPath, options.privateRoot);
     const jobDirectory = dirname(jobPath), directory = resolve(jobDirectory, 'pending-plans');
     const store = new PendingPlanStore({ ...options, root, evidence: structuredClone(options.evidence) }, directory, jobPath, maxAttempts, maxPatches);
     await store.guard(); await store.safeDirectory(jobDirectory);
@@ -207,7 +207,7 @@ export class PendingPlanStore {
   }
   private async guard(): Promise<void> {
     await this.options.guard();
-    const path = await privateFile(this.options.root, this.jobPath), raw = await readFile(path);
+    const path = await privateFile(this.options.root, this.jobPath, this.options.privateRoot), raw = await readFile(path);
     if (createHash('sha256').update(raw).digest('hex') !== this.options.evidence.job_sha256)
       reject('job_version_changed', '任务、预算或权限版本改变，拒绝旧失败计划。');
     const job: unknown = JSON.parse(raw.toString('utf8'));
@@ -216,7 +216,7 @@ export class PendingPlanStore {
   }
   private async safeDirectory(path: string): Promise<void> {
     const info = await lstat(path), actual = await realpath(path);
-    if (info.isSymbolicLink() || !info.isDirectory() || actual !== resolve(path) || !inside(resolve(this.options.root, '.local'), actual))
+    if (info.isSymbolicLink() || !info.isDirectory() || actual !== resolve(path) || !inside(this.options.privateRoot ?? resolve(this.options.root, '.local'), actual))
       reject('path_scope_rejected', '失败计划目录不能为符号链接或越出私有任务范围。');
   }
   private async safeRead(path: string): Promise<unknown> {

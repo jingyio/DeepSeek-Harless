@@ -146,7 +146,8 @@ async function main(): Promise<void> {
   const args=process.argv.slice(2); const flag=(name:string):string|undefined=>{ const i=args.indexOf(name); return i>=0?args[i+1]:undefined; };
   const area=resolve(dirname(fileURLToPath(import.meta.url)),'..');
   const root=await realpath(flag('--root')??resolve(area,'../..'));
-  const job=await privateFile(root,flag('--job')??process.env.SSS_PPT_JOB??'');
+  const webPrivateRoot=args.includes('--web-session') ? process.env.HARLESS_PRIVATE_ROOT : undefined;
+  const job=await privateFile(root,flag('--job')??process.env.SSS_PPT_JOB??'',webPrivateRoot);
   const expectedRoot=await realpath(resolve(area,'../..'));
   if (root!==expectedRoot) throw new AdapterRejected('path_scope_rejected','root必须匹配已安装场景所在仓库。');
   const fixedBackend=await realpath(resolve(area,'delivery_server.py'));
@@ -163,7 +164,8 @@ async function main(): Promise<void> {
   for (const name of ['FONTCONFIG_FILE','FONTCONFIG_PATH']) {
     if (process.env[name]) renderEnvironment[name] = process.env[name]!;
   }
-  const transport=new StdioClientTransport({command:process.env.SSS_PPT_DELIVERY_PYTHON??process.env.SSS_PYTHON??'python',args:[backendPath],cwd:root,
+  const backendArgs = [backendPath, ...(webPrivateRoot ? ['--web-session','--private-root',dirname(job)] : [])];
+  const transport=new StdioClientTransport({command:process.env.SSS_PPT_DELIVERY_PYTHON??process.env.SSS_PYTHON??'python',args:backendArgs,cwd:root,
     env:{...getDefaultEnvironment(),...renderEnvironment,PYTHONPATH:root,PYTHONUTF8:'1',SSS_PPT_JOB:job},stderr:'pipe',maxBufferSize:20_000_000});
   transport.stderr?.on('data',chunk=>{ void appendFile(resolve(dirname(job),'delivery-backend.stderr.log'),chunk,{mode:0o600}); });
   await client.connect(transport);
@@ -177,9 +179,9 @@ async function main(): Promise<void> {
   const schemaDigest=digest(offered);
   const adapterDirectory=dirname(fileURLToPath(import.meta.url));
   const adapter=await DeliveryAdapter.create(root,job,async(name,args)=>payload(await client.callTool({name,arguments:args},undefined,{timeout:240_000})),
-    await dependencyFiles(root,backendPath,adapterDirectory),args.includes('--web-session'));
+    await dependencyFiles(root,backendPath,adapterDirectory),args.includes('--web-session'),webPrivateRoot);
   const pendingPlans=executionPolicy.strategy==='host_delivery' && jobData.allow_output===true
-    ? await PendingPlanStore.create({root,jobPath:job,expectedSlides:Number(jobData.slides),
+    ? await PendingPlanStore.create({root,jobPath:job,privateRoot:adapter.privateRoot,expectedSlides:Number(jobData.slides),
       evidence:adapter.versionEvidence(schemaDigest),guard:()=>adapter.guard(),audit:(kind,data)=>adapter.audit(kind,data)}) : undefined;
   const recovery=new PlanRecovery(pendingPlans,executionPolicy,adapter);
   const runtime={schema_version:1,backend_tool_order:expected,advertised_tool_order:offered.map(tool=>tool.name),actual_tools:offered,

@@ -604,3 +604,14 @@ Python 从正常基线编译 `source_bound_readonly_batch_shadow` v1：当前任
 `POST /api/harless/comparisons` 支持 `rate`、`retry`、`cancel`。评分需 `{session_id,id,lane,score,revision,output_sha256}`，两侧完成才接受 1–5 整数，以结果哈希和 revision 防止过期覆盖；评分与修改记录落在账号私有目录。重试仅重跑失败一侧，成功结果保持；重启把未完成任务标为中断，不自动启动新付费请求。原生 `user/message` 的 `harless_comparison` 元数据及标准 `turn/start/end` 定位双栏，持久化 GET 提供实时状态并支持刷新恢复；不写入当前 Harness 无法恢复的未知事件类型。
 
 PPT 复用已有只读库；数据通过 `report_session.py` 绑定上传 CSV/TSV 和可选研究 JSON，沿用已有 V3 工具及许可回执；论文通过 `revision_session.ts` 调用已有程序，保留所有上传字段并对窄审计 schema 做结构投影，Shadow 不授权模型跳过。
+
+
+### GeneLoop 托管工作区与场景输入
+
+`POST /api/harless/workspaces` 接受 `{name, request_id}`，在账号私有 output 下按 principal 哈希和随机 ID 分配目录，名称不作为路径。相同 request_id 重试返回同一工作区；同账号重名返回冲突，不同账号可用同名。原生 `workspace/create` 仅采用该账号已登记路径；目录浏览/新建任意路径入口关闭。`session/create` 只接受当前 registry 的 workspaceId，后台工具工作目录仍按 Session 隔离。旧已登记工作区保留，切换场景继承工作区分组。
+
+原生斜杠候选每字符按场景名做前缀匹配；选项通过 draft revision、当前 token、会话与附件快照校验，过期请求不能覆写新输入。手动完整 `/ppt 请求`、`/data请求` 在发送前进行场景选择；后端只剥离首个完整场景 token，不识别 `/pptx`、路径或正文中的斜杠。按空格或选择菜单项使用原生蓝色引用；不修改上游编辑器。已开始的会话切场景会创建新会话，保留原聊天；只有原草稿和附件仍一致时才移交发送。
+
+数据回答可附带 `answer_display` 与 `answer_binding`，原 `answer`、原始事件及 answer.md 不变。展示值只来自该任务时间窗内成功 `build_evidence` 的回执和同工作区哈希匹配记录；多来源歧义或未知变量显示“未绑定”，代码示例保留。展示内容改变时更新 output_sha256 并失效旧评分，不把旧评分套到新展示上。
+
+PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历史 output 可分离；适配器准入后将 Python 工具与交付守卫收窄到一个 job 目录。CLI 默认目录边界不变，单独环境变量不能启用外置 Web 路径。历史 checkpoint 的目录修复兼容仅接受精确已审查版本，保留原始检查点与审计，未知版本继续拒绝。

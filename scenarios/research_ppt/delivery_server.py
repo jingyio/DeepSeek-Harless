@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import argparse
 from pathlib import Path
 import sys
 
@@ -97,4 +98,14 @@ def create_server(job_path: Path):
 
 
 if __name__ == '__main__':
-    create_server(Path(os.environ['SSS_PPT_JOB'])).run(transport='stdio')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--web-session', action='store_true')
+    parser.add_argument('--private-root', type=Path)
+    args = parser.parse_args()
+    if args.web_session != (args.private_root is not None):
+        parser.error('--web-session and --private-root must be supplied together')
+    job = Path(os.environ['SSS_PPT_JOB'])
+    if args.web_session:
+        from scenarios.research_ppt.web_scope import configure_web_scope
+        configure_web_scope(job, args.private_root)
+    create_server(job).run(transport='stdio')
