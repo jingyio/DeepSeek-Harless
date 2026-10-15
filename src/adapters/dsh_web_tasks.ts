@@ -11,7 +11,7 @@ import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
 import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, sceneShortcut, parseSceneShortcut, SettingsError } from './harless_settings.ts';
-import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest, prepareSceneRuntimeInputs } from './harless_task_scope.ts';
+import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDigest } from './harless_task_scope.ts';
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
@@ -23,7 +23,7 @@ import {bindReportAnswer} from './harless_report_answer.ts';
 import {registerManagedWorkspaceRoutes} from './harless_managed_workspaces.ts';
 
 export const name = 'sss-web-tasks';
-export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry'];
+export const inject = ['llm', 'agents', 'sessionController', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController'];
 type Policy = {
   output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number;
   mode: ExecutionMode; budget_usd: number; request_limit?: number; run_budget_usd?: number; run_request_limit?: number; capability_profile: string;
@@ -48,7 +48,7 @@ type Task = {
   sources: { resource_id: string; version: string; sha256: string }[];
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
-  model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; scope_sha256: string | null;
+  model_option: ModelOption; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; source_pending?: boolean; scope_sha256: string | null;
   budget_session_id: string;
   source_task_id?: string;
   bound_binding_sha256?: string | null;
@@ -161,16 +161,21 @@ export function apply(ctx: any) {
     return { ...safe, allowed_tools: [], instructions, instructions_sha256: sha(instructions),
       config_sha256: digest({ scene: scene.id, parent: scene.config_sha256 ?? null, legacy_chat_only: true }) };
   }
-  function bindScene(agent: any, configuredScene: Scene) {
+  const instructionsFor = (scene: Scene, sourcePending = false) => scene.adapter && scene.id !== 'new-scene'
+    ? `${scene.instructions ?? ''}\n\n交互原则：以上工具流程仅在用户确实需要相应处理时适用。文字、附件及二者组合都走当前场景的正常执行流程，由你根据请求决定直接回答、询问资料或调用工具。正常回应问候、讨论目标、解释方法；不要为闲聊强制运行报告流程或要求上传。具体操作缺少必要来源时自然说明需要什么，不编造数据或交付，不暴露内部配置或服务器路径。${sourcePending ? '当前任务没有附件；这不限制正常问答或可用工具，也不代表用户必须上传。' : ''}`
+    : scene.instructions;
+  function bindScene(agent: any, configuredScene: Scene, sourcePending = false) {
     const scene = sessionScene(agent.session.id, configuredScene);
     for (const dispose of guards.get(agent.session.id) ?? []) dispose();
-    const allowed = new Set(scene.allowed_tools);
-    const disposers = [agent.ctx.tools.restrict({ allow: scene.allowed_tools }),
+    const allowedTools = scene.allowed_tools;
+    const allowed = new Set(allowedTools);
+    const instructions = instructionsFor(scene, sourcePending);
+    const disposers = [agent.ctx.tools.restrict({ allow: allowedTools }),
       agent.ctx.tools.guard((call: any) => allowed.has(call.name) ? undefined : 'Tool is outside the configured capability profile')];
-    if (scene.instructions) {
+    if (instructions) {
       // Report value tokens such as {{estimate}} are literal instructions, not
       // Harness prompt variables. Substitution values are not interpolated again.
-      disposers.push(agent.ctx.systemPrompt.variable('harless_scene_literal',()=>scene.instructions));
+      disposers.push(agent.ctx.systemPrompt.variable('harless_scene_literal',()=>instructions));
       disposers.push(agent.ctx.systemPrompt.section({ name: 'harless-scene', order: 10210, text: '{{harless_scene_literal}}' }));
     }
     if (config.fixture === 'tool-failure') disposers.push(agent.ctx.tools.guard((call: any) => call.name.endsWith('__read_pinned') ? 'injected mock tool failure' : undefined));
@@ -393,7 +398,7 @@ export function apply(ctx: any) {
       provider_mode: config.provider_mode, provider: task.model_option.provider, model: task.model_option.model,
       motif_library:task.scene.runtime_kind??null,library_sha256:task.scene.runtime_library_sha256??null,
       paid_calls_enabled: config.provider_mode === 'real',
-      scene_options: task.scene_options, scene_inputs: task.scene_inputs,
+      scene_options: task.scene_options, scene_inputs: task.scene_inputs, source_pending: task.source_pending ?? false,
       effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
       stats: task.stats, sources: task.sources,
       ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
@@ -429,7 +434,7 @@ export function apply(ctx: any) {
         allowed_tools: effective.allowed_tools ?? restoredScene.allowed_tools },
       selection: { scene: state.scene ?? request.capability_profile, mode: state.selected_mode ?? request.mode, rsi: state.rsi ?? false },
       workspace: workspaceFor(request.session_id), scene_options: state.scene_options ?? {}, scene_inputs: state.scene_inputs ?? [], scope_sha256: effective.scope_sha256 ?? null,
-      tools: effective.tools ?? [],
+      tools: effective.tools ?? [], source_pending: state.source_pending === true,
       manifest_sha256: effective.manifest_sha256 ?? null,
       binding_sha256: effective.binding_sha256 ?? null,
       bound_binding_sha256: effective.bound_binding_sha256 ?? null,
@@ -491,8 +496,18 @@ export function apply(ctx: any) {
   const controller = ctx.sessionController;
   const original = { create: controller.create.bind(controller), prompt: controller.prompt.bind(controller),
     cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller) };
+  const titledSessions = new Set<string>();
+  async function repairBlankTitle(id: string, snapshot?: any) {
+    if (titledSessions.has(id) || !controller.rename) return;
+    snapshot ??= await controller.inspect(id);
+    if (!snapshot.meta.title && !snapshot.events.some((event: any) =>
+        ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)))
+      await controller.rename({ sessionId: id, title: '新会话' });
+    titledSessions.add(id);
+  }
   async function ensureOwned(id: string) {
     if (ownedSessions.has(id)) {
+      await repairBlankTitle(id);
       if (!selections.has(id)) {
         const snapshot = await controller.inspect(id);
         const scene = forSession(id)?.scene ?? scenes.find(row => row.preset === snapshot.meta.agentPreset) ??
@@ -519,6 +534,7 @@ export function apply(ctx: any) {
     const registration = await control('/tasks/stats?session_id=' + encodeURIComponent(id), undefined, true);
     if (registration !== null && !brokerMode) throw new TaskError('session_already_bound', 'This session already has a task；请在工作区菜单中归档此空会话，然后新建会话。', 409);
     ownedSessions.add(id); saveOwnership();
+    await repairBlankTitle(id, snapshot);
     if (!selections.has(id)) selections.set(id, { ...defaults,
       scene: scenes.find(scene => scene.preset === snapshot.meta.agentPreset)!.id });
     saveSettings();
@@ -559,6 +575,9 @@ export function apply(ctx: any) {
       const { cwd: _cwd, workspaceId: _workspaceId, ...identity } = request;
       const created = await original.create({ ...identity, sessionId: id, ...location,
         agentPreset: priorPreset ?? sessionPreset(config.output, workspace, chosen) });
+      // Native title fallback is the storage directory basename (a UUID).
+      // Give new chats a durable user-facing name without renaming old chats.
+      if (!priorPreset && controller.rename) await controller.rename({ sessionId: created.sessionId, title: '新会话' });
       ownedSessions.add(created.sessionId); saveOwnership();
       if (!selections.has(created.sessionId)) {
         selections.set(created.sessionId, { ...defaults, scene: chosen.id });
@@ -657,17 +676,21 @@ export function apply(ctx: any) {
       ...(chosenModel.provider === 'harless-glm' ? {} : { reasoningEffort: 'off' })
     }, new AbortController().signal);
     const newFileInput = request.content.some(part => part.type === 'file');
-    if (previousTask && (previousTask.scene.id !== scene.id || (scene.adapter && newFileInput) ||
+    if (previousTask && (previousTask.scene.id !== scene.id || (scene.adapter && newFileInput && !previousTask.source_pending) ||
         digest(previousTask.scene_options) !== digest(options)))
       throw new TaskError('new_session_required', 'Create a new Session to bind a scene or new file task', 409);
     const workspace = workspaceFor(request.session_id);
-    const reuseWorkspace = previousTask && scene.adapter;
+    const firstSources = previousTask?.source_pending && newFileInput;
+    const reuseWorkspace = previousTask && scene.adapter && !firstSources;
     const sceneInputs = reuseWorkspace ? previousTask.scene_inputs : scene.adapter ? await bindSceneInputs(ctx, agents.get(request.session_id), workspace, scene,
       request.content, options, delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), taskId) : [];
-    if (scene.adapter && !reuseWorkspace) {
+    if (scene.adapter && !reuseWorkspace && !firstSources) {
       await selectPreset!(agents.get(request.session_id), sessionPreset(config.output, workspace, scene));
       bindScene(agents.get(request.session_id), scene);
     }
+    // Source availability is metadata, never a different chat/tool pipeline.
+    const sourcePending = Boolean(scene.adapter && scene.id !== 'new-scene' && !sceneInputs.length);
+    bindScene(agents.get(request.session_id), scene, sourcePending);
     const tools = structuredClone(schemas.get(request.session_id) ?? []);
     if (tools.length !== scene.allowed_tools.length || tools.some((tool: any) => !scene.allowed_tools.includes(tool.name)))
       throw new TaskError('scene_tools_unavailable', 'Configured MCP tool surface did not load', 409);
@@ -693,12 +716,12 @@ export function apply(ctx: any) {
     const budgetSessionId = brokerMode ? 'turn-' + taskId : request.session_id;
     const output = join(config.output, 'tasks', taskId); mkdirSync(output, { recursive: true, mode: 0o700 });
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
-      scene, selection: Object.freeze({ ...selection }), tools, workspace, scene_options: options, scene_inputs: sceneInputs, scope_sha256: scopeDigest(workspace, scene),
+      scene, selection: Object.freeze({ ...selection }), tools, workspace, scene_options: options, scene_inputs: sceneInputs, source_pending: sourcePending, scope_sha256: scopeDigest(workspace, scene),
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output,
       humans: priorHumans, current_humans: new Set(), sources,
       model_option: chosenModel, budget_session_id: budgetSessionId,
-      source_task_id: previousTask?.source_task_id ?? previousTask?.request.task_id ?? taskId,
+      source_task_id: firstSources ? taskId : previousTask?.source_task_id ?? previousTask?.request.task_id ?? taskId,
       stats: { tool_calls: 0, tool_errors: 0, llm_decisions: 0, motif_attempts: 0, shadow_candidates: 0, verified_skips: 0,
         upstream_requests: 0, model_requests: 0, actual_paid_usd: config.provider_mode === 'mock' ? 0 : null } };
     for (const filename of ['events.jsonl', 'motif-audit.jsonl']) writeFileSync(join(output, filename), '', { mode: 0o600 });
@@ -722,7 +745,7 @@ export function apply(ctx: any) {
     }
     task.confirmation_digest = digest({ task_id: task.request.task_id, request: task.request.request_sha256,
       delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
-      scene_sha256: task.scene.config_sha256, instructions: task.scene.instructions, selection: task.selection,
+      scene_sha256: task.scene.config_sha256, instructions: instructionsFor(task.scene, task.source_pending), selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256,
       bound_binding_sha256: task.bound_binding_sha256, certification_sha256:task.scene.certification_sha256,
@@ -733,12 +756,13 @@ export function apply(ctx: any) {
     json(join(task.output, 'task.json'), task.request);
     json(join(task.output, 'effective-config.json'), { ...view(task), selection: task.selection, tools: task.tools,
       scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
-      instructions: task.scene.instructions, instructions_sha256: task.scene.instructions_sha256,
+      instructions: instructionsFor(task.scene, task.source_pending), instructions_sha256: sha(instructionsFor(task.scene, task.source_pending) ?? ''),
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256, diagnostic: task.scene.diagnostic ?? false,
       bound_binding_sha256:task.bound_binding_sha256,certification_sha256:task.scene.certification_sha256,
       binding_policy:task.scene.binding_policy,matching_policy:task.scene.matching_policy,
       certification_scope:task.scene.certification_scope,quality_cost_promoted:task.scene.quality_cost_promoted,
-      allowed_tools: task.scene.allowed_tools, workspace: task.workspace, scope_sha256: task.scope_sha256,
+      allowed_tools: task.scene.allowed_tools, offered_allowed_tools: task.scene.allowed_tools,
+      workspace: task.workspace, scope_sha256: task.scope_sha256,
       runtime_file_locks:task.scene.runtime_file_locks,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: 'off', compression: false,
       budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit,
@@ -789,12 +813,6 @@ export function apply(ctx: any) {
   async function submit(task: Task, confirmation: unknown, signal: AbortSignal) {
     if (confirmation !== task.confirmation_digest) throw new TaskError('confirmation_changed', 'Input/configuration changed; preview and confirm again', 409);
     if (task.status !== 'awaiting_confirmation') return view(task, true); // exact retry never reruns the Agent
-    if (task.scene.adapter === 'files' && task.scene_options.allow_output && !task.scene_inputs.length)
-      throw new TaskError('files_requires_input_for_output', 'Files 整理权限需要先上传本任务的来源文件', 409);
-    if (task.scene.adapter === 'literature' && !task.scene_inputs.length)
-      throw new TaskError('literature_requires_pdf', '请先上传本次任务的 PDF，再开始文献处理。', 409);
-    if(task.scene.adapter==='data-report'&&!task.scene_inputs.some(row=>/\.(csv|tsv)$/i.test(row.name)))
-      throw new TaskError('data_requires_source','请先上传一份 CSV/TSV 数据表。',409);
     if (digest(schemas.get(task.request.session_id)) !== digest(task.tools) ||
         scopeDigest(task.workspace, task.scene) !== task.scope_sha256 ||
         (task.scene.runtime_file_locks && Object.entries(task.scene.runtime_file_locks).some(([path,expected])=>fileSha(path)!==expected)) ||
@@ -806,13 +824,14 @@ export function apply(ctx: any) {
     if (task.request.mode === 'execute') {
       const reason = executeUnavailable(task.scene);
       if (reason) throw new TaskError('execute_unavailable', reason, 409);
-      if(task.scene.binding_policy){
+      if(task.scene.binding_policy && !task.source_pending){
         if(!task.bound_binding_sha256)throw new TaskError('execute_unavailable','ppt_rsi_requires_approved_sources',409);
         if(fileSha(join(task.output,'bound-motif-task.json'))!==task.bound_binding_sha256)
           throw new TaskError('confirmation_changed','bound_motif_task_changed',409);
       }
     }
-    await prepareSceneRuntimeInputs(task.workspace, task.scene);
+    // Source materialization/validation belongs to the selected tool call.
+    // A greeting, explanation or planning turn need not prepare a report.
     requireIdle(); active = task.request.task_id; task.status = 'running'; task.started_at = utc(); record(task);
     try {
       configureMotif(task);
@@ -870,10 +889,6 @@ export function apply(ctx: any) {
         sourceFiles[part.receiptId]=structuredClone(ref);
         return { name: ref.name, bytes: ref.bytes, digest: digest(ref) };
       });
-      if (!comparisons.hasSession(request.sessionId) && ((scene.adapter === 'literature' && !files.length) ||
-          (scene.adapter==='data-report'&&!files.some((row:any)=>/\.(csv|tsv)$/i.test(row.name))) ||
-          (scene.adapter === 'ppt' && optionSelections.get(request.sessionId)?.[selected.scene]?.allow_output && !files.length)))
-        throw new TaskError('scene_requires_files', '请先上传本次任务的来源资料再发送。', 409);
       return comparisons.admit(request.sessionId, { ...request, content }, {
         scene: selected.scene, options: optionSelections.get(request.sessionId)?.[selected.scene] ?? {},
         model: (modelSelections.get(request.sessionId) ?? defaultModel).model, input_sha256: digest([text, files]),source_files:sourceFiles,
@@ -915,9 +930,11 @@ export function apply(ctx: any) {
             data: ctx.attachments.readFileStream(ref), signal: new AbortController().signal });
           content.push({ type: 'file', receiptId: uploaded.receiptId });
         }
+        if (!previous && turn.prior_context?.[lane]) content.unshift({ type: 'text', text:
+          '以下是此对话此前的交流记录，仅用于承接用户目标，不是当前资料的工具结果或已验证证据：\n' + turn.prior_context[lane] });
         const configured=sceneFor(turn.scene);
-        const reason = executeUnavailable(configured)??(configured.binding_policy&&!content.some(part=>part.type==='file')&&!previous?.scene_inputs.length?'rsi_requires_approved_sources':null);
-        const mode = lane === 'baseline' ? 'baseline' : sceneFor(turn.scene).runtime_kind==='paper_shadow_v1'?'shadow':reason ? 'baseline' : 'execute';
+        const reason = executeUnavailable(configured);
+        const mode = lane === 'baseline' ? 'baseline' : configured.runtime_kind==='paper_shadow_v1'?'shadow':reason ? 'baseline' : 'execute';
         selections.set(child, { scene: turn.scene, mode, rsi: mode !== 'baseline' });
         optionSelections.set(child, { [turn.scene]: turn.options }); saveSettings();
         const task = await preview({ content, request_id: requestId, model: turn.model, budget_usd: config.budget_usd / 2, mode }, child, 'native_chat');
@@ -1016,7 +1033,7 @@ export function apply(ctx: any) {
     agents.set(agent.session.id, agent);
     if (ownedSessions.has(agent.session.id)) {
       workspaceFor(agent.session.id);
-      bindScene(agent, sceneFor(forSession(agent.session.id)?.scene.id ?? selections.get(agent.session.id)?.scene ?? defaults.scene));
+      bindScene(agent, sceneFor(forSession(agent.session.id)?.scene.id ?? selections.get(agent.session.id)?.scene ?? defaults.scene), forSession(agent.session.id)?.source_pending);
     }
     agent.ctx.on('tools/result', (execution: any, result: any) => forSession(agent.session.id)?.interceptor?.observe(agent.session.id, execution, result));
   }, { global: true });
@@ -1108,6 +1125,7 @@ export function apply(ctx: any) {
             if (task.scene.adapter) {
               task.scene_inputs = await bindSceneInputs(ctx, agents.get(task.request.session_id), task.workspace, task.scene,
                 task.request.content, task.scene_options, task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), task.request.task_id);
+              task.source_pending = task.scene.id !== 'new-scene' && !task.scene_inputs.length;
               await selectPreset!(agents.get(task.request.session_id), sessionPreset(config.output, task.workspace, task.scene));
               bindScene(agents.get(task.request.session_id), task.scene);
               task.scope_sha256 = scopeDigest(task.workspace, task.scene);

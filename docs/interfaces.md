@@ -593,7 +593,7 @@ Python 从正常基线编译 `source_bound_readonly_batch_shadow` v1：当前任
 固定当前revision-report.md导出在所有平台先拒绝已有符号链接/硬链接/非普通文件，使用私有随机临时文件O_EXCL写入、当前报告版本复核和rename替换，不依赖Windows缺失的O_NOFOLLOW，最终清理临时文件。catalog绑定使用平台basename，仍要求源目录文件及SHA完全匹配。上述保护不扩大Runtime写入权限或自动迁移旧manifest。
 # 已有三库的原生双路对照
 
-成员 policy 的 `comparison_scenes` 为管理员白名单，默认关闭；只在既有 scoped budget broker 的账户进程内启用。`session/prompt` 对指定场景返回 `{accepted:true, comparison_id}`，仍使用现有 DSH Session、任务提交和模型循环。每个父 Session 固定两个独立子 Session；后续文字分别追加到各自历史，换资料或场景需新会话。同一 requestId 的相同发送幂等，变更内容拒绝。
+成员 policy 的 `comparison_scenes` 为管理员白名单，默认关闭；只在既有 scoped budget broker 的账户进程内启用。`session/prompt` 对指定场景返回 `{accepted:true, comparison_id}`，仍使用现有 DSH Session、任务提交和模型循环。每个父 Session 的当前来源批次有两个独立子 Session；后续文字分别追加到各自历史。新上传在同一父会话中建立新的来源批次与子会话，历史文件/结果/评分保留；切换场景仍需新会话。同一 requestId 的相同发送幂等，变更内容拒绝。
 
 `GET /api/harless/comparisons?session_id=...&id=...` 返回两侧状态、回答、实际模式、库哈希、统计、结果文件及评分。加 `lane` 和 `file` 下载已冻结且哈希复核的结果副本。所有操作先校验当前账号归属，文件列表不暴露上传内容、配置、模型凭证或原始日志。
 
@@ -615,3 +615,9 @@ PPT 复用已有只读库；数据通过 `report_session.py` 绑定上传 CSV/TS
 数据回答可附带 `answer_display` 与 `answer_binding`，原 `answer`、原始事件及 answer.md 不变。展示值只来自该任务时间窗内成功 `build_evidence` 的回执和同工作区哈希匹配记录；多来源歧义或未知变量显示“未绑定”，代码示例保留。展示内容改变时更新 output_sha256 并失效旧评分，不把旧评分套到新展示上。
 
 PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历史 output 可分离；适配器准入后将 Python 工具与交付守卫收窄到一个 job 目录。CLI 默认目录边界不变，单独环境变量不能启用外置 Web 路径。历史 checkpoint 的目录修复兼容仅接受精确已审查版本，保留原始检查点与审计，未知版本继续拒绝。
+# 用户场景与工作区展示补充（2026-10-15）
+
+- 公共 Workspace 投影的 `path` 为 `/workspaces/<workspaceId>`，仅作当前账号内不透明位置标识；真实路径只留服务器 registry。创建/重命名/follow 响应一致，`workspace/create` 仍校验归属和受管目录，不能用其他账号的 ID 或任意路径注册目录。
+- 资料场景无附件任务提供 `source_pending: true`，它仅记录来源状态，不切换工具集合、单独聊天流程或执行模式。原场景提示与完整工具保留，追加由模型判断直接回答/询问资料/调用工具的交互规则。数据来源由实际工具懒准备，数据 Motif 在来源可用后绑定原认证库；没有可复用轨迹时委托正常 DSH。PPT 没有来源时无法绑定受证据约束的只读轨迹，保留该明确回退原因。有效配置保存实际 instructions/hash、`tools` 与 `offered_allowed_tools`。
+- 三场景对照允许任意轮上传新的资料批次，新建两侧文件子会话，父会话、此前结果与评分不变。每侧只接收自己的近期讨论，按长度有界；新旧子会话均保持不可直接发送的控制边界。新批次启用原有库与交付守卫，旧资料不被覆盖；原工具的来源版本与权限约束继续执行。
+

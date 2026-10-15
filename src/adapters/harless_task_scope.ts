@@ -114,7 +114,6 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     preparedFiles.push({ path, data });
     inputs.push({ document_id: `doc_${inputs.length + 1}`, name: ref.name, path, version_sha256: sha(data) });
   }
-  if (scene.adapter === 'ppt' && options.allow_output === true && !inputs.length) throw Error('ppt_requires_input_for_output');
   if (scene.adapter === 'literature' && (!instruction.trim() || instruction.length > 4000)) throw Error('literature_requires_bounded_question');
   for (const file of readdirSync(join(workspace, 'inputs'))) unlinkSync(join(workspace, 'inputs', file));
   for (const file of preparedFiles) writeFileSync(file.path, file.data, { mode: 0o600 });
@@ -128,7 +127,7 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
   if (scene.adapter === 'ppt') save(join(workspace, 'job.json'), {
     schema_version: 1, job_id: taskId, inputs, instruction,
     slides: options.slides ?? 6, template: options.template ?? 'academic', operation: 'generate',
-    allow_output: options.allow_output === true, allow_rsi: false, document_cache: false, rsi_dir: join(workspace, 'rsi'),
+    allow_output: options.allow_output === true && inputs.length > 0, allow_rsi: false, document_cache: false, rsi_dir: join(workspace, 'rsi'),
   });
   if (scene.adapter === 'literature') {
     const directory = join(workspace, 'literature'); mkdirSync(directory, { recursive: true, mode: 0o700 });

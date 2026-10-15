@@ -3,6 +3,9 @@ import {createHash} from 'node:crypto';
 import {lstatSync,readFileSync,realpathSync} from 'node:fs';
 import {join,basename} from 'node:path';
 const sha=(value:string|Uint8Array)=>createHash('sha256').update(value).digest('hex');
+// Structural matching uses an informational intent label. The full user text
+// stays in the DSH prompt/job; only this scalar must obey the runtime contract.
+const bindingIntent=(value:string)=>value.replace(/[\x00-\x20]+/g,' ').trim().slice(0,500)||'Process the approved task sources';
 
 export function bindUploadedPptTask(workspace:string,inputs:any[],request:any,manifest:any,sourceTaskId=request.task_id){
   if(!inputs.length || inputs.length>8)throw Error('ppt_rsi_requires_approved_sources');
@@ -23,7 +26,7 @@ export function bindUploadedPptTask(workspace:string,inputs:any[],request:any,ma
   if(tools.some(tool=>!['mcp__ppt__pin_source','mcp__ppt__read_source'].includes(tool)) || tools.length!==2)
     throw Error('ppt_rsi_binding_tools_unsupported');
   return {schema_version:1,task_id:request.task_id,session_id:request.session_id,
-    intent:job.instruction.slice(0,1000),input_version:sha(JSON.stringify(inputs)),bindings:{},
+    intent:bindingIntent(job.instruction),input_version:sha(JSON.stringify(inputs)),bindings:{},
     source_versions:Object.fromEntries(tools.map(tool=>[tool,versions.length===1?versions[0]:versions]))};
 }
 
@@ -44,7 +47,7 @@ export function bindUploadedSourceTask(workspace:string,inputs:any[],request:any
     source_versions[tool]=contract.observed_anchor === true ? '@observed' : '@from_anchor';
   }
   return {schema_version:1,task_id:request.task_id,session_id:request.session_id,
-    intent:request.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n').slice(0,1000),
+    intent:bindingIntent(request.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n')),
     input_version:sha(JSON.stringify(inputs)),bindings:{},source_versions};
 }
 

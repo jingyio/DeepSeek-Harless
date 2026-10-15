@@ -118,3 +118,44 @@ test('workspace UI replaces both native directory flows and never installs serve
   assert.doesNotMatch(source, /listDirectory|createDirectory|directoryPicker\/|\/api\/workspace\/create/);
   assert.match(source, /工作区名称/); assert.match(source, /nativeEvent\.isComposing/);
 });
+
+test('workspace public baseline, updates and rename never expose host deployment paths', options, async()=>{
+ const {protectWorkspaceProjection}=await import('../src/adapters/harless_managed_workspaces.ts');
+ const workspace={workspaceId:'owned-workspace',path:'/home/private/deployment/project',title:'论文',sessionIds:['chat'],createdAt:'now'};
+ const controller={async *follow(){yield {type:'baseline',value:{items:[workspace],archivedSessionIds:[]}};yield{type:'upsert',workspace};},
+  async rename(){return{workspace};},async insertSessionBefore(){return{workspace};}};
+ protectWorkspaceProjection(controller);
+ const frames=[];for await(const frame of controller.follow(new AbortController().signal))frames.push(frame);
+ assert.equal(frames[0].value.items[0].path,'/workspaces/owned-workspace');
+ assert.doesNotMatch(JSON.stringify(frames),/home|private|deployment/);
+ assert.equal((await controller.rename({})).workspace.path,'/workspaces/owned-workspace');
+ assert.equal(workspace.path,'/home/private/deployment/project','authoritative registry is not mutated');
+});
+
+test('workspace browser preserves store receivers and top-level New chat targets the clicked workspace', async()=>{
+ const slots=[], window={}, created=[];
+ const document={createElement:()=>({remove(){}}),head:{append(){}}};
+ vm.runInNewContext(readFileSync(new URL('../src/adapters/geneloop_workspaces.js',import.meta.url),'utf8'),{window,document});
+ class Store {
+  constructor(value){this.value=value;this.listeners=new Set();}
+  getSnapshot(){return this.value;}
+  subscribe(fn){this.listeners.add(fn);return()=>this.listeners.delete(fn);}
+ }
+ const workspaces={list:new Store({items:[{workspaceId:'a',title:'课题 A',path:'/private/a',sessionIds:[]},{workspaceId:'b',title:'课题 B',path:'/private/b',sessionIds:[]}],archivedSessionIds:[]})};
+ const sessions={list:new Store({current:null,ids:[],byId:{}}),async create(request){created.push(request);return 'new-'+created.length;},open(){}};
+ const navigation={startSession(){throw Error('old behavior');}},services={workspaces,sessions,uiWorkspace:navigation};
+ const ctx={get:name=>services[name],effect:fn=>fn(),slots:{inject(_name,fn){const v=fn();if(v?.next)[...v];},register(options,component){slots.push({options,component});}}};
+ const React={createElement:(type,props,...children)=>({type,props,children}),useState:initial=>[initial,()=>{}],useEffect(){},
+  useSyncExternalStore(subscribe,snapshot){const stop=subscribe(()=>{});stop();return snapshot();}};
+ window.__installGeneLoopWorkspaces(ctx,React,{Modal:'modal'});
+ const Browser=slots.find(row=>row.options.name==='sidebar.workspaces').component;
+ const tree=Browser({wide:true}),nodes=[];
+ const visit=node=>{if(!node||typeof node!=='object')return;if(Array.isArray(node)){node.forEach(visit);return;}nodes.push(node);node.children?.forEach(visit);};visit(tree);
+ assert.doesNotMatch(JSON.stringify(tree),/\/private\//);
+ nodes.find(node=>node.props?.className==='geneloop-workspace-name'&&node.props.title==='课题 B').props.onClick();
+ navigation.startSession(); await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(created.length,1); assert.equal(created[0].workspaceId,'b');
+ navigation.startSession(); await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(created.length,2,'New chat creates a fresh chat instead of reopening a blank one');
+ assert.equal(created[1].workspaceId,'b');
+});

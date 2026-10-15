@@ -134,6 +134,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
         return { meta: storedHeaders.get(id), events: storedSessions.get(id) };
       },
       async cancel() { return { accepted: true }; },
+      async rename({ sessionId, title }) { storedHeaders.get(sessionId).title = title; return { title }; },
       async selectModel(request) { await originalController.create({ sessionId: request.sessionId }); return request; },
       updateQueue(request) { queueMutations.push(request); return { accepted: true }; },
     },
@@ -407,6 +408,7 @@ test('Legacy blank preset sessions resume only when history and budget registrat
     await assert.rejects(prompt('other-preset'), /outside/);
     await assert.rejects(prompt('legacy-budget'), /already has a task/);
     await prompt('legacy-empty');
+    assert.equal((await f.ctx.sessionController.inspect('legacy-empty')).meta.title,'新会话');
     assert.equal(f.controlCalls.filter(row => row.path === '/tasks/register').length, 1);
     assert.equal(f.controlCalls.filter(row => row.path === '/tasks/activate').length, 1);
     assert.equal(f.promptCalls.length, 1);
@@ -765,9 +767,9 @@ test('Session adapter binds private presets and rejects foreign file receipts be
   } finally { await f.close(); }
 });
 
-test('Workspace scene keeps one budgeted chat across text turns and requires a new session for new files', options, async () => {
-  const scene = { ...multiScenes[0], id: 'new-scene', adapter: 'workspace', mcp_rows: [] };
-  const f = await fixture({ broker: true, scenes: [scene], capability_profile: 'new-scene' });
+test('Workspace scene accepts first sources after discussion and rejects replacing bound files', options, async () => {
+  const scene = { ...multiScenes[0], id: 'paper-proofreading', adapter: 'workspace', mcp_rows: [] };
+  const f = await fixture({ broker: true, scenes: [scene], capability_profile: 'paper-proofreading' });
   try {
     const { sessionId } = await f.ctx.sessionController.create({});
     await f.ctx.sessionController.prompt({ sessionId, requestId: 'first', mode: 'queue',
@@ -783,6 +785,12 @@ test('Workspace scene keeps one budgeted chat across text turns and requires a n
     await f.complete(second);
     const uploaded = await f.ctx.fileUploads.uploadStream({ sessionId, name: 'new.txt',
       data: (async function* () { yield Buffer.from('new evidence'); })() });
+    const mounts=f.presetCalls.length;
+    const accepted = await f.api({ action: 'preview', session_id: sessionId,
+      request: { content: [{ type: 'file', receiptId: uploaded.receiptId }] } });
+    assert.equal(accepted.status,200); assert.equal(accepted.value.source_pending,false);
+    assert.equal(f.presetCalls.length,mounts,'first sources use the already mounted lazy workspace adapter');
+    await f.submit(accepted.value);await f.complete(accepted.value);
     const denied = await f.api({ action: 'preview', session_id: sessionId,
       request: { content: [{ type: 'file', receiptId: uploaded.receiptId }] } });
     assert.equal(denied.status, 409);
@@ -938,7 +946,9 @@ test('Managed workspace name flow creates grouped chats and preserves legacy gro
       const second = await f.ctx.sessionController.create({ workspaceId });
       const group = f.ctx.workspaceRegistry.get(workspaceId);
       assert.deepEqual(group.sessionIds, [first.sessionId, second.sessionId]);
-      assert.equal((await f.ctx.sessionController.inspect(first.sessionId)).meta.cwd, made.workspace.path);
+      assert.equal((await f.ctx.sessionController.inspect(first.sessionId)).meta.cwd, group.path);
+      assert.equal(made.workspace.path, '/workspaces/' + workspaceId);
+      assert.notEqual(group.path, made.workspace.path, 'host storage is not returned as a browser address');
       const switched = await f.settings({ action: 'new_session', inherit_session: second.sessionId, selection: { scene: 'other' } });
       assert.equal(switched.status, 200); assert.ok(group.sessionIds.includes(switched.value.session_id));
       const oldPath = join(f.directory, 'legacy-project'); mkdirSync(oldPath); writeFileSync(join(oldPath, 'notes.txt'), 'preserve');
@@ -1034,4 +1044,37 @@ test('PPT menu options are scoped, model-free, persisted, and cannot modify a pr
     const restored=await f.settings(undefined,'?session_id='+first.sessionId);
     assert.equal(restored.value.scene_options.allow_output,false); assert.equal(restored.value.scene_options.slides,8);
   }finally{await f.close();}
+});
+
+test('Empty file scenes keep normal scene tools and model routing across turns and restart', options, async () => {
+  for (const [id, adapter] of [['ppt','ppt'], ['paper-proofreading','workspace'], ['research-data-analysis','data-report'], ['literature','literature'], ['files','files']]) {
+    const scene = {...multiScenes[0], id, label:id, adapter, mcp_rows:[]};
+    const f = await fixture({ broker:true, scenes:[scene], capability_profile:id });
+    try {
+      const { sessionId } = await f.ctx.sessionController.create({});
+      assert.equal((await f.ctx.sessionController.inspect(sessionId)).meta.title, '新会话');
+      for (let round=0;round<3;round++) {
+        if(round===2) await f.restart();
+        const result=await f.api({action:'preview',session_id:sessionId,request:{instruction:'你好，请介绍你能帮我做什么',request_id:`empty-${round}`}});
+        assert.equal(result.status,200,JSON.stringify(result.value));
+        const task=result.value; assert.equal(task.source_pending,true); assert.deepEqual(task.scene_inputs,[]);
+        assert.deepEqual(f.agents.get(sessionId).allow.allow,scene.allowed_tools);
+        assert.match(f.agents.get(sessionId).instruction,/正常回应问候/);
+        assert.equal((await f.submit(task)).status,200);
+        await f.complete(task);
+      }
+      assert.equal(f.promptCalls.length,3);
+    } finally {await f.close();}
+  }
+});
+
+test('General workspace keeps its tools without requiring uploads', options, async()=>{
+ const scene={...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]};
+ const f=await fixture({broker:true,scenes:[scene],capability_profile:'new-scene'});
+ try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const result=await f.api({action:'preview',session_id:sessionId,request:'创建一份新的笔记'});
+  assert.equal(result.status,200);assert.equal(result.value.source_pending,false);
+  assert.deepEqual(f.agents.get(sessionId).allow.allow,scene.allowed_tools);
+ }finally{await f.close();}
 });

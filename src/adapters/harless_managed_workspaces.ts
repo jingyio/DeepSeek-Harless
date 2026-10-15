@@ -18,6 +18,27 @@ export function workspaceDisplayName(value: unknown): string {
 const nameKey = (name: string) => name.normalize('NFKC').toLocaleLowerCase('en-US');
 const view = (workspace: any) => ({ workspaceId: workspace.id ?? workspace.workspaceId, path: workspace.path,
   title: workspace.title, sessionIds: [...workspace.sessionIds], createdAt: workspace.createdAt, updatedAt: workspace.updatedAt });
+/** Public location is an opaque account-local address, never a host directory. */
+export const publicWorkspaceView = (workspace: any) => ({ ...view(workspace), path: '/workspaces/' + (workspace.id ?? workspace.workspaceId) });
+
+export function protectWorkspaceProjection(controller: any) {
+  if (!controller) return;
+  const follow = controller.follow.bind(controller);
+  controller.follow = async function* (signal: AbortSignal) {
+    for await (const frame of follow(signal)) {
+      if (frame.type === 'baseline') yield { ...frame, value: { ...frame.value, items: frame.value.items.map(publicWorkspaceView) } };
+      else if (frame.type === 'upsert') yield { ...frame, workspace: publicWorkspaceView(frame.workspace) };
+      else yield frame;
+    }
+  };
+  for (const name of ['rename', 'insertSessionBefore']) {
+    const original = controller[name].bind(controller);
+    controller[name] = async (...args: any[]) => {
+      const result = await original(...args);
+      return { ...result, workspace: publicWorkspaceView(result.workspace) };
+    };
+  }
+}
 
 export function createManagedWorkspaceService(output: string, principal: string, registry: any) {
   if (typeof principal !== 'string' || !principal) throw Error('Missing managed workspace principal');
@@ -67,6 +88,11 @@ export function createManagedWorkspaceService(output: string, principal: string,
     return operation;
   }
   function adopt(path: unknown) {
+    if (typeof path === 'string' && path.startsWith('/workspaces/')) {
+      const known = registry.list().find((row: any) => path === '/workspaces/' + row.id);
+      if (!known) throw forbidden();
+      path = known.path; // Continue through the same server-side path guard.
+    }
     if (typeof path !== 'string' || !isAbsolute(path) || path.includes('\0')) throw forbidden();
     // Original registered workspaces remain valid; the public API can no longer
     // turn an arbitrary server directory into a newly registered workspace.
@@ -82,6 +108,7 @@ export function createManagedWorkspaceService(output: string, principal: string,
 /** Exact Connection Fetch routes keep the host's normal authentication fence. */
 export function registerManagedWorkspaceRoutes(ctx: any, { output, principal }: { output: string; principal: string }) {
   const service = createManagedWorkspaceService(output, principal, ctx.workspaceRegistry);
+  protectWorkspaceProjection(ctx.workspaceController);
   const headers = { 'Cache-Control': 'no-store' };
   const reject = (request: Request) => ctx.connection.requestRejection?.(request);
   ctx.effect(() => ctx.connection.fetch.register({ path: '/api/harless/workspaces', methods: ['POST'], requestBody: 'buffered',
@@ -91,7 +118,8 @@ export function registerManagedWorkspaceRoutes(ctx: any, { output, principal }: 
         if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') return new Response('', { status: 415 });
         const text = await request.text(); if (text.length > 4096) return new Response('', { status: 413 });
         let input; try { input = JSON.parse(text); } catch { throw new ManagedWorkspaceError('invalid_json', '请求格式无效。'); }
-        return Response.json(await service.create(input), { headers });
+        const result = await service.create(input);
+        return Response.json({ workspace: publicWorkspaceView(result.workspace) }, { headers });
       } catch (error: any) {
         return Response.json({ error: { code: error instanceof ManagedWorkspaceError ? error.code : 'workspace_create_failed',
           message: error instanceof ManagedWorkspaceError ? error.message : '工作区暂时无法创建，请重试。' } },
@@ -111,7 +139,8 @@ export function registerManagedWorkspaceRoutes(ctx: any, { output, principal }: 
           if (endpoint !== 'workspace/create') throw forbidden();
           const args = message.payload.args;
           if (!args || Object.keys(args).join(',') !== 'request' || !args.request || Object.keys(args.request).join(',') !== 'path') throw forbidden();
-          result = { ok: true, value: service.adopt(args.request.path) };
+          const adopted = service.adopt(args.request.path);
+          result = { ok: true, value: { ...adopted, workspace: publicWorkspaceView(adopted.workspace) } };
         } catch (error: any) {
           result = { ok: false, error: { code: 'gateway/forbidden', message: forbidden().message, details: {} } };
         }
