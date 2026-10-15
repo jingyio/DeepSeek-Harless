@@ -76,9 +76,9 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
   }
   const names=Object.keys(approved.files).sort();
   if(names.join('|')!==inputs.map(row=>row.file).sort().join('|'))throw Error('uploaded_rsi_approval_scope_mismatch');
-  const intent=(request.content??[]).filter((row:any)=>row.type==='text').map((row:any)=>row.text).join('\n').slice(0,1000);
+  const intent=(request.content??[]).filter((row:any)=>row.type==='text').map((row:any)=>row.text).join('\n');
   return {schema_version:1,task_id:request.task_id,session_id:request.session_id,
-    intent:intent||'Read only this task’s approved source.',
+    intent:bindingIntent(intent),
     input_version:sha(JSON.stringify(names.map(name=>[name,approved.files[name]]))),bindings:{},
     source_versions:{[pair[0]]:'@observed',[pair[1]]:'@from_anchor',
       ...(seen.has(citationEdge.slice(0,2).join('|'))?{

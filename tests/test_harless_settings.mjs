@@ -83,6 +83,15 @@ test('paper upload binding freezes admitted bytes and an observed read continuat
     assert.deepEqual(bindApprovedUploadedReadTask(root,inputs,request,full,'paper-proofreading').source_versions,
       {[pin]:'@observed',[read]:'@from_anchor',[cite]:'@observed',[cited]:'@from_anchor',
         [local]:'@observed',[page]:'@from_anchor'});
+    const longText='完整论文\n参考文献核验'.repeat(400);
+    const longRequest={...request,content:[{type:'text',text:longText}]};
+    const bounded=bindApprovedUploadedReadTask(root,inputs,longRequest,full,'paper-proofreading');
+    assert.ok(bounded.intent.length<=500 && !/[\x00-\x1f]/.test(bounded.intent));
+    assert.equal(longRequest.content[0].text,longText,'the model request remains complete');
+    const {parseStructuredTask}=await import('../src/motif_core/online_skill_runtime.mjs');
+    const checked={...full,contracts:Object.fromEntries(Object.keys(full.version_fields).map(name=>
+      [name,{observed_anchor:[pin,cite,local].includes(name)}]))};
+    assert.doesNotThrow(()=>parseStructuredTask(bounded,checked));
     assert.throws(()=>bindApprovedUploadedReadTask(root,inputs,request,{...composite,
       artifacts:[...composite.artifacts,{tools:[cited,'mcp__paper_checks__export_current_audit_pdf'],
         transfer_evidence:[]}]},'paper-proofreading'),/tools_unsupported/);
