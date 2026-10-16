@@ -15,8 +15,7 @@
     mark.className = 'geneloop-loading-mark'; mark.setAttribute('aria-hidden', 'true'); image.src = logo; image.alt = '';
     mark.append(image);
     const label = document.createElement('span'); label.textContent = '正在加载 GeneLoop…';
-    const skip = document.createElement('button'); skip.type = 'button'; skip.textContent = '显示已加载内容';
-    cover.append(mark, label, skip);
+    cover.append(mark, label);
     const notice = document.createElement('div'); notice.className = 'geneloop-load-notice'; notice.hidden = true; notice.setAttribute('role', 'status');
     const message = document.createElement('span'); message.textContent = '页面加载较慢，已显示可用内容。';
     const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = '刷新重试'; retry.onclick = () => window.location.reload();
@@ -34,8 +33,21 @@
       // network stalls must never leave an opaque mask over the application.
       timeout = setTimeout(() => release(true), 20000);
     };
-    skip.onclick = () => release(); arm();
+    style.textContent += `.geneloop-page-loader{background:var(--dsw-alias-bg-base,#141414)}.geneloop-loading-mark:before{corner-shape:round}.geneloop-conversation-load-region{display:contents}.geneloop-conversation-load-host{position:relative;isolation:isolate}.geneloop-conversation-load-region>.geneloop-page-loader{position:absolute;z-index:20}.geneloop-conversation-load-region>.geneloop-load-notice{position:absolute;z-index:21;max-width:calc(100% - 32px)}`;
+    let mountedHost;
+    arm();
     return window.__geneLoopPageLoad = {
+      mount(region) {
+        if (!region) return;
+        // Keep the sidebar and settings outside the history-loading boundary.
+        // Slot seats can use display:contents. The first actual layout box is
+        // the conversation root; preserving it also keeps blank-chat layout.
+        let host = region.parentElement;
+        while (host && getComputedStyle(host).display === 'contents') host = host.parentElement;
+        if (mountedHost !== host) mountedHost?.classList.remove('geneloop-conversation-load-host');
+        mountedHost = host; host?.classList.add('geneloop-conversation-load-host');
+        region.append(cover, notice); label.textContent = '正在加载对话…';
+      },
       select(id, ready, state) {
         if (current.id !== id) {
           current = { id, nativeReady: false, committed: id === undefined, pending: new Set(), released: false };
@@ -78,8 +90,9 @@
       function LoadedSession(props) {
         const state = props.useSession(value => value.openState);
         React.useLayoutEffect(() => { if (state === 'open' || state === 'error') loading.commit(props.sessionId); }, [props.sessionId, state]);
-        return React.createElement(original.component, { ...props,
-          renderSlot: (slot, owner, options) => props.renderSlot(slot === 'conversation.view' ? alias : slot, owner, options) });
+        return React.createElement('div', { className: 'geneloop-conversation-load-region', ref: loading.mount },
+          React.createElement(original.component, { ...props,
+            renderSlot: (slot, owner, options) => props.renderSlot(slot === 'conversation.view' ? alias : slot, owner, options) }));
       }
       const stop = ctx.slots.register({ name: 'conversation.session', ...original.options, priority: -100,
         inject: original.inject, ...(original.store ? { store: original.store } : {}),

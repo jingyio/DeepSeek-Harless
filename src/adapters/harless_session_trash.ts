@@ -1,12 +1,13 @@
-/** Account-local, reversible conversation deletion. No history or files are removed. */
-import { randomUUID } from 'node:crypto';
+/** Account-local archive restoration and trash. Clearing revokes access permanently;
+ * underlying history/files remain retained by the server, never resurrected. */
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { z } from 'zod';
 
 const idSchema = z.string().min(1).max(200).regex(/^[A-Za-z0-9_-]+$/);
 const entrySchema = z.object({ session_id: idSchema, title: z.string(), deleted_at: z.string(),
-  workspace_id: z.string().optional(), private_session_ids: z.array(idSchema) });
+  workspace_id: z.string().optional(), private_session_ids: z.array(idSchema), purged_at: z.string().optional() });
 type Entry = z.infer<typeof entrySchema>;
 export class SessionTrashError extends Error {
   code: string; status: number;
@@ -18,42 +19,68 @@ type Host = {
   privateChildren(id: string): string[];
   busy(ids: string[]): boolean;
   describe(id: string): Promise<{ title: string; workspace_id?: string }>;
+  archive?(id: string): Promise<void>;
   changed?(id: string, deleted: boolean): Promise<void> | void;
 };
 export function createSessionTrash(path: string, principal: string, host: Host) {
-  const schema = z.object({ version: z.literal(1), principal: z.string(), entries: z.array(entrySchema) });
-  const state = existsSync(path) ? schema.parse(JSON.parse(readFileSync(path, 'utf8'))) : { version: 1 as const, principal, entries: [] as Entry[] };
+  const schema = z.object({ version: z.literal(1), principal: z.string(), entries: z.array(entrySchema), restored_archive_ids: z.array(idSchema).default([]) });
+  const state = existsSync(path) ? schema.parse(JSON.parse(readFileSync(path, 'utf8'))) : { version: 1 as const, principal, entries: [] as Entry[], restored_archive_ids: [] as string[] };
   if (state.principal !== principal) throw Error('session_trash_scope_mismatch');
   const listeners = new Set<() => void>();
   const isDeleted = (id: string) => state.entries.some(row => row.session_id === id || row.private_session_ids.includes(id));
   const assertVisible = (id: string) => {
-    if (isDeleted(id)) throw new SessionTrashError('session_deleted', '这个对话已删除，可在“最近删除”中恢复。', 404);
+    if (isDeleted(id)) throw new SessionTrashError('session_deleted', '这个对话已删除或清空。', 404);
   };
-  const persist = (entries: Entry[]) => {
+  const persist = (entries: Entry[], restored = state.restored_archive_ids) => {
     const temporary = path + '.' + randomUUID() + '.tmp';
-    writeFileSync(temporary, JSON.stringify({ ...state, entries }), { mode: 0o600 });
-    renameSync(temporary, path); state.entries = entries;
+    writeFileSync(temporary, JSON.stringify({ ...state, entries, restored_archive_ids: restored }), { mode: 0o600 });
+    renameSync(temporary, path); state.entries = entries; state.restored_archive_ids = restored;
     for (const listener of listeners) { try { listener(); } catch { /* A stale subscriber cannot undo durable deletion. */ } }
   };
   const notify = async (id: string, deleted: boolean) => {
     try { await host.changed?.(id, deleted); } catch { /* Lists recover from the persisted tombstone on refresh. */ }
   };
+  const revision = () => createHash('sha256').update(JSON.stringify(state.entries.filter(row => !row.purged_at))).digest('hex');
   return {
     isDeleted, assertVisible,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    list() { return { sessions: state.entries.map(({ private_session_ids, ...row }) => ({ ...row }))
+    list() { return { sessions: state.entries.filter(row => !row.purged_at).map(({ private_session_ids, ...row }) => ({ ...row }))
         .sort((a, b) => b.deleted_at.localeCompare(a.deleted_at)),
+      revision: revision(), restored_archive_ids: [...state.restored_archive_ids],
       deleted_session_ids: [...new Set(state.entries.flatMap(row => [row.session_id, ...row.private_session_ids]))] }; },
+    async clear(expectedRevision: unknown) {
+      if (typeof expectedRevision !== 'string' || expectedRevision !== revision())
+        throw new SessionTrashError('trash_changed', '最近删除的内容已更新，请重新核对后清空。', 409);
+      const visible = state.entries.filter(row => !row.purged_at);
+      if (host.busy(visible.flatMap(row => [row.session_id, ...row.private_session_ids])))
+        throw new SessionTrashError('session_busy', '对话仍在执行，请稍后再清空。', 409);
+      const now = new Date().toISOString();
+      // Durable irreversible tombstones keep every read route closed, including
+      // private comparison children. Never resurrect by removing a tombstone.
+      persist(state.entries.map(row => row.purged_at ? row : { ...row, title: '', workspace_id: undefined, purged_at: now }));
+      return { cleared: visible.length };
+    },
     async mutate(action: unknown, value: unknown) {
-      if (!['delete', 'restore'].includes(String(action)) || !idSchema.safeParse(value).success)
+      if (!['delete', 'restore', 'archive', 'unarchive'].includes(String(action)) || !idSchema.safeParse(value).success)
         throw new SessionTrashError('invalid_trash_request', '请选择要删除或恢复的对话。');
       const id = value as string, previous = state.entries.find(row => row.session_id === id);
+      if (previous?.purged_at) throw new SessionTrashError('session_not_found', '这个对话已清空，无法恢复。', 404);
       // Owned tombstones are the restore authority, including after a restart.
       // Foreign IDs and private lane IDs never reveal an existence distinction.
       if (!previous) await host.owns(id);
       if (host.isPrivate(id)) throw new SessionTrashError('session_not_found', '找不到这个对话。', 404);
+      if (action === 'archive' || action === 'unarchive') {
+        if (previous) throw new SessionTrashError('session_deleted', '请先从最近删除中恢复这个对话。', 409);
+        if (action === 'archive') {
+          if (!host.archive) throw new SessionTrashError('archive_unavailable', '暂时无法归档，请重试。', 503);
+          await host.archive(id);
+        }
+        persist(state.entries, action === 'archive' ? state.restored_archive_ids.filter(value => value !== id)
+          : [...new Set([...state.restored_archive_ids, id])]);
+        return { session_id: id, archived: action === 'archive' };
+      }
       if (action === 'restore') {
-        if (previous) { persist(state.entries.filter(row => row !== previous)); await notify(id, false); }
+        if (previous) { persist(state.entries.filter(row => row !== previous), [...new Set([...state.restored_archive_ids, id])]); await notify(id, false); }
         return { session_id: id, deleted: false };
       }
       if (previous) return { session_id: id, deleted: true, deleted_at: previous.deleted_at };
@@ -110,7 +137,7 @@ export function protectDeletedSessionQuery(provider: any, trash: Trash, isPrivat
 export function protectDeletedSessions(controller: any, trash: Trash) {
   const undo: (() => void)[] = [];
   const check = (id: unknown) => {
-    if (typeof id === 'string' && trash.isDeleted(id)) throw new ApiSessionNotFound('这个对话已删除，可在“最近删除”中恢复。');
+    if (typeof id === 'string' && trash.isDeleted(id)) throw new ApiSessionNotFound('这个对话已删除或清空。');
   };
   for (const method of ['inspect', 'resolveAgent', 'create', 'selectModel', 'rename', 'fork', 'prompt', 'attachment', 'updateQueue', 'cancel', 'page']) {
     const original = controller[method]?.bind(controller); if (!original) continue;
@@ -152,7 +179,7 @@ export function protectDeletedSessions(controller: any, trash: Trash) {
 
 export function protectDeletedSessionFiles(files: any, uploads: any, trash: Trash) {
   const undo: (() => void)[] = [];
-  const check = (id: string) => { if (trash.isDeleted(id)) throw new ApiSessionNotFound('这个对话已删除，请先恢复。'); };
+  const check = (id: string) => { if (trash.isDeleted(id)) throw new ApiSessionNotFound('这个对话已删除或清空。'); };
   for (const method of ['read', 'readBytes', 'readAll', 'readRelated', 'stat', 'list']) {
     const original = files?.[method]?.bind(files); if (!original) continue;
     replaceMethod(files, method, (...args: any[]) => { check(args[0]?.sessionId); return original(...args); }, undo);
@@ -209,7 +236,7 @@ export function registerSessionTrashRoute(ctx: any, trash: Trash, serialize: <T>
           const text = await request.text();
           if (text.length > 4096) throw new SessionTrashError('invalid_trash_request', '请求过长。', 413);
           let body: any; try { body = JSON.parse(text); } catch { throw new SessionTrashError('invalid_trash_request', '请求格式不正确。'); }
-          result = await serialize(() => trash.mutate(body?.action, body?.session_id));
+          result = await serialize(() => body?.action === 'clear' ? trash.clear(body?.revision) : trash.mutate(body?.action, body?.session_id));
         }
         return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error: any) {

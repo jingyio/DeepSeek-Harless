@@ -13,6 +13,7 @@
     // override to our public section seat; other dialogs and desktop keep
     // their original layout, styles and event/focus ownership.
     const settingsDialog = '[role="dialog"][aria-modal="true"]:has([data-slot="geneloop.settings.section"])';
+    style.textContent += `.geneloop-settings-title{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}.geneloop-settings-title h2{margin:0}.geneloop-settings-archive-row{display:flex;align-items:center;gap:12px;min-width:0;padding:8px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}.geneloop-settings-archive-row .geneloop-settings-chat{flex:1;min-width:0;border:0}.geneloop-settings-row-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.geneloop-settings-page .geneloop-settings-icon-button{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:7px;border:0;border-radius:9px}.geneloop-settings-page .geneloop-trash-row button{display:inline-flex;align-items:center;gap:6px}.geneloop-clear-review{padding:16px;margin:16px 0;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-interactive-bg-hover)}.geneloop-clear-review ul{max-height:180px;overflow:auto;padding-left:22px}.geneloop-clear-review .geneloop-settings-row-actions{justify-content:flex-end;flex-wrap:wrap}.geneloop-clear-review .danger{color:var(--dsw-alias-state-error-primary,#cf4444)}[data-geneloop-section-icon]{display:inline-flex;align-items:center;gap:10px;color:inherit}[data-geneloop-section-icon] svg{flex:none}button:has([data-geneloop-section-icon])>svg{display:none}@media(max-width:480px){.geneloop-settings-archive-row{gap:4px}.geneloop-settings-row-actions{gap:4px}}`;
     style.textContent += `@media(max-width:640px){
       ${settingsDialog}{box-sizing:border-box;width:calc(100vw - 24px);max-width:calc(100vw - 24px);height:min(800px,calc(100vh - 24px));height:min(800px,calc(100dvh - 24px));flex-direction:column;border-radius:20px}
       ${settingsDialog}>nav{width:100%;min-width:0;gap:12px;padding:16px 16px 10px;border-bottom:1px solid var(--dsw-alias-border-l2)}
@@ -30,7 +31,8 @@
       ${settingsDialog} .geneloop-settings-model>header small{white-space:nowrap}
     }`;
     if (!previous) {
-      document.head.append(style);
+    style.textContent += `.geneloop-settings-archive-row .geneloop-settings-chat>span{font-size:inherit;color:inherit;flex-shrink:1}.geneloop-settings-icon-button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}`;
+    document.head.append(style);
       installed.set(ctx, { style, browser: false, waiting: false });
       ctx.effect(() => () => { style.remove(); installed.delete(ctx); }, 'geneloop-managed-workspace-style');
     }
@@ -104,7 +106,8 @@
     }
     let selected, navigating = 0, creating = false, notice = '', noticeIsError = true, contextMenu = null;
     let expandedGroups = new Set(), collapsedGroups = new Set();
-    let trash = { sessions: [], deleted_session_ids: [], loading: true, error: '' }, trashBusy = false, trashVersion = 0;
+    let trash = { sessions: [], deleted_session_ids: [], restored_archive_ids: [], revision: '', loading: true, error: '' }, trashBusy = false, trashVersion = 0;
+    const isArchived = (ws, id) => ws.archivedSessionIds.includes(id) && !trash.restored_archive_ids.includes(id);
     const listeners = new Set();
     const notify = () => { for (const fn of listeners) fn(); };
     const subscription = fn => { listeners.add(fn); return () => listeners.delete(fn); };
@@ -151,7 +154,8 @@
         if (!response.ok) throw Error();
         const value = await response.json();
         if (version !== trashVersion) return;
-        trash = { sessions: value.sessions || [], deleted_session_ids: value.deleted_session_ids || [], loading: false, error: '' };
+        trash = { sessions: value.sessions || [], deleted_session_ids: value.deleted_session_ids || [],
+          restored_archive_ids: value.restored_archive_ids || [], revision: value.revision || '', loading: false, error: '' };
         clearDeletedCurrent(); notify();
       } catch {
         if (version !== trashVersion) return;
@@ -180,17 +184,20 @@
       trashBusy = true; trashVersion++; setNotice('');
       try {
         const response = await fetch('/api/harless/session-trash', { method: 'POST', credentials: 'same-origin', cache: 'no-store',
-          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, session_id: id }) });
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(action === 'clear' ? { action, revision: id } : { action, session_id: id }) });
         if (!response.ok) {
           const value = await response.json().catch(() => ({}));
-          throw Error(value.error?.code === 'session_busy' ? '此对话正在回复，请先停止生成或等待完成后再移入回收站。'
+          throw Error(value.error?.code === 'trash_changed' ? '最近删除的内容已更新，请刷新列表并重新核对后清空。'
+            : value.error?.code === 'session_busy' ? '此对话正在回复，请先停止生成或等待完成后再移入回收站。'
             : response.status === 401 ? '登录已过期，请重新登录后重试。'
-            : action === 'delete' ? '对话未能移入回收站，请重试。' : '对话未能恢复，请重试。');
+            : action === 'clear' ? '最近删除未能清空，请重试。' : action === 'delete' ? '对话未能移入回收站，请重试。' : '对话未能恢复，请重试。');
         }
-        trash = { ...trash, sessions: trash.sessions.filter(item => item.session_id !== id),
-          deleted_session_ids: action === 'delete' ? [...new Set([...trash.deleted_session_ids, id])] : trash.deleted_session_ids.filter(value => value !== id) };
+        trash = { ...trash, sessions: action === 'clear' ? [] : trash.sessions.filter(item => item.session_id !== id),
+          restored_archive_ids: ['restore', 'unarchive'].includes(action) ? [...new Set([...trash.restored_archive_ids, id])] : trash.restored_archive_ids,
+          deleted_session_ids: action === 'delete' ? [...new Set([...trash.deleted_session_ids, id])]
+            : action === 'restore' ? trash.deleted_session_ids.filter(value => value !== id) : trash.deleted_session_ids };
         clearDeletedCurrent();
-        setNotice(action === 'delete' ? '对话已移入回收站，可在“最近删除”中恢复。' : '对话已恢复。', false);
+        setNotice(action === 'clear' ? '最近删除已清空。' : action === 'delete' ? '对话已移入最近删除，可在设置中恢复。' : '对话已恢复到原工作区；原工作区不存在时显示在未分组中。', false);
         await Promise.allSettled([sessions.refresh?.(), refreshTrash()]);
       } catch (failure) {
         const message = failure instanceof TypeError ? '连接暂时中断，请在“最近删除”中核对结果后重试。' : failure.message;
@@ -198,16 +205,30 @@
       } finally { trashBusy = false; notify(); }
     };
     function TrashSettings() {
+      const [review, setReview] = React.useState(null);
       React.useSyncExternalStore(subscription, () => trash);
       React.useSyncExternalStore(subscription, () => trashBusy);
       React.useSyncExternalStore(subscription, () => notice);
       React.useEffect(() => { void refreshTrash(); }, []);
-      return h('section', { className: 'geneloop-settings-page', 'aria-label': '最近删除' }, h('h2', null, '最近删除'),
+      return h('section', { className: 'geneloop-settings-page', 'aria-label': '最近删除' },
+        h('div', { className: 'geneloop-settings-title' }, h('h2', null, '最近删除'),
+          h('button', { type: 'button', className: 'geneloop-settings-icon-button', title: '清空最近删除', 'aria-label': '清空最近删除',
+            disabled: trashBusy || trash.loading || !!trash.error || !trash.sessions.length,
+            onClick: () => setReview({ revision: trash.revision, titles: trash.sessions.map(row => row.title || '新会话') }) }, icon('trash', 20))),
         h('p', null, '这里的对话已从工作区和搜索中移除，记录和文件保留。恢复后回到原工作区；原工作区已删除时归入“未分组”。'),
+        review && h('div', { className: 'geneloop-clear-review', role: 'group', 'aria-label': '核对清空对话' },
+          h('strong', null, '清空这 ' + review.titles.length + ' 个对话？'),
+          h('p', null, '清空后，这些对话及其附件将无法在网页中访问或恢复。'),
+          h('ul', null, review.titles.map((title, index) => h('li', { key: index }, title))),
+          h('div', { className: 'geneloop-settings-row-actions' },
+            h('button', { type: 'button', disabled: trashBusy, onClick: () => setReview(null) }, '取消'),
+            h('button', { type: 'button', className: 'danger', disabled: trashBusy, onClick: () => {
+              void changeTrash('clear', review.revision).then(() => setReview(null)).catch(() => { setReview(null); void refreshTrash(); });
+            } }, trashBusy ? '正在清空…' : '永久清空 ' + review.titles.length + ' 个对话'))),
         trash.loading ? h('p', { role: 'status' }, '正在加载最近删除…') : trash.error ? h('p', { className: 'error', role: 'alert' }, trash.error)
           : trash.sessions.length ? h('div', { className: 'geneloop-trash-list' }, trash.sessions.map(item => h('div', { className: 'geneloop-trash-row', key: item.session_id },
             h('span', null, item.title || '新会话'), h('button', { disabled: trashBusy, 'aria-label': '恢复对话 ' + (item.title || '新会话'),
-              onClick: () => { void changeTrash('restore', item.session_id, item.title || '新会话').catch(() => {}); } }, '恢复'))))
+              onClick: () => { void changeTrash('restore', item.session_id, item.title || '新会话').catch(() => {}); } }, icon('restore'), '恢复'))))
           : h('p', null, '没有已删除的对话。'),
         notice && h('p', { role: noticeIsError ? 'alert' : 'status' }, notice),
         trash.error && h('button', { type: 'button', onClick: () => { void refreshTrash(); } }, '重试'));
@@ -216,12 +237,19 @@
       const ws = React.useSyncExternalStore(workspaceSource.subscribe, workspaceSource.snapshot);
       const list = React.useSyncExternalStore(sessionSource.subscribe, sessionSource.snapshot);
       React.useSyncExternalStore(subscription, () => trash);
-      const items = ws.archivedSessionIds.map(id => list.byId[id]).filter(publicSession);
+      React.useSyncExternalStore(subscription, () => trashBusy);
+      React.useSyncExternalStore(subscription, () => notice);
+      const items = ws.archivedSessionIds.filter(id => isArchived(ws, id)).map(id => list.byId[id]).filter(publicSession);
       return h('section', { className: 'geneloop-settings-page', 'aria-label': '已归档对话' }, h('h2', null, '已归档对话'),
-        h('p', null, '归档的对话保留记录和文件，点击名称即可打开。'),
-        items.length ? h('div', { className: 'geneloop-settings-list' }, items.map(item => h('button', { type: 'button', key: item.id,
-          className: 'geneloop-settings-chat', onClick: () => { openSession(item.id); close(); } }, h('span', null, item.title || '新会话'), h('span', null, '打开'))))
-          : h('p', null, '没有已归档的对话。'));
+        h('p', null, '恢复后回到原工作区；原工作区已删除时归入“未分组”。删除会移入最近删除。'),
+        items.length ? h('div', { className: 'geneloop-settings-list' }, items.map(item => h('div', { key: item.id, className: 'geneloop-settings-archive-row' },
+          h('button', { type: 'button', className: 'geneloop-settings-chat', onClick: () => { openSession(item.id); close(); } }, h('span', null, item.title || '新会话')),
+          h('div', { className: 'geneloop-settings-row-actions' },
+            ...[['unarchive', 'restore', '恢复对话 '], ['delete', 'trash', '删除对话 ']].map(([action, glyph, label]) => h('button', {
+              key: action, type: 'button', className: 'geneloop-settings-icon-button', disabled: trashBusy,
+              title: label + (item.title || '新会话'), 'aria-label': label + (item.title || '新会话'),
+              onClick: () => { void changeTrash(action, item.id, item.title).catch(() => {}); } }, icon(glyph, 20)))))))
+          : h('p', null, '没有已归档的对话。'), notice && h('p', { role: noticeIsError ? 'alert' : 'status' }, notice));
     }
     ctx.slots.inject('settings.section', function* () {
       yield ctx.slots.register({ name: 'settings.section', id: 'geneloop-archived', order: 70, label: () => '已归档对话' }, ArchivedSettings);
@@ -236,7 +264,7 @@
       // supply reliable draft/attachment state for reuse.
       return [list.current].find(id => {
         const row = list.byId[id];
-        if (!id || !publicSession(row) || !row.blank || row.running || !belongs(id) || ws.archivedSessionIds.includes(id)) return false;
+        if (!id || !publicSession(row) || !row.blank || row.running || !belongs(id) || isArchived(ws, id)) return false;
         if (preserveCurrent && id === list.current) return true;
         const scope = sessions.scope?.(id), input = scope && ctx.get?.('conversation')?.input.for(scope)?.state.getSnapshot();
         return input && input.draft === '' && input.attachmentIds.length === 0 && input.phase === 'plain';
@@ -279,7 +307,8 @@
       : name === 'compose' ? [h('path', { key: 1, d: 'M14 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-9M16 3l5 5M10 14l2-6 6-6 5 5-6 6-7 1Z' })]
       : name === 'search' ? [h('circle', { key: 1, cx: 10.5, cy: 10.5, r: 6.5 }), h('path', { key: 2, d: 'm16 16 5 5' })]
       : name === 'pin' ? [h('path', { key: 1, d: 'm15 3 6 6-4 1-3 5-2-2-5 5-1-1 5-5-2-2 5-3 1-4Z' })]
-      : name === 'trash' ? [h('path', { key: 1, d: 'M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6l1 14h12l1-14M10 10v6M14 10v6' })]
+      : name === 'trash' ? [h('path', { key: 1, d: 'M4.5 6.5h15M9 6V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V6M6 7l.8 12.1A2 2 0 0 0 8.8 21h6.4a2 2 0 0 0 2-1.9L18 7M10 10v7M14 10v7' })]
+      : name === 'restore' ? [h('path', { key: 1, d: 'M5 8.5A8 8 0 1 1 4 14M5 3v5.5h5.5M12 8v5l3 2' })]
       : [h('path', { key: 1, d: 'M12 5v14M5 12h14' })]));
     function ActionMenu({ menu, close, children }) {
       const ref = React.useRef(null);
@@ -327,7 +356,7 @@
         return () => { active = false; };
       }, []);
       const error = message => setNotice(message);
-      const visible = row => publicSession(row) && !ws.archivedSessionIds.includes(row.id) && (!query || (row.title || row.displayTitle || '新会话').toLowerCase().includes(query.toLowerCase()));
+      const visible = row => publicSession(row) && !isArchived(ws, row.id) && (!query || (row.title || row.displayTitle || '新会话').toLowerCase().includes(query.toLowerCase()));
       const open = openSession;
       const edit = (kind, id, title) => { setMenu(null); setName(title); setEditing({ kind, id }); setNotice(''); };
       const closeMenu = restore => { if (restore) menu?.trigger?.focus(); setMenu(null); };
@@ -459,7 +488,7 @@
       const workspace = ws.items.find(item => item.workspaceId === selectedId);
       if (!workspace) return h('main', { className: 'geneloop-workspace-home' }, h('h1', null, '选择工作区'),
         h('p', null, '从侧栏选择一个工作区，或开始新的对话。'), h('button', { onClick: () => { layout?.selectPanel(null); } }, '返回对话'));
-      const chats = workspace.sessionIds.map(id => list.byId[id]).filter(item => publicSession(item) && !ws.archivedSessionIds.includes(item.id));
+      const chats = workspace.sessionIds.map(id => list.byId[id]).filter(item => publicSession(item) && !isArchived(ws, item.id));
       const stamp = value => { if (!value) return ''; const date = new Date(value); return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' }).format(date) : ''; };
       return h('main', { className: 'geneloop-workspace-home', 'aria-label': workspace.title + '工作区' },
         h('header', null, icon('folder', 30), h('h1', null, workspace.title),
