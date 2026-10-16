@@ -91,6 +91,8 @@ def load_uploaded_bundle(root: Path, directory: Path, scene: str, *, approved_re
         if scene != 'ppt' or not isinstance(variants, list) or not 1 <= len(variants) <= 32 or any(not isinstance(v, list) or not v for v in variants):
             raise ValueError('unsupported whole schema variants')
     return {**{key:str(base/name) for key,name in names.items()},
+            'runtime_library':str(base/'library.json'),
+            'runtime_library_sha256':sha(base/'library.json'),
             'certified_tool_schemas':schemas,'certified_tool_schemas_sha256':sha(base/'tool-schemas.json'),
             **({'certified_tool_schema_variants': variants} if variants else {}),
             'matching_policy':cert['matching_policy'],'binding_policy':cert['binding_policy'],

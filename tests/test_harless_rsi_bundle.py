@@ -43,6 +43,8 @@ def test_bundle_freezes_runtime_code_artifacts_and_whole_schema(tmp_path):
     (bundle/'certification.json').write_text(json.dumps(cert))
     got=load_ppt_bundle(root,bundle)
     assert got['matching_policy']=='structural_only' and not got['quality_cost_promoted']
+    assert got['runtime_library']==str(bundle/'library.json')
+    assert got['runtime_library_sha256']==sha(bundle/'library.json')
     (bundle/'task.json').write_text('{"changed":true}')
     with pytest.raises(ValueError,match='artifact changed'):load_ppt_bundle(root,bundle)
     (bundle/'task.json').write_text('{}')

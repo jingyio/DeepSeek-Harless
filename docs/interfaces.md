@@ -477,6 +477,8 @@ V11.2 的 `evidence-focus` 几何选择增加原图面积下限 `min(10平方英
 
 `harless_task_scope.ts` 仅负责服务器分配的 Session cwd、私有 preset、批准上传文件、PPT job 与 Files 任务授权；共享匹配/执行仍由现有在线 Runtime 提供。PPT `{slides,template,allow_output}` 经任务 API `request.scene_options` 设置并冻结，默认6页/academic/只读；Web空 Session 只能只读初始化。任务响应含 `user_id/selected_mode/scene_options/scene_inputs`；完整有效配置与 scope/library/schema 摘要保存于私有任务目录。
 
+2026-10-16：私有上传来源认证包也返回已经校验的 `runtime_library/runtime_library_sha256`，因此新任务的 `library_sha256` 不再因使用私有组合库而为空；Manifest、认证和文件锁仍独立核验。Shared RSI 在 Shadow 中只用请求前已通过匹配/守卫的 proposal 接受相同工具、参数和版本的正常读取结果；中间结果和新请求清理该预测，不创建合成调用、Execute pending 或 Verified Skip。来源错误、失败、权限和版本守卫保留。机制验收与当前业务试用边界见[本轮记录](experiments/paper-rsi-loop-mechanism-20261016-v1.md)。
+
 论文场景的任务输入上限为 16 份平铺文件，通用、PPT、数据与 Files 场景仍为 8 份；服务端在任务准入和 `SessionFiles.list_files()` 两层执行相同边界。该上限容纳单篇论文的多个 `.tex` 与 `.bib`，但不解释目录结构：引用 `sections/...` 的原始 LaTeX 包仍需后续安全的相对路径或压缩包协议，不能仅靠增加文件数声称全稿检查。
 
 论文 `read_pinned_document(source_id, page)` 对 PDF 读取实际页；对 UTF-8 文本按固定 80,000 字符分逻辑页，返回 `page_count`，越界页拒绝。上传与版本守卫仍按完整文件字节 SHA 执行，分页不会生成新的来源或绕过单文件/总量上限。论文私有 Motif manifest 可登记 `list_inputs`、`pin_document`、`read_pinned_document` 为只读观察合同，用来保留无关成功读取之间的已认证 pin/read 前沿；这些工具没有 Motif 图，不会被 Runtime 自动调用，失败结果及写工具仍形成屏障。具体实测与局限见[前沿复测](experiments/paper-composite-frontier-20261015-v2.md)。

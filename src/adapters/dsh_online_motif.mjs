@@ -84,7 +84,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
   function state(sessionId) {
     let found = states.get(sessionId);
     if (!found) {
-      found = { history: [], pending: new Map(), batches: new Map(),
+      found = { history: [], pending: new Map(), batches: new Map(), shadowProposals: [],
         usedPrefixes: new Set(), attempted: 0, halted: false };
       states.set(sessionId, found);
     }
@@ -96,6 +96,15 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
     const output = observation(result, exec.name);
     const version = outputField(output, manifest.version_fields[exec.name]);
     const pending = current.pending.get(exec.callId);
+    // Shadow's ordinary model call has no synthetic call ID. Reuse only the
+    // proposal validated before that request, with exactly the same arguments;
+    // it authorizes observation, never a bypass or a verification receipt.
+    const expected = pending ?? current.shadowProposals.find(proposal =>
+      proposal.tool === exec.name && exec.arguments && typeof exec.arguments === 'object' &&
+      digest(proposal.arguments) === digest(exec.arguments));
+    // Any intervening result consumes this prediction. A later request must
+    // rebuild its frontier, including failure and side-effect barriers.
+    current.shadowProposals = [];
     const ok = result?.isError !== true && output !== null;
     const policy = manifest.contracts[exec.name]?.continuation_policy;
     const permissionValid = !policy || validGrant(output, policy,
@@ -104,7 +113,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
       session_id: sessionId, tool: exec.name, reason: 'missing_stale_or_revoked_grant' });
     const barrier = !ok || !permissionValid || manifest.contracts[exec.name]?.read_only !== true ||
       (!!manifest.version_fields[exec.name] &&
-       !versionWithinTask(parsedTask, manifest, exec.name, version, pending));
+       !versionWithinTask(parsedTask, manifest, exec.name, version, expected));
     if (barrier) audit({ kind: 'motif_deferred', session_id: sessionId, tool: exec.name,
       reason: !ok ? 'tool_result_failed' : manifest.contracts[exec.name]?.read_only !== true ? 'tool_not_certified_read_only' : 'source_version_mismatch' });
     current.history.push({ name: exec.name, callId: exec.callId, ok,
@@ -137,6 +146,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
   async function intercept(sessionId, options, next) {
     if (sessionId !== parsedTask.session_id) return next();
     const current = state(sessionId);
+    current.shadowProposals = [];
     if (current.halted || current.pending.size) return next();
     if ((options.messages ?? []).some(message => message.source?.kind === 'task-acceptance-repair')) {
       current.halted = true;
@@ -164,6 +174,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
       return next();
     }
     if (mode === 'shadow') {
+      current.shadowProposals = proposals;
       audit({ kind: 'shadow_candidate', session_id: sessionId,
         motifs: proposals.map((row) => row.motif_id),
         tools: proposals.map((row) => row.tool) });

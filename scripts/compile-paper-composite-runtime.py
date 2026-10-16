@@ -207,6 +207,7 @@ def compile_runtime(citation_dir: Path, uploaded_dir: Path, schemas_path: Path,
             'src/adapters/crossref_metadata.py', 'src/adapters/paper_query_recovery.py',
             'src/adapters/dsh_web_tasks.ts', 'src/adapters/harless_scenarios.py',
             'src/adapters/harless_paper_flow_shadow.ts',
+            'src/adapters/dsh_online_motif.mjs',
             'src/motif_core/online_skill_runtime.mjs']
     evidence = {'citation_library_sha256': sha(citation_dir / 'library.json'),
                 'uploaded_library_sha256': sha(uploaded_dir / 'library.json'),
