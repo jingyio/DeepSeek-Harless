@@ -5,14 +5,14 @@
   "mode": "execute",
   "new_training": true,
   "files": {
-    "learning-report.json": "f81f618a61724f47c1b689b6242eac509675d1eba042d94a5dbca4ef1cf894bf",
+    "learning-report.json": "2c26f94fc4aef7dc7ed755d6c17e3d1b661f29e970de28827d5fa4e99ed859b9",
     "online-manifest.json": "c7b466d933f6a4b056320a096cef31a7e37e27c8260d7fcba050239d7ec8b9aa",
     "library.json": "6f9aa5b7770b10a225763f57d6f27fbd92fc233a64db7f1bbec6f60bace04588",
     "task.json": "6984ec6943a2dfa44e525dec4b67676f96e7f993ea5cfcfb21e2257eab994567",
     "tool-schemas.json": "b92089046537bd2a8914bfd89d5499d38d885aa8c0ad6b0bbb28c58f74dbd8d8",
     "source-evidence.json": "90eb8281a9a8609af0871dbf37c2a82ba9ab026d2e0dd599a4e6b8732fca7ad1",
     "tool-schema-variants.json": "a0065e28b2c9cd5a9735b2aeee638bdce5901a54a9c354f26e9bec2c3904e563",
-    "certification.json": "57293b10784ab7d9fa317760c1b302f5d8640d17ae87471cb6820365853ce481"
+    "certification.json": "da753ff2df10a123ae4e0260c914476aee3be87e518706badace492a2c514776"
   },
   "scientific_quality_reviewed": "ai-assisted",
   "quality_cost_promoted": false

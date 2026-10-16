@@ -3,7 +3,7 @@
 ## 2026-10-16 网页组合交付、局部恢复与新读取库
 
 - 当前分支 `codex/ppt-workflow-learning` 已保留 main 的统计来源检查/输入标签修复。原 CLI 完整 `research-design` Skill 自动追加；网页两侧默认 `host_delivery`，渲染→检查→验证→交付由普通脚本组合，失败保存私有草稿并让原模型只修指定页。最新句柄反馈、同任务预算、取消/来源/权限/schema/实现锁保持，CLI 旧次数诊断保留。
-- 新库 `motif-libraries/ppt-web-v2-r2/` 来自真实独立 RAG/QLoRA 训练与 DoRA 留出，现有编译器产出两条只读 pin/read 边，30 页数×21 完整实际 schema；不是手写 DAG、不是全稿设计或修复写入的学习。原库图和证书未改。科研稿有错误，显式未通过质量费用晋级。
+- 新库 `motif-libraries/ppt-web-v2-r3/` 来自真实独立 RAG/QLoRA 训练与 DoRA 留出，现有编译器产出两条只读 pin/read 边，30 页数×21 完整实际 schema；不是手写 DAG、不是全稿设计或修复写入的学习。原库图和证书未改。科研稿有错误，显式未通过质量费用晋级。
 - [实验及 workflow](../experiments/ppt-web-workflow-learning-20261016-v1.md) 和同目录 results.json 保留全部负例、缓存命中/未命中、输出、费用、耗时与文件质量。学习共 177 请求/$0.232263144（含失败），离线编译 0 模型；完整本轮 397 请求/$0.477209820，均代理估费，实付未知。
 - 短说明三组实际交付，B0/B1/B2 请求 15/8/6；普通脚本和 Motif 收益分开。长论文六条件只有两份交付且有科研错误，不能据此宣称同质省费。原生网页 10 下载逐个 SHA 校验/刷新完成通过，Motif 两次实际 skip；其费用比 Baseline 略高，反例保留。
 - 根 Python 795、Node 734、PPT 121 项通过；新增真实库锁 9 项及 smoke/motif:check 通过，最终 CI/发布见 PR 回执。私有 `.local/ppt-workflow-20261016/` 保存题面/原 PDF/真实轨迹/检查图，受保护数据不清理，预算沿用每侧 $0.115/每对 $0.23，累计与额外输出限制 null。
