@@ -363,6 +363,15 @@ class PPTService:
         if len(plan['slides']) != self.job['slides']:
             raise ValueError(f"任务要求总共 {self.job['slides']} 页")
         deck = copy.deepcopy(plan)
+        from .numeric_evidence import complete_case_counts
+        count_sources = []
+        for item in self.handles.values():
+            if item.get('read') and item['parsed']['format'] in {'csv', 'tsv', 'json'}:
+                self.current(item['row'])
+                if not any(page.get('truncated') for page in item['parsed']['pages']):
+                    count_sources.append({'format': item['parsed']['format'],
+                                          'text': ''.join(page['text'] for page in item['parsed']['pages'])})
+        sample_counts = complete_case_counts(count_sources)
         deck.setdefault('template', self.job.get('template','academic'))
         normalized_pages = []
         for page, slide in enumerate(deck['slides'], 1):
@@ -421,12 +430,13 @@ class PPTService:
                         visible.append(f"[{index}] {readable_source_name(item['row']['name'])} · {locator}")
                     previous_visible_source_id = cite['source_id']
             from .numeric_evidence import check_numeric_evidence
-            numeric_check = check_numeric_evidence(slide, numeric_sources)
+            numeric_check = check_numeric_evidence(slide, numeric_sources, sample_counts=sample_counts)
             self.record('numeric_source_check', {'page': len(source_metadata) + 1, **numeric_check})
             if numeric_check['status'] == 'rejected':
                 raise RenderFailure({'ok': False, 'code': 'unsupported_statistics',
                     'error': '统计数值没有当前引用来源的直接结果依据。PPT 工具不能代替统计计算，请移除无依据的统计量，保留研究设计、原始数据与局限；或引用已提供的分析报告。不要凭记忆补算、换模型或添加对数变换。',
-                    'page': len(source_metadata) + 1, 'unsupported': numeric_check['unsupported']})
+                    'page': len(source_metadata) + 1, 'unsupported': numeric_check['unsupported'],
+                    'expected_complete_case_n': sample_counts['complete_rows'] if sample_counts else None})
             slide['sources'] = resolved
             if 'archetype' in slide:
                 # renderer 内部字段：外部字段白名单拒绝调用者自报 visible_sources。

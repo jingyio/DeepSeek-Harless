@@ -1,9 +1,9 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-16：PPT 统计来源补检（当前，复测中）
+## 2026-10-16：PPT 统计来源补检（当前，发布前验收）
 
 - PR #41 已以 `d2871f5` 发布，原生图片公网三组六侧 28 个下载与图片数据逐格检查通过。后续混合文件 PPT 出现无来源统计量与擅自对数回归，机械检查通过但人工质量复核拒绝；失败稿与费用保留，不能列为合格结果。
-- 分支 `codex/ppt-numeric-evidence` 增加常见统计量来源摘录守卫、明确 PPT/统计职责及同任务修复；原 Motif 训练产物与读取契约不变。完整 Python 790、Node 728 通过；隔离网页三组正在复测，部署状态与费用以 PR 最终回执为准。详见[记录](../experiments/geneloop-ppt-numeric-source-20261016-v1.md)。
+- 分支 `codex/ppt-numeric-evidence` / [PR #43](https://github.com/jingyio/DeepSeek-Harless/pull/43) 增加常见统计量来源摘录守卫、明确变量下的完整案例计数及同任务修复；原 Motif 训练产物与读取契约不变。最终选择混合五格式、PNG、已有统计报告三组六侧、30 个下载通过内容/排版/哈希复核。首次混合稿的 39 例错误及最初 CI 可选依赖失败保留，未混入合格选择。服务器完整检查、Windows/Linux CI、部署及公网回执以 PR 最终更新为准。详见[记录](../experiments/geneloop-ppt-numeric-source-20261016-v1.md)。
 - 线上曾因旧 Cloudflare Quick Tunnel 被注销返回 530；已恢复相同应用的隧道并更新原 Worker `UPSTREAM_ORIGIN`，登录及生成下载恢复。账号、数据和预算进程未改变；仍是临时隧道，重建后需同步上游绑定，不能声称永久稳定入口。
 
 ## 2026-10-16：原生图片与真实文件交付（当前，发布前验收）

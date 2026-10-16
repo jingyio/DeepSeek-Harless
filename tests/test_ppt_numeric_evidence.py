@@ -1,4 +1,4 @@
-from scenarios.research_ppt.numeric_evidence import check_numeric_evidence, claims
+from scenarios.research_ppt.numeric_evidence import check_numeric_evidence, complete_case_counts
 from scenarios.research_ppt.server import _safe_failure
 from scenarios.research_ppt.service import RenderFailure
 
@@ -57,16 +57,21 @@ def test_public_error_is_repairable_and_does_not_reveal_private_payload():
 
 def test_actual_service_rejects_unsupported_statistics_before_creating_deck():
     import tempfile
+    import json
     from pathlib import Path
-    from scenarios.research_ppt.cli import prepare
     from scenarios.research_ppt.service import ROOT, PPTService
-    from scenarios.research_ppt.tests.test_service import write_pdf
+    from scenarios.research_ppt.documents import file_hash
     area = ROOT / '.local'
     area.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=area) as temp:
-        source = Path(temp) / 'study.pdf'
-        write_pdf(source, 'Raw observations only. No computed statistical results.')
-        service = PPTService(prepare([source], 'Make one slide', 1, True, persistent_library=False))
+        source = Path(temp) / 'study.txt'
+        source.write_text('Raw observations only. No computed statistical results.', encoding='utf-8')
+        job = Path(temp) / 'job.json'
+        job.write_text(json.dumps({'schema_version': 1, 'job_id': 'numeric-source-test',
+            'instruction': 'Make one slide', 'slides': 1, 'allow_output': True, 'allow_rsi': False,
+            'inputs': [{'document_id': 'doc_1', 'name': source.name, 'path': str(source),
+                        'version_sha256': file_hash(source)}]}), encoding='utf-8')
+        service = PPTService(job)
         handle = service.pin_source('doc_1')['source_id']
         service.read_source(handle)
         plan = {'title': 'Design', 'slides': [{'title': 'Results', 'bullets': ['Slope=14.15'],
@@ -79,3 +84,41 @@ def test_actual_service_rejects_unsupported_statistics_before_creating_deck():
             raise AssertionError('Unverified statistics must not reach the renderer')
         assert not service.decks
         assert not list(service.output.glob('*/presentation.pptx'))
+
+
+def count_sources():
+    import json
+    return [{'format': 'csv', 'text': 'id,x,y,note\na,1,5,\nb,2,,\nc,3,7,\nd,4,,\n'},
+            {'format': 'json', 'text': json.dumps({'analysis_request': {
+                'predictor': 'x', 'outcome': 'y', 'missing_policy': '完整案例，不填补'}})}]
+
+
+def test_complete_case_counts_use_only_declared_variables_and_reject_wrong_sample():
+    profile = complete_case_counts(count_sources())
+    assert profile == {'total_rows': 4, 'complete_rows': 2, 'missing_rows': 2,
+                       'columns': ['x', 'y'], 'missing_rule': 'empty_cells_only'}
+    wrong = {'takeaway': '4 例中 2 例缺失，完整案例分析纳入 3 例',
+             'bullets': ['排除2例，纳入3例']}
+    result = check_numeric_evidence(wrong, [{'text': '原稿误写完整案例3例'}], sample_counts=profile)
+    assert result['status'] == 'rejected'
+    assert all(row['expected'] == 2 for row in result['unsupported'])
+    corrected = {'bullets': ['原始总样本 n=4', '完整案例分析纳入 2 例', 'TXT原文误写完整案例3例，应纠正']}
+    assert check_numeric_evidence(corrected, [], sample_counts=profile)['status'] == 'passed'
+
+
+def test_sample_count_abstains_on_ambiguous_or_untyped_sources():
+    sources = count_sources()
+    assert complete_case_counts(sources[:1]) is None
+    assert complete_case_counts(sources + sources[:1]) is None
+    assert complete_case_counts(sources + sources[1:]) is None
+    sources[0]['text'] = sources[0]['text'].replace('a,1,5,', 'a,1,NA,')
+    assert complete_case_counts(sources) is None
+
+
+def test_count_error_returns_only_validated_expected_number():
+    error = _safe_failure(RenderFailure({'code': 'unsupported_statistics', 'page': 2,
+                                        'expected_complete_case_n': 38}))
+    assert '必须为 38' in error['next_action']
+    error = _safe_failure(RenderFailure({'code': 'unsupported_statistics', 'page': 2,
+                                        'expected_complete_case_n': '/private/path'}))
+    assert '/private' not in str(error)
