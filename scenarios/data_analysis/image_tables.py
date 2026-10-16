@@ -63,7 +63,10 @@ def table_row_image(path: Path, start_row: int, row_count: int) -> tuple[dict, b
         image=original.convert('RGB');image.thumbnail((2200,2200))
         box=(max(0,v[0][0]-2),max(0,h[start_row][0]-2),min(image.width,v[-1][1]+3),min(image.height,h[end+1][1]+3))
         crop=image.crop(box)
-        crop=crop.resize((crop.width*2,crop.height*2),Image.Resampling.NEAREST)
-        out=io.BytesIO();crop.save(out,format='PNG')
+        # Preserve each source pixel. A strip occupies its own model image view;
+        # duplicating every pixel would inflate inline multimodal requests.
+        gray=crop.convert('L')
+        if gray.convert('RGB').tobytes()==crop.tobytes():crop=gray
+        out=io.BytesIO();crop.save(out,format='PNG',optimize=True)
     return {'start_row':start_row,'end_row':end,'data_rows':layout['data_rows'],
-            'scope':'original_pixels_enlarged_no_ocr'},out.getvalue()
+            'scope':'original_pixels_crop_no_ocr'},out.getvalue()

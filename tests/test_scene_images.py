@@ -92,7 +92,8 @@ def test_ruled_image_rejects_filled_or_shifted_missing_cells(tmp_path,extension,
         intake.read_image_table(name,'0'*64)
     meta,pixels=intake.read_image_table(name,version,1,2)
     assert meta['start_row']==1 and meta['end_row']==2
-    with Image.open(io.BytesIO(pixels)) as enlarged:assert enlarged.width>image.width
+    with Image.open(io.BytesIO(pixels)) as enlarged:
+        assert enlarged.width>image.width*.8 and enlarged.height<image.height
     with pytest.raises(ValueError,match='require_zoom_review'):
         intake.record_image_table(name,version,columns,rows)
     meta,pixels=intake.read_image_table(name,version,3,10)
