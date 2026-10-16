@@ -55,6 +55,13 @@ def test_native_search_usage_and_admitted_route():
             assert request(f'/v1/search/{session}/messages', {**body,'messages':['invalid']}) == 400
             assert request(f'/v1/search/{session}/messages', {**body,'messages':[{'role':'user','content':None}]}) == 400
             assert len(calls) == 1
+            blocks={**body,'messages':[{'role':'user','content':[{'type':'text','text':'private query'}]}]}
+            assert request(f'/v1/search/{session}/messages', blocks) == 200
+            assert calls[-1][1]['messages'] == blocks['messages']
+            for content in [[],['invalid'],[{'type':'text','text':None}],
+                            [{'type':'image','source':'unapproved'}],[{'type':'text','text':'query','extra':True}]]:
+                assert request(f'/v1/search/{session}/messages', {**body,'messages':[{'role':'user','content':content}]}) == 400
+            assert len(calls) == state.request_count == 2
             log = state.record.read_text()
             assert 'web_search' in log and 'private search result' not in log and 'private query' not in log
             assert json.loads(log.splitlines()[-1])['response_usage']['total_tokens'] == 25

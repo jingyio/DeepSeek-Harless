@@ -496,11 +496,17 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
             try:
                 if search:
                     payload = json.loads(body)
+                    def search_text(content):
+                        # Native provider versions use either a string or
+                        # Anthropic text blocks for the same search query.
+                        return isinstance(content, str) or (isinstance(content, list) and bool(content) and all(
+                            isinstance(part, dict) and set(part) == {'type', 'text'} and
+                            part['type'] == 'text' and isinstance(part['text'], str) for part in content))
                     if (not isinstance(payload, dict) or set(payload) != {'model', 'max_tokens', 'messages', 'tools'} or
                             not isinstance(payload['messages'], list) or len(payload['messages']) != 1 or
                             not isinstance(payload['messages'][0], dict) or
                             payload['messages'][0].get('role') != 'user' or
-                            not isinstance(payload['messages'][0].get('content'), str) or
+                            not search_text(payload['messages'][0].get('content')) or
                             not isinstance(payload['tools'], list) or len(payload['tools']) != 1 or
                             payload['tools'][0] != {'type': 'web_search_20250305', 'name': 'web_search', 'max_uses': 3}):
                         raise ValueError('invalid native search request')
