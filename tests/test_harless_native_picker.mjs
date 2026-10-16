@@ -173,6 +173,12 @@ test('Choosing PPT from /harless retains a visible token and preserves other dra
   f.inputs.get('alice').setDraft('/harless 请生成报告');
   const rows = await f.decoration.ui.options(session, new AbortController().signal);
   assert.deepEqual(Array.from(rows.slice(0,4), row => row.label), ['/ppt','/paper','/data','/chat']);
+  assert.equal(rows.find(row => row.id === 'mode:baseline').label, '标准执行');
+  assert.match(rows.find(row => row.id === 'mode:baseline').detail, /不复用 Motif/);
+  assert.match(rows.find(row => row.id === 'mode:shadow').detail, /不跳过模型请求/);
+  assert.equal(rows.find(row => row.id === 'rsi:on').label, 'Motif 复用：允许');
+  assert.match(rows.find(row => row.id === 'rsi:on').detail, /标准执行不受此开关影响/);
+  assert.equal(rows.find(row => row.id === 'rsi:off').label, 'Motif 复用：关闭');
   await f.decoration.ui.onSelect(rows[0], session);
   assert.equal(f.inputs.get('alice').state.getSnapshot().draft, '/ppt 请生成报告');
   assert.equal(f.inputs.get('alice').inserts.length, 1);

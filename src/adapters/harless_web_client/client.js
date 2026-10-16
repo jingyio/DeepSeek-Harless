@@ -14,7 +14,8 @@ window.__ModuleLoader__.load({
     const aliases = { ppt: 'ppt', 'paper-proofreading': 'paper', 'research-data-analysis': 'data', 'new-scene': 'chat' };
     const shortcut = scene => scene.shortcut || aliases[scene.id] || scene.id;
     const selectableScene = scene => !['new-scene', 'files', 'file-management'].includes(scene.id) && !['chat', 'files'].includes(shortcut(scene));
-    const modeLabel = mode => mode === 'baseline' ? 'Origin' : mode[0].toUpperCase() + mode.slice(1);
+    const modeLabel = mode => ({ baseline: '标准执行', shadow: '观察候选', execute: '校验后复用' })[mode] || mode;
+    const modeDetail = mode => ({ baseline: '按标准流程执行，不复用 Motif', shadow: '只记录候选，不跳过模型请求', execute: '允许在校验通过后复用已有 Motif' })[mode];
     const displayValue = (id, value) => value && draftSelections.has(id) ? { ...value,
       selection: { ...value.selection, scene: draftSelections.get(id) },
       ...(draftSelections.get(id) === 'new-scene' ? { paired_comparison: false } : {}) } : value;
@@ -128,7 +129,6 @@ window.__ModuleLoader__.load({
       // Keep recent authenticated snapshots across chat/trace navigation only;
       // never persist private replies in browser storage.
       const comparisonSnapshots = new Map(), comparisonObservers = new Map();
-      const comparisonRatings = new Map(), ratingObservers = new Map();
       let comparisonIdentity = 0;
       const comparisonKey = value => value.session_id + ':' + value.id;
       const olderSnapshot = (next, previous) => previous && (
@@ -149,21 +149,9 @@ window.__ModuleLoader__.load({
         for (const listener of comparisonObservers.get(key) || []) listener(value);
         return true;
       }
-      const ratingSnapshot = key => {
-        const state = comparisonRatings.get(key);
-        return { key, pending: Object.fromEntries([...(state?.intents || [])].map(([lane, intent]) => [lane, intent.score])),
-          saving: state?.saving || false, error: state?.error || '' };
-      };
-      function publishRating(key, reconcile = false) {
-        const value = ratingSnapshot(key);
-        for (const listener of ratingObservers.get(key) || []) listener(value, reconcile);
-      }
-      function discardComparisonMemory(message = '') {
+      function discardComparisonMemory() {
         comparisonIdentity++;
-        for (const [key, state] of comparisonRatings) {
-          state.intents.clear(); state.saving = false; state.error = message; state.abort?.abort(); publishRating(key);
-        }
-        comparisonRatings.clear(); comparisonSnapshots.clear();
+        comparisonSnapshots.clear();
       }
       ctx.effect(() => {
         const leavePage = () => discardComparisonMemory();
@@ -216,7 +204,7 @@ window.__ModuleLoader__.load({
             ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, session_id: value.session_id, id: value.id }) } : {}) });
           if (identity !== comparisonIdentity) throw apiError(401);
           if ([401, 403].includes(response.status)) {
-            const error = apiError(response.status); discardComparisonMemory(error.message); throw error;
+            const error = apiError(response.status); discardComparisonMemory(); throw error;
           }
           let result;
           try { result = await response.json(); } catch { throw apiError(response.status || 502, '服务器未返回有效结果，请稍后刷新。'); }
@@ -226,65 +214,6 @@ window.__ModuleLoader__.load({
             throw apiError(502, '服务器未返回当前对照结果。');
           return result;
         });
-      }
-      function saveRating(value, lane, score) {
-        const key = comparisonKey(value), authoritative = rememberedSnapshot(value), output = authoritative.lanes[lane]?.output_sha256;
-        if (!authoritative.scoring_available || !output) return;
-        let state = comparisonRatings.get(key);
-        if (!state) {
-          state = { confirmed: authoritative, intents: new Map(), saving: false, error: '' }; comparisonRatings.set(key, state);
-        }
-        if (state.intents.get(lane)?.score === score || (!state.intents.has(lane) && authoritative.scores[lane] === score)) return state.work;
-        // The queue belongs to the page, not a mounted card. An explicit last
-        // choice keeps saving when the user navigates to another conversation.
-        state.intents.set(lane, { score, output }); state.error = ''; state.saving = true; publishRating(key);
-        if (state.work) return state.work;
-        state.abort = new AbortController();
-        const identity = comparisonIdentity, active = () => comparisonRatings.get(key) === state && identity === comparisonIdentity && !state.abort.signal.aborted;
-        const work = (async () => {
-          try {
-            while (active() && state.intents.size) {
-              const [name, intent] = state.intents.entries().next().value, latest = rememberedSnapshot(state.confirmed);
-              if (!latest.scoring_available || latest.lanes[name]?.output_sha256 !== intent.output) {
-                state.intents.clear(); state.error = '结果已更新，请确认新结果后重新评分。'; break;
-              }
-              if (latest.scores[name] === intent.score) { state.intents.delete(name); publishRating(key); continue; }
-              try {
-                const next = await comparisonRequest(latest, { action: 'rate', lane: name, score: intent.score,
-                  revision: latest.score_revision, output_sha256: intent.output }, state.abort.signal);
-                if (!active()) return;
-                state.confirmed = next; rememberSnapshot(next);
-              } catch (error) {
-                if (!active()) return;
-                state.error = networkMessage(error) + (!error.status || error.status === 408 ? ' 将重新读取状态，请勿重复提交。' : '');
-                // A lost response may already have committed. Read before
-                // sending a newer choice; never replay the uncertain POST.
-                try {
-                  if ([401, 403, 404].includes(error.status)) throw error;
-                  const next = await comparisonRequest(latest, undefined, state.abort.signal);
-                  if (!active()) return;
-                  state.confirmed = next; rememberSnapshot(next);
-                } catch {
-                  if (!active()) return;
-                  state.intents.clear(); break;
-                }
-              }
-              if (state.intents.get(name) === intent) state.intents.delete(name);
-              publishRating(key);
-            }
-          } finally {
-            if (active()) {
-              state.work = null; state.saving = false; publishRating(key, true);
-              if (!state.error) comparisonRatings.delete(key);
-              // Keep failed-save notices bounded just like confirmed replies.
-              if (comparisonRatings.size > 40) for (const [oldKey, oldState] of comparisonRatings) {
-                if (!oldState.saving) comparisonRatings.delete(oldKey);
-                if (comparisonRatings.size <= 40) break;
-              }
-            }
-          }
-        })();
-        state.work = work; return work;
       }
       function artifactFor(files, raw) {
         let path = String(raw || '').trim();
@@ -423,8 +352,6 @@ window.__ModuleLoader__.load({
         const [loadedKey, setLoadedKey] = React.useState(comparisonSnapshots.has(key) || settled(initial) ? key : '');
         const hydrated = loadedKey === key || comparisonSnapshots.has(key) || settled(initial);
         const serverSnapshot = React.useRef(initial);
-        const [ratingState, setRatingState] = React.useState(ratingSnapshot(key));
-        const ratings = ratingState.key === key ? ratingState : ratingSnapshot(key), pendingRatings = ratings.pending;
         const [connection, setConnection] = React.useState(''), [downloads, setDownloads] = React.useState({});
         const pageLoadRelease = React.useRef();
         React.useLayoutEffect(() => {
@@ -467,17 +394,6 @@ window.__ModuleLoader__.load({
           };
           const group = comparisonObservers.get(key) || new Set(); group.add(listener); comparisonObservers.set(key, group);
           return () => { group.delete(listener); if (!group.size) comparisonObservers.delete(key); };
-        }, [node.data.id, node.data.session_id]);
-        React.useEffect(() => {
-          let wasSaving = ratingSnapshot(key).saving;
-          const listener = (next, reconcile) => {
-            setRatingState(next);
-            if (wasSaving && !next.saving && reconcile) void refreshNow.current();
-            wasSaving = next.saving;
-          };
-          setRatingState(ratingSnapshot(key));
-          const group = ratingObservers.get(key) || new Set(); group.add(listener); ratingObservers.set(key, group);
-          return () => { group.delete(listener); if (!group.size) ratingObservers.delete(key); };
         }, [node.data.id, node.data.session_id]);
         React.useEffect(() => {
           const abort = new AbortController(); let timer, failures = 0, pending = false, rerun = false;
@@ -561,7 +477,7 @@ window.__ModuleLoader__.load({
           return () => updateBusy(value.session_id, value.id, false);
         }, [value.session_id, value.id, value.status, hydrated]);
         const action = async body => {
-          if (actionBusy.current || comparisonRatings.get(key)?.saving) return;
+          if (actionBusy.current) return;
           actionBusy.current = true; generation.current++; setSaving(true); setError('');
           const revision = generation.current, abort = new AbortController(); transferControllers.current.add(abort);
           const current = () => alive.current && generation.current === revision && !abort.signal.aborted;
@@ -571,10 +487,6 @@ window.__ModuleLoader__.load({
             transferControllers.current.delete(abort);
             if (alive.current && generation.current === revision) { actionBusy.current = false; setSaving(false); void refreshNow.current(); }
           }
-        };
-        const rate = (lane, score) => {
-          if (actionBusy.current) return;
-          setError(''); return saveRating(serverSnapshot.current, lane, score);
         };
         const fork = async lane => {
           const output = value.lanes[lane].output_sha256;
@@ -722,7 +634,7 @@ window.__ModuleLoader__.load({
                 actionButton({ 'aria-label': '复制 ' + title + ' 回复', disabled: !answer, onClick: () => copy(lane) }, copied === lane ? 'check' : 'copy', copied === lane ? '已复制' : '复制'),
                 ...['up', 'down'].map(vote => actionButton({ key: vote,
                   'aria-label': (vote === 'up' ? '赞 ' : '踩 ') + title + ' 回复', 'aria-pressed': result.feedback === vote,
-                  disabled: saving || ratings.saving || !settled(result) || !result.output_sha256,
+                  disabled: saving || !settled(result) || !result.output_sha256,
                   onClick: () => action({ action: 'feedback', lane, vote: result.feedback === vote ? null : vote, output_sha256: result.output_sha256 }) },
                   vote + (result.feedback === vote ? 'Selected' : ''), result.feedback === vote ? '取消标记' : vote === 'up' ? '好的回答' : '有问题的回答')),
                 actionButton({ 'aria-label': '从 ' + title + ' 在新对话中分支', disabled: !!branching || !settled(value) || !result.output_sha256,
@@ -736,13 +648,7 @@ window.__ModuleLoader__.load({
                 result.finished_at && messageClock(result.finished_at) && h('time', { className: 'harless-message-time', dateTime: result.finished_at }, messageClock(result.finished_at))),
                 copied === lane && h('span', { role: 'status', className: 'harless-visually-hidden' }, '已复制')),
               h('small', null, `模型请求 ${result.stats?.upstream_requests || 0} · ${result.mode === 'shadow' ? '预测候选 ' + (result.stats?.shadow_candidates || 0) : '已验证跳过 ' + (result.stats?.verified_skips || 0)}`),
-              ['failed', 'cancelled'].includes(result.status) && settled(value) && h('button', { type: 'button', disabled: saving || ratings.saving, onClick: () => action({ action: 'retry', lane }) }, '重试此侧'),
-              !single && h('fieldset', { disabled: !value.scoring_available || saving, 'aria-label': title + '评分', 'aria-busy': pendingRatings[lane] !== undefined },
-                h('legend', null, value.scoring_available ? '结果评分' : '两侧完成后评分'),
-                ...[1, 2, 3, 4, 5].map(score => h('label', { key: score, className: (pendingRatings[lane] ?? value.scores[lane]) === score ? 'selected' : '' }, h('input', {
-                  type: 'radio', name: value.id + '-' + lane, value: score, checked: (pendingRatings[lane] ?? value.scores[lane]) === score,
-                  onChange: () => rate(lane, score) }), score))),
-              !single && pendingRatings[lane] !== undefined && h('small', { role: 'status', className: 'harless-paired-muted' }, '正在保存评分…')));
+              ['failed', 'cancelled'].includes(result.status) && settled(value) && h('button', { type: 'button', disabled: saving, onClick: () => action({ action: 'retry', lane }) }, '重试此侧')));
         };
         if (traceOnly) {
           const paired = isPairedTrace(value), laneKeys = paired ? ['baseline', 'motif'] : ['baseline'];
@@ -758,7 +664,7 @@ window.__ModuleLoader__.load({
             connection && h('p', { role: 'status', className: 'harless-paired-connection' }, connection));
         }
         return h('div', { className: 'harless-paired', 'data-comparison-id': value.id },
-          h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;container-type:inline-size;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired-pane fieldset{display:flex;flex-wrap:wrap;gap:6px;border:0;padding:0;min-width:0}.harless-paired-pane legend{font-size:12px;color:var(--dsw-alias-label-secondary,inherit);margin-bottom:8px}.harless-paired-pane fieldset label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid #8885;border-radius:8px;padding:6px 8px;min-height:32px;cursor:pointer}.harless-paired-pane label.selected{color:var(--dsw-alias-link,#729cf7);border-color:currentColor;background:#729cf719}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-pane fieldset:disabled{opacity:.45}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;font-weight:500;margin:0 0 10px}.harless-paired-files{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:10px}.harless-paired-files>li{flex:0 1 260px;min-width:0;max-width:100%}.harless-artifact-card{display:flex;align-items:center;gap:10px;box-sizing:border-box;width:100%;height:64px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l2,#8884);border-radius:16px;background:var(--dsw-specific-input-major,transparent);text-align:left}.harless-artifact-icon{display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px}.harless-artifact-icon>svg{width:28px;height:28px}.harless-artifact-body{display:flex;flex-direction:column;flex:1;min-width:0;gap:2px}.harless-paired-filename{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary,inherit);font-size:14px;font-weight:500;line-height:22px}.harless-artifact-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary,#888);font-size:12px;line-height:15px}.harless-artifact-download{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,inherit);text-decoration:none;cursor:pointer}.harless-artifact-download:hover{background:var(--dsw-alias-interactive-bg-hover,#8882);color:var(--dsw-alias-label-primary,inherit)}.harless-artifact-download:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.harless-artifact-download[aria-disabled=true]{cursor:progress;color:var(--dsw-alias-label-secondary,inherit)}.harless-artifact-spinner{box-sizing:border-box;width:14px;height:14px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:harless-artifact-spin .8s linear infinite}@keyframes harless-artifact-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.harless-artifact-spinner{animation:none;border-style:dotted}}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin:5px 4px 0;overflow-wrap:anywhere}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
+          h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;container-type:inline-size;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;font-weight:500;margin:0 0 10px}.harless-paired-files{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:10px}.harless-paired-files>li{flex:0 1 260px;min-width:0;max-width:100%}.harless-artifact-card{display:flex;align-items:center;gap:10px;box-sizing:border-box;width:100%;height:64px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l2,#8884);border-radius:16px;background:var(--dsw-specific-input-major,transparent);text-align:left}.harless-artifact-icon{display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px}.harless-artifact-icon>svg{width:28px;height:28px}.harless-artifact-body{display:flex;flex-direction:column;flex:1;min-width:0;gap:2px}.harless-paired-filename{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary,inherit);font-size:14px;font-weight:500;line-height:22px}.harless-artifact-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary,#888);font-size:12px;line-height:15px}.harless-artifact-download{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,inherit);text-decoration:none;cursor:pointer}.harless-artifact-download:hover{background:var(--dsw-alias-interactive-bg-hover,#8882);color:var(--dsw-alias-label-primary,inherit)}.harless-artifact-download:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.harless-artifact-download[aria-disabled=true]{cursor:progress;color:var(--dsw-alias-label-secondary,inherit)}.harless-artifact-spinner{box-sizing:border-box;width:14px;height:14px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:harless-artifact-spin .8s linear infinite}@keyframes harless-artifact-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.harless-artifact-spinner{animation:none;border-style:dotted}}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin:5px 4px 0;overflow-wrap:anywhere}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
           h('style', null, artifactLinkStyle),
           h('style', null, `.harless-single-pane{border:0;border-radius:0;padding:0;background:transparent}.harless-activity{font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary,inherit);margin:12px 0}.harless-activity summary{cursor:pointer}.harless-activity ol{padding-left:20px;margin:8px 0}.harless-activity li{padding:4px 0}.harless-activity li small{margin-left:12px}.harless-activity li[data-status=running]{color:var(--dsw-alias-state-business-primary,#729cf7)}`),
           h('style', null, `.harless-message-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:calc(28px + var(--dsh-content-font-delta,0px));margin-left:-6px;color:var(--dsw-alias-label-tertiary)}
@@ -782,7 +688,7 @@ window.__ModuleLoader__.load({
           connection && h('div', { role: 'status', className: 'harless-paired-connection' }, connection,
             h('button', { type: 'button', onClick: () => refreshNow.current() }, '重新连接'),
             connection.includes('登录') && h('a', { href: '/login', style: { marginLeft: 8 } }, '登录')),
-          (error || ratings.error) && h('div', { role: 'alert', className: 'harless-paired-error' }, error || ratings.error));
+          error && h('div', { role: 'alert', className: 'harless-paired-error' }, error));
       }
       ctx.effect(() => ctx.uiConversation.events.register({ kind: 'harless-comparison', target: 'chat',
         match: event => event.type === 'user/message' && event.data.harless_comparison ? { id: event.data.harless_comparison.id, role: 'start' } : null,
@@ -1546,8 +1452,8 @@ window.__ModuleLoader__.load({
               id: `option:${field.key}=${JSON.stringify(choice.value)}`, label: choice.label,
               detail: choice.detail || field.label, active: (value.scene_options?.[field.key] ?? field.default) === choice.value,
             }))) : []),
-            ...(!value.paired_comparison ? ['baseline', 'shadow', 'execute'].map(mode => ({ id: `mode:${mode}`, label: modeLabel(mode), detail: 'Mode', active: value.selection.mode === mode })) : []),
-            ...(!value.paired_comparison ? [true, false].map(rsi => ({ id: `rsi:${rsi ? 'on' : 'off'}`, label: `RSI ${rsi ? 'On' : 'Off'}`, active: value.selection.rsi === rsi })) : []),
+            ...(!value.paired_comparison ? ['baseline', 'shadow', 'execute'].map(mode => ({ id: `mode:${mode}`, label: modeLabel(mode), detail: modeDetail(mode), active: value.selection.mode === mode })) : []),
+            ...(!value.paired_comparison ? [true, false].map(rsi => ({ id: `rsi:${rsi ? 'on' : 'off'}`, label: `Motif 复用：${rsi ? '允许' : '关闭'}`, detail: rsi ? '需选择校验后复用模式；标准执行不受此开关影响' : '本轮按标准流程执行', active: value.selection.rsi === rsi })) : []),
           ];
         },
         onSelect: async (option, session) => {

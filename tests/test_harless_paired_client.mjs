@@ -137,12 +137,12 @@ test('cold history displays loading until an authoritative snapshot arrives, nev
 test('returning to completed comparison reuses verified results while the new GET is pending or older', async () => {
   const initial = comparison(); initial.status = 'running'; initial.scoring_available = false; initial.snapshot_revision = 1;
   for (const lane of Object.values(initial.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
-  const done = comparison(); done.snapshot_revision = 8; done.scores.motif = 4;
+  const done = comparison(); done.snapshot_revision = 8; done.lanes.motif.feedback = 'up';
   let finish, reads = 0;
   const f = fixture(() => ++reads === 1 ? Response.json(done) : new Promise(resolve => { finish = resolve; }), initial, { streaming: true });
   await flush(); f.render(); f.remount(structuredClone(initial));
   assert.equal(f.all(row => row.type === f.MarkdownText).length, 2);
-  assert.equal(f.all(row => row.type === 'input' && row.props.name.endsWith('-motif') && row.props.value === 4)[0].props.checked, true);
+  assert.equal(f.all(row => row.props['aria-label'] === '赞 Motif 回复')[0].props['aria-pressed'], true);
   assert.doesNotMatch(f.content(f.render()), /等待执行|等待当前任务|停止生成/);
   assert.equal(f.blocks.get('session-a'), undefined);
   assert.equal(f.streams.length, 1, 'a cached completed task does not reopen a live stream');
@@ -159,140 +159,89 @@ test('cached results cannot leak into a different conversation during navigation
   assert.match(f.content(f.render()), /正在加载此轮结果/); f.dispose();
 });
 
-test('rating selection paints immediately and serializes rapid choices using the latest server revision', async () => {
-  const value = comparison(); value.snapshot_revision = 1;
-  const pending = [], writes = [];
-  const f = fixture((_url, init) => {
-    if (init.method !== 'POST') return Response.json(value);
-    const body = JSON.parse(init.body); writes.push(body);
-    return new Promise(resolve => pending.push(() => {
-      assert.equal(body.revision, value.score_revision);
-      value.scores[body.lane] = body.score; value.score_revision++; value.snapshot_revision++;
-      resolve(Response.json(value));
-    }));
-  }, value);
-  await flush(); f.render();
-  const choice = (lane, score) => f.all(row => row.type === 'input' && row.props.name.endsWith('-' + lane) && row.props.value === score)[0];
-  const work = choice('baseline', 2).props.onChange(); f.render();
-  assert.equal(choice('baseline', 2).props.checked, true);
-  assert.equal(f.all(row => row.type === 'fieldset')[0].props.disabled, false);
-  assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], true);
-  assert.match(f.content(f.render()), /正在保存评分/);
-  choice('baseline', 3).props.onChange(); f.render(); choice('baseline', 5).props.onChange(); f.render();
-  choice('motif', 4).props.onChange(); f.render();
-  assert.equal(choice('baseline', 5).props.checked, true); assert.equal(choice('motif', 4).props.checked, true);
-  assert.equal(writes.length, 1, 'one shared score revision allows only one POST in flight');
-  pending.shift()(); await flush(); f.render();
-  assert.equal(choice('baseline', 5).props.checked, true, 'an older successful selection does not replace the newer pending choice');
-  assert.equal(writes[1].score, 5, 'intermediate unsent scores coalesce to the last selection');
-  pending.shift()(); await flush(); pending.shift()(); await work; await flush(); f.render();
-  assert.deepEqual(writes.map(row => [row.lane, row.score, row.revision]), [['baseline', 2, 1], ['baseline', 5, 2], ['motif', 4, 3]]);
-  assert.equal(choice('baseline', 5).props.checked, true); assert.equal(choice('motif', 4).props.checked, true);
-  assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], false); f.dispose();
+test('numeric scoring is absent for running, completed and failed comparisons and never submits on refresh', async () => {
+  for (const status of ['running', 'completed', 'failed']) {
+    const value = comparison(); value.status = status; value.snapshot_revision = 1;
+    value.scores = { baseline: 2, motif: 5 }; // Old research results remain server-owned metadata.
+    for (const lane of Object.values(value.lanes)) lane.status = status;
+    const f = fixture(undefined, value); await flush(); f.render();
+    const absent = () => {
+      assert.equal(f.all(row => row.type === 'fieldset' || (row.type === 'input' && row.props.type === 'radio')).length, 0);
+      assert.doesNotMatch(f.content(f.render()), /结果评分|两侧完成后评分|正在保存评分/);
+    };
+    absent(); value.score_revision++; value.scores.baseline = 4;
+    f.events.get('focus')(); await flush(); f.render(); absent();
+    f.remount(structuredClone(value)); await flush(); f.render(); absent();
+    assert.equal(f.requests.filter(row => row.init.method === 'POST').length, 0,
+      'historic scores and navigation cannot create a hidden rating write');
+    f.dispose();
+  }
 });
 
-test('a rejected rating rolls back to confirmed selection and leaves the other lane unchanged', async () => {
-  const value = comparison(); value.scores.baseline = 2; value.scores.motif = 5;
+test('a rejected feedback action keeps confirmed votes and leaves the other lane unchanged', async () => {
+  const value = comparison(); value.lanes.baseline.feedback = 'up'; value.lanes.motif.feedback = 'down';
   let finish;
   const f = fixture((_url, init) => init.method === 'POST' ? new Promise(resolve => { finish = resolve; }) : Response.json(value), value);
   await flush(); f.render();
-  const choice = (lane, score) => f.all(row => row.type === 'input' && row.props.name.endsWith('-' + lane) && row.props.value === score)[0];
-  const work = choice('baseline', 4).props.onChange(); f.render(); assert.equal(choice('baseline', 4).props.checked, true);
+  const button = label => f.all(row => row.props['aria-label'] === label)[0];
+  const work = button('赞 Baseline 回复').props.onClick(); f.render();
   finish(Response.json({ error: { message: 'save rejected' } }, { status: 500 })); await work; await flush(); f.render();
-  assert.equal(choice('baseline', 2).props.checked, true); assert.equal(choice('motif', 5).props.checked, true);
+  assert.equal(button('赞 Baseline 回复').props['aria-pressed'], true);
+  assert.equal(button('踩 Motif 回复').props['aria-pressed'], true);
   assert.equal(f.all(row => row.props.className === 'harless-paired-error').length, 1);
   assert.equal(f.requests.filter(row => row.init.method === 'POST').length, 1); f.dispose();
 });
 
-test('a lost response reconciles before saving a newer queued selection without reposting the old one', async () => {
-  const value = comparison(); const writes = []; let rejectFirst;
-  const f = fixture((_url, init) => {
-    if (init.method !== 'POST') return Response.json(value);
-    const body = JSON.parse(init.body); writes.push(body);
-    if (writes.length === 1) return new Promise((_resolve, reject) => { rejectFirst = () => {
-      value.scores.baseline = 2; value.score_revision++; reject(TypeError('connection lost after commit'));
-    }; });
-    assert.equal(body.revision, value.score_revision); value.scores[body.lane] = body.score; value.score_revision++;
-    return Response.json(value);
-  }, value);
-  await flush(); f.render();
-  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
-  const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange(); f.render();
-  rejectFirst(); await work; await flush(); f.render();
-  assert.equal(choice(5).props.checked, true); assert.deepEqual(writes.map(row => [row.score, row.revision]), [[2, 1], [5, 2]]); f.dispose();
-});
-
-test('the latest explicit rating survives component unmount and reappears while saving after navigation', async () => {
-  const value = comparison(), writes = [], pending = [];
-  const f = fixture((_url, init) => {
-    if (init.method !== 'POST') return Response.json(value);
-    const body = JSON.parse(init.body); writes.push(body);
-    return new Promise(resolve => pending.push(() => {
-      assert.equal(init.signal.aborted, false, 'leaving the card does not cancel the page-owned save');
-      assert.equal(body.revision, value.score_revision); value.scores[body.lane] = body.score; value.score_revision++;
-      resolve(Response.json(value));
-    }));
-  }, value);
-  await flush(); f.render();
-  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
-  const work = choice(2).props.onChange(); f.render(); choice(3).props.onChange(); f.render(); choice(5).props.onChange();
-  f.dispose(); pending.shift()(); await flush();
-  assert.deepEqual(writes.map(row => row.score), [2, 5], 'the last unsent intent is saved even with no mounted listener');
-  f.remount(comparison()); f.render();
-  assert.equal(choice(5).props.checked, true); assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], true);
-  pending.shift()(); await work; await flush(); f.render();
-  assert.equal(choice(5).props.checked, true); assert.equal(f.all(row => row.type === 'fieldset')[0].props['aria-busy'], false);
-  f.dispose(); f.remount(comparison()); await flush(); f.render();
-  assert.equal(choice(5).props.checked, true); assert.equal(writes.length, 2); f.dispose();
-});
-
-test('401 and 403 discard queued ratings and do not replay them after access returns', async () => {
+test('401 and 403 feedback responses never replay a mutation after access returns', async () => {
   for (const status of [401, 403]) {
-    const value = comparison(), writes = []; value.scores.baseline = 1; let finish;
+    const value = comparison(), writes = []; let finish;
     const f = fixture((_url, init) => {
       if (init.method !== 'POST') return Response.json(value);
       writes.push(JSON.parse(init.body)); return new Promise(resolve => { finish = resolve; });
     }, value);
     await flush(); f.render();
-    const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
-    const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange();
+    const button = () => f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0];
+    const work = button().props.onClick(); button().props.onClick();
     finish(Response.json({ error: {} }, { status })); await work; await flush(); f.render();
-    assert.equal(choice(1).props.checked, true); assert.equal(choice(5).props.checked, false);
+    assert.equal(button().props['aria-pressed'], false);
     assert.equal(writes.length, 1); assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /登录已过期|没有权限/);
     f.remount(comparison()); await flush(); f.render();
-    assert.equal(choice(5).props.checked, false); assert.equal(writes.length, 1); f.dispose();
+    assert.equal(button().props['aria-pressed'], false); assert.equal(writes.length, 1); f.dispose();
   }
 });
 
-test('leaving the authenticated page discards pending choices and ignores a late successful response', async () => {
+test('leaving the authenticated page ignores a late feedback response and never replays it', async () => {
   const value = comparison(), writes = []; let finish;
   const f = fixture((_url, init) => {
     if (init.method !== 'POST') return Response.json(value);
     writes.push(JSON.parse(init.body)); return new Promise(resolve => { finish = resolve; });
   }, value);
   await flush(); f.render();
-  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
-  const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange();
+  const button = () => f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0];
+  const work = button().props.onClick(); f.render();
   f.events.get('pagehide')();
-  const late = comparison(); late.scores.baseline = 2; late.score_revision++;
+  const late = comparison(); late.lanes.baseline.feedback = 'up'; late.snapshot_revision = 2;
   finish(Response.json(late)); await work; await flush(); f.render();
-  assert.equal(writes.length, 1); assert.equal(choice(2).props.checked, false); assert.equal(choice(5).props.checked, false);
-  f.remount(comparison()); await flush(); f.render(); assert.equal(choice(2).props.checked, false); assert.equal(choice(5).props.checked, false); f.dispose();
+  assert.equal(writes.length, 1); assert.equal(button().props['aria-pressed'], false);
+  f.remount(comparison()); await flush(); f.render(); assert.equal(button().props['aria-pressed'], false); f.dispose();
 });
 
-test('output replacement stops remaining queued scores and rolls back to the new confirmed result', async () => {
+test('feedback rejected for an obsolete output refreshes the replacement without resubmitting', async () => {
   const value = comparison(); value.snapshot_revision = 2; let finish; const writes = [];
   const f = fixture((_url, init) => {
     if (init.method !== 'POST') return Response.json(value);
     writes.push(JSON.parse(init.body)); return new Promise(resolve => { finish = resolve; });
   }, value);
   await flush(); f.render();
-  const choice = score => f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === score)[0];
-  const work = choice(2).props.onChange(); f.render(); choice(5).props.onChange();
-  value.lanes.baseline.output_sha256 = 'replacement-hash'; value.snapshot_revision++; value.score_revision++; value.scores = {};
+  const button = () => f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0];
+  const work = button().props.onClick(); f.render();
+  value.lanes.baseline.output_sha256 = 'replacement-hash'; value.lanes.baseline.answer = '已更新的结果';
+  value.snapshot_revision++; value.score_revision++; value.scores = {};
   finish(Response.json({ error: {} }, { status: 409 })); await work; await flush(); f.render();
-  assert.equal(writes.length, 1); assert.equal(choice(2).props.checked, false); assert.equal(choice(5).props.checked, false);
-  assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /确认新结果后重新评分/); f.dispose();
+  assert.equal(writes.length, 1); assert.equal(writes[0].action, 'feedback'); assert.equal(writes[0].output_sha256, 'baseline-hash');
+  assert.equal(button().props['aria-pressed'], false);
+  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '已更新的结果');
+  assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /结果已更新/); f.dispose();
 });
 
 test('a restarted server epoch supersedes a higher old revision and rejects late old-epoch snapshots', async () => {
@@ -409,16 +358,18 @@ test('authentication loss is actionable and does not keep hitting protected endp
   assert.equal(f.all(row => row.type === 'a' && row.props.href === '/login').length, 1);
   assert.equal(f.timers.size, 0); f.dispose();
 });
-test('rating with an uncertain network response is reconciled by GET and never auto-posted twice', async () => {
+test('feedback with an uncertain network response is reconciled by GET and never auto-posted twice', async () => {
   const value = comparison(); let posts = 0;
   const f = fixture((_url, init) => {
-    if (init.method === 'POST') { posts++; value.scores.baseline = 4; value.score_revision++; throw TypeError('Failed to fetch'); }
+    if (init.method === 'POST') {
+      assert.equal(JSON.parse(init.body).action, 'feedback');
+      posts++; value.lanes.baseline.feedback = 'up'; value.snapshot_revision = 2; throw TypeError('Failed to fetch');
+    }
     return Response.json(value);
   });
   await flush(); f.render();
-  const choice = f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === 4)[0];
-  await choice.props.onChange(); await flush(); f.render();
-  assert.equal(posts, 1); assert.equal(f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === 4)[0].props.checked, true);
+  await f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0].props.onClick(); await flush(); f.render();
+  assert.equal(posts, 1); assert.equal(f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0].props['aria-pressed'], true);
   assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /请勿重复提交/); f.dispose();
 });
 test('artifact download validates authenticated bytes then triggers an explicit local download', async () => {
@@ -535,17 +486,17 @@ test('an admission failure displays not started with corrective guidance instead
   }
   assert.equal(f.timers.size, 0); f.dispose();
 });
-test('overlapping old GET cannot undo a saved score; followup read still happens', async () => {
-  const value = comparison(), old = comparison(); let finishRead, reads = 0;
+test('overlapping old GET cannot undo saved feedback; followup read still happens', async () => {
+  const value = comparison(), old = comparison(); value.snapshot_revision = old.snapshot_revision = 1; let finishRead, reads = 0;
   const f = fixture((_url, init) => {
-    if (init.method === 'POST') { value.scores.baseline = 5; value.score_revision++; return Response.json(value); }
+    if (init.method === 'POST') { value.lanes.baseline.feedback = 'up'; value.snapshot_revision++; return Response.json(value); }
     if (++reads === 2) return new Promise(resolve => { finishRead = () => resolve(Response.json(old)); });
     return Response.json(value);
   });
   await flush(); f.render(); f.events.get('focus')(); await flush();
-  await f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === 5)[0].props.onChange();
+  await f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0].props.onClick();
   finishRead(); await flush(); f.render();
-  assert.equal(f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === 5)[0].props.checked, true);
+  assert.equal(f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0].props['aria-pressed'], true);
   const timer = [...f.timers.values()][0]; assert.equal(timer.delay, 0); f.timers.clear(); await timer.fn();
   assert.equal(reads, 3); f.dispose();
 });
@@ -575,11 +526,11 @@ const waitForAbort = signal => new Promise((_resolve, reject) => {
 test('reassembled start-event objects cannot roll newer completed results back to a stale snapshot', async () => {
   const initial = comparison(), current = comparison(); initial.status = 'running';
   initial.lanes.motif.status = 'running'; initial.lanes.baseline.artifacts = []; initial.scoring_available = false;
-  current.scores.baseline = 5;
+  current.lanes.baseline.feedback = 'up';
   const f = fixture(() => Response.json(current), initial); await flush(); f.render();
   f.setNodeData(structuredClone(initial)); f.render(); f.render();
   assert.equal(f.all(row => row.type === 'a' && row.props.download).length, 2);
-  assert.equal(f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === 5)[0].props.checked, true);
+  assert.equal(f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0].props['aria-pressed'], true);
   assert.equal(f.all(row => row.type === f.MarkdownText)[1].props.streaming, false);
   assert.equal(f.timers.size, 0); f.dispose();
 });
@@ -590,21 +541,22 @@ test('GET deadline covers stalled response JSON and frees polling for backoff re
   assert.match(f.content(f.all(row => row.props.className === 'harless-paired-connection')[0]), /连接超时/);
   assert.equal([...f.timers.values()][0].delay, 3600); f.dispose();
 });
-test('POST deadline reconciles a server-saved rating using GET without another POST', async () => {
+test('POST deadline reconciles server-saved feedback using GET without another POST', async () => {
   const value = comparison(); let posts = 0;
   const f = fixture((_url, init) => {
     if (init.method === 'POST') {
-      posts++; value.scores.baseline = 5; value.score_revision++;
+      assert.equal(JSON.parse(init.body).action, 'feedback');
+      posts++; value.lanes.baseline.feedback = 'up'; value.snapshot_revision = 2;
       return { ok: true, status: 200, json: () => waitForAbort(init.signal) };
     }
     return Response.json(value);
   });
   await flush(); f.render();
-  const action = f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === 5)[0].props.onChange();
+  const action = f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0].props.onClick();
   await flush(); [...f.timers.values()].find(timer => timer.delay === 30000).fn(); await action; await flush(); f.render();
-  assert.equal(posts, 1); assert.equal(f.all(row => row.type === 'input' && row.props.name.endsWith('-baseline') && row.props.value === 5)[0].props.checked, true);
+  assert.equal(posts, 1); assert.equal(f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0].props['aria-pressed'], true);
   assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /连接超时.*请勿重复提交/);
-  assert.equal(f.all(row => row.type === 'fieldset')[0].props.disabled, false); f.dispose();
+  assert.equal(f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0].props.disabled, false); f.dispose();
 });
 test('download body timeout gives a retryable error and releases duplicate-download guard', async () => {
   const value = comparison(); let downloads = 0;
