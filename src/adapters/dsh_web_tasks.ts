@@ -26,6 +26,7 @@ import {bindReportAnswer} from './harless_report_answer.ts';
 import {createTaskProgress} from './harless_task_progress.ts';
 import {bindProductPrompt} from './harless_product_prompt.ts';
 import {createPptRecovery} from './harless_ppt_recovery.ts';
+import {createPaperRecovery,paperExportRequested} from './harless_paper_recovery.ts';
 import {protectPublicSessionOutput, publicTaskView} from './harless_public_output.ts';
 import {createConversationTitles} from './geneloop_conversation_titles.ts';
 import {createSessionBranchService,sessionBranchTitle} from './harless_session_branch.ts';
@@ -63,6 +64,7 @@ type Task = {
   budget_session_id: string;
   source_task_id?: string;
   ppt_recovery?: ReturnType<typeof createPptRecovery>;
+  paper_recovery?: ReturnType<typeof createPaperRecovery>;
   bound_binding_sha256?: string | null;
 };
 class TaskError extends Error {
@@ -1508,9 +1510,27 @@ export function apply(ctx: any) {
       if(task?.status==='running'&&task.scene.adapter==='ppt'){
         task.ppt_recovery??=createPptRecovery();task.ppt_recovery.observe(execution,result);
       }
+      if(task?.status==='running'&&task.scene.id==='paper-proofreading'){
+        task.paper_recovery??=createPaperRecovery();task.paper_recovery.observe(execution,result);
+      }
     });
     agent.ctx.on('agent/turn-stopping',({signal}:any)=>{
       const task=forSession(agent.session.id);
+      if(task?.status==='running'&&task.scene.id==='paper-proofreading'&&!signal.aborted){
+        const requested=task.request.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n');
+        if(paperExportRequested(requested)){
+          if(scopeDigest(task.workspace,task.scene)!==task.scope_sha256)throw Error('Paper recovery source scope changed');
+          const next=task.paper_recovery?.stop({aborted:signal.aborted});
+          if(next){
+            audit(task,{kind:'paper_task_recovery',continuation:next.continuation});
+            progress.get(task.request.task_id)?.recovery();notifyTask(task);
+            task.stats.recovery_continuations=next.continuation;record(task);
+            agent.steer(createUserMessage({content:[{type:'text',text:next.instruction}],
+              source:{kind:'paper-task-recovery',task_id:task.request.task_id,session_id:agent.session.id,continuation:next.continuation}}));
+          }
+        }
+        return;
+      }
       if(!task||task.status!=='running'||task.scene.adapter!=='ppt'||signal.aborted)return;
       // Native steering preserves the original admission, task ID, tool set and budget.
       if(scopeDigest(task.workspace,task.scene)!==task.scope_sha256)throw Error('PPT recovery source scope changed');

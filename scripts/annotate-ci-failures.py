@@ -37,5 +37,7 @@ def annotate(path):
 
 
 if __name__ == '__main__':
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
     for argument in sys.argv[1:]:
         annotate(argument)

@@ -239,6 +239,25 @@ test('native PPT repairs a failed plan within the existing turn, budget and task
  }finally{await f.close();}
 });
 
+test('native paper export recovery keeps the source, task and budget until an actual receipt',options,async()=>{
+ const schemas=['read_pinned_document','export_review_report'].map(name=>({name:'mcp__paper_checks__'+name,parameters:{type:'object',properties:{}}}));
+ const paper={id:'paper-proofreading',label:'Paper',preset:'sss-task',mcp_rows:[],allowed_tools:schemas.map(t=>t.name)};
+ const f=await fixture({broker:true,scenes:[paper],capability_profile:'paper-proofreading',fixtureSchemas:schemas});
+ try{
+  const created=await f.settings({action:'new_session',selection:{scene:'paper-proofreading'}}),id=created.value.session_id;
+  await f.ctx.sessionController.prompt({sessionId:id,requestId:'paper-export',mode:'queue',content:[{type:'text',text:'/paper 校对并生成PDF报告'}]},new AbortController().signal);
+  const task=(await f.api()).value.tasks[0],agent=f.agents.get(task.session_id),before=f.registrations.size;
+  agent.hooks.get('tools/result')({name:'mcp__paper_checks__read_pinned_document'}, {structuredContent:{source_id:'read-source',status:'visual_input'}});
+  agent.hooks.get('agent/turn-stopping')({signal:new AbortController().signal});
+  assert.equal(agent.steered.length,1);assert.equal(agent.steered[0].source.task_id,task.task_id);
+  assert.equal(agent.steered[0].source.kind,'paper-task-recovery');assert.equal(f.registrations.size,before);
+  assert.equal(f.promptCalls.length,1);assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'running');
+  agent.hooks.get('tools/result')({name:'mcp__paper_checks__export_review_report'},{structuredContent:{exported:true,artifacts:[{name:'paper-review.pdf',sha256:'a'.repeat(64)}]}});
+  agent.hooks.get('agent/turn-stopping')({signal:new AbortController().signal});assert.equal(agent.steered.length,1);
+  await f.complete(task);
+ }finally{await f.close();}
+});
+
 test('Uncapped task text and output retain guards and omit the adapter default',options,async()=>{
  const f=await fixture({max_output_tokens:null});try{
   const original='完整任务输入'.repeat(3000)+'unique-tail';
