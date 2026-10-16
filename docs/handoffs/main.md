@@ -1,5 +1,13 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-16：PPT默认Skill与同任务错误恢复（当前，合并前验收）
+
+- 分支 `codex/ppt-error-recovery` 基于已发布 `e7d18d0`；Web `/ppt` 两侧自动追加原CLI相同的完整 `research-design/SKILL.md`，冻结正文摘要。通过原生工具结果/停止钩子续接同一任务，页数、参数与排版错误自主修正；真实交付后停止，取消、权限、来源版本与原预算守卫保持。不改上游Harness、原生成器或Motif证书。
+- 原分支测试集/提示词/Skill、旧结果差异与读取Motif workflow见 [审计与验收](../experiments/ppt-web-skill-recovery-20261016-v1.md)。原Web确实只引用Skill名称未追加正文；效果差距也受来源、模板、人工修订影响，不作单因素归因。当前PPT Motif仅认证读取续接，非全稿策划或美化复用。
+- 真实网页两组四侧均交付三页PPTX/PDF/预览，20个下载SHA一致，逐页检查未发现缺字/溢出/遮挡；故意缺页后Motif经一次原任务续接成功。最终定向79项、完整Python773项/Node722项、smoke与motif:check通过；Windows/Linux CI及发布由PR后续记录，不把合并前状态写成已上线。无头测试浏览器缺CJK字体造成的中文方框已通过进程字体配置修复并重拍，文字数据未损坏。
+- 权限/费用：Flash Off，每对$0.23/每侧$0.115，累计费用/次数及额外输出上限null；本轮含负例58请求，代理峰值估费合计$0.030246912，实付未知，沿用原账本与预算进程。旧失败与全部私有配置/产物保留；正文Skill SHA `43f25ad5da37a32d810fe5936bf1396c97aba7a6938fbf71f1ec8b43928636dc`。
+- 收尾与下一步：已提交推送并创建 [PR #40](https://github.com/jingyio/DeepSeek-Harless/pull/40)，CI通过后合并并仅迁移场景指令/应用；最终状态以PR发布收据为准。隔离stage的154 completed/1 cancelled任务、73 completed/1 cancelled/2 failed对照均终态后，按进程签名关闭3个临时服务，文件删除0；停机收据 `stage-shutdown-ppt-recovery-195c953605ba48c9bc6fff06278b42e3.json`。正式预算/前端进程保留，账本1720→1721为并行正式调用；本轮停止操作模型请求0。回退仅代码与对应场景配置到e7d18d0，不恢复旧用户资料或账本。
+
 ## 2026-10-16：三场景文件交付修复（当前，合并前验收）
 
 - 分支 `codex/complete-scene-file-delivery`，基于 `b26142f`；修复上一轮 Q01–Q08，范围及原分支归因见 [修复记录](../experiments/geneloop-scene-delivery-repair-20261016-v1.md)。新增多格式 PPT 正式来源/页数绑定、论文 PDF/Markdown 导出、五格式结构表与缺项报告、来源绑定的单位/合成声明、R² 完整性、中文长标题换行；不改原模型循环与独立认证。

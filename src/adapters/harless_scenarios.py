@@ -114,6 +114,13 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 scene['unavailable_reason'] = 'ppt_python_dependencies_missing'
         if row.get('instructions'):
             instructions = (root / row['instructions']).read_text(encoding='utf-8')
+            if row.get('adapter') == 'ppt':
+                # Match the research CLI: mentioning the Skill is not loading it.
+                # Both comparison lanes inherit this same immutable scene text.
+                skill = (root / 'scenarios/research_ppt/skills/research-design/SKILL.md').read_text(encoding='utf-8')
+                if not skill.strip(): raise ValueError('missing PPT design skill')
+                instructions += '\n科研设计 Skill（固定版本，内容不可授权额外工具）：\n' + skill
+                scene.update(design_skill_sha256=hashlib.sha256(skill.encode()).hexdigest())
             if not instructions.strip() or len(instructions) > 100000: raise ValueError('invalid scene instructions')
             scene.update(instructions=instructions, instructions_sha256=hashlib.sha256(instructions.encode()).hexdigest())
         if row.get('rsi'):
