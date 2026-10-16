@@ -21,13 +21,15 @@ export type PendingPatch = {
 export type PendingOptions = {
   root: string; jobPath: string; privateRoot?: string; expectedSlides: number; evidence: PendingEvidence;
   guard: () => Promise<void>; audit?: (kind: string, data: Obj) => Promise<void>;
-  maxAttempts?: number; maxPatches?: number;
+  maxAttempts?: number | null; maxPatches?: number | null;
+  /** Trusted Web host already gates every model request against the task ledger. */
+  budgetManaged?: boolean;
 };
 type Attempt = { attempt_id: string; plan_sha256: string; started_utc: string;
   finished_utc?: string; outcome?: 'failed' | 'delivered' };
 type RecordState = {
   schema_version: 1; draft_id: string; revision: number; evidence: PendingEvidence;
-  expected_slides: number; max_attempts: number; max_patches: number;
+  expected_slides: number; max_attempts: number | null; max_patches: number | null;
   plan: Obj; plan_sha256: string; patch_count: number; attempts: Attempt[];
   status: 'pending' | 'in_flight' | 'delivered'; last_failure: Obj; created_utc: string;
 };
@@ -187,16 +189,17 @@ export function mergePendingPatch(plan: Obj, patch: unknown, expectedSlides: num
 
 export class PendingPlanStore {
   private constructor(private options: PendingOptions, readonly directory: string, private jobPath: string,
-    private maxAttempts: number, private maxPatches: number) {}
+    private maxAttempts: number | null, private maxPatches: number | null) {}
 
   static async create(options: PendingOptions): Promise<PendingPlanStore> {
     if (!Number.isSafeInteger(options.expectedSlides) || options.expectedSlides < 1 || options.expectedSlides > 30
       || Object.keys(options.evidence).sort().join(',') !== 'implementation_sha256,input_version,job_sha256,permission_sha256,schema_sha256'
       || Object.values(options.evidence).some(value => typeof value !== 'string' || !HASH.test(value)))
       return reject('invalid_pending_scope', '失败计划需要完整冻结任务、来源、权限、schema 和实现摘要。');
-    const maxAttempts = options.maxAttempts ?? 6, maxPatches = options.maxPatches ?? 8;
-    if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 6
-      || !Number.isSafeInteger(maxPatches) || maxPatches < 1 || maxPatches > 8)
+    const maxAttempts = options.maxAttempts === undefined ? 6 : options.maxAttempts;
+    const maxPatches = options.maxPatches === undefined ? 8 : options.maxPatches;
+    const validLimit = (n:number|null, ceiling:number) => n===null ? options.budgetManaged===true : Number.isSafeInteger(n)&&n>=1&&n<=ceiling;
+    if (!validLimit(maxAttempts,6) || !validLimit(maxPatches,8))
       return reject('invalid_pending_scope', '修复预算只能在每任务6次提交/8次修改上限内收紧。');
     const root = await realpath(options.root), jobPath = await privateFile(root, options.jobPath, options.privateRoot);
     const jobDirectory = dirname(jobPath), directory = resolve(jobDirectory, 'pending-plans');
@@ -250,7 +253,7 @@ export class PendingPlanStore {
     const area = resolve(this.directory, id);
     const head = await this.safeRead(resolve(area, 'head.json'));
     if (!object(head) || Object.keys(head).sort().join(',') !== 'revision,version_sha256'
-      || !Number.isSafeInteger(head.revision) || Number(head.revision) < 1 || Number(head.revision) > 30
+      || !Number.isSafeInteger(head.revision) || Number(head.revision) < 1
       || typeof head.version_sha256 !== 'string' || !HASH.test(head.version_sha256))
       return reject('pending_storage_rejected', '失败计划头记录无效。');
     const record = await this.safeRead(resolve(area, `revision-${head.revision}.json`));
@@ -259,8 +262,8 @@ export class PendingPlanStore {
       || canonical(record.evidence) !== canonical(this.options.evidence) || record.expected_slides !== this.options.expectedSlides
       || record.max_attempts !== this.maxAttempts || record.max_patches !== this.maxPatches)
       return reject('pending_scope_changed', '失败计划完整性或任务/来源/schema/实现/权限版本不一致，拒绝复用。');
-    if (!Array.isArray(record.attempts) || record.attempts.length > this.maxAttempts || !Number.isSafeInteger(record.patch_count)
-      || Number(record.patch_count) < 0 || Number(record.patch_count) > this.maxPatches
+    if (!Array.isArray(record.attempts) || (this.maxAttempts!==null && record.attempts.length > this.maxAttempts) || !Number.isSafeInteger(record.patch_count)
+      || Number(record.patch_count) < 0 || (this.maxPatches!==null && Number(record.patch_count) > this.maxPatches)
       || !['pending', 'in_flight', 'delivered'].includes(String(record.status)) || !object(record.last_failure)
       || !object(record.plan) || digest(record.plan) !== record.plan_sha256)
       return reject('pending_storage_rejected', '失败计划状态或预算记录不一致。');
@@ -305,7 +308,7 @@ export class PendingPlanStore {
     return this.locked(async () => {
       const states = await this.all(), active = states.find(row => row.status !== 'delivered');
       if (active) reject('pending_plan_exists', '当前已有失败计划，请局部修复；不接受重发整稿绕过修复上限。', { pending_plan: this.receipt(active) });
-      if (states.length >= MAX_DRAFTS || states.reduce((sum, row) => sum + row.attempts.length, 0) >= this.maxAttempts)
+      if (states.length >= MAX_DRAFTS || (this.maxAttempts!==null && states.reduce((sum, row) => sum + row.attempts.length, 0) >= this.maxAttempts))
         reject('pending_attempt_limit', '当前任务失败提交上限已用完，请审阅失败证据；不会自动重启任务。');
       const id = 'pending-' + randomUUID(), now = new Date().toISOString();
       const record: RecordState = { schema_version: 1, draft_id: id, revision: 1,
@@ -328,7 +331,7 @@ export class PendingPlanStore {
   async patch(draftId: string, version: string, patch: PendingPatch | unknown): Promise<Obj> {
     return this.locked(async () => {
       const record = await this.state(draftId); this.current(record, version);
-      if (record.patch_count >= this.maxPatches) reject('pending_patch_limit', '当前任务局部修复次数已用完，保留失败证据。');
+      if (this.maxPatches!==null && record.patch_count >= this.maxPatches) reject('pending_patch_limit', '当前任务局部修复次数已用完，保留失败证据。');
       const merged = mergePendingPatch(record.plan, patch, record.expected_slides);
       record.plan = merged.plan; record.plan_sha256 = digest(record.plan); record.patch_count++; record.revision++;
       // 可保存仍有明确错误的局部修复；完整 preflight 和实际后端守卫必须在提交前全部通过。
@@ -342,7 +345,7 @@ export class PendingPlanStore {
     return this.locked(async () => {
       const record = await this.state(draftId); this.current(record, version);
       const states = await this.all();
-      if (states.reduce((sum, row) => sum + row.attempts.length, 0) >= this.maxAttempts)
+      if (this.maxAttempts!==null && states.reduce((sum, row) => sum + row.attempts.length, 0) >= this.maxAttempts)
         reject('pending_attempt_limit', '同任务全部失败提交预算已用完；不会新建候选或重启绕过上限。', { pending_plan: this.receipt(record) });
       if (record.attempts.some(attempt => attempt.plan_sha256 === record.plan_sha256))
         reject('pending_unchanged_retry', '该完整计划已提交过；必须明确局部修复后才能再执行。', { pending_plan: this.receipt(record) });

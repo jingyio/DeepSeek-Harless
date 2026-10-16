@@ -1,5 +1,7 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+网页 `/ppt` 两侧共用普通组合交付和失败页局部恢复；文件全文通过版本化工具读取，避免重复注入。普通脚本优化与新学读取 Motif 的三条件对照、质量问题及学习成本见 [PPT 工作流实验](docs/experiments/ppt-web-workflow-learning-20261016-v1.md)。读取结构认证不代表生成内容已通过科研质量认证。
+
 `/ppt` 默认加载完整 `research-design-v3` 科研设计 Skill，Baseline / Motif 使用同一内容与版本摘要。可修复的页数、参数和排版错误会在原 Harness 任务及剩余预算内继续修正；成功交付后停止，不要求用户重复确认已明确的要求。来源、权限、版本检查和用户取消继续生效。
 
 PPT 对常见统计量增加当前引用页的来源摘录检查，拒绝将原始表格或模型心算冒充统计报告。只有原始数据时仍生成研究设计与局限汇报；需要新统计结果时先用 `/data`。这不等于科学认证，图片中的数值仍需视觉复核。详见[统计来源补检](docs/experiments/geneloop-ppt-numeric-source-20261016-v1.md)。

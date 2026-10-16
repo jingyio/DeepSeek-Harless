@@ -43,6 +43,9 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     rows = {scene['id']: scene for scene in scenes}
     assert rows['ppt']['scenario'] == 'scenarios/research_ppt/web-scenario.json'
     assert rows['ppt']['adapter'] == 'ppt'
+    assert rows['ppt']['ppt_execution_strategy']=='host_delivery'
+    assert len(rows['ppt']['allowed_tools'])==21
+    assert 'mcp__ppt__repair_pending_plan' in rows['ppt']['allowed_tools']
     assert 'SSS_PPT_JOB' in json.dumps(rows['ppt']['mcp_rows'])
     assert rows['ppt']['instructions'].startswith('完成科研 PPT 任务。')
     skill=(ROOT/'scenarios/research_ppt/skills/research-design/SKILL.md').read_text(encoding='utf-8')

@@ -1,0 +1,6 @@
+{
+  "mcp__ppt__pin_source": {"required_params":["document_id"],"read_only":true,"replay_stable":true,"output_fields":["document_id","source_id","version_sha256","format","page_count","text_chars"],"description":"Pin one approved input to its current version."},
+  "mcp__ppt__read_source": {"required_params":["source_id"],"read_only":true,"replay_stable":true,"provenance_params":["source_id"],"output_fields":["source_id","document_id","version_sha256","pages","images"],"description":"Read the exact pinned source; reject changed bytes."},
+  "mcp__ppt__pin_deck_pages": {"required_params":["deck_id","pages_csv"],"read_only":true,"replay_stable":true,"output_fields":["source_id","deck_id","version_sha256","file_sha256","pages_csv","scope"],"description":"Pin model-selected explicit pages of the current persisted deck."},
+  "mcp__ppt__read_pinned_deck_pages": {"required_params":["source_id"],"read_only":true,"replay_stable":true,"provenance_params":["source_id"],"output_fields":["source_id","deck_id","version_sha256","file_sha256","total_slides","slides","scope"],"description":"Read only the explicitly pinned current deck pages; recheck file and source versions."}
+}

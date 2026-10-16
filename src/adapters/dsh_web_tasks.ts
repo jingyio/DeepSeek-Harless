@@ -178,7 +178,7 @@ export function apply(ctx: any) {
     try {
       if(structural){
         if(!(['ppt','paper-proofreading','research-data-analysis','literature'].includes(scene.id)) ||
-           scene.binding_policy!==(scene.id==='ppt'?'ppt_uploaded_sources_v1':'uploaded_source_handles_v1') ||
+           !(scene.id==='ppt'?['ppt_uploaded_sources_v1','ppt_uploaded_sources_v2']:['uploaded_source_handles_v1']).includes(scene.binding_policy??'') ||
            scene.certification_scope!=='independent_trace_structure' || !scene.certification_path ||
            fileSha(scene.certification_path)!==scene.certification_sha256 || !scene.certified_code_locks ||
            Object.entries(scene.certified_code_locks).some(([path,expected])=>fileSha(path)!==expected))return 'runtime_bundle_certification_invalid';
@@ -1083,7 +1083,7 @@ export function apply(ctx: any) {
   function updateDraft(task: Task) {
     if(task.scene.binding_policy && task.request.mode!=='baseline' && !task.source_pending && task.scene_inputs.length){
       const manifest=JSON.parse(readFileSync(task.scene.manifest!,'utf8'));
-      const binding=task.scene.binding_policy==='ppt_uploaded_sources_v1' ? bindUploadedPptTask(task.workspace,task.scene_inputs,task.request,manifest,task.source_task_id)
+      const binding=['ppt_uploaded_sources_v1','ppt_uploaded_sources_v2'].includes(task.scene.binding_policy??'') ? bindUploadedPptTask(task.workspace,task.scene_inputs,task.request,manifest,task.source_task_id)
         : bindUploadedSourceTask(task.workspace,task.scene_inputs,task.request,manifest);
       json(join(task.output,'bound-motif-task.json'),binding);
       task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
@@ -1103,6 +1103,8 @@ export function apply(ctx: any) {
       scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
       instructions: instructionsFor(task.scene, task.source_pending), instructions_sha256: sha(instructionsFor(task.scene, task.source_pending) ?? ''),
       design_skill_sha256:task.scene.design_skill_sha256,
+      attachment_context_strategy:task.scene.adapter==='ppt'?'versioned_mcp_sources':'full_read_only_extract',
+      ...(task.scene.adapter==='ppt'?{ppt_execution_strategy:JSON.parse(readFileSync(join(task.workspace,'job.json'),'utf8')).execution_policy?.strategy??'legacy_model_selected'}:{}),
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256, diagnostic: task.scene.diagnostic ?? false,
       bound_binding_sha256:task.bound_binding_sha256,certification_sha256:task.scene.certification_sha256,
       binding_policy:task.scene.binding_policy,matching_policy:task.scene.matching_policy,
@@ -1182,7 +1184,9 @@ export function apply(ctx: any) {
     active.set(task.request.task_id, {comparison, provider: task.model_option.provider});
     task.status = 'running'; task.started_at = utc(); record(task);
     try {
-      const attachmentContext = await sceneAttachmentContext(task.workspace, task.scene_inputs);
+      // PPT owns versioned, complete source reading through its MCP tools.
+      // Injecting the full text here too duplicates it in every later request.
+      const attachmentContext = task.scene.adapter==='ppt' ? '' : await sceneAttachmentContext(task.workspace, task.scene_inputs);
       if (scopeDigest(task.workspace, task.scene) !== task.scope_sha256)
         throw new TaskError('confirmation_changed', '附件内容已改变，请重新发送。', 409);
       configureMotif(task);

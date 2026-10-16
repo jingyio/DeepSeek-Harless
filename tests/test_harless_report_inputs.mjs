@@ -51,6 +51,18 @@ test('PPT exposes every approved upload; the scoped parser reports unsupported c
   const rows=await bindSceneInputs(ctx,{},f.root,{id:'ppt',adapter:'ppt'},f.refs.map(ref=>({type:'file',receiptId:ref.receipt})),{allow_output:true},'create','task-test');
   assert.equal(rows.length,3);const job=JSON.parse(readFileSync(join(f.root,'job.json'),'utf8'));
   assert.deepEqual(job.inputs.map(row=>row.name),['paper.pdf','requirements.docx','unknown.bin']);assert.equal(job.allow_output,true);
+  assert.deepEqual(job.execution_policy,{schema_version:1,strategy:'host_delivery'});
   assert.equal(Object.keys(JSON.parse(readFileSync(join(f.root,'approved-inputs.json'),'utf8')).files).length,3);
+ }finally{f.close();}
+});
+
+test('PPT atomic execution is server-owned; a task option cannot override the script policy',async()=>{
+ const f=fixture([['paper.pdf','approved']]);try{
+  const ctx={fileUploads:{resolve:(_a,id)=>f.refs.find(r=>r.receipt===id)},attachments:{async *readFileStream(ref){yield ref.data;}}};
+  await bindSceneInputs(ctx,{},f.root,{id:'ppt-atomic',adapter:'ppt',ppt_execution_strategy:'baseline_steps'},
+   f.refs.map(ref=>({type:'file',receiptId:ref.receipt})),{allow_output:true},'Generate six slides','atomic-task');
+  assert.equal(JSON.parse(readFileSync(join(f.root,'job.json'),'utf8')).execution_policy.strategy,'baseline_steps');
+  const {sceneOptions}=await import('../src/adapters/harless_task_scope.ts');
+  assert.throws(()=>sceneOptions({execution_policy:{strategy:'baseline_steps'}},{id:'ppt',adapter:'ppt'}),/invalid_scene_options/);
  }finally{f.close();}
 });
