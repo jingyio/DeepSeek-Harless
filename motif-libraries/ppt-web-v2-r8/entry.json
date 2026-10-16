@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "scene": "ppt",
+  "runtime_kind": "ppt_read_v2",
+  "mode": "execute",
+  "new_training": true,
+  "files": {
+    "learning-report.json": "490e88b85241a881cf31d4831f4b40ca23c5e089eb081dc50da5898950cc60e7",
+    "online-manifest.json": "c7b466d933f6a4b056320a096cef31a7e37e27c8260d7fcba050239d7ec8b9aa",
+    "library.json": "6f9aa5b7770b10a225763f57d6f27fbd92fc233a64db7f1bbec6f60bace04588",
+    "task.json": "6984ec6943a2dfa44e525dec4b67676f96e7f993ea5cfcfb21e2257eab994567",
+    "tool-schemas.json": "b92089046537bd2a8914bfd89d5499d38d885aa8c0ad6b0bbb28c58f74dbd8d8",
+    "source-evidence.json": "ac30d0b79f5dec56e5b85812f4845be8ebbbbf5eaada71d4b9b3c242736a3b99",
+    "tool-schema-variants.json": "a0065e28b2c9cd5a9735b2aeee638bdce5901a54a9c354f26e9bec2c3904e563",
+    "certification.json": "b87cc0f6c9b7784adfef68b0183d8a458e1a770beb54fe34ad7b313d2f7addeb"
+  },
+  "scientific_quality_reviewed": "ai-assisted",
+  "quality_cost_promoted": false
+}

@@ -1041,14 +1041,17 @@ test('real Paper product manifest mounts the page-one continuation only on Motif
  const read=name=>JSON.parse(readFileSync(join(base,name),'utf8'));
  const hash=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
  const entry=read('entry.json'),cert=read('certification.json'),schemas=read('tool-schemas.json');
+ const common=JSON.parse(readFileSync(join(root,'config/geneloop-capabilities.json'),'utf8')).tools;
+ const fixtureSchemas=[...schemas,...common.map(name=>({name,description:'Free shared capability schema diagnostic',
+  parameters:{type:'object',properties:{},required:[]}}))].sort((a,b)=>a.name<b.name?-1:1);
  const scene={id:'paper-proofreading',label:'Paper',preset:'sss-paper-release-protocol',adapter:'workspace',mcp_rows:[],
   runtime_kind:entry.runtime_kind,runtime_mode:entry.mode,runtime_library:join(base,'library.json'),runtime_library_sha256:hash(join(base,'library.json')),
-  manifest:join(base,'online-manifest.json'),task:join(base,'task.json'),allowed_tools:schemas.map(row=>row.name),
+  manifest:join(base,'online-manifest.json'),task:join(base,'task.json'),allowed_tools:[...schemas.map(row=>row.name),...common],common_tools:common,
   matching_policy:cert.matching_policy,binding_policy:cert.binding_policy,certification_scope:cert.certification_scope,
   certification_path:join(base,'certification.json'),certification_sha256:hash(join(base,'certification.json')),
   certified_code_locks:Object.fromEntries(Object.entries(cert.code_locks).map(([name,sha])=>[join(root,name),sha])),
   certified_tool_schemas:schemas};
- const f=await fixture({broker:true,scenes:[scene],capability_profile:scene.id,comparison_scenes:[scene.id],fixtureSchemas:schemas});
+ const f=await fixture({broker:true,scenes:[scene],capability_profile:scene.id,comparison_scenes:[scene.id],fixtureSchemas});
  try{
   const {sessionId}=await f.ctx.sessionController.create({});
   const bytes=Buffer.from('Free protocol document; no statistical result.'),version=createHash('sha256').update(bytes).digest('hex');
@@ -1064,6 +1067,7 @@ test('real Paper product manifest mounts the page-one continuation only on Motif
   assert.ok(motif);assert.ok(baseline);assert.equal(motif.fallback_reason,null);
   assert.equal(motif.source_pending,false);assert.equal(motif.scene_inputs.length,1);
   for(const task of [baseline,motif])assert.deepEqual(f.agents.get(task.session_id).allow.allow,scene.allowed_tools);
+  assert.equal(scene.certified_tool_schemas.length,24);assert.equal(scene.allowed_tools.length,30);
   const pin='mcp__paper_checks__pin_document',readTool='mcp__paper_checks__read_pinned_document',source='source-'+'b'.repeat(32);
   for(const task of [baseline,motif])f.agents.get(task.session_id).hooks.get('tools/result')(
    {name:pin,callId:'model-pin-'+task.task_id,arguments:{name:'brief.txt',sha256:version}},

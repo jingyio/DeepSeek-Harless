@@ -208,7 +208,17 @@ def code_paths():
         'src/adapters/paper_bibliography.py', 'src/adapters/paper_query_recovery.py', 'src/adapters/paper_renderer.py',
         'src/adapters/harless_paper_renderer.py', 'src/adapters/harless_paper_recovery.ts',
         'scenarios/data_analysis/table_inputs.py', 'benchmarks/research_report_agent_v2/document_engine.py',
-        'src/motif_core/online_skill_runtime.mjs')]
+        'src/motif_core/online_skill_runtime.mjs',
+        # Native common tools are separately admitted, never learned/replayed by
+        # this document-read artifact. Freeze their policy, adapters and wiring
+        # so the additive runtime change still requires compatibility review.
+        'config/geneloop-capabilities.json', 'config/geneloop-capabilities.md',
+        'src/adapters/geneloop_capabilities.ts', 'src/adapters/geneloop_shell.ts',
+        'src/adapters/geneloop_web_search.ts', 'src/adapters/geneloop_command_broker.ts',
+        'src/adapters/geneloop_command_client.mjs', 'src/adapters/deepseek_cost_gate.py',
+        'scripts/harness-web.py', 'scripts/harless_gateway.mjs', 'scripts/harless_member_scenes.mjs',
+        'scripts/web_budget_broker.mjs', 'scripts/serve-web-budget.py',
+        'scripts/check-common-capabilities.py', 'scripts/recompile-ppt-common-capabilities.py')]
     for directory in (SCENE, ROOT / 'scenarios/paper-submission'):
         paths.extend(path for path in directory.rglob('*') if path.is_file()
                      and path.suffix in ('.py', '.ts', '.mjs', '.js', '.json', '.md')
@@ -238,6 +248,11 @@ def main():
     allowed = read(SCENE / 'scenario.json')['allowed_tools']
     if len(current) != 24 or sorted(row['name'] for row in current) != sorted(allowed):
         raise ValueError('必须提供当前 Paper 完整24工具的实际捕获')
+    common = read(ROOT / 'config/geneloop-capabilities.json')['tools']
+    if (not isinstance(common, list) or len(common) != 6
+            or set(common) != {'web_search', 'web_fetch', 'bash', 'job_list', 'job_output', 'job_kill'}
+            or set(common) & {row['name'] for row in current}):
+        raise ValueError('原生公共6工具必须独立允许，不能混入24工具证书或扩展所学只读边')
     page = next(row['parameters'] for row in current if row['name'] == PAIR[1])
     if page.get('properties', {}).get('page', {}).get('default') != 1 or 'page' in page.get('required', []):
         raise ValueError('实际读取工具的可省略第一页默认值变化')
@@ -300,6 +315,9 @@ def main():
               'compilation_source_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
               'compilation_source_binding': 'exact_file_code_locks_include_uncommitted_candidate',
               'compilation_model_requests': 0, 'compilation_seconds': time.monotonic() - started,
+              'model_weights_trained': False, 'compilation_executes_scene_tools': False,
+              'common_native_tools': common, 'common_native_tools_in_certified_mcp_schema': False,
+              'common_capabilities_compatibility_scope': 'Current native network, command and job policy/adapters/wiring are code-locked; their six tools remain separately admitted and are not learned, replayed or executed by this offline compiler. The complete 24-tool MCP descriptions and parameters remain exact-match guards.',
               'trace_collection_requests': requests, 'trace_collection_proxy_usd': cost,
               'excluded_collection': excluded, 'learning_total_requests': requests + sum(item['requests'] for item in excluded),
               'learning_total_proxy_usd': sum(total_costs) if all(value is not None for value in total_costs) else None,

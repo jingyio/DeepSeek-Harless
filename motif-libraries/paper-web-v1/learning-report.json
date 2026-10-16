@@ -19,7 +19,19 @@
   "compilation_source_sha": "30b5a37423f4f2b5e1568dc44d8442610069dc0c",
   "compilation_source_binding": "exact_file_code_locks_include_uncommitted_candidate",
   "compilation_model_requests": 0,
-  "compilation_seconds": 0.4853429151698947,
+  "compilation_seconds": 0.47545477095991373,
+  "model_weights_trained": false,
+  "compilation_executes_scene_tools": false,
+  "common_native_tools": [
+    "web_search",
+    "web_fetch",
+    "bash",
+    "job_list",
+    "job_output",
+    "job_kill"
+  ],
+  "common_native_tools_in_certified_mcp_schema": false,
+  "common_capabilities_compatibility_scope": "Current native network, command and job policy/adapters/wiring are code-locked; their six tools remain separately admitted and are not learned, replayed or executed by this offline compiler. The complete 24-tool MCP descriptions and parameters remain exact-match guards.",
   "trace_collection_requests": 15,
   "trace_collection_proxy_usd": 0.00775239,
   "excluded_collection": [
