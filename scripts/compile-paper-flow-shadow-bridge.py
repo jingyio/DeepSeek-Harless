@@ -66,7 +66,9 @@ def compile_bridge(old_path: Path, runs: Path, schemas_path: Path, output: Path)
             if Path(request).name != request: raise ValueError('invalid request trace name')
             checked_file(source, 'requests/' + request, expected)
     schema = json.loads(schemas_path.read_text())
-    if not isinstance(schema, list) or len(schema) != 20 or len({row['name'] for row in schema}) != 20:
+    approved = json.loads((ROOT / 'scenarios/paper_proofreading/scenario.json').read_text())['allowed_tools']
+    if (not isinstance(schema, list) or
+            sorted(row['name'] for row in schema) != sorted(approved)):
         raise ValueError('complete current paper MCP schema required')
     current = {row['name']: row['parameters'] for row in schema}
     for tool in CURRENT:

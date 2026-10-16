@@ -5,15 +5,22 @@ import {join} from 'node:path';
 const sha = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 const regular = (path: string) => { const s = lstatSync(path); return s.isFile() && !s.isSymbolicLink() && s.nlink === 1; };
 
+export function paperReferenceReportRequired(task: any): boolean {
+  if (task.scene.id !== 'paper-proofreading' || !task.scene_options.allow_output || task.source_pending) return false;
+  try {
+    const grant = JSON.parse(readFileSync(join(task.workspace, 'paper-output-grant.json'), 'utf8'));
+    return grant.task_id !== task.request.task_id || grant.allow_output !== true || Boolean(grant.audit_sha256) ||
+      existsSync(join(task.workspace, 'outputs', 'paper-audits', task.request.task_id, 'draft.json'));
+  } catch { return true; } // An absent approval cannot authorize report recovery.
+}
+
 export function paperPdfDelivered(task: any): boolean {
-  if (task.scene.id !== 'paper-proofreading' || !task.scene_options.allow_output || task.source_pending) return true;
+  if (!paperReferenceReportRequired(task)) return true;
   const outputs = join(task.workspace, 'outputs'), id = task.request.task_id;
   try {
     const grant = JSON.parse(readFileSync(join(task.workspace, 'paper-output-grant.json'), 'utf8'));
     // Only an admitted reference report or a reference draft started in THIS
     // task requires this acceptance check. Main's generic exporter stays valid.
-    const started = existsSync(join(outputs, 'paper-audits', id, 'draft.json'));
-    if (!started && !grant.audit_sha256) return true;
     if (grant.task_id !== id || grant.allow_output !== true) return false;
     const approved = JSON.parse(readFileSync(join(task.workspace, 'approved-inputs.json'), 'utf8')).files;
     const documents = join(outputs, 'documents');

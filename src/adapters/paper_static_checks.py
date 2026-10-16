@@ -1,6 +1,6 @@
 """Static checks reused from feature/paper-submission@9479edf; no compiler or network.
 
-Original: scenarios/paper-submission/checks.py. Functions are preserved verbatim.
+Original: scenarios/paper-submission/checks.py. Checks are preserved; source-relative paths use POSIX separators on every platform.
 """
 from pathlib import Path
 from collections import Counter, defaultdict
@@ -38,7 +38,7 @@ def source_diagnostics(source: Path, main: str, bbl: str | None) -> dict:
 
     def visit(relative):
         file = safe_path(source, relative)
-        key = str(file.relative_to(source))
+        key = file.relative_to(source).as_posix()
         if key in visiting: raise ValueError('cyclic LaTeX input')
         if key in active: return
         visiting.add(key)

@@ -112,7 +112,8 @@ class PaperEvidence(SessionFiles):
             if extracted['status'] != 'extracted':
                 return {'source_id':source_id,'version_sha256':version,'name':name,
                         'status':extracted['status'],'reason':extracted.get('reason'),
-                        'text':'','visual_checked':False}
+                        'text':'','visual_checked':False,'pixels':extracted.get('pixels'),
+                        'next_step':'For visual_input, inspect the native image attached to this same request, quote only legible text, and export a source-bound review. This tool does not perform OCR or certify visual findings.'}
             whole = extracted['text']
             if Path(name).suffix.lower() in ('.tex', '.bib', '.bbl', '.log', '.md', '.txt'):
                 count = max(1, (len(whole) + 79999) // 80000)

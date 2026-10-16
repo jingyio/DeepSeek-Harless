@@ -199,6 +199,14 @@ Harness 原生 `SessionPromptRequest.content` 的实际格式为：
 
 图片支持的声明类型为 PNG/JPEG/WebP/GIF。官方 Controller 再校验图片字节、模型输入能力和文件 receipt 所属会话；持久 `attachmentId` 不能替代上传 receipt。当前诊断确认不支持图片的模型会令任务明确失败、请求数为零；接收协议不代表已实现图片理解。`input_summary` 仅含文字/图片字节数与摘要、receipt 摘要和引用标识，不重复图片 base64；完整输入快照只留私有任务目录。
 
+对照入口现在保留原生 `image`，绑定实际附件服务 `resolveAttachments`；每侧同时取得相同原图字节的独立文件回执，公开消息仍由官方附件服务持久化。新图片与新文件一样切换子任务输入范围，不能沿用前一份材料的冻结分析。共享提取器对图片返回 `visual_input`、尺寸和摘要，`text` 为空、`ocr_performed=false`。PPT checkpoint 接受单页图片来源，仍校验实际像素、来源摘要和代码版本，不放宽其他恢复边界。
+
+数据场景增加 `record_image_table({name, sha256, columns, rows})`：仅接受本任务已批准的图片和原版本，表格必须为完整矩形字符串数组，缺失值用空字符串，拒绝覆盖已有结构表或已冻结分析。写入的视觉转录带原图/CSV SHA256，重复相同内容幂等、不同内容拒绝；`prepare_report_inputs` 将转录摘要纳入分析身份，随后仍走正常独立统计。`model_visual_transcription_not_independently_verified` 必须在来源说明中保留，统计复算不能证明模型看图没有错误。
+
+规则图片表格冻结前须通过 `read_image_table({name,sha256,start_row,row_count})` 覆盖全部数据行。行号从 1 开始，每次最多 10 行；工具返回来源绑定的原像素裁片和范围，无 OCR、插值或数值补全。记录只表示模型已收到细节视图，不能将其当成人工认证。行列/空白占用继续独立校验；非规则图像不会伪造网格结果。
+
+论文在明确请求文件且已读取来源后，以实际 `export_review_report` 成功 PDF 回执判定交付；原生 `agent/turn-stopping` 可续接同一任务，不能重置预算、扩大来源或忽略取消/权限错误。此检查解决未执行导出却声称交付的问题，不认证模型校对意见的科学正确性。
+
 ### 场景、资料与三种模式
 
 每次启动由 `--scenario` 注册一个受信任能力配置，支持场景名或配置 JSON 路径；前端只能选择这一个 `capability_profile`。工具由该场景 MCP/preset 提供，默认编码工具仍待明确兼容。`prepare_scenario()` 的 `mcp_rows/environment_references` 同时服务 Web preset 与原 SDK patch。
@@ -734,3 +742,7 @@ DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路�
 - 普通 `SessionReport` API 不变；有 Web 任务授权记录时，`delivery.json` 额外写入 `task_id`。已启动引用报告的完成检查接受同 Task、同来源且 PDF/Markdown 字节摘要一致的普通回执，或历史 PDF 的字段覆盖/文件摘要回执；普通校对不因引用报告专用检查被判失败。旧 Task 的草稿和成品不作为本轮交付。
 - 空来源讨论仍保留 main 的 Agent 路由；副作用工具自身核验批准输入、Task/Session、输出授权与当前版本。菜单不调用模型，任务确认后不换库，Shadow 不跳过模型，Execute 只接管认证只读后继；写报告/PDF 仍由模型显式调用。
 - 学习与编译继续离线执行，共享在线 Runtime 只新增版本化来源句柄的有界闭合判断和 Shadow 观察修复；未修改上游 Harness、认证或用户管理模块。
+
+### 论文图片与参考文献流程共同恢复（PR #41/#42）
+
+原生图片继续由公开 decoder 验证并同时保留像素和文件来源。论文最多 16 个附件（其中图片最多 8 个），其他场景总数仍为 8。停止钩子按任务实际流程选择 PPT 恢复、普通论文 `export_review_report` 恢复或已启动的引用报告验收；有效引用 PDF 不再要求重复生成普通报告。缺失/过期来源与预算守卫不变。LaTeX 静态诊断中的所有来源相对路径统一用 POSIX `/`，不改变磁盘路径权限判断。

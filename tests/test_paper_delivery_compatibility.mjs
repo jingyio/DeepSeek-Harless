@@ -4,7 +4,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {paperPdfDelivered} from '../src/adapters/harless_paper_delivery.ts';
+import {paperPdfDelivered,paperReferenceReportRequired} from '../src/adapters/harless_paper_delivery.ts';
 
 test('general proofreading stays compatible; reference output is task/source/hash bound', () => {
   const work=mkdtempSync(join(tmpdir(),'paper-delivery-'));
@@ -15,8 +15,10 @@ test('general proofreading stays compatible; reference output is task/source/has
     write('paper-output-grant.json',{task_id:'current',allow_output:true,audit_sha256:null});
     write('approved-inputs.json',{files:{'paper.txt':'a'.repeat(64)}});
     write('outputs/paper-audits/previous/draft.json',{});
+    assert.equal(paperReferenceReportRequired(task),false,'ordinary reports keep main export recovery');
     assert.equal(paperPdfDelivered(task),true,'old reference tasks do not impose reference output on ordinary proofreading');
     write('outputs/paper-audits/current/draft.json',{});
+    assert.equal(paperReferenceReportRequired(task),true,'only this task reference draft selects the reference path');
     assert.equal(paperPdfDelivered(task),false,'a started reference draft cannot silently finish without a report');
     const pdf='diagnostic PDF bytes',md='reviewed source words';
     write('outputs/documents/report/paper-review.pdf',pdf);write('outputs/documents/report/paper-review.md',md);
@@ -37,6 +39,7 @@ test('general proofreading stays compatible; reference output is task/source/has
     assert.equal(paperPdfDelivered(task),false,'failed content coverage is rejected');
     legacy.content_coverage.all_fields_present=true;write('outputs/current-export/export-receipt.json',legacy);
     assert.equal(paperPdfDelivered(task),true,'the reviewed historical renderer remains supported');
+    assert.equal(paperReferenceReportRequired(task),true,'a reference PDF must not trigger a second generic export');
     task.scene_options.allow_output=false;
     assert.equal(paperPdfDelivered(task),true,'output-disabled tasks retain ordinary completion');
   } finally {rmSync(work,{recursive:true,force:true});}
