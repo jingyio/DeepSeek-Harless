@@ -679,7 +679,7 @@ export function apply(ctx: any) {
     if (titledSessions.has(id) || !controller.rename) return;
     snapshot ??= await controller.inspect(id);
     if (!snapshot.meta.title && !snapshot.events.some((event: any) =>
-        ['user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)))
+        ['session/title', 'user/message', 'assistant/message', 'tool/call', 'tool/result'].includes(event.type)))
       await original.rename?.({ sessionId: id, title: '新会话' });
     await refreshTitle(id);
     titledSessions.add(id);
