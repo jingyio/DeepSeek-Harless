@@ -1,5 +1,15 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 多格式场景文件交付（2026-10-16）
+
+- PPT 任务绑定全部已批准附件；`requestedSlides` 只识别明确数量而非“第 3 页”等序号，含糊数量仍用场景默认值。来源、权限和页数严格检查保留。非 PDF/PPTX 经共享提取器按完整文本切分逻辑段；页码与物理页区别明确。原独立认证的 pin/read 边未重训，实际 MCP 的 1–30 页完整 schema 以兼容变体登记，未知变体仍拒绝 Execute。
+- `ReportIntake` 在不可变附件快照中保存结构化表格；单表转换为衍生 CSV，保留原值和空单元格，原件不改。多表不自动合并。`approve_analysis(plan)` 可使用 `context.units` 和 `context.synthetic` 的 `{value,quote}` 绑定来源，quote 必须逐字存在于用户要求或资料说明且不能覆盖冲突元数据。
+- 真实统计报告继续经过独立复算、正文占位符、布局检查及 `deliver_report`。用户要求 R² 时，表格须有 `r_squared` 且正文须引用对应 token。图轴与正文共用已批准的单位/数据性质；PDF 换行按实际字体宽度测量，不放宽越界检查。
+- `paper_checks.export_review_report` 与 `research_report.export_input_review` 接受 `title`、`sections:[{heading,paragraphs:[string]}]`、完整 `source_versions` 文件名/摘要映射。后者只在无可分析数值表时开放，不能替代统计。成功生成经布局检查的 PDF/Markdown 后发布到本会话 `outputs/documents/<id>/`，receipt 绑定实际字节及来源；不声称科学或文献真实性认证。
+- 数据比较侧回收资料核对报告必须有本次任务成功的工具事件、相同来源版本和文件摘要；不能扫描别轮文件冒充本轮交付。成员环境映射同时为三个场景提供已验证的解析器路径及论文报告字体。新建对话只复用当前窗口的空输入框，避免取走另一窗口仍被标记为空的会话。
+
+依赖、端到端记录和原分支差异见 [修复验收](experiments/geneloop-scene-delivery-repair-20261016-v1.md)。普通 Word 指 DOCX，PDF 表格支持可提取单元格，不代表已支持扫描 OCR、任意复杂表格或长论文全部版式校验。
+
 ## 输入默认场景、模型目录与页面加载（2026-10-15）
 
 Web 每次发送从本轮序列化文本的前导 `/data`、`/ppt`、`/paper` 或 `/chat` 识别场景；没有场景标记时使用 `new-scene`。任务 admission 冻结本轮配置后，只把可见父会话的下一次选择恢复 Chat，不重新挂载运行中的工具。已接受 `requestId` 重试按持久场景、选项、模型、推理模式和展示方式恢复，再校验内容指纹。新建会话也默认 Chat。浏览器通过公开 `beginSubmission.onRetire` 区分成功提交和乐观清空，失败保留场景与附件，新草稿选择有版本保护。

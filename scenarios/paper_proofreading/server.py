@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from src.adapters.session_files import SessionFiles
 from src.adapters import paper_static_checks
+from src.adapters.harless_attachment_text import extract_attachment
+from src.adapters.session_report import SessionReport
+from scenarios.data_analysis.table_inputs import summarize_tables
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -62,13 +65,19 @@ class PaperEvidence(SessionFiles):
             text = reader.pages[page - 1].extract_text() or ''
             count = len(reader.pages)
         else:
+            extracted = extract_attachment(self.root/name, original_name=name)
+            if extracted.get('sha256') != version: raise ValueError('paper_source_version_changed')
+            if extracted['status'] != 'extracted':
+                return {'source_id':source_id,'version_sha256':version,'name':name,
+                        'status':extracted['status'],'reason':extracted.get('reason'),
+                        'text':'','visual_checked':False}
             if page != 1: raise ValueError('text_has_one_logical_page')
-            if len(data) > 256*1024: raise ValueError('paper_text_limit')
-            text, count = data.decode('utf-8'), 1
-        if len(text) > 100000: raise ValueError('paper_page_text_limit')
+            text, count = extracted['text'], 1
+        summaries=summarize_tables(self.root/name,{'text':text})
         self.pinned(source_id)
         return {'source_id': source_id, 'version_sha256': version, 'name': name, 'page': page,
                 'page_count': count, 'text': text, 'visual_checked': False,
+                'table_summaries':summaries,'table_summary_scope':'whole_document_explicit_tables',
                 'coverage': 'extracted_text_for_model_review_not_fact_or_venue_certification'}
 
 
@@ -84,9 +93,7 @@ def create_server(directory):
 
     @server.tool(annotations=annotation)
     def pin_document(name: str, sha256: str) -> dict:
-        """Pin a listed PDF or UTF-8 paper file to a fresh Session-local handle; no host paths."""
-        if Path(name).suffix.lower() not in ('.pdf', '.tex', '.bib', '.bbl', '.log', '.md', '.txt'):
-            raise ValueError('paper_document_format_unsupported')
+        """Pin any listed upload (PDF, Word, CSV, JSON, TXT etc.) to its exact version. No host paths."""
         return files.pin(name, sha256)
 
     @server.tool(annotations=annotation)
@@ -103,6 +110,15 @@ def create_server(directory):
     def read_pinned_paper_sources(source_id: str) -> dict:
         """Use the existing static checker for literal citations, duplicate labels, floats and supplied logs; no compilation or authenticity claim."""
         return files.read_sources(source_id)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+    def export_review_report(title: str, sections: list[dict], source_versions: dict) -> dict:
+        """Export a substantive proofreading report as downloadable PDF and Markdown.
+        sections=[{heading,paragraphs:[text]}]; quote actual source wording, explain
+        corrections and limitations. source_versions is the full list_inputs
+        filename:sha256 map. No original is modified; no empty reference report.
+        """
+        return SessionReport(files,'paper-review').export(title,sections,source_versions)
 
     return server
 

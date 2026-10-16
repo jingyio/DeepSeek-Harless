@@ -1,2 +1,5 @@
-# 先安装根 requirements.txt；仅 PDF 文本提取需要此额外依赖。
+# 先安装根 requirements.txt；真实 PDF 读取、导出与版面核验。
 pypdf==6.19.0
+reportlab==4.4.9
+PyMuPDF==1.26.7
+Pillow==12.0.0

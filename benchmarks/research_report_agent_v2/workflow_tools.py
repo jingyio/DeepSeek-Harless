@@ -54,7 +54,7 @@ _original_clean = statistics_tools._clean
 def _clean_with_declared_provenance(frame, plan):
     cleaned, warnings = _original_clean(frame, plan)
     warnings = [item for item in warnings if not item.startswith('All observations are synthetic;')]
-    if get_study().get('synthetic') is True:
+    if plan.get('source_context', get_study()).get('synthetic') is True:
         warnings.append('Observations are declared synthetic: software demonstration only, not empirical scientific evidence.')
     else:
         warnings.append('Data origin and collection design are taken from supplied metadata; their authenticity has not been independently verified.')
@@ -787,7 +787,7 @@ def _figure_caption(kind, confidence):
         'change_distribution':'先按个体匹配，再计算比较条件减去参照条件的差值；直方图展示变化分布，虚线为零变化，实线为平均变化。分箱采用 Freedman-Diaconis 规则。',
         'effect_interval':'圆点和区间直接取自统计分析记录；虚线表示零效应。区间表达估计不确定性，不代表个体观测的范围。',
         'scatter_fit':f'点为原始有效观测，线为单变量最小二乘拟合，阴影为均值的双侧 {confidence_label} 置信带；该带不是预测区间。相关关系本身不证明因果关系。',
-        'residuals':'残差由实际观测值减去拟合值计算。系统弯曲、漏斗形散布或极端点提示模型假设可能不适合；此图不自动证明假设成立。',
+        'residuals':'横轴为结局的拟合值，纵轴为观测值减拟合值的残差。系统弯曲、漏斗形散布或极端点提示模型假设可能不适合；此图不自动证明假设成立。',
     }[kind]
 
 
@@ -1007,6 +1007,16 @@ def _draw_figure(analysis: dict, item: dict, index: int, directory: Path) -> dic
                          "pdf.fonttype": 42, "savefig.facecolor": "white",
                          "svg.hashsalt": analysis.get("data_sha256", "research-report")})
     df, plan, metrics = _frame(analysis), analysis["plan"], analysis["metrics_dict"]
+    study = {**get_study(), **plan.get('source_context', {})}
+    def column_label(column):
+        label = study.get('column_labels', {}).get(column, column.replace('_', ' ').capitalize())
+        if isinstance(label, dict): label = label.get('en', column)
+        if not isinstance(label, str) or not label.isascii(): label = column.replace('_', ' ').capitalize()
+        unit = study.get('units', {}).get(column)
+        # Matplotlib's bundled font has Latin glyphs; keep common supplied units
+        # legible without claiming an inferred unit for an unknown column.
+        unit = {'天':'days', '日':'days', '秒':'s', '小时':'h', '分钟':'min'}.get(str(unit), unit)
+        return label + (f' ({unit})' if unit and str(unit).isascii() else '')
     outcome, kind = plan["outcome_column"], item["kind"]
     confidence = float(plan.get("confidence", 0.95))
     confidence_label = f"{confidence * 100:g}%"
@@ -1026,7 +1036,7 @@ def _draw_figure(analysis: dict, item: dict, index: int, directory: Path) -> dic
             ax.errorbar(i + 0.25, mean, yerr=half, fmt="D", markersize=6, capsize=5, color=COLORS["ink"], linewidth=1.7)
         ax.set_xticks(range(2), [f"{name}\nn = {len(values)}" for name, values in zip(names, arrays)])
         ax.set_xlim(-0.45, 1.55)
-        ax.set_ylabel(_column_label(outcome))
+        ax.set_ylabel(column_label(outcome))
         title = "Observed distributions and group means"
         caption = f"每个点是一条有效观测；菱形为组均值，误差线为各组均值的双侧 {confidence_label} t 置信区间。组间差异的推断以本报告统计表中的均值差及其置信区间为准。"
     elif kind == "group_ecdf":
@@ -1035,7 +1045,7 @@ def _draw_figure(analysis: dict, item: dict, index: int, directory: Path) -> dic
         for name, color in zip(names, [COLORS["blue"], COLORS["orange"]]):
             values = np.sort(df.loc[df[group] == name, outcome].to_numpy(dtype=float))
             ax.step(values, np.arange(1, len(values) + 1) / len(values), where="post", color=color, linewidth=2, label=f"{name} (n = {len(values)})")
-        ax.set_xlabel(_column_label(outcome)); ax.set_ylabel("Empirical cumulative proportion")
+        ax.set_xlabel(column_label(outcome)); ax.set_ylabel("Empirical cumulative proportion")
         ax.set_ylim(0, 1.04); ax.legend(frameon=False, fontsize=15)
         title = "Empirical distributions without binning"
         caption = "经验累积分布直接由排序后的有效观测计算，不依赖直方图分箱；组间曲线差异展示整体分布而不只比较均值。"
@@ -1050,7 +1060,7 @@ def _draw_figure(analysis: dict, item: dict, index: int, directory: Path) -> dic
                 ax.scatter(np.full(len(wide), i), wide[name], s=22, color=[COLORS["blue"], COLORS["orange"]][i], zorder=3, alpha=0.78, edgecolor="white", linewidth=0.3)
             ax.set_xticks([0, 1], names)
             ax.set_xlim(-0.2, 1.2)
-            ax.set_ylabel(_column_label(outcome))
+            ax.set_ylabel(column_label(outcome))
             title = f"Paired observations | {len(wide)} complete pairs"
             caption = "同一条线连接同一个体的两次观测；仅纳入完整配对。连线展示个体变化及异质性，不把配对数据当作独立样本。"
         else:
@@ -1058,7 +1068,7 @@ def _draw_figure(analysis: dict, item: dict, index: int, directory: Path) -> dic
             ax.hist(changes, bins="fd", color=COLORS["blue"], alpha=0.78, edgecolor="white", linewidth=1)
             ax.axvline(0, color=COLORS["gray"], linestyle="--", linewidth=1.2, label="No change")
             ax.axvline(float(changes.mean()), color=COLORS["orange"], linewidth=2, label="Mean paired change")
-            ax.set_xlabel(f"{names[1]} - {names[0]}: " + _column_label(outcome)); ax.set_ylabel("Number of complete pairs")
+            ax.set_xlabel(f"{names[1]} - {names[0]}: " + column_label(outcome)); ax.set_ylabel("Number of complete pairs")
             ax.legend(frameon=False, fontsize=15)
             title = "Distribution of within-subject changes"
             caption = "先按个体匹配，再计算比较条件减去参照条件的差值；直方图展示变化分布，虚线为零变化，实线为平均变化。分箱采用 Freedman-Diaconis 规则。"
@@ -1070,11 +1080,11 @@ def _draw_figure(analysis: dict, item: dict, index: int, directory: Path) -> dic
         ax.set_yticks([0], [contrast_label])
         ax.set_ylim(-0.6, 0.6)
         if plan["design"] == "regression":
-            units = _study().get("units", {})
+            units = study.get("units", {})
             slope_unit = f" ({units.get(outcome, outcome)} / {units.get(plan['predictor_column'], plan['predictor_column'])})"
             ax.set_xlabel("Estimated slope" + slope_unit)
         else:
-            ax.set_xlabel(_column_label(outcome) + " difference")
+            ax.set_xlabel(column_label(outcome) + " difference")
         span = max(hi - lo, abs(estimate) * 0.2, 1e-6)
         ax.set_xlim(min(lo - span * 0.25, -span * 0.12), max(hi + span * 0.25, span * 0.12))
         ax.text(0.02, 0.92, f"Estimate = {estimate:.4g}\n{confidence_label} CI [{lo:.4g}, {hi:.4g}]", transform=ax.transAxes, fontsize=15, va="top")
@@ -1095,16 +1105,16 @@ def _draw_figure(analysis: dict, item: dict, index: int, directory: Path) -> dic
             ax.fill_between(grid, pred - half, pred + half, color=COLORS["blue"], alpha=0.15, label=confidence_label + " CI for mean")
             ax.scatter(x, y, color=COLORS["blue"], s=27, alpha=0.7, edgecolor="white", linewidth=0.35, label=f"Observations (n = {len(x)})")
             ax.plot(grid, pred, color=COLORS["orange"], linewidth=2, label="OLS fit")
-            ax.set_xlabel(_column_label(predictor)); ax.set_ylabel(_column_label(outcome))
+            ax.set_xlabel(column_label(predictor)); ax.set_ylabel(column_label(outcome))
             ax.legend(frameon=False, fontsize=15)
             title = "Observed relationship and fitted mean"
             caption = f"点为原始有效观测，线为单变量最小二乘拟合，阴影为均值的双侧 {confidence_label} 置信带；该带不是预测区间。相关关系本身不证明因果关系。"
         else:
             ax.axhline(0, color=COLORS["gray"], linestyle="--", linewidth=1)
             ax.scatter(fitted, residuals, color=COLORS["orange"], s=27, alpha=0.72, edgecolor="white", linewidth=0.35)
-            ax.set_xlabel("Fitted " + _column_label(outcome)); ax.set_ylabel("Residual (observed - fitted)")
+            ax.set_xlabel("Fitted " + column_label(outcome)); ax.set_ylabel("Residual (observed - fitted)")
             title = "Residual diagnostic"
-            caption = "残差由实际观测值减去拟合值计算。系统弯曲、漏斗形散布或极端点提示模型假设可能不适合；此图不自动证明假设成立。"
+            caption = "横轴为结局的拟合值，纵轴为观测值减拟合值的残差。系统弯曲、漏斗形散布或极端点提示模型假设可能不适合；此图不自动证明假设成立。"
     else:
         raise ValueError(f"Unsupported plot: {kind}")
     if kind not in {"distribution_ci", "paired_change"}:
@@ -1112,7 +1122,7 @@ def _draw_figure(analysis: dict, item: dict, index: int, directory: Path) -> dic
     if kind != "effect_interval":
         ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
     ax.set_title(textwrap.fill(item.get("title") or title,width=33), loc="left", pad=16, fontsize=18)
-    fig.supxlabel(("Synthetic benchmark data | fixed input snapshot" if get_study().get("synthetic") is True else "Input data | provenance as supplied | fixed snapshot"), fontsize=12, color=COLORS["gray"])
+    fig.supxlabel(("Synthetic input data | fixed input snapshot" if study.get("synthetic") is True else "Input data | provenance as supplied | fixed snapshot"), fontsize=12, color=COLORS["gray"])
     base = directory / f"figure_{index:02d}_{kind}"
     paths = {}
     for extension in ("png", "svg", "pdf"):

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from benchmarks.research_report_agent_v3.intake import materialize
 from src.adapters.harless_attachment_text import extract_attachment
+from scenarios.data_analysis.table_inputs import extract_tables
 
 
 def _sha(data: bytes) -> str:
@@ -80,6 +81,7 @@ class ReportIntake:
                 row = extract_attachment(path, original_name=name)
                 if row.get('sha256') != approved[name]:
                     raise ValueError('approved report source version changed')
+                row['structured_tables'] = extract_tables(path, row)
                 documents.append(row)
         # Extraction may take time; validate originals again before freezing text.
         if self._approved() != approved:
@@ -116,6 +118,12 @@ class ReportIntake:
         identity = references['identity']
         version = _sha(_encoded(identity))
         tables = [name for name in approved if Path(name).suffix.lower() in ('.csv', '.tsv')]
+        derived_tables = {}
+        for document in references['documents']:
+            if document['name'] in tables: continue
+            for index, text in enumerate(document.get('structured_tables', [])):
+                key = document['name'] + '#table-' + str(index+1)
+                tables.append(key); derived_tables[key] = text
         result = {'report_ready': False, 'attachment_sources': references['documents'],
                   'user_request': references['user_request'], 'data_tables': tables}
         if self.case.exists():
@@ -128,8 +136,8 @@ class ReportIntake:
             return {**result, 'report_ready': True, 'status': 'ready'}
         if len(tables) != 1:
             return {**result, 'status': 'needs_data' if not tables else 'needs_data_selection',
-                    'next_step': '参考资料已接收，可据此正常回答或澄清需求。真实统计报告需要明确的一份 CSV/TSV 数据表；不要从文档臆造数据。' if not tables else
-                    '已收到多份数据表。请先与用户确认要分析哪一份或如何合并，不要擅自选取、合并或计算。'}
+                    'next_step': '参考资料已接收但未发现可可靠读取的数值表。按真实资料回答；用户要求报告时，调用 export_input_review 导出资料核对、已知条件与缺项报告，明确未执行统计，不编造数据。' if not tables else
+                    '已收到多份数据表。请先与用户确认要分析哪一份或如何合并；需要交付时可调用 export_input_review 导出待确认事项，不擅自选取、合并或计算。'}
         contexts = [doc for doc in references['documents'] if doc['status'] == 'extracted' and doc.get('text')]
         supplied = []
         for doc in contexts:
@@ -153,7 +161,8 @@ class ReportIntake:
                          + json.dumps({'name': doc['name']}, ensure_ascii=False) + '\n' + doc['text'])
         request = self._derived('intake-request-' + version + '.txt', combined)
         metadata = self._derived('intake-study-' + version + '.json', json.dumps(study, ensure_ascii=False, allow_nan=False))
-        source = self.work / 'inputs' / tables[0]
+        source = (self._derived('extracted-' + version + '.csv', derived_tables[tables[0]])
+                  if tables[0] in derived_tables else self.work / 'inputs' / tables[0])
         try:
             if source.suffix.lower() == '.tsv':
                 converted = io.StringIO()

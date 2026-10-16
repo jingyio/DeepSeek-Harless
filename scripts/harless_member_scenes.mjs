@@ -158,13 +158,15 @@ export function memberSceneDeployment(policy, deployment) {
       cfg.command=cfg.command === 'node' ? 'node' : executable;
       cfg.cwd='/app'; cfg.args=cfg.args.map(translate);
       const env=cfg.env ?? {};
-      const permittedEnv=scene.adapter==='data-report'?['HARLESS_REPORT_WORKSPACE','HARLESS_PRIVATE_ROOT','HARLESS_REPORT_FONT','HARLESS_PDF_TOOLCHAIN_ROOT','HARLESS_ANTIWORD_BIN','ANTIWORDHOME']:scene.adapter==='literature' ? ['SSS_PDF_WEB_TASK','PATH','LD_LIBRARY_PATH'] :
+      const parserEnv=['HARLESS_PDF_TOOLCHAIN_ROOT','HARLESS_ANTIWORD_BIN','ANTIWORDHOME'];
+      const permittedEnv=scene.adapter==='data-report'?['HARLESS_REPORT_WORKSPACE','HARLESS_PRIVATE_ROOT','HARLESS_REPORT_FONT',...parserEnv]:scene.adapter==='literature' ? ['SSS_PDF_WEB_TASK','PATH','LD_LIBRARY_PATH'] :
         scene.adapter==='files' ? ['FM_WEB_WORKSPACE','FM_TASK_FILE','FM_OUTPUT'] :
+        cfg.serverName==='paper_checks'?['HARLESS_REPORT_FONT',...parserEnv]:
         cfg.serverName==='paper_trace_rsi'?['HARLESS_PRIVATE_ROOT']:
-        ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH','HARLESS_PRIVATE_ROOT'];
+        ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH','HARLESS_PRIVATE_ROOT',...parserEnv];
       if (Object.keys(env).some(k=>!permittedEnv.includes(k)))
         throw Error('Member scene environment contains unapproved authority');
-      if(scene.adapter==='data-report'){
+      if(scene.adapter==='data-report'||scene.adapter==='ppt'||cfg.serverName==='paper_checks'){
         if(('HARLESS_PDF_TOOLCHAIN_ROOT' in env || scene.pdf_toolchain_root!==undefined) &&
             (!pdf || scene.pdf_toolchain_root!==pdf || env.HARLESS_PDF_TOOLCHAIN_ROOT!==pdf))
           throw Error('Member report PDF parser requires the matching fixed installation');
@@ -172,7 +174,7 @@ export function memberSceneDeployment(policy, deployment) {
             (!antiword || scene.antiword_root!==antiword || env.HARLESS_ANTIWORD_BIN!==antiwordBinary || env.ANTIWORDHOME!==antiwordMappings))
           throw Error('Member report Word parser requires the matching fixed installation');
       }
-      if(scene.adapter==='data-report' && ('HARLESS_REPORT_FONT' in env || scene.report_font_sha256!==undefined)){
+      if((scene.adapter==='data-report'||cfg.serverName==='paper_checks') && ('HARLESS_REPORT_FONT' in env || scene.report_font_sha256!==undefined)){
         const font=fonts && join(fonts,'wqy-microhei.ttc');
         if(!font || env.HARLESS_REPORT_FONT!==font || !existsSync(font) ||
            !/^[a-f0-9]{64}$/.test(scene.report_font_sha256 ?? '') ||

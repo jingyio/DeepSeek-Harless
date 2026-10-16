@@ -45,12 +45,12 @@ test('PDF, Word, unknown binary and undecodable text are admitted with original 
   }finally{f.close();}
  }
 });
-test('PPT tool inputs contain supported sources while every auxiliary file stays approved',async()=>{
+test('PPT exposes every approved upload; the scoped parser reports unsupported contents',async()=>{
  const f=fixture([['paper.pdf','%PDF-1.7'],['requirements.docx','PK'],['unknown.bin','abc']]);try{
   const ctx={fileUploads:{resolve:(_a,id)=>f.refs.find(r=>r.receipt===id)},attachments:{async *readFileStream(ref){yield ref.data;}}};
   const rows=await bindSceneInputs(ctx,{},f.root,{id:'ppt',adapter:'ppt'},f.refs.map(ref=>({type:'file',receiptId:ref.receipt})),{allow_output:true},'create','task-test');
   assert.equal(rows.length,3);const job=JSON.parse(readFileSync(join(f.root,'job.json'),'utf8'));
-  assert.deepEqual(job.inputs.map(row=>row.name),['paper.pdf']);assert.equal(job.allow_output,true);
+  assert.deepEqual(job.inputs.map(row=>row.name),['paper.pdf','requirements.docx','unknown.bin']);assert.equal(job.allow_output,true);
   assert.equal(Object.keys(JSON.parse(readFileSync(join(f.root,'approved-inputs.json'),'utf8')).files).length,3);
  }finally{f.close();}
 });

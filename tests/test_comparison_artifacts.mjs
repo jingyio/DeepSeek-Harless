@@ -3,8 +3,32 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,symlinkSync} from 'node:fs';
 import {join,resolve,sep} from 'node:path';
 import {tmpdir} from 'node:os';
-import {comparisonArtifacts,verifiedReportFiles,captureComparisonDeliveries} from '../src/adapters/harless_comparison_artifacts.ts';
+import {comparisonArtifacts,verifiedReportFiles,verifiedReviewFiles,captureComparisonDeliveries} from '../src/adapters/harless_comparison_artifacts.ts';
 import {createHash} from 'node:crypto';
+
+test('Reference reviews require this task export event, checked receipt and unchanged files',()=>{
+ const root=mkdtempSync(join(tmpdir(),'paired-review-proof-'));try{
+  const work=join(root,'work'),id='a'.repeat(32),folder=join(work,'outputs/documents',id);
+  mkdirSync(folder,{recursive:true});writeFileSync(join(work,'approved-inputs.json'),JSON.stringify({files:{'notes.txt':'1'.repeat(64)}}));
+  const rows=['pdf','md'].map(extension=>{
+    const name=`outputs/documents/${id}/input-review.${extension}`,data=Buffer.from('Reviewed source content '+extension);
+    writeFileSync(join(work,name),data);return {name,bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')};
+  });
+  writeFileSync(join(folder,'delivery.json'),JSON.stringify({kind:'source_bound_review',category:'input-review',layout_passed:true,
+    source_versions:{'notes.txt':'1'.repeat(64)},files:rows}));
+  assert.equal(verifiedReviewFiles(work,new Map()).size,0);
+  const eventsPath=join(root,'events.jsonl'),receipt={exported:true,artifacts:rows};
+  const events=[{type:'tool/call',time:1100,data:{name:'mcp__research_report__export_input_review',callId:'export'}},
+    {type:'tool/result',time:1200,data:{message:{content:[{type:'tool-result',toolCallId:'export',content:[{type:'text',text:JSON.stringify(receipt)}]}]}}}];
+  writeFileSync(eventsPath,events.map(e=>JSON.stringify(e)).join('\n'));
+  const context={turn:'review',lane:'baseline',attempt:0,workspace:work,adapter:'data-report',status:'completed',eventsPath,
+    startedAt:new Date(1000).toISOString(),finishedAt:new Date(2000).toISOString()};
+  assert.equal(captureComparisonDeliveries(comparisonArtifacts(root),context).length,2);
+  assert.equal(captureComparisonDeliveries(comparisonArtifacts(root),{...context,turn:'later',startedAt:new Date(1300).toISOString()}).length,0);
+  writeFileSync(join(work,rows[0].name),'tampered');
+  assert.equal(verifiedReviewFiles(work,new Map(rows.map(r=>[join(work,r.name),r.sha256]))).size,0);
+ }finally{const p=resolve(root);assert.ok(p.startsWith(resolve(tmpdir())+sep)&&p.includes('paired-review-proof-'));rmSync(p,{recursive:true,force:true});}
+});
 test('Only derived results are copied; prior results survive edits and mutated copies fail closed',()=>{
  const root=mkdtempSync(join(tmpdir(),'paired-artifact-'));try {
   const work=join(root,'work');for(const name of ['outputs','inputs','literature'])mkdirSync(join(work,name),{recursive:true});

@@ -355,7 +355,17 @@ def parse_document(path: Path) -> dict:
                     break
         warnings.append('PPTX 首版读取文本、表格文字和嵌入图片后重新排版；不保留动画、母版或图表编辑数据')
     else:
-        raise ValueError('首版只接收 PDF/PPTX')
+        from src.adapters.harless_attachment_text import extract_attachment
+        extracted = extract_attachment(path, original_name=path.name)
+        if extracted.get('status') != 'extracted' or not extracted.get('text', '').strip():
+            raise ValueError('附件已接收，但未提取到可用文字：' + (extracted.get('reason') or 'unsupported_or_empty_content'))
+        kind = extracted['format']
+        # Non-paginated files get logical text sections, never invented Word pages.
+        text = extracted['text']
+        pages = [{'page':index//12000+1,'text':text[index:index+12000],'truncated':False}
+                 for index in range(0,len(text),12000)]
+        warnings.extend(extracted.get('warnings', []))
+        warnings.append('非分页资料的 page 是逻辑文本段序号，不是原文物理页码；仅使用已读取文字和表格，不声称完成图片或版式核查。')
     text_chars = sum(len(p['text'].strip()) for p in pages)
     if not text_chars:
         warnings.append('未提取到文本，可能是扫描文件；首版不执行 OCR')
