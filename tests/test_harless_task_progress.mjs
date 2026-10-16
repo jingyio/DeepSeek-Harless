@@ -108,3 +108,11 @@ test('only a verified skip audit gets an optimized marker, failed tool errors re
   assert.equal(p.snapshot().trace.at(-1).status,'failed');assert.equal(p.snapshot().trace.at(-1).label,'运行命令');
   assert.doesNotMatch(JSON.stringify(p.snapshot()),/private|arguments/);
 });
+
+test('PPT repair shows real work without claiming a Motif skip',()=>{
+ const p=createTaskProgress();p.recovery();
+ assert.equal(p.snapshot().progress.label,'正在修正演示文稿');
+ assert.equal(p.snapshot().trace.at(-1).kind,'request');
+ assert.equal(p.snapshot().trace.at(-1).optimized,false);
+ p.beginAttempt();assert.equal(p.snapshot().progress.label,'正在组织回复');
+});

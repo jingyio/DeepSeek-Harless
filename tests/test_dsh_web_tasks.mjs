@@ -131,8 +131,9 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
               schemas() { return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
             systemPrompt: { suppressRuntimeContext() { return () => {}; }, variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
               section(row) { agent.instruction = row.text==='{{harless_scene_literal}}'?agent.variables.get('harless_scene_literal')():row.text; return () => {}; } },
-            on() {},
+            on(name,fn) { (agent.hooks??=new Map()).set(name,fn); },
           } };
+          agent.steered=[];agent.steer=message=>agent.steered.push(message);
           agents.set(id, agent); emit('agent/created', { agent });
         }
         return { sessionId: id, agentPreset: request.agentPreset };
@@ -217,6 +218,26 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     },
   };
 }
+
+test('native PPT repairs a failed plan within the existing turn, budget and task envelope',options,async()=>{
+ const schemas=['render_deck','deliver_deck'].map(name=>({name:'mcp__ppt__'+name,parameters:{type:'object',properties:{}}}));
+ const ppt={id:'ppt',label:'PPT',preset:'sss-task',adapter:'ppt',mcp_rows:[],allowed_tools:schemas.map(t=>t.name)};
+ const f=await fixture({broker:true,scenes:[ppt],capability_profile:'ppt',fixtureSchemas:schemas});
+ try{
+  const created=await f.settings({action:'new_session',selection:{scene:'ppt'}}),id=created.value.session_id;
+  await f.ctx.sessionController.prompt({sessionId:id,requestId:'repair-ppt',mode:'queue',content:[{type:'text',text:'/ppt 生成3页'}]},new AbortController().signal);
+  const task=(await f.api()).value.tasks[0],agent=f.agents.get(task.session_id),before=f.registrations.size;
+  agent.hooks.get('tools/result')({name:'mcp__ppt__render_deck'}, {isError:true,structuredContent:{ok:false,code:'slide_count_mismatch'}});
+  agent.hooks.get('agent/turn-stopping')({signal:new AbortController().signal});
+  assert.equal(agent.steered.length,1);assert.match(agent.steered[0].content[0].text,/总页数.*3/);
+  assert.equal(agent.steered[0].source.task_id,task.task_id);assert.equal(agent.steered[0].source.kind,'ppt-task-recovery');
+  assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'running');
+  assert.equal(f.registrations.size,before);assert.equal(f.promptCalls.length,1);
+  agent.hooks.get('tools/result')({name:'mcp__ppt__deliver_deck'},{structuredContent:{delivered:true}});
+  agent.hooks.get('agent/turn-stopping')({signal:new AbortController().signal});assert.equal(agent.steered.length,1);
+  await f.complete(task);assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'completed');
+ }finally{await f.close();}
+});
 
 test('Uncapped task text and output retain guards and omit the adapter default',options,async()=>{
  const f=await fixture({max_output_tokens:null});try{

@@ -1,5 +1,11 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## PPT 设计 Skill 与错误恢复（2026-10-16）
+
+- Web registry 对 `adapter=ppt` 使用与研究 CLI 相同的固定 Skill 全文追加方式，将 `design_skill_sha256` 与完整 `instructions_sha256` 写入任务配置。两侧使用同一 registry，不把设计规则作为 Motif 独占能力；用户文件不能更改 Skill 路径。
+- `tools/result` 记录 PPT 生成及真实交付状态；`agent/turn-stopping` 遇到未解决的可修复错误，用原生 `agent.steer` 续接相同 Task/Session/工具和预算。内部消息来源为 `ppt-task-recovery`，保留用户原消息，不新建 Agent 或计作 verified Motif skip。
+- 兼容 MCP 的 `Error: JSON`、Harness `INVALID_ARGS`、真实后端嵌套布局反馈，以及原子/组合两类交付回执。生成或最终文字不冒充交付；实际成功回执后不再次续接。新增续接不设请求次数上限，仍受既有每任务预算、取消及来源/版本/权限边界约束。
+
 ## 多格式场景文件交付（2026-10-16）
 
 - PPT 任务绑定全部已批准附件；`requestedSlides` 只识别明确数量而非“第 3 页”等序号，含糊数量仍用场景默认值。来源、权限和页数严格检查保留。非 PDF/PPTX 经共享提取器按完整文本切分逻辑段；页码与物理页区别明确。原独立认证的 pin/read 边未重训，实际 MCP 的 1–30 页完整 schema 以兼容变体登记，未知变体仍拒绝 Execute。

@@ -7,6 +7,7 @@ export type Scene = {
   embedding_endpoint?: string; embedding_model?: string;
   diagnostic?: boolean; tool_schemas?: string; certified_tool_schemas?: any[]; certified_tool_schemas_sha256?: string;
   scenario?: string; scenario_version?: number; instructions_sha256?: string;
+  design_skill_sha256?: string;
   unavailable_reason?: string; adapter?: 'ppt' | 'workspace' | 'files' | 'literature' | 'data-report';
   mcp_rows?: any[]; environment_references?: Record<string, string>;
   rsi_unavailable_reason?: string; matching_policy?: 'structural_only'; binding_policy?: 'ppt_uploaded_sources_v1' | 'uploaded_source_handles_v1';
