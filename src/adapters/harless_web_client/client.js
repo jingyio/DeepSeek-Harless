@@ -717,7 +717,7 @@ window.__ModuleLoader__.load({
                   status && h('small', { role: status.phase === 'error' ? 'alert' : 'status', className: status.phase === 'error' ? 'harless-paired-error' : 'harless-paired-muted' }, status.message));
               }))),
             !single && settled(result) && result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
-            h('footer', null,
+            settled(result) && h('footer', null,
               h('div', { className: 'harless-message-actions', 'aria-label': title + '回复操作' },
                 actionButton({ 'aria-label': '复制 ' + title + ' 回复', disabled: !answer, onClick: () => copy(lane) }, copied === lane ? 'check' : 'copy', copied === lane ? '已复制' : '复制'),
                 ...['up', 'down'].map(vote => actionButton({ key: vote,

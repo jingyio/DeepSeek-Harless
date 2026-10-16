@@ -659,6 +659,7 @@ test('paired live status shares Chat wording and GeneLooping, with no placeholde
   for(const row of Object.values(value.lanes))Object.assign(row,{status:'running',answer:'',artifacts:[],delivery_message:'结果文件会在生成并通过交付检查后显示。',progress:{tool:'mcp__files__read_file',subject:'材料.pdf',status:'running'}});
   const f=fixture(undefined,value,{streaming:true});await flush();f.render();
   assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,2);
+  assert.equal(f.all(row=>row.type==='footer'||row.type==='fieldset').length,0);
   assert.match(f.content(f.all(row=>row.props.className==='geneloop-process-status')[0]),/正在阅读文档：材料.pdf/);
   assert.doesNotMatch(f.content(),/正在处理，结果会自动更新|结果文件会在生成/);
   f.streams[0].emit(comparison());f.render();assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,0);f.dispose();
