@@ -90,7 +90,7 @@ test('completed chat defaults to the final answer with accessible reversible pro
 test('real streamed deltas stay visible while tools and previous steps remain collapsed', () => {
   const first = assistant(1, '正在检查', false), runningTool = tool(2, false);
   const f = fixture([first, runningTool]);
-  assert.match(f.text(), /正在查看文件/); assert.doesNotMatch(f.text(), /report.csv/);
+  assert.match(f.text(), /正在调用工具：list_files/); assert.doesNotMatch(f.text(), /report.csv/);
   let answer = assistant(3, '新', false);
   f.setRows([first, runningTool, answer]); f.render();
   assert.equal(f.all(entry => entry.type === 'native-assistant').length, 1);
@@ -115,9 +115,19 @@ test('reasoning is collapsed independently of streaming text and retains native 
   assert.doesNotMatch(f.text(), /推理细节/); f.toggle(); assert.match(f.text(), /推理细节/);
 });
 
+test('live status follows actual reasoning and document tools without revealing host paths', () => {
+  const thinking=assistant(1,'',false,[{kind:'reasoning',text:'private thought'}]);
+  const f=fixture([thinking]);assert.match(f.text(),/正在思考/);assert.doesNotMatch(f.text(),/private thought/);
+  const reading=tool(2,false);reading.data.root.name='mcp__files__read_file';reading.data.root.argsRaw=JSON.stringify({name:'实验资料.pdf'});
+  f.setRows([thinking,reading]);f.render();assert.match(f.text(),/正在阅读文档：实验资料.pdf/);
+  reading.data.root.argsRaw=JSON.stringify({path:'/home/private/server.pdf'});f.render();assert.doesNotMatch(f.text(),/home|private|server.pdf/);
+  reading.data.root.name='web_search';f.render();assert.match(f.text(),/正在搜索资料/);
+  reading.data.root.name='exec_command';f.render();assert.match(f.text(),/正在执行命令/);
+});
+
 test('new sessions do not inherit expansion, and absent assistant still presents running tools', () => {
   const f = fixture([node('context', 1, { content: [{ type: 'text', text: '资料' }] }, false), tool(2, false)]);
-  assert.match(f.text(), /正在查看文件/); assert.doesNotMatch(f.text(), /report.csv/);
+  assert.match(f.text(), /正在调用工具：list_files/); assert.doesNotMatch(f.text(), /report.csv/);
   f.toggle(); assert.match(f.text(), /report.csv/);
   f.setSession('session-b'); f.render(); assert.doesNotMatch(f.text(), /report.csv/);
   assert.equal(f.all(entry => entry.type === 'button')[0].props['aria-expanded'], false);

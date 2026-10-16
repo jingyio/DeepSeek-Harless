@@ -1,9 +1,12 @@
 /** Public execution progress from native model/tool lifecycle events, never simulated prose. */
-export type TaskActivity = { label: string; status: 'running' | 'completed' | 'failed' | 'cancelled'; tool?: string };
+export type TaskActivity = { label: string; status: 'running' | 'completed' | 'failed' | 'cancelled'; tool?: string; subject?: string };
 export type TaskMessage = { id: string; text: string; status: 'streaming' | 'completed' | 'interrupted'; attempt: number; started_at: string; finished_at?: string };
 export type TaskTrace = TaskActivity & { id: string; time: string; kind: 'assistant' | 'thinking' | 'tool' | 'motif' | 'request'; text?: string; optimized: boolean; verified_skip: boolean };
 export type TaskProgressSnapshot = { answer: string; progress: TaskActivity; activity: TaskActivity[]; messages: TaskMessage[]; trace: TaskTrace[] };
 const toolLabels: [RegExp, string][] = [
+  [/^read_pending_plan$/, '读取需要修正的页面'],
+  [/^repair_pending_plan$/, '修正页面并重新核验'],
+  [/^(?:render_delivery|render_deck)$/, '生成并核验演示文稿'],
   [/exec|shell|command|terminal|bash|powershell/i, '运行命令'],
   [/pin|list|inspect|inventory|discover/i, '检查资料'],
   [/read|extract|parse|load/i, '读取资料'],
@@ -19,11 +22,25 @@ export function taskToolLabel(name: unknown): string {
   return toolLabels.find(([pattern]) => pattern.test(tool))?.[1] ?? '执行工具';
 }
 
+/** Display a document basename only; never publish raw tool arguments or host paths. */
+export function taskDocumentSubject(raw: unknown): string | undefined {
+  let args: any;
+  try { args = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return; }
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return;
+  for (const key of ['filename', 'file_name', 'name', 'file', 'path']) {
+    const value = args[key];
+    if (typeof value !== 'string' || value.length > 200 || /^(?:[a-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(value)) continue;
+    const name = value.split(/[\\/]/).at(-1)!;
+    if (/^[^\x00-\x1f<>:"|?*]{1,100}\.(?:pdf|docx?|xlsx?|csv|tsv|json|txt|md|pptx?|png|jpe?g|webp)$/i.test(name)) return name;
+  }
+}
+
 /** Reasoning is represented by its real lifecycle, not private reasoning text or arguments. */
 export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = () => new Date().toISOString()) {
   const restored = (value: any): TaskActivity | undefined => value && typeof value.label === 'string' && value.label.length <= 160 &&
     ['running', 'completed', 'failed', 'cancelled'].includes(value.status)
-      ? { label: value.label, status: value.status, ...(typeof value.tool === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(value.tool) ? { tool: value.tool } : {}) } : undefined;
+      ? { label: value.label, status: value.status, ...(typeof value.tool === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(value.tool) ? { tool: value.tool } : {}),
+        ...(taskDocumentSubject({ name: value.subject }) ? { subject: taskDocumentSubject({ name: value.subject }) } : {}) } : undefined;
   let answer = typeof saved?.answer === 'string' ? saved.answer : '';
   let progress: TaskActivity = restored(saved?.progress) ?? { label: '准备处理请求', status: 'running' };
   let currentText = new Map<number, string>();
@@ -75,7 +92,8 @@ export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = 
       if(event?.type==='tool/call'){
         const key=String(event.data?.callId??'');if(!key||tools.has(key))return;
         settleAttempt('completed');
-        const activity:TaskActivity={label:taskToolLabel(event.data?.name),status:'running',...(safeTool(event.data?.name)?{tool:event.data.name}:{})};
+        const subject=taskDocumentSubject(event.data?.arguments);
+        const activity:TaskActivity={label:taskToolLabel(event.data?.name),status:'running',...(safeTool(event.data?.name)?{tool:event.data.name}:{}),...(subject?{subject}:{})};
         const entry=row('tool',activity.label,'running',time);if(activity.tool)entry.tool=activity.tool;
         tools.set(key,{activity,trace:entry});activities.push(activity);if(activities.length>40)activities.shift();progress={...activity};
       }else if(event?.type==='tool/result'){

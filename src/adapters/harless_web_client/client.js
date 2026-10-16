@@ -13,6 +13,7 @@ window.__ModuleLoader__.load({
     const draftSelections = new Map();
     const aliases = { ppt: 'ppt', 'paper-proofreading': 'paper', 'research-data-analysis': 'data', 'new-scene': 'chat' };
     const shortcut = scene => scene.shortcut || aliases[scene.id] || scene.id;
+    const selectableScene = scene => !['new-scene', 'files', 'file-management'].includes(scene.id) && !['chat', 'files'].includes(shortcut(scene));
     const modeLabel = mode => mode === 'baseline' ? 'Origin' : mode[0].toUpperCase() + mode.slice(1);
     const displayValue = (id, value) => value && draftSelections.has(id) ? { ...value,
       selection: { ...value.selection, scene: draftSelections.get(id) },
@@ -47,24 +48,35 @@ window.__ModuleLoader__.load({
     }
     const reference = scene => ({ source: 'harless-scenes', ref: shortcut(scene),
       label: '/' + shortcut(scene), appearance: 'file', clipboardText: '/' + shortcut(scene) });
-    function HarlessStatus({ sessionId, openSession }) {
+    function HarlessStatus({ sessionId, openSession, draftInput }) {
       const [value, setValue] = React.useState(null);
       React.useEffect(() => {
-        const abort = new AbortController(); setValue(displayValue(sessionId, cache.get(sessionId)) || null);
-        const listener = next => { if (!abort.signal.aborted) setValue(next); };
+        const abort = new AbortController();
+        const listener = next => {
+          if (abort.signal.aborted) return;
+          const draft = draftInput?.state.getSnapshot().draft;
+          if (typeof draft === 'string') {
+            const token = /^(?:\s*)\/([a-z][a-z0-9_-]*)(?=$|\s|[\u3400-\u9fff])/i.exec(draft)?.[1]?.toLowerCase();
+            const scene = next?.scenes.find(row => shortcut(row) === token)?.id || Object.keys(aliases).find(id => aliases[id] === token) || 'new-scene';
+            next = { ...next, selection: { ...next?.selection, scene } };
+          }
+          setValue(next);
+        };
+        const sync = () => listener(displayValue(sessionId, cache.get(sessionId)) || null);
+        sync(); const unsubscribe = draftInput?.state.subscribe(sync);
         const group = observers.get(sessionId) || new Set(); group.add(listener); observers.set(sessionId, group);
         settings({ sessionId }, abort.signal).catch(() => {});
-        return () => { abort.abort(); group.delete(listener); if (!group.size) observers.delete(sessionId); };
-      }, [sessionId]);
-      const scene = value?.scenes.find(row => row.id === value.selection.scene);
-      const name = scene ? '/' + shortcut(scene) : 'GeneLoop';
-      const detail = value ? value.paired_comparison ? 'Baseline / Motif 对照' : `${modeLabel(value.selection.mode)} · RSI ${value.selection.rsi ? 'On' : 'Off'}${value.conversation_only ? ' · 文字对话' : ''}` : '';
-      return React.createElement('span', { role: 'status', 'aria-label': `${name} ${detail}`, title: `${name} ${detail}`,
+        return () => { abort.abort(); unsubscribe?.(); group.delete(listener); if (!group.size) observers.delete(sessionId); };
+      }, [sessionId, draftInput]);
+      const sceneId = value?.selection?.scene;
+      const scene = value?.scenes?.find(row => row.id === sceneId);
+      const name = scene ? '/' + shortcut(scene) : aliases[sceneId] ? '/' + aliases[sceneId] : '';
+      if ((!name || sceneId === 'new-scene') && !value?.comparison_parent_session_id) return null;
+      return React.createElement('span', { className: 'geneloop-draft-scene', role: 'status', 'aria-label': name, title: name,
         style: { display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: 'min(380px, 52vw)', overflow: 'hidden',
           whiteSpace: 'nowrap', borderRadius: '6px', padding: '2px 7px', fontSize: '13px', lineHeight: '20px',
           color: 'var(--dsw-alias-label-secondary, #767c88)' } },
-        React.createElement('strong', { style: { fontWeight: 600, color: 'var(--dsw-alias-state-business-primary, #4d78e8)' } }, name),
-        detail && React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' } }, detail),
+        sceneId !== 'new-scene' && React.createElement('strong', { style: { fontWeight: 600, color: 'var(--dsw-alias-state-business-primary, #4d78e8)' } }, name),
         value?.comparison_parent_session_id && React.createElement('button', { type: 'button', onClick: () => openSession(value.comparison_parent_session_id),
           style: { color: 'var(--dsw-alias-link, #729cf7)', background: 'none', border: 0, cursor: 'pointer', padding: '2px 4px', font: 'inherit', flexShrink: 0 } }, '返回双栏结果与下载'));
     }
@@ -81,6 +93,36 @@ window.__ModuleLoader__.load({
         ctx.effect(() => () => { sessions.fork = originalFork; }, 'harless: durable branch names');
       }
       const h = React.createElement;
+      const uploads = new Map();
+      const liveStyle = '.geneloop-process-status{font:inherit;font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary);margin:0 0 12px}.geneloop-looping{font:inherit;font-size:14px;color:var(--dsw-alias-state-business-primary,#729cf7);margin:20px 0 8px}.geneloop-menu-name{display:inline-flex;align-items:center;gap:10px}.geneloop-menu-name svg{flex:none;vertical-align:middle}';
+      const liveStatus = label => h('p', { role: 'status', 'aria-live': 'polite', className: 'geneloop-process-status' }, label + '…');
+      const looping = () => h('p', { role: 'status', className: 'geneloop-looping' }, 'GeneLooping…');
+      const documentSubject = raw => {
+        let args; try { args = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return; }
+        if (!args || typeof args !== 'object' || Array.isArray(args)) return;
+        for (const key of ['filename', 'file_name', 'name', 'file', 'path']) {
+          const value = args[key];
+          if (typeof value !== 'string' || value.length > 200 || /^(?:[a-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(value)) continue;
+          const name = value.split(/[\\/]/).pop();
+          if (/^[^\x00-\x1f<>:"|?*]{1,100}\.(?:pdf|docx?|xlsx?|csv|tsv|json|txt|md|pptx?|png|jpe?g|webp)$/i.test(name)) return name;
+        }
+      };
+      const workLabel = (name, subject) => {
+        const tool = String(name || '').split('__').pop();
+        const detail = typeof subject === 'string' && subject ? '：' + subject : '';
+        if (/read|extract|parse|load/.test(tool)) return '正在阅读文档' + detail;
+        if (/search|browse/.test(tool)) return '正在搜索资料' + detail;
+        if (/exec|shell|command|terminal|bash|powershell/.test(tool)) return '正在执行命令' + detail;
+        return '正在调用工具' + (tool ? '：' + tool : '');
+      };
+      const progressText = result => {
+        const progress = result.progress;
+        if (result.status === 'queued') return '等待执行';
+        if (progress?.tool && progress.status === 'running') return workLabel(progress.tool, progress.subject);
+        if (progress?.status === 'running' && progress.label && !/准备|组织回复/.test(progress.label))
+          return progress.label.startsWith('正在') ? progress.label : '正在' + progress.label;
+        return '正在回复';
+      };
       const busyComparisons = new Map();
       // The journal stores the submission snapshot, not its eventual result.
       // Keep recent authenticated snapshots across chat/trace navigation only;
@@ -264,6 +306,9 @@ window.__ModuleLoader__.load({
         // label, not the Markdown source or the authenticated download target.
         for (const link of root.querySelectorAll('code > button, a')) {
           if (link.closest('pre')) continue;
+          const isButton = link.nodeName.toLowerCase() === 'button';
+          const target = link.getAttribute(isButton ? 'title' : 'href') || '';
+          if (!isButton && /^(?:https?:|mailto:|#)/i.test(target)) continue;
           const textNodes = [];
           const visit = node => {
             if (node.nodeType === 3) { if (node.nodeValue?.trim()) textNodes.push(node); return; }
@@ -271,25 +316,33 @@ window.__ModuleLoader__.load({
             for (const child of node.childNodes || []) visit(child);
           };
           visit(link);
-          // Keep custom / formatted link captions intact. The native file
-          // button and a plain Markdown path label each have one text node.
-          if (textNodes.length !== 1) continue;
-          const label = textNodes[0].nodeValue.trim();
-          if (!/[\\/]/.test(label) || /^(?:https?:|mailto:|#)/i.test(label)) continue;
-          if (!/^(?:[./\\]|[a-z]:[\\/]|sandbox:|file:\/\/|[^\s/\\:]+[\\/])/i.test(label)) continue;
-          const file = artifactFor(files, label);
+          const label = textNodes.length === 1 ? textNodes[0].nodeValue.trim() : '';
+          const labeledFile = artifactFor(files, label);
+          // Native mentions may already have a compact title; the rendered
+          // full path still identifies exactly one approved receipt.
+          const file = artifactFor(files, target) || (isButton && labeledFile && target === labeledFile.name.split('/').pop() ? labeledFile : undefined);
           if (!file) continue;
-          const isButton = link.nodeName.toLowerCase() === 'button';
-          const target = link.getAttribute(isButton ? 'title' : 'href') || '';
-          if (!isButton && /^(?:https?:|mailto:|#)/i.test(target)) continue;
           const name = file.name.split(/[\\/]/).pop();
-          // A later native render may update its text node but retain the
-          // already-compacted title. Exact label matching still owns the file.
-          if (artifactFor(files, target)?.id !== file.id && !(isButton && target === name)) continue;
-          textNodes[0].nodeValue = name;
+          link.setAttribute('data-harless-artifact-link', '');
+          if (isButton && link.parentElement?.nodeName.toLowerCase() === 'code')
+            link.parentElement.setAttribute('data-harless-artifact-inline', '');
+          // Preserve custom and formatted captions. Only replace a matching
+          // approved path label, never ordinary inline code or a remote URL.
+          if (textNodes.length === 1 && /[\\/]/.test(label) && !/^(?:https?:|mailto:|#)/i.test(label)
+              && /^(?:[./\\]|[a-z]:[\\/]|sandbox:|file:\/\/|[^\s/\\:]+[\\/])/i.test(label) && labeledFile?.id === file.id)
+            textNodes[0].nodeValue = name;
           link.setAttribute('title', name);
         }
       }
+      const artifactName = file => file.name.split(/[\\/]/).pop();
+      const artifactMeta = file => {
+        const name = artifactName(file);
+        const extension = (primitives.fileExtension ? primitives.fileExtension(name) : name.includes('.') ? name.split('.').pop() : '').toUpperCase().slice(0, 8);
+        const bytes = Number.isFinite(file.bytes) && file.bytes >= 0 ? file.bytes : undefined;
+        const size = bytes === undefined ? '' : primitives.fileSizeText ? primitives.fileSizeText(bytes) : bytes < 1024 ? bytes + 'B' : bytes < 1048576 ? Math.round(bytes / 1024) + 'KB' : (bytes / 1048576).toFixed(1) + 'MB';
+        return [extension || '文件', size].filter(Boolean).join(' ');
+      };
+      const artifactLinkStyle = `.harless-paired code[data-harless-artifact-inline],.geneloop-product-turn :not(pre)>code:has(>button){display:contents!important;background:transparent!important;border:0!important;padding:0!important;box-shadow:none!important;font:inherit!important;color:inherit!important}.harless-paired [data-harless-artifact-link],.geneloop-product-turn :not(pre)>code>button{display:inline-flex;vertical-align:baseline;align-items:baseline;gap:0;min-height:0;max-width:100%;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;color:var(--dsw-alias-link,#729cf7)!important;font:inherit!important;line-height:inherit;white-space:normal;overflow-wrap:anywhere;text-decoration:none;cursor:pointer}.harless-paired [data-harless-artifact-link] code{background:transparent!important;border:0!important;padding:0!important;font:inherit!important;color:inherit}.harless-paired [data-harless-artifact-link] svg,.geneloop-product-turn :not(pre)>code>button svg{display:none}.harless-paired [data-harless-artifact-link]:hover,.geneloop-product-turn :not(pre)>code>button:hover{text-decoration:underline;text-underline-offset:3px}.harless-paired [data-harless-artifact-link]:focus-visible,.geneloop-product-turn :not(pre)>code>button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:3px;border-radius:2px!important}`;
       // Public primitives are shared with native Chat; do not duplicate SVGs or
       // depend on private Chat components / generated CSS class names.
       const messageIcon = kind => h(primitives[({ copy: 'IconCopyOutline16', check: 'IconCheckOutline16',
@@ -585,7 +638,7 @@ window.__ModuleLoader__.load({
             document.body.appendChild(link); link.click(); link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 60000);
             state({ phase: 'success', message: '已交给浏览器下载，请查看下载列表。' });
-          } catch (e) { if (!abort.signal.aborted) state({ phase: 'error', message: networkMessage(e) + ' 点击文件重试。' }); }
+          } catch (e) { if (!abort.signal.aborted) state({ phase: 'error', message: networkMessage(e) + ' 点击下载按钮重试。' }); }
           finally { downloadBusy.current.delete(key); transferControllers.current.delete(abort); }
         };
         const labels = { preparing: '准备中', queued: '等待执行', running: '运行中', completed: '回复完成', failed: '失败', cancelled: '已取消' };
@@ -609,7 +662,7 @@ window.__ModuleLoader__.load({
           // bound answer_display may differ from raw template text; do not show
           // the unbound last message a second time in the process section.
           const previousMessages = messages.slice(0, -1);
-          const progressLabel = result.progress?.label || (!settled(result) ? labels[result.status] : '查看执行过程');
+          const progressLabel = progressText(result);
           const captureLink = event => {
             const link = event.target.closest?.('a'); if (!link) return;
             const raw = link.getAttribute('href') || '', file = artifactFor(files, raw);
@@ -620,14 +673,15 @@ window.__ModuleLoader__.load({
             }
           };
           const mentions = { resolve: raw => { const file = artifactFor(files, raw); return file ? {
-            title: file.name, label: '下载 ' + file.name.split('/').pop(), open: () => { void download(lane, file); },
+            title: artifactName(file), label: '下载 ' + artifactName(file), open: () => { void download(lane, file); },
           } : undefined; } };
           const usage = usageFacts(result), duration = result.duration_ms ?? (Number.isFinite(result.stats?.elapsed_seconds) ? result.stats.elapsed_seconds * 1000 : undefined);
           const count = value => Number.isFinite(value) ? value.toLocaleString('en-US') + ' tok' : '待统计';
           return h('section', { key: lane, className: 'harless-paired-pane' + (single ? ' harless-single-pane' : ''), 'aria-label': single ? '回复' : title,
             'data-actions-reveal': isLatestTurn ? 'always' : 'hover' },
             !single && h('header', null, h('strong', null, title), h('span', { role: 'status' }, notStarted ? '任务未启动' : result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
-            !settled(result) && h('p', { className: 'harless-live-status', role: 'status', 'aria-live': 'polite' }, h('span', { className: 'harless-live-dot', 'aria-hidden': true }), progressLabel),
+            h('style', null, liveStyle),
+            !settled(result) && liveStatus(progressLabel),
             (activity.length > 0 || previousMessages.length > 0) && h('details', { className: 'harless-activity' },
               h('summary', null, '查看执行过程'),
               activity.length > 0 && h('ol', null, ...activity.map((entry, index) => h('li', { key: index, 'data-status': entry.status },
@@ -644,18 +698,26 @@ window.__ModuleLoader__.load({
             h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, answer
               ? MarkdownText ? h(MarkdownText, { text: answer, streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
                 : h('p', { style: { whiteSpace: 'pre-wrap' } }, answer)
-              : h('p', { className: 'harless-paired-muted' }, notStarted ? '任务未启动，暂无回复。' : result.status === 'queued' ? '等待当前任务结束后开始。' : !settled(result) ? '正在处理，结果会自动更新…' : '本轮未生成文字回复。')),
+              : settled(result) && h('p', { className: 'harless-paired-muted' }, notStarted ? '任务未启动，暂无回复。' : '本轮未生成文字回复。')),
+            !settled(result) && looping(),
             files.length > 0 && h('section', { className: 'harless-paired-deliveries', 'aria-label': title + '交付文件' },
               h('h4', null, '交付文件'), h('ul', { className: 'harless-paired-files' }, ...files.map(file => {
                 const status = downloads[lane + ':' + file.id];
-                return h('li', { key: file.id }, h('a', { href: comparisonUrl(value, lane, file), download: file.name.split('/').pop(), rel: 'nofollow',
-                  'aria-disabled': status?.phase === 'pending', onClick: event => { event.preventDefault(); void download(lane, file); } },
-                  h('span', { className: 'harless-paired-filename', title: file.name }, file.name.split('/').pop()),
-                  h('span', { className: 'harless-paired-download-label' }, status?.phase === 'pending' ? '准备中…' : '下载')),
+                const name = artifactName(file);
+                return h('li', { key: file.id }, h('div', { className: 'harless-artifact-card' },
+                  h('span', { className: 'harless-artifact-icon', 'aria-hidden': true }, primitives.FileTypeIcon ? h(primitives.FileTypeIcon, { path: name }) : h('span', null, '▤')),
+                  h('span', { className: 'harless-artifact-body' },
+                    h('span', { className: 'harless-paired-filename', title: name }, name),
+                    h('span', { className: 'harless-artifact-meta' }, artifactMeta(file))),
+                  h(primitives.Tooltip, { label: status?.phase === 'pending' ? '正在准备下载…' : '下载 ' + name, side: 'bottom' },
+                    h('a', { className: 'harless-artifact-download', href: comparisonUrl(value, lane, file), download: name, rel: 'nofollow',
+                      'aria-label': '下载 ' + name, 'aria-disabled': status?.phase === 'pending', 'aria-busy': status?.phase === 'pending',
+                      onClick: event => { event.preventDefault(); void download(lane, file); } },
+                      status?.phase === 'pending' ? h('span', { className: 'harless-artifact-spinner', 'aria-hidden': true }) : h(primitives.IconDownloadOutline16, { 'aria-hidden': true })))),
                   status && h('small', { role: status.phase === 'error' ? 'alert' : 'status', className: status.phase === 'error' ? 'harless-paired-error' : 'harless-paired-muted' }, status.message));
               }))),
-            !single && result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
-            h('footer', null,
+            !single && settled(result) && result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
+            settled(result) && h('footer', null,
               h('div', { className: 'harless-message-actions', 'aria-label': title + '回复操作' },
                 actionButton({ 'aria-label': '复制 ' + title + ' 回复', disabled: !answer, onClick: () => copy(lane) }, copied === lane ? 'check' : 'copy', copied === lane ? '已复制' : '复制'),
                 ...['up', 'down'].map(vote => actionButton({ key: vote,
@@ -696,7 +758,8 @@ window.__ModuleLoader__.load({
             connection && h('p', { role: 'status', className: 'harless-paired-connection' }, connection));
         }
         return h('div', { className: 'harless-paired', 'data-comparison-id': value.id },
-          h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;container-type:inline-size;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired-pane fieldset{display:flex;flex-wrap:wrap;gap:6px;border:0;padding:0;min-width:0}.harless-paired-pane legend{font-size:12px;color:var(--dsw-alias-label-secondary,inherit);margin-bottom:8px}.harless-paired-pane fieldset label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid #8885;border-radius:8px;padding:6px 8px;min-height:32px;cursor:pointer}.harless-paired-pane label.selected{color:var(--dsw-alias-link,#729cf7);border-color:currentColor;background:#729cf719}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-pane fieldset:disabled{opacity:.45}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;margin:0 0 8px}.harless-paired-files{list-style:none;padding:0;display:grid;gap:8px}.harless-paired-files li{min-width:0}.harless-paired-files a{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 12px;border:1px solid #8884;border-radius:10px;color:var(--dsw-alias-link,#729cf7);text-decoration:none}.harless-paired-files a:hover{background:#8881}.harless-paired-filename{min-width:0;overflow-wrap:anywhere}.harless-paired-download-label{flex-shrink:0;font-size:12px}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin-top:5px}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
+          h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;container-type:inline-size;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired-pane fieldset{display:flex;flex-wrap:wrap;gap:6px;border:0;padding:0;min-width:0}.harless-paired-pane legend{font-size:12px;color:var(--dsw-alias-label-secondary,inherit);margin-bottom:8px}.harless-paired-pane fieldset label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid #8885;border-radius:8px;padding:6px 8px;min-height:32px;cursor:pointer}.harless-paired-pane label.selected{color:var(--dsw-alias-link,#729cf7);border-color:currentColor;background:#729cf719}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-pane fieldset:disabled{opacity:.45}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;font-weight:500;margin:0 0 10px}.harless-paired-files{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:10px}.harless-paired-files>li{flex:0 1 260px;min-width:0;max-width:100%}.harless-artifact-card{display:flex;align-items:center;gap:10px;box-sizing:border-box;width:100%;height:64px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l2,#8884);border-radius:16px;background:var(--dsw-specific-input-major,transparent);text-align:left}.harless-artifact-icon{display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px}.harless-artifact-icon>svg{width:28px;height:28px}.harless-artifact-body{display:flex;flex-direction:column;flex:1;min-width:0;gap:2px}.harless-paired-filename{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary,inherit);font-size:14px;font-weight:500;line-height:22px}.harless-artifact-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary,#888);font-size:12px;line-height:15px}.harless-artifact-download{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,inherit);text-decoration:none;cursor:pointer}.harless-artifact-download:hover{background:var(--dsw-alias-interactive-bg-hover,#8882);color:var(--dsw-alias-label-primary,inherit)}.harless-artifact-download:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.harless-artifact-download[aria-disabled=true]{cursor:progress;color:var(--dsw-alias-label-secondary,inherit)}.harless-artifact-spinner{box-sizing:border-box;width:14px;height:14px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:harless-artifact-spin .8s linear infinite}@keyframes harless-artifact-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.harless-artifact-spinner{animation:none;border-style:dotted}}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin:5px 4px 0;overflow-wrap:anywhere}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
+          h('style', null, artifactLinkStyle),
           h('style', null, `.harless-single-pane{border:0;border-radius:0;padding:0;background:transparent}.harless-activity{font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary,inherit);margin:12px 0}.harless-activity summary{cursor:pointer}.harless-activity ol{padding-left:20px;margin:8px 0}.harless-activity li{padding:4px 0}.harless-activity li small{margin-left:12px}.harless-activity li[data-status=running]{color:var(--dsw-alias-state-business-primary,#729cf7)}`),
           h('style', null, `.harless-message-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:calc(28px + var(--dsh-content-font-delta,0px));margin-left:-6px;color:var(--dsw-alias-label-tertiary)}
 .harless-paired .harless-message-icon{display:inline-flex;align-items:center;justify-content:center;width:calc(28px + var(--dsh-content-font-delta,0px));height:calc(28px + var(--dsh-content-font-delta,0px));padding:6px;border:0;border-radius:28px;flex:none;color:var(--dsw-alias-label-tertiary)}
@@ -833,36 +896,46 @@ window.__ModuleLoader__.load({
           publishModel();
           const unsubscribe = native.directory.subscribe(publishModel);
           const prompt = face?.prompt;
+          const beginSubmission = face?.beginSubmission, submissions = new Map();
+          const beginEcho = beginSubmission && function (input) {
+            let handle;
+            handle = beginSubmission.call(this, { ...input, onRetire: settlement => {
+              submissions.delete(handle?.requestId); input.onRetire?.(settlement);
+            } });
+            submissions.set(handle.requestId, handle); return handle;
+          };
+          if (beginEcho) face.beginSubmission = beginEcho;
           const queuedPrompt = prompt && function (...args) {
             const selection = latestChoice;
             return enqueue(async () => {
               if (!await selection) throw Error('模型切换未成功，消息尚未发送，请确认模型后重试。');
               if (args[2]?.aborted) throw Error('发送已取消。');
               return prompt.apply(this, args);
-            });
+            }).catch(error => { submissions.get(args[3])?.abandon(); throw error; });
           };
           if (queuedPrompt) face.prompt = queuedPrompt;
           scope.effect(() => () => {
             disposed = true; unsubscribe(); listeners.clear(); modelChoices.delete(id);
             if (queuedPrompt && face.prompt === queuedPrompt) face.prompt = prompt;
+            if (beginEcho && face.beginSubmission === beginEcho) face.beginSubmission = beginSubmission;
           }, 'geneloop: model selection queue');
           modelChoices.set(id, value); return value;
         }
-        function wrapWebSeat(name, adapt) {
+        function wrapWebSeat(name, adapt, options = {}) {
           ctx.slots.inject(name, () => {
             let release, mirrors = [], installing = false;
             const install = () => {
               if (release || installing) return;
-              const original = ctx.slots.entries(name).find(entry => (entry.options.priority ?? 0) >= 0);
+              const original = ctx.slots.entries(name).find(entry => (entry.options.priority ?? 0) >= 0 && (!options.id || entry.options.id === options.id));
               if (!original) return;
               installing = true;
               try {
                 const names = Object.fromEntries(Object.keys(original.children || {}).map(child => [child, 'geneloop.web.' + child]));
                 const children = Object.fromEntries(Object.entries(original.children || {}).map(([child, spec]) => [names[child], spec]));
-                release = ctx.slots.register({ name, priority: -100, locale: original.locale,
+                release = ctx.slots.register({ name, ...original.options, priority: -100, locale: original.locale,
                   ...(original.store ? { store: original.store } : {}), ...(original.select ? { select: original.select } : {}),
                   children, inject: (...args) => adapt(original.inject?.(...args) || {}, args[0]) }, props => h(original.component, {
-                  ...props, renderSlot: (child, owner, options) => props.renderSlot(names[child] || child, owner, options),
+                  ...props, ...(options.renderProps?.(props) || {}), renderSlot: (child, owner, options) => props.renderSlot(names[child] || child, owner, options),
                   ...(props.renderSlotChain ? { renderSlotChain: (child, owner, options) => props.renderSlotChain(names[child] || child, owner, options) } : {}),
                 }));
                 mirrors = Object.keys(names).map(child => mirrorPublicSlot(child, names[child]));
@@ -874,6 +947,7 @@ window.__ModuleLoader__.load({
         }
         wrapWebSeat('conversation.composer.bar', (props, id) => {
           if (id) webMenu(id);
+          if (id && props.addFiles) uploads.set(id, props.addFiles);
           const launcher = props.hooks?.menuLauncher;
           return { ...props, command: undefined,
             ...(launcher ? { hooks: { ...props.hooks, menuLauncher: {
@@ -889,6 +963,34 @@ window.__ModuleLoader__.load({
           } : props.toggleCommandMenu };
         });
         wrapWebSeat('conversation.input.model', (props, id) => optimisticModel(id, props));
+        wrapWebSeat('conversation.view', props => props, { id: 'chat',
+          renderProps: props => ({ t: (key, ...args) => key === 'chat.deepDiving' ? 'GeneLooping…' : props.t(key, ...args) }) });
+        // Only adapt display data. The native controller still owns keyboard
+        // navigation, focus, outside-click dismissal and atomic reference picks.
+        const menuFaces = new WeakMap();
+        function menuIcon(item) {
+          const key = item.value, color = key === 'ppt' ? '#c28b42' : key === 'research-data-analysis' ? '#42a99b' : key === 'paper-proofreading' ? '#729cf7' : 'currentColor';
+          const paths = key === 'ppt' ? ['M3 4h18v12H3zM12 16v5M8 21l4-5 4 5M7 8h10M7 12h6']
+            : key === 'research-data-analysis' ? ['M4 3v17h17M8 16v-5M13 16V7M18 16V4']
+            : key === 'paper-proofreading' ? ['M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6']
+            : ['M8 13l7-7a3 3 0 0 1 4 4l-9 9a5 5 0 0 1-7-7l9-9a7 7 0 0 1 10 10l-8 8'];
+          return h('svg', { width: 19, height: 19, viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth: 1.6,
+            strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, ...paths.map(d => h('path', { key: d, d })));
+        }
+        wrapWebSeat('conversation.input.overlay', props => {
+          if (!props.menu) return props;
+          if (!menuFaces.has(props.menu)) {
+            let before, snapshot;
+            menuFaces.set(props.menu, { subscribe: fn => props.menu.subscribe(fn), getSnapshot: () => {
+              const next = props.menu.getSnapshot();
+              if (next !== before) { before = next; snapshot = { ...next, groups: next.groups.map(group => group.source !== 'harless-scenes' ? group : {
+                ...group, items: group.items.map(item => ({ ...item, icon: undefined,
+                  name: h('span', { className: 'geneloop-menu-name', style: { display: 'inline-flex', alignItems: 'center', gap: 10 } }, menuIcon(item), item.name) })) }) }; }
+              return snapshot;
+            } });
+          }
+          return { ...props, menu: menuFaces.get(props.menu) };
+        }, { id: 'slash-menu' });
       }
       // The pinned native tab roster enumerates shadowed entries as well as
       // winners. Adapt only the header's public source to one tab per id; keep
@@ -1132,14 +1234,19 @@ window.__ModuleLoader__.load({
         const messageCount = evidence.filter(row => row.kind === 'assistant-step' && hasAnswer(row)).length;
         const hasProcess = evidence.length > 0 || reasoning.length > 0;
         const active = tools.findLast(row => row.data.root.kind !== 'tool-result');
-        const status = active ? '正在' + toolLabel(active.data.root) : answer?.data.status === 'running' && hasAnswer(answer) ? '正在回复' : '正在处理';
+        const activeRoot = active?.data.root;
+        const latestBlock = answer?.data.blocks?.at(-1);
+        const status = activeRoot ? workLabel(activeRoot.call?.name || activeRoot.name, documentSubject(activeRoot.call?.argsRaw || activeRoot.argsRaw))
+          : latestBlock?.kind === 'reasoning' && answer?.data.status === 'running' ? '正在思考' : '正在回复';
         const label = count ? `${count} 次工具调用${messageCount ? ` · ${messageCount} 条过程消息` : ''}` : '查看处理过程';
         return h('section', { className: 'geneloop-product-turn' },
+          h('style', null, artifactLinkStyle),
+          h('style', null, liveStyle),
           h('style', null, `.geneloop-product-turn{min-width:0}.geneloop-process-toggle{display:flex;align-items:center;gap:8px;border:0;border-radius:8px;padding:7px 9px;margin:0 0 8px -9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer;text-align:left}.geneloop-process-toggle:hover{background:var(--dsw-alias-interactive-bg-hover)}.geneloop-process-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.geneloop-process-toggle svg{flex:none;transition:transform .15s}.geneloop-process-toggle[aria-expanded=true] svg{transform:rotate(90deg)}.geneloop-process-evidence{border-left:2px solid var(--dsw-alias-border-l2,#8885);padding-left:14px;margin:4px 0 18px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.geneloop-process-evidence>section{margin:12px 0}.geneloop-process-evidence pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.geneloop-process-label{font-weight:500}.geneloop-process-status{font-size:13px;color:var(--dsw-alias-label-secondary);margin:0 0 8px}@media(prefers-reduced-motion:reduce){.geneloop-process-toggle svg{transition:none}}`),
+          running && liveStatus(status),
           hasProcess && h('button', { type: 'button', className: 'geneloop-process-toggle', 'aria-expanded': open, 'aria-controls': id,
             onClick: () => setOpen(value => !value) },
             h('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, 'aria-hidden': true }, h('path', { d: 'm4 2 4 4-4 4' })), label),
-          running && h('p', { role: 'status', 'aria-live': 'polite', className: 'geneloop-process-status' }, status + '…'),
           h('div', { id, className: 'geneloop-process-evidence', hidden: !open }, open && [
             ...evidence.map(row => row.kind === 'assistant-step'
               ? h('section', { key: row.key }, h('div', { className: 'geneloop-process-label' }, '过程消息'), h(AssistantContent, { node: row, owner, process: true }))
@@ -1227,7 +1334,7 @@ window.__ModuleLoader__.load({
             pendingSubmissions.delete(pending);
             if (settlement.reason === 'observed' && version === (choiceVersions.get(id) || 0)) {
               revisions.set(id, (revisions.get(id) || 0) + 1);
-              draftSelections.delete(id);
+              displaySelection(id, knownDraftScene(id, inputFor(id).state.getSnapshot().draft) || 'new-scene');
               const value = cache.get(id);
               if (value) publish(id, { ...value, selection: { ...value.selection, scene: 'new-scene' }, paired_comparison: false });
             }
@@ -1243,8 +1350,11 @@ window.__ModuleLoader__.load({
           // Native sends clear the draft before acceptance. The callback above
           // resets only the next input; the server owns the frozen running task.
           if (pendingSubmissions.size && !next.draft.trim()) return;
-          const removed = knownDraftScene(id, before.draft);
-          if (removed && removed !== 'new-scene' && !knownDraftScene(id, next.draft)) void resetScene(session);
+          const removed = knownDraftScene(id, before.draft), selected = knownDraftScene(id, next.draft);
+          // Typed/pasted commands and native space-to-chip insertion do not
+          // pass through onPick. The badge still describes this draft now.
+          displaySelection(id, selected || 'new-scene');
+          if (removed && removed !== 'new-scene' && !selected) void resetScene(session);
         });
         draftWatches.set(id, () => { off(); if (beginSubmission) face.beginSubmission = beginSubmission; });
       }
@@ -1263,7 +1373,7 @@ window.__ModuleLoader__.load({
           // The visible conversation owns the scene choice. Immutable tool
           // agents are rotated privately by the server; drafts never move.
           const next = await request(session, { action: 'select', session_id: id, selection: { scene: 'new-scene' } });
-          if (current()) draftSelections.delete(id);
+          if (current()) displaySelection(id, knownDraftScene(id, inputFor(id).state.getSnapshot().draft) || 'new-scene');
           publish(id, next); // Canonical state may change under a newer draft overlay.
         })();
         choosing.set(id, operation);
@@ -1337,7 +1447,8 @@ window.__ModuleLoader__.load({
             && !knownDraftScene(session.sessionId, oldInput.state.getSnapshot().draft)) {
             void resetScene(session); throw cancelledChoice();
           }
-          draftSelections.delete(session.sessionId); clearResetBlock(session.sessionId); publish(session.sessionId, next);
+          displaySelection(session.sessionId, knownDraftScene(session.sessionId, oldInput.state.getSnapshot().draft) || 'new-scene');
+          clearResetBlock(session.sessionId); publish(session.sessionId, next);
           // A manual pick only selects; typing while its mount completes is
           // normal. Keep those edits. Automatic handoff still requires CAS.
           if (optimistic && !automatic && !sameDraft(oldInput, expectedSpan, initial.attachmentIds))
@@ -1371,45 +1482,49 @@ window.__ModuleLoader__.load({
           if (!/^[a-z0-9_-]*$/.test(query)) return [];
           const value = cache.get(session.sessionId) || await settings(session, req.signal);
           if (req.signal?.aborted) return [];
-          return value.scenes.filter(scene => shortcut(scene).startsWith(query)).map(scene => ({
-            name: shortcut(scene), value: scene.id, section: 'Scenes', description: scene.available === false
-              ? `暂不可用：${scene.unavailable_reason}` : scene.label,
-          }));
+          return [...(!query && uploads.has(session.sessionId) ? [{ name: '添加照片或文件', value: 'upload', section: '添加', description: '从电脑上传' }] : []),
+            ...value.scenes.filter(scene => selectableScene(scene) && shortcut(scene).startsWith(query)).map(scene => ({
+            name: shortcut(scene), value: scene.id, section: '场景', description: scene.available === false
+              ? `暂不可用：${scene.unavailable_reason}` : ({ ppt: '演示文稿', 'paper-proofreading': '论文校对', 'research-data-analysis': '数据分析' })[scene.id] || scene.label,
+          }))];
         },
-        onPick: pick => { void chooseScene(pick.session, pick.candidate.value, pick.span).catch(error => report(pick.session, error)); return 'handled'; },
+        onPick: pick => {
+          if (pick.candidate.value === 'upload') {
+            if (!isCurrent(pick.session)) return 'handled';
+            const input = document.createElement('input'); input.type = 'file'; input.multiple = true; input.hidden = true;
+            const remove = () => input.remove();
+            input.oncancel = remove;
+            input.onchange = () => {
+              if (isCurrent(pick.session) && input.files?.length) {
+                const error = uploads.get(pick.session.sessionId)?.(Array.from(input.files));
+                if (error) report(pick.session, Error(error));
+              }
+              remove();
+            };
+            document.body.appendChild(input); input.click(); return 'handled';
+          }
+          void chooseScene(pick.session, pick.candidate.value, pick.span).catch(error => report(pick.session, error)); return 'handled';
+        },
         matchSpace: (session, token) => {
           const scene = cache.get(session.sessionId)?.scenes.find(row => '/' + shortcut(row) === token.toLowerCase());
           // Hot, synchronous native insertion. Selection is confirmed by the
           // Enter hook, so typing quickly cannot send with a previous scene.
           return scene?.available !== false && scene ? { insert: reference(scene) } : undefined;
         },
-        matchEnter: async (session, line, signal) => {
+        matchEnter: (session, line, signal) => {
           const token = sceneToken(line);
           if (!token) return;
           const name = token[2].toLowerCase(), hot = cache.get(session.sessionId);
           if (hot && !hot.scenes.some(scene => shortcut(scene) === name)) return;
-          const pending = choosing.get(session.sessionId);
-          if (pending) await pending.catch(() => {});
           if (!isCurrent(session)) return 'handled';
-          const guard = watchSession(session, signal);
-          try {
-          let value;
-          try { value = await settings(session, guard.signal); }
-          catch (error) { if (!isCurrent(session)) return 'handled'; throw error; }
-          if (!isCurrent(session)) return 'handled';
-          const scene = value.scenes.find(row => shortcut(row) === name);
-          if (!scene) return;
-          if (scene.available === false) throw Error('该场景暂不可用：' + (scene.unavailable_reason || '未部署'));
-          if (signal.aborted) throw Error('场景选择已取消，输入已保留');
-          if (value.selection.scene === scene.id) return;
-          try {
-            const selected = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: scene.id } }, guard.signal);
-            if (!isCurrent(session) || guard.signal.aborted) return 'handled';
-            publish(session.sessionId, selected);
-          } catch (error) { if (!isCurrent(session) || guard.signal.aborted) return 'handled'; throw error; }
-          } finally { guard.dispose(); }
+          const scene = hot?.scenes.find(row => shortcut(row) === name);
+          if (scene?.available === false) throw Error('该场景暂不可用：' + (scene.unavailable_reason || '未部署'));
+          if (signal?.aborted) throw Error('场景选择已取消，输入已保留');
+          // The native sender paints its message/attachment echo before I/O.
+          // The server parses this exact prefix atomically during admission;
+          // fetching or mounting a scene here would block that first paint.
         },
-        lexicon: session => cache.get(session.sessionId)?.scenes.map(shortcut),
+        lexicon: session => cache.get(session.sessionId)?.scenes.filter(selectableScene).map(shortcut),
         subscribeLexicon: (session, listener) => {
           const group = lexiconObservers.get(session.sessionId) || new Set(); group.add(listener); lexiconObservers.set(session.sessionId, group);
           return () => { group.delete(listener); if (!group.size) lexiconObservers.delete(session.sessionId); };
@@ -1453,7 +1568,7 @@ window.__ModuleLoader__.load({
         },
       } }), 'harless: native command picker');
       ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
-        { name: 'conversation.input.left', id: 'harless-status', order: 40, inject: sessionId => ({ sessionId, openSession: id => sessions.open(id) }) }, HarlessStatus));
+        { name: 'conversation.input.left', id: 'harless-status', order: 40, inject: sessionId => ({ sessionId, draftInput: inputFor(sessionId), openSession: id => sessions.open(id) }) }, HarlessStatus));
     }
     return { inject, apply };
   },

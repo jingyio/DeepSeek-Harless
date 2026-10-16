@@ -15,7 +15,8 @@ def load_product_bundle(root: Path, directory: Path, scene: str):
     entry_path = base / 'entry.json'
     entry = json.loads(entry_path.read_text())
     expected = {'ppt': 'ppt_read_v1', 'research-data-analysis': 'data_receipts_v3', 'paper-proofreading': 'paper_shadow_v1'}
-    if entry.get('schema_version') != 1 or entry.get('scene') != scene or entry.get('runtime_kind') != expected.get(scene) or entry.get('new_training') is not False:
+    learned_ppt=scene=='ppt' and entry.get('runtime_kind')=='ppt_read_v2'
+    if entry.get('schema_version') != 1 or entry.get('scene') != scene or (not learned_ppt and entry.get('runtime_kind') != expected.get(scene)) or entry.get('new_training') is not learned_ppt:
         raise ValueError('invalid existing product library')
     for name, version in entry['files'].items():
         p = base / name
@@ -23,6 +24,27 @@ def load_product_bundle(root: Path, directory: Path, scene: str):
             raise ValueError('product library artifact changed')
     info = {'runtime_kind': entry['runtime_kind'], 'runtime_mode': entry['mode'],
             'runtime_library': str(base / 'library.json'), 'runtime_library_sha256': sha(base / 'library.json')}
+    if learned_ppt:
+        required={'certification.json','library.json','online-manifest.json','task.json','tool-schemas.json','source-evidence.json','learning-report.json'}
+        if not required.issubset(entry['files']) or entry.get('mode')!='execute':
+            raise ValueError('learned PPT release lacks locked evidence')
+        cert=json.loads((base/'certification.json').read_text())
+        evidence=json.loads((base/'source-evidence.json').read_text())
+        if (cert.get('binding_policy')!='ppt_uploaded_sources_v2' or
+                cert.get('source_evidence_sha256')!=sha(base/'source-evidence.json') or
+                cert.get('learning_report_sha256')!=sha(base/'learning-report.json') or
+                len(evidence.get('train',[]))<2 or len(evidence.get('heldout',[]))<1):
+            raise ValueError('learned PPT independent evidence missing')
+        from .task_identity import require_distinct_decisions
+        require_distinct_decisions([*evidence['train'],*evidence['heldout']])
+        report=json.loads((base/'learning-report.json').read_text())
+        schemas=json.loads((base/'tool-schemas.json').read_text())
+        if (report.get('new_training') is not True or report.get('quality_cost_promoted') is not False or
+                report.get('training_tasks')!=len(evidence['train']) or report.get('heldout_tasks')!=len(evidence['heldout']) or
+                len(schemas)!=21 or len({s['name'] for s in schemas})!=21 or
+                'tool-schema-variants.json' not in entry['files']):
+            raise ValueError('learned PPT release metadata or whole schemas invalid')
+        return {**info,**load_uploaded_bundle(root,base,'ppt')}
     if scene == 'ppt':
         # Original training certificate stays immutable. Current-code admission
         # is a separate, reviewed compatibility record, never a new training run.
@@ -56,13 +78,13 @@ def load_product_bundle(root: Path, directory: Path, scene: str):
 def load_uploaded_bundle(root: Path, directory: Path, scene: str, *, approved_read: bool = False):
     if scene not in ('ppt', 'paper-proofreading', 'research-data-analysis', 'literature'):
         raise ValueError('unsupported uploaded scene')
-    policy = 'approved_uploaded_reads_v1' if approved_read else ('ppt_uploaded_sources_v1' if scene == 'ppt' else 'uploaded_source_handles_v1')
+    policies = ('approved_uploaded_reads_v1',) if approved_read else (('ppt_uploaded_sources_v1','ppt_uploaded_sources_v2') if scene == 'ppt' else ('uploaded_source_handles_v1',))
     base=directory.resolve(strict=True)
     cert_path=base/'certification.json'
     if cert_path.is_symlink() or cert_path.stat().st_size>1000000: raise ValueError('invalid certification')
     cert=json.loads(cert_path.read_text())
     if (not isinstance(cert,dict) or cert.get('schema_version')!=1 or cert.get('scene')!=scene or
-        cert.get('binding_policy')!=policy or cert.get('matching_policy')!='structural_only' or
+        cert.get('binding_policy') not in policies or cert.get('matching_policy')!='structural_only' or
         cert.get('certification_scope')!='independent_trace_structure' or not isinstance(cert.get('code_locks'),dict) or
         not 1<=len(cert['code_locks'])<=512 or not isinstance(cert.get('file_locks'),dict) or
         any(not isinstance(v,str) or not re.fullmatch(r'[a-f0-9]{64}',v) for v in

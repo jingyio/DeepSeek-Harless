@@ -38,6 +38,8 @@
     "mcp__ppt__render_delivery",
     "mcp__ppt__revise_delivery",
     "mcp__ppt__pin_deck_pages",
-    "mcp__ppt__read_pinned_deck_pages"
+    "mcp__ppt__read_pinned_deck_pages",
+    "mcp__ppt__read_pending_plan",
+    "mcp__ppt__repair_pending_plan"
   ]
 }

@@ -38,6 +38,13 @@ test('PPT binding uses approved current versions and never guesses a source hand
     const binding=bindUploadedPptTask(root,inputs,request,manifest);
     assert.deepEqual(binding.bindings,{});assert.equal(binding.source_versions.mcp__ppt__read_source,version);
     assert.equal(binding.task_id,'task-a');assert.equal(binding.session_id,'session-a');
+    const pages={version_fields:{...manifest.version_fields,mcp__ppt__pin_deck_pages:'version_sha256',mcp__ppt__read_pinned_deck_pages:'version_sha256'}};
+    const expanded=bindUploadedPptTask(root,inputs,request,pages);
+    const expectedDeck=createHash('sha256').update('["'+version+'"]').digest('hex');
+    assert.equal(expanded.source_versions.mcp__ppt__read_pinned_deck_pages,expectedDeck);
+    assert.notEqual(expectedDeck,version);assert.deepEqual(expanded.bindings,{});
+    assert.throws(()=>bindUploadedPptTask(root,inputs,request,{version_fields:{...pages.version_fields,mcp__ppt__render_deck:'input_version'}}),/binding_tools_unsupported/);
+    assert.throws(()=>bindUploadedPptTask(root,inputs,request,{version_fields:{...manifest.version_fields,mcp__ppt__pin_deck_pages:'version_sha256'}}),/binding_tools_unsupported/);
     const {parseStructuredTask}=await import('../src/motif_core/online_skill_runtime.mjs');
     const certified=JSON.parse(readFileSync(new URL('../motif-libraries/ppt/online-manifest.json',import.meta.url)));
     for(const instruction of ['上下文\n当前请求','长请求'.repeat(800)]){

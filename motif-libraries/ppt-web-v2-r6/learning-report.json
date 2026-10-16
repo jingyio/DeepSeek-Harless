@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "new_training": true,
+  "method": "existing_witnessed_edge_compiler",
+  "training_tasks": 2,
+  "heldout_tasks": 1,
+  "artifacts": 2,
+  "library_digest": "a76c43648c189046bed414c2acc45587e725a7974057446193c251fa6ab3372f",
+  "manifest_digest": "7541b5d40ad39dbff098d73e8b1869142179f3f8b772049efcbe140a4135ce9d",
+  "evidence_sha256": "b62d1beeacf6603fc18e40129878eb20574f411610a1157f8169be468a542882",
+  "compilation_model_requests": 0,
+  "compilation_seconds": 0.5923684304580092,
+  "trace_collection_requests": 85,
+  "trace_collection_proxy_usd": 0.09388814399999998,
+  "scientific_review_kind": "ai-assisted",
+  "all_collection_decks_quality_passed": false,
+  "quality_cost_promoted": false,
+  "actual_paid_usd": null,
+  "scope": "structural_read_reuse_not_slide_content_or_host_script_learning",
+  "excluded_collection": [
+    {
+      "task_id": "d19178adabc141fabcc4d1329c8359a4",
+      "status": "completed",
+      "events_sha256": "2f51c5533be8fd7621f0109f858e900351b9773de42c2d08b33924d4efe4ad55",
+      "requests": 18,
+      "denials": 0,
+      "proxy_peak_usd": 0.02726842799999997,
+      "actual_paid_usd": null
+    },
+    {
+      "task_id": "d19178ad39c648918bfd5ebd192b50cb",
+      "status": "budget_exhausted",
+      "events_sha256": "900d92f81847554679f334b1e53bd535b7d0bc0ecdd90688e52418f4e0cd3338",
+      "requests": 16,
+      "denials": 1,
+      "proxy_peak_usd": 0.027219671999999986,
+      "actual_paid_usd": null
+    },
+    {
+      "task_id": "d19178add8224e0c802e7ec0d40688f7",
+      "status": "budget_exhausted",
+      "events_sha256": "5a04fdeaf0facae259ed74dc9de0c3a892895c3eeb6030249adb5479fad5c6f9",
+      "requests": 12,
+      "denials": 1,
+      "proxy_peak_usd": 0.02431656000000003,
+      "actual_paid_usd": null
+    },
+    {
+      "task_id": "d19178add86642a79debfd81a54f871f",
+      "status": "completed",
+      "events_sha256": "1507cc167536cb7ca089d511fc503e3c258a88a8550f6b01ff303a17bb5d3ed6",
+      "requests": 22,
+      "denials": 0,
+      "proxy_peak_usd": 0.027023195999999992,
+      "actual_paid_usd": null
+    },
+    {
+      "task_id": "d19178ad6e7543af8c89192e4257ce95",
+      "status": "budget_exhausted",
+      "events_sha256": "752d52be509e2d8e5464bc2f86d997ec814e91ab5d800e9f165fa664bf25cdc1",
+      "requests": 24,
+      "denials": 1,
+      "proxy_peak_usd": 0.032547144,
+      "actual_paid_usd": null
+    }
+  ],
+  "learning_total_requests": 177,
+  "learning_total_proxy_usd": 0.23226314399999995,
+  "recompilation_of_manifest_digest": "8157499070e2f41c84f1f2e5f3e2625ed1b2a182efbc93a6d8bb3e0b50249e44",
+  "previous_manifest_file_sha256": "8eea6ce3aae3ca2d86c351b1d3e93030e29e9eed2a7f2a358e2d77be3af208b5",
+  "new_collection_tasks_for_recompilation": 0,
+  "compatibility_scope": "PR42 recompiles the same independently collected train/heldout normal traces with current merged shared adapters. Witnessed read artifacts are identical; recompiled library provenance updates both library/manifest digests; paper guards and Shadow audit added, PPT v2 source/deck bindings and tool contracts retained. No new collection, training-quality claim or model requests. Actual whole-schema checks and regression recorded separately.",
+  "schema_capture_sha256": "fbfe615d85bca6f469387a811b96bcac006fe4db8bd76cb3aed6442841f89fc6"
+}

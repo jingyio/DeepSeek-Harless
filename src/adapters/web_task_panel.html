@@ -72,11 +72,11 @@
             <div class="field"><label for="profile">能力配置</label><input id="profile" placeholder="留空使用服务默认配置" autocomplete="off"><small>填写当前服务已登记的场景标识。</small></div>
             <div class="field"><label for="mode">执行模式</label><select id="mode"><option value="baseline">baseline · 普通 Harness</option><option value="shadow">shadow · 观察 Motif</option><option value="execute">execute · 启用 Motif</option></select></div>
           </div>
-          <div id="budget-field" class="field"><label for="budget">任务预算上限（美元）</label><input id="budget" type="number" min="0" step="0.01" value="0.25"><small>真实模型执行前会显示预览，需明确确认。</small></div>
+          <div id="budget-field" class="field"><label for="budget">任务预算上限（美元，可选）</label><input id="budget" type="number" min="0" step="0.01" placeholder="不限"><small>留空表示不限；填写 0 表示禁止付费请求。</small></div>
           <details><summary>资料引用（JSON，可选）</summary><p class="muted">填写已登记的来源标识和版本，不能直接填写本地电脑文件路径。</p><textarea id="inputs" placeholder='[{"resource_id":"source-001","version":"v1"}]' spellcheck="false"></textarea></details>
           <div class="field" style="margin-top:17px"><label for="images">图片（可选）</label><input id="images" type="file" accept="image/png,image/jpeg,image/webp" multiple><small>每张最多 256 KiB。是否可用于模型输入，以后端预览结果为准。</small><p id="image-summary" class="muted"></p></div>
         </div>
-        <div id="json-fields" hidden><label for="json-request">任务请求 JSON</label><textarea id="json-request" style="min-height:300px" spellcheck="false" placeholder='{"instruction":"检查资料","capability_profile":"example","mode":"baseline","budget_usd":0.25,"inputs":[]}'></textarea><small>JSON 中的 mode 和 budget_usd 原样交给后端，文字表单不会覆盖它们。</small></div>
+        <div id="json-fields" hidden><label for="json-request">任务请求 JSON</label><textarea id="json-request" style="min-height:300px" spellcheck="false" placeholder='{"instruction":"检查资料","capability_profile":"example","mode":"baseline","budget_usd":null,"inputs":[]}'></textarea><small>JSON 中的 mode 和 budget_usd 原样交给后端，文字表单不会覆盖它们。</small></div>
         <div class="field" style="margin-top:17px"><label for="files">附加文件（可选）</label><input id="files" type="file" multiple><small>每个文件最多 256 KiB。发送时先建立任务会话，再上传并绑定资料。</small><p id="file-status" class="muted" aria-live="polite"></p></div>
         <div class="notice">baseline 按普通流程执行；shadow 只记录候选；execute 仅在证据和守卫满足时接管。缺少可用 Motif 时应继续普通流程。</div>
         <p id="provider-label" class="muted" aria-live="polite">正在确认模型通道…</p>
@@ -132,7 +132,7 @@ async function requestValue() {
   const instruction = $('instruction').value.trim(); if (!instruction) throw new Error('请填写任务要求。');
   const inputs = $('inputs').value.trim() ? JSON.parse($('inputs').value) : []; if (!Array.isArray(inputs)) throw new Error('资料引用必须是 JSON 数组。');
   const request = {instruction,mode:$('mode').value,inputs};
-  if (providerMode!=='mock') request.budget_usd=Number($('budget').value);
+  if (providerMode!=='mock') request.budget_usd=$('budget').value.trim()==='' ? null : Number($('budget').value);
   if ($('profile').value.trim()) request.capability_profile=$('profile').value.trim();
   const content = [{type:'text',text:instruction}];
   for (const file of $('images').files) { if (!['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error(`不支持图片类型：${file.name}`); content.push({type:'image',mediaType:file.type,data:await fileBytes(file,256*1024),name:file.name}); }
@@ -144,7 +144,7 @@ function showPreview(value) {
   updateProvider(value.provider_mode);
   $('preview-title').textContent=freeTask(value) ? '任务已准备，可继续免费联调':'确认本次任务';
   $('submit-button').textContent=freeTask(value) ? '继续免费联调':'确认并执行';
-  const rows = [['模式',value.mode],['能力配置',value.capability_profile],['模型通道',providerLabels[value.provider_mode] || '尚未确认'],...(freeTask(value)?[]:[['预算上限',value.budget_usd === undefined ? undefined : `$${money(value.budget_usd)}`]]),['实际付费',value.paid_calls_enabled ? '已启用，请核对授权':'未启用'],['输入',value.input_preview || (typeof value.input_summary==='string' ? value.input_summary:JSON.stringify(value.input_summary ?? {}))],...(value.papers ? [['论文', value.papers.map(p=>p.filename).join('；')]] : []),['任务标识',value.task_id],['会话标识',value.session_id]];
+  const rows = [['模式',value.mode],['能力配置',value.capability_profile],['模型通道',providerLabels[value.provider_mode] || '尚未确认'],...(freeTask(value)?[]:[['预算上限',value.budget_usd === null ? '不限' : value.budget_usd === undefined ? undefined : `$${money(value.budget_usd)}`]]),['实际付费',value.paid_calls_enabled ? '已启用，请核对授权':'未启用'],['输入',value.input_preview || (typeof value.input_summary==='string' ? value.input_summary:JSON.stringify(value.input_summary ?? {}))],...(value.papers ? [['论文', value.papers.map(p=>p.filename).join('；')]] : []),['任务标识',value.task_id],['会话标识',value.session_id]];
   $('preview-summary').innerHTML='<dl>'+rows.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(fmt(value))}</dd>`).join('')+'</dl>';
   $('submit-button').disabled = pending || !value.task_id || !value.confirmation_digest || !!pendingFiles.length;
   $('upload-button').disabled = pending || !pendingFiles.length;
@@ -177,7 +177,7 @@ async function resumeDraft(id) { const value=await api(null,'?task_id='+encodeUR
 let refreshing=false, budgetInitialized=false;
 async function refresh() {
   if(refreshing)return; refreshing=true;
-  try { const response=await api(); const tasks=Array.isArray(response) ? response:response.tasks || response.items || []; updateProvider(response.provider_mode); if(response.scene_input_policy==='registered_pdf_directory'){ $('images').closest('.field').hidden=true; $('files').closest('.field').hidden=true; $('instruction').placeholder='例如：比较这些论文的方法、实验证据和限制，对构建高效科研 Agent 有什么启示？'; $('provider-label').textContent+=' · 使用当前服务登记的全部PDF；自动复核后直接交付，缺口明确显示。'; } if(!budgetInitialized && response.budget_usd!==undefined){$('budget').value=response.budget_usd;$('budget').max=response.budget_usd;budgetInitialized=true;} if(response.capability_profile && !$('instruction').value && !$('json-request').value) $('profile').value=response.capability_profile; $('connection').textContent=`${providerLabels[providerMode] || '通道待确认'} · 已连接 · ${tasks.length} 项任务 · 每 2 秒更新`; $('tasks').innerHTML=tasks.length ? tasks.map(taskCard).join(''):`<p class="muted">尚未提交任务。${providerMode==='mock'?'填写要求后，即可开始免费联调。':'先生成预览，确认后执行。'}</p>`; if(selectedTask)await detail(selectedTask); }
+  try { const response=await api(); const tasks=Array.isArray(response) ? response:response.tasks || response.items || []; updateProvider(response.provider_mode); if(response.scene_input_policy==='registered_pdf_directory'){ $('images').closest('.field').hidden=true; $('files').closest('.field').hidden=true; $('instruction').placeholder='例如：比较这些论文的方法、实验证据和限制，对构建高效科研 Agent 有什么启示？'; $('provider-label').textContent+=' · 使用当前服务登记的全部PDF；自动复核后直接交付，缺口明确显示。'; } if(!budgetInitialized && response.budget_usd!==undefined){$('budget').value=response.budget_usd ?? '';if(response.budget_usd===null)$('budget').removeAttribute('max');else $('budget').max=response.budget_usd;budgetInitialized=true;} if(response.capability_profile && !$('instruction').value && !$('json-request').value) $('profile').value=response.capability_profile; $('connection').textContent=`${providerLabels[providerMode] || '通道待确认'} · 已连接 · ${tasks.length} 项任务 · 每 2 秒更新`; $('tasks').innerHTML=tasks.length ? tasks.map(taskCard).join(''):`<p class="muted">尚未提交任务。${providerMode==='mock'?'填写要求后，即可开始免费联调。':'先生成预览，确认后执行。'}</p>`; if(selectedTask)await detail(selectedTask); }
   catch(error){$('connection').textContent=error.message;} finally{refreshing=false;}
 }
 $('refresh').onclick=refresh;

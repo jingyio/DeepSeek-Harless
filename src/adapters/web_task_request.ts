@@ -19,8 +19,8 @@ export type RequestContext = {
   task_id: string;
   session_id: string;
   default_mode: ExecutionMode;
-  default_budget_usd: number;
-  max_budget_usd: number;
+  default_budget_usd: number | null;
+  max_budget_usd: number | null;
   default_profile: string;
   allowed_profiles: readonly string[];
   /** Encoded image payload safety limit; user text is not length-capped. */
@@ -43,7 +43,7 @@ export type NormalizedWebTask = {
   content: PromptPart[];
   resources: ResourceReference[];
   mode: ExecutionMode;
-  budget_usd: number;
+  budget_usd: number | null;
   /** 单文本保持其原始 SHA；其他形式覆盖整个有序内容。 */
   prompt_sha256: string;
   /** 始终覆盖全部文本、媒体 payload、receipt、显示名称和顺序。 */
@@ -101,7 +101,8 @@ function mode(value: unknown, field: string): ExecutionMode {
   if (value !== 'baseline' && value !== 'shadow' && value !== 'execute') fail(field, 'must be baseline, shadow or execute');
   return value;
 }
-function amount(value: unknown, field: string): number {
+function amount(value: unknown, field: string): number | null {
+  if (value === null) return null;
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) fail(field, 'must be a finite non-negative number');
   return value;
 }
@@ -118,7 +119,7 @@ export function normalizeWebTaskRequest(input: unknown, context: RequestContext)
   const defaultMode = mode(context.default_mode, 'context.default_mode');
   const maximumBudget = amount(context.max_budget_usd, 'context.max_budget_usd');
   const defaultBudget = amount(context.default_budget_usd, 'context.default_budget_usd');
-  if (defaultBudget > maximumBudget) fail('context.default_budget_usd', 'exceeds server maximum', 'invalid_context');
+  if (maximumBudget !== null && (defaultBudget === null || defaultBudget > maximumBudget)) fail('context.default_budget_usd', 'exceeds server maximum', 'invalid_context');
   if (!Array.isArray(context.allowed_profiles) || !context.allowed_profiles.length ||
       context.allowed_profiles.some(profile => typeof profile !== 'string' || !profile.length)) {
     fail('context.allowed_profiles', 'must contain trusted registered profiles', 'invalid_context');
@@ -218,7 +219,7 @@ export function normalizeWebTaskRequest(input: unknown, context: RequestContext)
   if (!context.allowed_profiles.includes(selectedProfile)) fail('request.capability_profile', 'not registered by the server', 'profile_not_allowed');
   const selectedMode = envelope.mode === undefined ? defaultMode : mode(envelope.mode, 'request.mode');
   const budget = envelope.budget_usd === undefined ? defaultBudget : amount(envelope.budget_usd, 'request.budget_usd');
-  if (budget > maximumBudget) fail('request.budget_usd', 'exceeds server maximum', 'budget_not_allowed');
+  if (maximumBudget !== null && (budget === null || budget > maximumBudget)) fail('request.budget_usd', 'exceeds server maximum', 'budget_not_allowed');
   const contentDigest = sha(canonical(content));
   const promptDigest = content.length === 1 && content[0].type === 'text' ? sha(content[0].text) : contentDigest;
   const summary: NormalizedWebTask['summary'] = {

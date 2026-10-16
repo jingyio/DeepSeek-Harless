@@ -70,6 +70,11 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertNotIn('diagnostic-credential', str(error.exception))
         self.assertNotIn('private-body', str(error.exception))
 
+    def test_unlimited_task_budget_exposes_both_reasoning_modes_for_both_models(self):
+        options = model_options({'data': [{'id': 'deepseek-flash'}, {'id': 'deepseek-v4-pro'}]}, budget_usd=None)
+        self.assertEqual(len(options), 2)
+        self.assertTrue(all(row['available'] and 'reasoning_unavailable' not in row for row in options))
+
     def test_pro_off_fits_both_comparison_lanes_but_pro_on_is_rejected_before_counting(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / '.local'; root.mkdir()

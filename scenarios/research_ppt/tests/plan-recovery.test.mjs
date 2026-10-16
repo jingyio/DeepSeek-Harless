@@ -65,6 +65,17 @@ test('首失败自动保存draft小诊断；整稿重交在宿主前拒绝，不
   });
 });
 
+test('错误句柄仅返回本任务最新回执，不自动改参数或执行；来源失效仍拒绝',async()=>{
+ await fixture(async({recovery,store,backendCalls,failGuard})=>{
+  const first=await captureFailure(()=>recovery.render({plan:badPlan()}),'invalid_plan');const receipt=first.details.pending_plan;
+  const error=await captureFailure(()=>recovery.repair({draft_id:'invented',version_sha256:'b'.repeat(64),updates:[{page:2,changes:{title:'Correct'}}]}),'invalid_pending_handle');
+  assert.equal(error.details.pending_plan.draft_id,receipt.draft_id);assert.equal(error.details.pending_plan.version_sha256,receipt.version_sha256);assert.deepEqual(backendCalls,[]);noFullPlan(error.details);
+  const unchanged=await store.read(receipt.draft_id,receipt.version_sha256,[2]);assert.equal(unchanged.slides[0].slide.title,badPlan().slides[1].title);
+  failGuard(new AdapterRejected('source_version_changed','changed'));
+  const refused=await captureFailure(()=>recovery.repair({draft_id:'invented'}),'source_version_changed');assert.equal(refused.details.pending_plan,undefined);
+ });
+});
+
 test('repair只传小字段patch，内部复用完整计划且非目标科学内容保持，结果不返整稿',async()=>{
   await fixture(async({recovery,backendCalls,seenPlans})=>{
     const original=badPlan(),error=await captureFailure(()=>recovery.render({plan:original}));

@@ -23,11 +23,17 @@ export function bindUploadedPptTask(workspace:string,inputs:any[],request:any,ma
   }
   const versions=[...new Set(inputs.map(row=>row.version_sha256))].sort();
   const tools=Object.keys(manifest.version_fields);
-  if(tools.some(tool=>!['mcp__ppt__pin_source','mcp__ppt__read_source'].includes(tool)) || tools.length!==2)
+  const sources=['mcp__ppt__pin_source','mcp__ppt__read_source'];
+  const deckPages=['mcp__ppt__pin_deck_pages','mcp__ppt__read_pinned_deck_pages'];
+  if(tools.some(tool=>![...sources,...deckPages].includes(tool)) || !sources.every(tool=>tools.includes(tool)) ||
+      (deckPages.some(tool=>tools.includes(tool))&&!deckPages.every(tool=>tools.includes(tool))))
     throw Error('ppt_rsi_binding_tools_unsupported');
+  // The adapter/Python service hash the ordered source versions with Python's
+  // JSON separator. Deck page pins additionally check the current file SHA.
+  const deckVersion=sha(JSON.stringify(job.inputs.map((row:any)=>row.version_sha256)).replace(/,/g,', '));
   return {schema_version:1,task_id:request.task_id,session_id:request.session_id,
     intent:bindingIntent(job.instruction),input_version:sha(JSON.stringify(inputs)),bindings:{},
-    source_versions:Object.fromEntries(tools.map(tool=>[tool,versions.length===1?versions[0]:versions]))};
+    source_versions:Object.fromEntries(tools.map(tool=>[tool,deckPages.includes(tool)?deckVersion:versions.length===1?versions[0]:versions]))};
 }
 
 /** Bind a witnessed pin/read continuation to this Session's admitted uploads. */

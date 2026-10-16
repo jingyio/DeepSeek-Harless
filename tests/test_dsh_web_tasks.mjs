@@ -83,7 +83,13 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
     emit,
-    workspaceRegistry: { list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
+    workspaceController: {
+      async *follow() { yield { type: 'baseline', value: { items: [...workspaceGroups.values()], archivedSessionIds: ctx.workspaceRegistry.archivedSessionIds } }; },
+      async rename({ workspaceId, title }) { const row = workspaceGroups.get(workspaceId); row.title = title; return { workspace: row }; },
+      async insertSessionBefore({ workspaceId, sessionId }) { const row = workspaceGroups.get(workspaceId); await row.attachSession(sessionId); return { workspace: row }; },
+      async archiveSession({ sessionId }) { await ctx.workspaceRegistry.archiveSession(sessionId); return { archivedSessionIds: ctx.workspaceRegistry.archivedSessionIds }; },
+    },
+    workspaceRegistry: { archivedSessionIds: [], async archiveSession(id) { if (!this.archivedSessionIds.includes(id)) this.archivedSessionIds.push(id); }, list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
       async create(path, title) { const old = [...workspaceGroups.values()].find(row => row.path === path); if (old) return old;
         const row = { id:'workspace-' + randomUUID(), path, title, sessionIds:[], async attachSession(id) { if(!this.sessionIds.includes(id)) this.sessionIds.push(id); } }; workspaceGroups.set(row.id,row); return row; } },
     commands: { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } },
@@ -158,6 +164,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     },
   };
   const originalController = { ...ctx.sessionController };
+  const originalWorkspaceController = { ...ctx.workspaceController };
   const originalUploads = { ...ctx.fileUploads };
   const originalPresets = { ...ctx.agentPresets };
   ctx.agents = { async create(request) { const result = await originalController.create({sessionId:request.sessionId,cwd:request.meta.cwd,agentPreset:request.meta.agentPreset});
@@ -201,6 +208,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     originalController,
     async restart() {
       Object.assign(ctx.sessionController, originalController);
+      Object.assign(ctx.workspaceController, originalWorkspaceController);
       Object.assign(ctx.fileUploads, originalUploads);
       Object.assign(ctx.agentPresets, originalPresets);
       listeners.clear(); routes.clear(); webRoutes.clear(); agents.clear();
@@ -1660,9 +1668,9 @@ test('Legacy progress rebuilds anchored tools once and preserves saved activitie
  });
 });
 
-test('DeepSeek comparison admits both isolated budget routes before either completes and keeps unrelated work blocked',options,async()=>{
+for(const budget of [.25,null]) test(`DeepSeek parallel comparison keeps isolated routes and budget ${budget}`,options,async()=>{
  const scenes=[{...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]}];
- const f=await fixture({broker:true,scenes,capability_profile:'research-data-analysis',comparison_scenes:['research-data-analysis']});
+ const f=await fixture({budget_usd:budget,broker:true,scenes,capability_profile:'research-data-analysis',comparison_scenes:['research-data-analysis']});
  try{
   const {sessionId}=await f.ctx.sessionController.create({});
   const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'parallel-lanes',mode:'queue',content:[{type:'text',text:'compare this synthetic question'}]},new AbortController().signal);
@@ -1675,7 +1683,7 @@ test('DeepSeek comparison admits both isolated budget routes before either compl
   assert.equal(rows.length,2,'both model loops must be active before either receives a completion event');
   assert.notEqual(rows[0].session_id,rows[1].session_id);
   const routes=rows.map(task=>f.brokerRoutes.get(task.session_id));assert.equal(new Set(routes).size,2);
-  for(const route of routes)assert.equal(f.registrations.get(route).budget_usd,.125,'the existing total budget stays divided equally');
+  for(const route of routes)assert.equal(f.registrations.get(route).budget_usd,budget===null?null:budget/2,'null stays unlimited; finite totals are divided equally');
   const next=async function*(){yield {type:'text-delta',index:0,text:'independent live result'};};
   for(const task of rows)for await(const chunk of f.stream(f.modelRequest(task,{tools:f.agents.get(task.session_id).ctx.tools.schemas()}),next)){}
   assert.throws(()=>f.stream(f.modelRequest(rows[0],{sessionId:rows[1].session_id}),next),/envelope/,'one lane cannot spend through the other lane request');
@@ -1743,6 +1751,24 @@ test('paired native steps reach SSE, scoped trace, feedback and a single-lane br
  }finally{await reader?.cancel();await f.close();}
 });
 
+test('cold blank archive restoration preserves authoritative native title events instead of resetting a manual name', options, async () => {
+ const f=await fixture();try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  await f.ctx.sessionController.rename({sessionId,title:'归档标题验收'});
+  const snapshot=await f.ctx.sessionController.inspect(sessionId);
+  delete snapshot.meta.title;
+  snapshot.events.push({type:'session/title',data:{title:'归档标题验收'}});
+  const renamed=[];
+  f.originalController.rename=async request=>{renamed.push(request.title);snapshot.events.push({type:'session/title',data:{title:request.title}});return {title:request.title};};
+  await f.restart();
+  await f.ctx.workspaceController.archiveSession({sessionId});
+  assert.deepEqual(renamed,[],'native title events must be considered before blank-title initialization');
+  assert.equal((await f.trash({action:'unarchive',session_id:sessionId})).status,200);
+  assert.equal((await f.trash({action:'delete',session_id:sessionId})).status,200);
+  assert.equal((await f.trash()).value.sessions[0].title,'归档标题验收');
+ }finally{await f.close();}
+});
+
 test('Trash rejects active tasks and isolates direct APIs; restoring retains task history and original workspace',options,async()=>{
  const f=await fixture({broker:true,dshHome:true});try{
   const task=await f.preview('synthetic deletion target'), other={session_id:(await f.ctx.sessionController.create({})).sessionId};await f.submit(task);
@@ -1765,6 +1791,20 @@ test('Trash rejects active tasks and isolates direct APIs; restoring retains tas
   assert.equal(JSON.stringify((await f.ctx.sessionController.inspect(task.session_id)).events),history);
   assert.equal((await f.api(undefined,'?task_id='+task.task_id)).status,200);
   assert.ok(group.sessionIds.includes(task.session_id));assert.equal((await f.trash()).value.sessions.length,0);
+  await f.ctx.workspaceController.archiveSession({sessionId:task.session_id});
+  assert.ok(f.ctx.workspaceRegistry.archivedSessionIds.includes(task.session_id));
+  assert.ok(!(await f.trash()).value.restored_archive_ids.includes(task.session_id));
+  assert.equal((await f.trash({action:'unarchive',session_id:task.session_id})).status,200);
+  assert.ok((await f.trash()).value.restored_archive_ids.includes(task.session_id));
+  await f.ctx.workspaceController.archiveSession({sessionId:task.session_id});
+  assert.ok(!(await f.trash()).value.restored_archive_ids.includes(task.session_id));
+  assert.equal((await f.trash({action:'delete',session_id:task.session_id})).status,200);
+  assert.equal((await f.trash({action:'clear',revision:'stale'})).status,409);
+  assert.equal((await f.trash({action:'clear',revision:(await f.trash()).value.revision})).status,200);
+  await f.restart();
+  assert.equal((await f.trash({action:'restore',session_id:task.session_id})).status,404);
+  assert.throws(()=>f.ctx.sessionController.inspect(task.session_id),ApiSessionNotFound);
+  assert.equal((await f.trash()).value.sessions.length,0);
  }finally{await f.close();}
 });
 

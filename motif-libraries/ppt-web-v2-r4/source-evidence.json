@@ -1,0 +1,84 @@
+{
+  "train": [
+    {
+      "research_decision_id": "rag-adoption-v3",
+      "task_id": "d19178ad04764a018c7e5a691c643082",
+      "question_sha256": "5ca7ae1a01e5826230dde691fbabd78e1ba8d1e42bc1bc4c78b6f58138f4c86e",
+      "manifest_sha256": "6e249df00502462a141c3b630d25fcb88e590fcf96dfbcb2745e91a9a421d00d",
+      "events_sha256": "d4b1fe20c3b6e29329073565693fcc7f32914459ea0419a9b5e232237c91de04",
+      "identity_sha256": "2c46b590df072b245f0b4858e022fd5003fc3dd4c3fe45a60e98a3755c839fd2",
+      "reviewer_kind": "ai-assisted",
+      "review_sha256": "c31cb3a11ec2844f77a41c0a522b5859e629fc3680e9d2ae2285651e68dd6d55",
+      "scientific_passed": false,
+      "visual_passed": true,
+      "readonly_provenance_passed": true,
+      "effective_config_sha256": "eb9810b93976e59a92eac84c6305e0694b5a2a5d18200564206b2d7f8c54a363",
+      "skill_sha256": "43f25ad5da37a32d810fe5936bf1396c97aba7a6938fbf71f1ec8b43928636dc",
+      "whole_schema_sha256": "1889634d0f2c17708897f826e1172a54d69260b7de3be920fe1eea7aea0ca49b",
+      "requests": 38,
+      "tokens": {
+        "prompt_tokens": 1513680,
+        "prompt_cache_hit_tokens": 1481088,
+        "prompt_cache_miss_tokens": 32592,
+        "completion_tokens": 18875,
+        "total_tokens": 1532555
+      },
+      "proxy_peak_usd": 0.041314128000000006,
+      "actual_paid_usd": null
+    },
+    {
+      "research_decision_id": "qlora-single-gpu-v3",
+      "task_id": "d19178addd0b47d8a1700ec6c2d6b362",
+      "question_sha256": "3c0659e4af6c47324768e246034cf4510c17a23d52f3fe1ee1f4c645da80a327",
+      "manifest_sha256": "432c5d0178ee020ac02eb583dc9f1e715abd9c4717af3f6e45d8e12dd3dfbaaa",
+      "events_sha256": "ebb373a7a5e2a50f5e557cec9c9b507363b6e52578f5faf8d7ed7bbbe742b9bb",
+      "identity_sha256": "de16649026c1208ee00720e331b948002667c778c00001b05e4f72b733dae1a1",
+      "reviewer_kind": "ai-assisted",
+      "review_sha256": "d8140b7ee271c4a20f37374f8550ce48aa9988c7f04e841d33a3caea872c3f70",
+      "scientific_passed": true,
+      "visual_passed": true,
+      "readonly_provenance_passed": true,
+      "effective_config_sha256": "8401de37594cfbeb604a4c4460b987e1eab989f08ee169a6157e2a93611e29c5",
+      "skill_sha256": "43f25ad5da37a32d810fe5936bf1396c97aba7a6938fbf71f1ec8b43928636dc",
+      "whole_schema_sha256": "1889634d0f2c17708897f826e1172a54d69260b7de3be920fe1eea7aea0ca49b",
+      "requests": 16,
+      "tokens": {
+        "prompt_tokens": 477509,
+        "prompt_cache_hit_tokens": 450304,
+        "prompt_cache_miss_tokens": 27205,
+        "completion_tokens": 6765,
+        "total_tokens": 484274
+      },
+      "proxy_peak_usd": 0.018981324000000008,
+      "actual_paid_usd": null
+    }
+  ],
+  "heldout": [
+    {
+      "research_decision_id": "dora-weight-decomposition-adoption",
+      "task_id": "d19178adf6bb4b92954fc2d77bc48b43",
+      "question_sha256": "d22ce2a02a828134b232a0a1ee3b114b9f4c363ba1812c603a1cfe9bd14a5dae",
+      "manifest_sha256": "42d9066856e2492c93e6ecd957588e8e0d6e86433151f8b67a56276fee1a034a",
+      "events_sha256": "1a3c82487b87b4bd0cb1f4bed3decd71c5c78453c0742f303a7590f95391095a",
+      "identity_sha256": "0341a78d59ea70983565014d13dc7c4ded01add119a4689410c83927289309fc",
+      "reviewer_kind": "ai-assisted",
+      "review_sha256": "6bb3e47b1bc490a4ecaa3f1402dd160ba8fd4be2a07a66c9fc10d50fc8dfb9c3",
+      "scientific_passed": false,
+      "visual_passed": false,
+      "readonly_provenance_passed": true,
+      "effective_config_sha256": "dee47db0d1c79b5812914edd9beb4d1b5aa37fc8a896982f399dd3863d270393",
+      "skill_sha256": "43f25ad5da37a32d810fe5936bf1396c97aba7a6938fbf71f1ec8b43928636dc",
+      "whole_schema_sha256": "8e8211241b4d5e729de8c4b357d071f1f62bad3f522816ca72c4e45bdec9369c",
+      "requests": 31,
+      "tokens": {
+        "prompt_tokens": 1261511,
+        "prompt_cache_hit_tokens": 1215232,
+        "prompt_cache_miss_tokens": 46279,
+        "completion_tokens": 10348,
+        "total_tokens": 1271859
+      },
+      "proxy_peak_usd": 0.033592691999999966,
+      "actual_paid_usd": null
+    }
+  ]
+}

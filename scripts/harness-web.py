@@ -263,7 +263,8 @@ def main():
     parser.add_argument('--port', type=int, default=defaults['port'])
     parser.add_argument('--public-origin', help='exact HTTPS gateway origin; backend remains on loopback, no proxy or account isolation is created')
     parser.add_argument('--run-id', help='optional unique 32-character hexadecimal output identity')
-    parser.add_argument('--budget-usd', type=float, default=defaults['budget_usd'])
+    parser.add_argument('--budget-usd', type=cost_cap_argument, default=defaults['budget_usd'],
+                        help='per-task cost cap; 0/default means unlimited')
     parser.add_argument('--max-output-tokens', type=int, default=defaults['max_output_tokens'],
                         help='optional per-model-request output cap; default follows the provider')
     parser.add_argument('--request-limit', type=request_limit_argument, default=defaults['request_limit'],
@@ -292,11 +293,10 @@ def main():
         parser.error(str(error))
     if args.max_output_tokens is not None and not 100 <= args.max_output_tokens <= 8000:
         parser.error('max output tokens must be between 100 and 8000')
-    if not 1024 <= args.port <= 65535 or not math.isfinite(args.budget_usd) or args.budget_usd < 0:
+    if not 1024 <= args.port <= 65535:
         parser.error('invalid port or budget')
-    if args.budget_usd > 100 or (args.run_budget_usd is not None and
-            not args.budget_usd <= args.run_budget_usd <= 100):
-        parser.error('whole-launch budget must cover task cap and be <=100')
+    if args.run_budget_usd is not None and (args.budget_usd is None or args.budget_usd > args.run_budget_usd):
+        parser.error('whole-launch budget must cover task cap')
     if bool(args.manifest) != bool(args.task): parser.error('--manifest and --task must be supplied together')
     if args.real_model and (args.frozen or args.fixture != 'normal'):
         parser.error('real provider cannot use frozen/failure fixtures')
