@@ -264,6 +264,9 @@ window.__ModuleLoader__.load({
         // label, not the Markdown source or the authenticated download target.
         for (const link of root.querySelectorAll('code > button, a')) {
           if (link.closest('pre')) continue;
+          const isButton = link.nodeName.toLowerCase() === 'button';
+          const target = link.getAttribute(isButton ? 'title' : 'href') || '';
+          if (!isButton && /^(?:https?:|mailto:|#)/i.test(target)) continue;
           const textNodes = [];
           const visit = node => {
             if (node.nodeType === 3) { if (node.nodeValue?.trim()) textNodes.push(node); return; }
@@ -271,25 +274,33 @@ window.__ModuleLoader__.load({
             for (const child of node.childNodes || []) visit(child);
           };
           visit(link);
-          // Keep custom / formatted link captions intact. The native file
-          // button and a plain Markdown path label each have one text node.
-          if (textNodes.length !== 1) continue;
-          const label = textNodes[0].nodeValue.trim();
-          if (!/[\\/]/.test(label) || /^(?:https?:|mailto:|#)/i.test(label)) continue;
-          if (!/^(?:[./\\]|[a-z]:[\\/]|sandbox:|file:\/\/|[^\s/\\:]+[\\/])/i.test(label)) continue;
-          const file = artifactFor(files, label);
+          const label = textNodes.length === 1 ? textNodes[0].nodeValue.trim() : '';
+          const labeledFile = artifactFor(files, label);
+          // Native mentions may already have a compact title; the rendered
+          // full path still identifies exactly one approved receipt.
+          const file = artifactFor(files, target) || (isButton && labeledFile && target === labeledFile.name.split('/').pop() ? labeledFile : undefined);
           if (!file) continue;
-          const isButton = link.nodeName.toLowerCase() === 'button';
-          const target = link.getAttribute(isButton ? 'title' : 'href') || '';
-          if (!isButton && /^(?:https?:|mailto:|#)/i.test(target)) continue;
           const name = file.name.split(/[\\/]/).pop();
-          // A later native render may update its text node but retain the
-          // already-compacted title. Exact label matching still owns the file.
-          if (artifactFor(files, target)?.id !== file.id && !(isButton && target === name)) continue;
-          textNodes[0].nodeValue = name;
+          link.setAttribute('data-harless-artifact-link', '');
+          if (isButton && link.parentElement?.nodeName.toLowerCase() === 'code')
+            link.parentElement.setAttribute('data-harless-artifact-inline', '');
+          // Preserve custom and formatted captions. Only replace a matching
+          // approved path label, never ordinary inline code or a remote URL.
+          if (textNodes.length === 1 && /[\\/]/.test(label) && !/^(?:https?:|mailto:|#)/i.test(label)
+              && /^(?:[./\\]|[a-z]:[\\/]|sandbox:|file:\/\/|[^\s/\\:]+[\\/])/i.test(label) && labeledFile?.id === file.id)
+            textNodes[0].nodeValue = name;
           link.setAttribute('title', name);
         }
       }
+      const artifactName = file => file.name.split(/[\\/]/).pop();
+      const artifactMeta = file => {
+        const name = artifactName(file);
+        const extension = (primitives.fileExtension ? primitives.fileExtension(name) : name.includes('.') ? name.split('.').pop() : '').toUpperCase().slice(0, 8);
+        const bytes = Number.isFinite(file.bytes) && file.bytes >= 0 ? file.bytes : undefined;
+        const size = bytes === undefined ? '' : primitives.fileSizeText ? primitives.fileSizeText(bytes) : bytes < 1024 ? bytes + 'B' : bytes < 1048576 ? Math.round(bytes / 1024) + 'KB' : (bytes / 1048576).toFixed(1) + 'MB';
+        return [extension || '文件', size].filter(Boolean).join(' ');
+      };
+      const artifactLinkStyle = `.harless-paired code[data-harless-artifact-inline],.geneloop-product-turn :not(pre)>code:has(>button){display:contents!important;background:transparent!important;border:0!important;padding:0!important;box-shadow:none!important;font:inherit!important;color:inherit!important}.harless-paired [data-harless-artifact-link],.geneloop-product-turn :not(pre)>code>button{display:inline-flex;vertical-align:baseline;align-items:baseline;gap:0;min-height:0;max-width:100%;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;color:var(--dsw-alias-link,#729cf7)!important;font:inherit!important;line-height:inherit;white-space:normal;overflow-wrap:anywhere;text-decoration:none;cursor:pointer}.harless-paired [data-harless-artifact-link] code{background:transparent!important;border:0!important;padding:0!important;font:inherit!important;color:inherit}.harless-paired [data-harless-artifact-link] svg,.geneloop-product-turn :not(pre)>code>button svg{display:none}.harless-paired [data-harless-artifact-link]:hover,.geneloop-product-turn :not(pre)>code>button:hover{text-decoration:underline;text-underline-offset:3px}.harless-paired [data-harless-artifact-link]:focus-visible,.geneloop-product-turn :not(pre)>code>button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:3px;border-radius:2px!important}`;
       // Public primitives are shared with native Chat; do not duplicate SVGs or
       // depend on private Chat components / generated CSS class names.
       const messageIcon = kind => h(primitives[({ copy: 'IconCopyOutline16', check: 'IconCheckOutline16',
@@ -585,7 +596,7 @@ window.__ModuleLoader__.load({
             document.body.appendChild(link); link.click(); link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 60000);
             state({ phase: 'success', message: '已交给浏览器下载，请查看下载列表。' });
-          } catch (e) { if (!abort.signal.aborted) state({ phase: 'error', message: networkMessage(e) + ' 点击文件重试。' }); }
+          } catch (e) { if (!abort.signal.aborted) state({ phase: 'error', message: networkMessage(e) + ' 点击下载按钮重试。' }); }
           finally { downloadBusy.current.delete(key); transferControllers.current.delete(abort); }
         };
         const labels = { preparing: '准备中', queued: '等待执行', running: '运行中', completed: '回复完成', failed: '失败', cancelled: '已取消' };
@@ -620,7 +631,7 @@ window.__ModuleLoader__.load({
             }
           };
           const mentions = { resolve: raw => { const file = artifactFor(files, raw); return file ? {
-            title: file.name, label: '下载 ' + file.name.split('/').pop(), open: () => { void download(lane, file); },
+            title: artifactName(file), label: '下载 ' + artifactName(file), open: () => { void download(lane, file); },
           } : undefined; } };
           const usage = usageFacts(result), duration = result.duration_ms ?? (Number.isFinite(result.stats?.elapsed_seconds) ? result.stats.elapsed_seconds * 1000 : undefined);
           const count = value => Number.isFinite(value) ? value.toLocaleString('en-US') + ' tok' : '待统计';
@@ -648,10 +659,17 @@ window.__ModuleLoader__.load({
             files.length > 0 && h('section', { className: 'harless-paired-deliveries', 'aria-label': title + '交付文件' },
               h('h4', null, '交付文件'), h('ul', { className: 'harless-paired-files' }, ...files.map(file => {
                 const status = downloads[lane + ':' + file.id];
-                return h('li', { key: file.id }, h('a', { href: comparisonUrl(value, lane, file), download: file.name.split('/').pop(), rel: 'nofollow',
-                  'aria-disabled': status?.phase === 'pending', onClick: event => { event.preventDefault(); void download(lane, file); } },
-                  h('span', { className: 'harless-paired-filename', title: file.name }, file.name.split('/').pop()),
-                  h('span', { className: 'harless-paired-download-label' }, status?.phase === 'pending' ? '准备中…' : '下载')),
+                const name = artifactName(file);
+                return h('li', { key: file.id }, h('div', { className: 'harless-artifact-card' },
+                  h('span', { className: 'harless-artifact-icon', 'aria-hidden': true }, primitives.FileTypeIcon ? h(primitives.FileTypeIcon, { path: name }) : h('span', null, '▤')),
+                  h('span', { className: 'harless-artifact-body' },
+                    h('span', { className: 'harless-paired-filename', title: name }, name),
+                    h('span', { className: 'harless-artifact-meta' }, artifactMeta(file))),
+                  h(primitives.Tooltip, { label: status?.phase === 'pending' ? '正在准备下载…' : '下载 ' + name, side: 'bottom' },
+                    h('a', { className: 'harless-artifact-download', href: comparisonUrl(value, lane, file), download: name, rel: 'nofollow',
+                      'aria-label': '下载 ' + name, 'aria-disabled': status?.phase === 'pending', 'aria-busy': status?.phase === 'pending',
+                      onClick: event => { event.preventDefault(); void download(lane, file); } },
+                      status?.phase === 'pending' ? h('span', { className: 'harless-artifact-spinner', 'aria-hidden': true }) : h(primitives.IconDownloadOutline16, { 'aria-hidden': true })))),
                   status && h('small', { role: status.phase === 'error' ? 'alert' : 'status', className: status.phase === 'error' ? 'harless-paired-error' : 'harless-paired-muted' }, status.message));
               }))),
             !single && result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
@@ -696,7 +714,8 @@ window.__ModuleLoader__.load({
             connection && h('p', { role: 'status', className: 'harless-paired-connection' }, connection));
         }
         return h('div', { className: 'harless-paired', 'data-comparison-id': value.id },
-          h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;container-type:inline-size;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired-pane fieldset{display:flex;flex-wrap:wrap;gap:6px;border:0;padding:0;min-width:0}.harless-paired-pane legend{font-size:12px;color:var(--dsw-alias-label-secondary,inherit);margin-bottom:8px}.harless-paired-pane fieldset label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid #8885;border-radius:8px;padding:6px 8px;min-height:32px;cursor:pointer}.harless-paired-pane label.selected{color:var(--dsw-alias-link,#729cf7);border-color:currentColor;background:#729cf719}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-pane fieldset:disabled{opacity:.45}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;margin:0 0 8px}.harless-paired-files{list-style:none;padding:0;display:grid;gap:8px}.harless-paired-files li{min-width:0}.harless-paired-files a{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 12px;border:1px solid #8884;border-radius:10px;color:var(--dsw-alias-link,#729cf7);text-decoration:none}.harless-paired-files a:hover{background:#8881}.harless-paired-filename{min-width:0;overflow-wrap:anywhere}.harless-paired-download-label{flex-shrink:0;font-size:12px}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin-top:5px}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
+          h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;container-type:inline-size;border:1px solid var(--dsw-alias-outline-default,#8885);border-radius:16px;padding:18px;background:var(--dsw-alias-fill-tertiary,transparent)}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired-pane fieldset{display:flex;flex-wrap:wrap;gap:6px;border:0;padding:0;min-width:0}.harless-paired-pane legend{font-size:12px;color:var(--dsw-alias-label-secondary,inherit);margin-bottom:8px}.harless-paired-pane fieldset label{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid #8885;border-radius:8px;padding:6px 8px;min-height:32px;cursor:pointer}.harless-paired-pane label.selected{color:var(--dsw-alias-link,#729cf7);border-color:currentColor;background:#729cf719}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-pane fieldset:disabled{opacity:.45}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;font-weight:500;margin:0 0 10px}.harless-paired-files{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:10px}.harless-paired-files>li{flex:0 1 260px;min-width:0;max-width:100%}.harless-artifact-card{display:flex;align-items:center;gap:10px;box-sizing:border-box;width:100%;height:64px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l2,#8884);border-radius:16px;background:var(--dsw-specific-input-major,transparent);text-align:left}.harless-artifact-icon{display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px}.harless-artifact-icon>svg{width:28px;height:28px}.harless-artifact-body{display:flex;flex-direction:column;flex:1;min-width:0;gap:2px}.harless-paired-filename{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary,inherit);font-size:14px;font-weight:500;line-height:22px}.harless-artifact-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary,#888);font-size:12px;line-height:15px}.harless-artifact-download{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,inherit);text-decoration:none;cursor:pointer}.harless-artifact-download:hover{background:var(--dsw-alias-interactive-bg-hover,#8882);color:var(--dsw-alias-label-primary,inherit)}.harless-artifact-download:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.harless-artifact-download[aria-disabled=true]{cursor:progress;color:var(--dsw-alias-label-secondary,inherit)}.harless-artifact-spinner{box-sizing:border-box;width:14px;height:14px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:harless-artifact-spin .8s linear infinite}@keyframes harless-artifact-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.harless-artifact-spinner{animation:none;border-style:dotted}}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin:5px 4px 0;overflow-wrap:anywhere}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
+          h('style', null, artifactLinkStyle),
           h('style', null, `.harless-single-pane{border:0;border-radius:0;padding:0;background:transparent}.harless-activity{font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary,inherit);margin:12px 0}.harless-activity summary{cursor:pointer}.harless-activity ol{padding-left:20px;margin:8px 0}.harless-activity li{padding:4px 0}.harless-activity li small{margin-left:12px}.harless-activity li[data-status=running]{color:var(--dsw-alias-state-business-primary,#729cf7)}`),
           h('style', null, `.harless-message-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:calc(28px + var(--dsh-content-font-delta,0px));margin-left:-6px;color:var(--dsw-alias-label-tertiary)}
 .harless-paired .harless-message-icon{display:inline-flex;align-items:center;justify-content:center;width:calc(28px + var(--dsh-content-font-delta,0px));height:calc(28px + var(--dsh-content-font-delta,0px));padding:6px;border:0;border-radius:28px;flex:none;color:var(--dsw-alias-label-tertiary)}
@@ -1135,6 +1154,7 @@ window.__ModuleLoader__.load({
         const status = active ? '正在' + toolLabel(active.data.root) : answer?.data.status === 'running' && hasAnswer(answer) ? '正在回复' : '正在处理';
         const label = count ? `${count} 次工具调用${messageCount ? ` · ${messageCount} 条过程消息` : ''}` : '查看处理过程';
         return h('section', { className: 'geneloop-product-turn' },
+          h('style', null, artifactLinkStyle),
           h('style', null, `.geneloop-product-turn{min-width:0}.geneloop-process-toggle{display:flex;align-items:center;gap:8px;border:0;border-radius:8px;padding:7px 9px;margin:0 0 8px -9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer;text-align:left}.geneloop-process-toggle:hover{background:var(--dsw-alias-interactive-bg-hover)}.geneloop-process-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.geneloop-process-toggle svg{flex:none;transition:transform .15s}.geneloop-process-toggle[aria-expanded=true] svg{transform:rotate(90deg)}.geneloop-process-evidence{border-left:2px solid var(--dsw-alias-border-l2,#8885);padding-left:14px;margin:4px 0 18px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.geneloop-process-evidence>section{margin:12px 0}.geneloop-process-evidence pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.geneloop-process-label{font-weight:500}.geneloop-process-status{font-size:13px;color:var(--dsw-alias-label-secondary);margin:0 0 8px}@media(prefers-reduced-motion:reduce){.geneloop-process-toggle svg{transition:none}}`),
           hasProcess && h('button', { type: 'button', className: 'geneloop-process-toggle', 'aria-expanded': open, 'aria-controls': id,
             onClick: () => setOpen(value => !value) },
