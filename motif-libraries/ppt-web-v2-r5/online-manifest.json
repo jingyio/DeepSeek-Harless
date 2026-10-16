@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "source_library_digest": "0abf5ddd51876e607cc2d84caf3bf7f22879bbbe4defd61e1c7346c7df640517",
+  "artifacts": [
+    {
+      "motif_id": "edge_motif_38d39011b73c",
+      "certified_digest": "591b6aa714232ef7a4b25ad873f9728321d1df74496d84be063a48b1b2270ff3",
+      "tools": [
+        "mcp__ppt__pin_deck_pages",
+        "mcp__ppt__read_pinned_deck_pages"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt__pin_deck_pages",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__ppt__read_pinned_deck_pages",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__ppt__read_pinned_deck_pages": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__ppt__read_pinned_deck_pages",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__ppt__pin_deck_pages",
+              "from_field": "source_id",
+              "to_param": "source_id"
+            }
+          ],
+          "program_digest": "681624d72e112c794fe57f660e31e940c5f9c5e8b15f4610bee10e968d7c288c"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "dora-weight-decomposition-adoption"
+    },
+    {
+      "motif_id": "edge_motif_714ddc12b11d",
+      "certified_digest": "9042b46211f045cf50ec4f1902e33b2517d520023b03d28e7bb0232bca225930",
+      "tools": [
+        "mcp__ppt__pin_source",
+        "mcp__ppt__read_source"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt__pin_source",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__ppt__read_source",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__ppt__read_source": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__ppt__read_source",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__ppt__pin_source",
+              "from_field": "source_id",
+              "to_param": "source_id"
+            }
+          ],
+          "program_digest": "fea56590d9bd841a98e957138cfd55e263d38ff28d851a8c9c6c59d6a65c0236"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "dora-weight-decomposition-adoption"
+    }
+  ],
+  "contracts": {
+    "mcp__ppt__pin_deck_pages": {
+      "required_params": [
+        "deck_id",
+        "pages_csv"
+      ],
+      "output_fields": [
+        "source_id",
+        "deck_id",
+        "version_sha256",
+        "file_sha256",
+        "pages_csv",
+        "scope"
+      ],
+      "default_params": {},
+      "description": "Pin explicitly selected pages of a persisted deck. pages_csv contains exact page numbers such as 2,5; no automatic semantic selection.",
+      "read_only": true
+    },
+    "mcp__ppt__pin_source": {
+      "required_params": [
+        "document_id"
+      ],
+      "output_fields": [
+        "document_id",
+        "source_id",
+        "version_sha256",
+        "format",
+        "page_count",
+        "text_chars"
+      ],
+      "default_params": {},
+      "description": "Pin one approved PDF/PPTX to a versioned source handle.",
+      "read_only": true
+    },
+    "mcp__ppt__read_pinned_deck_pages": {
+      "required_params": [
+        "source_id"
+      ],
+      "output_fields": [
+        "source_id",
+        "deck_id",
+        "version_sha256",
+        "file_sha256",
+        "total_slides",
+        "slides",
+        "scope"
+      ],
+      "default_params": {},
+      "description": "Read only the explicitly pinned page plans of the current persisted PPT. Recheck source and deck versions; no content changes.",
+      "read_only": true
+    },
+    "mcp__ppt__read_source": {
+      "required_params": [
+        "source_id"
+      ],
+      "output_fields": [
+        "source_id",
+        "document_id",
+        "version_sha256",
+        "pages",
+        "images"
+      ],
+      "default_params": {},
+      "description": "Read pinned document text and image inventory; reject changed source versions.",
+      "read_only": true
+    }
+  },
+  "slot_rules": {},
+  "version_fields": {
+    "mcp__ppt__pin_source": "version_sha256",
+    "mcp__ppt__read_source": "version_sha256",
+    "mcp__ppt__pin_deck_pages": "version_sha256",
+    "mcp__ppt__read_pinned_deck_pages": "version_sha256"
+  },
+  "manifest_digest": "8157499070e2f41c84f1f2e5f3e2625ed1b2a182efbc93a6d8bb3e0b50249e44"
+}
