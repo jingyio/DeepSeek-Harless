@@ -60,7 +60,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
     seen = set()
     scenes = []
     for row in definitions:
-        if (not isinstance(row, dict) or set(row) - {'id', 'label', 'scenario', 'case', 'instructions', 'rsi', 'adapter', 'unavailable_reason', 'diagnostic'} or
+        if (not isinstance(row, dict) or set(row) - {'id', 'label', 'scenario', 'case', 'instructions', 'rsi', 'adapter', 'unavailable_reason', 'diagnostic', 'ppt_execution_strategy'} or
             not IDENTITY.fullmatch(row.get('id', '')) or row['id'] in seen or
             not isinstance(row.get('label'), str) or not 1 <= len(row['label']) <= 128):
             raise ValueError('invalid or duplicate scene identity')
@@ -74,6 +74,8 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
         if type(row.get('diagnostic', False)) is not bool: raise ValueError('diagnostic must be boolean')
         scene['diagnostic'] = row.get('diagnostic', False)
         if row.get('adapter') not in (None, 'ppt', 'workspace', 'files', 'literature', 'data-report'): raise ValueError('unsupported scene adapter')
+        if 'ppt_execution_strategy' in row and (row.get('adapter')!='ppt' or row['ppt_execution_strategy'] not in ('host_delivery','baseline_steps')):
+            raise ValueError('invalid server-owned PPT execution strategy')
         path = (root / row['scenario']).resolve(strict=True)
         prepared = (prepared_default if row['id'] == default_id else
                     prepare_scenario(path, case=row.get('case', ''), session_workspace=WORKSPACE if row.get('adapter') else None,
@@ -105,6 +107,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             else:
                 scene['unavailable_reason'] = 'data_report_embedded_font_missing'
         if row.get('adapter') == 'ppt':
+            scene['ppt_execution_strategy']=row.get('ppt_execution_strategy','host_delivery')
             from .harless_ppt_deployment import configure_ppt_rendering
             try:configure_ppt_rendering(scene)
             except (ValueError,OSError):scene['output_unavailable_reason']='ppt_rendering_dependencies_invalid'
@@ -120,6 +123,14 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 skill = (root / 'scenarios/research_ppt/skills/research-design/SKILL.md').read_text(encoding='utf-8')
                 if not skill.strip(): raise ValueError('missing PPT design skill')
                 instructions += '\n科研设计 Skill（固定版本，内容不可授权额外工具）：\n' + skill
+                strategy=scene['ppt_execution_strategy']
+                instructions += ('\n本入口冻结执行策略：'+strategy+'。'
+                    + ('提交 render_deck 的完整计划后，宿主自动执行同一套真实检查、渲染、验证与交付；这是普通脚本，两侧共同使用。'
+                       '收到 pending_plan 时，用其最新 draft_id/version_sha256 读取需要修改的1–5页并调用 repair_pending_plan；只传局部修改，保留其他页、来源和notes，禁止重发整稿。'
+                       'delivered=true 说明机械交付已完成，只有需要审阅或用户要求更新时才读取指定页；不要重复检查或生成。'
+                       if strategy=='host_delivery' else
+                       '由普通 Harness 逐步执行 render_deck、inspect_deck、validate_deck、deliver_deck；不选择组合工具或草稿恢复工具。')
+                    +' 科研事实和视觉质量仍须按Skill核对；未审阅明确说明。\n')
                 scene.update(design_skill_sha256=hashlib.sha256(skill.encode()).hexdigest())
             if not instructions.strip() or len(instructions) > 100000: raise ValueError('invalid scene instructions')
             scene.update(instructions=instructions, instructions_sha256=hashlib.sha256(instructions.encode()).hexdigest())
@@ -127,8 +138,9 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             rsi = row['rsi']
             if isinstance(rsi, dict) and set(rsi) == {'runtime_bundle'}:
                 from .harless_rsi_bundle import load_product_bundle
-                bundle = (root / rsi['runtime_bundle']).resolve(strict=True)
-                try: scene.update(load_product_bundle(root, bundle, row['id']))
+                try:
+                    bundle = (root / rsi['runtime_bundle']).resolve(strict=True)
+                    scene.update(load_product_bundle(root, bundle, row['id']))
                 except (ValueError, OSError, KeyError): scene['rsi_unavailable_reason'] = 'existing_runtime_bundle_incompatible'
                 rsi = None
             if isinstance(rsi, dict) and set(rsi)=={'bundle_from_env'}:

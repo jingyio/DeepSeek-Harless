@@ -55,6 +55,7 @@ export function sessionPreset(output: string, workspace: string, scene: Scene): 
   if (scene.adapter === 'ppt' && !readJob(workspace)) save(join(workspace, 'job.json'), {
     schema_version: 1, job_id: randomUUID(), inputs: [], instruction: 'Await task admission', slides: 6,
     allow_output: false, allow_rsi: false, document_cache: false, rsi_dir: join(workspace, 'rsi'),
+    execution_policy: {schema_version:1,strategy:scene.ppt_execution_strategy??'host_delivery'},
   });
   if (scene.adapter === 'files') {
     try { readFileSync(join(workspace, 'file-task.json')); }
@@ -140,6 +141,7 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     schema_version: 1, job_id: taskId, inputs, instruction,
     slides: requestedSlides(instruction, options.slides ?? 6), template: options.template ?? 'academic', operation: 'generate',
     allow_output: options.allow_output === true && inputs.length>0, allow_rsi: false, document_cache: false, rsi_dir: join(workspace, 'rsi'),
+    execution_policy: {schema_version:1,strategy:scene.ppt_execution_strategy??'host_delivery'},
   });
   if (scene.adapter === 'literature') {
     const directory = join(workspace, 'literature'); mkdirSync(directory, { recursive: true, mode: 0o700 });

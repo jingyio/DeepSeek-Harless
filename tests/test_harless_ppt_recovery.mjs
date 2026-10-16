@@ -51,3 +51,14 @@ test('actual MCP Error prefix and atomic delivery receipt avoid false stops and 
  g.observe(exec('deliver_deck'),result({deck_id:'verified-deck',validation_id:'verified-validation',file_sha256:'a'.repeat(64),input_version:'b'.repeat(64),artifacts:[{kind:'pdf',sha256:'c'.repeat(64)}]}));
  assert.equal(g.stop({aborted:false}),null);
 });
+
+test('host render success is already delivered and failed drafts continue by latest local patch',()=>{
+ const g=createPptRecovery(),draft='pending-12345678-1234-1234-1234-123456789abc';
+ g.observe(exec('render_deck'),{isError:true,structuredContent:{code:'text_overflow',pending_plan:{draft_id:draft,version_sha256:'a'.repeat(64),failure:{failing_pages:[2]}}}});
+ const next=g.stop({aborted:false,expectedSlides:6});assert.match(next.instruction,/禁止重发 render_deck 整稿/);assert.match(next.instruction,/repair_pending_plan/);
+ assert.equal(g.state().pending.pages[0],2);
+ g.observe(exec('repair_pending_plan'),{isError:true,structuredContent:{ok:false,code:'pending_preflight_failed',pending_plan:{draft_id:draft,version_sha256:'b'.repeat(64)}}});
+ assert.ok(g.stop({aborted:false,expectedSlides:6}));assert.equal(g.state().pending.version_sha256,'b'.repeat(64));
+ g.observe(exec('repair_pending_plan'),result({delivered:true}));assert.equal(g.stop({aborted:false}),null);
+ const b=createPptRecovery();b.observe(exec('render_deck'),result({delivered:true}));assert.equal(b.stop({aborted:false}),null);
+});

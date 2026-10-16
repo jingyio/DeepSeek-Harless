@@ -1,5 +1,13 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## PPT 普通脚本与新学读取库（2026-10-16）
+
+- `Scene.ppt_execution_strategy` 是服务端选项，只接受 `host_delivery` / `baseline_steps`。产品默认前者，后者用于独立实验；绑定 job 的 `execution_policy` 与实际策略写入 effective config，客户端不能覆盖。两侧共用同一普通交付脚本。
+- Web 白名单包括完整 21 工具及 `read_pending_plan` / `repair_pending_plan`；草稿读取限明确的 1–5 页，更新针对旧版本页号，返回新版本。宿主真实交付后不重复执行原子链。Web 的修复次数由原任务预算控制；CLI 默认有限次数保持兼容。无修改重试、并发未确认结果、来源/权限/实现/旧版本变化仍拒绝。
+- PPT 的 `attachment_context_strategy=versioned_mcp_sources`：完整用户文字、附件原件及来源回执保留，由实际 MCP 读取，不再同时附加一份完整提取文本；其他场景继续原提取行为。
+- `ppt_read_v2` / `ppt_uploaded_sources_v2` 加载本轮真实轨迹编译的只读结构，支持来源读取与已选成稿页读取。来源工具绑定批准文件 SHA；成稿页工具绑定有序来源版本摘要，另外由实际适配器核验 deck 文件 SHA 与选定页投影。语义选源、选页、内容、修改及所有写步骤由模型/原工具负责。
+- 新库锁定完整 schema 变体、代码、两项训练决定和独立认证证据；审查完成与质量通过分别记录。`quality_cost_promoted=false`，不把结构认证、复用次数或普通脚本的请求减少当作同质成本优势。旧库的原始 library/manifest/certificate 不改，兼容记录单列。
+
 ## PPT 设计 Skill 与错误恢复（2026-10-16）
 
 - Web registry 对 `adapter=ppt` 使用与研究 CLI 相同的固定 Skill 全文追加方式，将 `design_skill_sha256` 与完整 `instructions_sha256` 写入任务配置。两侧使用同一 registry，不把设计规则作为 Motif 独占能力；用户文件不能更改 Skill 路径。

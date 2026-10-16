@@ -182,6 +182,7 @@ async function main(): Promise<void> {
     await dependencyFiles(root,backendPath,adapterDirectory),args.includes('--web-session'),webPrivateRoot);
   const pendingPlans=executionPolicy.strategy==='host_delivery' && jobData.allow_output===true
     ? await PendingPlanStore.create({root,jobPath:job,privateRoot:adapter.privateRoot,expectedSlides:Number(jobData.slides),
+      ...(args.includes('--web-session')?{budgetManaged:true,maxAttempts:null,maxPatches:null}:{}),
       evidence:adapter.versionEvidence(schemaDigest),guard:()=>adapter.guard(),audit:(kind,data)=>adapter.audit(kind,data)}) : undefined;
   const recovery=new PlanRecovery(pendingPlans,executionPolicy,adapter);
   const runtime={schema_version:1,backend_tool_order:expected,advertised_tool_order:offered.map(tool=>tool.name),actual_tools:offered,

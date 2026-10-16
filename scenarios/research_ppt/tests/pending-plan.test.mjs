@@ -200,6 +200,22 @@ test('大JSON、深嵌套、危险对象键、任意句柄和多页批量读取�
   });
 });
 
+test('Web由原任务账本控制恢复，超过旧CLI次数与30个版本仍保留非目标页和版本守卫',async()=>{
+  await fixture(async({store})=>{
+    const original=broken();let receipt=await store.capture(original,failure);
+    for(let i=0;i<12;i++){
+      receipt=await store.patch(receipt.draft_id,receipt.version_sha256,{updates:[{page:2,changes:{title:'Local repair '+i}}]});
+      const attempt=await store.prepareAttempt(receipt.draft_id,receipt.version_sha256);
+      receipt=await store.recordOutcome(receipt.draft_id,attempt.receipt.version_sha256,attempt.attempt_id,{delivered:false,failure});
+    }
+    assert.equal(receipt.max_attempts,null);assert.equal(receipt.max_patches,null);assert.equal(receipt.attempts,13);
+    const read=await store.read(receipt.draft_id,receipt.version_sha256,[1]);assert.deepEqual(read.slides[0].slide,original.slides[0]);
+    await assert.rejects(()=>store.prepareAttempt(receipt.draft_id,receipt.version_sha256),{code:'pending_unchanged_retry'});
+    await assert.rejects(()=>store.read(receipt.draft_id,'f'.repeat(64),[1]),{code:'pending_version_changed'});
+  },{budgetManaged:true,maxAttempts:null,maxPatches:null});
+  await assert.rejects(()=>fixture(async()=>{},{maxAttempts:null,maxPatches:null}),{code:'invalid_pending_scope'});
+});
+
 test('固定目录及记录符号链接不能跳出私有job；外部文件保持',async()=>{
   await fixture(async({store,area,root,options})=>{
     const receipt=await store.capture(broken(),failure), external=join(root,'outside.txt'); await writeFile(external,'original outside');
