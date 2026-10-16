@@ -224,7 +224,10 @@ function interactiveWorkspaceBrowser() {
     scope(id) { return { id }; },
     clear() { calls.push(['clear']); this.list.value = { ...this.list.value, current: undefined }; this.list.emit(); },
     async refresh() { calls.push(['refresh']); } };
-  const navigation = { startSession() {}, async forkSession(id) { calls.push(['fork', id]); }, async archiveSession(id) { calls.push(['archive', id]); } };
+  const navigation = { startSession() {}, async forkSession(id) { calls.push(['fork', id]); }, async archiveSession(id) {
+    calls.push(['archive', id]); restored = restored.filter(value => value !== id);
+    workspaces.list.value.archivedSessionIds = [...new Set([...workspaces.list.value.archivedSessionIds, id])];
+  } };
   const layout = { selectPanel(id) { calls.push(['panel', id]); } };
   const services = { workspaces, sessions, uiWorkspace: navigation, layout, conversation: { input: { for(scope) {
     return { state: { getSnapshot: () => inputs.get(scope.id) || { draft: '', attachmentIds: [], phase: 'plain' } } };
@@ -442,6 +445,19 @@ test('archived restore returns to its original workspace and clear requires an e
   assert.ok(!button(ui.render(), '会话操作 已有聊天'));
   const request = ui.calls.find(row => row[0] === 'trash' && row[1].action === 'clear')[1];
   assert.equal(request.revision, '["one"]'); ui.dispose();
+});
+
+test('rearchiving a restored chat refreshes the sidebar without waiting for a trash stream event', async () => {
+  const ui = interactiveWorkspaceBrowser(), settle = () => new Promise(resolve => setImmediate(resolve));
+  await settle(); ui.workspaces.list.value.archivedSessionIds = ['one'];
+  const button = (page, label) => ui.nodes(page).find(node => node.type === 'button' && node.props?.['aria-label'] === label);
+  ui.click(button(ui.settings('geneloop-archived'), '恢复对话 已有聊天')); await settle();
+  assert.ok(button(ui.render(), '会话操作 已有聊天'));
+  ui.click(button(ui.render(), '会话操作 已有聊天'));
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.role === 'menuitem' && node.children.includes('归档对话'))); await settle();
+  assert.ok(!button(ui.render(), '会话操作 已有聊天'));
+  assert.ok(button(ui.settings('geneloop-archived'), '恢复对话 已有聊天'));
+  ui.dispose();
 });
 
 test('mobile settings uses its public seat to give content full width without changing desktop or unrelated dialogs', () => {

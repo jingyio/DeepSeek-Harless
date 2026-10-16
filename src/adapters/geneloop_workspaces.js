@@ -437,7 +437,7 @@
         ] : menu ? [
           h('button', { key: 'rename', role: 'menuitem', onClick: () => edit('session', menu.id, menu.title) }, '重命名对话'),
           h('button', { key: 'fork', role: 'menuitem', onClick: () => { const id = menu.id; closeMenu(false); void navigation.forkSession(id).catch(() => error('暂时无法创建分支，请等待本轮回复完成后重试。')); } }, '在新对话中分支'),
-          h('button', { key: 'archive', role: 'menuitem', onClick: () => { const id = menu.id; closeMenu(false); void navigation.archiveSession(id).catch(() => error('暂时无法归档，请重试。')); } }, '归档对话'),
+          h('button', { key: 'archive', role: 'menuitem', onClick: () => { const id = menu.id; closeMenu(false); void navigation.archiveSession(id).then(() => refreshTrash()).catch(() => error('暂时无法归档，请重试。')); } }, '归档对话'),
           h('hr', { key: 'separator' }),
           h('button', { key: 'trash', role: 'menuitem', className: 'danger', disabled: trashBusy,
             onClick: () => { const { id, title } = menu; closeMenu(false); void changeTrash('delete', id, title).catch(() => {}); } }, '移入回收站')
