@@ -32,7 +32,7 @@ import {createConversationTitles} from './geneloop_conversation_titles.ts';
 import {createSessionBranchService,sessionBranchTitle} from './harless_session_branch.ts';
 import {registerManagedWorkspaceRoutes} from './harless_managed_workspaces.ts';
 import {registerPrivateLanes} from './harless_private_lanes.ts';
-import {createSessionTrash, protectDeletedSessions, protectDeletedSessionFiles, protectDeletedSessionQuery, protectWorkspaceArchiveProjection, registerSessionTrashRoute, SessionTrashError} from './harless_session_trash.ts';
+import {createSessionTrash, protectDeletedSessions, protectDeletedSessionFiles, protectDeletedSessionQuery, registerSessionTrashRoute, SessionTrashError} from './harless_session_trash.ts';
 
 export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController'];
@@ -659,7 +659,6 @@ export function apply(ctx: any) {
     };
     return () => { ctx.workspaceController.archiveSession = archive; };
   }, 'harless-archive-restoration');
-  ctx.effect(() => protectWorkspaceArchiveProjection(ctx.workspaceController, trash), 'harless-archive-projection');
   const original = { create: controller.create.bind(controller), prompt: controller.prompt.bind(controller),
     cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller), rename: controller.rename?.bind(controller) };
   const titles = createConversationTitles(config.output, principal, {

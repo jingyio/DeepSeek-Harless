@@ -249,6 +249,7 @@ export function protectDeletedSessionFiles(files: any, uploads: any, trash: Tras
 }
 
 export function registerSessionTrashRoute(ctx: any, trash: Trash, serialize: <T>(operation: () => Promise<T>) => Promise<T>) {
+  if (ctx.workspaceController) ctx.effect(() => protectWorkspaceArchiveProjection(ctx.workspaceController, trash), 'harless-archive-projection');
   ctx.effect(() => ctx.connection.fetch.register({ path: '/api/harless/session-trash', methods: ['GET', 'POST'], requestBody: 'buffered',
     async fetch(request: Request) {
       const rejected = ctx.connection.requestRejection(request);
