@@ -646,12 +646,23 @@ test('live stream renders incremental text and real activity before terminal com
   partial.lanes.baseline.activity=[{label:'读取数据',status:'running'}];stream.emit(partial);f.render();
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一');
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.streaming,true);
-  assert.match(f.content(f.all(row=>row.props.className==='harless-live-status')[0]),/正在读取数据/);
+  assert.match(f.content(f.all(row=>row.props.className==='geneloop-process-status')[0]),/正在读取数据/);
   assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,undefined,'tool details remain collapsed');
   partial.lanes.baseline.answer+='组数据';stream.emit(partial);f.render();
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一组数据');
   stream.emit(comparison());f.render();assert.equal(stream.closed,true);
   assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.streaming,false);f.dispose();
+});
+
+test('paired live status shares Chat wording and GeneLooping, with no placeholder delivery warnings', async () => {
+  const value=comparison();value.status='running';
+  for(const row of Object.values(value.lanes))Object.assign(row,{status:'running',answer:'',artifacts:[],delivery_message:'结果文件会在生成并通过交付检查后显示。',progress:{tool:'mcp__files__read_file',subject:'材料.pdf',status:'running'}});
+  const f=fixture(undefined,value,{streaming:true});await flush();f.render();
+  assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,2);
+  assert.equal(f.all(row=>row.type==='footer'||row.type==='fieldset').length,0);
+  assert.match(f.content(f.all(row=>row.props.className==='geneloop-process-status')[0]),/正在阅读文档：材料.pdf/);
+  assert.doesNotMatch(f.content(),/正在处理，结果会自动更新|结果文件会在生成/);
+  f.streams[0].emit(comparison());f.render();assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,0);f.dispose();
 });
 
 test('a stale initial GET cannot replace newer streaming text; unmount closes the stream', async () => {
@@ -777,11 +788,11 @@ test('successive real assistant messages stay visible during tools and collapse 
   const f=fixture(undefined,value,{streaming:true});await flush();f.render();
   const next=structuredClone(value);next.snapshot_revision=2;next.lanes.baseline.answer='已经核验，正在';
   next.lanes.baseline.messages.push({id:'second',text:'已经核验，正在',status:'streaming'});
-  next.lanes.baseline.progress={label:'正在调用数据分析工具'};f.streams[0].emit(next);f.render();
+  next.lanes.baseline.progress={label:'正在调用数据分析工具',status:'running'};f.streams[0].emit(next);f.render();
   const old=f.all(row=>row.props.className==='harless-stream-messages')[0];assert.ok(old);
   assert.equal(f.all(row=>row.type===f.MarkdownText,old)[0].props.text,'先读取资料');
   assert.equal(f.all(row=>row.props.className==='harless-paired-answer')[0].children[0].props.text,'已经核验，正在');
-  assert.match(f.content(f.all(row=>row.props.className==='harless-live-status')[0]),/分析工具/);
+  assert.match(f.content(f.all(row=>row.props.className==='geneloop-process-status')[0]),/分析工具/);
   next.status='completed';next.snapshot_revision=3;next.lanes.baseline.status='completed';next.lanes.baseline.answer='完整结论';
   next.lanes.baseline.messages.push({id:'final',text:'完整结论',status:'completed'});f.streams[0].emit(next);f.render();
   assert.equal(f.all(row=>row.props.className==='harless-stream-messages').length,0);

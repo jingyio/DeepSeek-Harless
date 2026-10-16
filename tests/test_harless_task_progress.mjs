@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTaskProgress, taskToolLabel } from '../src/adapters/harless_task_progress.ts';
+import { createTaskProgress, taskToolLabel, taskDocumentSubject } from '../src/adapters/harless_task_progress.ts';
 
 test('cancelled native assistant messages remain interrupted in live and restored progress', () => {
   const progress = createTaskProgress(); progress.beginAttempt();
@@ -39,6 +39,17 @@ test('real tool lifecycle exposes safe activity labels and no raw arguments or r
   assert.equal(progress.snapshot().activity[0].label, '读取资料');
   assert.doesNotMatch(JSON.stringify(progress.snapshot()), /private|reasoning|arguments/);
   assert.equal(taskToolLabel('mcp__report__layout_report'), '生成交付文件');
+});
+
+test('document activity identifies the uploaded filename without publishing host paths or tool arguments', () => {
+  const p = createTaskProgress();
+  p.event({ type: 'tool/call', data: { callId: 'read', name: 'mcp__files__read_file', arguments: JSON.stringify({ name: '研究资料.pdf', token: 'private-secret' }) } });
+  assert.equal(p.snapshot().progress.subject, '研究资料.pdf');
+  assert.equal(createTaskProgress(p.snapshot()).snapshot().progress.subject, '研究资料.pdf');
+  assert.doesNotMatch(JSON.stringify(p.snapshot()), /private-secret|arguments/);
+  for (const raw of ['bad json', {path:'/home/private/server.pdf'}, {path:'C:\\server\\private.docx'}, {path:'../private.json'}, {name:'<img>.pdf'}])
+    assert.equal(taskDocumentSubject(raw), undefined);
+  assert.equal(taskDocumentSubject({path:'uploads/experiment.csv'}), 'experiment.csv');
 });
 
 test('attempts replace their own streaming answer and failures retain an honest status', () => {
