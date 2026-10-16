@@ -12,7 +12,7 @@
   --gl-inset: #f5f5f7;
   --gl-ink: #1d1d1f;
   --gl-secondary: #62626a;
-  --gl-muted: #767680;
+  --gl-muted: #707078;
   --gl-line: #dedee3;
   --gl-hairline: #e9e9ed;
   --gl-hover: #eaeaf0;
@@ -57,7 +57,7 @@ html body[data-ds-dark-theme] {
 }
 
 /* Public theme tokens also cover native dialogs, tools, markdown and previews. */
-html body {
+html body, html body[data-ds-dark-theme] {
   --geneloop-ui-font: var(--gl-font);
   --dsw-font-family: var(--gl-font);
   --dsw-alias-bg-base: var(--gl-canvas);
@@ -164,6 +164,7 @@ html body :is([role=menu],[role=listbox],[data-trigger-menu],.geneloop-workspace
   background: var(--gl-glass); color: var(--gl-ink); border: 1px solid var(--gl-line); border-radius: 16px; box-shadow: var(--gl-shadow-float); backdrop-filter: blur(24px) saturate(130%);
 }
 html body [data-trigger-menu] { padding: 8px; }
+html body [data-trigger-menu] [role=listbox] { background: transparent; border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; }
 html body :is([role=menuitem],[role=menuitemradio],[role=option],.geneloop-workspace-menu button) { border-radius: 9px; font-family: var(--gl-font); font-size: 13px; }
 html body :is([role=menuitem],[role=menuitemradio],[role=option]):focus-visible { outline-offset: -2px; }
 html body [role=option][aria-selected=true] { background: var(--gl-selection); color: var(--gl-ink); }

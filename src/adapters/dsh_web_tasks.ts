@@ -1777,10 +1777,9 @@ export function apply(ctx: any) {
     '<script>' + readFileSync(fileURLToPath(new URL('./harless_account_link.js', import.meta.url)), 'utf8') + '</script>' : '';
   const brandScript = '<script>' + readFileSync(fileURLToPath(new URL('./geneloop_brand.js', import.meta.url)), 'utf8') + '</script>';
   const workspaceScript = '<script>' + readFileSync(fileURLToPath(new URL('./geneloop_workspaces.js', import.meta.url)), 'utf8') + '</script>';
-  const visualStyle = '<style data-geneloop-theme="1">' + readFileSync(new URL('./geneloop_theme.css', import.meta.url), 'utf8') + '</style>';
   ctx.effect(() => ctx.webServer.tapIndex((html: string) => html
     .replace(/<title>[^<]*<\/title>/i, '<title>GeneLoop</title>')
-    .replace('</head>', brandScript + workspaceScript + visualStyle + '</head>')
+    .replace('</head>', brandScript + workspaceScript + '</head>')
     .replace('</body>', accountLink + '</body>')), 'harless-product-presentation');
   for (const [asset, type] of [['geneloop-spiral.svg', 'image/svg+xml'], ['geneloop.jpg', 'image/jpeg']]) {
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/assets/' + asset,

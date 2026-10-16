@@ -2,6 +2,8 @@
 
 美化基线为 `e1b90a37447bd389f2af5b4bff9e468319a89536`。完整源码保存在远端标签 `pre-apple-ui-20261016`，本地独立备份包 `.local/pre-apple-ui-20261016.bundle`。所有样式集中于 `src/adapters/geneloop_theme.css`，通过现有页面入口内联加载，不依赖第三方字体、图标 CDN 或额外网络请求。
 
+修改 CSS 后运行 `node scripts/sync-geneloop-theme.mjs`，同步到原有品牌脚本的生成区；账户页读取同一 CSS。`--check` 与回归测试防止两处视觉版本漂移。PPT 认证锁覆盖的任务代码逐字保持基线，不因美化更新执行认证。
+
 ## 设计方向
 
 参考 Apple HIG 的层次、材质和清晰文字，以及 Google 网页的信息密度与清晰操作。GeneLoop 保留自己的螺旋标识、蓝色操作、绿色 Motif 含义。内容左对齐，阅读区域延续用户可调整的宽度，侧栏／正文／浮层保持明确层级。避免把每个段落包成卡片或用模糊效果覆盖正文。
