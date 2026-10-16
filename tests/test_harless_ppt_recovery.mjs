@@ -65,6 +65,7 @@ test('host render success is already delivered and failed drafts continue by lat
  g.observe(exec('render_deck'),{isError:true,structuredContent:{code:'text_overflow',pending_plan:{draft_id:draft,version_sha256:'a'.repeat(64),failure:{failing_pages:[2]}}}});
  const next=g.stop({aborted:false,expectedSlides:6});assert.match(next.instruction,/禁止重发 render_deck 整稿/);assert.match(next.instruction,/repair_pending_plan/);
  assert.equal(g.state().pending.pages[0],2);
+ g.observe(exec('repair_pending_plan'),fail('invalid_pending_handle'));assert.ok(g.stop({aborted:false}));
  g.observe(exec('repair_pending_plan'),{isError:true,structuredContent:{ok:false,code:'pending_preflight_failed',pending_plan:{draft_id:draft,version_sha256:'b'.repeat(64)}}});
  assert.ok(g.stop({aborted:false,expectedSlides:6}));assert.equal(g.state().pending.version_sha256,'b'.repeat(64));
  g.observe(exec('repair_pending_plan'),result({delivered:true}));assert.equal(g.stop({aborted:false}),null);

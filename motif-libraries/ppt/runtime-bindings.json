@@ -15,7 +15,7 @@
     "scenarios/research_ppt/dist/conditional-probe-cli.d.ts": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
     "scenarios/research_ppt/dist/conditional-probe-cli.js": "72101abcdc2d257bae72c1d7a8f63827dea8a706d246b1e6e5c05b266f2e3621",
     "scenarios/research_ppt/dist/delivery-adapter.d.ts": "44ea36c39b2fdc9ab032996d055d119b3a97895684264e0b7ec0af00f1ac06de",
-    "scenarios/research_ppt/dist/delivery-adapter.js": "4dd5dd99d2420f8463b5e03ba5d8afbc1a7a67c3c939c24cd8a8731e5c6c45a9",
+    "scenarios/research_ppt/dist/delivery-adapter.js": "059389324fcdf24bc22ae89c9ee7d834d89584a791c1a96c9cf123ba9bce0876",
     "scenarios/research_ppt/dist/direct-edit-cli.d.ts": "9efdfd416dd6e66e226f9b7100e6b2e71dae806e95e8ba9ee7d19d040f51c8c7",
     "scenarios/research_ppt/dist/direct-edit-cli.js": "24526aa48c99981e0628e351f7a0ce0d51a6e9ef6f262de48754c3a2f8db7063",
     "scenarios/research_ppt/dist/guard-cli.d.ts": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
@@ -50,7 +50,7 @@
     "scenarios/research_ppt/trial.py": "a430cda416f74cecde2e49f3fd5f321d3b4e6c0eb8462e7dacbf50066187cd9c",
     "scenarios/research_ppt/ts/conditional-continuation.ts": "6dd0f1e7834cf8b5c43f7ac5f39aea180a36c352085df28121e9888573a42e95",
     "scenarios/research_ppt/ts/conditional-probe-cli.ts": "814e1a8e9d9e2fffd18991146aa8c441abcd1ef1a0e5831fa18859d104df8257",
-    "scenarios/research_ppt/ts/delivery-adapter.ts": "ee9ecbd0befa97f0686d5e6a165702f248c45e95d5eaa4b2d359ca527c4b3e9c",
+    "scenarios/research_ppt/ts/delivery-adapter.ts": "e00572316fe61f6fc0b4a636c4fba81f6cc77ff23cea09ec0e65aaf85fb2b349",
     "scenarios/research_ppt/ts/direct-edit-cli.ts": "8fdcd37e2abed706a4af89734acadfceaacf9a8f3e96a343d15fc044465b8baa",
     "scenarios/research_ppt/ts/guard-cli.ts": "d792f34a2eb52fca3cda099e22724da0f3eb4ea923ff298e886d2ee2970c82e4",
     "scenarios/research_ppt/ts/guard.ts": "7d17805636afe1ec7107a68e2aafc42edfc831d404831be3faa7e92ad0d315fd",
@@ -69,7 +69,10 @@
     "scenarios/research_ppt/dist/pending-plan.d.ts": "19335e676a4744181bf0199bc10c2fec4c87aa921f582639d4f41348415e98af",
     "scenarios/research_ppt/web_scope.py": "ff29d51e120f2e492702795d520435c0e054fb5c42d04bbe5a957afe48b4fa75",
     "src/adapters/harless_attachment_text.py": "d69f92415686fc84d1ae477972a806907cafdf1c2f58fc708ee392ba1b588663",
-    "scenarios/research_ppt/numeric_evidence.py": "82e3638094c2a1508c361977c592d4c00239fc6ddd13ab860b8cbefb1040c6c7"
+    "scenarios/research_ppt/numeric_evidence.py": "82e3638094c2a1508c361977c592d4c00239fc6ddd13ab860b8cbefb1040c6c7",
+    "scenarios/research_ppt/dist/plan-recovery.d.ts": "d34918dc97581911fb949332fe9895a9f8b9c3ec5a63e8a1133e6b8bfe241b27",
+    "scenarios/research_ppt/ts/plan-recovery.ts": "b8cad23a56606211b5c6686e27d239ab5a9bb3813862e931370ad60e8cde4049",
+    "scenarios/research_ppt/dist/plan-recovery.js": "b79de05803f3c38192ab95682e4d888b432afb36946bc6793827cee2d75edcde"
   },
   "validation": {
     "actual_mcp_schema_slide_counts": [
@@ -114,7 +117,8 @@
     "scene_file_delivery_review": "The unchanged pin_source/read_source signature now reads approved Word/CSV/JSON/TXT bytes through the shared extractor; source identity, digest guards, job scope and read-edge boundaries remain mandatory. Logical text sections are explicit; new types bypass the existing PDF/PPTX-only cache. Source snapshots reject changed code. No new training or quality/cost claim.",
     "slide_count_compatibility_review": "Actual MCP listTools checked for every supported slide count 1..30. Only render_deck plan.slides minItems/maxItems differ; independently learned pin_source/read_source contracts and original certification are unchanged. No new training or quality/cost claim.",
     "numeric_source_guard_review": "Adds a deterministic source-quote guard for common statistical quantities at render time. Source pin/read contracts, authorization, source hashes and the original learned read edge are unchanged. Visual-only claims remain explicitly unverified; no scientific certification or new training.",
-    "ppt_web_host_delivery_and_local_recovery": "ordinary scripts; original read-only certificate unchanged"
+    "ppt_web_host_delivery_and_local_recovery": "ordinary scripts; original read-only certificate unchanged",
+    "web_latest_receipt_review": "Wrong pending handles are rejected with the current same-task receipt, without automatic argument substitution or writes. Source/permission/implementation guards and the independent numeric-source guard remain active."
   },
   "scope": "Existing independently witnessed read edge only; current runtime compatibility, not a new training certificate."
 }

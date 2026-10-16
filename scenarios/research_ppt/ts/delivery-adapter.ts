@@ -340,7 +340,7 @@ export class DeliveryAdapter {
 /** 明确实际运行依赖；不将无关实验控制器纳入在线版本。 */
 export async function dependencyFiles(root: string, backendServer: string, adapterDirectory: string): Promise<string[]> {
   const scene=resolve(root,'scenarios/research_ppt');
-  const runtimeFiles=['service.py','server.py','delivery_server.py','recovery.py','web_scope.py','documents.py','revision.py',
+  const runtimeFiles=['service.py','server.py','numeric_evidence.py','delivery_server.py','recovery.py','web_scope.py','documents.py','revision.py',
     'validation.py','restyle.py','generated_tools.py','figure_catalog.py','document_cache.py','knowledge_library.py','layout_learning.py',
     'contracts.json','version-fields.json','delivery-contracts.json','delivery-version-fields.json','package-lock.json',
     'dist/render.js','dist/layout-policy.js','dist/layout-policy-cli.js',

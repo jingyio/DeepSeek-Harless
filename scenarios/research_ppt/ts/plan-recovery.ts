@@ -31,7 +31,7 @@ export class PlanRecovery {
     } catch(error) {
       if (!(error instanceof AdapterRejected) || !recoverable.has(error.code) || !object(args.plan)) throw error;
       if (error.code==='backend_tool_failed' && (!object(error.details.backend_report)
-        || !['invalid_plan','invalid_arguments','text_overflow','table_overflow','chart_label_overflow','out_of_bounds','content_overlap'].includes(String(error.details.backend_report.error))))
+        || !['invalid_plan','invalid_arguments','unsupported_statistics','text_overflow','table_overflow','chart_label_overflow','out_of_bounds','content_overlap'].includes(String(error.details.backend_report.error))))
         throw error;
       let receipt:Obj;
       try { receipt=await this.store.capture(args.plan,failure(error)); }
@@ -47,7 +47,17 @@ export class PlanRecovery {
   async read(args:Obj):Promise<Obj> {
     await this.allowed('read_pending_plan',args);
     if (!this.store) return reject('output_permission_denied','草稿恢复需要原任务明确输出授权。');
-    return this.store.read(String(args.draft_id),String(args.version_sha256),args.pages as number[]);
+    try { return await this.store.read(String(args.draft_id),String(args.version_sha256),args.pages as number[]); }
+    catch(error) { return this.currentReceiptError(error); }
+  }
+  private async currentReceiptError(error:unknown):Promise<never> {
+    if (!(error instanceof AdapterRejected) || !this.store ||
+      !['invalid_pending_handle','invalid_pending_patch','invalid_pending_pages','pending_version_changed','no_changes'].includes(error.code)) throw error;
+    // Help the model copy the current receipt; never substitute arguments or retry writes.
+    const pending=await this.store.activePending();
+    if (!pending) throw error;
+    throw new AdapterRejected(error.code,error.message,{...error.details,pending_plan:pending,
+      next_action:'上次调用没有执行修改。逐字复制此最新 draft_id/version_sha256，先读取明确失败页，再提交合法局部修改；不要猜句柄、重发整稿或重置任务。'});
   }
   private async allowed(name:string,args:Obj):Promise<void> {
     if (this.policy.strategy!=='host_delivery') await this.policy.dispatch(this.host,name,args);
@@ -57,7 +67,9 @@ export class PlanRecovery {
     await this.allowed('repair_pending_plan',args);
     if (!this.store) return reject('output_permission_denied','草稿恢复需要原任务明确输出授权。');
     const {draft_id,version_sha256,...patch}=args;
-    const patched=await this.store.patch(String(draft_id),String(version_sha256),patch);
+    let patched:Obj;
+    try { patched=await this.store.patch(String(draft_id),String(version_sha256),patch); }
+    catch(error) { return this.currentReceiptError(error); }
     if (!object(patched.preflight) || patched.preflight.valid!==true)
       return {ok:false,code:'pending_preflight_failed',message:'局部修改已保留，尚有指出的计划错误；继续明确局部修复。',
         pending_plan:patched,automatic_retry:false};

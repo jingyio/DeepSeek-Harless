@@ -113,6 +113,12 @@ def main():
     report['excluded_collection']=excluded
     report['learning_total_requests']=report['trace_collection_requests']+sum(x['requests'] for x in excluded)
     report['learning_total_proxy_usd']=report['trace_collection_proxy_usd']+sum(x['proxy_peak_usd'] for x in excluded)
+    if dataset.get('recompilation_of'):
+        previous=private(dataset['recompilation_of']);previous_manifest=read(previous)
+        report['recompilation_of_manifest_digest']=previous_manifest['manifest_digest']
+        report['previous_manifest_file_sha256']=sha(previous)
+        report['new_collection_tasks_for_recompilation']=0
+        report['compatibility_scope']='Same newly collected dataset; recaptured complete MCP schemas and unchanged read contracts after merging numeric-source checks and current-receipt error feedback. Final real Web validation is recorded separately.'
     variants=None
     if dataset.get('schema_variants'):
         capture=read(private(dataset['schema_variants']))
