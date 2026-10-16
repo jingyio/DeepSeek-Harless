@@ -1,7 +1,7 @@
 /** Continue the same native Harness turn after a repairable PPT failure. */
 const generation = new Set(['render_deck','restyle_deck','revise_deck','render_delivery','revise_delivery','build_delivery','repair_pending_plan']);
 const delivery = new Set(['deliver_deck','render_delivery','revise_delivery','build_delivery','repair_pending_plan']);
-const repairable = /^(?:slide_count_mismatch|invalid_(?:arguments|plan|slide|revision|pending_patch|pending_plan|image)|no_changes|out_of_bounds|content_overlap|(?:text|content|layout|title|body|table|process|evidence_note|chart_label)[a-z_]*(?:overflow|capacity|too_long)|plan_validation_failed|layout_rejected|validation_failed)$/;
+const repairable = /^(?:unsupported_statistics|slide_count_mismatch|invalid_(?:arguments|plan|slide|revision|pending_patch|pending_plan|image)|no_changes|out_of_bounds|content_overlap|(?:text|content|layout|title|body|table|process|evidence_note|chart_label)[a-z_]*(?:overflow|capacity|too_long)|plan_validation_failed|layout_rejected|validation_failed)$/;
 function repairCode(value:any,depth=0):string|undefined {
   if(depth>5||!value||typeof value!=='object')return;
   if(typeof value.code==='string'&&repairable.test(value.code))return value.code;

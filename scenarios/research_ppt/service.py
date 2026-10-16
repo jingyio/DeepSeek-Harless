@@ -396,6 +396,7 @@ class PPTService:
             resolved = []
             provenance = {'citations': [], 'figures': []}
             visible = []
+            numeric_sources = []
             previous_visible_source_id = None
             for index, cite in enumerate(citations, 1):
                 if not isinstance(cite, dict) or set(cite) != {'source_id', 'page'}:
@@ -404,6 +405,9 @@ class PPTService:
                 if not item['read'] or type(cite['page']) is not int or not 1 <= cite['page'] <= item['parsed']['page_count']:
                     raise ValueError('来源尚未读取或页码越界')
                 resolved.append(source_note_label(item['row'], cite['page']))
+                parsed_page = item['parsed']['pages'][cite['page'] - 1]
+                numeric_sources.append({'text': parsed_page.get('text', ''),
+                                        'visual_input': item['parsed']['format'] in {'png', 'jpg', 'jpeg', 'webp', 'gif'}})
                 provenance['citations'].append({
                     'document_id': item['row']['document_id'], 'name': item['row']['name'],
                     'format': item['parsed']['format'], 'page': cite['page'],
@@ -416,6 +420,13 @@ class PPTService:
                     else:
                         visible.append(f"[{index}] {readable_source_name(item['row']['name'])} · {locator}")
                     previous_visible_source_id = cite['source_id']
+            from .numeric_evidence import check_numeric_evidence
+            numeric_check = check_numeric_evidence(slide, numeric_sources)
+            self.record('numeric_source_check', {'page': len(source_metadata) + 1, **numeric_check})
+            if numeric_check['status'] == 'rejected':
+                raise RenderFailure({'ok': False, 'code': 'unsupported_statistics',
+                    'error': '统计数值没有当前引用来源的直接结果依据。PPT 工具不能代替统计计算，请移除无依据的统计量，保留研究设计、原始数据与局限；或引用已提供的分析报告。不要凭记忆补算、换模型或添加对数变换。',
+                    'page': len(source_metadata) + 1, 'unsupported': numeric_check['unsupported']})
             slide['sources'] = resolved
             if 'archetype' in slide:
                 # renderer 内部字段：外部字段白名单拒绝调用者自报 visible_sources。
