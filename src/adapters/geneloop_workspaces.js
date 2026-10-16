@@ -392,7 +392,7 @@
       };
       const row = item => h('div', { className: 'geneloop-chat-row', key: item.id },
         h('button', { className: 'geneloop-chat-name', 'aria-current': list.current === item.id ? 'page' : undefined, onClick: () => open(item.id) },
-          item.blank ? '新会话' : item.title || '新会话'),
+          item.title || '新会话'),
         h('button', { className: 'geneloop-row-action', 'aria-label': '会话操作 ' + (item.title || '新会话'), 'aria-haspopup': 'menu',
           'aria-expanded': menu?.kind === 'session' && menu.id === item.id, onClick: event => openMenu(event, 'session', item.id, item.title || '新会话') }, '⋯'));
       const grouped = new Set(ws.items.flatMap(item => item.sessionIds));
@@ -500,7 +500,7 @@
         status && h('p', { className: noticeIsError ? 'error' : '', role: noticeIsError ? 'alert' : 'status' }, status),
         h('div', { className: 'geneloop-workspace-home-heading' }, h('h2', null, '对话'), h('span', null, chats.length + ' 个')),
         chats.length ? h('div', { className: 'geneloop-workspace-home-chats' }, chats.map(item => h('button', { key: item.id, onClick: () => openSession(item.id) },
-          h('span', null, item.blank ? '新会话' : item.title || '新会话'), h('time', null, stamp(item.updatedAt || item.createdAt)))))
+          h('span', null, item.title || '新会话'), h('time', null, stamp(item.updatedAt || item.createdAt)))))
           : h('p', { className: 'geneloop-workspace-home-empty' }, '这个工作区还没有对话。点击上方开始，文字和上传资料都可以。'));
     }
     ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'geneloop-workspace' }, WorkspaceHome));
