@@ -478,7 +478,8 @@ export function createGateway(config) {
       if (path.startsWith('/api/account/')) return accountApi(req, res, path, user);
       if (path === '/api/workspace/ready' && req.method === 'GET') return memberReady(res, user);
       if (path === '/account' || path === '/login' || path === '/register' || path === '/claim' || path === '/starting') {
-        const html = readFileSync(config.accountHtml, 'utf8');
+        const visualStyle = readFileSync(new URL('../src/adapters/geneloop_theme.css', import.meta.url), 'utf8');
+        const html = readFileSync(config.accountHtml, 'utf8').replace('</head>', '<style data-geneloop-theme="1">' + visualStyle + '</style></head>');
         return send(res, 200, html, { 'content-type': 'text/html; charset=utf-8',
           'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'" });
       }
