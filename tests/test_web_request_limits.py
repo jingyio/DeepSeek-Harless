@@ -27,7 +27,7 @@ class WebRequestLimitTests(unittest.TestCase):
     def test_budget_service_unlimited_still_requires_existing_checkpoint(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / '.local' / 'budget'
-            for cost_cap, task_flags in (('1', ()), ('0', ('--task-request-limit', '0'))):
+            for cost_cap, task_flags in (('1', ('--task-budget-usd', '0.23')), ('0', ('--task-request-limit', '0'))):
                 result = self.run_script('serve-web-budget.py', '--output', str(output),
                     '--checkpoint', str(output / 'cumulative.json'), '--budget-usd', cost_cap,
                     '--request-limit', '0', *task_flags)
