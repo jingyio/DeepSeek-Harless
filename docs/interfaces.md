@@ -422,7 +422,7 @@ Python 语义端口在 `motif_read_semantic.py`：接收明确的结构缺口，
 
 ## `/harless` 场景与模式控制（2026-10-13）
 
-动态 Web 用 Harness `commandUi.decorate({kind:'popupSelect'})` 打开 `/harless` 原生菜单。`GET/POST /api/harless/settings` 的 `selection:{scene,mode,rsi}` 选择服务器 Registry 中的实际配置；四场景均有独立 MCP preset 与 Prompt。模式协议为 `baseline/shadow/execute`，Origin 显示对应 baseline，RSI Off 保留选择但本任务实际 baseline。菜单不调用模型，配置和工具不得由浏览器覆盖。已预览/确认任务冻结，之后选择只影响下一任务。旧单场景 policy、冻结 Web/SDK 继续保留。
+动态 Web 用 Harness `commandUi.decorate({kind:'popupSelect'})` 打开 `/harless` 原生菜单。`GET/POST /api/harless/settings` 的 `selection:{scene,mode,rsi}` 选择服务器 Registry 中的实际配置；四场景均有独立 MCP preset 与 Prompt。模式协议为 `baseline/shadow/execute`，显示为“标准执行/观察候选/校验后复用”；旧 Origin 对应 baseline，RSI 现显示“Motif 复用：允许/关闭”。RSI Off 保留选择但本任务实际 baseline；baseline 即使 RSI On 也不复用。该开关不是模型推理选项，不触发训练。菜单不调用模型，配置和工具不得由浏览器覆盖。已预览/确认任务冻结，之后选择只影响下一任务。旧单场景 policy、冻结 Web/SDK 继续保留。
 
 字段、能力范围与复现见 [Harless 控制接口](harless-controls.md)。正式映射不使用 example/portfolio；四场景的成员部署沿用已有账号隔离，通过受控代码与依赖挂载补齐能力。
 ## 5. 科研 PPT 场景（V5 / V6）
@@ -733,12 +733,12 @@ DeepSeek 原生模型目录展示 Off / On，内部值分别为 `off` / `high`�
 
 DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路由及请求授权检查；不同轮次和普通任务仍遵守现有调度。缺少明确 Session 路由的模型适配器继续串行。重连和历史读取不启动模型，完整终态快照不再反复访问预算服务，旧记录保留必要的交付恢复。
 
-`rate` 和 `feedback` 使用短临界区，校验输出 SHA 和版本，持久化后返回，不等待原生页面通知。客户端按比较 ID 共享评分保存队列，立即显示选择、串行提交最新意图；站内导航不丢失待保存选择。失败显示错误并读取服务器确认；401/403、退出页面或插件停止时清空队列及内存缓存。该评分仍与回复赞踩分别存储。
+`rate` 和 `feedback` 使用短临界区，校验输出 SHA 和版本，持久化后返回，不等待原生页面通知。2026-10-16 按用户要求移除网页 1–5 分控件及客户端评分保存队列；不再从网页发送 `action:"rate"`。后端研究评分协议与历史数据继续兼容，回复赞踩仍走独立 `feedback`。401/403、退出页面或插件停止时清空账号内存缓存；一般操作失败显示错误并读取服务器确认。
 
 
 ## 回复操作栏一致性（2026-10-15）
 
-场景前端通过公开 primitives 复用 Chat 的复制、勾选、赞踩、分支、用量和用时图标及 Tooltip；不导入私有组件或依赖生成的样式类。最新轮由公开 `useChat` 的整个 `timeline.turnOrder` 判定，包括后续普通 Chat；历史侧栏仅在支持 hover 的设备上淡出，hover/focus-within 或统计面板展开时恢复，评分不随之隐藏。
+场景前端通过公开 primitives 复用 Chat 的复制、勾选、赞踩、分支、用量和用时图标及 Tooltip；不导入私有组件或依赖生成的样式类。最新轮由公开 `useChat` 的整个 `timeline.turnOrder` 判定，包括后续普通 Chat；历史侧栏仅在支持 hover 的设备上淡出，hover/focus-within 或统计面板展开时恢复。网页已移除数字评分区。
 
 统计使用每侧已有 usage/stats、duration_ms、started_at/finished_at，未知总量/时长不显示虚构数字；不从全程耗时推算 TPS/TTFT。弹层使用公开锚点定位及外点关闭，Escape 返回触发按钮；复制成功勾选一秒后恢复，沿用版本绑定的反馈与分支接口。桌面窄栏允许统计整组换行，手机窄屏采用原生紧凑图标并保留可访问名称。
 

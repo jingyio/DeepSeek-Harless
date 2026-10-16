@@ -205,16 +205,12 @@ html body .geneloop-workspace-home h1 { font-size: 30px; letter-spacing: -.6px; 
 html body .geneloop-workspace-home .geneloop-workspace-start { background: var(--gl-surface); border-color: var(--gl-line); box-shadow: var(--gl-shadow-input); border-radius: 22px; }
 html body .geneloop-workspace-home-chats button { border-color: var(--gl-hairline); }
 
-/* Comparison, ratings, file cards and trajectory remain first-class surfaces. */
+/* Comparison, file cards and trajectory remain first-class surfaces. */
 html body .harless-paired-grid { gap: 20px; }
 html body .harless-paired-pane { padding: 22px; border-color: var(--gl-line); border-radius: 20px; background: var(--gl-surface); box-shadow: var(--gl-shadow-sm); }
 html body .harless-paired-pane>header { border-color: var(--gl-hairline); padding-bottom: 16px; }
 html body .harless-paired-pane>header>strong { font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
 html body .harless-paired-pane>footer { border-color: var(--gl-hairline); padding-top: 18px; }
-html body .harless-paired-pane fieldset { gap: 6px; }
-html body .harless-paired-pane fieldset label { border-color: var(--gl-line); border-radius: 10px; min-height: 36px; padding: 5px 10px; background: var(--gl-inset); }
-html body .harless-paired-pane fieldset label.selected { background: var(--gl-selection); border-color: var(--gl-blue); color: var(--gl-blue); }
-html body .harless-paired-pane input[type=radio] { accent-color: var(--gl-blue); }
 html body .harless-paired-notice { border-color: var(--gl-amber); color: var(--gl-secondary); border-left-width: 2px; padding-left: 12px; }
 html body :is(.harless-artifact-card,.Sixlwa_fileCard) { border-radius: 14px; background: var(--gl-inset); border-color: var(--gl-line); box-shadow: none; }
 html body .harless-artifact-download { width: 30px; height: 30px; border-radius: 9px; color: var(--gl-blue); }
@@ -337,5 +333,5 @@ html body :is(.geneloop-chat-name,.geneloop-workspace-name,.VOzbGW_navCell):acti
 }
 @media(forced-colors:active) {
   html body :is(.uV2eYG_card,.harless-paired-pane,[role=dialog],[role=menu],[data-trigger-menu]) { border: 1px solid CanvasText; box-shadow: none; }
-  html body :is(.wSkVaW_tabActive,[aria-current=page],.harless-paired-pane label.selected) { outline: 1px solid Highlight; }
+  html body :is(.wSkVaW_tabActive,[aria-current=page]) { outline: 1px solid Highlight; }
 }
