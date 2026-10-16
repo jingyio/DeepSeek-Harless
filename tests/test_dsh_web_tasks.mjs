@@ -164,6 +164,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     },
   };
   const originalController = { ...ctx.sessionController };
+  const originalWorkspaceController = { ...ctx.workspaceController };
   const originalUploads = { ...ctx.fileUploads };
   const originalPresets = { ...ctx.agentPresets };
   ctx.agents = { async create(request) { const result = await originalController.create({sessionId:request.sessionId,cwd:request.meta.cwd,agentPreset:request.meta.agentPreset});
@@ -207,6 +208,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     originalController,
     async restart() {
       Object.assign(ctx.sessionController, originalController);
+      Object.assign(ctx.workspaceController, originalWorkspaceController);
       Object.assign(ctx.fileUploads, originalUploads);
       Object.assign(ctx.agentPresets, originalPresets);
       listeners.clear(); routes.clear(); webRoutes.clear(); agents.clear();
@@ -1746,6 +1748,20 @@ test('Trash rejects active tasks and isolates direct APIs; restoring retains tas
   assert.equal(JSON.stringify((await f.ctx.sessionController.inspect(task.session_id)).events),history);
   assert.equal((await f.api(undefined,'?task_id='+task.task_id)).status,200);
   assert.ok(group.sessionIds.includes(task.session_id));assert.equal((await f.trash()).value.sessions.length,0);
+  await f.ctx.workspaceController.archiveSession({sessionId:task.session_id});
+  assert.ok(f.ctx.workspaceRegistry.archivedSessionIds.includes(task.session_id));
+  assert.ok(!(await f.trash()).value.restored_archive_ids.includes(task.session_id));
+  assert.equal((await f.trash({action:'unarchive',session_id:task.session_id})).status,200);
+  assert.ok((await f.trash()).value.restored_archive_ids.includes(task.session_id));
+  await f.ctx.workspaceController.archiveSession({sessionId:task.session_id});
+  assert.ok(!(await f.trash()).value.restored_archive_ids.includes(task.session_id));
+  assert.equal((await f.trash({action:'delete',session_id:task.session_id})).status,200);
+  assert.equal((await f.trash({action:'clear',revision:'stale'})).status,409);
+  assert.equal((await f.trash({action:'clear',revision:(await f.trash()).value.revision})).status,200);
+  await f.restart();
+  assert.equal((await f.trash({action:'restore',session_id:task.session_id})).status,404);
+  assert.throws(()=>f.ctx.sessionController.inspect(task.session_id),ApiSessionNotFound);
+  assert.equal((await f.trash()).value.sessions.length,0);
  }finally{await f.close();}
 });
 
