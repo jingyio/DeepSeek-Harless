@@ -1,5 +1,11 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 交付文件卡片与正文链接（2026-10-16）
+
+- 交付卡片从既有 `artifacts` 的 `name/bytes/id/sha256` 渲染，复用公开 `FileTypeIcon/fileExtension/fileSizeText`；缺失大小不造数值、未知或无扩展名可使用通用图标。文件类型不局限 PDF，后端成品发布范围及验证保持原契约。
+- 右侧独立 `a[download]` 使用原鉴权路由、同源 fetch、大小/SHA 校验与重复点击守卫；原生控件、超时和错误重试链路保留。名称及提示只显示 basename。
+- 对已登记的正文文件目标添加 `data-harless-artifact-link`，原生文件 mention 的 `code` 外壳添加 `data-harless-artifact-inline`，定向去掉背景/边框并采用蓝色。普通 Chat 的原生文件 mention 使用同样外观；普通代码和代码块不去底色，自定义链接文字与原生点击不重写。未登记路径仍不能冒充可下载成品。
+
 ## PPT 普通脚本与新学读取库（2026-10-16）
 
 - `Scene.ppt_execution_strategy` 是服务端选项，只接受 `host_delivery` / `baseline_steps`。产品默认前者，后者用于独立实验；绑定 job 的 `execution_policy` 与实际策略写入 effective config，客户端不能覆盖。两侧共用同一普通交付脚本。

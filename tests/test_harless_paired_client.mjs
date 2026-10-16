@@ -48,7 +48,10 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
     __ModuleLoader__: { load(value) { plugin = value; } } };
   const primitives = {
     MarkdownText, Tooltip: function NativeTooltip() {},
-    ...Object.fromEntries(['CopyOutline', 'CheckOutline', 'LikeOutline', 'LikeFill', 'DislikeOutline', 'DislikeFill', 'BranchOutline', 'DatabaseOutline', 'ClockOutline']
+    FileTypeIcon: function NativeFileTypeIcon() {},
+    fileExtension: name => name.split('.').slice(1).pop()?.toLowerCase() || '',
+    fileSizeText: bytes => bytes + ' bytes',
+    ...Object.fromEntries(['CopyOutline', 'CheckOutline', 'LikeOutline', 'LikeFill', 'DislikeOutline', 'DislikeFill', 'BranchOutline', 'DatabaseOutline', 'ClockOutline', 'DownloadOutline']
       .map(name => ['Icon' + name + '16', function NativeIcon() {}])),
     writeClipboard: async text => { clipboardWrites.push(text); if (!clipboard?.writeText) return false;
       try { await clipboard.writeText(text); return true; } catch { return false; } },
@@ -308,7 +311,7 @@ test('paired answers delegate Markdown and inline artifact mentions to the nativ
   const markdown = f.all(row => row.type === f.MarkdownText); assert.equal(markdown.length, 2);
   assert.match(markdown[0].props.text, /\*\*结果\*\*/);
   assert.equal(markdown[0].props.streaming, false);
-  assert.equal(markdown[0].props.fileMentions.resolve('/app/work/outputs/report/research_report.pdf').title, artifact.name);
+  assert.equal(markdown[0].props.fileMentions.resolve('/app/work/outputs/report/research_report.pdf').title, 'research_report.pdf');
   assert.equal(markdown[0].props.fileMentions.resolve('/etc/passwd'), undefined);
   const css = f.content(f.all(row => row.type === 'style')[0]);
   assert.doesNotMatch(css, /max-height:70vh|white-space:pre-wrap/);
@@ -322,10 +325,13 @@ test('verified native file labels show the filename without altering Markdown, t
   function rendered(text, { tag = 'button', href, title = artifact.name, pre = false } = {}) {
     const textNode = { nodeType: 3, nodeValue: text }, icon = { nodeType: 1, nodeName: 'svg', childNodes: [] };
     const attrs = { href, title, 'aria-label': '下载 research_report.pdf' }, onClick = () => {};
-    const node = { nodeType: 1, nodeName: tag.toUpperCase(), childNodes: [icon, textNode], onClick,
-      closest: selector => selector === 'pre' && pre ? {} : null,
+    const wrapperAttrs = {}, wrapper = { nodeType: 1, nodeName: 'CODE', tagName: 'CODE',
+      setAttribute: (key, next) => { wrapperAttrs[key] = next; } };
+    const node = { nodeType: 1, nodeName: tag.toUpperCase(), tagName: tag.toUpperCase(), childNodes: [icon, textNode], onClick,
+      parentElement: tag === 'button' ? wrapper : undefined,
+      closest: selector => selector === 'pre' && pre ? {} : selector === 'code' && tag === 'button' ? wrapper : null,
       getAttribute: key => attrs[key], setAttribute: (key, next) => { attrs[key] = next; } };
-    return { node, textNode, icon, attrs, onClick };
+    return { node, textNode, icon, attrs, onClick, wrapperAttrs };
   }
   const absolute = rendered('/app/.local/web/sessions/session-a/work/' + artifact.name);
   const relative = rendered(artifact.name, { tag: 'a', href: 'sandbox:/app/work/' + artifact.name });
@@ -339,6 +345,15 @@ test('verified native file labels show the filename without altering Markdown, t
   assert.equal(absolute.textNode.nodeValue, 'research_report.pdf'); assert.equal(absolute.attrs.title, 'research_report.pdf');
   assert.equal(relative.textNode.nodeValue, 'research_report.pdf'); assert.equal(relative.attrs.href, 'sandbox:/app/work/' + artifact.name);
   assert.equal(custom.textNode.nodeValue, '下载最终报告'); assert.equal(custom.attrs.href, '/app/work/' + artifact.name);
+  for (const row of [absolute, relative, custom, captionWithPath]) {
+    assert.equal(row.attrs['data-harless-artifact-link'], '', 'only a verified file target becomes a styled file link');
+    assert.equal(row.attrs.title, 'research_report.pdf', 'the public tooltip never exposes the private path');
+  }
+  assert.equal(absolute.wrapperAttrs['data-harless-artifact-inline'], '', 'the native inline-code wrapper can lose its file-chip frame');
+  for (const row of [unknown, code, external]) {
+    assert.equal(row.attrs['data-harless-artifact-link'], undefined);
+    assert.equal(row.wrapperAttrs['data-harless-artifact-inline'], undefined);
+  }
   assert.equal(captionWithPath.textNode.nodeValue, '下载 /app/work/' + artifact.name);
   assert.equal(unknown.textNode.nodeValue, '/app/work/not-approved.pdf');
   assert.equal(code.textNode.nodeValue, '/app/work/' + artifact.name); assert.equal(external.textNode.nodeValue, artifact.name);
@@ -416,6 +431,67 @@ test('artifact download validates authenticated bytes then triggers an explicit 
   assert.match(f.content(f.all(row => row.type === 'small' && row.props.role === 'status')[0]), /浏览器下载/);
   const request = f.requests.find(row => row.url.includes('&file=')); assert.equal(request.init.credentials, 'same-origin'); f.dispose();
 });
+
+test('delivery cards keep native file identity and authenticated icon downloads for arbitrary file types', async () => {
+  const extensions = ['pdf', 'docx', 'pptx', 'csv', 'json', 'txt', 'png', 'zip', 'unusual'];
+  const mimeTypes = { pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', csv: 'text/csv', json: 'application/json',
+    txt: 'text/plain', png: 'image/png', zip: 'application/zip', unusual: 'application/octet-stream' };
+  const value = comparison(); value.presentation = 'single'; delete value.lanes.motif;
+  const bodies = new Map();
+  value.lanes.baseline.artifacts = extensions.map((extension, index) => {
+    const bytes = Buffer.from('actual delivered bytes: ' + extension + '!'.repeat(index));
+    const id = 'file-' + extension; bodies.set(id, bytes);
+    return { id, name: 'outputs/private-task/成品.' + extension, bytes: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex') };
+  });
+  const f = fixture(url => {
+    const id = new URL(url, 'https://example.test').searchParams.get('file');
+    return id ? new Response(bodies.get(id), { headers: { 'content-type': mimeTypes[id.slice(5)] } }) : Response.json(value);
+  }, value);
+  await flush(); f.render();
+  const cards = f.all(row => row.props.className === 'harless-artifact-card');
+  assert.equal(cards.length, extensions.length, 'files are not limited to the PDF renderer');
+  for (let index = 0; index < cards.length; index++) {
+    const card = cards[index], file = value.lanes.baseline.artifacts[index], name = '成品.' + extensions[index];
+    const filename = f.all(row => row.props.className === 'harless-paired-filename', card)[0];
+    assert.equal(f.content(filename), name); assert.equal(filename.props.title, name);
+    assert.equal(f.all(row => row.type === f.primitives.FileTypeIcon, card)[0].props.path, name);
+    const meta = f.content(f.all(row => row.props.className === 'harless-artifact-meta', card)[0]);
+    assert.match(meta, new RegExp(extensions[index], 'i'));
+    assert.ok(meta.includes(file.bytes + ' bytes'), 'metadata formats the authoritative receipt size');
+    const links = f.all(row => row.type === 'a' && row.props.download, card);
+    assert.equal(links.length, 1, 'the single download control has the existing guarded route');
+    assert.equal(links[0].props['aria-label'], '下载 ' + name);
+    assert.equal(links[0].props.download, name);
+    assert.equal(links[0].children[0].type, f.primitives.IconDownloadOutline16);
+    links[0].props.onClick({ preventDefault() {} }); links[0].props.onClick({ preventDefault() {} });
+    await waitUntil(() => f.downloaded.length === index + 1); f.render();
+    assert.equal(f.downloaded[index].name, name);
+    const requests = f.requests.filter(row => row.url.includes('&file=' + file.id));
+    assert.equal(requests.length, 1, 'rapid icon clicks do not duplicate the authenticated fetch');
+    assert.equal(requests[0].init.credentials, 'same-origin');
+  }
+  f.dispose();
+});
+
+test('delivery metadata keeps zero-byte files but omits missing or invalid sizes', async () => {
+  const value = comparison(); value.presentation = 'single'; delete value.lanes.motif;
+  value.lanes.baseline.artifacts = [
+    { id: 'empty', name: 'outputs/empty.txt', bytes: 0 },
+    { id: 'no-extension', name: 'outputs/LICENSE' },
+    { id: 'invalid-size', name: 'outputs/archive.unusual', bytes: -1 },
+  ];
+  const f = fixture(undefined, value); await flush(); f.render();
+  const cards = f.all(row => row.props.className === 'harless-artifact-card');
+  assert.equal(cards.length, 3);
+  const metadata = cards.map(card => f.content(f.all(row => row.props.className === 'harless-artifact-meta', card)[0]));
+  assert.match(metadata[0], /0 bytes/);
+  assert.doesNotMatch(metadata.slice(1).join('\n'), /undefined|NaN|null|-1 bytes|0 bytes/);
+  assert.ok(f.all(row => row.type === 'a' && row.props.download === 'LICENSE', cards[1]).length,
+    'an extensionless delivery still has a download control');
+  f.dispose();
+});
 test('HTML gateway errors or changed file bytes never become successful downloads', async () => {
   for (const response of [new Response('<html>login</html>', { headers: { 'content-type': 'text/html' } }),
     new Response(Buffer.from('%PDF-1.7\nchanged'), { headers: { 'content-type': 'application/pdf' } }),
@@ -478,7 +554,7 @@ test('duplicate basenames stay inert while exact approved paths remain downloada
   const f = fixture(undefined, value); await flush(); f.render();
   const mentions = f.all(row => row.type === f.MarkdownText)[0].props.fileMentions;
   assert.equal(mentions.resolve('research_report.pdf'), undefined);
-  assert.equal(mentions.resolve('/app/work/' + artifact.name).title, artifact.name); f.dispose();
+  assert.equal(mentions.resolve('/app/work/' + artifact.name).title, 'research_report.pdf'); f.dispose();
 });
 test('explicit retry of a settled failed lane restarts polling and stops after the replacement settles', async () => {
   const value = comparison(); value.status = 'failed'; value.lanes.motif.status = 'failed'; value.scoring_available = false;
@@ -770,7 +846,8 @@ test('lane actions use native glyphs and bottom tooltips, with a one-second copy
     assert.equal(button(label).children[0].type, f.primitives[icon]);
     assert.equal(button(label).props.title, undefined, 'native Tooltip replaces browser title tooltips');
   }
-  const tips = f.all(row => row.type === f.primitives.Tooltip);
+  const tips = f.all(row => row.props.className === 'harless-message-actions')
+    .flatMap(actions => f.all(row => row.type === f.primitives.Tooltip, actions));
   assert.equal(tips.length, 8); assert.ok(tips.every(row => row.props.side === 'bottom'));
   assert.ok(tips.some(row => row.props.label === '取消标记')); assert.ok(tips.some(row => row.props.label === '有问题的回答'));
   await button('复制 Baseline 回复').props.onClick(); f.render();
@@ -889,6 +966,6 @@ test('completed process messages retain verified artifact routing without repeat
   let prevented=false;process.props.onClickCapture({target:{closest:()=>({getAttribute:()=>'/private/not-approved.pdf'})},
     preventDefault(){prevented=true;},stopPropagation(){}});assert.equal(prevented,true);
   const texts=f.all(row=>row.type===f.MarkdownText).map(row=>row.props.text);assert.ok(texts.includes('结果 1.25'));
-  assert.equal(texts.some(text=>text.includes('{{estimate}}')),false);assert.equal(f.all(row=>row.type===f.MarkdownText,process)[0].props.fileMentions.resolve('/app/work/'+artifact.name).title,artifact.name);
+  assert.equal(texts.some(text=>text.includes('{{estimate}}')),false);assert.equal(f.all(row=>row.type===f.MarkdownText,process)[0].props.fileMentions.resolve('/app/work/'+artifact.name).title,'research_report.pdf');
   f.dispose();
 });
