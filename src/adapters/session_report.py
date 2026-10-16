@@ -73,6 +73,12 @@ class SessionReport:
             'source_versions':current,'layout_passed':True,'page_count':result['page_count'],
             'scientific_content_certified':False,
             'files':[{'name':(destination/p.name).relative_to(self.work).as_posix(),'sha256':_hash(p),'bytes':p.stat().st_size} for p in (pdf,md)]}
+        # Optional Web task identity; standalone/main report callers retain the
+        # same interface and export behavior. Never borrow an older task's PDF.
+        grant_path = self.work/'paper-output-grant.json'
+        if self.category == 'paper-review' and grant_path.is_file() and not grant_path.is_symlink():
+            grant = json.loads(grant_path.read_text(encoding='utf-8'))
+            receipt['task_id'] = grant['task_id']
         path=staging/'delivery.json'
         path.write_text(json.dumps(receipt,ensure_ascii=False),encoding='utf-8');path.chmod(0o600)
         os.rename(staging,destination)

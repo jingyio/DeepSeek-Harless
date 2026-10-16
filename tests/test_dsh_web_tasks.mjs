@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -263,6 +263,29 @@ test('native paper export recovery keeps the source, task and budget until an ac
   agent.hooks.get('tools/result')({name:'mcp__paper_checks__export_review_report'},{structuredContent:{exported:true,artifacts:[{name:'paper-review.pdf',sha256:'a'.repeat(64)}]}});
   agent.hooks.get('agent/turn-stopping')({signal:new AbortController().signal});assert.equal(agent.steered.length,1);
   await f.complete(task);
+ }finally{await f.close();}
+});
+
+test('reference PDF recovery does not also force main generic report export',options,async()=>{
+ const schemas=['read_pinned_document','export_review_report'].map(name=>({name:'mcp__paper_checks__'+name,parameters:{type:'object',properties:{}}}));
+ const paper={id:'paper-proofreading',label:'Paper',preset:'sss-task',adapter:'workspace',mcp_rows:[],allowed_tools:schemas.map(t=>t.name)};
+ const f=await fixture({broker:true,scenes:[paper],capability_profile:'paper-proofreading',fixtureSchemas:schemas});
+ try{
+  let result=await f.api({action:'preview',request:{instruction:'Generate a PDF report',scene_options:{allow_output:true}}});
+  result=await f.api({action:'upload',task_id:result.value.task_id,name:'paper.txt',data:Buffer.from('Approved source text').toString('base64')});
+  assert.equal(result.status,200,JSON.stringify(result.value));const task=result.value;
+  assert.equal((await f.submit(task)).status,200);
+  const agent=f.agents.get(task.session_id),work=join(f.directory,'sessions',task.session_id,'work');
+  agent.hooks.get('tools/result')({name:'mcp__paper_checks__read_pinned_document'},{structuredContent:{source_id:'current-source'}});
+  const draft=join(work,'outputs','paper-audits',task.task_id);mkdirSync(draft,{recursive:true});writeFileSync(join(draft,'draft.json'),'{}');
+  agent.hooks.get('agent/turn-stopping')({signal:new AbortController().signal});
+  assert.equal(agent.steered.length,1);assert.equal(agent.steered[0].source.kind,'task-acceptance-repair');
+  const name=task.task_id+'-export',dir=join(work,'outputs',name),pdf=Buffer.from('diagnostic export bytes');mkdirSync(dir);
+  writeFileSync(join(dir,'reference-check-report.pdf'),pdf);
+  writeFileSync(join(dir,'export-receipt.json'),JSON.stringify({artifact_file:'outputs/'+name+'/reference-check-report.pdf',output_sha256:createHash('sha256').update(pdf).digest('hex'),content_coverage:{all_fields_present:true}}));
+  agent.hooks.get('agent/turn-stopping')({signal:new AbortController().signal});
+  assert.equal(agent.steered.length,1,'a delivered reference PDF must not invoke generic export recovery');
+  await f.complete(task);assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'completed');
  }finally{await f.close();}
 });
 
@@ -1334,13 +1357,15 @@ test('Empty file scenes keep normal scene tools and model routing across turns a
       assert.equal((await f.ctx.sessionController.inspect(sessionId)).meta.title, '新会话');
       for (let round=0;round<3;round++) {
         if(round===2) await f.restart();
-        const result=await f.api({action:'preview',session_id:sessionId,request:{instruction:'你好，请介绍你能帮我做什么',request_id:`empty-${round}`}});
+        const result=await f.api({action:'preview',session_id:sessionId,request:{instruction:'你好，请介绍你能帮我做什么',request_id:`empty-${round}`,
+          ...(['paper-proofreading','files'].includes(id)?{scene_options:{allow_output:true}}:{})}});
         assert.equal(result.status,200,JSON.stringify(result.value));
         const task=result.value; assert.equal(task.source_pending,true); assert.deepEqual(task.scene_inputs,[]);
         assert.deepEqual(f.agents.get(sessionId).allow.allow,scene.allowed_tools);
         assert.match(f.agents.get(sessionId).instruction,/正常回应问候/);
         assert.equal((await f.submit(task)).status,200);
         await f.complete(task);
+        assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'completed');
       }
       assert.equal(f.promptCalls.length,3);
     } finally {await f.close();}

@@ -6,12 +6,12 @@
 | Scene ID | 后端配置 | 能力与边界 |
 | --- | --- | --- |
 | `ppt` | `scenarios/research_ppt/web-scenario.json` | 既有 19 工具 TS Adapter/Python 后端，批准 PDF/PPTX、读取、生成新副本、修订、实际渲染验收与交付 |
-| `paper-proofreading` | `scenarios/paper_proofreading/scenario.json` | 5 只读工具：PDF/文本读取与模型校对，复用论文分支 LaTeX 字面引用/标签/浮动体/已有日志检查；不编译、不查外网、不修改原稿 |
+| `paper-proofreading` | `scenarios/paper_proofreading/scenario.json` | 24 工具：保留多格式读取、来源表格摘要和普通 PDF/Markdown 校对报告；按需使用 LaTeX/ZIP 静态检查、参考文献取证、批量暂存与受权限保护的历史 PDF 排版；不改原件、不编译 LaTeX |
 | `research-data-analysis` | `scenarios/data_analysis/scenario.json` | 4 只读工具：真实 UTF-8 CSV/TSV 的列类型、空白缺失、描述统计、完整样本 Pearson 相关；不执行任意代码、插补、显著性或因果推断 |
 | `files` | `scenarios/file-management/web-scenario.json` | Files：13 个文件 MCP 工具，盘点、读取、查重、文本索引与检索；显式开启整理权限后，仅对本任务上传副本执行获准的复制、移动、隔离计划，并保留预览、授权和恢复收据 |
 | `new-scene` | `scenarios/general/scenario.json` | 普通 Harness + `list_files/read_file`，读取本 Session 已上传的 UTF-8 文本；没有样例数据、shell 或任意主机文件能力 |
 
-论文平铺源码保留原文件名，最多 8 个文件；嵌套目录/动态 TeX/宏展开不作为完整校验。数据最多 100,000 行/128 列、拒绝重复列名、参差行和非有限相关输入；只把空白视为缺失。所有文件读取复核任务准入 SHA，不能通过重新 pin 接受确认后漂移的资料。
+论文平铺源码保留原文件名，最多 16 个文件（其他场景仍为 8 个）；嵌套目录/动态 TeX/宏展开不作为完整校验。数据最多 100,000 行/128 列、拒绝重复列名、参差行和非有限相关输入；只把空白视为缺失。所有文件读取复核任务准入 SHA，不能通过重新 pin 接受确认后漂移的资料。
 
 ## 模式与库
 
@@ -82,3 +82,11 @@ node scripts/check-ppt-runtime.mjs <所属私有任务/job.json>
 ```
 
 本轮结果见 [上线准备记录](experiments/harless-launch-readiness-20261014-v1.md)，历史桥接见 [桥接记录](experiments/harless-scenes-runtime-20261013-v1.md)，库取回见 [迁移记录](experiments/ppt-library-transfer-20261014-v1.md)。科研质量、模型自主完整 PPT 生成及稳定费用收益需要独立后续验收，不能用固定计划的机械交付代替。
+
+## 论文引用与通用校对的兼容边界
+
+普通校对继续使用 `export_review_report`，不要求参考文献条目或私人排版包。LaTeX/BibTeX/日志/Markdown/TXT 按 80,000 字符分页，Word/表格资料保持一个逻辑文本页，PDF 保留真实页码；跟随工具返回的 page_count。安全 ZIP 保留工程相对目录，禁止逃逸、链接、歧义工程与运行任意脚本。
+
+默认论文库仍为 `motif-libraries/paper`，仅支持原有 Shadow。管理员显式配置 `HARLESS_PAPER_RUNTIME_BUNDLE` 可加载经过核对的只读 Motif 私有包；无效包拒绝激活。完整实际 Schema 必须包含当前 24 工具，旧 23 工具包须重编。`scripts/compile-paper-composite-runtime.py` 复用历史只读认证片段，`scripts/capture-paper-mcp-schemas.py` 抓取实际完整工具契约。前端不接受路径或启动命令。
+
+`HARLESS_PAPER_RENDERER_ROOT` 仅配置历史参考文献排版工具；未部署不影响普通报告。引用报告暂存/定稿及 PDF 导出继续要求本任务的输出授权、输入和报告 SHA。已启动引用报告的任务接受当前 Task 的普通 PDF/Markdown 回执或字段覆盖通过的历史 PDF 回执，不接受其他 Task 的旧产物；普通校对不被强制生成参考文献报告。续行最多两次，仍使用同一预算。批量脚本是模型调用的工具，Shadow 不计 Verified Skip；共享 Runtime 仅对认证只读后继执行和计数。

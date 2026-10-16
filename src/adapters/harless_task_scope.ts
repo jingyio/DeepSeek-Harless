@@ -34,7 +34,8 @@ function save(path: string, data: unknown) {
 export function sceneOptions(value: unknown, scene: Scene): SceneOptions {
   if (value === undefined) return {};
   if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) return {};
-  const permitted = scene.adapter === 'ppt' ? ['slides', 'template', 'allow_output'] : scene.adapter === 'files' ? ['allow_output'] : [];
+  const permitted = scene.adapter === 'ppt' ? ['slides', 'template', 'allow_output'] :
+    (scene.adapter === 'files' || scene.id === 'paper-proofreading') ? ['allow_output'] : [];
   if (!permitted.length || !value || typeof value !== 'object' || Array.isArray(value) ||
       Object.keys(value).some(key => !permitted.includes(key))) throw Error('invalid_scene_options');
   const row = value as SceneOptions;
@@ -108,7 +109,8 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     if (part.type !== 'file') continue;
     const ref = ctx.fileUploads.resolve(agent, part.receiptId);
     if (!ref) throw Error('file_receipt_not_owned');
-    if (inputs.length >= 8 || ref.bytes > 20 * 1024 * 1024) throw Error('scene_input_limit');
+    const maxInputs = scene.id === 'paper-proofreading' ? 16 : 8;
+    if (inputs.length >= maxInputs || ref.bytes > 20 * 1024 * 1024) throw Error('scene_input_limit');
     const chunks: Buffer[] = []; let bytes = 0;
     for await (const chunk of ctx.attachments.readFileStream(ref)) {
       bytes += chunk.length; if (bytes > 20 * 1024 * 1024) throw Error('scene_input_limit');
@@ -133,6 +135,10 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
   if (scene.adapter === 'files') writeFileTask(workspace, taskId, instruction, options.allow_output === true,
     inputs.map(row => basename(row.path)));
   save(join(workspace,'approved-inputs.json'),{files:Object.fromEntries(inputs.map(row=>[basename(row.path),row.version_sha256]))});
+  if (scene.id === 'paper-proofreading') save(join(workspace,'paper-output-grant.json'),{
+    schema_version:1,task_id:taskId,allow_output:options.allow_output===true,
+    audit_sha256:inputs.find(row=>basename(row.path)==='audit.json')?.version_sha256??null,
+  });
   if (scene.adapter==='data-report'){
     const root=join(workspace,'report');mkdirSync(root,{recursive:true,mode:0o700});
     writeFileSync(join(root,'request.txt'),instruction,{mode:0o600});
@@ -202,6 +208,7 @@ export function scopeDigest(workspace: string, scene: Scene): string | null {
   return sha(JSON.stringify({ files, approvals,
     job: scene.adapter === 'ppt' ? sha(readFileSync(join(workspace, 'job.json'))) :
       scene.adapter === 'files' ? sha(readFileSync(join(workspace, 'file-task.json'))) :
-      scene.adapter === 'literature' ? sha(readFileSync(join(workspace, 'literature/task.json'))) :
-      scene.adapter==='data-report'?sha(readFileSync(join(workspace,'report/request.txt'))):null }));
+      scene.id === 'paper-proofreading' ? sha(readFileSync(join(workspace,'paper-output-grant.json'))) :
+      scene.adapter === 'literature' ? sha(readFileSync(join(workspace,'literature/task.json'))) :
+      scene.adapter === 'data-report' ? sha(readFileSync(join(workspace,'report/request.txt'))) : null }));
 }

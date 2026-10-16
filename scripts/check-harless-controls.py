@@ -99,7 +99,9 @@ def main():
             except subprocess.TimeoutExpired: child.kill(); child.wait()
     report = {'run_id':run_id,'provider_mode':'real' if args.real_model else 'mock', 'browser_verified':False,
               'model':'deepseek-flash','reasoning_effort':'off','mode':'shadow','run_budget_usd':.06,'task_budget_usd':.03,
-              'task_request_limit':24,'run_request_limit':32 if args.real_model else 64,'max_output_tokens':1000,'groups':groups,'quality_reviewed':False}
+              'task_request_limit':24,'run_request_limit':32 if args.real_model else 64,
+              'max_output_tokens':json.loads((ROOT/'config/harness-web.json').read_text())['max_output_tokens'],
+              'groups':groups,'quality_reviewed':False}
     (checks / (run_id + '.json')).write_text(json.dumps(report,ensure_ascii=False,indent=2))
     (checks / 'latest.json').write_text(json.dumps({'run_id':run_id,'report':run_id+'.json'}))
     print(json.dumps(report,ensure_ascii=False))

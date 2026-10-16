@@ -31,12 +31,16 @@ def test_registered_ppt_compatibility_matches_current_source_and_original_artifa
 
 
 def test_new_ppt_release_keeps_artifact_and_current_source_locks():
-    root=Path(__file__).resolve().parents[1];bundle=root/'motif-libraries/ppt-web-v2-r5'
+    root=Path(__file__).resolve().parents[1];bundle=root/'motif-libraries/ppt-web-v2-r6'
     sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
     entry=json.loads((bundle/'entry.json').read_text());cert=json.loads((bundle/'certification.json').read_text())
     report=json.loads((bundle/'learning-report.json').read_text());missing_build=False
     assert entry['new_training'] is True and report['training_tasks']==2 and report['heldout_tasks']==1
     assert report['compilation_model_requests']==0 and report['quality_cost_promoted'] is False
+    previous=root/'motif-libraries/ppt-web-v2-r5'
+    assert json.loads((bundle/'online-manifest.json').read_text())['artifacts']==json.loads((previous/'online-manifest.json').read_text())['artifacts']
+    assert sha(bundle/'source-evidence.json')==sha(previous/'source-evidence.json')
+    assert report['new_collection_tasks_for_recompilation']==0
     for name,version in entry['files'].items():assert sha(bundle/name)==version,name
     for name,version in cert['code_locks'].items():
         path=root/name
@@ -61,6 +65,8 @@ def test_bundle_freezes_runtime_code_artifacts_and_whole_schema(tmp_path):
     (bundle/'certification.json').write_text(json.dumps(cert))
     got=load_ppt_bundle(root,bundle)
     assert got['matching_policy']=='structural_only' and not got['quality_cost_promoted']
+    assert got['runtime_library']==str(bundle/'library.json')
+    assert got['runtime_library_sha256']==sha(bundle/'library.json')
     (bundle/'task.json').write_text('{"changed":true}')
     with pytest.raises(ValueError,match='artifact changed'):load_ppt_bundle(root,bundle)
     (bundle/'task.json').write_text('{}')

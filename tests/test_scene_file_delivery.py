@@ -81,6 +81,12 @@ def test_source_bound_review_exports_pdf_and_markdown_without_changing_input(tmp
         assert rejected['exported'] is False and rejected['reason']=='source_versions_mismatch'
         assert rejected['required_source_versions']==versions
     assert set((root.parent/'outputs/documents').iterdir())==before
+    # Web tasks can use the same exporter, without a private historical renderer.
+    (root.parent/'paper-output-grant.json').write_text(json.dumps({'task_id':'current-task'}))
+    result=report.export('Web review', [{'heading':'Scope','paragraphs':['Only the uploaded source was reviewed.']}],versions)
+    directory=(root.parent/result['artifacts'][0]['name']).parent
+    receipt=json.loads((directory/'delivery.json').read_text())
+    assert receipt['task_id']=='current-task' and receipt['source_versions']==versions
 
 def test_source_context_cannot_override_or_invent_evidence():
     pytest.importorskip('scipy');pytest.importorskip('statsmodels')

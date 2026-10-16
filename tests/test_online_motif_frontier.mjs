@@ -33,6 +33,120 @@ test('Gmail structured metadata survives the DSH merged text envelope only for s
   assert.equal(observation(malicious, name), null);
 });
 
+test('approved uploaded source pin permits only a versioned handle read', async () => {
+  const pin='mcp__paper_checks__pin_paper_sources';
+  const read='mcp__paper_checks__read_pinned_paper_sources';
+  const version='a'.repeat(64),source='source-'+'b'.repeat(32);
+  const manifest=sealManifest({schema_version:1,source_library_digest:'c'.repeat(64),
+    artifacts:[{motif_id:'paper-uploaded-read',certified_digest:'d'.repeat(64),
+      tools:[pin,read],supporting_task_count:2,validation_task_fingerprint:'independent-paper',
+      transfer_evidence:[{from_tool:pin,from_field:'source_id',to_tool:read,to_param:'source_id'}]}],
+    contracts:{
+      [pin]:{read_only:true,observed_anchor:true,required_params:['main'],default_params:{},
+        output_fields:['source_id','version_sha256'],description:'Pin the approved LaTeX source'},
+      [read]:{read_only:true,required_params:['source_id'],default_params:{},
+        output_fields:['source_id','version_sha256'],description:'Read the pinned source checks'},
+    },slot_rules:{},version_fields:{[pin]:'version_sha256',[read]:'version_sha256'}});
+  validateOnlineManifest(manifest);
+  const task=parseStructuredTask({schema_version:1,task_id:'paper-a',session_id:'s-paper',
+    intent:'Review uploaded LaTeX',input_version:'scope-a',bindings:{},
+    source_versions:{[pin]:'@observed',[read]:'@from_anchor'}},manifest);
+  const row={name:pin,callId:'model-pin',ok:true,arguments:{main:'paper.tex'},
+    output:{source_id:source,version_sha256:version},sourceVersion:version,inputVersion:'scope-a'};
+  const args={manifest,task,history:[row],availableTools:new Map([[read,offered(read,['source_id'])]]),
+    similarity:async()=>{throw Error('closed read must not call embeddings');},minSimilarity:0.8,minMargin:0.1};
+  const candidates=await proposeReadyBatch(args);
+  assert.equal(candidates.length,1);
+  assert.equal(candidates[0].selection_basis,'closed_source_read');
+  assert.deepEqual(candidates[0].arguments,{source_id:source});
+  assert.deepEqual(await proposeReadyBatch({...args,history:[{...row,output:{...row.output,version_sha256:'0'.repeat(64)}}]}),[]);
+  assert.deepEqual(await proposeReadyBatch({...args,history:[{...row,output:{...row.output,source_id:'other'}}]}),[]);
+  const other='mcp__paper_checks__pin_document';
+  manifest.contracts[other]={read_only:true,required_params:['name','sha256'],
+    default_params:{},output_fields:[],description:'Observe another Session pin'};
+  sealManifest(manifest);
+  const audits=[];
+  const interceptor=createOnlineInterceptor({manifest,task,mode:'execute',
+    similarity:async()=>{throw Error('closed read must not call embeddings');},
+    audit:event=>audits.push(event)});
+  interceptor.observe(task.session_id,{name:pin,callId:'model-pin',
+    arguments:{main:'paper.tex'}},
+  {structuredContent:{source_id:source,version_sha256:version}});
+  interceptor.observe(task.session_id,{name:other,callId:'other-pin',
+    arguments:{name:'notes.tex',sha256:version}},
+  {structuredContent:{source_id:'source-'+'c'.repeat(32),version_sha256:version}});
+  const stream=await interceptor.intercept(task.session_id,
+    {tools:[offered(read,['source_id'])]},
+    ()=>{throw Error('interleaved safe read should not reset the certified frontier');});
+  const chunks=[];
+  for await (const chunk of stream) chunks.push(chunk);
+  const call=chunks.find(chunk=>chunk.type==='tool-call-delta');
+  assert.equal(call.name,read);
+  assert.deepEqual(JSON.parse(call.argumentsDelta),{source_id:source});
+  interceptor.observe(task.session_id,{name:read,callId:call.id,
+    arguments:{source_id:source}},
+  {structuredContent:{source_id:source,version_sha256:version}});
+  assert.equal(audits.filter(event=>event.kind==='model_request_skipped_verified').length,1);
+  const failed=createOnlineInterceptor({manifest,task,mode:'execute',
+    similarity:async()=>{throw Error('no embeddings');}});
+  failed.observe(task.session_id,{name:pin,callId:'model-pin',
+    arguments:{main:'paper.tex'}},
+  {structuredContent:{source_id:source,version_sha256:version}});
+  failed.observe(task.session_id,{name:other,callId:'failed-pin',
+    arguments:{name:'notes.tex',sha256:version}},
+  {isError:true,structuredContent:{error:'missing'}});
+  let fallback=false;
+  await failed.intercept(task.session_id,{tools:[offered(read,['source_id'])]},
+    ()=>{fallback=true;return null;});
+  assert.equal(fallback,true);
+});
+
+test('Shadow accepts a model-owned observed-anchor read only against its prior exact prediction', async () => {
+  const pin = 'mcp__paper_checks__collect_current_local_citation_evidence';
+  const read = 'mcp__paper_checks__read_pinned_bibliography_first_page';
+  const source = 'source-' + 'b'.repeat(32), version = 'a'.repeat(64);
+  const manifest = sealManifest({schema_version:1,source_library_digest:'c'.repeat(64),
+    artifacts:[{motif_id:'paper-bibliography',certified_digest:'d'.repeat(64),
+      tools:[pin,read],supporting_task_count:2,validation_task_fingerprint:'heldout',
+      transfer_evidence:[{from_tool:pin,from_field:'source_id',to_tool:read,to_param:'source_id'}]}],
+    contracts:{
+      [pin]:{read_only:true,observed_anchor:true,required_params:[],default_params:{},
+        output_fields:['source_id','version_sha256'],description:'Collect local citations'},
+      [read]:{read_only:true,required_params:['source_id'],default_params:{},
+        output_fields:['source_id','version_sha256'],description:'Read the first bibliography page'},
+    },slot_rules:{},version_fields:{[pin]:'version_sha256',[read]:'version_sha256'}});
+  const task = {schema_version:1,task_id:'paper',session_id:'paper-session',
+    intent:'Read twelve records',input_version:'scope',bindings:{},
+    source_versions:{[pin]:'@observed',[read]:'@from_anchor'}};
+  for (const scenario of ['correct','wrong-version','wrong-handle','failed','foreign-session','intervening-write','unpredicted']) {
+    const audit = [];
+    const interceptor = createOnlineInterceptor({manifest,task,mode:'shadow',
+      similarity:async()=>{throw Error('closed read needs no embeddings');},audit:r=>audit.push(r)});
+    interceptor.observe(task.session_id,{name:pin,callId:'pin',arguments:{}},
+      {structuredContent:{source_id:source,version_sha256:version}});
+    let nativeCalls = 0;
+    if (scenario !== 'unpredicted') {
+      const response = await interceptor.intercept(task.session_id,{tools:[offered(read,['source_id'])]},
+        ()=>{nativeCalls++;return 'ordinary model response';});
+      assert.equal(response,'ordinary model response');
+      assert.equal(nativeCalls,1);
+      assert.equal(audit.filter(r=>r.kind==='shadow_candidate').length,1);
+    }
+    if (scenario === 'intervening-write') interceptor.observe(task.session_id,
+      {name:'write',callId:'write',arguments:{}},{structuredContent:{written:true}});
+    interceptor.observe(scenario === 'foreign-session' ? 'another-session' : task.session_id,
+      {name:read,callId:'model-read',arguments:{source_id:scenario === 'wrong-handle' ? 'other' : source}},
+      {isError:scenario === 'failed',structuredContent:{source_id:source,
+        version_sha256:scenario === 'wrong-version' ? '0'.repeat(64) : version}});
+    const history = interceptor.state(task.session_id).history;
+    if (scenario === 'foreign-session') assert.equal(history.length,1);
+    else assert.equal(history.at(-1).barrier,scenario !== 'correct',scenario);
+    assert.equal(interceptor.state(task.session_id).pending.size,0);
+    assert.equal(audit.some(r=>['motif_bypass_attempt','motif_tool_result_verified',
+      'model_request_skipped_verified'].includes(r.kind)),false,scenario);
+  }
+});
+
 test('fresh unique Gmail search can anchor one model-free read, but ambiguous results defer', async () => {
   const search = 'mcp__scoped_gmail_request__search_emails';
   const read = 'mcp__scoped_gmail_request__read_email';

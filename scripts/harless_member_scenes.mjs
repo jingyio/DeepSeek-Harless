@@ -91,6 +91,16 @@ export function memberSceneDeployment(policy, deployment) {
       throw Error('Member fonts must contain only fixed public font resources');
     mounts.push({source:fonts,target:fonts});
   }
+  const paperRenderer=deployment.paperRendererRoot ? realpathSync(deployment.paperRendererRoot) : null;
+  if(paperRenderer){
+    const same=(path,names)=>new Set(readdirSync(path)).size===names.length &&
+      readdirSync(path).every(name=>names.includes(name));
+    if(!same(paperRenderer,['deployment.json','review.json','package']) ||
+       !same(join(paperRenderer,'package'),['manifest.json','generated-original.py','generated-bound.py','font.ttf','input-schema.json']))
+      throw Error('Member paper renderer must contain only reviewed deployment files');
+    mounts.push({source:paperRenderer,target:'/app/paper-renderer'});
+    mappings.push({source:paperRenderer,target:'/app/paper-renderer'});
+  }
   const pptModules=join(root,'scenarios/research_ppt/node_modules');
   if(existsSync(pptModules)){
     const source=realpathSync(pptModules);
@@ -118,8 +128,8 @@ export function memberSceneDeployment(policy, deployment) {
       if (item.isDirectory()) check(p);
       else if (!item.isFile() || !allowed.has(item.name) || statSync(p).size>4000000) throw Error('Member library includes non-runtime private evidence');
     } };
-    check(source); mounts.push({ source, target: '/app/motif-libraries' });
-    mappings.unshift({ source, target: '/app/motif-libraries' });
+    check(source); mounts.push({ source, target: '/app/private-motif-library' });
+    mappings.unshift({ source, target: '/app/private-motif-library' });
   }
   const translate = value => {
     if (typeof value !== 'string') return value;
@@ -148,6 +158,10 @@ export function memberSceneDeployment(policy, deployment) {
           cfg.env?.FM_OUTPUT!=='__HARLESS_SESSION_WORKSPACE__/file-results' ||
           Object.keys(cfg.env).length!==3))
         throw Error('Member Files MCP must use the server-bound task workspace');
+      if(scene.id==='paper-proofreading' && cfg.serverName==='paper_checks' &&
+         (cfg.args.length !== (paperRenderer ? 3 : 2) ||
+          (paperRenderer && (scene.paper_renderer_root!==paperRenderer || cfg.args[2]!==paperRenderer))))
+        throw Error('Member paper renderer is outside approved deployment');
       if(scene.adapter==='literature' && (cfg.serverName!=='literature_web' || cfg.args.length!==1 ||
           cfg.args[0]!==join(root,'scenarios/literature-notes/session_tools.py') ||
           cfg.env?.SSS_PDF_WEB_TASK!=='__HARLESS_SESSION_WORKSPACE__/literature'))
