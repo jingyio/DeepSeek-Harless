@@ -44,7 +44,7 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert rows['ppt']['scenario'] == 'scenarios/research_ppt/web-scenario.json'
     assert rows['ppt']['adapter'] == 'ppt'
     assert rows['ppt']['ppt_execution_strategy']=='host_delivery'
-    assert len(rows['ppt']['allowed_tools'])==21
+    assert len(rows['ppt']['allowed_tools'])==27
     assert 'mcp__ppt__repair_pending_plan' in rows['ppt']['allowed_tools']
     assert 'SSS_PPT_JOB' in json.dumps(rows['ppt']['mcp_rows'])
     assert rows['ppt']['instructions'].startswith('完成科研 PPT 任务。')
@@ -55,10 +55,15 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert rows['ppt']['instructions_sha256']==hashlib.sha256(rows['ppt']['instructions'].encode()).hexdigest()
     assert all('design_skill_sha256' not in rows[key] for key in ['paper-proofreading','research-data-analysis','new-scene'])
     assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['ppt']['mcp_rows'])
-    assert rows['new-scene']['allowed_tools'] == ['mcp__workspace__list_files', 'mcp__workspace__read_file']
+    common = ['web_search', 'web_fetch', 'bash', 'job_list', 'job_output', 'job_kill']
+    assert rows['new-scene']['allowed_tools'] == ['mcp__workspace__list_files', 'mcp__workspace__read_file', *common]
+    for scene in rows.values():
+        if not scene.get('adapter'): continue
+        assert scene['common_tools'] == common
+        assert set(common) <= set(scene['allowed_tools'])
     assert rows['files']['scenario'] == 'scenarios/file-management/web-scenario.json'
     assert rows['files']['adapter'] == 'files'
-    assert len(rows['files']['allowed_tools']) == 13
+    assert len(rows['files']['allowed_tools']) == 19
     assert 'FM_WEB_WORKSPACE' in json.dumps(rows['files']['mcp_rows'])
     assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['files']['mcp_rows'])
     assert 'examples/' not in rows['files']['scenario']
@@ -81,7 +86,7 @@ def test_paper_default_library_and_generic_export_survive_without_private_deploy
     assert row['paper_reference_output_unavailable_reason'] == 'paper_renderer_not_deployed'
     assert 'mcp__paper_checks__export_review_report' in row['allowed_tools']
     assert 'mcp__paper_checks__collect_current_local_citation_evidence' in row['allowed_tools']
-    assert len(row['allowed_tools']) == 24
+    assert len(row['allowed_tools']) == 30
     assert '每项发现只给一条保留原始事实的最小建议' in row['instructions']
 
 

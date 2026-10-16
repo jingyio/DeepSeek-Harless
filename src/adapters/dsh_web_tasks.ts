@@ -27,6 +27,7 @@ import {paperPdfDelivered,paperReferenceReportRequired} from './harless_paper_de
 import {bindReportAnswer} from './harless_report_answer.ts';
 import {createTaskProgress} from './harless_task_progress.ts';
 import {bindProductPrompt} from './harless_product_prompt.ts';
+import {commonToolDenial, sceneCertifiedTools} from './geneloop_capabilities.ts';
 import {createPptRecovery} from './harless_ppt_recovery.ts';
 import {createPaperRecovery,paperExportRequested} from './harless_paper_recovery.ts';
 import {protectPublicSessionOutput, publicTaskView} from './harless_public_output.ts';
@@ -137,7 +138,7 @@ export function apply(ctx: any) {
   const memberRestricted = brokerMode && config.allowed_tools.length === 0;
   const registeredScenes = config.scenes?.map(row => {
     if (!memberRestricted) return row;
-    const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas, certified_tool_schemas, certified_tool_schemas_sha256,
+    const { adapter, mcp_rows, common_tools, environment_references, manifest, task, tool_schemas, certified_tool_schemas, certified_tool_schemas_sha256,
       paper_flow_shadow, paper_flow_shadow_sha256, ...safe } = row;
     const instructions = '当前会话仅开放 GeneLoop 普通对话；没有文件或场景工具。不要声称已读取文件或完成生成。';
     return { ...safe, allowed_tools: [], preset: 'sss-disabled-' + row.id,
@@ -205,7 +206,7 @@ export function apply(ctx: any) {
       paper_flow_shadow, paper_flow_shadow_sha256,
       certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = scene;
     const instructions = '此会话为升级前保留的历史对话，只支持继续文字问答。当前没有文件或场景工具，不要声称已读取文件或完成生成；需要工作区工具时请用户新建会话。';
-    return { ...safe, allowed_tools: [], instructions, instructions_sha256: sha(instructions),
+    return { ...safe, allowed_tools: [], common_tools: undefined, instructions, instructions_sha256: sha(instructions),
       config_sha256: digest({ scene: scene.id, parent: scene.config_sha256 ?? null, legacy_chat_only: true }) };
   }
   const sourcePendingFor = (scene: Scene, inputs: any[]) => {
@@ -223,7 +224,7 @@ export function apply(ctx: any) {
     const allowed = new Set(allowedTools);
     const instructions = instructionsFor(scene, sourcePending);
     const disposers = [...bindProductPrompt(agent), agent.ctx.tools.restrict({ allow: allowedTools }),
-      agent.ctx.tools.guard((call: any) => allowed.has(call.name) ? undefined : 'Tool is outside the configured capability profile')];
+      agent.ctx.tools.guard((call: any) => allowed.has(call.name) ? commonToolDenial(call) : 'Tool is outside the configured capability profile')];
     if (instructions) {
       // Report value tokens such as {{estimate}} are literal instructions, not
       // Harness prompt variables. Substitution values are not interpolated again.
@@ -273,7 +274,7 @@ export function apply(ctx: any) {
       session_id: sessionId ?? null, model_calls: 0 };
   }
   const certifiedSchemaMatches = (scene: Scene, tools: any[]) =>
-    [scene.certified_tool_schemas, ...(scene.certified_tool_schema_variants ?? [])].some(row => row && digest(row) === digest(tools));
+    [scene.certified_tool_schemas, ...(scene.certified_tool_schema_variants ?? [])].some(row => row && digest(row) === digest(sceneCertifiedTools(scene, tools)));
   async function setSelection(sessionId: string | undefined, patch: unknown) {
     if (sessionId) await ensureOwned(sessionId);
     settingsView(sessionId); // ownership before mutation
@@ -511,7 +512,7 @@ export function apply(ctx: any) {
       motif_library:task.scene.runtime_kind??null,library_sha256:task.scene.runtime_library_sha256??null,
       paid_calls_enabled: config.provider_mode === 'real',
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, source_pending: task.source_pending ?? false,
-      effects: 'Only server-configured MCP capabilities; file changes require MCP-side confirmation.',
+      effects: 'Configured scene tools, public web search/reading, and Session-isolated commands and background jobs.',
       stats: task.stats, sources: task.sources,
       ...(live?{progress:live.progress,activity:live.activity,messages:live.messages,trace:live.trace}:{}),
       ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
@@ -639,6 +640,12 @@ export function apply(ctx: any) {
     // Every terminal task closes its proxy admission; in-flight calls still settle.
     // Release the launch slot only after budget ownership is retired.
     task.closing = (async () => {
+      const owner = agents.get(task.request.session_id), jobs = ctx.get?.('jobs');
+      if (owner && jobs) {
+        const live = jobs.list(owner).filter((job: any) => job.ownerSession === owner.id && ['running', 'stopping'].includes(job.status));
+        for (const job of live) jobs.kill(job.id, owner, 'GeneLoop task ended');
+        await Promise.all(live.map((job: any) => jobs.wait(job.id, 30000, owner)));
+      }
       await broker('/unbind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       await control('/tasks/cancel', { session_id: task.budget_session_id });
       active.delete(task.request.task_id);
@@ -1042,7 +1049,8 @@ export function apply(ctx: any) {
     const reuseWorkspace = previousTask && scene.adapter && !firstSources;
     const sceneInputs = reuseWorkspace ? previousTask.scene_inputs : scene.adapter ? await bindSceneInputs(ctx, agents.get(request.session_id), workspace, scene,
       request.content, options, delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n'), taskId) : [];
-    if (scene.adapter && !reuseWorkspace && !firstSources) {
+    const missingCommon = scene.common_tools?.some(name => !(schemas.get(request.session_id) ?? []).some((tool: any) => tool.name === name));
+    if (scene.adapter && ((!reuseWorkspace && !firstSources) || missingCommon)) {
       await selectPreset!(agents.get(request.session_id), sessionPreset(config.output, workspace, scene));
       bindScene(agents.get(request.session_id), scene);
     }

@@ -167,10 +167,13 @@ def prepare(args, output, endpoint):
         # Explicit CLI bindings belong only to the initial scene.
         if policy.get('manifest'):
             selected.update({key: policy[key] for key in ('manifest', 'task', 'certified_input_sha256')})
-        policy.update(scenes=scenes, scene_registry_sha256=hashlib.sha256(registry.read_bytes()).hexdigest())
+        policy.update(scenes=scenes, allowed_tools=selected.get('allowed_tools', prepared['allowed_tools']),
+                      scene_registry_sha256=hashlib.sha256(registry.read_bytes()).hexdigest())
     save(output / 'policy.json', policy)
     disabled = ['llm-deepseek', 'session-title-llm', 'llm-retry',
                 'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']
+    if not args.frozen:
+        disabled += ['bash-sandbox', 'pwsh-sandbox', 'web-search-deepseek']
     patch = [{'id': name, 'disabled': True} for name in disabled]
     patch.extend([{'id': 'system-prompt', 'config': product_system_prompt()},
                   # Upstream overlays replace the whole config, so preserve
@@ -194,6 +197,10 @@ def prepare(args, output, endpoint):
         'roots': [{'path': str(output / 'presets'), 'trust': 'system'}]}},
         {'insert': [{'id': 'sss-web-policy', 'name': (ROOT / 'src/adapters/dsh_web_policy.ts' if args.frozen else
             ROOT / 'src/adapters/harless_web_client/index.mjs').as_uri()}]}]
+    if not args.frozen:
+        patch.append({'insert': [
+            {'id': 'geneloop-shell', 'name': (ROOT / 'src/adapters/geneloop_shell.ts').as_uri()},
+            {'id': 'geneloop-web-search', 'name': (ROOT / 'src/adapters/geneloop_web_search.ts').as_uri()}]})
     save(output / 'host.patch.yml', patch)
     (output / 'prompt.md').write_text(prepared['prompt'], encoding='utf-8'); (output / 'prompt.md').chmod(0o600)
     snapshot = {**public, 'host': '127.0.0.1', 'port': args.port,
@@ -202,7 +209,7 @@ def prepare(args, output, endpoint):
                 'prompt_sha256': canonical_prompt_sha, 'raw_prompt_sha256': prepared['prompt_sha256'],
                 'prompt_normalization': 'outer whitespace only (official composer trim)',
                 'scenario_sha256': prepared['config_sha256'],
-                'allowed_tools': prepared['allowed_tools'], 'tools_order': sorted(prepared['allowed_tools']),
+                'allowed_tools': policy['allowed_tools'], 'tools_order': sorted(policy['allowed_tools']),
                 'fixture': args.fixture,
                 'case': prepared['case'], 'embedding_model': args.embedding_model if args.embedding_endpoint else None,
                 'dsh_version': '0.1.5-rc.3', 'filesystem_watcher_polling': os.environ.get('CHOKIDAR_USEPOLLING') == '1', 'python_version': sys.version.split()[0],
@@ -364,6 +371,7 @@ def main():
         servers.append(control)
     gate = create_server('127.0.0.1', 0, upstream, state,
                          state_selector=registry.state_for if registry else None,
+                         allow_search=not args.frozen,
                          allowed_models={'deepseek-flash', 'deepseek-v4-pro'})
     servers.append(gate)
     if args.glm:

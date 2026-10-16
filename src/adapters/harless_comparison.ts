@@ -116,7 +116,8 @@ export function createComparisonService(output: string, principal: string, host:
     scoring_available: t.presentation !== 'single' && turnLanes(t).every(name => t.lanes[name].status === 'completed'),
     lanes: Object.fromEntries(turnLanes(t).map(name => {
       const lane = t.lanes[name], artifacts = (lane.artifacts ?? []).filter(row=>
-        t.scene!=='research-data-analysis'||row.verification==='data-report-delivery-v1');
+        t.scene!=='research-data-analysis'||row.verification==='data-report-delivery-v1'||
+        row.verification==='code-output-v1'&&row.name.startsWith('outputs/code/'));
       const {delivery_reconciled, ...publicLane} = lane;
       const notStarted = lane.status === 'failed' && !lane.task_id && !lane.answer && !lane.answer_display && !artifacts.length &&
         !lane.activity?.length && ['upstream_requests', 'model_requests', 'tool_calls', 'llm_decisions', 'verified_skips']
@@ -293,7 +294,8 @@ export function createComparisonService(output: string, principal: string, host:
       // forward. The Host rechecks hashes and target scene formats before copy.
       const priorArtifacts = rotate && !withFiles ? Object.fromEntries(selectedLanes.map(name => [name,
         history.slice(-6).flatMap(t => (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.artifacts ?? [])
-          .filter(row => t.scene !== 'research-data-analysis' || row.verification === 'data-report-delivery-v1')
+          .filter(row => t.scene !== 'research-data-analysis' || row.verification === 'data-report-delivery-v1'||
+            row.verification==='code-output-v1'&&row.name.startsWith('outputs/code/'))
           .map(row => ({ turn: t.id, lane: t.presentation === 'single' ? 'baseline' : name, row }))).slice(-32),
       ])) : undefined;
       const priorSources = rotate && !withFiles ? ([...history].reverse().find(t => Object.keys(t.source_files ?? {}).length)?.source_files ?? context.prior_sources) : undefined;
@@ -324,7 +326,8 @@ export function createComparisonService(output: string, principal: string, host:
       // call. Ownership is checked above; original failure status stays visible.
       if (terminal.has(t.status)) for (const name of turnLanes(t)) {
         const lane = t.lanes[name], key = `${t.id}/${name}/${lane.attempt}`;
-        const needsDeliveryAudit=t.scene==='research-data-analysis'&&lane.artifacts?.some(row=>row.verification!=='data-report-delivery-v1');
+        const needsDeliveryAudit=t.scene==='research-data-analysis'&&lane.artifacts?.some(row=>
+          row.verification!=='data-report-delivery-v1'&&!(row.verification==='code-output-v1'&&row.name.startsWith('outputs/code/')));
         // A running task can have an unresolved display before finished_at is
         // known. Re-audit that persisted result after a restart reaches a
         // terminal state; the per-attempt key below bounds this to one read.

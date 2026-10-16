@@ -111,6 +111,10 @@ window.__ModuleLoader__.load({
       const workLabel = (name, subject) => {
         const tool = String(name || '').split('__').pop();
         const detail = typeof subject === 'string' && subject ? '：' + subject : '';
+        if (tool === 'web_fetch') return '正在读取网页';
+        if (tool === 'job_output') return '正在读取后台任务结果';
+        if (tool === 'job_list') return '正在检查后台任务';
+        if (tool === 'job_kill') return '正在停止后台任务';
         if (/read|extract|parse|load/.test(tool)) return '正在阅读文档' + detail;
         if (/search|browse/.test(tool)) return '正在搜索资料' + detail;
         if (/exec|shell|command|terminal|bash|powershell/.test(tool)) return '正在执行命令' + detail;

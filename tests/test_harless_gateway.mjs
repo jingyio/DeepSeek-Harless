@@ -31,6 +31,14 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   assert.ok(result.mounts.every(row=>row.source!==root && !row.source.includes('/.local/')));
   assert.equal(policy.scenes[0].mcp_rows[0].config.cwd,root);
   assert.equal(result.scenes[0].resources,undefined);
+  const certified=memberSceneDeployment({...policy,scenes:[{...scene,certified_code_locks:{
+    [join(root,'config/geneloop-capabilities.json')]:'public-capability-digest',
+    [join(root,'src/adapters/geneloop_shell.ts')]:'shell-digest'}}]},deployment);
+  assert.deepEqual(certified.scenes[0].certified_code_locks,{
+    '/app/config/geneloop-capabilities.json':'public-capability-digest',
+    '/app/src/adapters/geneloop_shell.ts':'shell-digest'});
+  assert.ok(!certified.mounts.some(row=>row.source===join(root,'config')),
+    'translate public config locks without mounting private config siblings');
   assert.equal(memberSceneDeployment(policy,undefined),null);
   assert.throws(()=>memberSceneDeployment({...policy,scenes:[{...scene,environment_references:{key:'owner-secret'}}]},deployment),/credentials/);
   const withSecret=structuredClone(scene);withSecret.mcp_rows[0].config.env={API_KEY:'never-deploy'};

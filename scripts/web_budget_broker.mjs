@@ -46,16 +46,17 @@ export function startBroker({ port, target, controlToken }) {
       } catch { reply(res, 400, { error: 'Invalid budget broker control request' }); }
       return;
     }
-    if (req.method !== 'POST' || req.url !== '/v1/chat/completions') {
+    const searchSession = /^\/v1\/search\/(session-[a-f0-9-]{36})\/messages$/.exec(req.url ?? '')?.[1];
+    if (req.method !== 'POST' || (req.url !== '/v1/chat/completions' && !searchSession)) {
       reply(res, 404, { error: 'Unknown model route' }); return;
     }
-    const dshSession = req.headers['x-deepseek-harness-session-id'];
+    const dshSession = searchSession ?? req.headers['x-deepseek-harness-session-id'];
     const budgetSession = typeof dshSession === 'string' ? routes.get(dshSession) : undefined;
     if (!budgetSession) { reply(res, 403, { error: 'No confirmed turn budget' }); return; }
     const headers = { ...req.headers, host: destination.host,
       'x-deepseek-harness-session-id': budgetSession };
     delete headers['x-sss-control-token'];
-    const upstream = httpRequest(destination.origin + req.url, { method: 'POST', headers }, incoming => {
+    const upstream = httpRequest(destination.origin + (searchSession ? '/v1/search/messages' : req.url), { method: 'POST', headers }, incoming => {
       const responseHeaders = { ...incoming.headers };
       for (const name of ['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'proxy-authenticate',
         'proxy-authorization', 'te', 'trailer']) delete responseHeaders[name];
@@ -64,6 +65,7 @@ export function startBroker({ port, target, controlToken }) {
     });
     upstream.on('error', () => { if (!res.headersSent) reply(res, 502, { error: 'Budget service unavailable' }); else res.destroy(); });
     req.on('aborted', () => upstream.destroy());
+    res.on('close', () => { if (!res.writableEnded) upstream.destroy(); });
     req.pipe(upstream);
   });
   server.listen(port, '127.0.0.1');
