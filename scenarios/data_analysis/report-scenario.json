@@ -1,7 +1,37 @@
 {
-  "schema_version":1,"name":"research_data_report","prompt":"report-prompt.md",
-  "servers":[{"server_name":"research_report","transport":"stdio","command":"${PYTHON}",
-    "args":["${PROJECT_ROOT}/scenarios/data_analysis/report_session.py"],"cwd":"${PROJECT_ROOT}",
-    "env":{"HARLESS_REPORT_WORKSPACE":"${SESSION_WORKSPACE}"}}],
-  "allowed_tools":["mcp__research_report__inspect_study","mcp__research_report__approve_analysis","mcp__research_report__run_analysis","mcp__research_report__verify_analysis","mcp__research_report__build_evidence","mcp__research_report__approve_presentation","mcp__research_report__render_figures","mcp__research_report__verify_figures","mcp__research_report__submit_report_text","mcp__research_report__compose_report","mcp__research_report__layout_report","mcp__research_report__audit_layout","mcp__research_report__verify_report","mcp__research_report__deliver_report","mcp__research_report__export_input_review"]
+  "schema_version": 1,
+  "name": "research_data_report",
+  "prompt": "report-prompt.md",
+  "servers": [
+    {
+      "server_name": "research_report",
+      "transport": "stdio",
+      "command": "${PYTHON}",
+      "args": [
+        "${PROJECT_ROOT}/scenarios/data_analysis/report_session.py"
+      ],
+      "cwd": "${PROJECT_ROOT}",
+      "env": {
+        "HARLESS_REPORT_WORKSPACE": "${SESSION_WORKSPACE}"
+      }
+    }
+  ],
+  "allowed_tools": [
+    "mcp__research_report__inspect_study",
+    "mcp__research_report__approve_analysis",
+    "mcp__research_report__run_analysis",
+    "mcp__research_report__verify_analysis",
+    "mcp__research_report__build_evidence",
+    "mcp__research_report__approve_presentation",
+    "mcp__research_report__render_figures",
+    "mcp__research_report__verify_figures",
+    "mcp__research_report__submit_report_text",
+    "mcp__research_report__compose_report",
+    "mcp__research_report__layout_report",
+    "mcp__research_report__audit_layout",
+    "mcp__research_report__verify_report",
+    "mcp__research_report__deliver_report",
+    "mcp__research_report__export_input_review",
+    "mcp__research_report__record_image_table"
+  ]
 }

@@ -51,7 +51,7 @@ class SessionReport:
         payload = {'title':title,'subtitle':'资料校对与建议' if self.category=='paper-review' else '资料核对与分析准备',
             'sections':sections + [{'heading':'来源与检查范围','paragraphs':[
                 '；'.join(name+'（SHA256 '+version[:12]+'）' for name,version in sorted(current.items())),
-                '依据上传资料的可提取文字形成；不代表图片、版式、文献真实性或科研结论已获独立认证。']}],
+                '依据上传资料的可提取文字或模型对原图的识别形成；图像文字可能存在识别误差，不代表图片、版式、文献真实性或科研结论已获独立认证。']}],
             'figures':[],'metrics':[],'requirements':{'style':'brief','page_mode':'auto','pages':None}}
         temporary = self._directory(self._directory(self.work,'report-exports'),uuid4().hex)
         result = build_document(payload,temporary)

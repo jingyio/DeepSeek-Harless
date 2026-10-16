@@ -31,7 +31,7 @@
     "scenarios/research_ppt/dist/render.d.ts": "6884f1f102accd71f6318722cef80e8ecaee6cf3bfa66b5d9f46dbd33c3dc6ff",
     "scenarios/research_ppt/dist/render.js": "03323d11da08d76efb9147415cdeb44a3fb7bf4860d93f9d2b98dfbb24576350",
     "scenarios/research_ppt/document_cache.py": "6caf5ebf63a34c33784afb1654a4543099dd8a2febc372b5586d4cb62cf08309",
-    "scenarios/research_ppt/documents.py": "74eb6c4e8d3486c97219735dc762374028898c3cd65ac668feaecac9c5bacb39",
+    "scenarios/research_ppt/documents.py": "e73d17340c5385c9d3eafceb399270c413d7351b473eaceebf69351915d4be58",
     "scenarios/research_ppt/evidence.py": "609632cdcfba9556ccec203ce26eec724529c8e40a0b922c13ebbde3899a4b25",
     "scenarios/research_ppt/evidence_audit.py": "547b59bfa047411b4f2d2f0abc78a586f01d880dc76f140525079f654d9b6a0a",
     "scenarios/research_ppt/feedback_learning.py": "7b646cf7f29e2541e6891ef7eef6f0c6d78d4513c7bc8e4f27510bda2ae8e1bb",
@@ -39,12 +39,12 @@
     "scenarios/research_ppt/generated_tools.py": "b6551a9a3649a8b41b492625149f24d138418af3ae5d698428a50b046bfbbd26",
     "scenarios/research_ppt/layout_learning.py": "b2acc7f7c34ff363bea4b5a21b043f5f1c0197623b95d652177c402de74b03b2",
     "scenarios/research_ppt/motif_v6.py": "367d2e3aff4dfb824e12aa24bf170881bc4da00ec687471a2b5e55f61db11ffb",
-    "scenarios/research_ppt/recovery.py": "8410340c967bb0305428276afec8770fe9b8274769b8047f2860e8d3868567d1",
+    "scenarios/research_ppt/recovery.py": "667e849bab529e45b211259c5670604c2229981e8d61fc237f99427f6ccad9ab",
     "scenarios/research_ppt/restyle.py": "6ec2a4ffd0d675d99d069f0221641bb3da997ca4b64c89384ea385829586f98a",
     "scenarios/research_ppt/revision.py": "6c92537c4e4dce65ca4789f1b8f1301bdb3631d6fbac2303fb1e946a4f595389",
     "scenarios/research_ppt/runtime_snapshot.py": "73a3928c14ed98f372a4c4d27acedbeea009bd7296ec21ef30b871bda283625c",
     "scenarios/research_ppt/server.py": "1897440b47c4c35f53de2e4733c91b870db9738808ffd210a8108fcebddeff05",
-    "scenarios/research_ppt/service.py": "ee616f2e77c3e7b71a6b2d8084ae529fad891c2be9490333caa1d99450039281",
+    "scenarios/research_ppt/service.py": "0dcba01faa0c73fb9ea8e1aadd0a667f96c7245281003364a9ffd3869b47af50",
     "scenarios/research_ppt/smoke.py": "37b158c9c7eeb84d4eec04dc517af5ce69ac4ae5d3d229c7fea98fd0663c06f6",
     "scenarios/research_ppt/tool_learning.py": "4e5fb3f2f4a2a334d8cfddb3c9fb1b7a14e0902375331f93fce3eca897e93c1b",
     "scenarios/research_ppt/trial.py": "a430cda416f74cecde2e49f3fd5f321d3b4e6c0eb8462e7dacbf50066187cd9c",
@@ -68,7 +68,7 @@
     "scenarios/research_ppt/dist/pending-plan.js": "2341a030671dd06b35a6e549008b35679430cc0aafa17b53724ea99bb150631f",
     "scenarios/research_ppt/dist/pending-plan.d.ts": "71bfa83e34efed75776948be8b04f4ec28bcbbbcb62eeea8ac2f26e2af6a985e",
     "scenarios/research_ppt/web_scope.py": "ff29d51e120f2e492702795d520435c0e054fb5c42d04bbe5a957afe48b4fa75",
-    "src/adapters/harless_attachment_text.py": "c13f8fe9084c3feb13741ca17539546f8743763f4662b523ff0116c74ad7c693"
+    "src/adapters/harless_attachment_text.py": "d69f92415686fc84d1ae477972a806907cafdf1c2f58fc708ee392ba1b588663"
   },
   "validation": {
     "actual_mcp_schema_slide_counts": [

@@ -300,7 +300,14 @@ def parse_document(path: Path) -> dict:
     file_hash(path)
     kind = path.suffix.lower().lstrip('.')
     pages, images, warnings = [], [], []
-    if kind == 'pdf':
+    if kind in {'png','jpg','jpeg','webp','gif'}:
+        image = image_record(path.read_bytes(), 'img_1', 1)
+        if image is None: raise ValueError('图片无法解码或没有可用像素')
+        image['evidence_scope'] = 'uploaded_image'
+        images = [image]
+        pages = [{'page':1,'text':'','truncated':False}]
+        warnings.append('原图作为本轮原生视觉输入提供给模型。请从真实图像读取内容；这里没有OCR文字，不能声称独立核验。page=1 表示这张图片。')
+    elif kind == 'pdf':
         from pypdf import PdfReader
         reader = PdfReader(path)
         if reader.is_encrypted:
@@ -367,7 +374,7 @@ def parse_document(path: Path) -> dict:
         warnings.extend(extracted.get('warnings', []))
         warnings.append('非分页资料的 page 是逻辑文本段序号，不是原文物理页码；仅使用已读取文字和表格，不声称完成图片或版式核查。')
     text_chars = sum(len(p['text'].strip()) for p in pages)
-    if not text_chars:
+    if not text_chars and kind not in {'png','jpg','jpeg','webp','gif'}:
         warnings.append('未提取到文本，可能是扫描文件；首版不执行 OCR')
     return {'format': kind, 'page_count': len(pages), 'text_chars': text_chars,
             'pages': pages, 'images': images, 'warnings': warnings}

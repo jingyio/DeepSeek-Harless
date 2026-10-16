@@ -336,6 +336,16 @@ def extract_attachment(path: Path | str, original_name: str | None = None) -> di
               'truncated': False, 'coverage': 'metadata_only', 'visual_content_reviewed': False, 'ocr_performed': False}
     try:
         extra = {}
+        if suffix in {'.png','.jpg','.jpeg','.webp','.gif'}:
+            from PIL import Image
+            with Image.open(io.BytesIO(data)) as image:
+                if image.width > 10000 or image.height > 10000:
+                    raise ExtractionIssue('image_dimensions_too_large')
+                dimensions = [image.width, image.height]
+                image.verify()
+            return {**result, 'status':'visual_input','pixels':dimensions,
+                    'reason':'native_image_available_to_model','text':'',
+                    'warnings':['本文件为原生图片输入，请根据实际图像识别文字与图表；未运行确定性OCR，不能把视觉识别称为独立验证。']}
         if data.lstrip().startswith(b'%PDF-') or suffix == '.pdf':
             result['format'] = 'pdf'
             text, extra = _pdf(data)

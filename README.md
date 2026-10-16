@@ -20,6 +20,8 @@ Web 的 DeepSeek 模型提供推理 **Off / On**，默认 Off；On 对应官方 
 
 这些导出依赖服务器的 ReportLab、PyMuPDF、中文字体及 PPT 渲染工具。部署须重新生成场景 policy、MCP 白名单和提示词，不能只替换前端文件。统计单位与合成数据声明通过带原文证据的分析计划绑定；要求 R² 时同时校验正文与统计表。真实下载、布局与内容复测记录见 [三场景修复验收](docs/experiments/geneloop-scene-delivery-repair-20261016-v1.md)。
 
+图片附件通过 Harness 的原生附件服务送入模型，同时在每侧任务保存独立的版本化原图。PPT 和论文场景可基于原生视觉内容生成来源绑定的报告；数据图片须先逐格转录为冻结表格，再进入原有统计复算流程。视觉转录不等于独立 OCR 或数值认证，报告须说明识别误差风险；看不清的单元格不能猜补。清晰 PNG/JPG 的真实网页验证与边界见 [图片场景验收](docs/experiments/geneloop-native-image-scenes-20261016-v1.md)。
+
 普通聊天默认展示最终回答，工具调用、上下文和早期回复收在可展开的过程区；生成中继续显示真实文字增量和简明状态。原生 Markdown、图片、文件入口以及最终回复的复制、分支操作保留。对照标题统一为 Baseline / Motif，影子模式另标“影子评估”。Web 共用 GeneLoop 产品身份；旧会话也在公开读取与实时输出时隐藏内部环境信息，原始 journal、用户消息和文件字节保持不变。代码行为、定向检查、真实浏览器及正式部署验收记录在 [本轮说明](docs/experiments/geneloop-message-privacy-20261015-v1.md)。
 
 已有 PPT、论文、数据分析 Motif 库已统一到版本化的 [motif-libraries/](motif-libraries/README.md)。管理员在成员 Web policy 配置 `comparison_scenes: ["ppt", "paper-proofreading", "research-data-analysis"]` 后，原生 `/ppt`、`/paper`、`/data` 聊天分别执行 Baseline 与 Motif 两路，保留各自多轮历史、交付文件与 1–5 分评分；论文原库按其授权运行 Shadow。资料通过原生附件上传，账号隔离与预算沿用现有服务。库缺失或兼容锁失效会明确回退，不能把回退记为优化成功。

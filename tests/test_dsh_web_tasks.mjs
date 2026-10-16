@@ -1702,3 +1702,29 @@ test('Trash rejects active tasks and isolates direct APIs; restoring retains tas
   assert.ok(group.sessionIds.includes(task.session_id));assert.equal((await f.trash()).value.sessions.length,0);
  }finally{await f.close();}
 });
+
+
+test('native comparison images reach both lanes with exact file provenance and the durable decoder',options,async()=>{
+ const scenes=[{...multiScenes[0],id:'new-scene',label:'Chat',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'ppt',label:'PPT',preset:'sss-ppt',adapter:'workspace',mcp_rows:[]}];
+ const f=await fixture({broker:true,scenes,capability_profile:'new-scene',comparison_scenes:['ppt']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const data='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8ZkAAAAASUVORK5CYII=';
+  const image={type:'image',mediaType:'image/png',name:'source.png',data};
+  assert.equal(f.adapters.find(row=>row.names.includes('deepseek-official')).adapter.config.resolveAttachments(),f.ctx.attachments);
+  const admitted=await f.ctx.sessionController.prompt({sessionId,requestId:'native-image',mode:'queue',content:[{type:'text',text:'/ppt Summarize this image'},image]},new AbortController().signal);
+  for(let i=0;i<200&&f.promptCalls.length<2;i++)await new Promise(r=>setTimeout(r,10));
+  assert.equal(f.promptCalls.length,2);
+  for(const call of f.promptCalls){
+   assert.deepEqual(call.content.find(part=>part.type==='image'),image);
+   const content=call.content.find(part=>part.type==='file');assert.ok(content);
+   const agent=f.agents.get(call.sessionId),ref=f.ctx.fileUploads.resolve(agent,content.receiptId);
+   const chunks=[];for await(const bytes of f.ctx.attachments.readFileStream(ref))chunks.push(bytes);
+   assert.equal(Buffer.concat(chunks).toString('base64'),data);
+  }
+  const turn=JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(t=>t.id===admitted.comparison_id);
+  assert.equal(turn.input[1].type,'image');
+  for(const task of (await f.api()).value.tasks)await f.complete(task);
+ }finally{await f.close()}
+});

@@ -273,7 +273,7 @@ export function createComparisonService(output: string, principal: string, host:
       if (state.turns.some(t => t.session_id === session && !terminal.has(t.status))) throw new ComparisonError('comparison_busy', '这条对照仍在运行，请等待或取消。');
       let thread = state.threads[session];
       const history = state.turns.filter(t => t.session_id === session);
-      const withFiles = request.content.some((part: any) => part.type === 'file');
+      const withFiles = request.content.some((part: any) => part.type === 'file' || part.type === 'image');
       const presentation = context.presentation === 'single' ? 'single' : 'paired';
       const selectedLanes: readonly LaneName[] = presentation === 'single' ? ['baseline'] : lanes;
       const newSources = Boolean(thread && withFiles);
