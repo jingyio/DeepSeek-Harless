@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
-import { createSessionTrash, protectDeletedSessions, protectDeletedSessionFiles, protectDeletedSessionQuery, registerSessionTrashRoute } from '../src/adapters/harless_session_trash.ts';
+import { createSessionTrash, protectDeletedSessions, protectDeletedSessionFiles, protectDeletedSessionQuery, protectWorkspaceArchiveProjection, registerSessionTrashRoute } from '../src/adapters/harless_session_trash.ts';
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'geneloop-trash-')), path = join(dir, 'trash.json');
@@ -62,6 +62,29 @@ test('archive restoration survives restart, retains workspace membership and can
     await restarted.mutate('restore', 'parent');
     assert.deepEqual(restarted.list().restored_archive_ids, ['parent'], 'restoring deleted archives returns them to the workspace');
   } finally { f.close(); }
+});
+
+test('native workspace subscriptions receive restore and rearchive updates and reconnect with the same effective archive set', async () => {
+  const f=fixture();try {
+    let released=0;
+    const controller={async *follow(signal){try {
+      yield {type:'baseline',value:{items:[{workspaceId:'group',sessionIds:['parent']}],archivedSessionIds:['parent','other']}};
+      await new Promise(resolve=>{if(signal.aborted)resolve();else signal.addEventListener('abort',resolve,{once:true});});
+    }finally{released++;}}};
+    f.host.archive=async()=>{};
+    const undo=protectWorkspaceArchiveProjection(controller,f.trash),abort=new AbortController();
+    const stream=controller.follow(abort.signal);
+    assert.deepEqual((await stream.next()).value.value.archivedSessionIds,['parent','other']);
+    let next=stream.next();await f.trash.mutate('unarchive','parent');
+    assert.deepEqual((await next).value,{type:'archived',archivedSessionIds:['other']});
+    const secondAbort=new AbortController(),second=controller.follow(secondAbort.signal);
+    assert.deepEqual((await second.next()).value.value.archivedSessionIds,['other'],'fresh native clients must also be able to open the restored chat');
+    next=stream.next();await f.trash.mutate('archive','parent');
+    assert.deepEqual((await next).value,{type:'archived',archivedSessionIds:['parent','other']});
+    abort.abort();secondAbort.abort();await stream.return();await second.return();
+    await new Promise(resolve=>setImmediate(resolve));assert.equal(released,2);
+    undo();
+  }finally{f.close();}
 });
 
 test('clear requires the reviewed revision and permanently denies restore and all parent/child reads after restart', async () => {
