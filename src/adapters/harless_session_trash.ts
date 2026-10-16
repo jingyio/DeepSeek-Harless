@@ -97,6 +97,53 @@ export function createSessionTrash(path: string, principal: string, host: Host) 
   };
 }
 type Trash = ReturnType<typeof createSessionTrash>;
+/** Keep the native workspace model (not only our sidebar) aware of restores.
+ * One native frame can be pending; repeated trash changes coalesce. */
+export function protectWorkspaceArchiveProjection(controller: any, trash: Trash) {
+  const original = controller.follow.bind(controller), undo: (() => void)[] = [];
+  replaceMethod(controller, 'follow', async function* (signal?: AbortSignal) {
+    const abort = new AbortController();
+    let wake = () => {}, dirty = false, baseline = false, archived: string[] = [];
+    let ready = false, step: IteratorResult<any> | undefined, failure: unknown, failed = false;
+    const stop = trash.subscribe(() => { dirty = true; wake(); });
+    const cancel = () => { abort.abort(signal?.reason); wake(); };
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) cancel();
+    const iterator = original(abort.signal)[Symbol.asyncIterator]();
+    const advance = () => { Promise.resolve().then(() => iterator.next()).then(value => {
+      step = value; ready = true; wake();
+    }, error => { failure = error; failed = true; ready = true; wake(); }); };
+    const visible = () => { const restored = new Set(trash.list().restored_archive_ids); return archived.filter(id => !restored.has(id)); };
+    advance();
+    try {
+      while (!abort.signal.aborted) {
+        if (dirty && baseline) {
+          dirty = false; yield { type: 'archived', archivedSessionIds: visible() };
+        } else if (ready) {
+          ready = false;
+          if (failed) throw failure;
+          if (step?.done) return;
+          let frame = step!.value;
+          if (frame.type === 'baseline') {
+            baseline = true; dirty = false; archived = [...frame.value.archivedSessionIds];
+            frame = { ...frame, value: { ...frame.value, archivedSessionIds: visible() } };
+          } else if (frame.type === 'archived') {
+            dirty = false; archived = [...frame.archivedSessionIds];
+            frame = { ...frame, archivedSessionIds: visible() };
+          }
+          advance(); yield frame;
+        } else {
+          await new Promise<void>(resolve => { wake = resolve; if (ready || (dirty && baseline) || abort.signal.aborted) resolve(); });
+        }
+      }
+    } finally {
+      stop(); signal?.removeEventListener('abort', cancel); abort.abort();
+      void Promise.resolve(iterator.return?.()).catch(() => {});
+    }
+  }, undo);
+  return () => { for (const dispose of undo.reverse()) dispose(); };
+}
+
 function sessionRequestIds(value: any): string[] {
   if (typeof value === 'string') return [value];
   if (value?.address?.kind === 'subagent') return [value.address.parentSessionId, value.address.childSessionId];
@@ -202,6 +249,7 @@ export function protectDeletedSessionFiles(files: any, uploads: any, trash: Tras
 }
 
 export function registerSessionTrashRoute(ctx: any, trash: Trash, serialize: <T>(operation: () => Promise<T>) => Promise<T>) {
+  if (ctx.workspaceController) ctx.effect(() => protectWorkspaceArchiveProjection(ctx.workspaceController, trash), 'harless-archive-projection');
   ctx.effect(() => ctx.connection.fetch.register({ path: '/api/harless/session-trash', methods: ['GET', 'POST'], requestBody: 'buffered',
     async fetch(request: Request) {
       const rejected = ctx.connection.requestRejection(request);
