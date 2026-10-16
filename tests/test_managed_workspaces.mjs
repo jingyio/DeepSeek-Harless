@@ -395,6 +395,16 @@ test('workspace clicks toggle without selected/current updates or sidebar remoun
   assert.ok(!ui.calls.some(row => row[0] === 'create' || row[0] === 'open'), 'collapse never creates or changes the current chat');
 });
 
+test('an explicitly named blank conversation keeps its visible name in the sidebar and workspace overview', () => {
+  const ui=interactiveWorkspaceBrowser();
+  ui.sessions.list.value.byId.one={id:'one',blank:true,title:'空会话手动名称'};
+  let nodes=ui.nodes(ui.render());
+  assert.ok(nodes.some(row=>row.props?.className==='geneloop-chat-name'&&row.children.includes('空会话手动名称')));
+  ui.click(nodes.find(row=>row.props?.className==='geneloop-workspace-name'));
+  assert.ok(ui.nodes(ui.home()).some(row=>row.type==='span'&&row.children.includes('空会话手动名称')));
+  ui.dispose();
+});
+
 test('archive and trash belong to native settings while workspace and first chat retain a visible gap', () => {
   const ui = interactiveWorkspaceBrowser(); ui.workspaces.list.value.archivedSessionIds = ['one'];
   const sidebar = ui.nodes(ui.render());

@@ -1726,6 +1726,24 @@ test('paired native steps reach SSE, scoped trace, feedback and a single-lane br
  }finally{await reader?.cancel();await f.close();}
 });
 
+test('cold blank archive restoration preserves authoritative native title events instead of resetting a manual name', options, async () => {
+ const f=await fixture();try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  await f.ctx.sessionController.rename({sessionId,title:'归档标题验收'});
+  const snapshot=await f.ctx.sessionController.inspect(sessionId);
+  delete snapshot.meta.title;
+  snapshot.events.push({type:'session/title',data:{title:'归档标题验收'}});
+  const renamed=[];
+  f.originalController.rename=async request=>{renamed.push(request.title);snapshot.events.push({type:'session/title',data:{title:request.title}});return {title:request.title};};
+  await f.restart();
+  await f.ctx.workspaceController.archiveSession({sessionId});
+  assert.deepEqual(renamed,[],'native title events must be considered before blank-title initialization');
+  assert.equal((await f.trash({action:'unarchive',session_id:sessionId})).status,200);
+  assert.equal((await f.trash({action:'delete',session_id:sessionId})).status,200);
+  assert.equal((await f.trash()).value.sessions[0].title,'归档标题验收');
+ }finally{await f.close();}
+});
+
 test('Trash rejects active tasks and isolates direct APIs; restoring retains task history and original workspace',options,async()=>{
  const f=await fixture({broker:true,dshHome:true});try{
   const task=await f.preview('synthetic deletion target'), other={session_id:(await f.ctx.sessionController.create({})).sessionId};await f.submit(task);
