@@ -139,6 +139,12 @@ def _safe_failure(exc: ValueError) -> dict:
     if isinstance(exc, RenderFailure):
         report = exc.report
         code = report.get('code')
+        if code == 'unsupported_statistics':
+            count = report.get('expected_complete_case_n')
+            count_note = f'已按来源元数据指定变量逐行计算，完整案例有效样本必须为 {count}。' if type(count) is int and 0 <= count <= 10000000 else ''
+            return {'error': code, 'message': '本页统计数值没有当前引用来源的直接结果依据。',
+                    'next_action': count_note + '修正样本计数；删除未由已提供分析报告支持的均值、回归、相关、p值或置信区间；保留设计、原始数据和局限，继续同一任务交付。不要心算、伪造结果或擅自改变分析方法。',
+                    **_recovery_location(report)}
         actions = {
             'text_overflow': '明确精简重复文字或重新组织本页；不能自动删除科研条件。',
             'table_overflow': '明确缩短表格重复表述或重组本页，保留数据、单位和比较条件。',
