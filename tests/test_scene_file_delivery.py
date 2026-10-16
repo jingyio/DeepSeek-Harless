@@ -85,8 +85,9 @@ def test_source_context_cannot_override_or_invent_evidence():
 @pytest.mark.parametrize('name,raw', [('notes.txt',b'Actual source words. '*1700),
                                     ('data.csv',b'x,y\n1,2\n3,4\n'),
                                     ('study.json',b'{"description":"Supplied research context"}'),
-                                    ('source.docx',word(ROWS))])
+                                    ('source.docx',word(ROWS))],ids=['txt-long','csv','json','docx'])
 def test_ppt_reads_non_pdf_sources_completely_and_binds_actual_bytes(tmp_path,name,raw):
+    pytest.importorskip('defusedxml')
     from scenarios.research_ppt.documents import parse_document
     path=tmp_path/name;path.write_bytes(raw)
     parsed=parse_document(path)
@@ -95,3 +96,21 @@ def test_ppt_reads_non_pdf_sources_completely_and_binds_actual_bytes(tmp_path,na
     expected=extract_attachment(path)['text']
     assert ''.join(p['text'] for p in parsed['pages'])==expected
     assert path.read_bytes()==raw
+
+
+def test_review_write_failure_never_publishes_partial_files(tmp_path,monkeypatch):
+    pytest.importorskip('reportlab');pytest.importorskip('fitz')
+    from src.adapters.session_report import SessionReport
+    from src.adapters.session_files import SessionFiles
+    root=tmp_path/'work'/'inputs';root.mkdir(parents=True)
+    raw=b'Source manuscript.';(root/'paper.txt').write_bytes(raw)
+    original=Path.write_text
+    def fail_receipt(path,*args,**kwargs):
+        if path.name=='delivery.json': raise OSError('simulated interrupted receipt write')
+        return original(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'write_text',fail_receipt)
+    with pytest.raises(OSError,match='interrupted'):
+        SessionReport(SessionFiles(root),'paper-review').export('Review',
+            [{'heading':'Scope','paragraphs':['Only the uploaded manuscript was reviewed.']}],
+            {'paper.txt':hashlib.sha256(raw).hexdigest()})
+    assert list((root.parent/'outputs/documents').iterdir())==[]

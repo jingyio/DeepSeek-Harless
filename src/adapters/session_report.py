@@ -62,15 +62,19 @@ class SessionReport:
         if {r['name']:r['sha256'] for r in self.files.list_files()['files']} != current:
             raise ValueError('report_source_version_changed')
         output = self._directory(self._directory(self.work,'outputs'),'documents')
-        destination = self._directory(output,uuid4().hex)
-        pdf,md = destination/(self.category+'.pdf'),destination/(self.category+'.md')
+        destination = output/uuid4().hex
+        # Publish the PDF, Markdown and receipt together. An interrupted write
+        # must not leave a partial report in the downloadable output tree.
+        staging = self._directory(temporary,'publication')
+        pdf,md = staging/(self.category+'.pdf'),staging/(self.category+'.md')
         shutil.copyfile(result['path'],pdf);pdf.chmod(0o600)
         md.write_text(markdown,encoding='utf-8');md.chmod(0o600)
         receipt={'schema_version':1,'kind':'source_bound_review','category':self.category,
             'source_versions':current,'layout_passed':True,'page_count':result['page_count'],
             'scientific_content_certified':False,
-            'files':[{'name':p.relative_to(self.work).as_posix(),'sha256':_hash(p),'bytes':p.stat().st_size} for p in (pdf,md)]}
-        path=destination/'delivery.json'
+            'files':[{'name':(destination/p.name).relative_to(self.work).as_posix(),'sha256':_hash(p),'bytes':p.stat().st_size} for p in (pdf,md)]}
+        path=staging/'delivery.json'
         path.write_text(json.dumps(receipt,ensure_ascii=False),encoding='utf-8');path.chmod(0o600)
+        os.rename(staging,destination)
         return {'exported':True,'page_count':result['page_count'],'artifacts':receipt['files'],
                 'scope':'source_bound_review_not_statistical_or_authenticity_certification'}
