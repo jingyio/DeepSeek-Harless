@@ -19,7 +19,7 @@
   "compilation_source_sha": "30b5a37423f4f2b5e1568dc44d8442610069dc0c",
   "compilation_source_binding": "exact_file_code_locks_include_uncommitted_candidate",
   "compilation_model_requests": 0,
-  "compilation_seconds": 0.47545477095991373,
+  "compilation_seconds": 0.4971457701176405,
   "model_weights_trained": false,
   "compilation_executes_scene_tools": false,
   "common_native_tools": [

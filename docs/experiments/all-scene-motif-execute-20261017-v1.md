@@ -6,7 +6,7 @@
 
 用户要求 `/ppt`、`/data`、`/paper` 的 Motif 都实际执行。此前 PPT 与 Data 已有 Execute 库，Paper 产品默认仍是 Shadow；原私有 Paper Execute 库只覆盖结构化论文/参考文献路径，不能代替普通上传文档的读取认证。
 
-本次始于 main `30b5a37423f4f2b5e1568dc44d8442610069dc0c`，发布前合并最新 `914cc255501ccc3e160626c31bb7cd032c7a06b0`（PR #57），完整保留其联网、命令与后台能力，不修改上游 Harness 或 Motif 核心。公共 Registry 将 Paper 默认改为 `paper-web-v1`，PPT 最终兼容包为 `ppt-web-v2-r8`，Data 保留原回执库。三个新默认对照的 Motif 为 Execute；旧 Shadow 证据与历史记录仍按原模式保存。无有效认证或未命中时由普通模型继续，不将回退计为优化成功。
+本次始于 main `30b5a37423f4f2b5e1568dc44d8442610069dc0c`，发布前合并 `914cc255501ccc3e160626c31bb7cd032c7a06b0`（PR #57）及搜索文本块修复 `f60d43f6c5be3c3736303541f790806252ebab26`（PR #59），完整保留其联网、命令与后台能力，不修改上游 Harness 或 Motif 核心。公共 Registry 将 Paper 默认改为 `paper-web-v1`，PPT 最终兼容包为 `ppt-web-v2-r8`，Data 保留原回执库。三个新默认对照的 Motif 为 Execute；旧 Shadow 证据与历史记录仍按原模式保存。无有效认证或未命中时由普通模型继续，不将回退计为优化成功。
 
 真实采集通过网页后端原生任务 API 和 `session/prompt`；这是实际 HTTP/MCP/模型验收，不冒称浏览器人工点击测试。运行在隔离候选环境，模型由原共享费用代理记账，沿用原累计账本。每任务、每侧、累计费用、次数和输出配置均为 `null`，不重置历史；服务商原生容量边界继续存在。凭证、原始轨迹、私人服务器路径只留 `.local/`。
 
@@ -83,6 +83,6 @@ UTF-8 兼容认证冻结后，Pro On 的 Word+PDF 双栏复测均完成：Baseli
 
 学习及所有候选验收合计 171 次真实请求、代理估费约 $0.25362060，包含排除轨迹、兼容更新期间的回退与重试；账单实付未知。兼容重编本身零模型调用。原始事件、精确账本、配置、token/缓存明细和学习/排除证据全部留在本轮私有目录。
 
-免费回归包括磁盘准入及篡改、Windows 实际 CP936、24+6 同权限工具的真实 apply、源码锁、原始 Shadow 保持及界面历史恢复。Linux 最初的 PDF 测试因 MCP 精简环境过滤 `LD_LIBRARY_PATH` 找不到 Poppler 动态库，使用私有测试 wrapper 后四个失败 target 均通过；未改产品解析器或削弱守卫。最终完整回归、双平台 CI 和正式发布回执见 [PR #58](https://github.com/jingyio/DeepSeek-Harless/pull/58)。
+免费回归包括磁盘准入及篡改、Windows 实际 CP936、24+6 同权限工具的真实 apply、源码锁、原始 Shadow 保持及界面历史恢复。Linux 最初的 PDF 测试因 MCP 精简环境过滤 `LD_LIBRARY_PATH` 找不到 Poppler 动态库，使用私有测试 wrapper 后四个失败 target 均通过；未改产品解析器或削弱守卫。Linux 全量 Python 1022、Node 786 通过，3 项 Docker 可选检查未启用；smoke、Motif、controls 通过。场景诊断旧有“全部必须为 MCP 前缀”的假设不适配公共 6 工具，修为登记名单、场景 MCP 前缀和六项参数 Schema 的精确检查，不放行任意工具。PR #59 的 8 行代理修复另经增量检查，Paper 72 锁以相同证据再编译，只改变代理代码摘要。最终场景复测、双平台 CI 和正式发布回执见 [PR #58](https://github.com/jingyio/DeepSeek-Harless/pull/58)。
 
 免费协议检查与真实模型生成、下载、内容检查分开记录。没有普通脚本对照或独立同质评审时，不依据 verified skip 宣称净收益。
