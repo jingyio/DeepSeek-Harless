@@ -127,6 +127,15 @@ def response_usage(content_type: str, answer: bytes) -> dict[str, int]:
     if not payloads:
         return {}
     usage = payloads[-1]["usage"]
+    if 'input_tokens' in usage and 'output_tokens' in usage:
+        # Anthropic separates uncached input, cache creation, and cache reads.
+        counts = [usage.get(key, 0) for key in ('input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens')]
+        if any(type(value) is not int or value < 0 for value in counts):
+            return {}
+        fresh, created, cached, output = counts
+        return {'prompt_tokens': fresh + created + cached, 'prompt_cache_hit_tokens': cached,
+                'prompt_cache_miss_tokens': fresh + created, 'completion_tokens': output,
+                'total_tokens': fresh + created + cached + output}
     fields = ("prompt_tokens", "prompt_cache_hit_tokens",
               "prompt_cache_miss_tokens", "completion_tokens", "total_tokens")
     values = {field: usage.get(field) for field in fields}
@@ -323,7 +332,7 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                   state_selector=None, allowed_models: set[str] | None = None,
                   chat_path: str = '/v1/chat/completions', allow_files: bool = True,
                   gate_token: str | None = None,
-                  omit_sdk_output_limit: bool = False) -> ThreadingHTTPServer:
+                  omit_sdk_output_limit: bool = False, allow_search: bool = False) -> ThreadingHTTPServer:
     if omit_sdk_output_limit and state.output_cap is not None:
         raise ValueError('SDK output defaults can only be omitted with an uncapped output policy')
     # macOS can supply system proxies even with no *_PROXY environment variables.
@@ -340,7 +349,12 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
         def _state(self):
             # Dynamic Web tasks route by the adapter's server-owned session header.
             # Legacy SDK/frozen callers keep their original single State.
-            return state_selector(self.headers) if state_selector else state
+            match = re.fullmatch(r'/v1/search/((?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32}))/messages', self.path) if allow_search else None
+            headers = dict(self.headers)
+            if match:
+                headers = {k: v for k, v in headers.items() if k.lower() != 'x-deepseek-harness-session-id'}
+                headers['x-deepseek-harness-session-id'] = match[1]
+            return state_selector(headers) if state_selector else state
 
         def _reply(self, code: int, message: str) -> None:
             raw = json.dumps({"error": message}).encode()
@@ -411,7 +425,8 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                        if key.lower() not in HOP_HEADERS | {'x-sss-model-gate-token'}
                        and not (stream and key.lower() == 'accept-encoding')}
             if stream: headers['Accept-Encoding'] = 'identity'
-            target_path = chat_path if self.path == '/v1/chat/completions' else self.path
+            target_path = ('/anthropic/v1/messages' if allow_search and self.path.startswith('/v1/search/') else
+                           chat_path if self.path == '/v1/chat/completions' else self.path)
             request = urllib.request.Request(upstream.rstrip('/') + target_path, data=body,
                                              headers=headers, method=method)
             try:
@@ -453,7 +468,9 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
 
         def do_POST(self) -> None:  # noqa: N802
             file_upload = allow_files and self.path == "/v1/files"
-            if self.path != "/v1/chat/completions" and not file_upload:
+            search = allow_search and (self.path == '/v1/search/messages' or
+                re.fullmatch(r'/v1/search/(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})/messages', self.path) is not None)
+            if self.path != "/v1/chat/completions" and not file_upload and not search:
                 self._reply(403, "unmetered endpoint refused")
                 return
             try:
@@ -477,6 +494,16 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                 self._reply(403, "model session is not approved")
                 return
             try:
+                if search:
+                    payload = json.loads(body)
+                    if (not isinstance(payload, dict) or set(payload) != {'model', 'max_tokens', 'messages', 'tools'} or
+                            not isinstance(payload['messages'], list) or len(payload['messages']) != 1 or
+                            not isinstance(payload['messages'][0], dict) or
+                            payload['messages'][0].get('role') != 'user' or
+                            not isinstance(payload['messages'][0].get('content'), str) or
+                            not isinstance(payload['tools'], list) or len(payload['tools']) != 1 or
+                            payload['tools'][0] != {'type': 'web_search_20250305', 'name': 'web_search', 'max_uses': 3}):
+                        raise ValueError('invalid native search request')
                 if omit_sdk_output_limit:
                     # pi-ai supplies a model-capacity max_tokens even when the
                     # admitted call omits it. Let this provider choose its own
@@ -498,12 +525,16 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                 self._reply(429, "approved research budget exhausted")
                 return
             request_id, model, dollars, ceiling = booked
+            if search:
+                payload['model'] = 'deepseek-v4-flash' if model == 'deepseek-flash' else model
+                body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
             started = time.monotonic()
             self.stream_started = False
-            status, content_type, answer = self._call_upstream(body, "POST", stream=True)
+            status, content_type, answer = self._call_upstream(body, "POST", stream=not search)
             usage = response_usage(content_type, answer)
             observed, released = request_state.settle(request_id, model, status, usage)
             request_state.log({"request_id": request_id, "model": model,
+                       **({'kind': 'web_search', 'search_pricing': 'model_tokens_only_service_fee_not_estimated'} if search else {}),
                        "reserved_upper_usd": round(dollars, 8),
                        "observed_peak_usd": round(observed, 8) if observed is not None else None,
                        "reservation_released_usd": round(released, 8),

@@ -4,6 +4,11 @@ export type TaskMessage = { id: string; text: string; status: 'streaming' | 'com
 export type TaskTrace = TaskActivity & { id: string; time: string; kind: 'assistant' | 'thinking' | 'tool' | 'motif' | 'request'; text?: string; optimized: boolean; verified_skip: boolean };
 export type TaskProgressSnapshot = { answer: string; progress: TaskActivity; activity: TaskActivity[]; messages: TaskMessage[]; trace: TaskTrace[] };
 const toolLabels: [RegExp, string][] = [
+  [/^web_search$/, '搜索网页'],
+  [/^web_fetch$/, '读取网页'],
+  [/^job_output$/, '读取后台任务结果'],
+  [/^job_list$/, '检查后台任务'],
+  [/^job_kill$/, '停止后台任务'],
   [/^read_pending_plan$/, '读取需要修正的页面'],
   [/^repair_pending_plan$/, '修正页面并重新核验'],
   [/^(?:render_delivery|render_deck)$/, '生成并核验演示文稿'],

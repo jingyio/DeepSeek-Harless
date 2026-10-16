@@ -1,5 +1,15 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 网页通用能力
+
+- `config/geneloop-capabilities.json` 为五个已登记场景追加六个原生工具：`web_search`、`web_fetch`、`bash`、`job_list`、`job_output`、`job_kill`。Baseline、Shadow 和有认证库的 Execute 使用相同工具白名单；未认证场景仍不可启用 Motif Execute，这不影响通用能力。
+- 搜索复用官方 DSH DeepSeek Search Provider，经当前账号、Session、turn 的原预算路由转到 Anthropic 兼容搜索接口。结果携带直接来源，读取失败不得宣称已核对正文。搜索模型 token 计入原累计账本；额外搜索服务费未估算，账单实付未知。网页读取保留原生公网地址检查。
+- Bash 复用 DSH Shell/Jobs 生命周期，命令运行在独立 `bubblewrap`：只读 `/work/inputs`，可写 `/work` 草稿与 `/work/outputs` 成品，进程环境无 API 密钥。Python、Node 使用部署已安装依赖。旧内核不支持账号沙箱内嵌套 user namespace，普通账号通过只挂给本账号的 Unix socket 请求同样的宿主侧会话沙箱；没有公网命令端点。取消关闭传输并终止命令进程组。主机网络可达性不等于账号文件可达性；此处不承诺完全网络隔离。
+- 当前服务为 Linux/Bash，不提供未安装的 PowerShell；不会退回无隔离 shell。工具和结果事件驱动“搜索、读取网页、执行命令、读取/停止后台任务”等进度，正常结束清理本任务后台作业。
+- 双栏本轮新建的 `outputs/code/` 文件按 `code-output-v1` 保存不可变副本并走原鉴权下载。该标记只证明文件归属与字节，不是专业报告质量认证；原 Data 报告仍需 `data-report-delivery-v1`。历史文件、日志、私有配置和未验证报告草稿不因此公开。
+- PPT 新发布 `ppt-web-v2-r7` 由原两训练/一留出轨迹重新编译，共用原有 21 个 MCP 工具契约。新增原生工具单独校验，不混入已有 Motif 工具认证；旧 r6 及原证据保留，无新增训练或质量/费用收益主张。
+- 显式真实验收入口：`python scripts/check-common-capabilities.py --run <private-output> --real-model`；普通账号另传私有 `--account-session` 与 `--base`。此测试实际搜索、阅读、计算 JSON、启动/读取/停止后台作业；不能代替专业报告生成质量实验。
+
 ## 交付文件卡片与正文链接（2026-10-16）
 
 - 交付卡片从既有 `artifacts` 的 `name/bytes/id/sha256` 渲染，复用公开 `FileTypeIcon/fileExtension/fileSizeText`；缺失大小不造数值、未知或无扩展名可使用通用图标。文件类型不局限 PDF，后端成品发布范围及验证保持原契约。

@@ -31,13 +31,13 @@ def test_registered_ppt_compatibility_matches_current_source_and_original_artifa
 
 
 def test_new_ppt_release_keeps_artifact_and_current_source_locks():
-    root=Path(__file__).resolve().parents[1];bundle=root/'motif-libraries/ppt-web-v2-r6'
+    root=Path(__file__).resolve().parents[1];bundle=root/'motif-libraries/ppt-web-v2-r7'
     sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
     entry=json.loads((bundle/'entry.json').read_text());cert=json.loads((bundle/'certification.json').read_text())
     report=json.loads((bundle/'learning-report.json').read_text());missing_build=False
     assert entry['new_training'] is True and report['training_tasks']==2 and report['heldout_tasks']==1
     assert report['compilation_model_requests']==0 and report['quality_cost_promoted'] is False
-    previous=root/'motif-libraries/ppt-web-v2-r5'
+    previous=root/'motif-libraries/ppt-web-v2-r6'
     assert json.loads((bundle/'online-manifest.json').read_text())['artifacts']==json.loads((previous/'online-manifest.json').read_text())['artifacts']
     assert sha(bundle/'source-evidence.json')==sha(previous/'source-evidence.json')
     assert report['new_collection_tasks_for_recompilation']==0

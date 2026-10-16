@@ -3,11 +3,12 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { randomBytes, createHash, createHmac, timingSafeEqual, scrypt as scryptCallback, scryptSync } from 'node:crypto';
 import { promisify } from 'node:util';
-import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, chmodSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { memberSceneDeployment } from './harless_member_scenes.mjs';
 import { productPersona } from '../src/adapters/harless_product_prompt.ts';
+import {startCommandBroker} from '../src/adapters/geneloop_command_broker.ts';
 import { createPublicRemoteBridge, forwardPublicRpc, isNativeRpcResponse, REMOTE_MUX_PATH } from './harless_public_transport.mjs';
 
 const scrypt = promisify(scryptCallback);
@@ -44,9 +45,8 @@ const publicUser = user => ({ id: user.id, username: user.username,
 export function memberProductProfile() {
   return {
     persona: productPersona(),
-    sandboxArgs: ['--dir', '/app/config', '--ro-bind',
-      fileURLToPath(new URL('../config/geneloop-persona.json', import.meta.url)),
-      '/app/config/geneloop-persona.json'],
+    sandboxArgs: ['--dir', '/app/config', ...['geneloop-persona.json', 'geneloop-capabilities.json', 'geneloop-capabilities.md']
+      .flatMap(name => ['--ro-bind', fileURLToPath(new URL('../config/' + name, import.meta.url)), '/app/config/' + name])],
   };
 }
 async function hashPassword(password) {
@@ -105,7 +105,7 @@ export function createGateway(config) {
   if (db.version !== 1 || !Array.isArray(db.users) || !Array.isArray(db.invites) || !Array.isArray(db.sessions)) throw Error('Invalid account database');
   const save = () => store(dbPath, db);
   const backends = new Map(), pending = new Map(), failures = new Map(), startupErrors = new Map();
-  const memberChildren = new Set(), sockets = new Set();
+  const memberChildren = new Set(), sockets = new Set(), commandBrokers=new Map();
   let closing = false;
   const origin = new URL(config.publicOrigin).origin;
   // Reject a stale host patch before anybody can register into a backend that
@@ -152,14 +152,16 @@ export function createGateway(config) {
   const scopedBudget = scopedPort ? http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url ?? '/', 'http://local');
-      if (req.method === 'POST' && path.pathname === '/v1/chat/completions') {
+      const searchSession = /^\/v1\/search\/(session-[a-f0-9-]{36})\/messages$/.exec(path.pathname)?.[1];
+      if (req.method === 'POST' && (path.pathname === '/v1/chat/completions' || searchSession)) {
         const auth = req.headers.authorization;
         const user = typeof auth === 'string' && auth.startsWith('Bearer ') ? findDelegated(auth.slice(7), 'model') : null;
-        const session = req.headers['x-deepseek-harness-session-id'];
+        const session = searchSession ?? req.headers['x-deepseek-harness-session-id'];
         if (!user || routeOwner.get(session) !== user.id) return json(res, 403, { error: 'No approved user turn' });
         const body = await readBounded(req, 2 * 1024 * 1024);
-        return scopedForward(config.upstreamBrokerPort, '/v1/chat/completions', 'POST',
-          { ...req.headers, authorization: `Bearer ${config.apiKey}` }, body, res);
+        return scopedForward(config.upstreamBrokerPort, searchSession ? path.pathname : '/v1/chat/completions', 'POST',
+          { ...req.headers, authorization: `Bearer ${config.apiKey}`, 'x-api-key': config.apiKey,
+            'x-deepseek-harness-session-id': session }, body, res);
       }
       const user = findDelegated(req.headers['x-sss-control-token'], 'control');
       if (!user) return json(res, 403, { error: 'Invalid user budget token' });
@@ -351,13 +353,20 @@ export function createGateway(config) {
       const product = memberProductProfile();
       store(join(userDir, 'config', 'presets', 'sss-task', 'agent.cordis.yml'), [{ id: 'sss-persona',
         name: '@deepseek-ai/dsh-persona', config: product.persona }]);
+      if(sceneDeployment&&!commandBrokers.has(user.id))commandBrokers.set(user.id,await startCommandBroker({
+        output:join(userDir,'tasks'),python:config.memberSceneDeployment.pythonExecutable,node:process.execPath}));
+      const commandBroker=commandBrokers.get(user.id);
       const bin = '/opt/node/bin/node';
       const args = ['--unshare-user', '--unshare-pid', '--uid', '1000', '--gid', '1000', '--die-with-parent',
         '--ro-bind', '/usr', '/usr', '--ro-bind', '/bin', '/bin', '--ro-bind', '/lib', '/lib',
         '--ro-bind', '/lib64', '/lib64', '--ro-bind', '/etc', '/etc', '--dev', '/dev', '--proc', '/proc',
+        // /etc/resolv.conf can point into /run, which is otherwise deliberately absent.
+        ...(existsSync('/etc/resolv.conf')&&realpathSync('/etc/resolv.conf')!=='/etc/resolv.conf'?
+          ['--ro-bind',realpathSync('/etc/resolv.conf'),realpathSync('/etc/resolv.conf')]:[]),
         '--tmpfs', '/tmp', '--dir', '/opt', '--ro-bind', config.nodeRoot, '/opt/node',
         '--dir', '/app', '--ro-bind', config.nodeModules, '/app/node_modules',
         '--ro-bind', config.sourceDir, '/app/src', '--bind', userDir, '/user',
+        ...(commandBroker?['--ro-bind',commandBroker.socketPath,'/user/config/commands.sock']:[]),
         ...product.sandboxArgs,
         ...(sceneDeployment ? ['--dir','/app/.local','--bind',join(userDir,'tasks'),sceneDeployment.output,
           ...sceneDeployment.mounts.filter(m=>m.target!=='/app/src').flatMap(m=>['--ro-bind',m.source,m.target])] : []),
@@ -367,6 +376,7 @@ export function createGateway(config) {
       const env = { PATH: '/opt/node/bin:/usr/bin:/bin', HOME: '/user/workspace', DSH_HOME: '/user/dsh',
         SSS_WEB_POLICY: '/user/config/policy.json', DEEPSEEK_API_KEY: delegate(user, 'model'),
         HARLESS_GATEWAY_ENABLED: '1',
+        ...(commandBroker?{GENELOOP_COMMAND_SOCKET:'/user/config/commands.sock'}:{}),
         ...(sceneDeployment ? {SSS_PYTHON:sceneDeployment.python,...sceneDeployment.attachmentEnvironment} : {}),
         NO_PROXY: 'localhost,127.0.0.1,::1', no_proxy: 'localhost,127.0.0.1,::1',
         LANG: 'C.UTF-8', PYTHONUTF8: '1' };
@@ -532,6 +542,7 @@ export function createGateway(config) {
     // Include booting children, and upgraded/idle browser connections that
     // server.close() otherwise keeps alive during an ordinary SIGTERM restart.
     for (const child of memberChildren) child.kill();
+    for (const broker of commandBrokers.values()) broker.close();
     for (const socket of sockets) socket.destroy();
     server.close(); scopedBudget?.close();
   } };

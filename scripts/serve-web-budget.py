@@ -51,6 +51,7 @@ def main():
     control = create_control_server('127.0.0.1', 0, registry, control_token=token)
     gate = create_server('127.0.0.1', 0, 'https://api.deepseek.com', state,
                          state_selector=registry.state_for,
+                         allow_search=True,
                          allowed_models={'deepseek-flash', 'deepseek-v4-pro'})
     policy = {'endpoint': f'http://127.0.0.1:{gate.server_port}/v1',
               'control_endpoint': f'http://127.0.0.1:{control.server_port}',

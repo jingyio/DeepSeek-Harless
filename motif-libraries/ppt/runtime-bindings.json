@@ -63,7 +63,7 @@
     "src/adapters/harless_rsi_binding.ts": "bdab83b065c278598d1fc780b93dd1d59653ec0c5f5a9e5243acca6516ebaa48",
     "src/adapters/harless_rsi_bundle.py": "27426e330ba82a671c7e5818d9f3db2e812eeb46e592a3499218882d6b6a2fd4",
     "src/motif_core/online_skill_runtime.mjs": "d951e7d0ab15ba49c00f99726f82c328e0bb283fd40af0d6eb0252c80d4e54ec",
-    "src/adapters/harless_task_scope.ts": "f428f6cd40f4ef2ece9634dc84b366a8c48f37f4a67da87bd2a85bb579232a4a",
+    "src/adapters/harless_task_scope.ts": "787a16039c6353b6ed1386b7fd7cdd2a821982fe9893e8314b0b281a192841a4",
     "scenarios/research_ppt/ts/pending-plan.ts": "bac725fc275bfb688a26ae758654131842146b3a6e2cbf2ab1d752f8ee4aca36",
     "scenarios/research_ppt/dist/pending-plan.js": "98a76494eb44597d423cf0b29341937995cc4a2c9b87353abbacb4a3fce178ff",
     "scenarios/research_ppt/dist/pending-plan.d.ts": "19335e676a4744181bf0199bc10c2fec4c87aa921f582639d4f41348415e98af",
@@ -124,7 +124,8 @@
     "uploaded_library_receipt_review": "私有组合库补充返回已验证的 library.json 路径和字节 SHA，供任务配置记录。PPT 产品库已提供相同字段，其原训练证书、工具 Schema 和执行规则不变。",
     "main_pr19_integration_review": "Preserve main multi-format readers and all slide-count schemas 1..30. Shared source binding adds only task-scoped paper grants and the 16-file paper limit; the independent PPT pin/read edge, ownership guards and original certificate are unchanged. Recheck actual MCP schemas and source/runtime tests; no new learning or quality/cost claim.",
     "paper_image_merge_review": "Preserve main native image readers, source/provenance guards, PPT Skill and recovery; paper reference recovery is dispatched separately from ordinary paper reports. The learned PPT pin/read edge, original certificate, and complete 1..30-slide schema variants are unchanged.",
-    "main54_paper_integration_review": "Preserve main host-delivery, native images, v2 page binding and unlimited-cost support. Shared task changes add only approved paper read edges and reference-delivery recovery; PPT tools, trained read contracts and original certificate remain unchanged. Offline and actual MCP compatibility checks recorded in PR42 integration report; no new quality/cost claim."
+    "main54_paper_integration_review": "Preserve main host-delivery, native images, v2 page binding and unlimited-cost support. Shared task changes add only approved paper read edges and reference-delivery recovery; PPT tools, trained read contracts and original certificate remain unchanged. Offline and actual MCP compatibility checks recorded in PR42 integration report; no new quality/cost claim.",
+    "common_capabilities": "Additive native tools; original certified MCP contracts and original certificate unchanged."
   },
   "scope": "Existing independently witnessed read edge only; current runtime compatibility, not a new training certificate."
 }
