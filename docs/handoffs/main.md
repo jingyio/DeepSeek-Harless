@@ -3,7 +3,7 @@
 ## 2026-10-16：网页 PPT 组合交付、局部恢复与真实读取 Motif
 
 - 分支 `codex/ppt-workflow-learning`，保留 main 至 `0e0de8f` 的统计来源与输入标签修复。网页 `/ppt` 两侧默认同一 `host_delivery` 普通脚本，21 工具、完整原 Skill、私有失败草稿与最新回执；Web 不受旧 CLI 补丁次数限制，仍受原任务预算/取消/来源/权限/版本守卫约束。PPT 不重复预注入附件全文。
-- 两训练（RAG/QLoRA）+ 独立 DoRA 留出，经现有 Python witnessed-edge 编译、30 种页数实际完整 schema 和当前代码锁，保存新库 `motif-libraries/ppt-web-v2-r3/`。仅复用来源 pin/read 与指定成稿页 pin/read；原 `ppt/` 图/证书不改。正文质量负例保留，`quality_cost_promoted=false`。
+- 两训练（RAG/QLoRA）+ 独立 DoRA 留出，经现有 Python witnessed-edge 编译、30 种页数实际完整 schema 和当前代码锁，保存新库 `motif-libraries/ppt-web-v2-r4/`。仅复用来源 pin/read 与指定成稿页 pin/read；原 `ppt/` 图/证书不改。正文质量负例保留，`quality_cost_promoted=false`。
 - [完整方法、workflow、成本与质量](../experiments/ppt-web-workflow-learning-20261016-v1.md)；[机器结果](../experiments/ppt-web-workflow-learning-20261016-v1.results.json)。397 真实 Flash Off 请求（含全部失败），代理估费 $0.477209820，实付与人工分钟未知。短说明 B0/B1/B2 请求 15/8/6，token 287461/122196/89616；普通脚本收益与 Motif 分列。长论文没有稳定质量/费用优势，不能宣传同质降本。
 - 原生网页双栏各五文件，10 个真实下载 SHA 全匹配，刷新保留完成；两次 Motif skip，9 请求比 Baseline 11 少但费用略高。内容仍有流程叙事/金额精度问题；本次未捕获运行期前端流式画面，不称该项新验收。
 - 根 Python 795、Node 734、PPT 121 通过，新增真实库锁定向 9 项及 smoke/motif:check 通过；CI/最终发布以 PR 回执为准。权限预算沿用每对 $0.23、每侧 $0.115，累计费用/次数/额外输出上限 null，账本及预算进程不重置。私有原论文/原始轨迹/文件在隔离 `.local/ppt-workflow-20261016/`，不进入 Git。

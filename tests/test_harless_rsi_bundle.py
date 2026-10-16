@@ -31,7 +31,7 @@ def test_registered_ppt_compatibility_matches_current_source_and_original_artifa
 
 
 def test_new_ppt_release_keeps_artifact_and_current_source_locks():
-    root=Path(__file__).resolve().parents[1];bundle=root/'motif-libraries/ppt-web-v2-r3'
+    root=Path(__file__).resolve().parents[1];bundle=root/'motif-libraries/ppt-web-v2-r4'
     sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
     entry=json.loads((bundle/'entry.json').read_text());cert=json.loads((bundle/'certification.json').read_text())
     report=json.loads((bundle/'learning-report.json').read_text());missing_build=False
