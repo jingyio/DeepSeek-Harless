@@ -1,0 +1,274 @@
+/* GeneLoop visual layer. No DOM replacement, event handlers or state changes.
+   Native class selectors below are scoped to the pinned DSH 0.1.5-rc.3 UI.
+   Keep content font-size, layout resize controls and all visibility rules owned
+   by Harness. See docs/geneloop-visual-system.md for coverage and rollback. */
+
+:root, html body {
+  --gl-font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --gl-canvas: #ffffff;
+  --gl-sidebar: #f5f5f7;
+  --gl-surface: #ffffff;
+  --gl-raised: #ffffff;
+  --gl-inset: #f5f5f7;
+  --gl-ink: #1d1d1f;
+  --gl-secondary: #62626a;
+  --gl-muted: #767680;
+  --gl-line: #dedee3;
+  --gl-hairline: #e9e9ed;
+  --gl-hover: #eaeaf0;
+  --gl-blue: #0066cc;
+  --gl-blue-hover: #0056b3;
+  --gl-selection: #e8f1ff;
+  --gl-green: #147d64;
+  --gl-red: #c9342c;
+  --gl-amber: #956219;
+  --gl-glass: #ffffffed;
+  --gl-shadow-sm: 0 1px 3px #20203006, 0 3px 12px #20203004;
+  --gl-shadow-input: 0 2px 8px #20203004, 0 12px 36px #20203008;
+  --gl-shadow-float: 0 4px 12px #2020300a, 0 20px 64px #2020301f;
+  --gl-shadow-modal: 0 12px 36px #20203014, 0 40px 100px #20203029;
+  --gl-focus: 0 0 0 4px #0071e326;
+  --gl-ease: cubic-bezier(.2,.75,.25,1);
+}
+
+html body[data-ds-dark-theme] {
+  --gl-canvas: #161618;
+  --gl-sidebar: #1d1d20;
+  --gl-surface: #222225;
+  --gl-raised: #2a2a2e;
+  --gl-inset: #1c1c1f;
+  --gl-ink: #f5f5f7;
+  --gl-secondary: #b0b0ba;
+  --gl-muted: #9696a1;
+  --gl-line: #414147;
+  --gl-hairline: #323237;
+  --gl-hover: #343439;
+  --gl-blue: #82b6ff;
+  --gl-blue-hover: #a5cbff;
+  --gl-selection: #263650;
+  --gl-green: #69d1b5;
+  --gl-red: #ff8b82;
+  --gl-amber: #e4b96e;
+  --gl-glass: #2a2a2ef5;
+  --gl-shadow-sm: 0 1px 3px #00000012;
+  --gl-shadow-input: 0 2px 6px #00000012, 0 12px 32px #00000024;
+  --gl-shadow-float: 0 6px 20px #00000030, 0 24px 64px #00000040;
+  --gl-shadow-modal: 0 12px 40px #00000040, 0 40px 100px #00000055;
+}
+
+/* Public theme tokens also cover native dialogs, tools, markdown and previews. */
+html body {
+  --geneloop-ui-font: var(--gl-font);
+  --dsw-font-family: var(--gl-font);
+  --dsw-alias-bg-base: var(--gl-canvas);
+  --dsw-alias-bg-module: var(--gl-surface);
+  --dsw-alias-bg-module-platform: var(--gl-inset);
+  --dsw-alias-background-primary: var(--gl-canvas);
+  --dsw-specific-sidebar-fill: var(--gl-sidebar);
+  --dsw-specific-input-major: var(--gl-surface);
+  --dsw-specific-bubble: var(--gl-inset);
+  --dsw-specific-menu: var(--gl-raised);
+  --dsw-specific-tip: var(--gl-inset);
+  --dsw-specific-selector: var(--gl-inset);
+  --dsw-alias-label-primary: var(--gl-ink);
+  --dsw-alias-label-primary-dimmed: var(--gl-ink);
+  --dsw-alias-label-primary-bluish: var(--gl-blue);
+  --dsw-alias-label-secondary: var(--gl-secondary);
+  --dsw-alias-label-tertiary: var(--gl-muted);
+  --dsw-alias-label-caption: var(--gl-muted);
+  --dsw-alias-border-l1: var(--gl-hairline);
+  --dsw-alias-border-l2: var(--gl-line);
+  --dsw-alias-border-l3: var(--gl-hairline);
+  --dsw-alias-border-l4: var(--gl-line);
+  --dsw-alias-outline-default: var(--gl-line);
+  --dsw-alias-interactive-bg-hover: var(--gl-hover);
+  --dsw-alias-interactive-bg-hover-solid: var(--gl-hover);
+  --dsw-alias-state-business-primary: var(--gl-blue);
+  --dsw-alias-state-business-tertiary: var(--gl-selection);
+  --dsw-alias-link: var(--gl-blue);
+  --dsw-alias-state-success-primary: var(--gl-green);
+  --dsw-alias-state-error-primary: var(--gl-red);
+  --dsw-alias-state-warn-primary: var(--gl-amber);
+  --dsw-alias-button-info-fill: #0071e3;
+  --dsw-alias-button-info-hover: #0077ed;
+  --dsw-alias-button-floating-fill: var(--gl-raised);
+  --dsw-alias-button-floating-hover: var(--gl-hover);
+  --dsw-alias-markdown-code-block: var(--gl-inset);
+  --dsw-elevation-soft: var(--gl-shadow-sm);
+  --dsw-elevation-panel: var(--gl-shadow-float);
+  color: var(--gl-ink);
+  background: var(--gl-canvas);
+  font-family: var(--gl-font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+html body :is(button,input,textarea,select) { font-family: var(--gl-font); }
+html body :is(button,a,input,textarea,select,summary):focus-visible {
+  outline: 2px solid var(--gl-blue); outline-offset: 3px;
+}
+html body :is(button,a) { -webkit-tap-highlight-color: transparent; }
+html body button { transition: background-color 140ms var(--gl-ease), color 140ms var(--gl-ease), border-color 140ms var(--gl-ease), box-shadow 140ms var(--gl-ease); }
+html body ::selection { background: var(--gl-selection); color: var(--gl-ink); }
+
+/* Sidebar: quiet navigation, precise selected state, generous optical spacing. */
+html body .pI_x6G_sidebarCol { border-color: var(--gl-hairline); }
+html body .geneloop-workspaces { font-size: 13px; padding: 0 2px; }
+html body .geneloop-workspace-heading { font-size: 12px; font-weight: 600; padding: 16px 10px 10px; color: var(--gl-secondary); }
+html body .geneloop-workspace-list>section { margin: 6px 0; }
+html body :is(.geneloop-workspace-row,.geneloop-chat-row) { border-radius: 10px; min-height: 38px; }
+html body .geneloop-workspace-name { font-weight: 550; padding: 10px 8px!important; }
+html body .geneloop-workspace-row[data-selected=true] { background: var(--gl-hover); }
+html body .geneloop-chat-row { margin: 3px 0; }
+html body .geneloop-chat-row:has([aria-current=page]) { background: var(--gl-selection); color: var(--gl-blue); }
+html body .geneloop-chat-row:has([aria-current=page]) button:hover { background: transparent; }
+html body .geneloop-chat-name { padding-top: 9px; padding-bottom: 9px; }
+html body .geneloop-workspaces :is(.geneloop-row-action,.geneloop-workspace-heading-actions button) { border-radius: 8px; }
+html body .geneloop-workspaces svg[stroke],html body [data-geneloop-section-icon] svg[stroke] { stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+html body .geneloop-workspace-search { background: var(--gl-surface); border-color: var(--gl-line); border-radius: 10px; padding: 9px 12px; }
+html body [data-slot=sidebar] button[class$="_newSession"] { border: 1px solid var(--gl-line); border-radius: 12px; background: var(--gl-surface); box-shadow: var(--gl-shadow-sm); min-height: 40px; color: var(--gl-ink); font-weight: 550; }
+html body [data-slot=sidebar] button[class$="_newSession"]:hover { background: var(--gl-inset); }
+
+/* Conversation chrome stays fixed while the readable content area breathes. */
+html body .wSkVaW_header { padding: 14px 24px 8px; border-bottom: 1px solid var(--gl-hairline); min-height: 88px; }
+html body .wSkVaW_crumbCurrent { font-weight: 600; letter-spacing: -.15px; }
+html body .wSkVaW_tabs { width: fit-content; gap: 3px; margin: 8px 0 0; padding: 3px; background: var(--gl-inset); border-radius: 10px; }
+html body .wSkVaW_tab { padding: 6px 16px; border-radius: 7px; color: var(--gl-secondary); line-height: 18px; }
+html body .wSkVaW_tabActive { color: var(--gl-ink); background: var(--gl-surface); box-shadow: var(--gl-shadow-sm); }
+html body .wSkVaW_tab:after { background: transparent; }
+html body .pXSMma_headline { font-size: 28px; font-weight: 600; letter-spacing: -.7px; line-height: 1.4; gap: 14px; }
+html body .pXSMma_stack { gap: 24px; }
+html body .pXSMma_previewBadge { font-family: var(--gl-font); font-size: 11px; font-weight: 500; color: var(--gl-secondary); background: var(--gl-inset); border: 1px solid var(--gl-hairline); margin-top: 5px; padding: 1px 7px; }
+html body .pXSMma_workspace { color: var(--gl-secondary); }
+html body .uV2eYG_card { border: 1px solid var(--gl-line); border-radius: 24px; padding-top: 12px; gap: 16px; box-shadow: var(--gl-shadow-input); transition: border-color 160ms var(--gl-ease), box-shadow 160ms var(--gl-ease); }
+html body .uV2eYG_card:focus-within { border-color: color-mix(in srgb,var(--gl-blue) 42%,var(--gl-line)); box-shadow: var(--gl-shadow-input),0 0 0 3px color-mix(in srgb,var(--gl-blue) 5%,transparent); }
+html body .uV2eYG_input { padding: 6px 14px 0 18px; }
+html body .uV2eYG_placeholder { inset: 6px 14px auto 18px; }
+html body .uV2eYG_row { padding: 2px 10px 9px; gap: 10px; }
+html body .uV2eYG_add { width: 32px; height: 32px; color: var(--gl-secondary); }
+html body .uV2eYG_primary { width: 36px; height: 36px; transform: none; box-shadow: 0 2px 4px #0071e31a; }
+html body .uV2eYG_primary:disabled { box-shadow: none; }
+html body .Sh0Q9G_trigger { height: 32px; font-size: 12px; padding: 0 8px; }
+html body .geneloop-draft-scene { font-size: 12px; color: var(--gl-blue); }
+html body .geneloop-draft-scene strong { font-weight: 600; }
+html body .Sixlwa_bubble { border-radius: 20px 20px 6px 20px; padding: 12px 18px; }
+html body .EvIC1a_scroll { padding-top: 24px; }
+html body :is(.geneloop-product-turn,.harless-paired-answer) { line-height: 1.8; }
+html body :is(.geneloop-product-turn,.harless-paired-answer) :is(h1,h2,h3) { font-weight: 600; letter-spacing: -.25px; }
+html body :is(.geneloop-product-turn,.harless-paired-answer) :is(pre,blockquote) { border-radius: 12px; }
+html body .geneloop-process-status { font-size: 12px; font-weight: 500; margin-bottom: 14px; color: var(--gl-secondary); }
+html body .geneloop-looping { font-size: 13px; color: var(--gl-blue); }
+html body :is(.xzv4MW_action,.harless-message-actions button) { border-radius: 9px; }
+
+/* Floating menus and all dialogs share one surface and focus vocabulary. */
+html body :is([role=menu],[role=listbox],[data-trigger-menu],.geneloop-workspace-menu,.harless-message-stat-panel) {
+  background: var(--gl-glass); color: var(--gl-ink); border: 1px solid var(--gl-line); border-radius: 16px; box-shadow: var(--gl-shadow-float); backdrop-filter: blur(24px) saturate(130%);
+}
+html body [data-trigger-menu] { padding: 8px; }
+html body :is([role=menuitem],[role=menuitemradio],[role=option],.geneloop-workspace-menu button) { border-radius: 9px; font-family: var(--gl-font); font-size: 13px; }
+html body :is([role=menuitem],[role=menuitemradio],[role=option]):focus-visible { outline-offset: -2px; }
+html body [role=option][aria-selected=true] { background: var(--gl-selection); color: var(--gl-ink); }
+html body .geneloop-menu-name { gap: 12px; font-weight: 550; }
+html body .geneloop-menu-name svg { width: 19px; height: 19px; }
+html body [role=dialog][aria-modal=true] { border: 1px solid var(--gl-line); border-radius: 24px; box-shadow: var(--gl-shadow-modal); background: var(--gl-surface); color: var(--gl-ink); }
+html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav { background: var(--gl-sidebar); border-right: 1px solid var(--gl-hairline); padding: 24px 14px; }
+html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav button { border-radius: 10px; min-height: 40px; font-size: 13px; }
+html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav button[aria-current=true] { color: var(--gl-blue); background: var(--gl-selection); font-weight: 550; }
+html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav+div>div:last-child { padding: 24px 30px 30px; }
+html body ._8HJdBW_cubeRow { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+html body ._8HJdBW_themeCube { min-width: 0; padding: 20px 8px; border-radius: 14px; font-size: 13px; gap: 10px; border-color: var(--gl-line); }
+html body ._8HJdBW_themeCube[aria-pressed=true] { color: var(--gl-blue); border-color: var(--gl-blue); background: var(--gl-selection); }
+html body .geneloop-settings-page { line-height: 1.65; }
+html body .geneloop-settings-page h2 { font-size: 22px; letter-spacing: -.4px; margin-bottom: 22px; }
+html body .geneloop-settings-page h3 { font-weight: 600; }
+html body :is(.geneloop-settings-page,.geneloop-workspace-form) input { height: 42px; padding: 10px 13px; border-radius: 11px; background: var(--gl-inset); border: 1px solid var(--gl-line); }
+html body :is(.geneloop-settings-page,.geneloop-workspace-actions) button { border-radius: 10px; min-height: 36px; font-weight: 500; }
+html body .geneloop-settings-page .geneloop-settings-icon-button { min-height: 36px; }
+html body :is(.geneloop-settings-page,.geneloop-workspace-form) input:focus { background: var(--gl-surface); border-color: var(--gl-blue); }
+html body .geneloop-workspace-actions .primary { background: #0071e3; border-color: #0071e3; color: white; }
+html body .geneloop-settings-archive-row { padding: 10px 0; border-color: var(--gl-hairline); }
+html body :is(.geneloop-settings-model,.geneloop-settings-section) { border-color: var(--gl-hairline); padding-top: 22px; padding-bottom: 22px; }
+html body .geneloop-clear-review { border-radius: 14px; padding: 18px; background: var(--gl-inset); }
+html body .geneloop-workspace-home { padding-top: 56px; }
+html body .geneloop-workspace-home h1 { font-size: 30px; letter-spacing: -.6px; }
+html body .geneloop-workspace-home .geneloop-workspace-start { background: var(--gl-surface); border-color: var(--gl-line); box-shadow: var(--gl-shadow-input); border-radius: 22px; }
+html body .geneloop-workspace-home-chats button { border-color: var(--gl-hairline); }
+
+/* Comparison, ratings, file cards and trajectory remain first-class surfaces. */
+html body .harless-paired-grid { gap: 20px; }
+html body .harless-paired-pane { padding: 22px; border-color: var(--gl-line); border-radius: 20px; background: var(--gl-surface); box-shadow: var(--gl-shadow-sm); }
+html body .harless-paired-pane>header { border-color: var(--gl-hairline); padding-bottom: 16px; }
+html body .harless-paired-pane>header>strong { font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
+html body .harless-paired-pane>footer { border-color: var(--gl-hairline); padding-top: 18px; }
+html body .harless-paired-pane fieldset { gap: 6px; }
+html body .harless-paired-pane fieldset label { border-color: var(--gl-line); border-radius: 10px; min-height: 36px; padding: 5px 10px; background: var(--gl-inset); }
+html body .harless-paired-pane fieldset label.selected { background: var(--gl-selection); border-color: var(--gl-blue); color: var(--gl-blue); }
+html body .harless-paired-pane input[type=radio] { accent-color: var(--gl-blue); }
+html body .harless-paired-notice { border-color: var(--gl-amber); color: var(--gl-secondary); border-left-width: 2px; padding-left: 12px; }
+html body :is(.harless-artifact-card,.Sixlwa_fileCard) { border-radius: 14px; background: var(--gl-inset); border-color: var(--gl-line); box-shadow: none; }
+html body .harless-artifact-download { width: 30px; height: 30px; border-radius: 9px; color: var(--gl-blue); }
+html body .harless-message-stat-panel { padding: 20px; }
+html body .geneloop-trace-toolbar { padding: 12px 20px; border-color: var(--gl-hairline); gap: 12px; }
+html body .geneloop-trace-toolbar>div { padding: 3px; background: var(--gl-inset); border-radius: 9px; }
+html body .geneloop-trace-toolbar button[aria-pressed=true] { background: var(--gl-surface); box-shadow: var(--gl-shadow-sm); }
+html body .geneloop-trace-toolbar input { border-color: var(--gl-line); padding: 7px 10px; border-radius: 9px; background: var(--gl-inset); }
+html body .geneloop-trace-overview { background: var(--gl-inset); padding: 14px 16px 10px; border-color: var(--gl-hairline); }
+html body .geneloop-trace-round { padding-top: 22px; border-color: var(--gl-hairline); }
+html body .geneloop-trace-user>span { color: var(--gl-blue); background: var(--gl-selection); border-radius: 6px; padding: 2px 7px; }
+html body :is(.harless-trace-optimization,.harless-trace-column[data-lane=motif]>header>strong,.geneloop-trace-lanes button[data-lane=motif][aria-pressed=true]) { color: var(--gl-green); }
+html body .harless-trace-list pre { border-radius: 10px; padding: 14px; background: var(--gl-inset); border-color: var(--gl-line); }
+html body .geneloop-page-loader { background: var(--gl-canvas); color: var(--gl-secondary); }
+html body .geneloop-loading-mark { width: 64px; height: 64px; }
+html body .geneloop-loading-mark:before { border-width: 1.5px; }
+html body .geneloop-load-notice { background: var(--gl-glass); border-color: var(--gl-line); box-shadow: var(--gl-shadow-float); }
+
+/* Account pages use the same material, type and accent system. */
+html body.geneloop-account-page { margin: 0; }
+html body.geneloop-account-page :is(.auth-side,.account) { background: var(--gl-canvas); }
+html body.geneloop-account-page :is(.story,.aside) { background: var(--gl-sidebar); border-color: var(--gl-hairline); }
+html body.geneloop-account-page .brand { color: var(--gl-ink); font-size: 26px; letter-spacing: -.7px; }
+html body.geneloop-account-page .story:before { width: 360px; height: 480px; left: auto; right: -30px; top: 25%; border: 0; border-radius: 0; background: url('/assets/geneloop-spiral.svg?v=1') center/contain no-repeat; opacity: .045; }
+html body.geneloop-account-page .story:after { content: none; }
+html body.geneloop-account-page .story h1 { font-size: clamp(36px,4vw,56px); line-height: 1.25; letter-spacing: -1.6px; font-weight: 600; }
+html body.geneloop-account-page .story h1 span { color: var(--gl-ink); }
+html body.geneloop-account-page .card { max-width: 400px; }
+html body.geneloop-account-page :is(.card h2,.content h1,.loading-card h2) { color: var(--gl-ink); font-weight: 600; letter-spacing: -.7px; }
+html body.geneloop-account-page :is(.hint,.intro,.section p,.crumb,.meta,.field small,.switch,.foot,.nav-label,.identity small) { color: var(--gl-secondary); }
+html body.geneloop-account-page :is(.field label,.meta strong) { color: var(--gl-ink); }
+html body.geneloop-account-page .field input { height: 48px; border-radius: 12px; border-color: var(--gl-line); color: var(--gl-ink); background: var(--gl-surface); padding: 0 14px; }
+html body.geneloop-account-page .field input:focus { border-color: var(--gl-blue); box-shadow: var(--gl-focus); }
+html body.geneloop-account-page .primary { height: 46px; border-radius: 12px; background: #0071e3; color: white; font-weight: 600; }
+html body.geneloop-account-page .primary:hover { background: #0077ed; }
+html body.geneloop-account-page .minor { border-color: var(--gl-line); background: var(--gl-inset); color: var(--gl-ink); border-radius: 10px; }
+html body.geneloop-account-page :is(.switch a,.loading-card a) { color: var(--gl-blue); }
+html body.geneloop-account-page .nav :is(a,button) { color: var(--gl-secondary); border-radius: 10px; }
+html body.geneloop-account-page .nav :is(a,button):hover { color: var(--gl-ink); background: var(--gl-hover); }
+html body.geneloop-account-page .nav a.active { background: var(--gl-selection); color: var(--gl-blue); }
+html body.geneloop-account-page :is(.section,.aside-bottom) { border-color: var(--gl-hairline); }
+html body.geneloop-account-page :is(.avatar,.invite-code) { color: var(--gl-blue); background: var(--gl-selection); border-color: var(--gl-line); border-radius: 12px; }
+html body.geneloop-account-page .notice { color: var(--gl-red); }
+html body.geneloop-account-page .notice.ok { color: var(--gl-green); }
+html body.geneloop-account-page .loading-card { border: 1px solid var(--gl-line); border-radius: 24px; background: var(--gl-surface); color: var(--gl-secondary); box-shadow: var(--gl-shadow-input); }
+html body.geneloop-account-page .loading-dot { background: var(--gl-blue); box-shadow: 0 0 0 6px var(--gl-selection); }
+@media(prefers-color-scheme:dark) {
+  html body.geneloop-account-page {
+    --gl-canvas:#161618;--gl-sidebar:#1d1d20;--gl-surface:#222225;--gl-raised:#2a2a2e;--gl-inset:#1c1c1f;--gl-ink:#f5f5f7;--gl-secondary:#b0b0ba;--gl-muted:#9696a1;--gl-line:#414147;--gl-hairline:#323237;--gl-hover:#343439;--gl-blue:#82b6ff;--gl-blue-hover:#a5cbff;--gl-selection:#263650;--gl-green:#69d1b5;--gl-red:#ff8b82;--gl-amber:#e4b96e;--gl-glass:#2a2a2ef5;--gl-shadow-input:0 2px 6px #00000012,0 12px 32px #00000024;
+  }
+}
+@media(max-width:640px) {
+  html body .wSkVaW_header { padding: 10px 14px 8px; }
+  html body .pXSMma_headline { font-size: 24px; }
+  html body .uV2eYG_card { border-radius: 20px; }
+  html body .uV2eYG_tools,html body .uV2eYG_trailing { gap: 7px; }
+  html body .harless-paired-pane { padding: 18px; }
+  html body [role=dialog][aria-modal=true] { border-radius: 20px; }
+  html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav { padding: 16px 12px 10px; border-right: 0; }
+  html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav+div>div:last-child { padding: 20px 18px; }
+  html body .geneloop-trace-toolbar { padding: 10px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  html body *,html body *:before,html body *:after { scroll-behavior: auto!important; transition: none!important; }
+}
+@media(forced-colors:active) {
+  html body :is(.uV2eYG_card,.harless-paired-pane,[role=dialog],[role=menu],[data-trigger-menu]) { border: 1px solid CanvasText; box-shadow: none; }
+  html body :is(.wSkVaW_tabActive,[aria-current=page],.harless-paired-pane label.selected) { outline: 1px solid Highlight; }
+}
