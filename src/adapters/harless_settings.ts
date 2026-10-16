@@ -21,7 +21,7 @@ export type Scene = {
   paper_flow_shadow?: string; paper_flow_shadow_sha256?: string;
   pdf_toolchain_root?: string;
   certified_tool_schema_variants?: any[][];
-  runtime_kind?: 'ppt_read_v1' | 'ppt_read_v2' | 'data_receipts_v3' | 'paper_shadow_v1';
+  runtime_kind?: 'ppt_read_v1' | 'ppt_read_v2' | 'data_receipts_v3' | 'paper_shadow_v1' | 'paper_document_read_v1';
   runtime_library?: string; runtime_library_sha256?: string; runtime_mode?: string; runtime_manifest_digest?: string;
 };
 export type Selection = { scene: string; mode: ExecutionMode; rsi: boolean };

@@ -965,6 +965,128 @@ const productScenes = [
   { id: 'paper-proofreading', label: 'Paper Proofreading', preset: 'sss-paper', allowed_tools: [], unavailable_reason: 'paper_backend_missing' },
   { id: 'research-data-analysis', label: 'Research Data Analysis', preset: 'sss-data', allowed_tools: [], unavailable_reason: 'data_backend_missing' },
 ];
+
+// Only a free protocol fixture: the real learned release/evidence is checked by
+// test_harless_paper_product_bundle.py. No provider or embedding request is made.
+for(const [identity,runtimeKind] of [['ppt','ppt_read_v2'],['research-data-analysis',undefined],
+  ['paper-proofreading','paper_document_read_v1']]){
+ test(`paired ${identity} executes Motif and preserves the original Baseline tools`,options,async()=>{
+  const manifest=fileURLToPath(new URL('../examples/motif-library/research-portfolio-v1/online-manifest.json',import.meta.url));
+  const task=fileURLToPath(new URL('../examples/motif-library/research-portfolio-v1/task.json',import.meta.url));
+  const library=JSON.parse(readFileSync(manifest));
+  const schemas=Object.entries(library.contracts).map(([name,contract])=>({name,description:contract.description,
+   parameters:{type:'object',properties:Object.fromEntries([...contract.required_params,...Object.keys(contract.default_params)].map(param=>[param,{type:'string'}])),required:contract.required_params}})).sort((a,b)=>a.name<b.name?-1:1);
+  const protocolMarker=fileURLToPath(import.meta.url),protocolSha=createHash('sha256').update(readFileSync(protocolMarker)).digest('hex');
+  const scene={id:identity,label:identity,preset:'sss-free-protocol',adapter:'workspace',mcp_rows:[],
+   allowed_tools:schemas.map(row=>row.name),manifest,task,runtime_kind:runtimeKind,diagnostic:true,
+   matching_policy:'structural_only',binding_policy:identity==='ppt'?'ppt_uploaded_sources_v2':'approved_uploaded_reads_v1',
+   certification_scope:'independent_trace_structure',certification_path:protocolMarker,certification_sha256:protocolSha,
+   certified_code_locks:{[protocolMarker]:protocolSha},certified_tool_schemas:schemas};
+  const f=await fixture({broker:true,scenes:[scene],capability_profile:identity,comparison_scenes:[identity],fixtureSchemas:schemas});
+  try{
+   const {sessionId}=await f.ctx.sessionController.create({});
+   const shortcut=identity==='research-data-analysis'?'data':identity==='paper-proofreading'?'paper':'ppt';
+   const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'free-mode-'+shortcut,mode:'queue',
+    content:[{type:'text',text:`/${shortcut} Free lane-mode protocol diagnostic`}]},new AbortController().signal);
+   let tasks=[];
+   for(let i=0;i<100;i++){
+    tasks=(await f.api()).value.tasks.filter(row=>row.status==='running'&&f.promptCalls.some(call=>call.requestId===row.request_id));
+    if(tasks.length===2)break;await new Promise(resolve=>setTimeout(resolve,10));
+   }
+   const turn=JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(row=>row.id===sent.comparison_id);
+   assert.equal(tasks.length,2,'both lanes reach the unchanged native loop: '+JSON.stringify(turn?.lanes));
+   assert.ok(turn);
+   const baseline=tasks.find(row=>row.session_id===turn.lanes.baseline.session_id);
+   const motif=tasks.find(row=>row.session_id===turn.lanes.motif.session_id);
+   assert.equal(baseline.mode,'baseline');assert.equal(motif.mode,'execute');
+   assert.notEqual(baseline.session_id,motif.session_id);
+   for(const row of [baseline,motif]){
+    assert.deepEqual(f.agents.get(row.session_id).allow.allow,scene.allowed_tools,'Motif cannot add tool capabilities');
+    const config=JSON.parse(readFileSync(join(f.directory,'tasks',row.task_id,'effective-config.json')));
+    assert.deepEqual(config.allowed_tools,scene.allowed_tools);
+   }
+   assert.equal(f.promptCalls.length,2);
+  }finally{await f.close();}
+ });
+}
+
+test('paired invalid Paper reuse falls back to ordinary model execution without changing Baseline',options,async()=>{
+ const scene={id:'paper-proofreading',label:'Paper',preset:'sss-paper-free-fallback',adapter:'workspace',mcp_rows:[],
+  allowed_tools:toolSchemas.map(row=>row.name),runtime_kind:'paper_document_read_v1',
+  rsi_unavailable_reason:'runtime_bundle_certification_invalid'};
+ const f=await fixture({broker:true,scenes:[scene],capability_profile:scene.id,comparison_scenes:[scene.id]});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'free-paper-fallback',mode:'queue',
+   content:[{type:'text',text:'/paper Free invalid-bundle protocol diagnostic'}]},new AbortController().signal);
+  let tasks=[];for(let i=0;i<100;i++){
+   tasks=(await f.api()).value.tasks.filter(row=>row.status==='running'&&f.promptCalls.some(call=>call.requestId===row.request_id));if(tasks.length===2)break;
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.equal(tasks.length,2);
+  const turn=JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(row=>row.id===sent.comparison_id);
+  const motif=tasks.find(row=>row.session_id===turn.lanes.motif.session_id);
+  assert.equal(tasks.find(row=>row.session_id===turn.lanes.baseline.session_id).mode,'baseline');
+  assert.equal(motif.mode,'baseline');assert.equal(motif.fallback_reason,'runtime_bundle_certification_invalid');
+  let calls=0;for await(const part of f.stream(f.modelRequest(motif),async function*(){calls++;yield {type:'text-delta',index:0,text:'ordinary fallback'};})){}
+  assert.equal(calls,1);assert.equal((await f.api(undefined,'?task_id='+motif.task_id)).value.stats.verified_skips,0);
+ }finally{await f.close();}
+});
+
+test('real Paper product manifest mounts the page-one continuation only on Motif and verifies its tool result',options,async()=>{
+ // Uses the committed learned bundle, but the native model/tool envelopes here
+ // are explicit free protocol diagnostics, not new training or quality claims.
+ const base=fileURLToPath(new URL('../motif-libraries/paper-web-v1/',import.meta.url));
+ const root=fileURLToPath(new URL('../',import.meta.url));
+ const read=name=>JSON.parse(readFileSync(join(base,name),'utf8'));
+ const hash=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
+ const entry=read('entry.json'),cert=read('certification.json'),schemas=read('tool-schemas.json');
+ const common=JSON.parse(readFileSync(join(root,'config/geneloop-capabilities.json'),'utf8')).tools;
+ const fixtureSchemas=[...schemas,...common.map(name=>({name,description:'Free shared capability schema diagnostic',
+  parameters:{type:'object',properties:{},required:[]}}))].sort((a,b)=>a.name<b.name?-1:1);
+ const scene={id:'paper-proofreading',label:'Paper',preset:'sss-paper-release-protocol',adapter:'workspace',mcp_rows:[],
+  runtime_kind:entry.runtime_kind,runtime_mode:entry.mode,runtime_library:join(base,'library.json'),runtime_library_sha256:hash(join(base,'library.json')),
+  manifest:join(base,'online-manifest.json'),task:join(base,'task.json'),allowed_tools:[...schemas.map(row=>row.name),...common],common_tools:common,
+  matching_policy:cert.matching_policy,binding_policy:cert.binding_policy,certification_scope:cert.certification_scope,
+  certification_path:join(base,'certification.json'),certification_sha256:hash(join(base,'certification.json')),
+  certified_code_locks:Object.fromEntries(Object.entries(cert.code_locks).map(([name,sha])=>[join(root,name),sha])),
+  certified_tool_schemas:schemas};
+ const f=await fixture({broker:true,scenes:[scene],capability_profile:scene.id,comparison_scenes:[scene.id],fixtureSchemas});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const bytes=Buffer.from('Free protocol document; no statistical result.'),version=createHash('sha256').update(bytes).digest('hex');
+  const uploaded=await f.ctx.fileUploads.uploadStream({sessionId,name:'brief.txt',data:(async function*(){yield bytes;})()});
+  await f.ctx.sessionController.prompt({sessionId,requestId:'real-release-free-protocol',mode:'queue',content:[
+   {type:'text',text:'/paper Check the uploaded document'},{type:'file',receiptId:uploaded.receiptId}]},new AbortController().signal);
+  let tasks=[];for(let i=0;i<100;i++){
+   tasks=(await f.api()).value.tasks.filter(row=>row.status==='running'&&f.promptCalls.some(call=>call.requestId===row.request_id));if(tasks.length===2)break;
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.equal(tasks.length,2);
+  const motif=tasks.find(row=>row.mode==='execute'),baseline=tasks.find(row=>row.mode==='baseline');
+  assert.ok(motif);assert.ok(baseline);assert.equal(motif.fallback_reason,null);
+  assert.equal(motif.source_pending,false);assert.equal(motif.scene_inputs.length,1);
+  for(const task of [baseline,motif])assert.deepEqual(f.agents.get(task.session_id).allow.allow,scene.allowed_tools);
+  assert.equal(scene.certified_tool_schemas.length,24);assert.equal(scene.allowed_tools.length,30);
+  const pin='mcp__paper_checks__pin_document',readTool='mcp__paper_checks__read_pinned_document',source='source-'+'b'.repeat(32);
+  for(const task of [baseline,motif])f.agents.get(task.session_id).hooks.get('tools/result')(
+   {name:pin,callId:'model-pin-'+task.task_id,arguments:{name:'brief.txt',sha256:version}},
+   {structuredContent:{source_id:source,version_sha256:version}});
+  let ordinary=0;const next=async function*(){ordinary++;yield {type:'text-delta',index:0,text:'ordinary diagnostic'};};
+  for await(const chunk of f.stream(f.modelRequest(baseline,{tools:f.agents.get(baseline.session_id).ctx.tools.schemas()}),next)){}
+  assert.equal(ordinary,1,'Baseline keeps the ordinary model request');
+  const chunks=[];for await(const chunk of f.stream(f.modelRequest(motif,{tools:f.agents.get(motif.session_id).ctx.tools.schemas()}),next))chunks.push(chunk);
+  assert.equal(ordinary,1,'the closed page-one read bypasses only this next request');
+  const call=chunks.find(row=>row.type==='tool-call-delta');assert.ok(call);assert.equal(call.name,readTool);
+  assert.deepEqual(JSON.parse(call.argumentsDelta),{source_id:source,page:1});
+  assert.equal((await f.api(undefined,'?task_id='+motif.task_id)).value.stats.verified_skips,0);
+  f.agents.get(motif.session_id).hooks.get('tools/result')({name:readTool,callId:call.id,arguments:{source_id:source,page:1}},
+   {structuredContent:{source_id:source,version_sha256:version,text:bytes.toString()}});
+  assert.equal((await f.api(undefined,'?task_id='+motif.task_id)).value.stats.verified_skips,1);
+  assert.equal((await f.api(undefined,'?task_id='+baseline.task_id)).value.stats.verified_skips,0);
+ }finally{await f.close();}
+});
+
 test('Four product scenes x three modes x RSI: effective mode, missing backend and Execute admission', options, async () => {
   const f = await fixture({ scenes: productScenes, capability_profile: 'new-scene' });
   try {

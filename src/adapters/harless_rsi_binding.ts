@@ -50,9 +50,12 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
   const bibliographyEdge:[string,string,string]=[
     'mcp__paper_checks__collect_current_local_citation_evidence',
     'mcp__paper_checks__read_pinned_bibliography_first_page','source_id'];
+  const documentEdge:[string,string,string]=[
+    'mcp__paper_checks__pin_document','mcp__paper_checks__read_pinned_document','source_id'];
   const allowed=[{tools:pair,field:'source_id'},
     ...(sceneId==='paper-proofreading'?[{tools:citationEdge.slice(0,2),field:citationEdge[2]},
-      {tools:bibliographyEdge.slice(0,2),field:bibliographyEdge[2]}]:[])];
+      {tools:bibliographyEdge.slice(0,2),field:bibliographyEdge[2]},
+      {tools:documentEdge.slice(0,2),field:documentEdge[2]}]:[])];
   const seen=new Set<string>();
   if(!Array.isArray(manifest.artifacts) || !manifest.artifacts.length ||
      manifest.artifacts.some((row:any)=>{
@@ -63,9 +66,13 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
           row.transfer_evidence[0].from_field!==spec.field ||
           row.transfer_evidence[0].to_param!==spec.field)return true;
        seen.add(key);return false;
-     }) || !seen.has(pair.join('|')) ||
+     }) || (sceneId==='paper-proofreading' && seen.has(documentEdge.slice(0,2).join('|'))
+        ? seen.size!==1 : !seen.has(pair.join('|'))) ||
      Object.keys(manifest.version_fields??{}).sort().join('|')!==
-       [...new Set(manifest.artifacts.flatMap((a:any)=>a.tools))].sort().join('|'))
+       [...new Set(manifest.artifacts.flatMap((a:any)=>a.tools))].sort().join('|') ||
+     Object.values(manifest.version_fields??{}).some(value=>value!=='version_sha256'))
+    throw Error('uploaded_rsi_binding_tools_unsupported');
+  if(seen.has(documentEdge.slice(0,2).join('|')) && !paperDocumentFirstPageContracts(manifest))
     throw Error('uploaded_rsi_binding_tools_unsupported');
   const approved=JSON.parse(readFileSync(join(workspace,'approved-inputs.json'),'utf8'));
   if(!approved || typeof approved.files!=='object' ||
@@ -86,7 +93,11 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
   return {schema_version:1,task_id:request.task_id,session_id:request.session_id,
     intent:bindingIntent(intent),
     input_version:sha(JSON.stringify(names.map(name=>[name,approved.files[name]]))),bindings:{},
-    source_versions:{[pair[0]]:'@observed',[pair[1]]:'@from_anchor',
+    source_versions:{...(seen.has(pair.join('|'))?{[pair[0]]:'@observed',[pair[1]]:'@from_anchor'}:{}),
+      ...(seen.has(documentEdge.slice(0,2).join('|'))?{
+        [documentEdge[0]]:'@observed',
+        [documentEdge[1]]:'@from_anchor',
+      }:{}),
       ...(seen.has(citationEdge.slice(0,2).join('|'))?{
         [citationEdge[0]]:'@observed',
         [citationEdge[1]]:'@from_anchor',
@@ -96,6 +107,40 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
         [bibliographyEdge[1]]:'@from_anchor',
       }:{})}};
 }
+
+function paperDocumentFirstPageContracts(manifest:any):boolean{
+  const pin=manifest?.contracts?.mcp__paper_checks__pin_document;
+  const read=manifest?.contracts?.mcp__paper_checks__read_pinned_document;
+  return !!(pin?.read_only===true && pin.observed_anchor===true &&
+    Array.isArray(pin.required_params) && pin.required_params.join(',')==='name,sha256' &&
+    pin.default_params && typeof pin.default_params==='object' && !Array.isArray(pin.default_params) &&
+    Object.keys(pin.default_params).length===0 &&
+    read?.read_only===true && Array.isArray(read.required_params) &&
+    read.required_params.join(',')==='source_id' &&
+    read.default_params && typeof read.default_params==='object' && !Array.isArray(read.default_params) &&
+    Object.keys(read.default_params).join(',')==='page' && read.default_params.page===1);
+}
+
+/** A closed permission check; the pin/read graph still comes from real traces. */
+export function closedPaperDocumentFirstPage(row:any,manifest:any):boolean{
+  const pin='mcp__paper_checks__pin_document',read='mcp__paper_checks__read_pinned_document';
+  if(!paperDocumentFirstPageContracts(manifest) || !Array.isArray(manifest?.artifacts) ||
+      manifest.artifacts.length!==1)return false;
+  const artifact=manifest.artifacts[0],edge=artifact?.transfer_evidence;
+  if(!artifact || typeof artifact!=='object' || Array.isArray(artifact))return false;
+  const args=row?.arguments;
+  return !!(row?.tool===read && row.version_relation==='same_source' &&
+    Array.isArray(row.code_node_ids) && row.code_node_ids.length===0 && artifact.motif_id===row.motif_id &&
+    Array.isArray(artifact.tools) && artifact.tools.join('|')===[pin,read].join('|') &&
+    Array.isArray(artifact.code_nodes??[]) && (artifact.code_nodes??[]).length===0 && !artifact.code_dag &&
+    Array.isArray(edge) && edge.length===1 && edge[0]?.from_tool===pin &&
+    edge[0].to_tool===read && edge[0].from_field==='source_id' &&
+    edge[0].to_param==='source_id' && (edge[0].version_relation??'same_source')==='same_source' &&
+    args && typeof args==='object' && !Array.isArray(args) &&
+    Object.keys(args).sort().join(',')==='page,source_id' && args.page===1 &&
+    typeof args.source_id==='string' && /^source-[0-9a-f]{32}$/.test(args.source_id));
+}
+
 /** A model must choose and pin the source; certified reuse may only dereference that same handle. */
 export function bindUploadedSourceTask(workspace:string,inputs:any[],request:any,manifest:any){
   if (!inputs.length || inputs.length > 8) throw Error('rsi_requires_approved_sources');

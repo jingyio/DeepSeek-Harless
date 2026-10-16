@@ -21,6 +21,35 @@ spec = importlib.util.spec_from_file_location('checks', ROOT / 'scripts/check-we
 web = importlib.util.module_from_spec(spec); spec.loader.exec_module(web)
 
 
+def validate_scene_tool_scope(tools, registered, prefixes, common):
+    """Keep MCP scope strict while checking the six real shared API schemas."""
+    contracts = {
+        'web_search': ({'queries': 'array'}, {'queries'}),
+        'web_fetch': ({'url': 'string'}, {'url'}),
+        'bash': ({'command': 'string', 'description': 'string', 'run_in_background': 'boolean'},
+                 {'command', 'description'}),
+        'job_list': ({}, set()),
+        'job_output': ({'job_id': 'string', 'wait': 'boolean', 'timeout_ms': 'number'}, {'job_id'}),
+        'job_kill': ({'job_id': 'string'}, {'job_id'}),
+    }
+    assert len(common) == len(contracts) and set(common) == set(contracts), 'unexpected shared capability registry'
+    assert registered.get('common_tools') == common, 'scene shared capabilities differ from registration'
+    names = [tool['name'] for tool in tools]
+    assert names and len(names) == len(set(names)), 'missing or duplicate tool schema'
+    assert set(names) == set(registered['allowed_tools']), 'frozen tool roster differs from registration'
+    assert any(name.startswith(prefixes) for name in names), 'scene MCP tools missing'
+    assert all(name.startswith(prefixes) or name in common for name in names), 'tool outside scene MCP/shared scope'
+    shared = {tool['name']: tool['parameters'] for tool in tools if tool['name'] in common}
+    assert set(shared) == set(common), 'shared capability missing from native tool discovery'
+    for name, parameters in shared.items():
+        fields, required = contracts[name]
+        assert parameters.get('type') == 'object' and isinstance(parameters.get('properties'), dict), name
+        assert isinstance(parameters.get('required', []), list) and set(parameters.get('required', [])) == required, name
+        assert all(parameters['properties'].get(field, {}).get('type') == kind for field, kind in fields.items()), name
+    assert shared['web_search']['properties']['queries'].get('items', {}).get('type') == 'string'
+    return shared
+
+
 @contextmanager
 def launch(port, principal, real=False, run_budget=.06, run_limit=24,
            task_budget=.03, task_limit=12, max_output=1000):
@@ -65,6 +94,8 @@ def main():
     parser.add_argument('--mode', choices=['baseline','shadow','execute'], default='shadow')
     args = parser.parse_args(); os.umask(0o077)
     groups = []
+    common = json.loads((ROOT / 'config/geneloop-capabilities.json').read_text(encoding='utf-8'))['tools']
+    shared_parameters = None
     # Bob stays model-free; separate Connection tokens, DSH_HOME, policy and Session storage.
     with launch(args.port, 'scene-check-alice', args.real_model, args.run_budget_usd, args.run_request_limit) as (alice, base, output), \
          launch(args.port + 1, 'scene-check-bob') as (bob, bob_base, bob_output):
@@ -128,9 +159,12 @@ def main():
             prefixes = {'ppt':('mcp__ppt__',),'new-scene':('mcp__workspace__',),
                 'paper-proofreading':('mcp__paper_checks__','mcp__paper_trace_rsi__'),
                 'research-data-analysis':('mcp__research_report__',),'files':('mcp__file_management__',)}[scene]
-            assert frozen['tools'] and all(tool['name'].startswith(prefixes) for tool in frozen['tools'])
             registered = next(row for row in json.loads((output/'policy.json').read_text())['scenes'] if row['id']==scene)
-            assert {tool['name'] for tool in frozen['tools']} == set(registered['allowed_tools'])
+            actual_shared = validate_scene_tool_scope(frozen['tools'], registered, prefixes, common)
+            if shared_parameters is None:
+                shared_parameters = actual_shared
+            else:
+                assert actual_shared == shared_parameters, 'shared parameter schemas differ across scenes'
             assert frozen['instructions'] and frozen['instructions_sha256']
             assert frozen['user_id'] == 'scene-check-alice' and frozen['selection']['mode'] == args.mode
             assert frozen['workspace'].startswith(str(output)) and draft['scene_inputs']
