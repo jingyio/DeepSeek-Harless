@@ -760,3 +760,5 @@ DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路�
 ### 论文图片与参考文献流程共同恢复（PR #41/#42）
 
 原生图片继续由公开 decoder 验证并同时保留像素和文件来源。论文最多 16 个附件（其中图片最多 8 个），其他场景总数仍为 8。停止钩子按任务实际流程选择 PPT 恢复、普通论文 `export_review_report` 恢复或已启动的引用报告验收；有效引用 PDF 不再要求重复生成普通报告。缺失/过期来源与预算守卫不变。LaTeX 静态诊断中的所有来源相对路径统一用 POSIX `/`，不改变磁盘路径权限判断。
+
+PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿用 r5 原始两训练/一留出的已见证读取图，经既有离线编译器重编并绑定当前执行代码。r5 原库/证书不改；v1/v2 PPT、普通上传与论文专用 `approved_uploaded_reads_v1` 在同一 Shared RSI Runtime 中按各自参数和守卫准入。

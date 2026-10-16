@@ -63,3 +63,11 @@
 - main 的 PPT r5 库锁住旧共享适配器，本次没有重写它的证书。将原两训练/一留出事件复制到本次私有目录，核对原事件 SHA 和决定身份，调用既有 `scenarios.research_ppt.motif_v6.learn(..., mining='witnessed_edges')` 及 `validate_compilation` 重新编译；发布 `motif-libraries/ppt-web-v2-r6`。两条 Motif、参数边、契约和原证据逐项相同；library/manifest 摘要因编译来源记录变化而更新，认证锁住最终代码，不是新采样或质量/费用晋级。r4/r5 和原证书逐字保留，默认 Registry 指向 r6。
 - PPT 私有复现材料在 V100 本次隔离目录的 `.local/ppt-pr42-recompile/`（dataset、三组事件与身份、actual schema、compiled/evidence-lock）；完整 schema 核验在 `.local/ppt-pr42-schema/`。原科研错误、失败账单、旧记录继续保留。公共包不含原始运行日志或私人论文。
 - 本轮累计至 `main41` 为 15 请求/$0.037705656；加此前独立机制轮为 34 请求/$0.084359628。账单实付未知，不拿合并诊断作费用效果对照。最终完整回归、最新窄任务与合并状态由本节后续或 PR #42 回执补齐。
+
+
+### 最终复测回执
+
+- V100 最终执行代码：完整 `npm test` **Python 1011、Node 762 通过，3 条件跳过**；smoke、motif:check、web:controls:check 通过。控件/场景脚本是无模型诊断，不能当作真实质量/费用证据。main 随后新增 PR #55 的五个纯展示/文档文件，原样合入；相关主题/品牌/菜单回归 9 项通过，没有改变执行锁。
+- `main54-execute-01`：同原论文 ZIP 的前12条字面记录任务，真实 Flash Off、任务 $0.23、累计费用/次数/输出上限 null；completed，**2 请求、1 已验证跳过、3 工具调用、0 工具错误**。缓存命中 16,384/未命中 16,149/输出 1,854 token，代理估费 $0.007167804，未结算与未知 0，usage 完整。当前 `.local/integration-check/compiled-main54/runtime` 为最终24工具、3只读Motif包。第一次启动前编译命令误传 `library.json` 路径而非目录，编译拒绝，0 模型请求；更正参数后才运行，不修改库内容或守卫。
+- 本次整合的五轮真实调用累计 **17 请求/$0.044873460**；加前独立机制轮为 **36 请求/$0.091527432**。全部为代理估费，实付未知；保留更早各实验账本，不以此宣称完整论文已验收或稳定净费用下降。
+- GitHub 最终检查与合并状态以 [PR #42](https://github.com/jingyio/DeepSeek-Harless/pull/42) 的 head 和合并回执为准；本次没有部署线上服务或覆盖账号/会话/附件/预算进程。
