@@ -4,6 +4,14 @@ import {createPptRecovery} from '../src/adapters/harless_ppt_recovery.ts';
 const exec=name=>({name:'mcp__ppt__'+name});
 const result=value=>({content:[{type:'text',text:JSON.stringify(value)}]});
 const fail=code=>({...result({ok:false,code}),isError:true});
+
+test('unsupported statistics are removed in the same task and remaining budget',()=>{
+ const g=createPptRecovery();g.observe(exec('render_deck'),{isError:true,structuredContent:{error:'unsupported_statistics'}});
+ const continuation=g.stop({aborted:false,expectedSlides:3});
+ assert.equal(continuation.error.code,'unsupported_statistics');
+ assert.match(continuation.instruction,/剩余任务预算/);
+ g.observe(exec('deliver_deck'),result({delivered:true}));assert.equal(g.stop({aborted:false}),null);
+});
 test('wrong page count continues same task through actual successful delivery',()=>{
  const g=createPptRecovery();g.observe(exec('render_deck'),fail('slide_count_mismatch'));
  const first=g.stop({aborted:false,expectedSlides:3});assert.equal(first.error.code,'slide_count_mismatch');

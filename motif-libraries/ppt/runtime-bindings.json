@@ -43,8 +43,8 @@
     "scenarios/research_ppt/restyle.py": "6ec2a4ffd0d675d99d069f0221641bb3da997ca4b64c89384ea385829586f98a",
     "scenarios/research_ppt/revision.py": "6c92537c4e4dce65ca4789f1b8f1301bdb3631d6fbac2303fb1e946a4f595389",
     "scenarios/research_ppt/runtime_snapshot.py": "73a3928c14ed98f372a4c4d27acedbeea009bd7296ec21ef30b871bda283625c",
-    "scenarios/research_ppt/server.py": "1897440b47c4c35f53de2e4733c91b870db9738808ffd210a8108fcebddeff05",
-    "scenarios/research_ppt/service.py": "0dcba01faa0c73fb9ea8e1aadd0a667f96c7245281003364a9ffd3869b47af50",
+    "scenarios/research_ppt/server.py": "3c2ad987cd0604f32042c632a9161c1a62bab624eaad10e8601fc9e847b67087",
+    "scenarios/research_ppt/service.py": "543b5304f1af1e38b27beb3ae091b1fa330251d7cf0a614c34e0d9110e6357f6",
     "scenarios/research_ppt/smoke.py": "37b158c9c7eeb84d4eec04dc517af5ce69ac4ae5d3d229c7fea98fd0663c06f6",
     "scenarios/research_ppt/tool_learning.py": "4e5fb3f2f4a2a334d8cfddb3c9fb1b7a14e0902375331f93fce3eca897e93c1b",
     "scenarios/research_ppt/trial.py": "a430cda416f74cecde2e49f3fd5f321d3b4e6c0eb8462e7dacbf50066187cd9c",
@@ -68,7 +68,8 @@
     "scenarios/research_ppt/dist/pending-plan.js": "98a76494eb44597d423cf0b29341937995cc4a2c9b87353abbacb4a3fce178ff",
     "scenarios/research_ppt/dist/pending-plan.d.ts": "19335e676a4744181bf0199bc10c2fec4c87aa921f582639d4f41348415e98af",
     "scenarios/research_ppt/web_scope.py": "ff29d51e120f2e492702795d520435c0e054fb5c42d04bbe5a957afe48b4fa75",
-    "src/adapters/harless_attachment_text.py": "d69f92415686fc84d1ae477972a806907cafdf1c2f58fc708ee392ba1b588663"
+    "src/adapters/harless_attachment_text.py": "d69f92415686fc84d1ae477972a806907cafdf1c2f58fc708ee392ba1b588663",
+    "scenarios/research_ppt/numeric_evidence.py": "82e3638094c2a1508c361977c592d4c00239fc6ddd13ab860b8cbefb1040c6c7"
   },
   "validation": {
     "actual_mcp_schema_slide_counts": [
@@ -112,6 +113,7 @@
     "product_identity_review": "Only Web persona composition changed in shared task scope. Uploaded source ownership, bytes/digests, job binding, learned read-edge parameters and complete MCP schemas remain unchanged; no retraining or new quality/cost claim.",
     "scene_file_delivery_review": "The unchanged pin_source/read_source signature now reads approved Word/CSV/JSON/TXT bytes through the shared extractor; source identity, digest guards, job scope and read-edge boundaries remain mandatory. Logical text sections are explicit; new types bypass the existing PDF/PPTX-only cache. Source snapshots reject changed code. No new training or quality/cost claim.",
     "slide_count_compatibility_review": "Actual MCP listTools checked for every supported slide count 1..30. Only render_deck plan.slides minItems/maxItems differ; independently learned pin_source/read_source contracts and original certification are unchanged. No new training or quality/cost claim.",
+    "numeric_source_guard_review": "Adds a deterministic source-quote guard for common statistical quantities at render time. Source pin/read contracts, authorization, source hashes and the original learned read edge are unchanged. Visual-only claims remain explicitly unverified; no scientific certification or new training.",
     "ppt_web_host_delivery_and_local_recovery": "ordinary scripts; original read-only certificate unchanged"
   },
   "scope": "Existing independently witnessed read edge only; current runtime compatibility, not a new training certificate."
