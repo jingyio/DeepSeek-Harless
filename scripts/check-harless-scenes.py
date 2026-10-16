@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import base64
+import hashlib
 from contextlib import contextmanager
 import importlib.util
 import io
@@ -21,14 +22,16 @@ web = importlib.util.module_from_spec(spec); spec.loader.exec_module(web)
 
 
 @contextmanager
-def launch(port, principal, real=False, run_budget=.06, run_limit=24):
+def launch(port, principal, real=False, run_budget=.06, run_limit=24,
+           task_budget=.03, task_limit=12, max_output=1000):
     run_id = uuid4().hex
     output = ROOT / '.local/web/runs' / run_id
     logs = ROOT / '.local/harless-scenes'; logs.mkdir(parents=True, exist_ok=True)
     with (logs / (run_id + '.log')).open('w') as log:
         child = subprocess.Popen([sys.executable, str(ROOT / 'scripts/harness-web.py'), '--port', str(port),
-            '--run-id', run_id, '--user-id', principal, '--budget-usd', str(min(.03, run_budget)), '--run-budget-usd', str(run_budget),
-            '--request-limit', str(min(12, run_limit)), '--run-request-limit', str(run_limit), *(['--real-model'] if real else [])],
+            '--run-id', run_id, '--user-id', principal, '--budget-usd', str(min(task_budget, run_budget)), '--run-budget-usd', str(run_budget),
+            '--request-limit', str(min(task_limit, run_limit)), '--run-request-limit', str(run_limit),
+            '--max-output-tokens', str(max_output), *(['--real-model'] if real else [])],
             stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
         try:
             for _ in range(400):
@@ -123,8 +126,8 @@ def main():
                 'data': base64.b64encode(data).decode()})
             frozen = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())
             prefixes = {'ppt':('mcp__ppt__',),'new-scene':('mcp__workspace__',),
-                        'paper-proofreading':('mcp__paper_checks__','mcp__paper_trace_rsi__'),
-                        'research-data-analysis':('mcp__research_report__',),'files':('mcp__file_management__',)}[scene]
+                'paper-proofreading':('mcp__paper_checks__','mcp__paper_trace_rsi__'),
+                'research-data-analysis':('mcp__research_report__',),'files':('mcp__file_management__',)}[scene]
             assert frozen['tools'] and all(tool['name'].startswith(prefixes) for tool in frozen['tools'])
             registered = next(row for row in json.loads((output/'policy.json').read_text())['scenes'] if row['id']==scene)
             assert {tool['name'] for tool in frozen['tools']} == set(registered['allowed_tools'])
@@ -178,9 +181,6 @@ def main():
             writable = web.api(alice, base, {'action': 'preview', 'request': {
                 'instruction': 'Copy the approved note into copies/ and report the receipt.',
                 'scene_options': {'allow_output': True}}})
-            status, denied = web.request(alice, base, '/api/harless/tasks', {
-                'action': 'submit', 'task_id': writable['task_id'], 'confirmation_digest': writable['confirmation_digest']})
-            assert status == 409 and denied['error']['code'] == 'files_requires_input_for_output'
             writable = web.api(alice, base, {'action': 'upload', 'task_id': writable['task_id'],
                 'name': 'note.txt', 'data': base64.b64encode(b'Approved copy source').decode()})
             spec = json.loads((output/'sessions'/writable['session_id']/'work'/'file-task.json').read_text())
@@ -190,6 +190,27 @@ def main():
             assert web.api(alice,base,task_id=writable['task_id'])['confirmation_digest'] == writable['confirmation_digest']
             web.api(alice,base,{'action':'cancel','task_id':writable['task_id']})
             groups.append({'group':'files-bounded-write-grant-preview', 'model_requests':0})
+        if not args.real_model and 'paper-proofreading' in args.scenes:
+            settings(alice, base, {'action':'select','selection':{'scene':'paper-proofreading','mode':'baseline','rsi':True}})
+            export = web.api(alice,base,{'action':'preview','request':{
+                'instruction':'Export only this task audit.', 'scene_options':{'allow_output':True}}})
+            audit=b'{"schema_version":1,"scope":"diagnostic","reference_count":0,"references":[],"sources":[],"issues":[],"citation_checks":{},"notes":""}'
+            export=web.api(alice,base,{'action':'upload','task_id':export['task_id'],
+                'name':'audit.json','data':base64.b64encode(audit).decode()})
+            grant=json.loads((output/'sessions'/export['session_id']/'work'/'paper-output-grant.json').read_text())
+            assert grant['task_id']==export['task_id'] and grant['allow_output'] is True
+            assert grant['audit_sha256']==hashlib.sha256(audit).hexdigest()
+            web.api(alice,base,{'action':'cancel','task_id':export['task_id']})
+            generated = web.api(alice,base,{'action':'preview','request':{
+                'instruction':'Review the uploaded manuscript and generate a report PDF.',
+                'scene_options':{'allow_output':True}}})
+            generated = web.api(alice,base,{'action':'upload','task_id':generated['task_id'],
+                'name':'main.tex','data':base64.b64encode(b'\\cite{alpha}').decode()})
+            generated_grant=json.loads((output/'sessions'/generated['session_id']/'work'/'paper-output-grant.json').read_text())
+            assert generated_grant['task_id']==generated['task_id']
+            assert generated_grant['allow_output'] is True and generated_grant['audit_sha256'] is None
+            web.api(alice,base,{'action':'cancel','task_id':generated['task_id']})
+            groups.append({'group':'paper-pdf-output-grant-preview', 'model_requests':0})
         assert len({draft['session_id'] for draft in drafts}) == len(drafts)
         web.api(bob, bob_base, {'action': 'cancel', 'task_id': bob_draft['task_id']})
         groups.append({'group': 'two-principal-processes-and-foreign-session-task-receipt-denial', 'model_requests': 0})

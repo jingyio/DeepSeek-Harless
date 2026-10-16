@@ -115,11 +115,14 @@ def main():
                 'upstreamBrokerPort':int(policy['control_endpoint'].rsplit(':',1)[1]),
                 'adminToken':uuid4().hex}
         config_path=area/'gateway.json';config_path.write_text(json.dumps(config))
-        if os.environ.get('HARLESS_PPT_RUNTIME_BUNDLE'):
-            config['memberSceneDeployment']['libraryRoot']=os.environ['HARLESS_PPT_RUNTIME_BUNDLE']
+        library_root=os.environ.get('HARLESS_RUNTIME_LIBRARY_ROOT') or os.environ.get('HARLESS_PPT_RUNTIME_BUNDLE')
+        if library_root:
+            config['memberSceneDeployment']['libraryRoot']=library_root
             config_path.write_text(json.dumps(config))
         for key,name in [('rendererRoot','HARLESS_PPT_RENDERER_ROOT'),('fontRoot','HARLESS_PPT_FONT_ROOT')]:
             if os.environ.get(name):config['memberSceneDeployment'][key]=os.environ[name]
+        if os.environ.get('HARLESS_PAPER_RENDERER_ROOT'):
+            config['memberSceneDeployment']['paperRendererRoot']=os.environ['HARLESS_PAPER_RENDERER_ROOT']
         config_path.write_text(json.dumps(config))
         log=(area/'gateway.log').open('w')
         child=subprocess.Popen(['node',str(ROOT/'scripts/harless_gateway.mjs'),str(config_path)],

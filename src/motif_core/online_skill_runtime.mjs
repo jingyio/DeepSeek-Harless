@@ -109,18 +109,29 @@ export function validateOnlineManifest(manifest) {
         manifest.contracts[tool]?.observed_anchor === true && index !== 0)) {
       throw new TypeError('observed anchor must start the Motif');
     }
-    if (anchor?.observed_anchor === true &&
-        (artifact.tools.length !== 2 ||
-         artifact.tools[0] !== 'mcp__scoped_gmail_request__search_emails' ||
-         artifact.tools[1] !== 'mcp__scoped_gmail_request__read_email' ||
-         !anchor.output_fields.includes('selected_message_id') ||
-         manifest.version_fields[artifact.tools[0]] !== 'selected_message_id' ||
-         manifest.version_fields[artifact.tools[1]] !== 'source_version' ||
-         manifest.contracts[artifact.tools[1]]?.required_params?.join(',') !== 'messageId' ||
-         artifact.transfer_evidence.length !== 1 ||
-         artifact.transfer_evidence[0].from_field !== 'selected_message_id' ||
-         artifact.transfer_evidence[0].to_param !== 'messageId')) {
-      throw new TypeError('dynamic Gmail anchor needs one unique read edge');
+    if (anchor?.observed_anchor === true) {
+      const read = manifest.contracts[artifact.tools[1]];
+      const edge = artifact.transfer_evidence[0];
+      const gmail = artifact.tools[0] === 'mcp__scoped_gmail_request__search_emails' &&
+        artifact.tools[1] === 'mcp__scoped_gmail_request__read_email' &&
+        anchor.output_fields.includes('selected_message_id') &&
+        manifest.version_fields[artifact.tools[0]] === 'selected_message_id' &&
+        manifest.version_fields[artifact.tools[1]] === 'source_version' &&
+        read?.required_params?.join(',') === 'messageId' &&
+        edge?.from_field === 'selected_message_id' && edge?.to_param === 'messageId';
+      // A Session-local pin issues a fresh opaque handle. The model must first
+      // choose the source; only the witnessed read of that handle is bypassable.
+      const uploadedRead = anchor.output_fields.includes('source_id') &&
+        anchor.output_fields.includes('version_sha256') &&
+        manifest.version_fields[artifact.tools[0]] === 'version_sha256' &&
+        manifest.version_fields[artifact.tools[1]] === 'version_sha256' &&
+        read?.required_params?.join(',') === 'source_id' &&
+        edge?.from_field === 'source_id' && edge?.to_param === 'source_id';
+      if (artifact.tools.length !== 2 || artifact.transfer_evidence.length !== 1 ||
+          edge?.from_tool !== artifact.tools[0] || edge?.to_tool !== artifact.tools[1] ||
+          (!gmail && !uploadedRead)) {
+        throw new TypeError('observed anchor needs one verified read edge');
+      }
     }
     for (const tool of artifact.tools) {
       const contract = manifest.contracts[tool];
@@ -424,8 +435,17 @@ const versionAllowed = (task, manifest, tool, value) => scalar(value) &&
       ? task.source_versions[tool].includes(value)
       : task.source_versions[tool] === value);
 
-function validObservedAnchor(row) {
+function validObservedAnchor(row, manifest) {
   const output = row.output;
+  const contract = manifest.contracts[row.name];
+  if (contract?.output_fields?.includes('source_id') &&
+      contract.output_fields.includes('version_sha256')) {
+    return typeof output?.source_id === 'string' &&
+      /^source-[a-f0-9]{32}$/.test(output.source_id) &&
+      typeof output.version_sha256 === 'string' &&
+      /^[a-f0-9]{64}$/.test(output.version_sha256) &&
+      row.sourceVersion === output.version_sha256;
+  }
   const id = output?.selected_message_id;
   return row.name === 'mcp__scoped_gmail_request__search_emails' &&
     output?.count === 1 && Array.isArray(output.message_ids) &&
@@ -448,7 +468,7 @@ function matchingPrefixes(artifact, history, length, task, manifest) {
             manifest.version_fields[tool] &&
             versionAllowed(task, manifest, tool, row.sourceVersion) &&
             (manifest.contracts[tool].observed_anchor !== true ||
-             validObservedAnchor(row))) {
+             validObservedAnchor(row, manifest))) {
           next.push([...prefix, { ...row, historyIndex: index }]);
           if (next.length > 128) return [];
         }

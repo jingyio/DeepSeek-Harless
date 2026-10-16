@@ -8,10 +8,13 @@ from uuid import uuid4
 
 
 class SessionFiles:
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, max_files: int = 8):
+        if not isinstance(max_files, int) or not 1 <= max_files <= 16:
+            raise ValueError('invalid_scene_input_limit')
         if directory.is_symlink(): raise ValueError('session_directory_symlink')
         self.root = directory.resolve(strict=True)
         self.identity = self.root.stat()
+        self.max_files = max_files
         self.handles = {}
         manifest=self.root.parent/'approved-inputs.json'
         self.approved=json.loads(manifest.read_text())['files'] if manifest.exists() else None
@@ -48,7 +51,7 @@ class SessionFiles:
             if not path.is_file() or path.is_symlink(): continue
             data, version = self.read(path.name)
             rows.append({'name': path.name, 'bytes': len(data), 'sha256': version})
-            if len(rows) > 8: raise ValueError('scene_input_limit')
+            if len(rows) > self.max_files: raise ValueError('scene_input_limit')
         return {'files': rows}
 
     def pin(self, name: str, sha256: str):

@@ -1307,13 +1307,15 @@ test('Empty file scenes keep normal scene tools and model routing across turns a
       assert.equal((await f.ctx.sessionController.inspect(sessionId)).meta.title, '新会话');
       for (let round=0;round<3;round++) {
         if(round===2) await f.restart();
-        const result=await f.api({action:'preview',session_id:sessionId,request:{instruction:'你好，请介绍你能帮我做什么',request_id:`empty-${round}`}});
+        const result=await f.api({action:'preview',session_id:sessionId,request:{instruction:'你好，请介绍你能帮我做什么',request_id:`empty-${round}`,
+          ...(['paper-proofreading','files'].includes(id)?{scene_options:{allow_output:true}}:{})}});
         assert.equal(result.status,200,JSON.stringify(result.value));
         const task=result.value; assert.equal(task.source_pending,true); assert.deepEqual(task.scene_inputs,[]);
         assert.deepEqual(f.agents.get(sessionId).allow.allow,scene.allowed_tools);
         assert.match(f.agents.get(sessionId).instruction,/正常回应问候/);
         assert.equal((await f.submit(task)).status,200);
         await f.complete(task);
+        assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'completed');
       }
       assert.equal(f.promptCalls.length,3);
     } finally {await f.close();}

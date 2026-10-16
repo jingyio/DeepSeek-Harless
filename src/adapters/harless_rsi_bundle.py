@@ -1,4 +1,4 @@
-"""Load an administrator-selected, byte-bound runtime bundle, not raw experiments."""
+"""Load administrator-selected, byte-bound scene bundles, not raw experiments."""
 import hashlib
 import json
 import re
@@ -53,14 +53,10 @@ def load_product_bundle(root: Path, directory: Path, scene: str):
     return info
 
 
-def load_ppt_bundle(root: Path, directory: Path):
-    return load_uploaded_bundle(root, directory, 'ppt')
-
-
-def load_uploaded_bundle(root: Path, directory: Path, scene: str):
+def load_uploaded_bundle(root: Path, directory: Path, scene: str, *, approved_read: bool = False):
     if scene not in ('ppt', 'paper-proofreading', 'research-data-analysis', 'literature'):
         raise ValueError('unsupported uploaded scene')
-    policy = 'ppt_uploaded_sources_v1' if scene == 'ppt' else 'uploaded_source_handles_v1'
+    policy = 'approved_uploaded_reads_v1' if approved_read else ('ppt_uploaded_sources_v1' if scene == 'ppt' else 'uploaded_source_handles_v1')
     base=directory.resolve(strict=True)
     cert_path=base/'certification.json'
     if cert_path.is_symlink() or cert_path.stat().st_size>1000000: raise ValueError('invalid certification')
@@ -95,9 +91,23 @@ def load_uploaded_bundle(root: Path, directory: Path, scene: str):
         if scene != 'ppt' or not isinstance(variants, list) or not 1 <= len(variants) <= 32 or any(not isinstance(v, list) or not v for v in variants):
             raise ValueError('unsupported whole schema variants')
     return {**{key:str(base/name) for key,name in names.items()},
+            'runtime_library':str(base/'library.json'),
+            'runtime_library_sha256':sha(base/'library.json'),
             'certified_tool_schemas':schemas,'certified_tool_schemas_sha256':sha(base/'tool-schemas.json'),
             **({'certified_tool_schema_variants': variants} if variants else {}),
             'matching_policy':cert['matching_policy'],'binding_policy':cert['binding_policy'],
             'certification_path':str(cert_path),'certification_sha256':sha(cert_path),
             'certified_code_locks':code_locks,'certification_scope':cert['certification_scope'],
             'quality_cost_promoted':False}
+
+
+def load_ppt_bundle(root: Path, directory: Path):
+    """Keep the existing PPT loader API for callers and certificate tests."""
+    return load_uploaded_bundle(root,directory,'ppt')
+
+
+def load_scene_bundle(root: Path, directory: Path, scene_id: str):
+    """Load a private reviewed read-pair bundle for this exact scene."""
+    if scene_id not in ('ppt', 'paper-proofreading', 'research-data-analysis'):
+        raise ValueError('unsupported Motif scene')
+    return load_uploaded_bundle(root, directory, scene_id, approved_read=scene_id != 'ppt')

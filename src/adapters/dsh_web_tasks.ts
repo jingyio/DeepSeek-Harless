@@ -11,6 +11,7 @@ import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
+import { createPaperFlowShadowObserver } from './harless_paper_flow_shadow.ts';
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
 import { sceneCatalog, initialSelection, changeSelection, parseHarlessCommand, sceneShortcut, parseSceneShortcut, SettingsError } from './harless_settings.ts';
@@ -18,10 +19,11 @@ import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDi
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
-import {bindUploadedPptTask,bindUploadedSourceTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
+import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
 import {createComparisonService} from './harless_comparison.ts';
 import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
 import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
+import {paperPdfDelivered} from './harless_paper_delivery.ts';
 import {bindReportAnswer} from './harless_report_answer.ts';
 import {createTaskProgress} from './harless_task_progress.ts';
 import {bindProductPrompt} from './harless_product_prompt.ts';
@@ -58,6 +60,7 @@ type Task = {
   humans: Map<string, string>; current_humans: Set<string>;
   sources: { resource_id: string; version: string; sha256: string }[];
   scene: Scene; selection: Selection; tools: any[]; manifest_sha256: string | null; binding_sha256: string | null;
+  paper_flow_shadow_sha256?: string | null;
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
   model_option: ModelOption; reasoning_effort?: WebReasoningEffort; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; source_pending?: boolean; scope_sha256: string | null;
   budget_session_id: string;
@@ -132,7 +135,8 @@ export function apply(ctx: any) {
   const memberRestricted = brokerMode && config.allowed_tools.length === 0;
   const registeredScenes = config.scenes?.map(row => {
     if (!memberRestricted) return row;
-    const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas, certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = row;
+    const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas, certified_tool_schemas, certified_tool_schemas_sha256,
+      paper_flow_shadow, paper_flow_shadow_sha256, ...safe } = row;
     const instructions = '当前会话仅开放 GeneLoop 普通对话；没有文件或场景工具。不要声称已读取文件或完成生成。';
     return { ...safe, allowed_tools: [], preset: 'sss-disabled-' + row.id,
       config_sha256: digest({ scene: row.id, parent: row.config_sha256 ?? null, role: 'member_chat_only', allowed_tools: [] }),
@@ -175,8 +179,11 @@ export function apply(ctx: any) {
     if (!structural && !/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
     try {
       if(structural){
-        if(!(['ppt','paper-proofreading','research-data-analysis','literature'].includes(scene.id)) ||
-           scene.binding_policy!==(scene.id==='ppt'?'ppt_uploaded_sources_v1':'uploaded_source_handles_v1') ||
+        if(!((scene.id==='ppt' && scene.binding_policy==='ppt_uploaded_sources_v1') ||
+             (['paper-proofreading','research-data-analysis','new-scene'].includes(scene.id) &&
+              scene.binding_policy==='approved_uploaded_reads_v1') ||
+             (['paper-proofreading','research-data-analysis','literature'].includes(scene.id) &&
+              scene.binding_policy==='uploaded_source_handles_v1')) ||
            scene.certification_scope!=='independent_trace_structure' || !scene.certification_path ||
            fileSha(scene.certification_path)!==scene.certification_sha256 || !scene.certified_code_locks ||
            Object.entries(scene.certified_code_locks).some(([path,expected])=>fileSha(path)!==expected))return 'runtime_bundle_certification_invalid';
@@ -193,6 +200,7 @@ export function apply(ctx: any) {
     // A started Harness session has an immutable preset. Imported history must
     // not acquire a new MCP composition or reuse an obsolete tool surface.
     const { adapter, mcp_rows, environment_references, manifest, task, tool_schemas,
+      paper_flow_shadow, paper_flow_shadow_sha256,
       certified_tool_schemas, certified_tool_schemas_sha256, ...safe } = scene;
     const instructions = '此会话为升级前保留的历史对话，只支持继续文字问答。当前没有文件或场景工具，不要声称已读取文件或完成生成；需要工作区工具时请用户新建会话。';
     return { ...safe, allowed_tools: [], instructions, instructions_sha256: sha(instructions),
@@ -254,6 +262,11 @@ export function apply(ctx: any) {
         {key:'slides',label:'页数',default:6,values:[1,6,8,10,12].map(value=>({value,label:`${value} 页`}))},
         {key:'template',label:'模板',default:'academic',values:[{value:'academic',label:'学术模板'},{value:'lab',label:'组会模板'}]},
         {key:'allow_output',label:'输出权限',default:false,values:[{value:false,label:'只读检查'},{value:true,label:'允许生成 PPT 新副本',detail:sceneFor(selected.scene).output_unavailable_reason ?? '仅生成本任务的新文件'}]},
+      ] : selected.scene==='paper-proofreading' ? [
+        {key:'allow_output',label:'PDF 输出',default:false,values:[
+          {value:false,label:'只读校对'},
+          {value:true,label:'生成报告 PDF 新副本',detail:sceneFor(selected.scene).output_unavailable_reason ?? '上传论文资料或已有报告；任务须交付新 PDF'},
+        ]},
       ] : [],
       session_id: sessionId ?? null, model_calls: 0 };
   }
@@ -1051,6 +1064,7 @@ export function apply(ctx: any) {
     const task: Task = { request, delivery, confirmation_digest: '', status: 'awaiting_confirmation',
       scene, selection: Object.freeze({ ...selection }), tools, workspace, scene_options: options, scene_inputs: sceneInputs, source_pending: sourcePending, scope_sha256: scopeDigest(workspace, scene),
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
+      paper_flow_shadow_sha256: fileSha(scene.paper_flow_shadow),
       entrypoint, created_at: utc(), failure: null, fallback_reason: null, answer: '', output,
       humans: priorHumans, current_humans: new Set(), sources,
       model_option: chosenModel, reasoning_effort: chosenReasoning, budget_session_id: budgetSessionId,
@@ -1069,10 +1083,18 @@ export function apply(ctx: any) {
     indexedTasks.push(taskId); saveTaskIndex(); return task;
   }
   function updateDraft(task: Task) {
-    if(task.scene.binding_policy && task.request.mode!=='baseline' && !task.source_pending && task.scene_inputs.length){
+    if(task.scene.binding_policy && task.scene.binding_policy!=='approved_uploaded_reads_v1' &&
+        task.request.mode!=='baseline' && !task.source_pending && task.scene_inputs.length){
       const manifest=JSON.parse(readFileSync(task.scene.manifest!,'utf8'));
       const binding=task.scene.binding_policy==='ppt_uploaded_sources_v1' ? bindUploadedPptTask(task.workspace,task.scene_inputs,task.request,manifest,task.source_task_id)
         : bindUploadedSourceTask(task.workspace,task.scene_inputs,task.request,manifest);
+      json(join(task.output,'bound-motif-task.json'),binding);
+      task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
+    }
+    if(task.scene.binding_policy==='approved_uploaded_reads_v1' && task.request.mode!=='baseline' &&
+        !task.source_pending && task.scene_inputs.length){
+      const binding=bindApprovedUploadedReadTask(task.workspace,task.scene_inputs,task.request,
+        JSON.parse(readFileSync(task.scene.manifest!,'utf8')),task.scene.id);
       json(join(task.output,'bound-motif-task.json'),binding);
       task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
     }
@@ -1080,6 +1102,7 @@ export function apply(ctx: any) {
       delivery: task.delivery, sources: task.sources, schemas: task.tools, scene: task.scene.id,
       scene_sha256: task.scene.config_sha256, instructions: instructionsFor(task.scene, task.source_pending), selection: task.selection,
       manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256,
+      paper_flow_shadow_sha256: task.paper_flow_shadow_sha256,
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256,
       bound_binding_sha256: task.bound_binding_sha256, certification_sha256:task.scene.certification_sha256,
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, scope_sha256: task.scope_sha256, user_id: principal,
@@ -1099,6 +1122,7 @@ export function apply(ctx: any) {
       workspace: task.workspace, scope_sha256: task.scope_sha256,
       runtime_file_locks:task.scene.runtime_file_locks,
       tool_schemas_sha256: digest(task.tools), reasoning_effort: task.reasoning_effort ?? null, compression: false,
+      paper_flow_shadow_sha256: task.paper_flow_shadow_sha256,
       budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit === 0 ? null : config.request_limit,
         run_usd: config.run_budget_usd, run_requests: config.run_request_limit === 0 ? null : config.run_request_limit, reset_history: false },
       run_config: '../../effective-config.json', manifest_sha256: task.manifest_sha256, binding_sha256: task.binding_sha256, scene_registry_sha256: config.scene_registry_sha256 });
@@ -1134,10 +1158,24 @@ export function apply(ctx: any) {
       const binding = scene.binding_policy ? pinned(join(task.output,'bound-motif-task.json'),task.bound_binding_sha256!) : pinned(scene.task, task.binding_sha256);
       binding.session_id = task.request.session_id; binding.task_id = task.request.task_id;
       json(join(task.output, 'bound-motif-task.json'), binding);
-      task.interceptor = createOnlineInterceptor({ manifest,
+      const core = createOnlineInterceptor({ manifest,
         task: binding, mode: task.request.mode, minSimilarity: 0.8, minMargin: 0.1,
         similarity: scene.matching_policy==='structural_only' ? structuralOnlySimilarity : loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
         audit: (row: unknown) => audit(task, row) });
+      // The migrated flows only observe the same frozen task and tool results.
+      // The certified core remains the sole path that can bypass a model call.
+      if(scene.paper_flow_shadow && task.request.mode==='shadow'){
+        const flow=createPaperFlowShadowObserver(
+          pinned(scene.paper_flow_shadow,task.paper_flow_shadow_sha256!),binding,task.tools,
+          (row:unknown)=>audit(task,row));
+        task.interceptor={
+          observe(sessionId:string,exec:any,result:any){core.observe(sessionId,exec,result);flow.observe(sessionId,exec,result);},
+          intercept(sessionId:string,options:any,next:any){
+            flow.beforeModel(sessionId,options.tools??[]);
+            return core.intercept(sessionId,options,next);
+          },
+        };
+      }else task.interceptor=core;
     } catch (error) {
       task.interceptor = undefined; task.fallback_reason = (error as Error).message === 'library_tool_schema_mismatch' ? 'library_tool_schema_mismatch' : 'no_valid_certified_library';
       audit(task, { kind: 'motif_library_invalid', error_type: (error as Error).name });
@@ -1152,6 +1190,7 @@ export function apply(ctx: any) {
         (task.scene.runtime_file_locks && Object.entries(task.scene.runtime_file_locks).some(([path,expected])=>fileSha(path)!==expected)) ||
         (task.scene.tool_schemas && fileSha(task.scene.tool_schemas) !== task.scene.certified_tool_schemas_sha256) ||
         fileSha(task.scene.manifest) !== task.manifest_sha256 || fileSha(task.scene.task) !== task.binding_sha256 ||
+        fileSha(task.scene.paper_flow_shadow) !== task.paper_flow_shadow_sha256 ||
         (task.scene.runtime_library && fileSha(task.scene.runtime_library)!==task.scene.runtime_library_sha256)) {
       throw new TaskError('confirmation_changed', 'Tools or library changed; preview a new task', 409);
     }
@@ -1159,7 +1198,7 @@ export function apply(ctx: any) {
       const reason = executeUnavailable(task.scene);
       if (reason) throw new TaskError('execute_unavailable', reason, 409);
       if(task.scene.binding_policy && !task.source_pending){
-        if(!task.bound_binding_sha256)throw new TaskError('execute_unavailable','ppt_rsi_requires_approved_sources',409);
+        if(!task.bound_binding_sha256)throw new TaskError('execute_unavailable','rsi_requires_approved_sources',409);
         if(fileSha(join(task.output,'bound-motif-task.json'))!==task.bound_binding_sha256)
           throw new TaskError('confirmation_changed','bound_motif_task_changed',409);
       }
@@ -1225,7 +1264,10 @@ export function apply(ctx: any) {
       await priorTask?.closing;
       const scene = sceneFor(selected.scene), parent = agents.get(request.sessionId);
       if (!Array.isArray(content) || !content.length || content.some((part: any) => !['text', 'file'].includes(part.type)) ||
-          content.filter((part: any) => part.type === 'file').length > 8) throw new TaskError('unsupported_input', '请发送文字和最多 8 份场景资料。');
+          content.filter((part: any) => part.type === 'file').length >
+            (selected.scene === 'paper-proofreading' ? 16 : 8))
+        throw new TaskError('unsupported_input', selected.scene === 'paper-proofreading'
+          ? '请发送文字和最多 16 份论文资料。' : '请发送文字和最多 8 份场景资料。');
       const text = content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n');
       if (!text.trim()) throw new TaskError('invalid_request', '请填写任务内容。');
       const sourceFiles:Record<string,any>={};
@@ -1490,19 +1532,36 @@ export function apply(ctx: any) {
         task.ppt_recovery??=createPptRecovery();task.ppt_recovery.observe(execution,result);
       }
     });
-    agent.ctx.on('agent/turn-stopping',({signal}:any)=>{
-      const task=forSession(agent.session.id);
-      if(!task||task.status!=='running'||task.scene.adapter!=='ppt'||signal.aborted)return;
-      // Native steering preserves the original admission, task ID, tool set and budget.
-      if(scopeDigest(task.workspace,task.scene)!==task.scope_sha256)throw Error('PPT recovery source scope changed');
-      const job=JSON.parse(readFileSync(join(task.workspace,'job.json'),'utf8'));
-      const next=task.ppt_recovery?.stop({aborted:signal.aborted,expectedSlides:job.slides});
-      if(!next)return;
-      audit(task,{kind:'ppt_task_recovery',continuation:next.continuation,error:next.error});
-      progress.get(task.request.task_id)?.recovery();notifyTask(task);
-      task.stats.recovery_continuations=next.continuation;record(task);
-      agent.steer(createUserMessage({content:[{type:'text',text:next.instruction}],
-        source:{kind:'ppt-task-recovery',task_id:task.request.task_id,session_id:agent.session.id,continuation:next.continuation}}));
+    agent.ctx.on('agent/turn-stopping', ({ signal }: any) => {
+      const task = forSession(agent.session.id);
+      if (!task || task.status !== 'running' || signal.aborted) return;
+      if (task.scene.adapter === 'ppt') {
+        // Native steering preserves the original admission, task ID, tool set and budget.
+        if(scopeDigest(task.workspace,task.scene)!==task.scope_sha256)throw Error('PPT recovery source scope changed');
+        const job=JSON.parse(readFileSync(join(task.workspace,'job.json'),'utf8'));
+        const next=task.ppt_recovery?.stop({aborted:signal.aborted,expectedSlides:job.slides});
+        if(!next)return;
+        audit(task,{kind:'ppt_task_recovery',continuation:next.continuation,error:next.error});
+        progress.get(task.request.task_id)?.recovery();notifyTask(task);
+        task.stats.recovery_continuations=next.continuation;record(task);
+        agent.steer(createUserMessage({content:[{type:'text',text:next.instruction}],
+          source:{kind:'ppt-task-recovery',task_id:task.request.task_id,session_id:agent.session.id,continuation:next.continuation}}));
+        return;
+      }
+      if (task.scene.id !== 'paper-proofreading' || !task.scene_options.allow_output || paperPdfDelivered(task)) return;
+      const repairs = Number(task.stats.paper_output_repairs ?? 0);
+      if (repairs >= 2) return;
+      task.stats.paper_output_repairs = repairs + 1;
+      record(task);
+      agent.steer(createUserMessage({ content: [{ type: 'text', text:
+        '本任务选择了生成报告 PDF，但目前没有通过检查的新 PDF。请继续同一任务，沿用已读取的文件证据和原权限、预算。'
+        + '如果还没有报告，直接调用 stage_current_audit 保存字段，再以返回的 SHA 调用 finalize_current_audit；'
+        + '之后 read_current_audit、export_current_audit_pdf，并核对收据。'
+        + '不要只叙述下一步计划，不必为此查询外部元数据；无法核验的文献标为存疑并注明限制。'
+        + '如工具拒绝，请修正参数或如实报告失败，不得声称已有 PDF。' }],
+        source: { kind: 'task-acceptance-repair', session_id: agent.session.id,
+          task_id: task.request.task_id, repair: repairs + 1, max_repairs: 2,
+          model_requests_skipped_verified: 0 } }));
     });
   }, { global: true });
   ctx.on('session/event', (session: any, event: any) => {
@@ -1527,7 +1586,11 @@ export function apply(ctx: any) {
     const task = forSession(agent.session.id); if (task) finish(task, /budget|request limit|429/i.test(String(error)) ? 'budget_exhausted' : 'failed', String(error));
   }, { global: true });
   ctx.on('agent/status', ({ agent, status }: any) => {
-    const task = forSession(agent.session.id); if (task?.status === 'running' && status === 'idle') finish(task, 'completed');
+    const task = forSession(agent.session.id);
+    if (task?.status === 'running' && status === 'idle') {
+      const delivered = paperPdfDelivered(task);
+      finish(task, delivered ? 'completed' : 'failed', delivered ? null : 'paper_pdf_not_delivered');
+    }
   }, { global: true });
   ctx.on('llm/stream', (request: any, next: any) => {
     const task = forSession(request.sessionId);
@@ -1583,10 +1646,15 @@ export function apply(ctx: any) {
           if (body.action === 'upload') {
             if (task.status !== 'awaiting_confirmation') throw new TaskError('task_not_draft', 'Only draft tasks accept attachments', 409);
             if (task.model_option.provider === 'harless-glm') throw new TaskError('unsupported_input', 'The GLM connection currently supports text only', 400);
+            const paperZip = task.scene.id === 'paper-proofreading' &&
+              typeof body.name === 'string' && extname(body.name).toLowerCase() === '.zip';
+            const uploadLimit = paperZip ? 5 * 1024 * 1024 : 256 * 1024;
             if (typeof body.name !== 'string' || !body.name.length || body.name.length > 255 || /[\x00-\x1f]/.test(body.name) ||
-                typeof body.data !== 'string' || body.data.length > 350000 || Buffer.from(body.data, 'base64').toString('base64') !== body.data) throw new TaskError('invalid_upload', 'Invalid file name or canonical base64');
+                typeof body.data !== 'string' || body.data.length > Math.ceil(uploadLimit / 3) * 4 ||
+                Buffer.from(body.data, 'base64').toString('base64') !== body.data) throw new TaskError('invalid_upload', 'Invalid file name or canonical base64');
             const data = Buffer.from(body.data, 'base64');
-            if (!data.length || data.length > 256 * 1024) throw new TaskError('upload_too_large', 'File limit is 256 KiB', 413);
+            if (!data.length || data.length > uploadLimit) throw new TaskError('upload_too_large',
+              paperZip ? 'Paper ZIP limit is 5 MiB' : 'File limit is 256 KiB', 413);
             const uploaded = await ctx.fileUploads.uploadStream({ sessionId: task.request.session_id,
               name: body.name, data: (async function* () { yield data; })(), signal: request.signal });
             const changed = normalizeWebTaskRequest({ content: [...task.request.content, { type: 'file', receiptId: uploaded.receiptId }],

@@ -11,6 +11,9 @@ from .harless_product_prompt import product_persona
 
 IDENTITY = re.compile(r'^[a-z][a-z0-9_-]{0,63}$')
 WORKSPACE = '__HARLESS_SESSION_WORKSPACE__'
+BUNDLE_ENVS = {'ppt':'HARLESS_PPT_RUNTIME_BUNDLE',
+               'paper-proofreading':'HARLESS_PAPER_RUNTIME_BUNDLE',
+               'research-data-analysis':'HARLESS_DATA_RUNTIME_BUNDLE'}
 
 
 def _fixed_dependency(path: Path, *, directory: bool) -> Path:
@@ -112,6 +115,16 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 scene['unavailable_reason'] = 'ppt_adapter_not_built'
             elif any(importlib.util.find_spec(module) is None for module in ('pypdf', 'fitz', 'pptx', 'reportlab', 'PIL')):
                 scene['unavailable_reason'] = 'ppt_python_dependencies_missing'
+        if row['id'] == 'paper-proofreading':
+            value = os.environ.get('HARLESS_PAPER_RENDERER_ROOT')
+            if value:
+                try:
+                    from .harless_paper_renderer import configure_paper_renderer
+                    configure_paper_renderer(scene, Path(value))
+                except (ValueError, OSError, KeyError):
+                    scene['paper_reference_output_unavailable_reason'] = 'paper_renderer_deployment_invalid'
+            else:
+                scene['paper_reference_output_unavailable_reason'] = 'paper_renderer_not_deployed'
         if row.get('instructions'):
             instructions = (root / row['instructions']).read_text(encoding='utf-8')
             if row.get('adapter') == 'ppt':
@@ -125,6 +138,14 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             scene.update(instructions=instructions, instructions_sha256=hashlib.sha256(instructions.encode()).hexdigest())
         if row.get('rsi'):
             rsi = row['rsi']
+            # Keep the registered product library unless an administrator
+            # explicitly selects a private replacement. Invalid replacements
+            # fail closed rather than silently falling back to another library.
+            if isinstance(rsi, dict) and set(rsi) == {'runtime_bundle', 'bundle_from_env'}:
+                if rsi['bundle_from_env'] != BUNDLE_ENVS.get(row['id']):
+                    raise ValueError('invalid trusted runtime bundle reference')
+                rsi = ({'bundle_from_env': rsi['bundle_from_env']} if os.environ.get(rsi['bundle_from_env'])
+                       else {'runtime_bundle': rsi['runtime_bundle']})
             if isinstance(rsi, dict) and set(rsi) == {'runtime_bundle'}:
                 from .harless_rsi_bundle import load_product_bundle
                 bundle = (root / rsi['runtime_bundle']).resolve(strict=True)
@@ -132,11 +153,24 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 except (ValueError, OSError, KeyError): scene['rsi_unavailable_reason'] = 'existing_runtime_bundle_incompatible'
                 rsi = None
             if isinstance(rsi, dict) and set(rsi)=={'bundle_from_env'}:
-                if row['id'] not in ('ppt','paper-proofreading','research-data-analysis','literature') or not re.fullmatch(r'[A-Z][A-Z0-9_]{0,100}',rsi['bundle_from_env']):raise ValueError('invalid trusted runtime bundle reference')
+                if rsi['bundle_from_env']!=BUNDLE_ENVS.get(row['id']):raise ValueError('invalid trusted runtime bundle reference')
                 value=os.environ.get(rsi['bundle_from_env'])
                 if value:
-                    from .harless_rsi_bundle import load_uploaded_bundle
-                    try:scene.update(load_uploaded_bundle(root,Path(value),row['id']))
+                    from .harless_rsi_bundle import load_scene_bundle
+                    try:
+                        bundle = load_scene_bundle(root,Path(value),row['id'])
+                        if row['id'] == 'paper-proofreading':
+                            cert = json.loads(Path(bundle['certification_path']).read_text())
+                            expected = cert['file_locks'].get('paper-flow-shadow.json')
+                            if expected:
+                                flow = Path(value).resolve(strict=True) / 'paper-flow-shadow.json'
+                                if (flow.is_symlink() or not flow.is_file() or
+                                    flow.stat().st_size > 1_000_000 or
+                                    hashlib.sha256(flow.read_bytes()).hexdigest() != expected):
+                                    raise ValueError('paper flow sidecar changed')
+                                bundle.update(paper_flow_shadow=str(flow),
+                                              paper_flow_shadow_sha256=expected)
+                        scene.update(bundle)
                     except (ValueError,OSError,KeyError):scene['rsi_unavailable_reason']='runtime_bundle_certification_invalid'
                 else:scene['rsi_unavailable_reason']='runtime_bundle_not_deployed'
                 rsi = None

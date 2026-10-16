@@ -725,3 +725,12 @@ DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路�
 通过公开 slot 包装原生输入栏和模型选择器，保留原 inject、store、locale 与子插槽归属。输入栏不提供 permission command 属性，因此不渲染权限选择器；服务端权限策略保持。公开 trigger menu store 过滤 `export/feedback/harless/permission/model`，同步修正键盘高亮，其他来源和扩展命令保留。指令按钮打开 `harless-scenes`；已有文字时在开头插入场景 chip，替换已有前缀时使用当前 draftRev，保留正文和附件。
 
 模型选择由每 Session 的公开 directory 投影立即反馈，RPC 串行执行；后到的旧结果不能覆盖最新待存选项。原生菜单收到即时成功只表示已接收选择，后台失败通过原生 notice 提示并回到确认状态。公开 `session.prompt` 与模型写入共用队列，发送等待其前面的选择完成，失败或取消保留草稿；发送之后的选择不能越过该次请求。站内导航复用队列，Session scope 结束时解除订阅、恢复 prompt。不改上游包、不修改模型目录、推理可用性或预算。
+
+## 论文参考文献与 main 兼容整合（2026-10-16）
+
+- 同一 `paper_checks`/`paper_trace_rsi` 提供 24 工具，保留 `export_review_report` 与多格式读取、表格摘要及最小校对建议。新增取证/报告子流程见 `scenarios/paper_proofreading/scenario.json`；权限由服务器与任务来源校验，不接受前端任意路径。
+- `rsi:{runtime_bundle,bundle_from_env}` 允许已登记的产品库作为默认值、管理员私有环境变量作为显式替代。未配置替代时保留原库；显式无效替代拒绝激活，不静默换库。工具 Schema、代码锁、来源证据、Library/Manifest/认证及任务动态绑定摘要均冻结。旧 23 工具的私有论文包须用当前 24 工具重编，不能修改旧证书绕过检查。
+- `HARLESS_PAPER_RENDERER_ROOT` 的缺失/错误仅影响历史参考文献排版，不设置整个场景的 `output_unavailable_reason`，因此普通报告继续可用。模型不能因缺少排版依赖而声称导出成功。
+- 普通 `SessionReport` API 不变；有 Web 任务授权记录时，`delivery.json` 额外写入 `task_id`。已启动引用报告的完成检查接受同 Task、同来源且 PDF/Markdown 字节摘要一致的普通回执，或历史 PDF 的字段覆盖/文件摘要回执；普通校对不因引用报告专用检查被判失败。旧 Task 的草稿和成品不作为本轮交付。
+- 空来源讨论仍保留 main 的 Agent 路由；副作用工具自身核验批准输入、Task/Session、输出授权与当前版本。菜单不调用模型，任务确认后不换库，Shadow 不跳过模型，Execute 只接管认证只读后继；写报告/PDF 仍由模型显式调用。
+- 学习与编译继续离线执行，共享在线 Runtime 只新增版本化来源句柄的有界闭合判断和 Shadow 观察修复；未修改上游 Harness、认证或用户管理模块。

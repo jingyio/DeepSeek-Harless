@@ -68,6 +68,30 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
         assert 'examples/' not in rows[identity]['scenario'] and 'portfolio' not in rows[identity]['scenario']
 
 
+def test_paper_default_library_and_generic_export_survive_without_private_deployment(tmp_path, monkeypatch):
+    monkeypatch.delenv('HARLESS_PAPER_RUNTIME_BUNDLE', raising=False)
+    monkeypatch.delenv('HARLESS_PAPER_RENDERER_ROOT', raising=False)
+    row = next(s for s in prepared(tmp_path, ROOT/'config/harless-scenes.json') if s['id']=='paper-proofreading')
+    assert row['runtime_kind'] == 'paper_shadow_v1'
+    assert row['runtime_library'] == str(ROOT/'motif-libraries/paper/library.json')
+    assert 'rsi_unavailable_reason' not in row and 'output_unavailable_reason' not in row
+    assert row['paper_reference_output_unavailable_reason'] == 'paper_renderer_not_deployed'
+    assert 'mcp__paper_checks__export_review_report' in row['allowed_tools']
+    assert 'mcp__paper_checks__collect_current_local_citation_evidence' in row['allowed_tools']
+    assert len(row['allowed_tools']) == 24
+    assert '每项发现只给一条保留原始事实的最小建议' in row['instructions']
+
+
+def test_invalid_explicit_paper_library_fails_closed_without_breaking_generic_export(tmp_path, monkeypatch):
+    monkeypatch.setenv('HARLESS_PAPER_RUNTIME_BUNDLE', str(tmp_path/'missing'))
+    monkeypatch.setenv('HARLESS_PAPER_RENDERER_ROOT', str(tmp_path/'missing-renderer'))
+    row = next(s for s in prepared(tmp_path, ROOT/'config/harless-scenes.json') if s['id']=='paper-proofreading')
+    assert row['rsi_unavailable_reason'] == 'runtime_bundle_certification_invalid'
+    assert 'runtime_kind' not in row
+    assert 'output_unavailable_reason' not in row
+    assert row['paper_reference_output_unavailable_reason'] == 'paper_renderer_deployment_invalid'
+
+
 def parser_fixture(tmp_path):
     pdf, antiword = tmp_path / 'pdf', tmp_path / 'antiword'
     for path in (pdf / 'bin', pdf / 'lib/x86_64-linux-gnu', antiword / 'usr/bin', antiword / 'usr/share/antiword'):

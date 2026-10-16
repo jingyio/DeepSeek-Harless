@@ -100,6 +100,7 @@ def configured_glm(real_model: bool):
 
 def prepare(args, output, endpoint):
     public = json.loads((ROOT / 'config/harness-web.json').read_text())
+    public['max_output_tokens'] = getattr(args, 'max_output_tokens', public['max_output_tokens'])
     scenario = Path(args.scenario)
     if not scenario.is_absolute():
         scenario = ROOT / scenario
@@ -263,6 +264,8 @@ def main():
     parser.add_argument('--public-origin', help='exact HTTPS gateway origin; backend remains on loopback, no proxy or account isolation is created')
     parser.add_argument('--run-id', help='optional unique 32-character hexadecimal output identity')
     parser.add_argument('--budget-usd', type=float, default=defaults['budget_usd'])
+    parser.add_argument('--max-output-tokens', type=int, default=defaults['max_output_tokens'],
+                        help='optional per-model-request output cap; default follows the provider')
     parser.add_argument('--request-limit', type=request_limit_argument, default=defaults['request_limit'],
                         help='per-task request cap; 0 means unlimited (default)')
     parser.add_argument('--run-request-limit', type=request_limit_argument, default=defaults.get('run_request_limit'),
@@ -287,6 +290,8 @@ def main():
         args.run_request_limit = normalize_request_limit(args.run_request_limit, 'run_request_limit')
     except ValueError as error:
         parser.error(str(error))
+    if args.max_output_tokens is not None and not 100 <= args.max_output_tokens <= 8000:
+        parser.error('max output tokens must be between 100 and 8000')
     if not 1024 <= args.port <= 65535 or not math.isfinite(args.budget_usd) or args.budget_usd < 0:
         parser.error('invalid port or budget')
     if args.budget_usd > 100 or (args.run_budget_usd is not None and
@@ -345,7 +350,7 @@ def main():
         rates[args.glm['model']] = args.glm['rates']
         cache_rates[args.glm['model']] = args.glm['rates'][0]
     state = State(cap_usd=args.budget_usd if args.frozen else args.run_budget_usd,
-                  output_cap=defaults['max_output_tokens'], record=output / 'ledger.jsonl',
+                  output_cap=args.max_output_tokens, record=output / 'ledger.jsonl',
                   request_limit=args.request_limit if args.frozen else args.run_request_limit,
                   rates=rates, cache_rates=cache_rates)
     servers = [] if args.real_model else [provider]
@@ -366,7 +371,7 @@ def main():
         glm_gate = create_server('127.0.0.1', 0, args.glm['base_url'], state,
             state_selector=registry.active_state_for, allowed_models={args.glm['model']},
             chat_path='/chat/completions', allow_files=False, gate_token=args.glm_gate_token,
-            omit_sdk_output_limit=defaults['max_output_tokens'] is None)
+            omit_sdk_output_limit=args.max_output_tokens is None)
         args.glm_gate_endpoint = f'http://127.0.0.1:{glm_gate.server_port}/v1'
         servers.append(glm_gate)
     for server in servers:
