@@ -1,0 +1,20 @@
+{
+  "mcp__paper_checks__pin_document": {
+    "required_params": ["name", "sha256"],
+    "read_only": true,
+    "replay_stable": false,
+    "observed_anchor": true,
+    "output_fields": ["source_id", "name", "version_sha256", "bytes"],
+    "description": "Observe the model-selected approved upload and its exact current version; never choose a document or replay pinning."
+  },
+  "mcp__paper_checks__read_pinned_document": {
+    "required_params": ["source_id"],
+    "read_only": true,
+    "replay_stable": true,
+    "provenance_params": ["source_id"],
+    "default_params": [["page", 1]],
+    "witness_default_only": ["page"],
+    "output_fields": ["source_id", "version_sha256"],
+    "description": "Read only the default first page of the exact model-pinned current upload; follow the real tool's version and source guards."
+  }
+}

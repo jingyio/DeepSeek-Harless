@@ -134,6 +134,27 @@ test('cold history displays loading until an authoritative snapshot arrives, nev
   assert.equal(f.all(row => row.type === 'button' && f.content(row) === '停止生成').length, 0); f.dispose();
 });
 
+test('new Paper Execute results use verified reuse labels while historic Shadow and fallback remain truthful', async () => {
+  for(const [mode,fallback] of [['execute',undefined],['shadow',undefined],['baseline','runtime_bundle_certification_invalid']]){
+    const value=comparison();value.scene='paper-proofreading';
+    Object.assign(value.lanes.motif,{mode,fallback_reason:fallback,
+      stats:{upstream_requests:2,verified_skips:mode==='execute'?1:0,shadow_candidates:mode==='shadow'?3:0}});
+    const f=fixture(undefined,value);try{
+      await flush();const tree=f.render();
+      const titles=f.all(row=>row.type==='strong').map(row=>f.content(row));
+      assert.ok(titles.includes(mode==='shadow'?'Motif · 影子评估':'Motif'));
+      const text=f.content(tree);
+      if(mode==='shadow'){
+        assert.match(text,/预测候选 3/);assert.doesNotMatch(text,/已验证跳过 3/);
+      }else{
+        assert.doesNotMatch(text,/影子评估|预测候选/);
+        assert.match(text,new RegExp('已验证跳过 '+(mode==='execute'?1:0)));
+      }
+      if(fallback)assert.match(text,/优化未启用，已回退普通模式/);
+    }finally{f.dispose();}
+  }
+});
+
 test('returning to completed comparison reuses verified results while the new GET is pending or older', async () => {
   const initial = comparison(); initial.status = 'running'; initial.scoring_available = false; initial.snapshot_revision = 1;
   for (const lane of Object.values(initial.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }

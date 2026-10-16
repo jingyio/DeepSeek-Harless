@@ -1,5 +1,11 @@
 # 论文校对场景当前交接
 
+## 2026-10-17：普通文档读取 Execute
+
+- `codex/all-scene-motif-execute` 基于已合并 `30b5a37`。产品默认库切换为 `motif-libraries/paper-web-v1`；旧 `paper/` Shadow 及私有论文/参考文献 Execute 路线保留，不把旧证书改成新授权。
+- 新库经两独立 Baseline 训练与一留出认证，只续接模型已固定来源的默认第一页读取；完整 24 工具和后续校对/导出不变。来源版本、默认参数、实际 Schema、代码锁、独立题目和账本均校验，失败回到模型。
+- 当前网页 Off / On 是模型 API 的 disabled / enabled+high，不是校对流程轮数；Motif 的 Execute 与此独立。采集、失败成本、质量限制与发布状态见[本轮记录](../experiments/all-scene-motif-execute-20261017-v1.md)。下方保留 PR #42 历史整合证据，不能替代本次验收。
+
 - 更新时间与交接人：2026-10-16，Codex。
 - 目标与本次范围：基于最新 main `c793937`（含 PR #40–#54） 整理 PR #19 的论文参考文献与 RSI 能力，保留 main 的多格式读取、来源表格摘要、最小修改规则与 PDF/Markdown 普通报告。
 - 分支 / commit / 工作区：`codex/main-paper-rsi-integration`，替代旧 PR #19；最终 main 兼容复核通过，已推送并创建 [PR #42](https://github.com/jingyio/DeepSeek-Harless/pull/42)，用户已授权在 CI 通过后尝试合并。旧 PR 分支与所有历史实验保留，不把历史机制验收当作本次整合验收。

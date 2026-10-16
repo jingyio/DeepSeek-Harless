@@ -1,5 +1,9 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 网页 Paper 默认 Execute（2026-10-17）
+
+公共 Registry 的 `/ppt`、`/paper`、`/data` Motif 均默认 Execute。新增产品种类 `paper_document_read_v1` 使用 `paper-web-v1`，完整 24 工具不变；只授权模型已观察到的 `pin_document` 结果续接同源默认 `read_pinned_document(source_id, page=1)`。绑定检查完整上传许可、实际 Schema、独立轨迹证据、来源版本和代码锁；通过既有 `closedContinuation` 插件钩子，不修改核心或训练模型权重。未命中仍回到模型，Shadow 历史和管理员研究入口保持原协议。学习与兼容证据见 [本轮记录](experiments/all-scene-motif-execute-20261017-v1.md)。
+
 ## 交付文件卡片与正文链接（2026-10-16）
 
 - 交付卡片从既有 `artifacts` 的 `name/bytes/id/sha256` 渲染，复用公开 `FileTypeIcon/fileExtension/fileSizeText`；缺失大小不造数值、未知或无扩展名可使用通用图标。文件类型不局限 PDF，后端成品发布范围及验证保持原契约。

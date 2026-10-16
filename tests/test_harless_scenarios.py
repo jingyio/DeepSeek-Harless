@@ -75,8 +75,10 @@ def test_paper_default_library_and_generic_export_survive_without_private_deploy
     monkeypatch.delenv('HARLESS_PAPER_RUNTIME_BUNDLE', raising=False)
     monkeypatch.delenv('HARLESS_PAPER_RENDERER_ROOT', raising=False)
     row = next(s for s in prepared(tmp_path, ROOT/'config/harless-scenes.json') if s['id']=='paper-proofreading')
-    assert row['runtime_kind'] == 'paper_shadow_v1'
-    assert row['runtime_library'] == str(ROOT/'motif-libraries/paper/library.json')
+    assert row['runtime_kind'] == 'paper_document_read_v1'
+    assert row['runtime_mode'] == 'execute'
+    assert row['binding_policy'] == 'approved_uploaded_reads_v1'
+    assert row['runtime_library'] == str(ROOT/'motif-libraries/paper-web-v1/library.json')
     assert 'rsi_unavailable_reason' not in row and 'output_unavailable_reason' not in row
     assert row['paper_reference_output_unavailable_reason'] == 'paper_renderer_not_deployed'
     assert 'mcp__paper_checks__export_review_report' in row['allowed_tools']

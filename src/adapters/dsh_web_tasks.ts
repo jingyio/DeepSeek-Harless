@@ -19,7 +19,7 @@ import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDi
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
-import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,structuralOnlySimilarity} from './harless_rsi_binding.ts';
+import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,closedPaperDocumentFirstPage,structuralOnlySimilarity} from './harless_rsi_binding.ts';
 import {createComparisonService} from './harless_comparison.ts';
 import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
 import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
@@ -1174,6 +1174,7 @@ export function apply(ctx: any) {
       json(join(task.output, 'bound-motif-task.json'), binding);
       const core = createOnlineInterceptor({ manifest,
         task: binding, mode: task.request.mode, minSimilarity: 0.8, minMargin: 0.1,
+        ...(scene.runtime_kind==='paper_document_read_v1'?{closedContinuation:closedPaperDocumentFirstPage}:{}),
         similarity: scene.matching_policy==='structural_only' ? structuralOnlySimilarity : loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
         audit: (row: unknown) => audit(task, row) });
       // The migrated flows only observe the same frozen task and tool results.

@@ -1,5 +1,12 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-17：三个网页场景默认 Execute
+
+- 基线 `30b5a37`，分支 `codex/all-scene-motif-execute`。`/paper` 默认接入新学的 `paper-web-v1`；PPT 更新当前兼容包 r7，Data 使用原回执库，三个 Motif 默认均为 Execute。旧 Shadow 库和历史结果不追改。
+- Paper 从两个独立正常 Baseline 任务和一个留出任务学习唯一 `pin_document → read_pinned_document(page=1)`。完整 24 工具、版本/上传许可/独立证据/代码锁保持；使用已有插件闭合续接接口，模型继续负责文件选择、后续阅读与校对。未命中由普通模型继续。编译不调用模型，不改上游/内核。
+- 思考 UI 仍为 Off / On，分别映射 DeepSeek disabled / enabled+high；API 的 max 未在页面开放，与 Agent 循环或 RSI 模式无关。
+- 旧版 Schema 差异导致首批认证拒绝，四次采集完整排除并记账；当前三次重新采集。共 35 真实请求/代理估费 $0.018348576，未核账单，不含后续验收。来源、质量边界与最新验收见[实验记录](../experiments/all-scene-motif-execute-20261017-v1.md)。配置在 `config/harless-scenes.json`，发布时须重生 owner/member policy/preset，保持无上限与原累计账本，不重启预算服务。
+
 ## 2026-10-16：移除网页数字评分与明确执行选项
 
 - 基线 `1df34b6`，分支 `codex/remove-numeric-ratings`。按用户要求删除双栏回复的 1–5 分控件、评分保存状态、前端队列及专用样式；复制、赞踩、分支、用量、耗时、重试和下载继续保留。后端研究评分协议与既有数据未改。

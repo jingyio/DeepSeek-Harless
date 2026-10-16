@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "scenes": {
-    "ppt": "ppt-web-v2-r5",
+    "ppt": "ppt-web-v2-r7",
     "research-data-analysis": "data",
-    "paper-proofreading": "paper"
+    "paper-proofreading": "paper-web-v1"
   },
-  "notice": "PPT使用本轮真实轨迹读取库，其他场景保留历史库；结构与兼容认证不构成科研质量或节省效果认证。"
+  "notice": "三种网页对照场景的 Motif 默认 Execute；PPT 与 Paper 使用经独立轨迹认证的读取库，Data 使用已有回执续接库。历史 Shadow 库保留。结构与兼容认证不构成科研质量或节省效果认证。"
 }
