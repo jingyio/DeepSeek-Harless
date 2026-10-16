@@ -229,7 +229,8 @@ function interactiveWorkspaceBrowser() {
   const services = { workspaces, sessions, uiWorkspace: navigation, layout, conversation: { input: { for(scope) {
     return { state: { getSnapshot: () => inputs.get(scope.id) || { draft: '', attachmentIds: [], phase: 'plain' } } };
   } } } };
-  let index = 0, pinned = [], hookValues = values, deleted = [], trashFailure = null, delayTrash = null;
+  let index = 0, pinned = [], hookValues = values, deleted = [], purged = [], restored = [], trashFailure = null, delayTrash = null;
+  const settingsValues = new Map();
   const React = { createElement: (type, props, ...children) => ({ type, props, children }),
     useState(initial) { const i = index++, target = hookValues; if (!(i in target)) target[i] = typeof initial === 'function' ? initial() : initial;
       return [target[i], update => { target[i] = typeof update === 'function' ? update(target[i]) : update; }]; },
@@ -245,9 +246,10 @@ function interactiveWorkspaceBrowser() {
         if (delayTrash) await delayTrash;
         if (trashFailure) return { ok: false, status: 409, json: async () => ({ error: { code: trashFailure } }) };
         if (input.action === 'delete') deleted = [...new Set([...deleted, input.session_id])];
-        else deleted = deleted.filter(id => id !== input.session_id);
+        else if (input.action === 'clear') { purged = [...deleted]; deleted = []; }
+        else { deleted = deleted.filter(id => id !== input.session_id); restored.push(input.session_id); }
       }
-      return { ok: true, json: async () => ({ deleted_session_ids: [...deleted], sessions: deleted.map(id => ({ session_id: id, title: sessions.list.value.byId[id]?.title || '新会话', workspace_id: 'a' })) }) };
+      return { ok: true, json: async () => ({ revision: JSON.stringify(deleted), restored_archive_ids: restored, deleted_session_ids: [...deleted, ...purged], sessions: deleted.map(id => ({ session_id: id, title: sessions.list.value.byId[id]?.title || '新会话', workspace_id: 'a' })) }) };
     }
     if (options?.method === 'POST') { const input = JSON.parse(options.body); calls.push(['pin', input]); pinned = input.pinned ? [...pinned, input.workspace_id] : pinned.filter(id => id !== input.workspace_id); }
     return { ok: true, json: async () => ({ pinned_workspace_ids: pinned }) };
@@ -262,7 +264,8 @@ function interactiveWorkspaceBrowser() {
   const nodes = tree => { const result = []; const visit = node => { if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) return node.forEach(visit); result.push(node); node.children?.forEach(visit); }; visit(tree); return result; };
   const click = button => button.props.onClick({ stopPropagation() {}, currentTarget: { getBoundingClientRect: () => ({ right: 260, bottom: 180 }), focus() {} } });
-  const settings = id => slots.find(row => row.options.name === 'settings.section' && row.options.id === id).component({ close: () => calls.push(['close-settings']) });
+  const settings = id => { if (!settingsValues.has(id)) settingsValues.set(id, []); index = 0; hookValues = settingsValues.get(id);
+    return slots.find(row => row.options.name === 'settings.section' && row.options.id === id).component({ close: () => calls.push(['close-settings']) }); };
   return { render, header, home: () => Home(), nodes, click, calls, workspaces, sessions, navigation, streams, inputs, styles,
     settings, slots,
     dispose: () => cleanups.reverse().forEach(fn => fn()),
@@ -405,6 +408,30 @@ test('archive and trash belong to native settings while workspace and first chat
   assert.ok(ui.calls.some(row => row[0] === 'close-settings'));
   assert.match(ui.styles.map(style => style.textContent).join(''), /\.geneloop-workspace-row\+\.geneloop-chat-row\{margin-top:3px\}/);
   ui.dispose();
+});
+
+test('archived restore returns to its original workspace and clear requires an explicit reviewed confirmation', async () => {
+  const ui = interactiveWorkspaceBrowser(), settle = () => new Promise(resolve => setImmediate(resolve));
+  await settle(); ui.workspaces.list.value.archivedSessionIds = ['one'];
+  const button = (page, label) => ui.nodes(page).find(node => node.type === 'button' && node.props?.['aria-label'] === label);
+  ui.click(button(ui.settings('geneloop-archived'), '恢复对话 已有聊天')); await settle();
+  assert.ok(!button(ui.settings('geneloop-archived'), '恢复对话 已有聊天'));
+  assert.ok(ui.workspaces.list.value.items[0].sessionIds.includes('one'));
+  assert.ok(button(ui.render(), '会话操作 已有聊天'));
+  ui.click(button(ui.render(), '会话操作 已有聊天'));
+  ui.click(ui.nodes(ui.render()).find(node => node.props?.role === 'menuitem' && node.children.includes('移入回收站'))); await settle();
+  const clear = () => button(ui.settings('geneloop-trash'), '清空最近删除');
+  ui.click(clear());
+  assert.ok(ui.nodes(ui.settings('geneloop-trash')).some(node => node.props?.['aria-label'] === '核对清空对话'));
+  assert.ok(!ui.calls.some(row => row[0] === 'trash' && row[1].action === 'clear'));
+  ui.click(ui.nodes(ui.settings('geneloop-trash')).find(node => node.type === 'button' && node.children.includes('取消')));
+  assert.ok(!ui.nodes(ui.settings('geneloop-trash')).some(node => node.props?.['aria-label'] === '核对清空对话'));
+  ui.click(clear());
+  ui.click(ui.nodes(ui.settings('geneloop-trash')).find(node => node.type === 'button' && node.children.includes('永久清空 1 个对话'))); await settle();
+  assert.ok(clear().props.disabled);
+  assert.ok(!button(ui.render(), '会话操作 已有聊天'));
+  const request = ui.calls.find(row => row[0] === 'trash' && row[1].action === 'clear')[1];
+  assert.equal(request.revision, '["one"]'); ui.dispose();
 });
 
 test('mobile settings uses its public seat to give content full width without changing desktop or unrelated dialogs', () => {

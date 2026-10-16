@@ -45,6 +45,52 @@ test('foreign accounts, malformed ids and direct private-lane deletion fail with
   }finally{f.close();}
 });
 
+test('archive restoration survives restart, retains workspace membership and can be archived again', async () => {
+  const f = fixture(); try {
+    const membership = ['parent', 'other'], archived = new Set(['parent']);
+    f.host.archive = async id => { archived.add(id); };
+    await f.trash.mutate('unarchive', 'parent');
+    const restarted = createSessionTrash(f.path, 'account-a', f.host);
+    assert.deepEqual(restarted.list().restored_archive_ids, ['parent']);
+    assert.deepEqual(membership, ['parent', 'other']);
+    await restarted.mutate('archive', 'parent');
+    assert.deepEqual(restarted.list().restored_archive_ids, []);
+    assert.ok(archived.has('parent'));
+    for (const id of ['foreign', 'lane']) await assert.rejects(restarted.mutate('unarchive', id), e => e.status === 404);
+    await restarted.mutate('delete', 'parent');
+    await assert.rejects(restarted.mutate('unarchive', 'parent'), e => e.code === 'session_deleted');
+    await restarted.mutate('restore', 'parent');
+    assert.deepEqual(restarted.list().restored_archive_ids, ['parent'], 'restoring deleted archives returns them to the workspace');
+  } finally { f.close(); }
+});
+
+test('clear requires the reviewed revision and permanently denies restore and all parent/child reads after restart', async () => {
+  const f = fixture(); try {
+    await f.trash.mutate('delete', 'parent');
+    const reviewed = f.trash.list().revision;
+    await f.trash.mutate('delete', 'other');
+    await assert.rejects(f.trash.clear(reviewed), e => e.code === 'trash_changed');
+    assert.equal(f.trash.list().sessions.length, 2);
+    f.busy.add('lane');
+    await assert.rejects(f.trash.clear(f.trash.list().revision), e => e.code === 'session_busy');
+    f.busy.clear();
+    assert.deepEqual(await f.trash.clear(f.trash.list().revision), { cleared: 2 });
+    const restarted = createSessionTrash(f.path, 'account-a', f.host);
+    assert.deepEqual(restarted.list().sessions, []);
+    for (const id of ['parent', 'lane', 'other']) assert.equal(restarted.isDeleted(id), true);
+    for (const action of ['restore', 'unarchive', 'archive', 'delete'])
+      await assert.rejects(restarted.mutate(action, 'parent'), e => e.status === 404);
+    assert.equal(restarted.isDeleted('branch'), false, 'visible branches remain untouched');
+    const controller = { inspect() { throw Error('must not reach storage'); } };
+    protectDeletedSessions(controller, restarted);
+    assert.throws(() => controller.inspect({ sessionId: 'parent' }), ApiSessionNotFound);
+    const files = { read() { throw Error('must not reach bytes'); } };
+    protectDeletedSessionFiles(files, {}, restarted);
+    assert.throws(() => files.read({ sessionId: 'lane' }), ApiSessionNotFound);
+    assert.equal(JSON.parse(readFileSync(f.path, 'utf8')).entries[0].title, '');
+  } finally { f.close(); }
+});
+
 test('running or queued private execution refuses deletion and rechecks after asynchronous description',async()=>{
   const f=fixture();try{
     f.busy.add('lane');await assert.rejects(f.trash.mutate('delete','parent'),e=>e.code==='session_busy'&&e.status===409);

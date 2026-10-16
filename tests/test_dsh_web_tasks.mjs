@@ -83,7 +83,13 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
     emit,
-    workspaceRegistry: { list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
+    workspaceController: {
+      async *follow() { yield { type: 'baseline', value: { items: [...workspaceGroups.values()], archivedSessionIds: ctx.workspaceRegistry.archivedSessionIds } }; },
+      async rename({ workspaceId, title }) { const row = workspaceGroups.get(workspaceId); row.title = title; return { workspace: row }; },
+      async insertSessionBefore({ workspaceId, sessionId }) { const row = workspaceGroups.get(workspaceId); await row.attachSession(sessionId); return { workspace: row }; },
+      async archiveSession({ sessionId }) { await ctx.workspaceRegistry.archiveSession(sessionId); return { archivedSessionIds: ctx.workspaceRegistry.archivedSessionIds }; },
+    },
+    workspaceRegistry: { archivedSessionIds: [], async archiveSession(id) { if (!this.archivedSessionIds.includes(id)) this.archivedSessionIds.push(id); }, list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
       async create(path, title) { const old = [...workspaceGroups.values()].find(row => row.path === path); if (old) return old;
         const row = { id:'workspace-' + randomUUID(), path, title, sessionIds:[], async attachSession(id) { if(!this.sessionIds.includes(id)) this.sessionIds.push(id); } }; workspaceGroups.set(row.id,row); return row; } },
     commands: { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } },
@@ -158,6 +164,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     },
   };
   const originalController = { ...ctx.sessionController };
+  const originalWorkspaceController = { ...ctx.workspaceController };
   const originalUploads = { ...ctx.fileUploads };
   const originalPresets = { ...ctx.agentPresets };
   ctx.agents = { async create(request) { const result = await originalController.create({sessionId:request.sessionId,cwd:request.meta.cwd,agentPreset:request.meta.agentPreset});
@@ -201,6 +208,7 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
     originalController,
     async restart() {
       Object.assign(ctx.sessionController, originalController);
+      Object.assign(ctx.workspaceController, originalWorkspaceController);
       Object.assign(ctx.fileUploads, originalUploads);
       Object.assign(ctx.agentPresets, originalPresets);
       listeners.clear(); routes.clear(); webRoutes.clear(); agents.clear();
@@ -1740,6 +1748,20 @@ test('Trash rejects active tasks and isolates direct APIs; restoring retains tas
   assert.equal(JSON.stringify((await f.ctx.sessionController.inspect(task.session_id)).events),history);
   assert.equal((await f.api(undefined,'?task_id='+task.task_id)).status,200);
   assert.ok(group.sessionIds.includes(task.session_id));assert.equal((await f.trash()).value.sessions.length,0);
+  await f.ctx.workspaceController.archiveSession({sessionId:task.session_id});
+  assert.ok(f.ctx.workspaceRegistry.archivedSessionIds.includes(task.session_id));
+  assert.ok(!(await f.trash()).value.restored_archive_ids.includes(task.session_id));
+  assert.equal((await f.trash({action:'unarchive',session_id:task.session_id})).status,200);
+  assert.ok((await f.trash()).value.restored_archive_ids.includes(task.session_id));
+  await f.ctx.workspaceController.archiveSession({sessionId:task.session_id});
+  assert.ok(!(await f.trash()).value.restored_archive_ids.includes(task.session_id));
+  assert.equal((await f.trash({action:'delete',session_id:task.session_id})).status,200);
+  assert.equal((await f.trash({action:'clear',revision:'stale'})).status,409);
+  assert.equal((await f.trash({action:'clear',revision:(await f.trash()).value.revision})).status,200);
+  await f.restart();
+  assert.equal((await f.trash({action:'restore',session_id:task.session_id})).status,404);
+  assert.throws(()=>f.ctx.sessionController.inspect(task.session_id),ApiSessionNotFound);
+  assert.equal((await f.trash()).value.sessions.length,0);
  }finally{await f.close();}
 });
 

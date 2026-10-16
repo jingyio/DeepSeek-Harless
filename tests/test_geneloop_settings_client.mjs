@@ -108,6 +108,24 @@ test('settings wrapper waits for native shell registration without creating dupl
   f.notify('sidebar.settings'); assert.equal(f.slots.entries('sidebar.settings').length, 2); f.dispose();
 });
 
+test('archive, trash and account sections keep distinct monochrome vector icons and readable labels', () => {
+  const f = fixture();
+  f.rowsSource.rows = [
+    { id: 'geneloop-archived', label: '已归档对话' },
+    { id: 'geneloop-trash', label: '最近删除' },
+    { id: 'geneloop-account', label: '账户与安全' },
+  ];
+  const rows = f.slots.entries('sidebar.settings')[0].inject().hooks.sections.getSnapshot();
+  const paths = rows.map(row => {
+    assert.equal(f.text(row.label), f.rowsSource.rows.find(value => value.id === row.id).label);
+    const svg = f.all(node => node.type === 'svg', row.label)[0];
+    assert.equal(svg.props.stroke, 'currentColor'); assert.equal(svg.props.strokeWidth, 1.65);
+    assert.equal(svg.props['aria-hidden'], true);
+    return f.all(node => node.type === 'path', svg)[0].props.d;
+  });
+  assert.equal(new Set(paths).size, 3); f.dispose();
+});
+
 test('account settings renders in the content seat, loads authenticated profile, and hides owner-only actions', async () => {
   const f = fixture(), page = f.mount('geneloop-account');
   assert.match(page.text(), /正在加载账户/); await flush(); page.render();
