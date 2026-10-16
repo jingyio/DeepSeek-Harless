@@ -6,27 +6,25 @@ Credentials and provider error bodies are never returned or recorded.
 from __future__ import annotations
 
 import json
-import math
 import urllib.request
 from datetime import datetime, timezone
 
 from src.adapters.deepseek_cost_gate import (
     PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION,
-    DEEPSEEK_OUTPUT_DEFAULTS,
+    DEEPSEEK_OUTPUT_DEFAULTS, validate_cost_cap,
 )
 
 CATALOG_URL = 'https://api.deepseek.com/models'
 MODEL_LABELS = {'deepseek-flash': 'DeepSeek V4.1 Flash', 'deepseek-v4-pro': 'DeepSeek V4 Pro'}
 
 
-def model_options(catalog: dict, *, budget_usd: float, max_output_tokens: int | None = None) -> list[dict]:
+def model_options(catalog: dict, *, budget_usd: float | None, max_output_tokens: int | None = None) -> list[dict]:
     """Keep native output defaults; annotate modes whose output alone cannot fit.
 
     Input and accumulated usage remain checked by the existing budget gate on
     every real request. This annotation is only an early, certain rejection.
     """
-    if isinstance(budget_usd, bool) or not isinstance(budget_usd, (int, float)) or not math.isfinite(budget_usd) or budget_usd < 0:
-        raise ValueError('invalid model task budget')
+    validate_cost_cap(budget_usd)
     if max_output_tokens is not None and (type(max_output_tokens) is not int or max_output_tokens < 1):
         raise ValueError('invalid configured output limit')
     if not isinstance(catalog, dict) or not isinstance(catalog.get('data'), list):
@@ -40,7 +38,7 @@ def model_options(catalog: dict, *, budget_usd: float, max_output_tokens: int | 
         for effort, native_mode in (('off', 'disabled'), ('high', 'enabled')):
             output = max_output_tokens or DEEPSEEK_OUTPUT_DEFAULTS[native_mode]
             reserve = output * PEAK_USD_PER_MILLION[model][1] / 1_000_000
-            if reserve >= budget_usd:
+            if budget_usd is not None and reserve >= budget_usd:
                 unavailable[effort] = (f'{"On" if effort == "high" else "Off"} 暂不可用：'
                     f'当前每任务预算 ${budget_usd:g} 不足以预留该模型的'
                     f'{"默认" if max_output_tokens is None else "已配置"}输出费用（至少 ${reserve:.6f}）。')

@@ -176,8 +176,10 @@ export function createGateway(config) {
       const body = await readBounded(req);
       const value = JSON.parse(body.toString('utf8'));
       if (path.pathname === '/tasks/register') {
+        const cap = config.memberPolicy.budget_usd, requested = value.budget_usd;
+        const validBudget = requested === null || (typeof requested === 'number' && Number.isFinite(requested) && requested >= 0);
         if (!ownedBudget(value.session_id) || value.task_id !== value.session_id.slice(5) ||
-            typeof value.budget_usd !== 'number' || value.budget_usd > config.memberPolicy.budget_usd)
+            !validBudget || (cap !== null && (typeof cap !== 'number' || requested === null || requested > cap)))
           return json(res, 403, { error: 'Invalid account task registration' });
       } else if (path.pathname === '/tasks/activate' || path.pathname === '/tasks/cancel') {
         if (!ownedBudget(value.session_id)) return json(res, 403, { error: 'Budget belongs to another account' });

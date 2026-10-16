@@ -38,7 +38,7 @@ export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController'];
 type Policy = {
   output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number | null;
-  mode: ExecutionMode; budget_usd: number; request_limit?: number | null; run_budget_usd?: number | null; run_request_limit?: number | null; capability_profile: string;
+  mode: ExecutionMode; budget_usd: number | null; request_limit?: number | null; run_budget_usd?: number | null; run_request_limit?: number | null; capability_profile: string;
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   budget_broker_endpoint?: string;
   budget_task_prefix?: string;
@@ -1380,7 +1380,7 @@ export function apply(ctx: any) {
         selections.set(child, { scene: turn.scene, mode, rsi: mode !== 'baseline' });
         optionSelections.set(child, { [turn.scene]: turn.options }); saveSettings();
         const task = await preview({ content, request_id: requestId, model: turn.model, reasoning_effort: turn.reasoning_effort ?? 'off',
-          budget_usd: turn.presentation === 'single' ? config.budget_usd : config.budget_usd / 2, mode }, child, 'native_chat');
+          budget_usd: config.budget_usd === null || turn.presentation === 'single' ? config.budget_usd : config.budget_usd / 2, mode }, child, 'native_chat');
         // Unavailable or invalid research libraries must be visible; never label a Baseline run as optimized.
         if (lane === 'motif' && reason && mode==='baseline') task.fallback_reason = reason;
         taskParents.set(task.request.task_id, { turn, lane });

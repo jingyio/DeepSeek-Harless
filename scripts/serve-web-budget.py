@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import signal
 import sys
@@ -26,15 +25,14 @@ def main():
                         help='cumulative cost cap; 0 means unlimited without resetting usage')
     parser.add_argument('--request-limit', type=request_limit_argument, required=True,
                         help='cumulative request cap; 0 means unlimited without resetting usage')
-    parser.add_argument('--task-budget-usd', type=float, default=0.23)
+    parser.add_argument('--task-budget-usd', type=cost_cap_argument, default=None,
+                        help='per-task cost cap; 0/default means unlimited, usage remains recorded')
     parser.add_argument('--task-request-limit', type=request_limit_argument, default=None,
                         help='per-task request cap; 0 means unlimited (default)')
     parser.add_argument('--max-output', type=output_limit_argument, default=None,
                         help='application output cap; 0/default delegates output length to the provider')
     args = parser.parse_args()
-    if ((args.budget_usd is not None and args.budget_usd > 100) or
-            not math.isfinite(args.task_budget_usd) or not 0 < args.task_budget_usd <= 100 or
-            (args.budget_usd is not None and args.task_budget_usd > args.budget_usd)):
+    if args.budget_usd is not None and (args.task_budget_usd is None or args.task_budget_usd > args.budget_usd):
         parser.error('invalid explicit spending limits')
     output, checkpoint = args.output.resolve(), args.checkpoint.resolve()
     if '.local' not in output.parts or not checkpoint.is_relative_to(output):

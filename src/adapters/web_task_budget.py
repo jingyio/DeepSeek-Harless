@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hmac
 import json
-import math
 import os
 import re
 import threading
@@ -113,12 +112,11 @@ class TaskBudgetRegistry:
         validate_cost_cap(run_state.cap_usd)
         normalize_output_limit(run_state.output_cap)
         maximum = run_state.cap_usd if max_task_budget_usd is None else max_task_budget_usd
-        if (not isinstance(maximum, (int, float)) or isinstance(maximum, bool)
-                or not math.isfinite(maximum) or maximum < 0
-                or (run_state.cap_usd is not None and maximum > run_state.cap_usd)):
-            raise ValueError("a finite task maximum is required and must not exceed whole-launch cap")
+        validate_cost_cap(maximum)
+        if run_state.cap_usd is not None and (maximum is None or maximum > run_state.cap_usd):
+            raise ValueError("task maximum must not exceed whole-launch cap")
         self.run_state = run_state
-        self.max_task_budget_usd = float(maximum)
+        self.max_task_budget_usd = None if maximum is None else float(maximum)
         # An unlimited task does not inherit a request-count cap. The independent
         # global count/dollar checks remain enforced by RoutedState.book().
         self.task_request_limit = normalize_request_limit(task_request_limit, 'task_request_limit')
@@ -131,15 +129,15 @@ class TaskBudgetRegistry:
         self.by_task: dict[str, RoutedState] = {}
         self.route_denials = 0
 
-    def register(self, task_id: str, session_id: str, budget_usd: float,
+    def register(self, task_id: str, session_id: str, budget_usd: float | None,
                  model: str = 'deepseek-flash') -> dict[str, Any]:
         if not isinstance(task_id, str) or TASK_ID.fullmatch(task_id) is None:
             raise ValueError("task_id must be 32 lowercase hexadecimal characters")
         session_id = session_identity(session_id)
         if model not in self.run_state.rates:
             raise ValueError('task model is not priced by the server')
-        if (not isinstance(budget_usd, (int, float)) or isinstance(budget_usd, bool)
-                or not math.isfinite(budget_usd) or not 0 <= budget_usd <= self.max_task_budget_usd):
+        validate_cost_cap(budget_usd)
+        if self.max_task_budget_usd is not None and (budget_usd is None or budget_usd > self.max_task_budget_usd):
             raise ValueError("task budget exceeds the server maximum")
         with self.lock:
             existing = self.by_session.get(session_id) or self.by_task.get(task_id)
@@ -159,7 +157,7 @@ class TaskBudgetRegistry:
             except FileExistsError as error:
                 raise ValueError("task ledger exists; register a new task identity") from error
             os.close(descriptor)
-            state = State(cap_usd=float(budget_usd), output_cap=self.run_state.output_cap,
+            state = State(cap_usd=budget_usd, output_cap=self.run_state.output_cap,
                           request_limit=self.task_request_limit, record=ledger,
                           rates=self.run_state.rates, cache_rates=self.run_state.cache_rates)
             route = RoutedState(self, task_id, session_id, state, model)

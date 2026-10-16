@@ -269,13 +269,14 @@ test('A stale PPT candidate cannot apply to a current /d span or a changed revis
   await flush(); assert.equal(f.posts.length, 0); assert.match(input.notices.at(-1).text, /输入已改变/);
 });
 
-test('Real native enter adjudication routes typed complete scenes before allowing the default send', async () => {
+test('Real native enter keeps complete scene prefixes for server admission without pre-send HTTP', async () => {
   const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
   const n = nativeController(f.trigger, input); await flush();
   for (const [line, scene] of [['/ppt 做科研汇报', 'ppt'], ['/data分析数据', 'research-data-analysis'], ['/paper 校对论文', 'paper-proofreading']]) {
     input.setDraft(line); input.setPhase('adjudicating');
     assert.equal(await n.controller.adjudicate(line, new AbortController().signal, { attachments: 0 }), undefined);
-    assert.equal(f.values.get('alice').selection.scene, scene);
+    assert.equal(f.values.get('alice').selection.scene, 'new-scene');
+    assert.equal(f.posts.length, 0);
     assert.equal(input.state.getSnapshot().draft, line, 'default native send retains the original request');
     input.setDraft(''); // Native commit clears while leaving adjudication, not a user deletion.
     input.setPhase('plain');
@@ -297,7 +298,7 @@ test('Typed selection failure blocks default submit and retains the addressed dr
   assert.deepEqual(input.state.getSnapshot().attachmentIds, ['csv']); n.controller.dispose();
 });
 
-test('A typed PPT prefix followed immediately by Chinese overrides a previous Data selection on Enter', async () => {
+test('A typed PPT prefix followed immediately by Chinese reaches server admission unchanged', async () => {
   const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
   f.values.get('alice').selection.scene = 'research-data-analysis';
   const n = nativeController(f.trigger, input); await flush();
@@ -306,17 +307,17 @@ test('A typed PPT prefix followed immediately by Chinese overrides a previous Da
   assert.equal(input.inserts.length, 0); assert.equal(f.posts.length, 0);
   input.setDraft('/ppt中文报告 '); input.setPhase('adjudicating');
   assert.equal(await n.controller.adjudicate('/ppt中文报告', new AbortController().signal, { attachments: 0 }), undefined);
-  assert.equal(f.values.get('alice').selection.scene, 'ppt');
+  assert.equal(f.values.get('alice').selection.scene, 'research-data-analysis');
   assert.equal(input.state.getSnapshot().draft, '/ppt中文报告 ');
-  assert.equal(f.posts.length, 1); assert.equal(f.posts[0].selection.scene, 'ppt');
+  assert.equal(f.posts.length, 0);
   n.controller.dispose();
 });
 
-test('Typed Enter on a started scene routes the existing conversation before native submit', async () => {
+test('Typed Enter on a started scene immediately allows the native sender to show its echo', async () => {
   const f=fixture({locked:true}),input=f.inputs.get('alice');input.setDraft('/ppt 做科研汇报');input.addAttachments(['paper']);
   const n=nativeController(f.trigger,input);await flush();input.setPhase('adjudicating');
   assert.equal(await n.controller.adjudicate('/ppt 做科研汇报',new AbortController().signal,{attachments:1}),undefined);
-  assert.equal(f.values.get('alice').selection.scene,'ppt');
+  assert.equal(f.posts.length,0);
   assert.equal(input.state.getSnapshot().draft,'/ppt 做科研汇报');
   assert.deepEqual(input.state.getSnapshot().attachmentIds,['paper']);
   assert.deepEqual(f.opened,[]);assert.equal(f.submissions.length,0,'native input owns the one submit');n.controller.dispose();
@@ -364,12 +365,14 @@ test('Leaving a session during a failed scene pick aborts the request and suppre
   assert.equal(f.opened.length, 0);
 });
 
-test('Leaving during typed select cancels adjudication without sending in either session', async () => {
-  let resume, reached; const waiting = new Promise(resolve => { resume = resolve; }); const posted = new Promise(resolve => { reached = resolve; });
-  const f = fixture({ beforePost: async () => { reached(); await waiting; throw Error('PPT mount failed'); } }), input = f.inputs.get('alice');
+test('Typed send never waits on settings and does not send to a session left before adjudication', async () => {
+  const f = fixture({ beforePost: () => new Promise(() => {}) }), input = f.inputs.get('alice');
   const n = nativeController(f.trigger, input); await flush(); input.setDraft('/ppt 论文报告'); input.setPhase('adjudicating');
-  const attempt = n.controller.adjudicate('/ppt 论文报告', new AbortController().signal, { attachments: 0 });
-  await posted; f.setCurrent('bob'); resume(); assert.equal(await attempt, 'handled');
+  const reads = f.reads.length;
+  assert.equal(await n.controller.adjudicate('/ppt 论文报告', new AbortController().signal, { attachments: 0 }), undefined);
+  assert.equal(f.posts.length, 0); assert.equal(f.reads.length, reads);
+  f.setCurrent('bob');
+  assert.equal(f.trigger.matchEnter({sessionId:'alice'}, '/ppt 论文报告', new AbortController().signal), 'handled');
   input.setPhase('plain'); await flush(); assert.equal(f.submissions.length, 0);
   assert.equal(input.state.getSnapshot().draft, '/ppt 论文报告'); assert.equal(input.notices.length, 0); n.controller.dispose();
 });
