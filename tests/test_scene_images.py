@@ -86,6 +86,17 @@ def test_ruled_image_rejects_filled_or_shifted_missing_cells(tmp_path,extension,
     assert layout['data_rows']==4 and layout['columns']==3 and layout['empty_cells']==[[2,3]]
     intake=ReportIntake(work)
     assert intake.prepare()['attachment_sources'][0]['image_table_layout']==layout
+    with pytest.raises(ValueError,match='require_zoom_review'):
+        intake.record_image_table(name,version,columns,rows)
+    with pytest.raises(ValueError,match='exact_approved_image'):
+        intake.read_image_table(name,'0'*64)
+    meta,pixels=intake.read_image_table(name,version,1,2)
+    assert meta['start_row']==1 and meta['end_row']==2
+    with Image.open(io.BytesIO(pixels)) as enlarged:assert enlarged.width>image.width
+    with pytest.raises(ValueError,match='require_zoom_review'):
+        intake.record_image_table(name,version,columns,rows)
+    meta,pixels=intake.read_image_table(name,version,3,10)
+    assert meta['end_row']==4
     for wrong in ([rows[0],['B','2','6.3'],*rows[2:]], [rows[0],['B','2','6.3'],rows[3],['D','4','']]):
         with pytest.raises(ValueError,match='image_cell_occupancy_mismatch'):
             intake.record_image_table(name,version,columns,wrong)
@@ -132,4 +143,5 @@ def test_image_transcription_tool_is_exposed_by_actual_mcp_and_web_policy(tmp_pa
     actual=json.loads(result.stdout)
     policy=json.loads((root/'scenarios/data_analysis/report-scenario.json').read_text())['allowed_tools']
     assert 'record_image_table' in actual
+    assert 'read_image_table' in actual
     assert set(policy)=={'mcp__research_report__'+name for name in actual}

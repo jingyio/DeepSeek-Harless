@@ -111,6 +111,22 @@ class ReportIntake:
         else:
             lock.write_bytes(_encoded(hashes)); lock.chmod(0o600)
 
+    def read_image_table(self, name: str, sha256: str, start_row: int = 1, row_count: int = 10):
+        from .image_tables import table_row_image
+        if self.report.is_symlink() or not self.report.is_dir() or not self.report.resolve().is_relative_to(self.work):
+            raise ValueError('unsafe report directory')
+        approved=self._approved()
+        if approved.get(name)!=sha256 or Path(name).suffix.lower() not in {'.png','.jpg','.jpeg','.webp','.gif'}:
+            raise ValueError('exact_approved_image_required')
+        meta,pixels=table_row_image(self.work/'inputs'/name,start_row,row_count)
+        if self._approved()!=approved:raise ValueError('approved report source version changed')
+        receipt=self.report/('image-views-'+sha256+'.json')
+        viewed=json.loads(self._file(receipt)) if receipt.exists() else {'source_name':name,'sha256':sha256,'rows':[]}
+        if viewed['source_name']!=name or viewed['sha256']!=sha256:raise ValueError('image_view_source_changed')
+        viewed['rows']=sorted(set(viewed['rows'])|set(range(meta['start_row'],meta['end_row']+1)))
+        receipt.write_bytes(_encoded(viewed));receipt.chmod(0o600)
+        return {**meta,'source_name':name,'sha256':sha256},pixels
+
     def record_image_table(self, name: str, sha256: str, columns: list[str], rows: list[list[str]]) -> dict:
         """Freeze a model's visual transcription, never certify it as measured data."""
         if self.report.is_symlink() or not self.report.is_dir() or not self.report.resolve().is_relative_to(self.work):
@@ -128,6 +144,10 @@ class ReportIntake:
             raise ValueError('rectangular_literal_string_cells_required')
         layout=image_table_layout(self.work/'inputs'/name)
         if layout:
+            receipt=self.report/('image-views-'+sha256+'.json')
+            viewed=json.loads(self._file(receipt)) if receipt.exists() else {}
+            if viewed.get('source_name')!=name or viewed.get('rows')!=list(range(1,layout['data_rows']+1)):
+                raise ValueError('image_rows_require_zoom_review: use read_image_table for every data row in groups of at most 10 before freezing. Read exact displayed digits, including the last row; do not infer values.')
             if len(rows)!=layout['data_rows'] or len(columns)!=layout['columns']:
                 raise ValueError('image_grid_shape_mismatch: '+json.dumps(layout))
             supplied_empty=[[i,j] for i,row in enumerate(rows,1) for j,value in enumerate(row,1) if not value.strip()]

@@ -4,7 +4,7 @@ from pathlib import Path
 import statistics
 
 
-def image_table_layout(path: Path) -> dict | None:
+def image_table_layout(path: Path, *, geometry: bool = False) -> dict | None:
     from PIL import Image
     with Image.open(path) as original:
         if original.width > 10000 or original.height > 10000: return None
@@ -44,5 +44,26 @@ def image_table_layout(path: Path) -> dict | None:
                 if row==0:return None # No confident single header row.
                 empty.append([row,column])
     return {'data_rows':len(horizontal)-2,'columns':len(vertical)-1,'header_rows':1,
+            **({'horizontal':horizontal,'vertical':vertical,'image_size':[width,height]} if geometry else {}),
             'empty_cells':empty,'indices':'1-based data row and column',
             'scope':'grid_geometry_and_cell_occupancy_only_not_text_or_numeric_verification'}
+
+
+def table_row_image(path: Path, start_row: int, row_count: int) -> tuple[dict, bytes]:
+    """Expose original pixels in readable strips; never synthesize text or numbers."""
+    from PIL import Image
+    import io
+    layout=image_table_layout(path,geometry=True)
+    if not layout:raise ValueError('clear_regular_grid_required_for_row_zoom')
+    if type(start_row) is not int or type(row_count) is not int or not 1<=row_count<=10 or not 1<=start_row<=layout['data_rows']:
+        raise ValueError('valid_start_row_and_count_1_to_10_required')
+    end=min(start_row+row_count-1,layout['data_rows'])
+    h,v=layout['horizontal'],layout['vertical']
+    with Image.open(path) as original:
+        image=original.convert('RGB');image.thumbnail((2200,2200))
+        box=(max(0,v[0][0]-2),max(0,h[start_row][0]-2),min(image.width,v[-1][1]+3),min(image.height,h[end+1][1]+3))
+        crop=image.crop(box)
+        crop=crop.resize((crop.width*2,crop.height*2),Image.Resampling.NEAREST)
+        out=io.BytesIO();crop.save(out,format='PNG')
+    return {'start_row':start_row,'end_row':end,'data_rows':layout['data_rows'],
+            'scope':'original_pixels_enlarged_no_ocr'},out.getvalue()

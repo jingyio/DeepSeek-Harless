@@ -32,6 +32,7 @@
     "mcp__research_report__verify_report",
     "mcp__research_report__deliver_report",
     "mcp__research_report__export_input_review",
-    "mcp__research_report__record_image_table"
+    "mcp__research_report__record_image_table",
+    "mcp__research_report__read_image_table"
   ]
 }
