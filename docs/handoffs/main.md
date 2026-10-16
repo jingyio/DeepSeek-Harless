@@ -2,7 +2,7 @@
 
 ## 2026-10-16：PR #19 的论文 RSI 能力重新基于最新 main 整合（开发分支，未部署）
 
-- 分支 `codex/main-paper-rsi-integration`，基于 `83ae343`；替代旧 PR #19，不把旧 42 个提交直接合入。保留 main 多格式/质量规则/普通报告，以及 PR #40 的 PPT Skill 与原任务恢复；停止钩子统一按场景分发。
+- 分支 `codex/main-paper-rsi-integration`，基于 `83ae343`；替代旧 PR #19，新 [PR #42](https://github.com/jingyio/DeepSeek-Harless/pull/42) 已推送待审，不把旧 42 个提交直接合入。保留 main 多格式/质量规则/普通报告，以及 PR #40 的 PPT Skill 与原任务恢复；停止钩子统一按场景分发。
 - 论文同一 MCP 提供 24 工具，普通校对无需私有排版包；默认 Shadow 库保留，私有库显式覆盖且无效即拒绝。安全 ZIP、引用取证、历史脚本/批量判断与共享 Runtime 的只读 Motif 保留，不改上游 Harness 或账号认证。
 - 验证：初版完整 Python 987/Node 722 通过（3 跳过）、smoke/motif/controls/scenes 和 2 成员/10 场景真实 bwrap/MCP；最终 main 上专项 Python 62、完整 Node 731 通过/3 跳过。真实三轮共 12 请求/$0.025040940 代理估费，最后一轮 5 请求/1 只读验证跳过/0 错误；无完整论文或稳定降本主张。
 - 私有最终包位于 V100 隔离副本 `.local/integration/main-paper-rsi-20261016/.local/integration-check/compiled-main40/runtime`，旧 23 工具包不能直接配新代码；输入、轨迹和费用不清零。未切正式进程，待用户审阅替代 PR，再独立发布。配置、失败与复现见[整合记录](../experiments/paper-main-integration-20261016-v1.md)及[论文交接](paper-proofreading.md)。
