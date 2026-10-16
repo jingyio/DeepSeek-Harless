@@ -94,6 +94,12 @@ def test_ruled_image_rejects_filled_or_shifted_missing_cells(tmp_path,extension,
     assert meta['start_row']==1 and meta['end_row']==2
     with Image.open(io.BytesIO(pixels)) as enlarged:
         assert enlarged.width>image.width*.8 and enlarged.height<image.height
+        assert enlarged.format=='WEBP' and meta['media_type']=='image/webp'
+        geometry=image_table_layout(source,geometry=True)
+        h,v=geometry['horizontal'],geometry['vertical']
+        with Image.open(source) as original:
+            expected=original.convert('RGB').crop((v[0][0]-2,h[1][0]-2,v[-1][1]+3,h[3][1]+3))
+            assert enlarged.convert('RGB').tobytes()==expected.tobytes()
     with pytest.raises(ValueError,match='require_zoom_review'):
         intake.record_image_table(name,version,columns,rows)
     meta,pixels=intake.read_image_table(name,version,3,10)

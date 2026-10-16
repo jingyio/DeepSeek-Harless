@@ -65,8 +65,8 @@ def table_row_image(path: Path, start_row: int, row_count: int) -> tuple[dict, b
         crop=image.crop(box)
         # Preserve each source pixel. A strip occupies its own model image view;
         # duplicating every pixel would inflate inline multimodal requests.
-        gray=crop.convert('L')
-        if gray.convert('RGB').tobytes()==crop.tobytes():crop=gray
-        out=io.BytesIO();crop.save(out,format='PNG',optimize=True)
+        # Keep sRGB so native attachment admission can preserve these bytes;
+        # grayscale PNG would be normalized to a larger lossy JPEG upstream.
+        out=io.BytesIO();crop.save(out,format='WEBP',lossless=True,method=6,exact=True)
     return {'start_row':start_row,'end_row':end,'data_rows':layout['data_rows'],
-            'scope':'original_pixels_crop_no_ocr'},out.getvalue()
+            'media_type':'image/webp','scope':'original_pixels_crop_no_ocr'},out.getvalue()

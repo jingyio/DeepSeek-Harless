@@ -76,7 +76,7 @@ def read_image_table(name: str, sha256: str, start_row: int = 1, row_count: int 
     try:
         meta,pixels=intake.read_image_table(name,sha256,start_row,row_count)
         return CallToolResult(content=[TextContent(type='text',text=json.dumps(meta)),
-            ImageContent(type='image',data=base64.b64encode(pixels).decode('ascii'),mime_type='image/png')])
+            ImageContent(type='image',data=base64.b64encode(pixels).decode('ascii'),mime_type=meta['media_type'])])
     except ValueError as error: raise ToolError(str(error)) from error
 
 @server.tool()

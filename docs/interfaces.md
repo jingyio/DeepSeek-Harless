@@ -203,6 +203,10 @@ Harness 原生 `SessionPromptRequest.content` 的实际格式为：
 
 数据场景增加 `record_image_table({name, sha256, columns, rows})`：仅接受本任务已批准的图片和原版本，表格必须为完整矩形字符串数组，缺失值用空字符串，拒绝覆盖已有结构表或已冻结分析。写入的视觉转录带原图/CSV SHA256，重复相同内容幂等、不同内容拒绝；`prepare_report_inputs` 将转录摘要纳入分析身份，随后仍走正常独立统计。`model_visual_transcription_not_independently_verified` 必须在来源说明中保留，统计复算不能证明模型看图没有错误。
 
+规则图片表格冻结前须通过 `read_image_table({name,sha256,start_row,row_count})` 覆盖全部数据行。行号从 1 开始，每次最多 10 行；工具返回来源绑定的原像素裁片和范围，无 OCR、插值或数值补全。记录只表示模型已收到细节视图，不能将其当成人工认证。行列/空白占用继续独立校验；非规则图像不会伪造网格结果。
+
+论文在明确请求文件且已读取来源后，以实际 `export_review_report` 成功 PDF 回执判定交付；原生 `agent/turn-stopping` 可续接同一任务，不能重置预算、扩大来源或忽略取消/权限错误。此检查解决未执行导出却声称交付的问题，不认证模型校对意见的科学正确性。
+
 ### 场景、资料与三种模式
 
 每次启动由 `--scenario` 注册一个受信任能力配置，支持场景名或配置 JSON 路径；前端只能选择这一个 `capability_profile`。工具由该场景 MCP/preset 提供，默认编码工具仍待明确兼容。`prepare_scenario()` 的 `mcp_rows/environment_references` 同时服务 Web preset 与原 SDK patch。
