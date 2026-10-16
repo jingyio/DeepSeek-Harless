@@ -88,6 +88,54 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
   return { decoration, trigger, inputs, posts, opened, values, pick, statusComponent, rebinds, reads, submissions, blocks, setCurrent,
     statusUpdates, faces, retirements, observeStatus: (sessionId = 'alice') => statusComponent({ sessionId, openSession: id => sessions.open(id) }) };
 }
+test('Typed and pasted scene commands update the badge immediately without mounting a backend', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
+  f.observeStatus(); await flush();
+  for (const [draft, scene] of [
+    ['/ppt 生成三页', 'ppt'], ['/data分析数据', 'research-data-analysis'],
+    ['  /PAPER 校对', 'paper-proofreading'], ['/chat 你好', 'new-scene'],
+    ['/p', 'new-scene'], ['/pptx 示例', 'new-scene'], ['解释 /ppt 指令', 'new-scene'],
+  ]) {
+    input.setDraft(draft);
+    assert.equal(f.statusUpdates.at(-1).selection.scene, scene, draft);
+  }
+  assert.equal(f.posts.length, 0);
+  assert.equal(f.submissions.length, 0);
+});
+
+test('A late settings read cannot replace a pasted draft scene with Chat', async () => {
+  let release; const gate = new Promise(resolve => release = resolve);
+  const f = fixture({ allAvailable: true, beforeGet: () => gate }), input = f.inputs.get('alice');
+  f.observeStatus(); input.setDraft('/ppt 图片汇报');
+  release(); await flush();
+  assert.equal(f.statusUpdates.at(-1).selection.scene, 'ppt');
+  assert.equal(f.posts.length, 0);
+});
+
+test('A late reset preserves a new pasted scene without changing its draft or attachments', async () => {
+  let release, reached; const gate = new Promise(resolve => release = resolve), posted = new Promise(resolve => reached = resolve);
+  const f = fixture({ allAvailable: true, beforePost: async body => {
+    if (body.selection?.scene === 'new-scene') { reached(); await gate; }
+  } }), input = f.inputs.get('alice');
+  f.observeStatus(); await flush(); input.setDraft('/ppt 原稿'); input.setDraft(''); await posted;
+  input.addAttachments(['image']); input.setDraft('/data 新稿');
+  assert.equal(f.statusUpdates.at(-1).selection.scene, 'research-data-analysis');
+  release(); await flush();
+  assert.equal(f.statusUpdates.at(-1).selection.scene, 'research-data-analysis');
+  assert.equal(input.state.getSnapshot().draft, '/data 新稿');
+  assert.deepEqual(input.state.getSnapshot().attachmentIds, ['image']);
+  assert.equal(f.posts.length, 1);
+});
+
+test('Acceptance of the previous send preserves a manually typed scene for the next draft', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
+  await f.pick('alice'); f.observeStatus(); await flush();
+  f.faces.get('alice').beginSubmission({}); input.setDraft(''); input.setDraft('/paper 下一轮');
+  f.retirements.get('alice')({ reason: 'observed', attachments: [] });
+  assert.equal(f.statusUpdates.at(-1).selection.scene, 'paper-proofreading');
+  assert.equal(input.state.getSnapshot().draft, '/paper 下一轮');
+});
+
 test('Scene slash source filters each prefix and uses native reference chips', async () => {
   const f = fixture(), session = { sessionId: 'alice' };
   for (const [query, names] of [['', ['ppt','paper','data','chat']], ['p', ['ppt','paper']], ['pp', ['ppt']], ['ppt', ['ppt']], ['pptx', []]]) {

@@ -1227,7 +1227,7 @@ window.__ModuleLoader__.load({
             pendingSubmissions.delete(pending);
             if (settlement.reason === 'observed' && version === (choiceVersions.get(id) || 0)) {
               revisions.set(id, (revisions.get(id) || 0) + 1);
-              draftSelections.delete(id);
+              displaySelection(id, knownDraftScene(id, inputFor(id).state.getSnapshot().draft) || 'new-scene');
               const value = cache.get(id);
               if (value) publish(id, { ...value, selection: { ...value.selection, scene: 'new-scene' }, paired_comparison: false });
             }
@@ -1243,8 +1243,11 @@ window.__ModuleLoader__.load({
           // Native sends clear the draft before acceptance. The callback above
           // resets only the next input; the server owns the frozen running task.
           if (pendingSubmissions.size && !next.draft.trim()) return;
-          const removed = knownDraftScene(id, before.draft);
-          if (removed && removed !== 'new-scene' && !knownDraftScene(id, next.draft)) void resetScene(session);
+          const removed = knownDraftScene(id, before.draft), selected = knownDraftScene(id, next.draft);
+          // Typed/pasted commands and native space-to-chip insertion do not
+          // pass through onPick. The badge still describes this draft now.
+          displaySelection(id, selected || 'new-scene');
+          if (removed && removed !== 'new-scene' && !selected) void resetScene(session);
         });
         draftWatches.set(id, () => { off(); if (beginSubmission) face.beginSubmission = beginSubmission; });
       }
@@ -1263,7 +1266,7 @@ window.__ModuleLoader__.load({
           // The visible conversation owns the scene choice. Immutable tool
           // agents are rotated privately by the server; drafts never move.
           const next = await request(session, { action: 'select', session_id: id, selection: { scene: 'new-scene' } });
-          if (current()) draftSelections.delete(id);
+          if (current()) displaySelection(id, knownDraftScene(id, inputFor(id).state.getSnapshot().draft) || 'new-scene');
           publish(id, next); // Canonical state may change under a newer draft overlay.
         })();
         choosing.set(id, operation);
@@ -1337,7 +1340,8 @@ window.__ModuleLoader__.load({
             && !knownDraftScene(session.sessionId, oldInput.state.getSnapshot().draft)) {
             void resetScene(session); throw cancelledChoice();
           }
-          draftSelections.delete(session.sessionId); clearResetBlock(session.sessionId); publish(session.sessionId, next);
+          displaySelection(session.sessionId, knownDraftScene(session.sessionId, oldInput.state.getSnapshot().draft) || 'new-scene');
+          clearResetBlock(session.sessionId); publish(session.sessionId, next);
           // A manual pick only selects; typing while its mount completes is
           // normal. Keep those edits. Automatic handoff still requires CAS.
           if (optimistic && !automatic && !sameDraft(oldInput, expectedSpan, initial.attachmentIds))
