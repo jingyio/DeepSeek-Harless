@@ -271,7 +271,7 @@ class PPTService:
     def read_source(self, source_id: str) -> dict:
         item = self.source(source_id)
         parsed = item['parsed']
-        if not parsed['text_chars']:
+        if not parsed['text_chars'] and parsed['format'] not in {'png','jpg','jpeg','webp','gif'}:
             self.record('source_failed', {'source_id': source_id, 'reason': 'no_text'})
             raise ValueError('无法提取文本，首版不支持扫描件 OCR')
         remaining, pages = 24000, []

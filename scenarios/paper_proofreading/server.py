@@ -70,7 +70,8 @@ class PaperEvidence(SessionFiles):
             if extracted['status'] != 'extracted':
                 return {'source_id':source_id,'version_sha256':version,'name':name,
                         'status':extracted['status'],'reason':extracted.get('reason'),
-                        'text':'','visual_checked':False}
+                        'text':'','visual_checked':False,'pixels':extracted.get('pixels'),
+                        'next_step':'For visual_input, inspect the native image attached to this same request, quote only legible text, and export a source-bound review. This tool does not perform OCR or certify visual findings.'}
             if page != 1: raise ValueError('text_has_one_logical_page')
             text, count = extracted['text'], 1
         summaries=summarize_tables(self.root/name,{'text':text})

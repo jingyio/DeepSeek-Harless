@@ -26,6 +26,7 @@ import {bindReportAnswer} from './harless_report_answer.ts';
 import {createTaskProgress} from './harless_task_progress.ts';
 import {bindProductPrompt} from './harless_product_prompt.ts';
 import {createPptRecovery} from './harless_ppt_recovery.ts';
+import {createPaperRecovery,paperExportRequested} from './harless_paper_recovery.ts';
 import {protectPublicSessionOutput, publicTaskView} from './harless_public_output.ts';
 import {createConversationTitles} from './geneloop_conversation_titles.ts';
 import {createSessionBranchService,sessionBranchTitle} from './harless_session_branch.ts';
@@ -63,6 +64,7 @@ type Task = {
   budget_session_id: string;
   source_task_id?: string;
   ppt_recovery?: ReturnType<typeof createPptRecovery>;
+  paper_recovery?: ReturnType<typeof createPaperRecovery>;
   bound_binding_sha256?: string | null;
 };
 class TaskError extends Error {
@@ -1224,8 +1226,12 @@ export function apply(ctx: any) {
       if (priorTask && !terminal.has(priorTask.status)) throw new TaskError('session_busy', '请等待当前回复完成或取消后再发送。', 409);
       await priorTask?.closing;
       const scene = sceneFor(selected.scene), parent = agents.get(request.sessionId);
-      if (!Array.isArray(content) || !content.length || content.some((part: any) => !['text', 'file'].includes(part.type)) ||
-          content.filter((part: any) => part.type === 'file').length > 8) throw new TaskError('unsupported_input', '请发送文字和最多 8 份场景资料。');
+      if (!Array.isArray(content) || !content.length || content.some((part: any) => !['text', 'file', 'image'].includes(part.type)) ||
+          content.filter((part: any) => part.type !== 'text').length > 8) throw new TaskError('unsupported_input', '请发送文字和最多 8 份图片或文件。');
+      const images = content.filter((part: any) => part.type === 'image');
+      // Use the public Harness decoder and image limits before any child task
+      // is created. Preserve native pixels as well as exact file provenance.
+      if (images.length) await ctx.attachments.admitPromptContent(images);
       const text = content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n');
       if (!text.trim()) throw new TaskError('invalid_request', '请填写任务内容。');
       const sourceFiles:Record<string,any>={};
@@ -1245,7 +1251,7 @@ export function apply(ctx: any) {
             [event.type === 'user/message' ? 'user' : 'assistant']: (event.data.content ?? event.data.message?.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n'),
           })),
         model: (modelSelections.get(request.sessionId) ?? defaultModel).model, reasoning_effort: reasoningFor(request.sessionId),
-        input_sha256: digest([text, files]),source_files:sourceFiles,
+        input_sha256: digest([text, files, ...images.map((part:any)=>({name:part.name,mediaType:part.mediaType,sha256:sha(Buffer.from(part.data,'base64'))}))]),source_files:sourceFiles,
         ...admitted,
       });
       if (!admitted) resetNextMessageScene(request.sessionId);
@@ -1284,6 +1290,20 @@ export function apply(ctx: any) {
         const previous = forSession(child), content: any[] = [];
         for (const part of turn.input) {
           if (part.type === 'text') { content.push(part); continue; }
+          if (part.type === 'image') {
+            content.push(structuredClone(part));
+            if (!previous) {
+              const extensions:Record<string,string>={'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif'};
+              const bytes=Buffer.from(part.data,'base64'), extension=extensions[part.mediaType];
+              if (!extension || bytes.length>20*1024*1024) throw new TaskError('invalid_image','图片格式或大小不受支持。');
+              const requestedName=typeof part.name==='string'?basename(part.name):'';
+              const name=requestedName&&extname(requestedName).toLowerCase()===extension?requestedName:`image-${sha(bytes).slice(0,16)}${extension}`;
+              const uploaded=await ctx.fileUploads.uploadStream({sessionId:child,name,
+                data:(async function*(){yield bytes})(),signal:new AbortController().signal});
+              content.push({type:'file',receiptId:uploaded.receiptId});
+            }
+            continue;
+          }
           // A failed initial attempt already froze these same parent inputs.
           // Retrying keeps that snapshot; it must not rebind upload receipts.
           if (previous) continue;
@@ -1293,7 +1313,7 @@ export function apply(ctx: any) {
             data: ctx.attachments.readFileStream(ref), signal: new AbortController().signal });
           content.push({ type: 'file', receiptId: uploaded.receiptId });
         }
-        if (!previous && !turn.input.some((part: any) => part.type === 'file')) {
+        if (!previous && !turn.input.some((part: any) => part.type === 'file' || part.type === 'image')) {
           const target = sceneFor(turn.scene);
           const accepts = (name: string) => {
             const suffix = extname(name).toLowerCase();
@@ -1395,7 +1415,7 @@ export function apply(ctx: any) {
         }
         if (request && !agent.session.snapshotEvents().some((e: any) => e.type === 'user/message' && e.data.source?.rpcId === request.requestId)) {
           const ids: string[] = [], content: any[] = [];
-          for (const part of request.content) if (part.type === 'text') content.push(part); else {
+          for (const part of request.content) if (part.type === 'text' || part.type === 'image') content.push(part); else {
             const ref = ctx.fileUploads.resolve(agent, part.receiptId); if (!ref) throw new TaskError('file_receipt_not_owned', '上传回执不属于当前会话。');
             ids.push(part.receiptId); content.push({ type: 'file', attachment: ref });
           }
@@ -1470,6 +1490,7 @@ export function apply(ctx: any) {
   options.models = webDeepSeekModels(options.models, modelOptions);
   ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new WebDeepSeekAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
+    resolveAttachments: () => ctx.attachments,
     resolveUserId: () => principal, prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
   }, modelOptions)), 'sss-web-task-provider');
   ctx.on('agent/created', ({ agent }: any) => {
@@ -1489,9 +1510,27 @@ export function apply(ctx: any) {
       if(task?.status==='running'&&task.scene.adapter==='ppt'){
         task.ppt_recovery??=createPptRecovery();task.ppt_recovery.observe(execution,result);
       }
+      if(task?.status==='running'&&task.scene.id==='paper-proofreading'){
+        task.paper_recovery??=createPaperRecovery();task.paper_recovery.observe(execution,result);
+      }
     });
     agent.ctx.on('agent/turn-stopping',({signal}:any)=>{
       const task=forSession(agent.session.id);
+      if(task?.status==='running'&&task.scene.id==='paper-proofreading'&&!signal.aborted){
+        const requested=task.request.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n');
+        if(paperExportRequested(requested)){
+          if(scopeDigest(task.workspace,task.scene)!==task.scope_sha256)throw Error('Paper recovery source scope changed');
+          const next=task.paper_recovery?.stop({aborted:signal.aborted});
+          if(next){
+            audit(task,{kind:'paper_task_recovery',continuation:next.continuation});
+            progress.get(task.request.task_id)?.recovery();notifyTask(task);
+            task.stats.recovery_continuations=next.continuation;record(task);
+            agent.steer(createUserMessage({content:[{type:'text',text:next.instruction}],
+              source:{kind:'paper-task-recovery',task_id:task.request.task_id,session_id:agent.session.id,continuation:next.continuation}}));
+          }
+        }
+        return;
+      }
       if(!task||task.status!=='running'||task.scene.adapter!=='ppt'||signal.aborted)return;
       // Native steering preserves the original admission, task ID, tool set and budget.
       if(scopeDigest(task.workspace,task.scene)!==task.scope_sha256)throw Error('PPT recovery source scope changed');

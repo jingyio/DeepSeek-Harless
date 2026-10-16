@@ -66,6 +66,31 @@ for name in TOOL_NAMES:
         annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False))
 
 @server.tool()
+def read_image_table(name: str, sha256: str, start_row: int = 1, row_count: int = 10):
+    """View enlarged ORIGINAL table pixels for 1-based data rows, at most 10 rows.
+    Read every row strip before record_image_table. Match row identifiers and exact
+    digits including the final row; this is visual evidence, not OCR verification.
+    """
+    from mcp.types import CallToolResult,TextContent,ImageContent
+    import base64
+    try:
+        meta,pixels=intake.read_image_table(name,sha256,start_row,row_count)
+        return CallToolResult(content=[TextContent(type='text',text=json.dumps(meta)),
+            ImageContent(type='image',data=base64.b64encode(pixels).decode('ascii'),mime_type=meta['media_type'])])
+    except ValueError as error: raise ToolError(str(error)) from error
+
+@server.tool()
+def record_image_table(name: str, sha256: str, columns: list[str], rows: list[list[str]]) -> dict:
+    """Record a clearly legible table from a native image in this request. Use exact
+    attachment_sources name/SHA256, original column labels and every row as literal
+    strings (empty cells=''). Never infer missing cells, invent values or overwrite
+    a frozen transcription. This records MODEL VISUAL TRANSCRIPTION, not verified
+    OCR. Then inspect_study and follow the unchanged statistical/report workflow.
+    """
+    try: return intake.record_image_table(name,sha256,columns,rows)
+    except ValueError as error: raise ToolError(str(error)) from error
+
+@server.tool()
 def export_input_review(title: str, sections: list[dict], source_versions: dict) -> dict:
     """If no analyzable table exists, export the actual reference review and missing-data
     requirements as PDF + Markdown. sections=[{heading,paragraphs:[text]}]. Use the

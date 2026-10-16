@@ -3,3 +3,4 @@ mcp==2.2.0
 pydantic==2.13.5
 pytest==8.4.2
 Pillow==12.3.0
+defusedxml==0.7.1

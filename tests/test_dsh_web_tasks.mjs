@@ -239,6 +239,25 @@ test('native PPT repairs a failed plan within the existing turn, budget and task
  }finally{await f.close();}
 });
 
+test('native paper export recovery keeps the source, task and budget until an actual receipt',options,async()=>{
+ const schemas=['read_pinned_document','export_review_report'].map(name=>({name:'mcp__paper_checks__'+name,parameters:{type:'object',properties:{}}}));
+ const paper={id:'paper-proofreading',label:'Paper',preset:'sss-task',mcp_rows:[],allowed_tools:schemas.map(t=>t.name)};
+ const f=await fixture({broker:true,scenes:[paper],capability_profile:'paper-proofreading',fixtureSchemas:schemas});
+ try{
+  const created=await f.settings({action:'new_session',selection:{scene:'paper-proofreading'}}),id=created.value.session_id;
+  await f.ctx.sessionController.prompt({sessionId:id,requestId:'paper-export',mode:'queue',content:[{type:'text',text:'/paper 校对并生成PDF报告'}]},new AbortController().signal);
+  const task=(await f.api()).value.tasks[0],agent=f.agents.get(task.session_id),before=f.registrations.size;
+  agent.hooks.get('tools/result')({name:'mcp__paper_checks__read_pinned_document'}, {structuredContent:{source_id:'read-source',status:'visual_input'}});
+  agent.hooks.get('agent/turn-stopping')({signal:new AbortController().signal});
+  assert.equal(agent.steered.length,1);assert.equal(agent.steered[0].source.task_id,task.task_id);
+  assert.equal(agent.steered[0].source.kind,'paper-task-recovery');assert.equal(f.registrations.size,before);
+  assert.equal(f.promptCalls.length,1);assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'running');
+  agent.hooks.get('tools/result')({name:'mcp__paper_checks__export_review_report'},{structuredContent:{exported:true,artifacts:[{name:'paper-review.pdf',sha256:'a'.repeat(64)}]}});
+  agent.hooks.get('agent/turn-stopping')({signal:new AbortController().signal});assert.equal(agent.steered.length,1);
+  await f.complete(task);
+ }finally{await f.close();}
+});
+
 test('Uncapped task text and output retain guards and omit the adapter default',options,async()=>{
  const f=await fixture({max_output_tokens:null});try{
   const original='完整任务输入'.repeat(3000)+'unique-tail';
@@ -1722,4 +1741,30 @@ test('Trash rejects active tasks and isolates direct APIs; restoring retains tas
   assert.equal((await f.api(undefined,'?task_id='+task.task_id)).status,200);
   assert.ok(group.sessionIds.includes(task.session_id));assert.equal((await f.trash()).value.sessions.length,0);
  }finally{await f.close();}
+});
+
+
+test('native comparison images reach both lanes with exact file provenance and the durable decoder',options,async()=>{
+ const scenes=[{...multiScenes[0],id:'new-scene',label:'Chat',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'ppt',label:'PPT',preset:'sss-ppt',adapter:'workspace',mcp_rows:[]}];
+ const f=await fixture({broker:true,scenes,capability_profile:'new-scene',comparison_scenes:['ppt']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const data='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8ZkAAAAASUVORK5CYII=';
+  const image={type:'image',mediaType:'image/png',name:'source.png',data};
+  assert.equal(f.adapters.find(row=>row.names.includes('deepseek-official')).adapter.config.resolveAttachments(),f.ctx.attachments);
+  const admitted=await f.ctx.sessionController.prompt({sessionId,requestId:'native-image',mode:'queue',content:[{type:'text',text:'/ppt Summarize this image'},image]},new AbortController().signal);
+  for(let i=0;i<200&&f.promptCalls.length<2;i++)await new Promise(r=>setTimeout(r,10));
+  assert.equal(f.promptCalls.length,2);
+  for(const call of f.promptCalls){
+   assert.deepEqual(call.content.find(part=>part.type==='image'),image);
+   const content=call.content.find(part=>part.type==='file');assert.ok(content);
+   const agent=f.agents.get(call.sessionId),ref=f.ctx.fileUploads.resolve(agent,content.receiptId);
+   const chunks=[];for await(const bytes of f.ctx.attachments.readFileStream(ref))chunks.push(bytes);
+   assert.equal(Buffer.concat(chunks).toString('base64'),data);
+  }
+  const turn=JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(t=>t.id===admitted.comparison_id);
+  assert.equal(turn.input[1].type,'image');
+  for(const task of (await f.api()).value.tasks)await f.complete(task);
+ }finally{await f.close()}
 });

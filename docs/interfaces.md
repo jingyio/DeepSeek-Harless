@@ -199,6 +199,14 @@ Harness 原生 `SessionPromptRequest.content` 的实际格式为：
 
 图片支持的声明类型为 PNG/JPEG/WebP/GIF。官方 Controller 再校验图片字节、模型输入能力和文件 receipt 所属会话；持久 `attachmentId` 不能替代上传 receipt。当前诊断确认不支持图片的模型会令任务明确失败、请求数为零；接收协议不代表已实现图片理解。`input_summary` 仅含文字/图片字节数与摘要、receipt 摘要和引用标识，不重复图片 base64；完整输入快照只留私有任务目录。
 
+对照入口现在保留原生 `image`，绑定实际附件服务 `resolveAttachments`；每侧同时取得相同原图字节的独立文件回执，公开消息仍由官方附件服务持久化。新图片与新文件一样切换子任务输入范围，不能沿用前一份材料的冻结分析。共享提取器对图片返回 `visual_input`、尺寸和摘要，`text` 为空、`ocr_performed=false`。PPT checkpoint 接受单页图片来源，仍校验实际像素、来源摘要和代码版本，不放宽其他恢复边界。
+
+数据场景增加 `record_image_table({name, sha256, columns, rows})`：仅接受本任务已批准的图片和原版本，表格必须为完整矩形字符串数组，缺失值用空字符串，拒绝覆盖已有结构表或已冻结分析。写入的视觉转录带原图/CSV SHA256，重复相同内容幂等、不同内容拒绝；`prepare_report_inputs` 将转录摘要纳入分析身份，随后仍走正常独立统计。`model_visual_transcription_not_independently_verified` 必须在来源说明中保留，统计复算不能证明模型看图没有错误。
+
+规则图片表格冻结前须通过 `read_image_table({name,sha256,start_row,row_count})` 覆盖全部数据行。行号从 1 开始，每次最多 10 行；工具返回来源绑定的原像素裁片和范围，无 OCR、插值或数值补全。记录只表示模型已收到细节视图，不能将其当成人工认证。行列/空白占用继续独立校验；非规则图像不会伪造网格结果。
+
+论文在明确请求文件且已读取来源后，以实际 `export_review_report` 成功 PDF 回执判定交付；原生 `agent/turn-stopping` 可续接同一任务，不能重置预算、扩大来源或忽略取消/权限错误。此检查解决未执行导出却声称交付的问题，不认证模型校对意见的科学正确性。
+
 ### 场景、资料与三种模式
 
 每次启动由 `--scenario` 注册一个受信任能力配置，支持场景名或配置 JSON 路径；前端只能选择这一个 `capability_profile`。工具由该场景 MCP/preset 提供，默认编码工具仍待明确兼容。`prepare_scenario()` 的 `mcp_rows/environment_references` 同时服务 Web preset 与原 SDK patch。
