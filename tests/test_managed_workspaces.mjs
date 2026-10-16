@@ -323,7 +323,7 @@ test('workspace region inset covers direct and display-contents slot wrappers wi
     'cover both public slot host shapes, including the measured display:contents wrapper');
   assert.match(rule[2], /min-width:0/);
   assert.match(rule[2], /box-sizing:border-box/);
-  assert.match(css, /grid-template-columns:minmax\(0,1fr\) 28px 28px/);
+  assert.match(css, /grid-template-columns:minmax\(0,1fr\) 28px;/);
 });
 
 test('deleting a named workspace requires consequence review and keeps its chats visible ungrouped', async () => {
