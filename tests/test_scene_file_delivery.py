@@ -40,6 +40,19 @@ def test_five_formats_preserve_rows_and_missing_cells(tmp_path, extension):
     assert (work/'inputs'/name).read_bytes()==raw
     assert intake.prepare()['report_ready']
 
+def test_table_summary_reports_actual_cells_without_assigning_identifier_meaning(tmp_path):
+    from scenarios.data_analysis.table_inputs import summarize_tables
+    path=tmp_path/'observations.csv'
+    text='sample,x,y\nA,1,2.1\nB,2,\nC,3,6.3\nD,4,7.8\n'
+    [summary]=summarize_tables(path,{'text':text})
+    assert summary['data_rows']==4
+    assert 'numeric' not in summary['columns']['sample']
+    assert summary['columns']['y']['empty_data_rows']==[2]
+    assert summary['columns']['y']['numeric']['sum']==pytest.approx(16.2)
+    assert summary['columns']['y']['numeric']['median']==6.3
+    assert summary['columns']['y']['numeric']['count']==3
+
+
 def test_prose_and_nested_json_never_become_observations(tmp_path):
     for name,text in [('notes.txt','We recruited 40 people, including 2 missing outcomes.\nNo table, no observations.'),
                       ('metadata.json',json.dumps({'synthetic':True,'units':{'x':'days'}}))]:

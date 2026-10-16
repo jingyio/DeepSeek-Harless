@@ -12,6 +12,7 @@ from src.adapters.session_files import SessionFiles
 from src.adapters import paper_static_checks
 from src.adapters.harless_attachment_text import extract_attachment
 from src.adapters.session_report import SessionReport
+from scenarios.data_analysis.table_inputs import summarize_tables
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -72,9 +73,11 @@ class PaperEvidence(SessionFiles):
                         'text':'','visual_checked':False}
             if page != 1: raise ValueError('text_has_one_logical_page')
             text, count = extracted['text'], 1
+        summaries=summarize_tables(self.root/name,{'text':text})
         self.pinned(source_id)
         return {'source_id': source_id, 'version_sha256': version, 'name': name, 'page': page,
                 'page_count': count, 'text': text, 'visual_checked': False,
+                'table_summaries':summaries,'table_summary_scope':'whole_document_explicit_tables',
                 'coverage': 'extracted_text_for_model_review_not_fact_or_venue_certification'}
 
 

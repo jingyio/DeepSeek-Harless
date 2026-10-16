@@ -5,6 +5,7 @@ import io
 import json
 import math
 import re
+import statistics
 from contextlib import redirect_stdout
 
 
@@ -44,7 +45,10 @@ def extract_tables(path, document):
     """
     suffix = path.suffix.lower(); text = document.get('text', '')
     candidates = []
-    if suffix == '.json':
+    if suffix in {'.csv','.tsv'}:
+        found = _table(list(csv.reader(io.StringIO(text),delimiter='\t' if suffix=='.tsv' else ',')))
+        if found: candidates.append(found)
+    elif suffix == '.json':
         try:
             found = _json_table(json.loads(text))
             if found: candidates.append(found)
@@ -74,3 +78,27 @@ def extract_tables(path, document):
                 if found:
                     candidates.append(found); break
     return candidates
+
+
+def summarize_tables(path, document):
+    """Literal descriptive facts only; never infer identifiers, design or errors."""
+    summaries=[]
+    for table in extract_tables(path,document):
+        header,*rows=list(csv.reader(io.StringIO(table)))
+        columns={}
+        for index,name in enumerate(header):
+            cells=[row[index].strip() for row in rows]
+            present=[value for value in cells if value]
+            facts={'nonempty_count':len(present),'distinct_nonempty_count':len(set(present)),
+                   'empty_data_rows':[i+1 for i,value in enumerate(cells) if not value]}
+            try: values=[float(value) for value in present]
+            except ValueError: values=[]
+            if values and len(values)==len(present) and all(math.isfinite(v) for v in values):
+                facts['numeric']={'count':len(values),'sum':math.fsum(values),
+                    'mean':statistics.mean(values),'median':statistics.median(values),
+                    'min':min(values),'max':max(values),
+                    'sample_standard_deviation':statistics.stdev(values) if len(values)>1 else None}
+            columns[name]=facts
+        summaries.append({'data_rows':len(rows),'columns':columns,
+            'scope':'Descriptive facts for explicit table cells, excluding empty cells from numeric summaries. Row numbers start at 1 after the header. No statistical inference or identifier meaning is certified.'})
+    return summaries
