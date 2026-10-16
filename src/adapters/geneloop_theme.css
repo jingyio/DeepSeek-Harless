@@ -28,7 +28,7 @@
   --gl-shadow-float: 0 4px 12px #2020300a, 0 20px 64px #2020301f;
   --gl-shadow-modal: 0 12px 36px #20203014, 0 40px 100px #20203029;
   --gl-focus: 0 0 0 4px #0071e326;
-  --gl-ease: cubic-bezier(.2,.75,.25,1);
+  --gl-ease: cubic-bezier(.22,1,.36,1);
 }
 
 html body[data-ds-dark-theme] {
@@ -99,6 +99,7 @@ html body, html body[data-ds-dark-theme] {
   color: var(--gl-ink);
   background: var(--gl-canvas);
   font-family: var(--gl-font);
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -107,7 +108,7 @@ html body :is(button,a,input,textarea,select,summary):focus-visible {
   outline: 2px solid var(--gl-blue); outline-offset: 3px;
 }
 html body :is(button,a) { -webkit-tap-highlight-color: transparent; }
-html body button { transition: background-color 140ms var(--gl-ease), color 140ms var(--gl-ease), border-color 140ms var(--gl-ease), box-shadow 140ms var(--gl-ease); }
+html body button { transition: background-color 120ms ease-out, color 120ms ease-out; }
 html body ::selection { background: var(--gl-selection); color: var(--gl-ink); }
 
 /* Sidebar: quiet navigation, precise selected state, generous optical spacing. */
@@ -148,7 +149,7 @@ html body .pXSMma_headline { font-size: 28px; font-weight: 600; letter-spacing: 
 html body .pXSMma_stack { gap: 24px; }
 html body .pXSMma_previewBadge { font-family: var(--gl-font); font-size: 11px; font-weight: 500; color: var(--gl-secondary); background: var(--gl-inset); border: 1px solid var(--gl-hairline); margin-top: 5px; padding: 1px 7px; }
 html body .pXSMma_workspace { color: var(--gl-secondary); }
-html body .uV2eYG_card { border: 1px solid var(--gl-line); border-radius: 24px; padding-top: 12px; gap: 16px; box-shadow: var(--gl-shadow-input); transition: border-color 160ms var(--gl-ease), box-shadow 160ms var(--gl-ease); }
+html body .uV2eYG_card { border: 1px solid var(--gl-line); border-radius: 24px; padding-top: 12px; gap: 16px; box-shadow: var(--gl-shadow-input); transition: none; }
 html body .uV2eYG_card:focus-within { border-color: color-mix(in srgb,var(--gl-blue) 42%,var(--gl-line)); box-shadow: var(--gl-shadow-input),0 0 0 3px color-mix(in srgb,var(--gl-blue) 5%,transparent); }
 html body .uV2eYG_input { padding: 6px 14px 0 18px; }
 html body .uV2eYG_placeholder { inset: 6px 14px auto 18px; }
@@ -170,7 +171,7 @@ html body :is(.xzv4MW_action,.harless-message-actions button) { border-radius: 9
 
 /* Floating menus and all dialogs share one surface and focus vocabulary. */
 html body :is([role=menu],[role=listbox],[data-trigger-menu],.geneloop-workspace-menu,.harless-message-stat-panel) {
-  background: var(--gl-glass); color: var(--gl-ink); border: 1px solid var(--gl-line); border-radius: 16px; box-shadow: var(--gl-shadow-float); backdrop-filter: blur(24px) saturate(130%);
+  background: var(--gl-glass); color: var(--gl-ink); border: 1px solid var(--gl-line); border-radius: 16px; box-shadow: var(--gl-shadow-float); backdrop-filter: blur(12px) saturate(120%);
 }
 html body [data-trigger-menu] { padding: 8px; }
 html body [data-trigger-menu] [role=listbox] { background: transparent; border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; }
@@ -181,6 +182,7 @@ html body .geneloop-menu-name { gap: 12px; font-weight: 550; }
 html body .geneloop-menu-name svg { width: 19px; height: 19px; }
 html body [role=dialog][aria-modal=true] { border: 1px solid var(--gl-line); border-radius: 24px; box-shadow: var(--gl-shadow-modal); background: var(--gl-surface); color: var(--gl-ink); }
 html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav { background: var(--gl-sidebar); border-right: 1px solid var(--gl-hairline); padding: 24px 14px; }
+html body .VOzbGW_navTitle { font-size: 18px; font-weight: 600; letter-spacing: -.35px; padding: 0 10px 8px; }
 html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav button { border-radius: 10px; min-height: 40px; font-size: 13px; }
 html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav button[aria-current=true] { color: var(--gl-blue); background: var(--gl-selection); font-weight: 550; }
 html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav+div>div:last-child { padding: 24px 30px 30px; }
@@ -275,8 +277,63 @@ html body.geneloop-account-page .loading-dot { background: var(--gl-blue); box-s
   html body [role=dialog][aria-modal=true]:has([data-slot="geneloop.settings.section"])>nav+div>div:last-child { padding: 20px 18px; }
   html body .geneloop-trace-toolbar { padding: 10px; }
 }
+/* Emil Kowalski / Apple: feedback begins on press; actions keep their native
+   click timing. Independent scale preserves any native positioning transform.
+   No width/height, shadows or inherited variables are animated. */
+html body :is(.uV2eYG_add,.uV2eYG_primary,.Sh0Q9G_trigger,.xzv4MW_action,
+  .harless-message-actions button,.geneloop-row-action,.harless-artifact-download,
+  .geneloop-workspace-actions button,._8HJdBW_themeCube,.wSkVaW_tab,
+  .geneloop-settings-icon-button,[data-slot=sidebar] button[class$="_newSession"]) {
+  transition: scale 180ms var(--gl-ease), background-color 120ms ease-out;
+}
+html body :is(.uV2eYG_add,.uV2eYG_primary,.Sh0Q9G_trigger,.xzv4MW_action,
+  .harless-message-actions button,.geneloop-row-action,.harless-artifact-download,
+  .geneloop-workspace-actions button,._8HJdBW_themeCube,.wSkVaW_tab,
+  .geneloop-settings-icon-button,[data-slot=sidebar] button[class$="_newSession"]):not(:disabled):not([aria-disabled=true]):active {
+  scale: .97; transition-duration: 60ms;
+}
+html body :is(.geneloop-chat-name,.geneloop-workspace-name,.VOzbGW_navCell):active {
+  background: var(--gl-hover); transition: none;
+}
+
+/* Entrance only: unmount/close stays immediate and interruptible. The loader
+   remains authoritative; revealing it never waits for an animation. Only the
+   history view fades, so sidebar, composer and streaming tokens stay stable. */
+@media(prefers-reduced-motion:no-preference) {
+  html body .geneloop-conversation-load-region:has(>.geneloop-page-loader[hidden])>.wSkVaW_viewArea {
+    animation: gl-content-reveal 220ms var(--gl-ease);
+  }
+  html body :is(.geneloop-unified-trace,[data-slot="geneloop.settings.section"]>div) {
+    animation: gl-content-fade 160ms ease-out;
+  }
+  html body [role=dialog][aria-modal=true] { animation: gl-surface-reveal 240ms var(--gl-ease); }
+  html body :is([data-trigger-menu],.geneloop-workspace-menu,.harless-message-stat-panel) {
+    transform-origin: bottom left; animation: gl-surface-reveal 180ms var(--gl-ease);
+  }
+  html body [role=menu] { animation: gl-content-fade 140ms ease-out; }
+  html body .VOzbGW_mask { animation: gl-content-fade 180ms ease-out; }
+}
+@keyframes gl-content-reveal {
+  from { opacity: .4; translate: 0 4px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes gl-content-fade { from { opacity: .35; } to { opacity: 1; } }
+@keyframes gl-surface-reveal {
+  from { opacity: 0; scale: .985; translate: 0 4px; }
+  to { opacity: 1; scale: 1; translate: 0 0; }
+}
 @media(prefers-reduced-motion:reduce) {
   html body *,html body *:before,html body *:after { scroll-behavior: auto!important; transition: none!important; }
+  html body button:active { scale: 1!important; }
+}
+@media(prefers-reduced-transparency:reduce) {
+  html body :is([role=menu],[role=listbox],[data-trigger-menu],.geneloop-workspace-menu,.harless-message-stat-panel) { background: var(--gl-raised); backdrop-filter: none; }
+  html body [data-trigger-menu] [role=listbox] { background: transparent; }
+  html body .VOzbGW_mask { backdrop-filter: none; }
+}
+@media(prefers-contrast:more) {
+  html body { --gl-line: var(--gl-secondary); --gl-hairline: var(--gl-muted); }
+  html body :is([role=menu],[data-trigger-menu],.geneloop-workspace-menu) { background: var(--gl-raised); backdrop-filter: none; }
 }
 @media(forced-colors:active) {
   html body :is(.uV2eYG_card,.harless-paired-pane,[role=dialog],[role=menu],[data-trigger-menu]) { border: 1px solid CanvasText; box-shadow: none; }
