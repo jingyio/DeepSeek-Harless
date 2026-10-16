@@ -198,8 +198,7 @@ export function apply(ctx: any) {
   }
   const sourcePendingFor = (scene: Scene, inputs: any[]) => {
     if (!scene.adapter || scene.id === 'new-scene') return false;
-    const formats = scene.adapter === 'data-report' ? ['.csv','.tsv']
-      : scene.adapter === 'ppt' ? ['.pdf','.pptx'] : scene.adapter === 'literature' ? ['.pdf'] : undefined;
+    const formats = scene.adapter === 'literature' ? ['.pdf'] : undefined;
     return formats ? !inputs.some(row => formats.includes(extname(row.file ?? '').toLowerCase())) : !inputs.length;
   };
   const instructionsFor = (scene: Scene, sourcePending = false) => scene.adapter && scene.id !== 'new-scene'
@@ -1070,7 +1069,7 @@ export function apply(ctx: any) {
   function updateDraft(task: Task) {
     if(task.scene.binding_policy && task.request.mode!=='baseline' && !task.source_pending && task.scene_inputs.length){
       const manifest=JSON.parse(readFileSync(task.scene.manifest!,'utf8'));
-      const binding=task.scene.binding_policy==='ppt_uploaded_sources_v1' ? bindUploadedPptTask(task.workspace,task.scene_inputs.filter(row=>['.pdf','.pptx'].includes(extname(row.file).toLowerCase())),task.request,manifest,task.source_task_id)
+      const binding=task.scene.binding_policy==='ppt_uploaded_sources_v1' ? bindUploadedPptTask(task.workspace,task.scene_inputs,task.request,manifest,task.source_task_id)
         : bindUploadedSourceTask(task.workspace,task.scene_inputs,task.request,manifest);
       json(join(task.output,'bound-motif-task.json'),binding);
       task.bound_binding_sha256=fileSha(join(task.output,'bound-motif-task.json'));
@@ -1295,7 +1294,7 @@ export function apply(ctx: any) {
           const target = sceneFor(turn.scene);
           const accepts = (name: string) => {
             const suffix = extname(name).toLowerCase();
-            if (target.adapter === 'ppt') return ['.pdf','.pptx'].includes(suffix);
+            if (target.adapter === 'ppt') return true;
             if (target.id === 'research-data-analysis') return ['.csv','.tsv','.json','.txt','.md'].includes(suffix);
             if (target.id === 'paper-proofreading') return ['.pdf','.tex','.bib','.bbl','.log','.md','.txt','.json'].includes(suffix);
             if (target.adapter === 'literature') return suffix === '.pdf';

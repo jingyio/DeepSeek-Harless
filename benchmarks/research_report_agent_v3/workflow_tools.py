@@ -137,6 +137,10 @@ def approve_analysis(study_id: str, plan: dict) -> dict:
     {source:user_request|study_description,quote:'exact supplied excerpt'},
     group_column/reference_group/comparison_group for groups; subject_column for
     pairs; predictor_column for regression},allow_deterministic_continuation:bool}.
+    When supplied text declares units/provenance missing from metadata, include
+    plan.context={units:{column:{value:'unit',quote:'verbatim supplied excerpt'}},
+    synthetic:{value:true|false,quote:'verbatim supplied excerpt'}}. Review both
+    units AND synthetic status; binding only units loses declared provenance.
     Cite actual supplied design evidence; do not infer independence from names.
     This approval cannot authorize presentation choice or report writing.
     """
@@ -147,8 +151,8 @@ def approve_analysis(study_id: str, plan: dict) -> dict:
         if study_id != study['study_id']:
             raise ValueError('study_id is outside this source scope')
         permitted = _boolean(plan)
-        if set(plan) - {'analysis', 'allow_deterministic_continuation'}:
-            raise ValueError('approve_analysis accepts analysis and continuation only; choose presentation after build_evidence.')
+        if set(plan) - {'analysis', 'context', 'allow_deterministic_continuation'}:
+            raise ValueError('approve_analysis accepts analysis, source-backed context and continuation only; choose presentation after build_evidence.')
         proposed = copy.deepcopy(plan.get('analysis') or {})
         basis = proposed.get('design_evidence', {})
         source = {'user_request': study.get('user_request', ''), 'study_description': study.get('description', '')}.get(basis.get('source'), '')
@@ -157,6 +161,8 @@ def approve_analysis(study_id: str, plan: dict) -> dict:
             raise ValueError('analysis.design_evidence needs an exact supplied user_request/study_description excerpt; missing design context requires clarification.')
         proposed['allow_deterministic_continuation'] = permitted
         analysis = reusable.statistics_tools._validate_plan(reusable.statistics_tools._frame(), proposed)
+        analysis['source_context'] = _source_context(plan.get('context', {}), study,
+                                                   reusable.statistics_tools._frame().columns)
         payload = {'study_id': study_id, 'plan': analysis,
                    # Compatibility only for unchanged v2 verification helpers.
                    # No figure/report plan or default prose is stored here.
@@ -167,6 +173,51 @@ def approve_analysis(study_id: str, plan: dict) -> dict:
                              'next_step': 'run_analysis(plan_id); statistics and verification stop at an LLM presentation decision.'})
     except (ValueError, KeyError, TypeError, AttributeError) as error:
         return _clarify(error)
+
+
+def _source_context(proposed, study, columns):
+    """Bind model-interpreted units/provenance to verbatim supplied evidence.
+
+    Frozen metadata is never rewritten. Conflicting supplied metadata needs
+    clarification; it cannot be overridden by an approval.
+    """
+    if not isinstance(proposed, dict) or set(proposed) - {'units', 'synthetic'}:
+        raise ValueError('context accepts units and synthetic only')
+    sources = '\n'.join(str(study.get(k, '')) for k in ('user_request', 'description'))
+    def evidence(item):
+        if (not isinstance(item, dict) or set(item) != {'value', 'quote'} or
+            not isinstance(item['quote'], str) or not 4 <= len(item['quote']) <= 1500 or item['quote'] not in sources):
+            raise ValueError('Every context value requires {value,quote} with an exact supplied excerpt')
+        return item['value']
+    result = {'units': dict(study.get('units', {}))}
+    units = proposed.get('units', {})
+    if not isinstance(units, dict): raise ValueError('context.units must map actual columns to {value,quote}')
+    for column, item in units.items():
+        value = evidence(item)
+        if column not in columns or not isinstance(value, str) or not 1 <= len(value) <= 80:
+            raise ValueError('Units need an actual column and a short text value')
+        if column in result['units'] and result['units'][column] != value:
+            raise ValueError('Supplied units conflict; clarify instead of overriding metadata')
+        result['units'][column] = value
+    if 'synthetic' in study: result['synthetic'] = study['synthetic']
+    if 'synthetic' in proposed:
+        value = evidence(proposed['synthetic'])
+        if type(value) is not bool or ('synthetic' in study and study['synthetic'] != value):
+            raise ValueError('Source status must be a source-backed boolean consistent with metadata')
+        result['synthetic'] = value
+    return result
+
+
+def _effective_study(analysis):
+    return {**get_study(), **analysis['plan'].get('source_context', {})}
+
+
+def _required_metrics():
+    study = get_study()
+    required = set(study.get('report_requirements', {}).get('metrics', []))
+    if re.search(r'R\s*(?:²|2|\^2)|R[-_ ]squared|决定系数', study.get('user_request', ''), re.I):
+        required.add('r_squared')
+    return required
 
 
 def run_analysis(plan_id: str) -> dict:
@@ -185,7 +236,7 @@ def verify_analysis(analysis_id: str) -> dict:
 
 def _catalog(analysis, verified):
     catalog = reusable._placeholder_catalog(analysis, verified)
-    plan, study = analysis['plan'], get_study()
+    plan, study = analysis['plan'], _effective_study(analysis)
     units = study.get('units', {})
     outcome_unit = units.get(plan['outcome_column'], '原始结局单位（未提供单位）')
     predictor_unit = units.get(plan.get('predictor_column'), '原始解释变量单位（未提供单位）')
@@ -216,7 +267,7 @@ def _scientific_guidance(analysis):
                        'Do not infer sample-size gains, normality improvement or causal effects from current p/SE alone.',
                        'Regression slope and residual SD have different dimensions: specify a meaningful predictor difference before comparing.',
                        'Sampling-design recommendations are conditional hypotheses; report costs, independence and coverage trade-offs.'],
-            'synthetic': get_study().get('synthetic') is True,
+            'synthetic': _effective_study(analysis).get('synthetic') is True,
             'scientific_merit_automatically_verified': False}
 
 
@@ -327,6 +378,10 @@ def approve_presentation(evidence_id: str, presentation: dict) -> dict:
                 raise ValueError('Tables can select only actual numeric names from results')
             if not isinstance(table.get('reason'), str) or not 5 <= len(table['reason']) <= 600:
                 raise ValueError('Table selection needs a short reason')
+        required = _required_metrics() & set(evidence['metrics'])
+        selected = {name for table in tables for name in table['metrics']}
+        if required and not required <= selected:
+            raise ValueError('The requested metrics must appear in the results table: ' + ', '.join(sorted(required-selected)))
         report = _presentation_report(presentation.get('report'), figures)
         normalized = copy.deepcopy(presentation); normalized['report'] = report
         payload = {'plan_id': evidence['plan_id'], 'analysis_id': evidence['analysis_id'],
@@ -356,7 +411,7 @@ def render_figures(presentation_id: str) -> dict:
 def _text_contract(approved, evidence):
     return {'outline': approved['presentation']['report']['outline'],
         'numeric_rule': 'All quantitative prose uses exact {{name}} placeholders from available_placeholders; units may use {{outcome_unit}}/{{effect_unit}}. unit_increment is the defined constant one. Ordinary R² is notation. Source condition names containing digits can use {{contrast_name}}. Existing 图1/Figure 1 references and consecutive parenthesized list markers （1）…；（2）… are formatting, not scientific values. Unknown figure labels and bare scientific numbers are rejected.',
-        'required_body_tokens': sorted(BODY_REQUIRED_TOKENS),
+        'required_body_tokens': sorted(BODY_REQUIRED_TOKENS | (_required_metrics() & set(evidence['metrics']))),
         'research_options_min': reusable._research_options_requirement(get_study())['minimum'],
         'format': {'sections': [{'heading': 'EXACT approved heading', 'paragraphs': ['Write this section yourself with evidence tokens'], 'figure_indices': []}],
             'research_options': 'Only if requested: [{name,rationale,tradeoff}, ...] and comparison_summary; all text follows token rules.',
@@ -470,7 +525,7 @@ def _document(approved, evidence, bundle, sections):
         'sections': copy.deepcopy(sections), 'metrics': metrics,
         'figures': [{'path': f['paths']['png'], 'caption': f['caption'], 'kind': f['kind']} for f in bundle['figures']],
         'requirements': {k: presentation['report'][k] for k in ('style', 'page_mode', 'pages')},
-        'synthetic': get_study().get('synthetic') is True,
+        'synthetic': evidence['scientific_guidance']['synthetic'],
         'provenance': f"来源与工具记录：{approved['plan_id'][-12:]}；完整哈希见交付旁证。"}
 
 
@@ -560,14 +615,14 @@ def submit_report_text(packet_id: str, report_text: ReportText) -> dict:
             transformations.append({'operation': 'append_model_research_options_to_existing_section', 'section_index': target,
                 'added_paragraphs': option_text+[comparison], 'source_fields': ['research_options','comparison_summary']})
         all_tokens = {name for item in bindings for name in item['tokens']}
-        missing = BODY_REQUIRED_TOKENS-all_tokens
+        missing = (BODY_REQUIRED_TOKENS | (_required_metrics() & set(evidence['metrics'])))-all_tokens
         if missing:
             errors.append({'code': 'missing_core_evidence', 'field': 'report_text', 'missing_tokens': sorted(missing),
                            'message': 'Report actual effect, CI, p, sample unit and excluded rows using these evidence tokens.'})
         text = '\n'.join(p for section in rendered for p in section['paragraphs'])
         if len(text) > 18000:
             errors.append({'code': 'total_text_resource_limit', 'actual_characters': len(text), 'maximum': 18000})
-        if get_study().get('synthetic') is True and not re.search(r'合成|synthetic', text, re.I):
+        if evidence['scientific_guidance']['synthetic'] and not re.search(r'合成|synthetic', text, re.I):
             errors.append({'code': 'missing_source_disclosure', 'field': 'report_text', 'message': 'The metadata explicitly says synthetic; disclose it and its scientific limitation in your own body text.'})
         if not re.search(r'(?:不|未|非|不能|并非).{0,8}因果|not.{0,15}causal|no.{0,10}causal', text, re.I):
             errors.append({'code': 'missing_causal_boundary', 'field': 'report_text', 'message': 'Explicitly state that this analysis does not establish causality. This keyword screen is not scientific proof.'})

@@ -116,6 +116,38 @@ export function verifiedReportFiles(workspace:string, deliveredReports?:Map<stri
   return allowed;
 }
 
+/** Review PDFs are a separate product from verified statistical reports. Their
+ * exact files must be named by this task's successful export tool result. */
+export function verifiedReviewFiles(workspace:string, proof:Map<string,string>){
+  const allowed=new Set<string>(), directory=join(workspace,'outputs/documents');
+  if(!existsSync(directory)||lstatSync(directory).isSymbolicLink())return allowed;
+  for(const name of readdirSync(directory).slice(0,2048)){
+    if(!/^[a-f0-9]{32}$/.test(name))continue;
+    const folder=join(directory,name),receiptPath=join(folder,'delivery.json');
+    if(lstatSync(folder).isSymbolicLink()||!existsSync(receiptPath)||!within(workspace,receiptPath))continue;
+    try{
+      const stat=lstatSync(receiptPath);
+      if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>1000000)continue;
+      const receipt=JSON.parse(readFileSync(receiptPath,'utf8'));
+      if(receipt.kind!=='source_bound_review'||receipt.layout_passed!==true||
+        !['paper-review','input-review'].includes(receipt.category)||!Array.isArray(receipt.files)||receipt.files.length!==2)continue;
+      const approved=JSON.parse(readFileSync(join(workspace,'approved-inputs.json'),'utf8')).files;
+      if(Object.keys(approved).length!==Object.keys(receipt.source_versions??{}).length||
+         Object.entries(approved).some(([key,value])=>receipt.source_versions[key]!==value))continue;
+      const files:string[]=[];
+      for(const row of receipt.files){
+        if(typeof row.name!=='string'||!/^outputs\/documents\/[a-f0-9]{32}\/(?:paper-review|input-review)\.(?:pdf|md)$/.test(row.name))continue;
+        const path=join(workspace,row.name);
+        if(proof.get(path)!==row.sha256||!existsSync(path)||!within(folder,path))continue;
+        const st=lstatSync(path);
+        if(st.isFile()&&!st.isSymbolicLink()&&st.nlink===1&&st.size===row.bytes&&st.size<=30*1024*1024&&sha(readFileSync(path))===row.sha256)files.push(path);
+      }
+      if(files.length===2)files.forEach(path=>allowed.add(path));
+    }catch{/* Changed sources or deliverables are not a publication grant. */}
+  }
+  return allowed;
+}
+
 /** A later model-summary failure does not revoke a verified report delivery.
  * Incomplete drafts and other scenes still require normal task completion. */
 export function captureComparisonDeliveries(service: ReturnType<typeof comparisonArtifacts>, context: {
@@ -133,12 +165,13 @@ export function captureComparisonDeliveries(service: ReturnType<typeof compariso
     // own bounded tool events may grant a recovered download.
     const delivered = context.status !== 'completed'||context.recoverMissing ? taskReportDeliveries(context) : undefined;
     approved=verifiedReportFiles(context.workspace,delivered);
+    for(const path of verifiedReviewFiles(context.workspace,taskReportDeliveries(context,context.workspace)))approved.add(path);
     if ((context.status !== 'completed'||context.recoverMissing)&&!approved.size)return [];
   }
   return service.snapshot(context.turn, context.lane, context.attempt, context.workspace, approved, context.recoverMissing === true);
 }
 
-function taskReportDeliveries(context: { eventsPath?: string; startedAt?: string; finishedAt?: string }) {
+function taskReportDeliveries(context: { eventsPath?: string; startedAt?: string; finishedAt?: string }, reviewWorkspace?:string) {
   const found = new Map<string, string>(), calls = new Set<string>();
   const start = Date.parse(context.startedAt ?? ''), end = Date.parse(context.finishedAt ?? '');
   if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || !context.eventsPath || !existsSync(context.eventsPath)) return found;
@@ -148,13 +181,19 @@ function taskReportDeliveries(context: { eventsPath?: string; startedAt?: string
     try {
       const event = JSON.parse(line);
       if (!Number.isFinite(event.time) || event.time < start || event.time > end) continue;
-      if (event.type === 'tool/call' && event.data?.name === 'mcp__research_report__deliver_report' && typeof event.data.callId === 'string') calls.add(event.data.callId);
+      const name=reviewWorkspace?'mcp__research_report__export_input_review':'mcp__research_report__deliver_report';
+      if (event.type === 'tool/call' && event.data?.name === name && typeof event.data.callId === 'string') calls.add(event.data.callId);
       if (event.type !== 'tool/result') continue;
       for (const part of event.data?.message?.content ?? []) {
         if (part.type !== 'tool-result' || part.isError || !calls.has(part.toolCallId)) continue;
         for (const content of part.content ?? []) {
           if (content.type !== 'text') continue;
           const receipt = JSON.parse(content.text);
+          if(reviewWorkspace&&receipt.exported===true&&Array.isArray(receipt.artifacts)){
+            for(const row of receipt.artifacts)if(typeof row.name==='string'&&
+              /^outputs\/documents\/[a-f0-9]{32}\/input-review\.(?:pdf|md)$/.test(row.name)&&/^[a-f0-9]{64}$/.test(row.sha256))
+                found.set(join(reviewWorkspace,row.name),row.sha256);
+          }
           if (receipt.ok === true && receipt.delivered === true && receipt.quality_passed === true &&
             typeof receipt.path === 'string' && /^[a-f0-9]{64}$/.test(receipt.sha256)) found.set(receipt.path, receipt.sha256);
         }

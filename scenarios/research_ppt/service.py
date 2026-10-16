@@ -25,7 +25,8 @@ def readable_source_name(value: str) -> str:
 
 def source_note_label(row: dict, page: int) -> str:
     """宿主生成的来源定位；文件名只作显示，document_id 与完整摘要回指原文。"""
-    return (f"{readable_source_name(row['name'])} 第 {page} 页; SHA256 {row['version_sha256']}"
+    unit = '页' if Path(row['name']).suffix.lower() in {'.pdf','.pptx'} else '逻辑段'
+    return (f"{readable_source_name(row['name'])} 第 {page} {unit}; SHA256 {row['version_sha256']}"
             f"; 文档 {row['document_id']}")
 
 
@@ -110,6 +111,8 @@ class PPTService:
             f.write(json.dumps({'kind': kind, **data}, ensure_ascii=False) + '\n')
 
     def document_cache(self, row: dict | None = None):
+        if row is not None and Path(row['path']).suffix.lower() not in {'.pdf','.pptx'}:
+            return None  # Existing PDF/PPTX cache contract stays unchanged.
         if not self.job.get('document_cache', False):
             return None
         if row is not None and self.library is not None:
@@ -406,10 +409,12 @@ class PPTService:
                     'format': item['parsed']['format'], 'page': cite['page'],
                     'source_sha256': item['row']['version_sha256']})
                 if 'archetype' in slide:
+                    locator = (f"p.{cite['page']}" if item['parsed']['format'] in {'pdf', 'pptx'}
+                               else f"逻辑段 {cite['page']}")
                     if cite['source_id'] == previous_visible_source_id:
-                        visible.append(f"[{index}] p.{cite['page']}")
+                        visible.append(f"[{index}] {locator}")
                     else:
-                        visible.append(f"[{index}] {readable_source_name(item['row']['name'])} · p.{cite['page']}")
+                        visible.append(f"[{index}] {readable_source_name(item['row']['name'])} · {locator}")
                     previous_visible_source_id = cite['source_id']
             slide['sources'] = resolved
             if 'archetype' in slide:

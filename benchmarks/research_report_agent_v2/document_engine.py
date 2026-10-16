@@ -19,7 +19,7 @@ from itertools import groupby
 from pathlib import Path
 from typing import Any
 
-ENGINE_VERSION = "streaming-pdf-v2.4"
+ENGINE_VERSION = "streaming-pdf-v2.5"
 AUDIT_POLICY_VERSION = "layout-audit-v2.2"
 # A frame is a planned text area, not the physical paper edge. Small glyph
 # overhangs into its otherwise empty margin are reportable, not lost content.
@@ -176,6 +176,35 @@ def _paragraph_markup(text: str, fallback_font) -> str:
     return "".join(runs)
 
 
+def _measured_lines(text: str, font: str, size: float, width: float, fallback_font=None) -> str:
+    """Bound CJK lines by actual glyph advances before Paragraph's own wrapping.
+
+    Some ReportLab CJK line-break paths allow closing punctuation to push a
+    full-width title past its frame. Preserve every character; add only breaks.
+    """
+    from reportlab.pdfbase import pdfmetrics
+    def advance(character):
+        chosen = fallback_font.fontName if fallback_font and fallback_font.face.charToGlyph.get(ord(character), 0) else font
+        return pdfmetrics.stringWidth(character, chosen, size)
+    lines = []
+    for original in text.split('\n'):
+        line, used = '', 0.0
+        for char in original:
+            step = advance(char)
+            if line and used + step > width:
+                # Prefer whitespace within a Latin word run. CJK may wrap at
+                # any character; punctuation receives no unmeasured overhang.
+                split = line.rfind(' ')
+                if split > len(line) // 2:
+                    lines.append(line[:split+1]); line = line[split+1:]
+                    used = sum(advance(c) for c in line)
+                else:
+                    lines.append(line); line, used = '', 0.0
+            line += char; used += step
+        lines.append(line)
+    return '\n'.join(lines)
+
+
 def render_document(payload: dict, pdf_path: Path | None, config: dict | None = None,
                     *, _measure_only: bool = False) -> dict:
     """Render once without page padding; return a persisted block-level manifest.
@@ -196,7 +225,8 @@ def render_document(payload: dict, pdf_path: Path | None, config: dict | None = 
         pdf_path = Path(pdf_path).resolve()
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
     style, font = payload["requirements"]["style"], _font(payload["requirements"]["style"])
-    markup = partial(_paragraph_markup, fallback_font=_fallback_font(font))
+    fallback_font = _fallback_font(font)
+    markup = partial(_paragraph_markup, fallback_font=fallback_font)
     left, top, right, bottom = CONTENT_RECT
     usable = right - left
     accent = colors.HexColor(config["accent"])
@@ -251,7 +281,8 @@ def render_document(payload: dict, pdf_path: Path | None, config: dict | None = 
     def paragraph(text, kind, block_id, figure_index=None):
         text = str(text)
         expected.append({"id": block_id, "text": text})
-        return Tracked(Paragraph(markup(text), styles[kind]), block_id, kind, text, figure_index)
+        wrapped = _measured_lines(text, font, styles[kind].fontSize, usable - 12, fallback_font)
+        return Tracked(Paragraph(markup(wrapped), styles[kind]), block_id, kind, text, figure_index)
 
     story = []
     if style == "brief":

@@ -231,7 +231,10 @@
       const ws = workspaces.list.getSnapshot(), list = sessions.list.getSnapshot();
       const group = ws.items.find(row => row.workspaceId === target);
       const belongs = id => target ? group?.sessionIds.includes(id) : !ws.items.some(row => row.sessionIds.includes(id));
-      return [list.current, ...list.ids].find(id => {
+      // A different window may be editing another session that still looks
+      // blank in this window's list. Only this window's active composer can
+      // supply reliable draft/attachment state for reuse.
+      return [list.current].find(id => {
         const row = list.byId[id];
         if (!id || !publicSession(row) || !row.blank || row.running || !belongs(id) || ws.archivedSessionIds.includes(id)) return false;
         if (preserveCurrent && id === list.current) return true;

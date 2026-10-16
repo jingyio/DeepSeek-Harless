@@ -11,6 +11,21 @@ import { productPersona } from './harless_product_prompt.ts';
 const runFile=promisify(execFile);
 
 export type SceneOptions = { slides?: number; template?: 'academic' | 'lab'; allow_output?: boolean };
+/** Explicit page counts in the current user message override a saved default.
+ * File text is never passed here. Ambiguous requests remain a model clarification. */
+export function requestedSlides(instruction: string, fallback = 6): number {
+  const chinese = (s: string) => {
+    const digits: Record<string, number> = {'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
+    if (/^\d+$/.test(s)) return Number(s);
+    if (s.includes('十')) { const [a,b] = s.split('十'); return (a ? digits[a] : 1)*10+(b ? digits[b] : 0); }
+    return digits[s];
+  };
+  const matches = [...instruction.matchAll(/(?<![\d第])([0-9]{1,3}|[一二两三四五六七八九十]{1,3})\s*(?:页(?:幻灯片)?|slides?\b)/giu)]
+    .map(m=>chinese(m[1])).filter(n=>Number.isInteger(n));
+  const counts = [...new Set(matches)];
+  if (counts.length===1 && counts[0]>=1 && counts[0]<=30) return counts[0];
+  return fallback;
+}
 const sha = (data: Uint8Array | string) => createHash('sha256').update(data).digest('hex');
 function save(path: string, data: unknown) {
   writeFileSync(path + '.tmp', JSON.stringify(data, null, 2), { mode: 0o600 });
@@ -122,9 +137,9 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
     writeFileSync(join(root,'request.txt'),instruction,{mode:0o600});
   }
   if (scene.adapter === 'ppt') save(join(workspace, 'job.json'), {
-    schema_version: 1, job_id: taskId, inputs: inputs.filter(row => ['.pdf','.pptx'].includes(extname(row.path).toLowerCase())), instruction,
-    slides: options.slides ?? 6, template: options.template ?? 'academic', operation: 'generate',
-    allow_output: options.allow_output === true && inputs.some(row => ['.pdf','.pptx'].includes(extname(row.path).toLowerCase())), allow_rsi: false, document_cache: false, rsi_dir: join(workspace, 'rsi'),
+    schema_version: 1, job_id: taskId, inputs, instruction,
+    slides: requestedSlides(instruction, options.slides ?? 6), template: options.template ?? 'academic', operation: 'generate',
+    allow_output: options.allow_output === true && inputs.length>0, allow_rsi: false, document_cache: false, rsi_dir: join(workspace, 'rsi'),
   });
   if (scene.adapter === 'literature') {
     const directory = join(workspace, 'literature'); mkdirSync(directory, { recursive: true, mode: 0o700 });

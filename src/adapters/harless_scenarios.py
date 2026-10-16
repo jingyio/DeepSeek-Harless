@@ -45,7 +45,7 @@ def _configure_attachment_parsers(scene: dict) -> None:
         scene['antiword_root'] = str(root)
         env.update(HARLESS_ANTIWORD_BIN=str(binary), ANTIWORDHOME=str(mappings))
     for row in scene['mcp_rows']:
-        if row['config']['serverName'] == 'research_report':
+        if row['config']['serverName'] in ('research_report','paper_checks','ppt'):
             row['config'].setdefault('env', {}).update(env)
 
 
@@ -93,14 +93,14 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             except (OSError, ValueError): scene['unavailable_reason'] = 'literature_pdf_dependencies_missing'
         if row.get('adapter') == 'data-report' and any(importlib.util.find_spec(module) is None for module in ('numpy','pandas','scipy','matplotlib','statsmodels')):
             scene['unavailable_reason'] = 'data_report_python_dependencies_missing'
-        if row.get('adapter') == 'data-report':
+        if row.get('adapter') in ('data-report','ppt') or row['id']=='paper-proofreading':
             _configure_attachment_parsers(scene)
-        if row.get('adapter') == 'data-report' and os.environ.get('HARLESS_PPT_FONT_ROOT'):
+        if (row.get('adapter') == 'data-report' or row['id']=='paper-proofreading') and os.environ.get('HARLESS_PPT_FONT_ROOT'):
             report_font = Path(os.environ['HARLESS_PPT_FONT_ROOT']).resolve() / 'wqy-microhei.ttc'
             if report_font.is_file() and not report_font.is_symlink():
                 scene['report_font_sha256'] = hashlib.sha256(report_font.read_bytes()).hexdigest()
                 for mcp in scene['mcp_rows']:
-                    if mcp['config']['serverName'] == 'research_report':
+                    if mcp['config']['serverName'] in ('research_report','paper_checks'):
                         mcp['config'].setdefault('env', {})['HARLESS_REPORT_FONT'] = str(report_font)
             else:
                 scene['unavailable_reason'] = 'data_report_embedded_font_missing'

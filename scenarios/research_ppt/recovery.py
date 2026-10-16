@@ -335,7 +335,10 @@ class CheckpointPPTService(PPTService):
                 raise CheckpointRejected("checkpoint 来源句柄未获当前job授权")
             parsed = value["parsed"]
             _object(parsed, {"format", "page_count", "text_chars", "pages", "images", "warnings"}, "checkpoint 来源解析格式未知")
-            if parsed["format"] not in {"pdf", "pptx"} or type(parsed["page_count"]) is not int or not 1 <= parsed["page_count"] <= 200:
+            from src.adapters.harless_attachment_text import TEXT_SUFFIXES
+            formats = {'pdf','pptx','docx','doc','xlsx','unknown'} | {x.lstrip('.') for x in TEXT_SUFFIXES}
+            maximum = 200 if parsed['format'] in {'pdf','pptx'} else 2000
+            if parsed["format"] not in formats or type(parsed["page_count"]) is not int or not 1 <= parsed["page_count"] <= maximum:
                 raise CheckpointRejected("checkpoint 来源格式或页数无效")
             if (not isinstance(parsed["pages"], list) or len(parsed["pages"]) != parsed["page_count"] or
                     type(parsed["text_chars"]) is not int or parsed["text_chars"] < 0 or

@@ -65,5 +65,20 @@ for name in TOOL_NAMES:
     server.add_tool(guarded(getattr(workflow_tools, name)), name=name,
         annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False))
 
+@server.tool()
+def export_input_review(title: str, sections: list[dict], source_versions: dict) -> dict:
+    """If no analyzable table exists, export the actual reference review and missing-data
+    requirements as PDF + Markdown. sections=[{heading,paragraphs:[text]}]. Use the
+    complete attachment_sources filename:sha256 map. This is NOT a statistical
+    report; never invent observations/results or bypass the statistical workflow.
+    """
+    prepared=guard()
+    if prepared['report_ready']:
+        return {'exported':False,'reason':'statistical_analysis_required',
+                'next_step':'An analyzable data table exists. Use the statistical report workflow and deliver_report.'}
+    from src.adapters.session_report import SessionReport
+    from src.adapters.session_files import SessionFiles
+    return SessionReport(SessionFiles(WORK/'inputs'),'input-review').export(title,sections,source_versions)
+
 if __name__ == '__main__':
     server.run(transport='stdio')

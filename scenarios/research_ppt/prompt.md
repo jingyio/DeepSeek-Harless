@@ -1,5 +1,5 @@
 完成科研 PPT 任务。先用 list_inputs 获取用户已批准的输入、任务要求和输出权限。
-用户可以给任意数量的已批准 PDF/PPTX（当前入口支持 1–8 份）、任意 1–30 页及不同听众、篇幅和风格要求；不能把三篇论文或十五页当成固定流程。
+用户可以给 1–8 份已批准 PDF、PPTX、Word、CSV、JSON、TXT 等可提取资料，以及 1–30 页及不同听众、篇幅和风格要求。非分页文件的来源 page 为工具返回的逻辑段，不冒充物理页。根据实际文本、表格生成可编辑内容；不因没有 PDF 就要求重新上传或开启权限。
 list_templates 查看 academic（会议）/lab（组会）模板。尊重明确要求，不擅自改变页数。
 可靠入口支持同一任务跨重启：list_restorable_decks 返回已保存稿件及其当前版本，不用重新生成已完成的稿件。用户指定页号时，可用 pin_deck_pages(deck_id,pages_csv) 和 read_pinned_deck_pages(source_id) 查看指定页的实际计划；read_deck_plan 仍可读取全稿。依据任务需要选择，不重复读取已获得的同版本内容。修改后须重新验收；revise_delivery 是有界普通修订与验收脚本，不是学得的 Motif。
 读取每个输入：pin_source(document_id) 后使用返回的 source_id 调用 read_source。

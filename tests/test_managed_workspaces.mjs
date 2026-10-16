@@ -511,6 +511,16 @@ test('workspace new chat reuses an empty blank by membership without depending o
   assert.equal(ui.inputs.get('one').draft, '尚未发送的问题');
 });
 
+test('new chat cannot reuse an inactive blank whose draft may belong to another window', async () => {
+  const ui = interactiveWorkspaceBrowser();
+  ui.sessions.list.value.current = undefined;
+  ui.sessions.list.value.byId.one.blank = true;
+  ui.navigation.startSession('a'); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.calls.filter(row => row[0] === 'create').length, 1);
+  assert.ok(!ui.calls.some(row => row[0] === 'open' && row[1] === 'one'));
+  ui.dispose();
+});
+
 test('removed and restored native membership refresh trash without exposing archived deleted chats or reopening a frozen selection', async () => {
   const ui = interactiveWorkspaceBrowser();
   await new Promise(resolve => setImmediate(resolve));
