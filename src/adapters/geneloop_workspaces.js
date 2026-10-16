@@ -422,8 +422,7 @@
                 icon('folder', 20), h('span', { className: 'geneloop-workspace-label' }, item.title),
                 pinned.includes(item.workspaceId) && h('span', { className: 'geneloop-workspace-pin', 'aria-label': '已置顶' }, icon('pin', 13))),
               h('button', { className: 'geneloop-row-action', 'aria-label': '工作区操作 ' + item.title, 'aria-haspopup': 'menu', 'aria-expanded': menu?.kind === 'workspace' && menu.id === item.workspaceId,
-                onClick: event => { event.stopPropagation(); openMenu(event, 'workspace', item.workspaceId, item.title); } }, '⋯'),
-              h('button', { className: 'geneloop-row-action', 'aria-label': '在“' + item.title + '”中新建会话', onClick: event => { event.stopPropagation(); void start(item.workspaceId); } }, icon('compose', 16))),
+                onClick: event => { event.stopPropagation(); openMenu(event, 'workspace', item.workspaceId, item.title); } }, '⋯')),
             expanded && (children.length ? children.map(row) : query ? h('p', { className: 'geneloop-workspace-empty' }, '没有匹配的对话') : h('button', { className: 'geneloop-workspace-empty', onClick: () => { void start(item.workspaceId); } }, '开始新对话')));
         }), ungrouped.length > 0 && h('div', { className: 'geneloop-ungrouped' }, h('div', { className: 'geneloop-workspace-subheading' }, '未分组'), ungrouped.map(row)),
         ws.items.length === 0 && !query && (ws.phase === 'pending' || list.phase === 'pending'

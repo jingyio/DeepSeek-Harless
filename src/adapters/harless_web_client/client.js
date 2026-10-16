@@ -13,6 +13,7 @@ window.__ModuleLoader__.load({
     const draftSelections = new Map();
     const aliases = { ppt: 'ppt', 'paper-proofreading': 'paper', 'research-data-analysis': 'data', 'new-scene': 'chat' };
     const shortcut = scene => scene.shortcut || aliases[scene.id] || scene.id;
+    const selectableScene = scene => !['new-scene', 'files', 'file-management'].includes(scene.id) && !['chat', 'files'].includes(shortcut(scene));
     const modeLabel = mode => mode === 'baseline' ? 'Origin' : mode[0].toUpperCase() + mode.slice(1);
     const displayValue = (id, value) => value && draftSelections.has(id) ? { ...value,
       selection: { ...value.selection, scene: draftSelections.get(id) },
@@ -47,24 +48,35 @@ window.__ModuleLoader__.load({
     }
     const reference = scene => ({ source: 'harless-scenes', ref: shortcut(scene),
       label: '/' + shortcut(scene), appearance: 'file', clipboardText: '/' + shortcut(scene) });
-    function HarlessStatus({ sessionId, openSession }) {
+    function HarlessStatus({ sessionId, openSession, draftInput }) {
       const [value, setValue] = React.useState(null);
       React.useEffect(() => {
-        const abort = new AbortController(); setValue(displayValue(sessionId, cache.get(sessionId)) || null);
-        const listener = next => { if (!abort.signal.aborted) setValue(next); };
+        const abort = new AbortController();
+        const listener = next => {
+          if (abort.signal.aborted) return;
+          const draft = draftInput?.state.getSnapshot().draft;
+          if (typeof draft === 'string') {
+            const token = /^(?:\s*)\/([a-z][a-z0-9_-]*)(?=$|\s|[\u3400-\u9fff])/i.exec(draft)?.[1]?.toLowerCase();
+            const scene = next?.scenes.find(row => shortcut(row) === token)?.id || Object.keys(aliases).find(id => aliases[id] === token) || 'new-scene';
+            next = { ...next, selection: { ...next?.selection, scene } };
+          }
+          setValue(next);
+        };
+        const sync = () => listener(displayValue(sessionId, cache.get(sessionId)) || null);
+        sync(); const unsubscribe = draftInput?.state.subscribe(sync);
         const group = observers.get(sessionId) || new Set(); group.add(listener); observers.set(sessionId, group);
         settings({ sessionId }, abort.signal).catch(() => {});
-        return () => { abort.abort(); group.delete(listener); if (!group.size) observers.delete(sessionId); };
-      }, [sessionId]);
-      const scene = value?.scenes.find(row => row.id === value.selection.scene);
-      const name = scene ? '/' + shortcut(scene) : 'GeneLoop';
-      const detail = value ? value.paired_comparison ? 'Baseline / Motif 对照' : `${modeLabel(value.selection.mode)} · RSI ${value.selection.rsi ? 'On' : 'Off'}${value.conversation_only ? ' · 文字对话' : ''}` : '';
-      return React.createElement('span', { role: 'status', 'aria-label': `${name} ${detail}`, title: `${name} ${detail}`,
+        return () => { abort.abort(); unsubscribe?.(); group.delete(listener); if (!group.size) observers.delete(sessionId); };
+      }, [sessionId, draftInput]);
+      const sceneId = value?.selection?.scene;
+      const scene = value?.scenes?.find(row => row.id === sceneId);
+      const name = scene ? '/' + shortcut(scene) : aliases[sceneId] ? '/' + aliases[sceneId] : '';
+      if ((!name || sceneId === 'new-scene') && !value?.comparison_parent_session_id) return null;
+      return React.createElement('span', { className: 'geneloop-draft-scene', role: 'status', 'aria-label': name, title: name,
         style: { display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: 'min(380px, 52vw)', overflow: 'hidden',
           whiteSpace: 'nowrap', borderRadius: '6px', padding: '2px 7px', fontSize: '13px', lineHeight: '20px',
           color: 'var(--dsw-alias-label-secondary, #767c88)' } },
-        React.createElement('strong', { style: { fontWeight: 600, color: 'var(--dsw-alias-state-business-primary, #4d78e8)' } }, name),
-        detail && React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' } }, detail),
+        sceneId !== 'new-scene' && React.createElement('strong', { style: { fontWeight: 600, color: 'var(--dsw-alias-state-business-primary, #4d78e8)' } }, name),
         value?.comparison_parent_session_id && React.createElement('button', { type: 'button', onClick: () => openSession(value.comparison_parent_session_id),
           style: { color: 'var(--dsw-alias-link, #729cf7)', background: 'none', border: 0, cursor: 'pointer', padding: '2px 4px', font: 'inherit', flexShrink: 0 } }, '返回双栏结果与下载'));
     }
@@ -81,6 +93,36 @@ window.__ModuleLoader__.load({
         ctx.effect(() => () => { sessions.fork = originalFork; }, 'harless: durable branch names');
       }
       const h = React.createElement;
+      const uploads = new Map();
+      const liveStyle = '.geneloop-process-status{font:inherit;font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary);margin:0 0 12px}.geneloop-looping{font:inherit;font-size:14px;color:var(--dsw-alias-state-business-primary,#729cf7);margin:20px 0 8px}.geneloop-menu-name{display:inline-flex;align-items:center;gap:10px}.geneloop-menu-name svg{flex:none;vertical-align:middle}';
+      const liveStatus = label => h('p', { role: 'status', 'aria-live': 'polite', className: 'geneloop-process-status' }, label + '…');
+      const looping = () => h('p', { role: 'status', className: 'geneloop-looping' }, 'GeneLooping…');
+      const documentSubject = raw => {
+        let args; try { args = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return; }
+        if (!args || typeof args !== 'object' || Array.isArray(args)) return;
+        for (const key of ['filename', 'file_name', 'name', 'file', 'path']) {
+          const value = args[key];
+          if (typeof value !== 'string' || value.length > 200 || /^(?:[a-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(value)) continue;
+          const name = value.split(/[\\/]/).pop();
+          if (/^[^\x00-\x1f<>:"|?*]{1,100}\.(?:pdf|docx?|xlsx?|csv|tsv|json|txt|md|pptx?|png|jpe?g|webp)$/i.test(name)) return name;
+        }
+      };
+      const workLabel = (name, subject) => {
+        const tool = String(name || '').split('__').pop();
+        const detail = typeof subject === 'string' && subject ? '：' + subject : '';
+        if (/read|extract|parse|load/.test(tool)) return '正在阅读文档' + detail;
+        if (/search|browse/.test(tool)) return '正在搜索资料' + detail;
+        if (/exec|shell|command|terminal|bash|powershell/.test(tool)) return '正在执行命令' + detail;
+        return '正在调用工具' + (tool ? '：' + tool : '');
+      };
+      const progressText = result => {
+        const progress = result.progress;
+        if (result.status === 'queued') return '等待执行';
+        if (progress?.tool && progress.status === 'running') return workLabel(progress.tool, progress.subject);
+        if (progress?.status === 'running' && progress.label && !/准备|组织回复/.test(progress.label))
+          return progress.label.startsWith('正在') ? progress.label : '正在' + progress.label;
+        return '正在回复';
+      };
       const busyComparisons = new Map();
       // The journal stores the submission snapshot, not its eventual result.
       // Keep recent authenticated snapshots across chat/trace navigation only;
@@ -620,7 +662,7 @@ window.__ModuleLoader__.load({
           // bound answer_display may differ from raw template text; do not show
           // the unbound last message a second time in the process section.
           const previousMessages = messages.slice(0, -1);
-          const progressLabel = result.progress?.label || (!settled(result) ? labels[result.status] : '查看执行过程');
+          const progressLabel = progressText(result);
           const captureLink = event => {
             const link = event.target.closest?.('a'); if (!link) return;
             const raw = link.getAttribute('href') || '', file = artifactFor(files, raw);
@@ -638,7 +680,8 @@ window.__ModuleLoader__.load({
           return h('section', { key: lane, className: 'harless-paired-pane' + (single ? ' harless-single-pane' : ''), 'aria-label': single ? '回复' : title,
             'data-actions-reveal': isLatestTurn ? 'always' : 'hover' },
             !single && h('header', null, h('strong', null, title), h('span', { role: 'status' }, notStarted ? '任务未启动' : result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
-            !settled(result) && h('p', { className: 'harless-live-status', role: 'status', 'aria-live': 'polite' }, h('span', { className: 'harless-live-dot', 'aria-hidden': true }), progressLabel),
+            h('style', null, liveStyle),
+            !settled(result) && liveStatus(progressLabel),
             (activity.length > 0 || previousMessages.length > 0) && h('details', { className: 'harless-activity' },
               h('summary', null, '查看执行过程'),
               activity.length > 0 && h('ol', null, ...activity.map((entry, index) => h('li', { key: index, 'data-status': entry.status },
@@ -655,7 +698,8 @@ window.__ModuleLoader__.load({
             h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, answer
               ? MarkdownText ? h(MarkdownText, { text: answer, streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
                 : h('p', { style: { whiteSpace: 'pre-wrap' } }, answer)
-              : h('p', { className: 'harless-paired-muted' }, notStarted ? '任务未启动，暂无回复。' : result.status === 'queued' ? '等待当前任务结束后开始。' : !settled(result) ? '正在处理，结果会自动更新…' : '本轮未生成文字回复。')),
+              : settled(result) && h('p', { className: 'harless-paired-muted' }, notStarted ? '任务未启动，暂无回复。' : '本轮未生成文字回复。')),
+            !settled(result) && looping(),
             files.length > 0 && h('section', { className: 'harless-paired-deliveries', 'aria-label': title + '交付文件' },
               h('h4', null, '交付文件'), h('ul', { className: 'harless-paired-files' }, ...files.map(file => {
                 const status = downloads[lane + ':' + file.id];
@@ -672,7 +716,7 @@ window.__ModuleLoader__.load({
                       status?.phase === 'pending' ? h('span', { className: 'harless-artifact-spinner', 'aria-hidden': true }) : h(primitives.IconDownloadOutline16, { 'aria-hidden': true })))),
                   status && h('small', { role: status.phase === 'error' ? 'alert' : 'status', className: status.phase === 'error' ? 'harless-paired-error' : 'harless-paired-muted' }, status.message));
               }))),
-            !single && result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
+            !single && settled(result) && result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
             h('footer', null,
               h('div', { className: 'harless-message-actions', 'aria-label': title + '回复操作' },
                 actionButton({ 'aria-label': '复制 ' + title + ' 回复', disabled: !answer, onClick: () => copy(lane) }, copied === lane ? 'check' : 'copy', copied === lane ? '已复制' : '复制'),
@@ -877,21 +921,21 @@ window.__ModuleLoader__.load({
           }, 'geneloop: model selection queue');
           modelChoices.set(id, value); return value;
         }
-        function wrapWebSeat(name, adapt) {
+        function wrapWebSeat(name, adapt, options = {}) {
           ctx.slots.inject(name, () => {
             let release, mirrors = [], installing = false;
             const install = () => {
               if (release || installing) return;
-              const original = ctx.slots.entries(name).find(entry => (entry.options.priority ?? 0) >= 0);
+              const original = ctx.slots.entries(name).find(entry => (entry.options.priority ?? 0) >= 0 && (!options.id || entry.options.id === options.id));
               if (!original) return;
               installing = true;
               try {
                 const names = Object.fromEntries(Object.keys(original.children || {}).map(child => [child, 'geneloop.web.' + child]));
                 const children = Object.fromEntries(Object.entries(original.children || {}).map(([child, spec]) => [names[child], spec]));
-                release = ctx.slots.register({ name, priority: -100, locale: original.locale,
+                release = ctx.slots.register({ name, ...original.options, priority: -100, locale: original.locale,
                   ...(original.store ? { store: original.store } : {}), ...(original.select ? { select: original.select } : {}),
                   children, inject: (...args) => adapt(original.inject?.(...args) || {}, args[0]) }, props => h(original.component, {
-                  ...props, renderSlot: (child, owner, options) => props.renderSlot(names[child] || child, owner, options),
+                  ...props, ...(options.renderProps?.(props) || {}), renderSlot: (child, owner, options) => props.renderSlot(names[child] || child, owner, options),
                   ...(props.renderSlotChain ? { renderSlotChain: (child, owner, options) => props.renderSlotChain(names[child] || child, owner, options) } : {}),
                 }));
                 mirrors = Object.keys(names).map(child => mirrorPublicSlot(child, names[child]));
@@ -903,6 +947,7 @@ window.__ModuleLoader__.load({
         }
         wrapWebSeat('conversation.composer.bar', (props, id) => {
           if (id) webMenu(id);
+          if (id && props.addFiles) uploads.set(id, props.addFiles);
           const launcher = props.hooks?.menuLauncher;
           return { ...props, command: undefined,
             ...(launcher ? { hooks: { ...props.hooks, menuLauncher: {
@@ -918,6 +963,34 @@ window.__ModuleLoader__.load({
           } : props.toggleCommandMenu };
         });
         wrapWebSeat('conversation.input.model', (props, id) => optimisticModel(id, props));
+        wrapWebSeat('conversation.view', props => props, { id: 'chat',
+          renderProps: props => ({ t: (key, ...args) => key === 'chat.deepDiving' ? 'GeneLooping…' : props.t(key, ...args) }) });
+        // Only adapt display data. The native controller still owns keyboard
+        // navigation, focus, outside-click dismissal and atomic reference picks.
+        const menuFaces = new WeakMap();
+        function menuIcon(item) {
+          const key = item.value, color = key === 'ppt' ? '#c28b42' : key === 'research-data-analysis' ? '#42a99b' : key === 'paper-proofreading' ? '#729cf7' : 'currentColor';
+          const paths = key === 'ppt' ? ['M3 4h18v12H3zM12 16v5M8 21l4-5 4 5M7 8h10M7 12h6']
+            : key === 'research-data-analysis' ? ['M4 3v17h17M8 16v-5M13 16V7M18 16V4']
+            : key === 'paper-proofreading' ? ['M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6']
+            : ['M8 13l7-7a3 3 0 0 1 4 4l-9 9a5 5 0 0 1-7-7l9-9a7 7 0 0 1 10 10l-8 8'];
+          return h('svg', { width: 19, height: 19, viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth: 1.6,
+            strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, ...paths.map(d => h('path', { key: d, d })));
+        }
+        wrapWebSeat('conversation.input.overlay', props => {
+          if (!props.menu) return props;
+          if (!menuFaces.has(props.menu)) {
+            let before, snapshot;
+            menuFaces.set(props.menu, { subscribe: fn => props.menu.subscribe(fn), getSnapshot: () => {
+              const next = props.menu.getSnapshot();
+              if (next !== before) { before = next; snapshot = { ...next, groups: next.groups.map(group => group.source !== 'harless-scenes' ? group : {
+                ...group, items: group.items.map(item => ({ ...item, icon: undefined,
+                  name: h('span', { className: 'geneloop-menu-name', style: { display: 'inline-flex', alignItems: 'center', gap: 10 } }, menuIcon(item), item.name) })) }) }; }
+              return snapshot;
+            } });
+          }
+          return { ...props, menu: menuFaces.get(props.menu) };
+        }, { id: 'slash-menu' });
       }
       // The pinned native tab roster enumerates shadowed entries as well as
       // winners. Adapt only the header's public source to one tab per id; keep
@@ -1161,15 +1234,19 @@ window.__ModuleLoader__.load({
         const messageCount = evidence.filter(row => row.kind === 'assistant-step' && hasAnswer(row)).length;
         const hasProcess = evidence.length > 0 || reasoning.length > 0;
         const active = tools.findLast(row => row.data.root.kind !== 'tool-result');
-        const status = active ? '正在' + toolLabel(active.data.root) : answer?.data.status === 'running' && hasAnswer(answer) ? '正在回复' : '正在处理';
+        const activeRoot = active?.data.root;
+        const latestBlock = answer?.data.blocks?.at(-1);
+        const status = activeRoot ? workLabel(activeRoot.call?.name || activeRoot.name, documentSubject(activeRoot.call?.argsRaw || activeRoot.argsRaw))
+          : latestBlock?.kind === 'reasoning' && answer?.data.status === 'running' ? '正在思考' : '正在回复';
         const label = count ? `${count} 次工具调用${messageCount ? ` · ${messageCount} 条过程消息` : ''}` : '查看处理过程';
         return h('section', { className: 'geneloop-product-turn' },
           h('style', null, artifactLinkStyle),
+          h('style', null, liveStyle),
           h('style', null, `.geneloop-product-turn{min-width:0}.geneloop-process-toggle{display:flex;align-items:center;gap:8px;border:0;border-radius:8px;padding:7px 9px;margin:0 0 8px -9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer;text-align:left}.geneloop-process-toggle:hover{background:var(--dsw-alias-interactive-bg-hover)}.geneloop-process-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.geneloop-process-toggle svg{flex:none;transition:transform .15s}.geneloop-process-toggle[aria-expanded=true] svg{transform:rotate(90deg)}.geneloop-process-evidence{border-left:2px solid var(--dsw-alias-border-l2,#8885);padding-left:14px;margin:4px 0 18px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.geneloop-process-evidence>section{margin:12px 0}.geneloop-process-evidence pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.geneloop-process-label{font-weight:500}.geneloop-process-status{font-size:13px;color:var(--dsw-alias-label-secondary);margin:0 0 8px}@media(prefers-reduced-motion:reduce){.geneloop-process-toggle svg{transition:none}}`),
           hasProcess && h('button', { type: 'button', className: 'geneloop-process-toggle', 'aria-expanded': open, 'aria-controls': id,
             onClick: () => setOpen(value => !value) },
             h('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, 'aria-hidden': true }, h('path', { d: 'm4 2 4 4-4 4' })), label),
-          running && h('p', { role: 'status', 'aria-live': 'polite', className: 'geneloop-process-status' }, status + '…'),
+          running && liveStatus(status),
           h('div', { id, className: 'geneloop-process-evidence', hidden: !open }, open && [
             ...evidence.map(row => row.kind === 'assistant-step'
               ? h('section', { key: row.key }, h('div', { className: 'geneloop-process-label' }, '过程消息'), h(AssistantContent, { node: row, owner, process: true }))
@@ -1405,12 +1482,29 @@ window.__ModuleLoader__.load({
           if (!/^[a-z0-9_-]*$/.test(query)) return [];
           const value = cache.get(session.sessionId) || await settings(session, req.signal);
           if (req.signal?.aborted) return [];
-          return value.scenes.filter(scene => shortcut(scene).startsWith(query)).map(scene => ({
-            name: shortcut(scene), value: scene.id, section: 'Scenes', description: scene.available === false
-              ? `暂不可用：${scene.unavailable_reason}` : scene.label,
-          }));
+          return [...(!query && uploads.has(session.sessionId) ? [{ name: '添加照片或文件', value: 'upload', section: '添加', description: '从电脑上传' }] : []),
+            ...value.scenes.filter(scene => selectableScene(scene) && shortcut(scene).startsWith(query)).map(scene => ({
+            name: shortcut(scene), value: scene.id, section: '场景', description: scene.available === false
+              ? `暂不可用：${scene.unavailable_reason}` : ({ ppt: '演示文稿', 'paper-proofreading': '论文校对', 'research-data-analysis': '数据分析' })[scene.id] || scene.label,
+          }))];
         },
-        onPick: pick => { void chooseScene(pick.session, pick.candidate.value, pick.span).catch(error => report(pick.session, error)); return 'handled'; },
+        onPick: pick => {
+          if (pick.candidate.value === 'upload') {
+            if (!isCurrent(pick.session)) return 'handled';
+            const input = document.createElement('input'); input.type = 'file'; input.multiple = true; input.hidden = true;
+            const remove = () => input.remove();
+            input.oncancel = remove;
+            input.onchange = () => {
+              if (isCurrent(pick.session) && input.files?.length) {
+                const error = uploads.get(pick.session.sessionId)?.(Array.from(input.files));
+                if (error) report(pick.session, Error(error));
+              }
+              remove();
+            };
+            document.body.appendChild(input); input.click(); return 'handled';
+          }
+          void chooseScene(pick.session, pick.candidate.value, pick.span).catch(error => report(pick.session, error)); return 'handled';
+        },
         matchSpace: (session, token) => {
           const scene = cache.get(session.sessionId)?.scenes.find(row => '/' + shortcut(row) === token.toLowerCase());
           // Hot, synchronous native insertion. Selection is confirmed by the
@@ -1430,7 +1524,7 @@ window.__ModuleLoader__.load({
           // The server parses this exact prefix atomically during admission;
           // fetching or mounting a scene here would block that first paint.
         },
-        lexicon: session => cache.get(session.sessionId)?.scenes.map(shortcut),
+        lexicon: session => cache.get(session.sessionId)?.scenes.filter(selectableScene).map(shortcut),
         subscribeLexicon: (session, listener) => {
           const group = lexiconObservers.get(session.sessionId) || new Set(); group.add(listener); lexiconObservers.set(session.sessionId, group);
           return () => { group.delete(listener); if (!group.size) lexiconObservers.delete(session.sessionId); };
@@ -1474,7 +1568,7 @@ window.__ModuleLoader__.load({
         },
       } }), 'harless: native command picker');
       ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
-        { name: 'conversation.input.left', id: 'harless-status', order: 40, inject: sessionId => ({ sessionId, openSession: id => sessions.open(id) }) }, HarlessStatus));
+        { name: 'conversation.input.left', id: 'harless-status', order: 40, inject: sessionId => ({ sessionId, draftInput: inputFor(sessionId), openSession: id => sessions.open(id) }) }, HarlessStatus));
     }
     return { inject, apply };
   },

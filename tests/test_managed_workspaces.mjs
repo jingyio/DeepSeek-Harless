@@ -282,6 +282,9 @@ test('workspace browser restores folder controls and an accessible menu with dur
   assert.equal(primary.children[0].type, 'svg', 'folder outline remains visible next to every workspace');
   assert.equal(primary.props['aria-expanded'], true);
   assert.ok(!nodes.some(node => ['geneloop-workspace-toggle','geneloop-workspace-chevron'].includes(node.props?.className)));
+  assert.ok(!nodes.some(node => /在“.*”中新建会话/.test(node.props?.['aria-label'] || '')));
+  const workspaceRow = nodes.find(node => node.props?.className === 'geneloop-workspace-row');
+  assert.equal(workspaceRow.children.at(-1).props['aria-label'].startsWith('工作区操作 '), true);
   assert.equal(nodes.some(node => node.props?.type === 'search'), false, 'search is a compact optional control');
   assert.ok(nodes.filter(node => node.props?.className === 'geneloop-workspace-name').every(node => !node.props.title));
   ui.click(nodes.find(node => node.props?.['aria-label'] === '工作区操作 实验'));

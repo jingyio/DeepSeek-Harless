@@ -86,8 +86,24 @@ function fixture({ locked = false, beforePost, beforeGet, onOpen, allAvailable =
     for (let i = 0; i < 15; i++) await new Promise(resolve => setImmediate(resolve));
   };
   return { decoration, trigger, inputs, posts, opened, values, pick, statusComponent, rebinds, reads, submissions, blocks, setCurrent,
-    statusUpdates, faces, retirements, observeStatus: (sessionId = 'alice') => statusComponent({ sessionId, openSession: id => sessions.open(id) }) };
+    statusUpdates, faces, retirements, observeStatus: (sessionId = 'alice', live = false) => statusComponent({ sessionId, ...(live ? { draftInput: inputs.get(sessionId) } : {}), openSession: id => sessions.open(id) }) };
 }
+
+test('composer badge reads its live editor even during native chip transitions and hides the default Chat', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
+  assert.equal(f.observeStatus('alice', true), null); await flush();
+  input.setPhase('adjudicating');input.setDraft('/data 分析资料');
+  assert.equal(f.statusUpdates.at(-1).selection.scene, 'research-data-analysis');
+  input.setDraft('');assert.equal(f.statusUpdates.at(-1).selection.scene, 'new-scene');
+  assert.equal(f.posts.length, 0);
+});
+
+test('slash suggestions hide Files and default Chat while keeping manual Chat compatible', async () => {
+  const f=fixture();f.values.get('alice').scenes.push({id:'files',label:'Files',available:true});
+  const rows=await f.trigger.candidates({sessionId:'alice'},{query:'',position:'leading'});
+  assert.deepEqual(Array.from(rows,row=>row.name),['ppt','paper','data']);
+  assert.equal(f.trigger.matchSpace({sessionId:'alice'},'/chat').insert.clipboardText,'/chat');
+});
 test('Typed and pasted scene commands update the badge immediately without mounting a backend', async () => {
   const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
   f.observeStatus(); await flush();
@@ -138,7 +154,7 @@ test('Acceptance of the previous send preserves a manually typed scene for the n
 
 test('Scene slash source filters each prefix and uses native reference chips', async () => {
   const f = fixture(), session = { sessionId: 'alice' };
-  for (const [query, names] of [['', ['ppt','paper','data','chat']], ['p', ['ppt','paper']], ['pp', ['ppt']], ['ppt', ['ppt']], ['pptx', []]]) {
+  for (const [query, names] of [['', ['ppt','paper','data']], ['p', ['ppt','paper']], ['pp', ['ppt']], ['ppt', ['ppt']], ['pptx', []]]) {
     const rows = await f.trigger.candidates(session, { query, position: 'leading', signal: new AbortController().signal });
     assert.deepEqual(Array.from(rows, row => row.name), names);
   }
@@ -229,13 +245,13 @@ test('Real native controller warms once and never loops settings GETs through le
   const n = nativeController(f.trigger, input); n.track(); await flush();
   assert.ok(f.reads.length <= 2, `unexpected settings loop: ${f.reads.length}`);
   const count = f.reads.length;
-  for (const [query, names] of [['p', ['ppt', 'paper']], ['d', ['data']], ['da', ['data']], ['dat', ['data']], ['data', ['data']], ['datax', []], ['pp', ['ppt']], ['', ['ppt','paper','data','chat']]]) {
+  for (const [query, names] of [['p', ['ppt', 'paper']], ['d', ['data']], ['da', ['data']], ['dat', ['data']], ['data', ['data']], ['datax', []], ['pp', ['ppt']], ['', ['ppt','paper','data']]]) {
     input.setDraft('/' + query); n.track(); await flush();
     const group = n.controller.menu.getSnapshot().groups.find(row => row.source === 'harless-scenes');
     assert.deepEqual(Array.from(group?.items || [], row => row.name), names);
   }
   assert.equal(f.reads.length, count, 'per-character candidates use the hot scene catalog');
-  assert.deepEqual(Array.from(n.controller.lexicon.getSnapshot().get('/')), ['ppt','paper','data','chat']);
+  assert.deepEqual(Array.from(n.controller.lexicon.getSnapshot().get('/')), ['ppt','paper','data']);
   // A settings refresh / scene selection does not re-publish an unchanged roll.
   let changes = 0; const off = n.controller.lexicon.subscribe(() => changes++);
   await f.decoration.ui.options({ sessionId: 'alice' }, new AbortController().signal);
