@@ -49,6 +49,9 @@ export function memberSceneDeployment(policy, deployment) {
     return { source, target: '/app/' + name };
   });
   const mounts = [...mappings, ...pythonRoots.map(source => ({ source, target: source }))];
+  // Only the explicit public config files in memberProductProfile are mounted.
+  // Translate their certification locks without mounting the whole config directory.
+  mappings.push({source:join(root,'config'),target:'/app/config'});
   const renderer=deployment.rendererRoot ? realpathSync(deployment.rendererRoot) : null;
   const fonts=deployment.fontRoot ? realpathSync(deployment.fontRoot) : null;
   const pdf=deployment.pdfToolchainRoot ? fixedPath(deployment.pdfToolchainRoot,'directory','PDF parser') : null;

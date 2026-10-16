@@ -8,6 +8,16 @@ import {createHash} from 'node:crypto';
 import {createComparisonService} from '../src/adapters/harless_comparison.ts';
 import {REPORT_ANSWER_BINDING} from '../src/adapters/harless_report_answer.ts';
 const context={scene:'ppt',options:{slides:2},model:{model:'fixture'},input_sha256:'a'.repeat(64)};
+
+test('Data exposes verified generic code files without exposing uncertified report drafts',async()=>{
+ const f=fixture({submit:async id=>{const task=f.tasks.get(id);task.status='completed';task.deliveries=[
+  {id:'code',name:'outputs/code/result.json',verification:'code-output-v1'},
+  {id:'draft',name:'outputs/report/draft.pdf'},
+  {id:'forged',name:'outputs/report/unverified.pdf',verification:'code-output-v1'}];}});
+ try{const sent=await f.send('a','code','calculate',{...context,scene:'research-data-analysis'});const result=await f.wait(sent.comparison_id);
+  assert.deepEqual(result.lanes.baseline.artifacts.map(row=>row.id),['code']);assert.equal(result.lanes.baseline.delivery_status,'available');
+ }finally{f.close();}
+});
 function fixture(overrides={}){
  const root=mkdtempSync(join(tmpdir(),'harless-comparison-')),tasks=new Map(),created=[],prepared=[],submitted=[],cancelled=[],events=[];
  const host={owns:async id=>{if(!['a','b'].includes(id))throw Error('foreign session');},

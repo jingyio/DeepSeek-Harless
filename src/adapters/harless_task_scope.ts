@@ -8,6 +8,7 @@ import {execFile, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import { productPersona } from './harless_product_prompt.ts';
+import { commonToolRows } from './geneloop_capabilities.ts';
 const runFile=promisify(execFile);
 
 export type SceneOptions = { slides?: number; template?: 'academic' | 'lab'; allow_output?: boolean };
@@ -70,7 +71,8 @@ export function sessionPreset(output: string, workspace: string, scene: Scene): 
   const replace = (value: any): any => typeof value === 'string' ? value.replaceAll('__HARLESS_SESSION_WORKSPACE__', workspace)
     : Array.isArray(value) ? value.map(replace) : value && typeof value === 'object'
     ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replace(item)])) : value;
-  const rows = [{ id: 'sss-persona', name: '@deepseek-ai/dsh-persona', config: productPersona() }, ...replace(mcp)];
+  const rows = [{ id: 'sss-persona', name: '@deepseek-ai/dsh-persona', config: productPersona() },
+    ...(scene.common_tools?.length ? commonToolRows() : []), ...replace(mcp)];
   let rendered = JSON.stringify(rows, null, 2);
   for (const [token, expression] of Object.entries(scene.environment_references ?? {})) rendered = rendered.replaceAll(JSON.stringify(token), expression);
   writeFileSync(join(directory, 'agent.cordis.yml'), rendered, { mode: 0o600 });

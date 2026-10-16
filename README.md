@@ -1,5 +1,7 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+GeneLoop 网页的 Chat、`/ppt`、`/data`、`/paper` 和已登记 Files 场景共用联网搜索、网页读取、Bash/Python/Node 执行及后台任务。模型按需求调用工具，过程沿用原生流式事件。正式运行依赖 Linux `bubblewrap`；命令只接触本会话上传文件和工作目录，账号密钥不传入命令环境。当前服务器未安装 PowerShell。接口与隔离约定见 [网页通用能力](docs/interfaces.md#网页通用能力)。
+
 网页使用独立的 GeneLoop 视觉样式，统一明暗主题、侧栏、聊天、菜单、设置、账户页、双栏结果与轨迹。按用户指定的 Emil Apple Design 规范补充即时按下反馈、局部内容与浮层入场过渡，减少动态/透明度偏好继续生效。原有功能、字号和主题偏好保持；美化前完整源码已保存在 `pre-apple-ui-20261016`，本轮动效前另存 `pre-emil-ui-20261016` 标签。样式范围、验证与仅回退代码的方法见 [视觉规范](docs/geneloop-visual-system.md)。
 
 网页 `/ppt` 两侧共用普通组合交付和失败页局部恢复；文件全文通过版本化工具读取，避免重复注入。普通脚本优化与新学读取 Motif 的三条件对照、质量问题及学习成本见 [PPT 工作流实验](docs/experiments/ppt-web-workflow-learning-20261016-v1.md)。读取结构认证不代表生成内容已通过科研质量认证。

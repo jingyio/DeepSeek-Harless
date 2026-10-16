@@ -7,6 +7,13 @@
 - 思考 UI 仍为 Off / On，分别映射 DeepSeek disabled / enabled+high；API 的 max 未在页面开放，与 Agent 循环或 RSI 模式无关。
 - 旧版 Schema 差异导致首批认证拒绝，四次采集完整排除并记账；当前三次重新采集。共 35 真实请求/代理估费 $0.018348576，未核账单，不含后续验收。来源、质量边界与最新验收见[实验记录](../experiments/all-scene-motif-execute-20261017-v1.md)。配置在 `config/harless-scenes.json`，发布时须重生 owner/member policy/preset，保持无上限与原累计账本，不重启预算服务。
 
+## 2026-10-17：全部场景开放联网、命令和后台任务
+
+- 基线 `30b5a3742`，分支 `codex/all-scene-web-execution`。Chat/PPT/Data/Paper/Files 统一增加六个公共工具；原生搜索走鉴权与累计账本，命令走会话 bubblewrap，旧内核成员环境使用私有账号 Unix socket 代理，保留账号隔离及原件只读。通用输出单独标识并提供下载；专业报告认证继续保留。
+- 五场景真实 Flash Off shadow，PPT/Data execute，Pro High Chat 和独立实例 baseline/Flash High/Pro Off 均完成实际搜索、正文读取、Python 数值与文件、后台输出及取消。浏览器验证 Chat 和三种双栏场景及 JSON 下载；跨账号任务/文件 404。服务器完整 Python 819、Node 766 项通过，最后成员路径回归 17 项通过，smoke 18 案例通过。
+- PPT R7 按原冻结证据重新编译适配公共工具和代码锁，旧版本保留；无新训练样本，无 Motif 节省主张。配置见 `config/geneloop-capabilities.*`，协议见 `docs/interfaces.md`；失败、估费边界及复现见[能力验收记录](../experiments/geneloop-common-capabilities-20261017.md)。PowerShell 未安装，专业报告质量不由本能力测试重新背书。
+- 当前按持续授权进行真实 API、合并与上线；预算保持无应用额度上限，原累计账本不清零。上线前预检并备份代码/配置，空闲时重启相关服务，核对用户数据和账本字节；最终合并 SHA、CI、发布及公网复核以 PR 回执为准。回退恢复代码/配置，不覆盖用户数据或回退累计用量。
+
 ## 2026-10-16：移除网页数字评分与明确执行选项
 
 - 基线 `1df34b6`，分支 `codex/remove-numeric-ratings`。按用户要求删除双栏回复的 1–5 分控件、评分保存状态、前端队列及专用样式；复制、赞踩、分支、用量、耗时、重试和下载继续保留。后端研究评分协议与既有数据未改。

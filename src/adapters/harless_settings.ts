@@ -1,7 +1,9 @@
 /** Human controls; no Agent loop, file access or model calls. */
 import type { ExecutionMode } from './web_task_request.ts';
+import { COMMON_TOOLS } from './geneloop_capabilities.ts';
 export type Scene = {
   id: string; label: string; preset: string; allowed_tools: string[];
+  common_tools?: string[];
   config_sha256?: string; instructions?: string;
   manifest?: string; task?: string; certified_input_sha256?: string;
   embedding_endpoint?: string; embedding_model?: string;
@@ -44,7 +46,11 @@ export function sceneCatalog(rows: unknown): Scene[] {
         typeof row.label !== 'string' || !row.label.trim() || row.label.length > 128 ||
         typeof row.preset !== 'string' || !/^sss-[a-z0-9_-]+$/.test(row.preset) || presets.has(row.preset) ||
         !Array.isArray(row.allowed_tools) ||
-        row.allowed_tools.some((tool: unknown) => typeof tool !== 'string' || !/^mcp__[a-z0-9_]+__[a-zA-Z0-9_]+$/.test(tool as string)) ||
+        row.allowed_tools.some((tool: unknown) => typeof tool !== 'string' ||
+          (!/^mcp__[a-z0-9_]+__[a-zA-Z0-9_]+$/.test(tool as string) && !(COMMON_TOOLS.includes(tool) && row.common_tools?.includes(tool)))) ||
+        (row.common_tools !== undefined && (!Array.isArray(row.common_tools) ||
+          row.common_tools.length !== COMMON_TOOLS.length || new Set(row.common_tools).size !== COMMON_TOOLS.length ||
+          row.common_tools.some((name: string) => !COMMON_TOOLS.includes(name) || !row.allowed_tools.includes(name)))) ||
         new Set(row.allowed_tools).size !== row.allowed_tools.length ||
         (row.unavailable_reason !== undefined && !/^[a-z][a-z0-9_]{0,127}$/.test(row.unavailable_reason)) ||
         (row.adapter !== undefined && (!['ppt', 'workspace', 'files', 'literature', 'data-report'].includes(row.adapter) || !Array.isArray(row.mcp_rows))) ||

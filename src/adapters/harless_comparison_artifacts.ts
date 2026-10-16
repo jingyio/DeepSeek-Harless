@@ -8,7 +8,7 @@ const valid = (id: string) => /^[a-zA-Z0-9-]{1,100}$/.test(id);
 export function comparisonArtifacts(output: string) {
   const root = join(output, 'comparison-artifacts'); mkdirSync(root, { recursive: true, mode: 0o700 });
   return {
-    snapshot(turn: string, lane: string, attempt: number, workspace: string, approvedFiles?:Set<string>, recoverEmpty = false) {
+    snapshot(turn: string, lane: string, attempt: number, workspace: string, approvedFiles?:Set<string>, recoverEmpty = false, codeFiles = new Set<string>()) {
       if (!valid(turn) || !['baseline', 'motif'].includes(lane) || !Number.isInteger(attempt) || attempt < 0) throw Error('artifact_identity_invalid');
       const destination = join(root, turn, lane, String(attempt));
       const index = join(destination, 'index.json');
@@ -17,12 +17,15 @@ export function comparisonArtifacts(output: string) {
       // task-bound evidence can migrate their public list and add verified files.
       if (previous && !approvedFiles) return previous;
       if (previous && !recoverEmpty) return previous.filter((row:any)=>
-        row.verification==='data-report-delivery-v1'||approvedFiles!.has(join(workspace,row.name)));
+        ['data-report-delivery-v1','code-output-v1'].includes(row.verification)||approvedFiles!.has(join(workspace,row.name)));
       mkdirSync(destination, { recursive: true, mode: 0o700 });
-      const rows: any[] = previous ? previous.filter((row:any)=>approvedFiles!.has(join(workspace,row.name))&&
-        sha(readFileSync(join(workspace,row.name)))===row.sha256).map((row:any)=>({...row,verification:'data-report-delivery-v1'})) : [];
+      const rows: any[] = previous ? previous.filter((row:any)=>row.verification==='code-output-v1'||
+        approvedFiles!.has(join(workspace,row.name))&&existsSync(join(workspace,row.name))&&
+        sha(readFileSync(join(workspace,row.name)))===row.sha256).map((row:any)=>({...row,
+          verification:row.verification==='code-output-v1'?'code-output-v1':'data-report-delivery-v1'})) : [];
       let total = rows.reduce((sum,row)=>sum+row.bytes,0), nextIndex = previous?.length ?? 0;
       const copy = (path: string, name: string) => {
+        if (name.startsWith('outputs/code/') && !codeFiles.has(path)) return;
         if(approvedFiles&&!approvedFiles.has(path))return;
         if(rows.some(row=>row.name===name))return;
         const st = lstatSync(path);
@@ -33,7 +36,7 @@ export function comparisonArtifacts(output: string) {
         while(existsSync(join(destination,id)))id=digest.slice(0,32)+'-'+nextIndex++;
         writeFileSync(join(destination, id), bytes, { mode: 0o600, flag: 'wx' });
         rows.push({ id, name, bytes: bytes.length, sha256: digest, attempt,
-          ...(approvedFiles?{verification:'data-report-delivery-v1'}:{}) }); total += bytes.length;
+          ...(name.startsWith('outputs/code/') ? {verification:'code-output-v1'} : approvedFiles?{verification:'data-report-delivery-v1'}:{}) }); total += bytes.length;
       };
       const scan = (directory: string, prefix: string, depth: number) => {
         if (!existsSync(directory) || depth > 5) return;
@@ -44,7 +47,8 @@ export function comparisonArtifacts(output: string) {
           if (st.isSymbolicLink() || !within(workspace, path)) continue;
           if (st.isDirectory()) { scan(path, prefix + name + '/', depth + 1); continue; }
           if (!st.isFile() || st.nlink !== 1 || st.size > 30 * 1024 * 1024 || total + st.size > 80 * 1024 * 1024) continue;
-          if (!/\.(?:pdf|pptx|png|jpg|svg|csv|tsv|html|md|tex|bib|txt)$/i.test(name)) continue;
+          if (!/\.(?:pdf|pptx|png|jpg|svg|csv|tsv|html|md|tex|bib|txt)$/i.test(name) &&
+              !(prefix.startsWith('outputs/code/') && /\.(?:docx|xlsx|json|zip|py|js)$/i.test(name))) continue;
           copy(path, prefix + name);
         }
       };
@@ -160,15 +164,26 @@ export function captureComparisonDeliveries(service: ReturnType<typeof compariso
   if (!['completed','failed','budget_exhausted','cancelled'].includes(context.status)) return [];
   if(context.status!=='completed'&&context.adapter!=='data-report')return [];
   let approved: Set<string> | undefined;
+  const codeFiles = new Set<string>();
+  const start = Date.parse(context.startedAt ?? ''), end = Date.parse(context.finishedAt ?? '');
+  const scanCode = (path:string, depth=0) => {
+    if (depth>5 || codeFiles.size>=32 || !existsSync(path)) return;
+    const st=lstatSync(path);
+    if (st.isSymbolicLink() || !within(context.workspace,path)) return;
+    if (st.isDirectory()) for (const name of readdirSync(path).slice(0,256)) { if(!name.startsWith('.'))scanCode(join(path,name),depth+1); }
+    else if(st.isFile() && st.nlink===1 && st.mtimeMs>=start && st.mtimeMs<=end)codeFiles.add(path);
+  };
+  if(context.status==='completed'&&!context.recoverMissing&&Number.isFinite(start)&&Number.isFinite(end))scanCode(join(context.workspace,'outputs/code'));
   if (context.adapter === 'data-report') {
     // The Session can contain later successful turns. Only this failed task's
     // own bounded tool events may grant a recovered download.
     const delivered = context.status !== 'completed'||context.recoverMissing ? taskReportDeliveries(context) : undefined;
     approved=verifiedReportFiles(context.workspace,delivered);
     for(const path of verifiedReviewFiles(context.workspace,taskReportDeliveries(context,context.workspace)))approved.add(path);
+    for(const path of codeFiles)approved.add(path);
     if ((context.status !== 'completed'||context.recoverMissing)&&!approved.size)return [];
   }
-  return service.snapshot(context.turn, context.lane, context.attempt, context.workspace, approved, context.recoverMissing === true);
+  return service.snapshot(context.turn, context.lane, context.attempt, context.workspace, approved, context.recoverMissing === true, codeFiles);
 }
 
 function taskReportDeliveries(context: { eventsPath?: string; startedAt?: string; finishedAt?: string }, reviewWorkspace?:string) {

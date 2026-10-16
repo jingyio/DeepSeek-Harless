@@ -75,11 +75,12 @@ test('new bound presets use the same trusted persona without changing MCP rows',
   }finally{assert.ok(directory.startsWith(join(tmpdir(),'geneloop-product-prompt-')));rmSync(directory,{recursive:true,force:true});}
 });
 
-test('member startup keeps the shared persona and mounts only its public JSON even without scenes',()=>{
+test('member startup mounts only the shared public persona and capability policy even without scenes',()=>{
   const profile=memberProductProfile();
   assert.deepEqual(profile.persona,productPersona());
   assert.deepEqual(profile.sandboxArgs.slice(0,3),['--dir','/app/config','--ro-bind']);
-  assert.equal(profile.sandboxArgs.length,5);
+  assert.equal(profile.sandboxArgs.length,11);
   assert.equal(profile.sandboxArgs[4],'/app/config/geneloop-persona.json');
   assert.deepEqual(JSON.parse(readFileSync(profile.sandboxArgs[3],'utf8')),productPersona());
+  assert.deepEqual([profile.sandboxArgs[7],profile.sandboxArgs[10]],['/app/config/geneloop-capabilities.json','/app/config/geneloop-capabilities.md']);
 });

@@ -1,0 +1,4 @@
+{
+  "version": 1,
+  "tools": ["web_search", "web_fetch", "bash", "job_list", "job_output", "job_kill"]
+}

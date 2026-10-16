@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenes": [
-    {"id":"ppt", "label":"PPT", "scenario":"scenarios/research_ppt/web-scenario.json", "instructions":"scenarios/research_ppt/prompt.md", "adapter":"ppt", "rsi":{"runtime_bundle":"motif-libraries/ppt-web-v2-r7"}},
+    {"id":"ppt", "label":"PPT", "scenario":"scenarios/research_ppt/web-scenario.json", "instructions":"scenarios/research_ppt/prompt.md", "adapter":"ppt", "rsi":{"runtime_bundle":"motif-libraries/ppt-web-v2-r8"}},
     {"id":"paper-proofreading", "label":"Paper Proofreading", "scenario":"scenarios/paper_proofreading/scenario.json", "instructions":"scenarios/paper_proofreading/prompt.md", "adapter":"workspace", "rsi":{"runtime_bundle":"motif-libraries/paper-web-v1", "bundle_from_env":"HARLESS_PAPER_RUNTIME_BUNDLE"}},
     {"id":"research-data-analysis", "label":"Research Data Analysis", "scenario":"scenarios/data_analysis/report-scenario.json", "instructions":"scenarios/data_analysis/report-prompt.md", "adapter":"data-report", "rsi":{"runtime_bundle":"motif-libraries/data"}},
     {"id":"files", "label":"Files", "scenario":"scenarios/file-management/web-scenario.json", "instructions":"scenarios/file-management/web-prompt.md", "adapter":"files"},

@@ -6,9 +6,9 @@
   "certification_scope": "independent_trace_structure",
   "quality_cost_promoted": false,
   "source_evidence_sha256": "ac30d0b79f5dec56e5b85812f4845be8ebbbbf5eaada71d4b9b3c242736a3b99",
-  "learning_report_sha256": "27aff24483baeb779496ef9df5a3566147322b57983e9018d299692e95a615b9",
+  "learning_report_sha256": "bd1506c38fac1369d4d27828e3569e96b3fe33cd5a05a833b06ea44eba06c302",
   "file_locks": {
-    "learning-report.json": "27aff24483baeb779496ef9df5a3566147322b57983e9018d299692e95a615b9",
+    "learning-report.json": "bd1506c38fac1369d4d27828e3569e96b3fe33cd5a05a833b06ea44eba06c302",
     "online-manifest.json": "c7b466d933f6a4b056320a096cef31a7e37e27c8260d7fcba050239d7ec8b9aa",
     "library.json": "6f9aa5b7770b10a225763f57d6f27fbd92fc233a64db7f1bbec6f60bace04588",
     "task.json": "6984ec6943a2dfa44e525dec4b67676f96e7f993ea5cfcfb21e2257eab994567",
@@ -17,6 +17,8 @@
     "tool-schema-variants.json": "a0065e28b2c9cd5a9735b2aeee638bdce5901a54a9c354f26e9bec2c3904e563"
   },
   "code_locks": {
+    "config/geneloop-capabilities.json": "6001d4bc299e2ab6e6f3a9a17005f4b6cdb6903ab9754321b34fc9093cc499ca",
+    "config/geneloop-capabilities.md": "d2fe1bbdeeb5f5025b63da46975281fc2039d0892f1dc5bbd3b8de4ae3d0c45d",
     "scenarios/research_ppt/__init__.py": "872aff8032c55b2d312e4ef09f6d9f3bef4202a2d8ece0efd67e7d80ead6d9b8",
     "scenarios/research_ppt/accounting.py": "086e939d10e1e524e9f43ef83427186f1270a5dcb435cd8739739ae17ece1cdf",
     "scenarios/research_ppt/cli.py": "5dffcf06d89c9a7883ce25bb761d050985b3c33d085ccdd2950372ecdce491de",
@@ -102,12 +104,17 @@
     "scenarios/research_ppt/web_scope.py": "ff29d51e120f2e492702795d520435c0e054fb5c42d04bbe5a957afe48b4fa75",
     "scripts/learn-web-ppt-motif.py": "f3d910821825134904da986e9dfcceb9c1ce07b247bca7276ec11632c5106a79",
     "src/adapters/dsh_online_motif.mjs": "dd163f546abe149ffa468f13c8f541a1b18f05c4812006fe3f80b54b21a59b38",
-    "src/adapters/dsh_web_tasks.ts": "3c6f4dc788c20b1bc45903f96794f643ac7fe1b789122e8a80292e2a27c272c7",
+    "src/adapters/dsh_web_tasks.ts": "7d1d3041cc988c5edddf1c45c1708c944d6ec55d03270d3266ec77003c1e29d6",
+    "src/adapters/geneloop_capabilities.ts": "8f0a651550dd0e6fc25f7c97bc80ef5839b1f369b6f0e7b96a2d5d2e765f5c3b",
+    "src/adapters/geneloop_command_broker.ts": "53dd140acf0911f45d5bcb8170cd7e36becf655aa04587acec7119f5f0326f57",
+    "src/adapters/geneloop_command_client.mjs": "401f6c6c77e603dee4362126bb72bfa4e2fea1629272e521d4bb62d06503cf00",
+    "src/adapters/geneloop_shell.ts": "76b350542b472f7f11bebb198b06109d8e45604e2e0cb5dd3f0b701abfbca4bf",
+    "src/adapters/geneloop_web_search.ts": "9635212728d88cb796a9c22b234a851b6f092a9a6701fbb0d602acb736d045bb",
     "src/adapters/harless_ppt_recovery.ts": "ab79994e224e8c075fe8273318bddb8437adad5a7dc9d02b07aa4341abf3b1cf",
-    "src/adapters/harless_rsi_binding.ts": "b3b926922e71e96f50240c0e2fd9e4b1c46c9a4e90de8f76d6e3665162d808ac",
-    "src/adapters/harless_rsi_bundle.py": "92683b5daa68cab6a0443372c1a04d7d5e7f80a5f1ab89ab7df0b494ff192b64",
-    "src/adapters/harless_scenarios.py": "28d0fe5dc4573eee1dc9718960d28f96ad0df7ea630178c1681b9061c9dbd199",
-    "src/adapters/harless_task_scope.ts": "f428f6cd40f4ef2ece9634dc84b366a8c48f37f4a67da87bd2a85bb579232a4a",
+    "src/adapters/harless_rsi_binding.ts": "bdab83b065c278598d1fc780b93dd1d59653ec0c5f5a9e5243acca6516ebaa48",
+    "src/adapters/harless_rsi_bundle.py": "27426e330ba82a671c7e5818d9f3db2e812eeb46e592a3499218882d6b6a2fd4",
+    "src/adapters/harless_scenarios.py": "26cac09c561dbc3fb93445f5f2ee6308e27c5d690f2cca39ee10559929a352d7",
+    "src/adapters/harless_task_scope.ts": "787a16039c6353b6ed1386b7fd7cdd2a821982fe9893e8314b0b281a192841a4",
     "src/motif_core/online_skill_runtime.mjs": "d951e7d0ab15ba49c00f99726f82c328e0bb283fd40af0d6eb0252c80d4e54ec"
   }
 }

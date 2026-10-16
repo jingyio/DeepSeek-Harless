@@ -1,10 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,symlinkSync,utimesSync} from 'node:fs';
 import {join,resolve,sep} from 'node:path';
 import {tmpdir} from 'node:os';
 import {comparisonArtifacts,verifiedReportFiles,verifiedReviewFiles,captureComparisonDeliveries} from '../src/adapters/harless_comparison_artifacts.ts';
 import {createHash} from 'node:crypto';
+
+test('Fresh command outputs are downloadable across scenes without certifying drafts or exposing runtime JSON',()=>{
+ const root=mkdtempSync(join(tmpdir(),'paired-code-output-'));try{
+  const work=join(root,'work'),code=join(work,'outputs/code');mkdirSync(code,{recursive:true});
+  writeFileSync(join(code,'result.json'),'{"sum":29,"mean":7.25}');
+  writeFileSync(join(code,'old.json'),'old turn');
+  writeFileSync(join(work,'outputs/config.json'),'private runtime');
+  writeFileSync(join(work,'outputs/draft.pdf'),'unverified report');
+  utimesSync(join(code,'old.json'),new Date(1000),new Date(1000));
+  utimesSync(join(code,'result.json'),new Date(3000),new Date(3000));
+  const service=comparisonArtifacts(root),context={lane:'baseline',attempt:0,workspace:work,status:'completed',
+   startedAt:new Date(2000).toISOString(),finishedAt:new Date(4000).toISOString()};
+  for(const adapter of ['workspace','data-report','ppt','files']){
+   const rows=captureComparisonDeliveries(service,{...context,turn:adapter,adapter});
+   assert.ok(rows.some(row=>row.name==='outputs/code/result.json'&&row.verification==='code-output-v1'));
+   assert.ok(!rows.some(row=>row.name.endsWith('old.json')||row.name.endsWith('config.json')));
+   if(adapter==='data-report')assert.equal(rows.length,1,'generic code does not certify a report draft');
+  }
+  const row=captureComparisonDeliveries(service,{...context,turn:'data-report',adapter:'data-report'})[0];
+  writeFileSync(join(code,'result.json'),'later change');
+  assert.equal(service.read('data-report','baseline',row).toString(),'{"sum":29,"mean":7.25}');
+  const recovered=service.snapshot('data-report','baseline',0,work,new Set(),true);
+  assert.equal(recovered[0].verification,'code-output-v1');
+  assert.equal(captureComparisonDeliveries(service,{...context,turn:'failed',adapter:'data-report',status:'failed'}).length,0);
+ }finally{const p=resolve(root);assert.ok(p.startsWith(resolve(tmpdir())+sep)&&p.includes('paired-code-output-'));rmSync(p,{recursive:true,force:true});}
+});
 
 test('Reference reviews require this task export event, checked receipt and unchanged files',()=>{
  const root=mkdtempSync(join(tmpdir(),'paired-review-proof-'));try{
