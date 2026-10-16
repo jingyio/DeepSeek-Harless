@@ -635,8 +635,10 @@ export function apply(ctx: any) {
   const privateLanes = registerPrivateLanes(ctx, config.output, principal, id => comparisons?.isLane(id) ?? false);
   const privateCreations = new WeakSet<object>();
   const inspectForTrash = controller.inspect.bind(controller);
+  const archiveForTrash = ctx.workspaceController.archiveSession.bind(ctx.workspaceController);
   trash = createSessionTrash(ownershipPath.replace(/\.json$/, '-trash.json'), principal, {
     owns: ensureOwned,
+    archive: async id => { await archiveForTrash({ sessionId: id }); },
     isPrivate: privateLanes.isPrivate,
     privateChildren: id => [...new Set([...privateLanes.childrenFor(id), ...[...ownedSessions]
       .filter(child => comparisons?.parentFor(child) === id)])],
@@ -649,6 +651,14 @@ export function apply(ctx: any) {
       return { title: sessionBranchTitle(snapshot.meta, snapshot.events), ...(workspace ? { workspace_id: workspace.id } : {}) };
     },
   });
+  ctx.effect(() => {
+    const archive = ctx.workspaceController.archiveSession;
+    ctx.workspaceController.archiveSession = async (request: any) => {
+      await serialize(() => trash.mutate('archive', request.sessionId));
+      return { archivedSessionIds: ctx.workspaceRegistry.archivedSessionIds.filter((id: string) => !trash.list().restored_archive_ids.includes(id)) };
+    };
+    return () => { ctx.workspaceController.archiveSession = archive; };
+  }, 'harless-archive-restoration');
   const original = { create: controller.create.bind(controller), prompt: controller.prompt.bind(controller),
     cancel: controller.cancel.bind(controller), selectModel: controller.selectModel.bind(controller), rename: controller.rename?.bind(controller) };
   const titles = createConversationTitles(config.output, principal, {

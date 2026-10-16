@@ -134,7 +134,17 @@
         const inject = (...args) => {
           const value = original.inject(...args), source = value.hooks.sections; let last, rows;
           return { ...value, hooks: { ...value.hooks, sections: { subscribe: callback => source.subscribe(callback), getSnapshot: () => {
-            const next = source.getSnapshot(); if (next !== last) { last = next; const seen = new Set(); rows = next.filter(row => !seen.has(row.id) && seen.add(row.id)); }
+            const next = source.getSnapshot(); if (next !== last) { last = next; const seen = new Set();
+              const paths = {
+                'geneloop-archived': 'M4 8h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8ZM3 3h18v5H3V3ZM9 12h6',
+                'geneloop-trash': 'M4.5 6.5h15M9 6V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V6M6 7l.8 12.1A2 2 0 0 0 8.8 21h6.4a2 2 0 0 0 2-1.9L18 7M10 10v7M14 10v7',
+                'geneloop-account': 'M12 3 4.5 6v5.7c0 4.2 3.1 7.5 7.5 9.3 4.4-1.8 7.5-5.1 7.5-9.3V6L12 3ZM9.5 11a2.5 2.5 0 1 0 5 0 2.5 2.5 0 0 0-5 0ZM8 17c.6-1.5 2-2.3 4-2.3s3.4.8 4 2.3',
+              };
+              rows = next.filter(row => !seen.has(row.id) && seen.add(row.id)).map(row => !paths[row.id] ? row : { ...row,
+                label: h('span', { 'data-geneloop-section-icon': row.id },
+                  h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.65,
+                    strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, focusable: false }, h('path', { d: paths[row.id] })), row.label) });
+            }
             return rows;
           } } } };
         };

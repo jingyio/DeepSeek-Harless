@@ -11,7 +11,7 @@ function sourceOf(value) {
 }
 function setup() {
   const createElement = tag => ({ tag, hidden: false, children: [], attributes: {},
-    append(...nodes) { this.children.push(...nodes); }, setAttribute(key, value) { this.attributes[key] = value; } });
+    append(...nodes) { for (const node of nodes) { if (node.parent) node.parent.children = node.parent.children.filter(value => value !== node); node.parent = this; this.children.push(node); } }, setAttribute(key, value) { this.attributes[key] = value; } });
   const document = { title: 'GeneLoop', readyState: 'complete', head: createElement('head'), documentElement: createElement('html'),
     createElement, querySelectorAll: () => [] };
   const timers = new Map(); let sequence = 0, reloads = 0;
@@ -29,13 +29,14 @@ function setup() {
       inject(name, fn) { assert.equal(name, 'conversation.view'); disposers.push(fn()); },
       register(options, component) { records.push({ options, component }); return () => {}; },
     } };
-  const React = { createElement: (type, props) => ({ type, props }), useLayoutEffect: fn => effects.push(fn) };
+  const React = { createElement: (type, props, ...children) => ({ type, props, children }), useLayoutEffect: fn => effects.push(fn) };
   const install = () => window.__installGeneLoopLoading(ctx, React, (from, to) => { mirrors.push([from, to]); return () => {}; });
   const session = (id, openState = 'cold') => {
     const state = sourceOf({ openState, running: false, hasMore: true, loadingOlder: false }); sessions.set(id, state); return state;
   };
   const render = (id, state) => {
     const result = records[0].component({ sessionId: id, useSession: selector => selector(state.getSnapshot()), renderSlot: (...args) => args });
+    result.props.ref(createElement('section'));
     while (effects.length) effects.shift()(); return result;
   };
   return { window, document, cover, notice, timers, list, records, original, mirrors, disposers, install, session, render, reloads: () => reloads };
@@ -56,10 +57,13 @@ test('head loader waits for ready list, current history and committed comparison
   assert.equal(f.cover.hidden, false, 'view stays covered until its comparison GET settles');
   finish(); assert.equal(f.cover.hidden, true);
   assert.equal(f.timers.size, 0);
-  assert.equal(rendered.type, f.original.component);
+  assert.equal(rendered.type, 'div');
+  assert.equal(rendered.props.className, 'geneloop-conversation-load-region');
+  assert.notEqual(f.cover.parent, f.document.documentElement, 'history loader is inside the chat, never over the sidebar');
+  assert.equal(rendered.children[0].type, f.original.component);
   assert.equal(f.records[0].options.inject, f.original.inject);
   assert.equal(f.records[0].options.store, f.original.store);
-  assert.equal(rendered.props.renderSlot('conversation.view', {}, { only: 'chat' })[0], 'geneloop.loading.view');
+  assert.equal(rendered.children[0].props.renderSlot('conversation.view', {}, { only: 'chat' })[0], 'geneloop.loading.view');
   assert.deepEqual(f.mirrors, [['conversation.view', 'geneloop.loading.view']]);
   assert.equal(f.records[0].options.children['geneloop.loading.view'].scope, 'session');
 });
@@ -80,13 +84,14 @@ test('late previous-page completion cannot uncover the next page and streaming n
   streaming(); assert.equal(f.cover.hidden, true);
 });
 
-test('blank ready page, failed history, dismissed waits and stalled boot always have an exit', () => {
+test('blank ready page, failed history and stalled boot have an exit without a reveal-content option', () => {
   const blank = setup(); blank.install(); blank.list.set({ phase: 'ready', current: undefined });
   assert.equal(blank.cover.hidden, true);
   const failed = setup(), state = failed.session('failed', 'loading'); failed.install();
   failed.list.set({ phase: 'ready', current: 'failed' });
   state.set({ openState: 'error' }); assert.equal(failed.cover.hidden, true, 'native error remains reachable');
-  const skipped = setup(); skipped.cover.children[2].onclick(); assert.equal(skipped.cover.hidden, true);
+  assert.equal(failed.cover.children.length, 2, 'only the logo and loading label are shown');
+  assert.doesNotMatch(source, /显示已加载内容/);
   const stalled = setup(), timeout = [...stalled.timers.values()][0];
   assert.equal(timeout.delay, 20000); timeout.fn();
   assert.equal(stalled.cover.hidden, true); assert.equal(stalled.notice.hidden, false);

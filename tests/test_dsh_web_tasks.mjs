@@ -83,7 +83,13 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
   const ctx = {
     emit,
-    workspaceRegistry: { list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
+    workspaceController: {
+      async *follow() { yield { type: 'baseline', value: { items: [...workspaceGroups.values()], archivedSessionIds: ctx.workspaceRegistry.archivedSessionIds } }; },
+      async rename({ workspaceId, title }) { const row = workspaceGroups.get(workspaceId); row.title = title; return { workspace: row }; },
+      async insertSessionBefore({ workspaceId, sessionId }) { const row = workspaceGroups.get(workspaceId); await row.attachSession(sessionId); return { workspace: row }; },
+      async archiveSession({ sessionId }) { await ctx.workspaceRegistry.archiveSession(sessionId); return { archivedSessionIds: ctx.workspaceRegistry.archivedSessionIds }; },
+    },
+    workspaceRegistry: { archivedSessionIds: [], async archiveSession(id) { if (!this.archivedSessionIds.includes(id)) this.archivedSessionIds.push(id); }, list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
       async create(path, title) { const old = [...workspaceGroups.values()].find(row => row.path === path); if (old) return old;
         const row = { id:'workspace-' + randomUUID(), path, title, sessionIds:[], async attachSession(id) { if(!this.sessionIds.includes(id)) this.sessionIds.push(id); } }; workspaceGroups.set(row.id,row); return row; } },
     commands: { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } },
