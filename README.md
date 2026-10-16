@@ -18,7 +18,7 @@ PPT 对常见统计量增加当前引用页的来源摘录检查，拒绝将原�
 
 DeepSeek 场景对照的 Baseline / Motif 两侧并行执行，各自保留会话、工具范围和任务预算；同一对话的下一轮仍等待当前轮结束。历史结果切换时恢复已确认的状态，首次读取显示加载状态；评分点击立即反馈，后台保存，站内切换不会丢失已选择的评分。无 Session 路由的旧模型适配器继续串行执行。
 
-会话开始后会根据用户内容生成简短名称；同一工作区自动重名时追加编号，手动改名和分支名保持。模型菜单按服务器实际可用目录提供 Flash / Pro；当前共享服务器可用 Flash Off / On、Pro Off。Pro On 的原生默认输出预约超过既有每任务预算，菜单会解释原因，不暗中缩短输出或更换模型。
+会话开始后会根据用户内容生成简短名称；同一工作区自动重名时追加编号，手动改名和分支名保持。模型菜单按服务器实际可用目录提供 Flash / Pro；Flash / Pro 均提供 Off / On，选择立即反馈，后台依次保存；发送使用该轮实际选择，不静默替换模型。
 
 场景对照在生成中逐段保留真实文字增量，并显示思考、工具和 MCP 执行状态。每侧末尾提供复制、赞/踩、分支、用量与耗时；轨迹页按真实对话顺序连续编号，普通轮次单列、对照轮次左右展示 Baseline / Motif，上方图表按轮独立切换侧别。已验证的 Motif 模型请求跳过用绿色文字标识。实现与浏览器证据见 [统一轨迹验收](docs/experiments/geneloop-unified-trajectory-20261016-v1.md)，真实模型行为证据见 [流式工作验收](docs/experiments/geneloop-live-workflow-20261015-v1.md)。
 
@@ -34,7 +34,7 @@ Web 的 DeepSeek 模型提供推理 **Off / On**，默认 Off；On 对应官方 
 
 已有 PPT、论文、数据分析 Motif 库已统一到版本化的 [motif-libraries/](motif-libraries/README.md)。管理员在成员 Web policy 配置 `comparison_scenes: ["ppt", "paper-proofreading", "research-data-analysis"]` 后，原生 `/ppt`、`/paper`、`/data` 聊天分别执行 Baseline 与 Motif 两路，保留各自多轮历史、交付文件与 1–5 分评分；论文原库按其授权运行 Shadow。资料通过原生附件上传，账号隔离与预算沿用现有服务。库缺失或兼容锁失效会明确回退，不能把回退记为优化成功。
 
-持续部署可使用 `scripts/serve-web-budget.py`，显式指定私有 output、现有累计 checkpoint 和获准上限；缺少 checkpoint 会拒绝启动，禁止因重启清零。用户于 2026-10-15 取消当前共享服务器累计 1 美元费用上限，配置使用 `--budget-usd 0`（policy 的 `run_budget_usd: null`），请求次数也不限；每任务 0.23 美元继续保留。按后续指示，Web 单次文字输入不设应用长度上限，输出使用 `max_output_tokens: null` 并省略请求 `max_tokens`，保留服务商原生容量边界。调用前持久化预约费用，未知使用量继续占用任务预算，累计账本照常记录。Linux 服务器的真实三场景功能验收和失败边界见 [联调记录](docs/experiments/trained-three-scenes-20261014-v1.md)。
+持续部署可使用 `scripts/serve-web-budget.py`，显式指定私有 output、现有累计 checkpoint 和获准上限；缺少 checkpoint 会拒绝启动，禁止因重启清零。用户于 2026-10-15 取消当前共享服务器累计 1 美元费用上限，配置使用 `--budget-usd 0`（policy 的 `run_budget_usd: null`），请求次数也不限；用户于 2026-10-16 进一步取消每任务及对照每侧的费用上限，`--task-budget-usd 0`、policy 的 `budget_usd: null` 表示不限。按后续指示，Web 单次文字输入不设应用长度上限，输出使用 `max_output_tokens: null` 并省略请求 `max_tokens`，保留服务商原生容量边界。调用前持久化预约费用，未知使用量继续占用任务预算，累计账本照常记录。Linux 服务器的真实三场景功能验收和失败边界见 [联调记录](docs/experiments/trained-three-scenes-20261014-v1.md)。
 
 四场景研究代码的分支整合与兼容验收见 [当前整合记录](docs/experiments/four-scenario-main-integration-20261014-v1.md)。论文生成工具/轨迹 RSI 的显式实验入口在 [论文场景](scenarios/paper-submission/README.md)，文献处理在 [文献场景](scenarios/literature-notes/README.md)。研究 CLI 与统一 Web 的工具契约不同，分支合并不会自动赋予旧实验库产品 Execute 权限；文献的任务级 Web 绑定和双栏评分仍需单独验收。
 
@@ -48,7 +48,7 @@ GeneLoop 是本项目的产品名称，界面使用依据用户参考图绘制�
 
 工作区名称行可再次点击折叠，右侧菜单与新建按钮独立操作；聊天可从标题栏或侧栏菜单移入回收站，并在“最近删除”恢复原会话及文件。网页数据报告测试包位于 [examples/web-data-report-demo/](examples/web-data-report-demo/)，包含 40 行合成材料实验数据、研究说明和可直接粘贴的 `/data` 提示词；它用于软件验证，不代表实际实验结论。
 
-既有论文/DeepSeek 对照继续使用真实 DeepSeek API；共享 Web 现在可按服务器配置选择 GLM。服务器先加载 `.local/remote-env.sh`，在私有 `.env` 配置所需模型密钥（SDK 场景仍需 `DEEPSEEK_API_KEY`）；Web 用 `npm run web:real`，SDK 场景用 `npm run scenario:real -- --scenario scenarios/example/scenario.json --budget-usd 0.25`。Web 每任务与整次启动均默认上限 0.25 美元；SDK 每次运行默认上限 0.25 美元，运行前核对预览与有效配置，超出既有上限另行确认。已完成一次 SDK/Harness/MCP 的真实 API 闭环：3 次 HTTP 200、4 次工具、来源引用一致，见[最小真实调用记录](docs/experiments/deepseek-real-api-smoke-20261009-v1.md)。3080 的历史服务为模拟模式；3086 真实 Web 后端两项任务已通过，浏览器点击体验仍待确认，见[连接恢复与真实 Web 验收](docs/experiments/web-real-recovery-20261009-v1.md)。
+既有论文/DeepSeek 对照继续使用真实 DeepSeek API；共享 Web 现在可按服务器配置选择 GLM。服务器先加载 `.local/remote-env.sh`，在私有 `.env` 配置所需模型密钥（SDK 场景仍需 `DEEPSEEK_API_KEY`）；Web 用 `npm run web:real`，SDK 场景用 `npm run scenario:real -- --scenario scenarios/example/scenario.json --budget-usd 0.25`。Web 每任务与整次启动均默认不限；SDK 每次运行默认上限 0.25 美元，运行前核对预览与有效配置，超出既有上限另行确认。已完成一次 SDK/Harness/MCP 的真实 API 闭环：3 次 HTTP 200、4 次工具、来源引用一致，见[最小真实调用记录](docs/experiments/deepseek-real-api-smoke-20261009-v1.md)。3080 的历史服务为模拟模式；3086 真实 Web 后端两项任务已通过，浏览器点击体验仍待确认，见[连接恢复与真实 Web 验收](docs/experiments/web-real-recovery-20261009-v1.md)。
 
 `npm test`、无模型 `smoke`、故障注入及旧模拟回归继续检查协议、权限和失败恢复。它们仅是开发诊断；不能作为模型回答、科研交付或真实降本的验收依据。真实 API 失败时记录失败，不切回固定模拟回复来报告通过。
 
@@ -131,7 +131,7 @@ Mode 菜单显示 Origin、Shadow、Execute；Origin 在协议中仍为 `baselin
 
 目前登记 `example`、`portfolio-v1`、`portfolio-v2` 三个合成资料场景；新增场景由服务器维护登记表和 MCP 配置。PPT MCP 与自动持续学习发布尚未实现。可选的 Linux 账号网关提供邀请码注册、独立 Harness Home/工作区及按账号隔离的预算路由；它需要单独配置并通过反向代理公开，直接运行 `npm run web` 仍是单用户开发入口。配置与限制见[账号网关部署说明](docs/harless-account-gateway.md)，任务接口见 [Harless 控制接口](docs/harless-controls.md)。
 
-后台保留双层费用预算：每任务与全启动默认各 0.25 美元，每请求最多 1000 输出 token；请求次数默认不限，新任务不重置累计费用与请求计数。任务费用用 `--budget-usd` 配置，全启动费用用 `--run-budget-usd` 配置；可选 `--request-limit/--run-request-limit` 正整数仍支持次数上限，CLI `0` 或配置 `null` 表示不限次数。固定 `reasoning_effort="off"`，默认关闭压缩；请求、缓存输入/输出 token、费用和 verified skips 仍完整记录，代理估值需与账单核对。免费模拟不展示额度表单，实际支出为零。
+后台保留双层费用记账：Web 每任务、全启动和输出上限默认均为 `null`；请求次数默认不限，新任务不重置累计费用与请求计数。任务费用用 `--budget-usd` 配置，全启动费用用 `--run-budget-usd` 配置；可选 `--request-limit/--run-request-limit` 正整数仍支持次数上限，CLI `0` 或配置 `null` 表示不限次数。推理档位按本轮 Off / On 选择，默认关闭压缩；请求、缓存输入/输出 token、费用和 verified skips 仍完整记录，代理估值需与账单核对。免费模拟不展示额度表单，实际支出为零。
 
 真实连接在服务器根目录的私有 `.env` 填写 `DEEPSEEK_API_KEY` 或 `HARLESS_GLM_API_KEY`；GLM 还要配置 `HARLESS_GLM_MODEL`、官方 `HARLESS_GLM_BASE_URL` 和两项保守的美元/百万 token 价格，字段见 `.env.example`。密钥只由服务器读取；浏览器 API 仅收到模型名称和可用状态，不读取 `.env`。不要提交或发送密钥。统一 npm 入口通过 Node `loadEnvFile` 读取它（要求 Node 20.12+），已有环境变量优先。填写密钥不会自动调用付费模型：
 
@@ -139,7 +139,7 @@ Mode 菜单显示 Origin、Shadow、Execute；Origin 在协议中仍为 `baselin
 npm run web:real
 ```
 
-这个显式入口只开放真实连接。官方聊天发送后立即登记并执行任务，不显示预算确认页面；任务 API 仍保留显式预览和提交操作。发送前可在输入框旁选择场景、RSI 与模式，服务端继续限制每任务及全启动费用和请求数。此前的[确认流程验收](docs/experiments/native-chat-confirm-20261009-v1.md)记录的是旧界面；SDK 的真实 API 基本连通已通过，真实 Web 后端最小闭环已通过；当前直接发送的浏览器体验和科研交付质量仍待验收。
+这个显式入口只开放真实连接。官方聊天发送后立即登记并执行任务，不显示预算确认页面；任务 API 仍保留显式预览和提交操作。发送前可在输入框旁选择场景、RSI 与模式，服务端继续累计费用和请求数，并保留管理员配置可选上限的能力。此前的[确认流程验收](docs/experiments/native-chat-confirm-20261009-v1.md)记录的是旧界面；SDK 的真实 API 基本连通已通过，真实 Web 后端最小闭环已通过；当前直接发送的浏览器体验和科研交付质量仍待验收。
 
 GLM 请求通过本地预算代理绑定已提交任务；`HARLESS_GLM_BASE_URL` 仅接受智谱官方 HTTPS API 根地址。价格由管理员按所用模型与账户填写，代理估值不等于账单实付。当前 GLM 已完成假密钥启动、模型目录与任务预览验证，真实 GLM 请求和工具调用仍待配置有效密钥后验收。
 

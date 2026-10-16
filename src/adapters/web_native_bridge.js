@@ -34,7 +34,8 @@
     current = task; error.textContent = '';
     const runCap = task.stats?.global_budget_usd;
     const runBudget = runCap === null ? '不限' : runCap === undefined ? '见工作台' : `$${runCap}`;
-    summary.textContent = `模式：${task.mode}；场景：${task.capability_profile}；本任务上限：$${task.budget_usd}；全局上限：${runBudget}。`;
+    const taskBudget = task.budget_usd === null ? '不限' : `$${task.budget_usd}`;
+    summary.textContent = `模式：${task.mode}；场景：${task.capability_profile}；本任务上限：${taskBudget}；全局上限：${runBudget}。`;
     input.textContent = task.input_preview || JSON.stringify(task.input_summary, null, 2);
     effects.textContent = '仅使用服务器配置的 MCP；写入操作仍需场景工具自身确认。新任务不会重置全局预算。';
     link.href = '/tasks?task_id=' + encodeURIComponent(task.task_id);

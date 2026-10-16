@@ -62,7 +62,7 @@ PPT 的本轮兼容锁仅更新共享 `harless_task_scope.ts` 产品身份组合
 
 `npm run web` → `scripts/harness-web.py` → 官方 `dsh --profile web --patch <私有 host overlay>`。执行、会话、队列、模型消息和工具调度归官方 Harness；SDK 的 `run-scenario.py` 与 `harness_runtime.py` 保留。场景配置定义能力，不再固定一次用户任务。默认动态策略为 `src/adapters/dsh_web_tasks.ts`，请求规范化在 `web_task_request.ts`，双层预算路由在 `web_task_budget.py`；浏览器通过 `src/adapters/harless_web_client/` 装饰原生 `/harless` 命令，选择场景/模式/RSI。独立 `/tasks`、`/sss` 与 `/harless` 页面已移除，旧地址跳转聊天首页；任务 API 保留，历史代码/环境变量标识保持兼容。
 
-后续涉及模型的联调与场景验收统一走真实 API：`npm run web:real` 等价于 `npm run web -- --real-model`；`npm run scenario:real` 等价于 `npm run scenario -- --call-model`。官方聊天真实任务发送后直接执行；任务 API 仍支持显式 preview/submit，SDK 入口仍先预览。两者均保留原有预算代理。用户已授权此测试用途，默认沿用现有 0.25 美元额度，扩大上限或外部副作用另行确认。纯单元、无模型 smoke 和故障注入仅作开发诊断；真实调用失败不得用模拟成绩替代。SDK 真实最小场景已完成 3 次 HTTP 200 与 4 次 MCP，见[真实调用记录](experiments/deepseek-real-api-smoke-20261009-v1.md)；现有 3080 模拟服务未重启，真实 Web 后端最小闭环已通过，浏览器交互仍待验收，见[恢复记录](experiments/web-real-recovery-20261009-v1.md)。
+后续涉及模型的联调与场景验收统一走真实 API：`npm run web:real` 等价于 `npm run web -- --real-model`；`npm run scenario:real` 等价于 `npm run scenario -- --call-model`。官方聊天真实任务发送后直接执行；任务 API 仍支持显式 preview/submit，SDK 入口仍先预览。两者均保留原有预算代理。用户已授权此测试用途，Web 当前默认不限费用，外部副作用仍须另行授权；独立 SDK 实验按各自有效配置执行。纯单元、无模型 smoke 和故障注入仅作开发诊断；真实调用失败不得用模拟成绩替代。SDK 真实最小场景已完成 3 次 HTTP 200 与 4 次 MCP，见[真实调用记录](experiments/deepseek-real-api-smoke-20261009-v1.md)；现有 3080 模拟服务未重启，真实 Web 后端最小闭环已通过，浏览器交互仍待验收，见[恢复记录](experiments/web-real-recovery-20261009-v1.md)。
 
 ### 前端提交与任务生命周期
 
@@ -158,7 +158,7 @@ library/在线 manifest 新增可选 `certification_scope`（`independent_decisi
 
 `npm run web` → `scripts/harness-web.py` → 官方 `dsh --profile web --patch <私有 host overlay>`。执行、会话、队列、模型消息和工具调度归官方 Harness；SDK 的 `run-scenario.py` 与 `harness_runtime.py` 保留。场景配置定义能力，不再固定一次用户任务。默认动态策略为 `src/adapters/dsh_web_tasks.ts`，请求规范化在 `web_task_request.ts`，双层预算路由在 `web_task_budget.py`，DeepSeek Harless 界面为同源 `/tasks`。旧 `/sss` 是兼容别名，历史代码/环境变量标识保持不变。
 
-后续涉及模型的联调与场景验收统一走真实 API：`npm run web:real` 等价于 `npm run web -- --real-model`；`npm run scenario:real` 等价于 `npm run scenario -- --call-model`。前者仍通过工作台预览确认任务，后者直接执行预算预览后的一次场景；均保留原有预算代理。用户已授权此测试用途；当前共享服务器已取消原累计 1 美元上限，继续保留每任务 0.23 美元；Web 不额外限制单次文字输入或输出长度，其余独立入口按有效配置执行。扩大任务上限或外部副作用另行确认。纯单元、无模型 smoke 和故障注入仅作开发诊断；真实调用失败不得用模拟成绩替代。SDK 真实最小场景已完成 3 次 HTTP 200 与 4 次 MCP，见[真实调用记录](experiments/deepseek-real-api-smoke-20261009-v1.md)；现有 3080 模拟服务未重启，真实 Web 后端最小闭环已通过，浏览器交互仍待验收，见[恢复记录](experiments/web-real-recovery-20261009-v1.md)。
+后续涉及模型的联调与场景验收统一走真实 API：`npm run web:real` 等价于 `npm run web -- --real-model`；`npm run scenario:real` 等价于 `npm run scenario -- --call-model`。前者仍通过工作台预览确认任务，后者直接执行预算预览后的一次场景；均保留原有预算代理。用户已授权此测试用途；当前共享服务器按 2026-10-16 授权取消任务、对照每侧及累计费用上限；Web 不额外限制单次文字输入或输出长度，其余独立入口按有效配置执行。外部副作用仍须另行授权。纯单元、无模型 smoke 和故障注入仅作开发诊断；真实调用失败不得用模拟成绩替代。SDK 真实最小场景已完成 3 次 HTTP 200 与 4 次 MCP，见[真实调用记录](experiments/deepseek-real-api-smoke-20261009-v1.md)；现有 3080 模拟服务未重启，真实 Web 后端最小闭环已通过，浏览器交互仍待验收，见[恢复记录](experiments/web-real-recovery-20261009-v1.md)。
 
 ### 前端提交与任务生命周期
 
@@ -235,13 +235,13 @@ Harness 原生 `SessionPromptRequest.content` 的实际格式为：
 
 ### 预算、模型与记录
 
-通用入口每任务与全启动默认各 0.25 美元，请求次数默认不限。Web 不对单次用户文字另设长度上限；输出配置 `max_output_tokens: null` 时，移除适配器的默认输出值并在真实模型请求中省略 `max_tokens`，不截断模型返回。服务商自身的上下文容量、输出容量和未指定参数时的默认值仍适用。上传容量、账号/路径权限及 HTTP 协议安全边界继续保留。前端预算只能下调服务器任务费用上限；`harness-web.py --budget-usd` 定任务上限，`--run-budget-usd` 定全启动上限，后者显式 `0` 表示取消累计费用限制。累计 cap 在 policy/effective config/统计中以 `null` 表示不限，禁止使用 Infinity 或巨大数代替；内部 `State(cap_usd=0)` 仍代表零费用预算。可选 `--request-limit/--run-request-limit` 正整数保留次数限制；CLI `0`、配置/统计中的 `null` 表示不限次数，仍完整累计请求与费用。`TaskBudgetRegistry` 在累计无限时仍要求显式的有限任务费用上限；先不可变注册，原生聊天随发送激活，显式 API 经 submit 激活。预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子记录任务与累计费用，检查仍有效的上限，完整成功用量两层结算，新任务不重置累计账本。
+通用 Web 入口每任务、全启动费用和请求次数默认均为 `null`，表示不限。Web 不对单次用户文字另设长度上限；输出配置 `max_output_tokens: null` 时，移除适配器的默认输出值并在真实模型请求中省略 `max_tokens`，不截断模型返回。服务商自身的上下文容量、输出容量和未指定参数时的默认值仍适用。上传容量、账号/路径权限及 HTTP 协议安全边界继续保留。前端预算只能下调服务器任务费用上限；`harness-web.py --budget-usd` 定任务上限，`--run-budget-usd` 定全启动上限，两者显式 `0` 均表示取消对应费用限制。累计 cap 在 policy/effective config/统计中以 `null` 表示不限，禁止使用 Infinity 或巨大数代替；内部 `State(cap_usd=0)` 仍代表零费用预算。可选 `--request-limit/--run-request-limit` 正整数保留次数限制；CLI `0`、配置/统计中的 `null` 表示不限次数，仍完整累计请求与费用。`TaskBudgetRegistry` 支持任务与累计费用分别设为 `null`；有限服务器上限仍禁止客户端提交不限或越界的任务；先不可变注册，原生聊天随发送激活，显式 API 经 submit 激活。预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子记录任务与累计费用，检查仍有效的上限，完整成功用量两层结算，新任务不重置累计账本。
 
-私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。每任务固定已选 provider/model、`reasoning_effort="off"` 和输出配置（允许 `null`），关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
+私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。每任务冻结已选 provider/model、推理档位（Off=`off`、On=`high`）和输出配置（允许 `null`），关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
 
 默认模拟模式无实际支出；`npm run web:real` 显式开放 DeepSeek 连接，官方聊天发送后直接执行并产生真实模型费用。服务器私有根 `.env` 通过统一 `scripts/project.mjs` 的 `loadEnvFile` 加载（Node 20.12+，已有环境值优先），字段见 `.env.example`。SDK 基本连通已通过真实 API 验证；当前直接发送的真实 Web 浏览器流程尚未验收。其他收费 MCP 和人工费用也不在这份模型代理额度内。
 
-用户于 2026-10-15 明确取消当前共享服务器原有累计 1 美元费用上限，请求次数同样不限。独立预算进程使用 `serve-web-budget.py --request-limit 0 --task-request-limit 0 --budget-usd 0 --task-budget-usd 0.23 --max-output 0`；必须沿用原 `--checkpoint`，保留累计已用次数、费用和任务账本，不能清零。该进程生成的私有 `policy.json` 将 `run_budget_usd/request_limit/run_request_limit/max_output_tokens` 记录为 `null`、`budget_usd` 仍为 `0.23`。账号启动策略须同步这些字段；重启预算进程后也须同步新的代理与控制端点。切换时先停止新请求并等待活动任务结算，再停止旧预算进程并复制最新账本；失败恢复不能用较旧 checkpoint 覆盖新消费。
+用户于 2026-10-15 明确取消当前共享服务器原有累计 1 美元费用上限，请求次数同样不限。独立预算进程使用 `serve-web-budget.py --request-limit 0 --task-request-limit 0 --budget-usd 0 --task-budget-usd 0 --max-output 0`；必须沿用原 `--checkpoint`，保留累计已用次数、费用和任务账本，不能清零。该进程生成的私有 `policy.json` 将 `run_budget_usd/request_limit/run_request_limit/max_output_tokens` 记录为 `null`、`budget_usd` 同样为 `null`（2026-10-16 进一步授权）。账号启动策略须同步这些字段；重启预算进程后也须同步新的代理与控制端点。切换时先停止新请求并等待活动任务结算，再停止旧预算进程，使用同一份最新 checkpoint 和账本重启；失败恢复不能用较旧 checkpoint 覆盖新消费。
 
 省略输出参数仍须预约费用：按 [DeepSeek 官方请求契约](https://api-docs.deepseek.com/api/create-chat-completion/)的默认输出计算，关闭思考时为 8192 token，开启思考为 65536，`max` effort 为 131072。这些数值仅用于计费预约，不写入请求或裁剪输出；真实完整用量到达后结算，缺失用量保留预约。未知模型的默认值/容量必须先登记，不能按零输出计费绕过任务预算；GLM 4.6 等已知模型按 [官方最大输出容量](https://docs.z.ai/api-reference/llm/chat-completion)保守预约。可选 GLM 代理在输出配置为 `null` 时移除 pi-ai SDK 自动填入的输出参数，按实际出站正文预约费用。长输入或更高价模型仍可能达到有限任务费用上限，此时按金额拒绝，不偷偷缩减输入或输出。
 
@@ -707,7 +707,7 @@ PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历
 
 `geneloop_conversation_titles.ts` 在首次有效用户请求提取简短主题，不额外调用付费模型；问候名暂存，后续实质请求可替换。同一工作区的自动重名追加编号；用户手动改名、独立分支名和已有非占位名不覆盖。账号私有 `conversation-titles.json` 记录状态；所有改名仍走原生 Controller，保留其返回值与通知契约。
 
-真实启动通过已认证的 DeepSeek `/models` GET 与已支持、已定价模型求交集，失败不伪造可用目录。记录只保留公共模型元信息，不保存凭据或提供商异常正文。会话选中的模型和推理档位进入该轮冻结配置、预算检查与原生请求；不在服务端静默替换。默认输出费用已超过每任务预算的档位以 `reasoning_unavailable` 提前说明并拒绝，不降低服务商默认输出、不增加预算。共享服务当前 Flash Off/On、Pro Off 可用，Pro On 受既有每任务费用预算限制。
+真实启动通过已认证的 DeepSeek `/models` GET 与已支持、已定价模型求交集，失败不伪造可用目录。记录只保留公共模型元信息，不保存凭据或提供商异常正文。会话选中的模型和推理档位进入该轮冻结配置、预算检查与原生请求；不在服务端静默替换。默认输出费用已超过每任务预算的档位以 `reasoning_unavailable` 提前说明并拒绝，不降低服务商默认输出、不增加预算。共享服务目前取消任务上限，Flash/Pro 的 Off/On 均不因本地费用预约而禁用；服务商真实失败仍如实返回，不降级替换。
 
 ## 会话回收站与工作区折叠（2026-10-15）
 

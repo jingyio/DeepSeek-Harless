@@ -9,6 +9,16 @@ const options = { skip: !process.features?.typescript };
 const load = () => import('../src/adapters/web_task_request.ts');
 const sha = value => createHash('sha256').update(value).digest('hex');
 
+test('Unlimited tasks preserve null, finite ceilings reject it, and zero remains zero', options, async () => {
+  const { normalizeWebTaskRequest } = await load();
+  const unlimited = { ...context, default_budget_usd: null, max_budget_usd: null };
+  assert.equal(normalizeWebTaskRequest('任务', unlimited).budget_usd, null);
+  for (const budget_usd of [null, 0, 1000]) {
+    assert.equal(normalizeWebTaskRequest({ instruction: '任务', budget_usd }, unlimited).budget_usd, budget_usd);
+  }
+  assert.throws(() => normalizeWebTaskRequest({ instruction: '任务', budget_usd: null }, context), /budget/);
+});
+
 test('Web task preserves raw text bytes and server-owned identity', options, async () => {
   const { normalizeWebTaskRequest } = await load();
   const original = '  检查论文\r\n保留换行和末尾空白\n ';

@@ -543,6 +543,20 @@ test('scoped budget rejects cross-account control and model traffic', async t =>
     delegated(bob, 'control'))).status, 403);
   assert.equal((await scoped('/tasks/register', { task_id: task, session_id: budget, budget_usd: .5 },
     delegated(alice, 'control'))).status, 200);
+  assert.equal((await scoped('/tasks/register', { task_id: task, session_id: budget, budget_usd: null },
+    delegated(alice, 'control'))).status, 403);
+  config.memberPolicy.budget_usd = null;
+  for (const budget_usd of [null, 0, 200]) {
+    assert.equal((await scoped('/tasks/register', { task_id: task, session_id: budget, budget_usd },
+      delegated(alice, 'control'))).status, 200);
+    assert.equal(JSON.parse(upstream.at(-1).body).budget_usd, budget_usd);
+  }
+  for (const budget_usd of [-1, '0', true, {}]) {
+    assert.equal((await scoped('/tasks/register', { task_id: task, session_id: budget, budget_usd },
+      delegated(alice, 'control'))).status, 403);
+  }
+  assert.equal((await scoped('/tasks/register', { task_id: task, session_id: budget, budget_usd: null },
+    delegated(bob, 'control'))).status, 403);
   assert.equal((await scoped('/v1/chat/completions', { model: 'test' }, delegated(alice, 'model'), true)).status, 403);
   assert.equal((await scoped('/bind', { session_id: session, budget_session_id: budget },
     delegated(bob, 'control'))).status, 403);

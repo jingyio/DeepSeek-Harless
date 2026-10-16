@@ -852,18 +852,28 @@ window.__ModuleLoader__.load({
           publishModel();
           const unsubscribe = native.directory.subscribe(publishModel);
           const prompt = face?.prompt;
+          const beginSubmission = face?.beginSubmission, submissions = new Map();
+          const beginEcho = beginSubmission && function (input) {
+            let handle;
+            handle = beginSubmission.call(this, { ...input, onRetire: settlement => {
+              submissions.delete(handle?.requestId); input.onRetire?.(settlement);
+            } });
+            submissions.set(handle.requestId, handle); return handle;
+          };
+          if (beginEcho) face.beginSubmission = beginEcho;
           const queuedPrompt = prompt && function (...args) {
             const selection = latestChoice;
             return enqueue(async () => {
               if (!await selection) throw Error('模型切换未成功，消息尚未发送，请确认模型后重试。');
               if (args[2]?.aborted) throw Error('发送已取消。');
               return prompt.apply(this, args);
-            });
+            }).catch(error => { submissions.get(args[3])?.abandon(); throw error; });
           };
           if (queuedPrompt) face.prompt = queuedPrompt;
           scope.effect(() => () => {
             disposed = true; unsubscribe(); listeners.clear(); modelChoices.delete(id);
             if (queuedPrompt && face.prompt === queuedPrompt) face.prompt = prompt;
+            if (beginEcho && face.beginSubmission === beginEcho) face.beginSubmission = beginSubmission;
           }, 'geneloop: model selection queue');
           modelChoices.set(id, value); return value;
         }
@@ -1407,31 +1417,18 @@ window.__ModuleLoader__.load({
           // Enter hook, so typing quickly cannot send with a previous scene.
           return scene?.available !== false && scene ? { insert: reference(scene) } : undefined;
         },
-        matchEnter: async (session, line, signal) => {
+        matchEnter: (session, line, signal) => {
           const token = sceneToken(line);
           if (!token) return;
           const name = token[2].toLowerCase(), hot = cache.get(session.sessionId);
           if (hot && !hot.scenes.some(scene => shortcut(scene) === name)) return;
-          const pending = choosing.get(session.sessionId);
-          if (pending) await pending.catch(() => {});
           if (!isCurrent(session)) return 'handled';
-          const guard = watchSession(session, signal);
-          try {
-          let value;
-          try { value = await settings(session, guard.signal); }
-          catch (error) { if (!isCurrent(session)) return 'handled'; throw error; }
-          if (!isCurrent(session)) return 'handled';
-          const scene = value.scenes.find(row => shortcut(row) === name);
-          if (!scene) return;
-          if (scene.available === false) throw Error('该场景暂不可用：' + (scene.unavailable_reason || '未部署'));
-          if (signal.aborted) throw Error('场景选择已取消，输入已保留');
-          if (value.selection.scene === scene.id) return;
-          try {
-            const selected = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: scene.id } }, guard.signal);
-            if (!isCurrent(session) || guard.signal.aborted) return 'handled';
-            publish(session.sessionId, selected);
-          } catch (error) { if (!isCurrent(session) || guard.signal.aborted) return 'handled'; throw error; }
-          } finally { guard.dispose(); }
+          const scene = hot?.scenes.find(row => shortcut(row) === name);
+          if (scene?.available === false) throw Error('该场景暂不可用：' + (scene.unavailable_reason || '未部署'));
+          if (signal?.aborted) throw Error('场景选择已取消，输入已保留');
+          // The native sender paints its message/attachment echo before I/O.
+          // The server parses this exact prefix atomically during admission;
+          // fetching or mounting a scene here would block that first paint.
         },
         lexicon: session => cache.get(session.sessionId)?.scenes.map(shortcut),
         subscribeLexicon: (session, listener) => {

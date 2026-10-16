@@ -1,4 +1,4 @@
-"""No-model diagnostics for optional cumulative caps and retained task limits."""
+"""No-model diagnostics for optional cumulative caps and optional task limits."""
 import importlib.util
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -90,9 +90,9 @@ class UnlimitedCostBudgetTests(unittest.TestCase):
         self.assertGreater(state.reserved_usd, 1.5)
         self.assertEqual(self.state().request_count, 1004)
 
-    def test_unlimited_global_requires_explicit_finite_task_maximum(self):
-        for maximum in (None, float('inf'), float('nan'), -.1):
-            with self.subTest(maximum=maximum), self.assertRaisesRegex(ValueError, 'finite task maximum'):
+    def test_unlimited_tasks_keep_accounting_and_finite_server_maximum_remains_enforced(self):
+        for maximum in (float('inf'), float('nan'), -.1):
+            with self.subTest(maximum=maximum), self.assertRaises(ValueError):
                 TaskBudgetRegistry(run_state=self.state(), tasks_root=self.root / 'tasks',
                                    max_task_budget_usd=maximum)
         registry = TaskBudgetRegistry(run_state=self.state(), tasks_root=self.root / 'tasks',
@@ -103,6 +103,17 @@ class UnlimitedCostBudgetTests(unittest.TestCase):
         registry.register('a' * 32, 'first', 0)
         registry.activate('first')
         self.assertIsNone(registry.state_for({'x-deepseek-harness-session-id': 'first'}).book(BODY))
+        unlimited = TaskBudgetRegistry(run_state=self.state(), tasks_root=self.root / 'unlimited', max_task_budget_usd=None)
+        unlimited.register('b' * 32, 'pro-on', None, model='deepseek-v4-pro')
+        unlimited.activate('pro-on')
+        route = unlimited.state_for({'x-deepseek-harness-session-id': 'pro-on'})
+        body = b'{"model":"deepseek-v4-pro","max_tokens":1000,"messages":[]}'
+        for _ in range(30): self.assertIsNotNone(route.book(body))
+        self.assertIsNone(unlimited.stats('pro-on')['budget_usd'])
+        self.assertEqual(unlimited.stats('pro-on')['upstream_requests'], 30)
+        self.assertEqual(unlimited.stats('pro-on')['global_upstream_requests'], 1031)
+        unlimited.cancel('pro-on')
+        self.assertIsNone(route.book(body))
 
     def test_budget_service_emits_null_policy_without_resetting_checkpoint(self):
         spec = importlib.util.spec_from_file_location('serve_budget_test', ROOT / 'scripts/serve-web-budget.py')
@@ -120,7 +131,7 @@ class UnlimitedCostBudgetTests(unittest.TestCase):
         self.assertIsNone(policy['run_budget_usd'])
         self.assertIsNone(policy['request_limit'])
         self.assertIsNone(policy['run_request_limit'])
-        self.assertEqual(policy['budget_usd'], .23)
+        self.assertIsNone(policy['budget_usd'])
         registry = control_factory.call_args.args[2]
         state = gate_factory.call_args.args[3]
         self.assertIsNone(state.cap_usd)
@@ -128,7 +139,7 @@ class UnlimitedCostBudgetTests(unittest.TestCase):
         self.assertIsNone(policy['max_output_tokens'])
         self.assertEqual(state.request_count, 1001)
         self.assertEqual(state.reserved_usd, 1.5)
-        self.assertEqual(registry.max_task_budget_usd, .23)
+        self.assertIsNone(registry.max_task_budget_usd)
         self.assertEqual(self.checkpoint.read_bytes(), original_checkpoint)
 
 

@@ -31,7 +31,9 @@ function fixture() {
           resolve(accepted);
         }));
       } });
-    faces.set(id, { prompt(...args) { prompts.push({ id, args, current: native.get(id).directory.getSnapshot().current }); return Promise.resolve({ ok: true }); } });
+    faces.set(id, {
+      beginSubmission(input) { return { requestId: 'request-1', abandon() { input.onRetire({ status: 'abandoned' }); } }; },
+      prompt(...args) { prompts.push({ id, args, current: native.get(id).directory.getSnapshot().current }); return Promise.resolve({ ok: true }); } });
     menus.set(id, store({ open: false, groups: [], highlight: null }));
   }
   const keyboard = { snapshot: { draft: '保留这段草稿', draftRev: 3 }, dismissPopup() {} };
@@ -85,9 +87,14 @@ test('a send waits for its selected model, and subsequent choices cannot overtak
 test('rejected selection rolls back, warns, and a waiting send is never sent using a different model', async () => {
   const f = fixture(), model = f.model('alice');
   await model.select(pro);
-  const sent = f.faces.get('alice').prompt([], 'queue').catch(error => error);
+  let retired;
+  const echo = f.faces.get('alice').beginSubmission({ onRetire: value => { retired = value; } });
+  assert.equal(echo.requestId, 'request-1');
+  const sent = f.faces.get('alice').prompt([], 'queue', undefined, echo.requestId).catch(error => error);
+  assert.equal(retired, undefined);
   f.settle('alice', false); await flush();
   assert.match((await sent).message, /消息尚未发送/);
+  assert.equal(retired.status, 'abandoned');
   assert.equal(f.prompts.length, 0);
   assert.equal(model.directory.getSnapshot().current.model, 'flash');
   assert.match(f.notices[0].text, /已恢复之前/);

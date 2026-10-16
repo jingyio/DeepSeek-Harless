@@ -8,7 +8,7 @@
   "compression": false,
   "request_limit": null,
   "run_request_limit": null,
-  "budget_usd": 0.25,
+  "budget_usd": null,
   "max_output_tokens": null,
   "real_models_enabled": false
 }
