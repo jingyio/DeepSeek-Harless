@@ -1243,10 +1243,10 @@ window.__ModuleLoader__.load({
           h('style', null, artifactLinkStyle),
           h('style', null, liveStyle),
           h('style', null, `.geneloop-product-turn{min-width:0}.geneloop-process-toggle{display:flex;align-items:center;gap:8px;border:0;border-radius:8px;padding:7px 9px;margin:0 0 8px -9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer;text-align:left}.geneloop-process-toggle:hover{background:var(--dsw-alias-interactive-bg-hover)}.geneloop-process-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.geneloop-process-toggle svg{flex:none;transition:transform .15s}.geneloop-process-toggle[aria-expanded=true] svg{transform:rotate(90deg)}.geneloop-process-evidence{border-left:2px solid var(--dsw-alias-border-l2,#8885);padding-left:14px;margin:4px 0 18px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.geneloop-process-evidence>section{margin:12px 0}.geneloop-process-evidence pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.geneloop-process-label{font-weight:500}.geneloop-process-status{font-size:13px;color:var(--dsw-alias-label-secondary);margin:0 0 8px}@media(prefers-reduced-motion:reduce){.geneloop-process-toggle svg{transition:none}}`),
+          running && liveStatus(status),
           hasProcess && h('button', { type: 'button', className: 'geneloop-process-toggle', 'aria-expanded': open, 'aria-controls': id,
             onClick: () => setOpen(value => !value) },
             h('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, 'aria-hidden': true }, h('path', { d: 'm4 2 4 4-4 4' })), label),
-          running && liveStatus(status),
           h('div', { id, className: 'geneloop-process-evidence', hidden: !open }, open && [
             ...evidence.map(row => row.kind === 'assistant-step'
               ? h('section', { key: row.key }, h('div', { className: 'geneloop-process-label' }, '过程消息'), h(AssistantContent, { node: row, owner, process: true }))
