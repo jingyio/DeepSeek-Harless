@@ -45,6 +45,12 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert rows['ppt']['adapter'] == 'ppt'
     assert 'SSS_PPT_JOB' in json.dumps(rows['ppt']['mcp_rows'])
     assert rows['ppt']['instructions'].startswith('完成科研 PPT 任务。')
+    skill=(ROOT/'scenarios/research_ppt/skills/research-design/SKILL.md').read_text(encoding='utf-8')
+    assert skill in rows['ppt']['instructions']
+    assert rows['ppt']['instructions'].count(skill)==1
+    assert rows['ppt']['design_skill_sha256']==hashlib.sha256(skill.encode()).hexdigest()
+    assert rows['ppt']['instructions_sha256']==hashlib.sha256(rows['ppt']['instructions'].encode()).hexdigest()
+    assert all('design_skill_sha256' not in rows[key] for key in ['paper-proofreading','research-data-analysis','new-scene'])
     assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['ppt']['mcp_rows'])
     assert rows['new-scene']['allowed_tools'] == ['mcp__workspace__list_files', 'mcp__workspace__read_file']
     assert rows['files']['scenario'] == 'scenarios/file-management/web-scenario.json'

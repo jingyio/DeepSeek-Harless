@@ -25,6 +25,7 @@ import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './har
 import {bindReportAnswer} from './harless_report_answer.ts';
 import {createTaskProgress} from './harless_task_progress.ts';
 import {bindProductPrompt} from './harless_product_prompt.ts';
+import {createPptRecovery} from './harless_ppt_recovery.ts';
 import {protectPublicSessionOutput, publicTaskView} from './harless_public_output.ts';
 import {createConversationTitles} from './geneloop_conversation_titles.ts';
 import {createSessionBranchService,sessionBranchTitle} from './harless_session_branch.ts';
@@ -61,6 +62,7 @@ type Task = {
   model_option: ModelOption; reasoning_effort?: WebReasoningEffort; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; source_pending?: boolean; scope_sha256: string | null;
   budget_session_id: string;
   source_task_id?: string;
+  ppt_recovery?: ReturnType<typeof createPptRecovery>;
   bound_binding_sha256?: string | null;
 };
 class TaskError extends Error {
@@ -1088,6 +1090,7 @@ export function apply(ctx: any) {
     json(join(task.output, 'effective-config.json'), { ...view(task), selection: task.selection, tools: task.tools,
       scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
       instructions: instructionsFor(task.scene, task.source_pending), instructions_sha256: sha(instructionsFor(task.scene, task.source_pending) ?? ''),
+      design_skill_sha256:task.scene.design_skill_sha256,
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256, diagnostic: task.scene.diagnostic ?? false,
       bound_binding_sha256:task.bound_binding_sha256,certification_sha256:task.scene.certification_sha256,
       binding_policy:task.scene.binding_policy,matching_policy:task.scene.matching_policy,
@@ -1480,7 +1483,27 @@ export function apply(ctx: any) {
       const mountedScene = readBranchInputs(agent.session.id)?.mounted_scene ?? restoredMountedScene(agent);
       bindScene(agent, sceneFor(task?.scene.id ?? mountedScene ?? selections.get(agent.session.id)?.scene ?? defaults.scene), task?.source_pending);
     }
-    agent.ctx.on('tools/result', (execution: any, result: any) => forSession(agent.session.id)?.interceptor?.observe(agent.session.id, execution, result));
+    agent.ctx.on('tools/result', (execution: any, result: any) => {
+      const task=forSession(agent.session.id);
+      task?.interceptor?.observe(agent.session.id, execution, result);
+      if(task?.status==='running'&&task.scene.adapter==='ppt'){
+        task.ppt_recovery??=createPptRecovery();task.ppt_recovery.observe(execution,result);
+      }
+    });
+    agent.ctx.on('agent/turn-stopping',({signal}:any)=>{
+      const task=forSession(agent.session.id);
+      if(!task||task.status!=='running'||task.scene.adapter!=='ppt'||signal.aborted)return;
+      // Native steering preserves the original admission, task ID, tool set and budget.
+      if(scopeDigest(task.workspace,task.scene)!==task.scope_sha256)throw Error('PPT recovery source scope changed');
+      const job=JSON.parse(readFileSync(join(task.workspace,'job.json'),'utf8'));
+      const next=task.ppt_recovery?.stop({aborted:signal.aborted,expectedSlides:job.slides});
+      if(!next)return;
+      audit(task,{kind:'ppt_task_recovery',continuation:next.continuation,error:next.error});
+      progress.get(task.request.task_id)?.recovery();notifyTask(task);
+      task.stats.recovery_continuations=next.continuation;record(task);
+      agent.steer(createUserMessage({content:[{type:'text',text:next.instruction}],
+        source:{kind:'ppt-task-recovery',task_id:task.request.task_id,session_id:agent.session.id,continuation:next.continuation}}));
+    });
   }, { global: true });
   ctx.on('session/event', (session: any, event: any) => {
     const task = forSession(session.id); if (!task || task.status !== 'running') return;

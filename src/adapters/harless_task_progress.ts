@@ -54,6 +54,7 @@ export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = 
     if(thinking?.status==='running')thinking.status='completed';
   };
   return {
+    recovery() { row('request','正在修正演示文稿');setProgress('正在修正演示文稿'); },
     beginAttempt() {
       settleAttempt('completed'); attempt++; currentText=new Map(); current=undefined; thinking=undefined;messageRow=undefined;
       requestRow=row('request','准备回复');setProgress('正在组织回复');
