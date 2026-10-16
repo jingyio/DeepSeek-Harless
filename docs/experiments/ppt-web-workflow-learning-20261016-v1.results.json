@@ -1,0 +1,335 @@
+{
+  "schema_version": 1,
+  "experiment_id": "ppt-web-workflow-learning-20261016-v1",
+  "cost_basis": "conservative_peak_estimate_not_provider_bill",
+  "quality_review": "AI-assisted, not independent human blind review",
+  "quality_cost_promoted": false,
+  "training": {
+    "training_tasks": 2,
+    "heldout_tasks": 1,
+    "artifacts": 2,
+    "compilation_model_requests": 0,
+    "trace_collection_requests": 85,
+    "trace_collection_proxy_usd": 0.09388814399999998,
+    "learning_total_requests": 177,
+    "learning_total_proxy_usd": 0.23226314399999995,
+    "library_digest": "a76c43648c189046bed414c2acc45587e725a7974057446193c251fa6ab3372f",
+    "manifest_digest": "7541b5d40ad39dbff098d73e8b1869142179f3f8b772049efcbe140a4135ce9d",
+    "new_collection_tasks_for_recompilation": 0
+  },
+  "conditions": {
+    "B0": "ordinary atomic tool steps, no Motif",
+    "B1": "ordinary host delivery and local repair, no Motif",
+    "B2": "same ordinary script plus two learned read-only parameter edges"
+  },
+  "results": [
+    {
+      "case": "adalora-atomic",
+      "status": "budget_exhausted",
+      "effective_config_sha256": "f3ba1726e31f6f69c444053f3736985c612a86899d2157dca55e89b719097bf6",
+      "events_sha256": "2e18a18c6f00e065203213904dd7e61e5805493e26e68fa7f0a7d62a4738cba1",
+      "mechanical": false,
+      "upstream_requests": 39,
+      "verified_skips": 0,
+      "tool_calls": 43,
+      "tool_errors": 0,
+      "prompt_tokens": 1720225,
+      "prompt_cache_hit_tokens": 1657472,
+      "prompt_cache_miss_tokens": 62753,
+      "completion_tokens": 3138,
+      "total_tokens": 1723363,
+      "observed_peak_cost_usd": 0.032536331999999994,
+      "elapsed_seconds": 69.543,
+      "denials": 1,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "no_delivery",
+        "visual": "no_delivery",
+        "issues": [
+          "费用预留拒绝，未交付，不评为合格。"
+        ]
+      }
+    },
+    {
+      "case": "adalora-script",
+      "status": "completed",
+      "effective_config_sha256": "c076b0042bbc01c4a59a490d4b0cef0dc5df8589eb2593be33d5416043cc6ccc",
+      "events_sha256": "39a7c8ca83b2940bf1df65dabc2d7b9ee7f63d7fb5306babd17d05dfd2c147d7",
+      "mechanical": true,
+      "upstream_requests": 18,
+      "verified_skips": 0,
+      "tool_calls": 25,
+      "tool_errors": 4,
+      "prompt_tokens": 586255,
+      "prompt_cache_hit_tokens": 554880,
+      "prompt_cache_miss_tokens": 31375,
+      "completion_tokens": 8813,
+      "total_tokens": 595068,
+      "observed_peak_cost_usd": 0.023317380000000002,
+      "elapsed_seconds": 70.762,
+      "denials": 0,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "needs_revision",
+        "visual": "readable_with_dense_notes",
+        "issues": [
+          "重要性评分的不确定度公式在备注中丢失了平滑量与当前量的区别，写成自减；本轮不作为科学质量通过。"
+        ]
+      }
+    },
+    {
+      "case": "adalora-motif",
+      "status": "budget_exhausted",
+      "effective_config_sha256": "22a1479f557515eeead2ff165db336b823aeae18cc0c1e3a8428e37f79d0e412",
+      "events_sha256": "5830f2e88a9ade2a3d82ce5e07a74c74ada99709a9fe7dfb8bbbafb646c40ff6",
+      "mechanical": false,
+      "upstream_requests": 39,
+      "verified_skips": 1,
+      "tool_calls": 47,
+      "tool_errors": 26,
+      "prompt_tokens": 1700975,
+      "prompt_cache_hit_tokens": 1659776,
+      "prompt_cache_miss_tokens": 41199,
+      "completion_tokens": 15931,
+      "total_tokens": 1716906,
+      "observed_peak_cost_usd": 0.041435556,
+      "elapsed_seconds": 120.05,
+      "denials": 1,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "no_delivery",
+        "visual": "no_delivery",
+        "issues": [
+          "费用预留拒绝，未交付，不评为合格。"
+        ]
+      }
+    },
+    {
+      "case": "loftq-atomic",
+      "status": "budget_exhausted",
+      "effective_config_sha256": "1c98b4aa95d3b555a0edaebaa58a687c2bf7873a893a7f654b80dcadb55f3253",
+      "events_sha256": "e3e75c8c824a8b6ff71e089e9924c4aa8c69fca6c414333a33424bb6f913813a",
+      "mechanical": false,
+      "upstream_requests": 20,
+      "verified_skips": 0,
+      "tool_calls": 28,
+      "tool_errors": 7,
+      "prompt_tokens": 640101,
+      "prompt_cache_hit_tokens": 613888,
+      "prompt_cache_miss_tokens": 26213,
+      "completion_tokens": 27132,
+      "total_tokens": 667233,
+      "observed_peak_cost_usd": 0.04410562800000001,
+      "elapsed_seconds": 118.509,
+      "denials": 1,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "no_delivery",
+        "visual": "no_delivery",
+        "issues": [
+          "费用预留拒绝，未交付，不评为合格。"
+        ]
+      }
+    },
+    {
+      "case": "loftq-script",
+      "status": "budget_exhausted",
+      "effective_config_sha256": "eb0abaf71debace37d611ef41420d15c66c4f71d97b6411a44dc0bb94627f2a0",
+      "events_sha256": "d07d8ca46558f9bb549f5d116a49b92336ca1beaafcd2637108bed019d1b44cc",
+      "mechanical": false,
+      "upstream_requests": 31,
+      "verified_skips": 0,
+      "tool_calls": 38,
+      "tool_errors": 14,
+      "prompt_tokens": 1141099,
+      "prompt_cache_hit_tokens": 1100416,
+      "prompt_cache_miss_tokens": 40683,
+      "completion_tokens": 16117,
+      "total_tokens": 1157216,
+      "observed_peak_cost_usd": 0.038147796000000005,
+      "elapsed_seconds": 128.185,
+      "denials": 1,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "no_delivery",
+        "visual": "no_delivery",
+        "issues": [
+          "费用预留拒绝，未交付，不评为合格。"
+        ]
+      }
+    },
+    {
+      "case": "loftq-motif",
+      "status": "completed",
+      "effective_config_sha256": "9eb8c14c9ba6bfac9dbaff9092bad7d306a7bc10bbfc1c744fcd90c515c2a551",
+      "events_sha256": "f93886f75d0dfb3cbe2073195fb2a98cab93ac3e2de3f67ced2a29b9937ecdb4",
+      "mechanical": true,
+      "upstream_requests": 24,
+      "verified_skips": 1,
+      "tool_calls": 30,
+      "tool_errors": 9,
+      "prompt_tokens": 800057,
+      "prompt_cache_hit_tokens": 765824,
+      "prompt_cache_miss_tokens": 34233,
+      "completion_tokens": 8154,
+      "total_tokens": 808211,
+      "observed_peak_cost_usd": 0.024649644000000002,
+      "elapsed_seconds": 83.847,
+      "denials": 0,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "needs_revision",
+        "visual": "readable",
+        "issues": [
+          "图中纵轴为 log perplexity，正文读数没有清楚保留对数含义。",
+          "比较表包含多个任务，来源页未完整覆盖各行；不能当作逐项来源认证。"
+        ]
+      }
+    },
+    {
+      "case": "brief-atomic",
+      "status": "completed",
+      "effective_config_sha256": "1c4cdf6d5c9d95a2ae1e8e5ca39f493d70ced28e72ede0bcd76b900f8a1ed12f",
+      "events_sha256": "60dd70a0194986607a715cec2fa46607e7737845b988ed6eb366276f57e9c828",
+      "mechanical": true,
+      "upstream_requests": 15,
+      "verified_skips": 0,
+      "tool_calls": 15,
+      "tool_errors": 5,
+      "prompt_tokens": 279588,
+      "prompt_cache_hit_tokens": 266368,
+      "prompt_cache_miss_tokens": 13220,
+      "completion_tokens": 7873,
+      "total_tokens": 287461,
+      "observed_peak_cost_usd": 0.015011808,
+      "elapsed_seconds": 49.832,
+      "denials": 0,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "ai_assisted_pass_for_software_summary_only",
+        "visual": "readable",
+        "issues": [
+          "仅软件运行摘要，不是论文科研质量认证。"
+        ]
+      }
+    },
+    {
+      "case": "brief-script",
+      "status": "completed",
+      "effective_config_sha256": "7e05a476a729452f340700b6f0b4f2d49f9fab8092654dd93fe49d62916f0b19",
+      "events_sha256": "0c49b361594e2c68081cf4fb1697903a08f5812ca115ea11e2e0cb278accaeda",
+      "mechanical": true,
+      "upstream_requests": 8,
+      "verified_skips": 0,
+      "tool_calls": 8,
+      "tool_errors": 1,
+      "prompt_tokens": 120145,
+      "prompt_cache_hit_tokens": 115456,
+      "prompt_cache_miss_tokens": 4689,
+      "completion_tokens": 2051,
+      "total_tokens": 122196,
+      "observed_peak_cost_usd": 0.004560636,
+      "elapsed_seconds": 23.166,
+      "denials": 0,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "ai_assisted_pass_for_software_summary_only",
+        "visual": "needs_polish",
+        "issues": [
+          "原样照抄 JSON 浮点长尾，金额显示不适合演示。"
+        ]
+      }
+    },
+    {
+      "case": "brief-motif",
+      "status": "completed",
+      "effective_config_sha256": "a2ab25b2edb0628b9bfaf1107d0b3be00065ce4136093573131845e6f76b7522",
+      "events_sha256": "739f2502b5deb5df5099c0d83b04a856ccc974ee080d7936619c261c3b7f98f4",
+      "mechanical": true,
+      "upstream_requests": 6,
+      "verified_skips": 2,
+      "tool_calls": 8,
+      "tool_errors": 0,
+      "prompt_tokens": 87895,
+      "prompt_cache_hit_tokens": 84864,
+      "prompt_cache_miss_tokens": 3031,
+      "completion_tokens": 1721,
+      "total_tokens": 89616,
+      "observed_peak_cost_usd": 0.003483684,
+      "elapsed_seconds": 19.477,
+      "denials": 0,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "ai_assisted_pass_for_software_summary_only",
+        "visual": "needs_polish",
+        "issues": [
+          "计数和费用集中在备注，正文标题“另有四种分列职责”不够准确。"
+        ]
+      }
+    },
+    {
+      "case": "native-web-baseline",
+      "status": "completed",
+      "mechanical": true,
+      "upstream_requests": 11,
+      "verified_skips": 0,
+      "tool_calls": 11,
+      "tool_errors": 2,
+      "prompt_tokens": 177529,
+      "prompt_cache_hit_tokens": 165248,
+      "prompt_cache_miss_tokens": 12281,
+      "completion_tokens": 3323,
+      "total_tokens": 180852,
+      "observed_peak_cost_usd": 0.008663388,
+      "elapsed_seconds": 30.542,
+      "denials": 0,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "needs_narrative_revision",
+        "visual": "readable_with_precision_issue",
+        "issues": [
+          "把 B0/B1/B2 三种替代条件画为顺序流程，易误解。",
+          "金额原样长尾显示需编辑。"
+        ]
+      }
+    },
+    {
+      "case": "native-web-motif",
+      "status": "completed",
+      "mechanical": true,
+      "upstream_requests": 9,
+      "verified_skips": 2,
+      "tool_calls": 12,
+      "tool_errors": 4,
+      "prompt_tokens": 151838,
+      "prompt_cache_hit_tokens": 146304,
+      "prompt_cache_miss_tokens": 5534,
+      "completion_tokens": 5414,
+      "total_tokens": 157252,
+      "observed_peak_cost_usd": 0.009034824,
+      "elapsed_seconds": 34.57,
+      "denials": 0,
+      "actual_paid_usd": null,
+      "quality": {
+        "scientific": "needs_narrative_revision",
+        "visual": "readable_with_precision_issue",
+        "issues": [
+          "把三种替代条件画成单一串行流程，标题称三步但图有四块。",
+          "金额原样长尾显示需编辑。"
+        ]
+      }
+    }
+  ],
+  "native_web": {
+    "download_count": 10,
+    "all_download_bytes_match_receipts": true,
+    "completed_status_retained_after_reload": true,
+    "live_stream_frames_captured": false,
+    "prior_conversation_context": []
+  },
+  "total_accounted_requests": 397,
+  "total_accounted_proxy_usd": 0.47720982,
+  "actual_paid_usd": null,
+  "human_revision_minutes": null,
+  "learning_compute_cost_usd": null
+}

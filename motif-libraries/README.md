@@ -1,10 +1,10 @@
-# 产品接入的已有 Motif 库
+# 产品接入的 Motif 库
 
-三个历史库统一放在本目录，进入 Git，不依赖开发者的 `.local/`。本次没有重新训练；来源哈希、运行模式和每个文件的版本在 `catalog.json`、各目录的 `entry.json` 中。
+版本化运行库进入 Git，不依赖开发者的 `.local/`。来源哈希、运行模式和每个文件的版本在 `catalog.json`、各目录的 `entry.json` 中；历史库与本轮真实轨迹新编译库分别保留。
 
 | 场景 | 目录 | 现有能力与边界 |
 | --- | --- | --- |
-| `/ppt` | `ppt/` | 已有独立轨迹认证的 `pin_source → read_source` 只读续接。原库与原认证文件保持原字节；`runtime-bindings.json` 单独记录当前代码兼容性，`tool-schema-variants.json` 来自实际 MCP 的完整可用工具集合。不是重新训练或成品质量认证。 |
+| `/ppt` | `ppt-web-v2-r2/` | 从两项正常网页研究决定和独立认证轨迹编译两条读取续接：`pin_source → read_source`、`pin_deck_pages → read_pinned_deck_pages`。完整 1–30 页 schema 来自实际 MCP；原始事件、费用和质量负例分列。只认证读取结构，尚未晋级为同质降本。历史 `ppt/` 原库/manifest/证书保持，兼容记录单列。 |
 | `/data` | `data/` | 原 V3 报告库的 10 个回执续接，沿用已有 14 个统计、图表和 PDF 工具。分析、展示和正文三次语义决定仍由模型完成；来源、工作区、回执、工具 schema 或许可不匹配时交回模型。 |
 | `/paper` | `paper/` | 原库只授权 **Shadow**，保留两类批次候选及已有审计、修订程序。只做预测、不跳过模型请求，不宣称真实性核验或节省；私有原始轨迹仅公开摘要。普通 PDF/LaTeX 校对继续使用 `paper_checks`。 |
 

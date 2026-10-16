@@ -30,6 +30,24 @@ def test_registered_ppt_compatibility_matches_current_source_and_original_artifa
         assert admitted['quality_cost_promoted'] is False
 
 
+def test_new_ppt_release_keeps_artifact_and_current_source_locks():
+    root=Path(__file__).resolve().parents[1];bundle=root/'motif-libraries/ppt-web-v2-r2'
+    sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+    entry=json.loads((bundle/'entry.json').read_text());cert=json.loads((bundle/'certification.json').read_text())
+    report=json.loads((bundle/'learning-report.json').read_text());missing_build=False
+    assert entry['new_training'] is True and report['training_tasks']==2 and report['heldout_tasks']==1
+    assert report['compilation_model_requests']==0 and report['quality_cost_promoted'] is False
+    for name,version in entry['files'].items():assert sha(bundle/name)==version,name
+    for name,version in cert['code_locks'].items():
+        path=root/name
+        if '/dist/' in name and not path.exists():missing_build=True;continue
+        assert sha(path)==version,name
+    if not missing_build:
+        admitted=load_product_bundle(root,bundle,'ppt')
+        assert admitted['binding_policy']=='ppt_uploaded_sources_v2'
+        assert len(admitted['certified_tool_schema_variants'])==30
+
+
 def test_bundle_freezes_runtime_code_artifacts_and_whole_schema(tmp_path):
     root=tmp_path/'project';root.mkdir();code=root/'core.mjs';code.write_text('version one')
     bundle=tmp_path/'runtime';bundle.mkdir()
