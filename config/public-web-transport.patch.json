@@ -1,0 +1,8 @@
+[
+  {
+    "id": "typert-gateway",
+    "config": {
+      "websocketHeartbeatIntervalMs": 30000
+    }
+  }
+]
