@@ -113,6 +113,7 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
   render();
   return { render, all, content, requests, timers, downloaded, revoked, events, streams, MarkdownText, primitives, initial,
     mount, positioning, dismissals, clipboardWrites, document, openedPreviews,
+    isMarkdown: row => row.type === MarkdownText || row.type?.name === 'BufferedMarkdown',
     setChatSnapshot: value => { chatSnapshot = value; }, setNodeLocation: value => { node.location = value; },
     setNodeData: value => { node.data = value; },
     remount: (value = initial) => {
@@ -131,7 +132,7 @@ test('cold history renders no output frame until an authoritative snapshot arriv
   assert.doesNotMatch(f.content(f.render()), /等待执行|等待当前任务|停止生成/);
   assert.equal(f.blocks.size, 0, 'historical submission data does not block the composer');
   const done = comparison(); done.snapshot_revision = 8; finish(Response.json(done)); await flush(); f.render();
-  assert.equal(f.all(row => row.type === f.MarkdownText).length, 2);
+  assert.equal(f.all(row => f.isMarkdown(row)).length, 2);
   assert.equal(f.all(row => row.props.className === 'harless-paired-loading').length, 0);
   assert.equal(f.all(row => row.type === 'button' && f.content(row) === '停止生成').length, 0); f.dispose();
 });
@@ -157,6 +158,17 @@ test('new Paper Execute results use verified reuse labels while historic Shadow 
   }
 });
 
+test('missing bound sources is explained as ordinary execution, not a task error or optimization success', async () => {
+  const value = comparison(); value.lanes.motif.fallback_reason = 'rsi_requires_approved_sources';
+  value.lanes.motif.stats.verified_skips = 0;
+  const f = fixture(undefined, value); await flush();
+  const text = f.content(f.render());
+  assert.match(text, /本轮未绑定可复用的资料，按标准流程回答/);
+  assert.doesNotMatch(text, /rsi_requires_approved_sources|优化未启用/);
+  assert.equal(f.all(row => row.props.role === 'alert').length, 0);
+  assert.match(text, /已验证跳过 0/); f.dispose();
+});
+
 test('returning to completed comparison reuses verified results while the new GET is pending or older', async () => {
   const initial = comparison(); initial.status = 'running'; initial.scoring_available = false; initial.snapshot_revision = 1;
   for (const lane of Object.values(initial.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
@@ -164,13 +176,13 @@ test('returning to completed comparison reuses verified results while the new GE
   let finish, reads = 0;
   const f = fixture(() => ++reads === 1 ? Response.json(done) : new Promise(resolve => { finish = resolve; }), initial, { streaming: true });
   await flush(); f.render(); f.remount(structuredClone(initial));
-  assert.equal(f.all(row => row.type === f.MarkdownText).length, 2);
+  assert.equal(f.all(row => f.isMarkdown(row)).length, 2);
   assert.equal(f.all(row => row.props['aria-label'] === '赞 Motif 回复')[0].props['aria-pressed'], true);
   assert.doesNotMatch(f.content(f.render()), /等待执行|等待当前任务|停止生成/);
   assert.equal(f.blocks.get('session-a'), undefined);
   assert.equal(f.streams.length, 1, 'a cached completed task does not reopen a live stream');
   finish(Response.json(initial)); await flush(); f.render();
-  assert.equal(f.all(row => row.type === f.MarkdownText).length, 2, 'an older read cannot erase cached results'); f.dispose();
+  assert.equal(f.all(row => f.isMarkdown(row)).length, 2, 'an older read cannot erase cached results'); f.dispose();
 });
 
 test('cached results cannot leak into a different conversation during navigation', async () => {
@@ -178,7 +190,7 @@ test('cached results cannot leak into a different conversation during navigation
   const next = comparison(); next.id = 'comparison-b'; next.session_id = 'session-b'; next.status = 'running';
   for (const lane of Object.values(next.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
   f.setNodeData(next); f.render();
-  assert.equal(f.all(row => row.type === f.MarkdownText).length, 0);
+  assert.equal(f.all(row => f.isMarkdown(row)).length, 0);
   assert.equal(f.render(), null); f.dispose();
 });
 
@@ -263,7 +275,7 @@ test('feedback rejected for an obsolete output refreshes the replacement without
   finish(Response.json({ error: {} }, { status: 409 })); await work; await flush(); f.render();
   assert.equal(writes.length, 1); assert.equal(writes[0].action, 'feedback'); assert.equal(writes[0].output_sha256, 'baseline-hash');
   assert.equal(button().props['aria-pressed'], false);
-  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '已更新的结果');
+  assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, '已更新的结果');
   assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /结果已更新/); f.dispose();
 });
 
@@ -273,14 +285,14 @@ test('a restarted server epoch supersedes a higher old revision and rejects late
   restarted.lanes.baseline.answer = '服务恢复后的已完成结果'; let current = old;
   const f = fixture(() => Response.json(current), old); await flush(); f.render();
   current = restarted; f.events.get('focus')(); await flush(); f.render();
-  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, restarted.lanes.baseline.answer);
+  assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, restarted.lanes.baseline.answer);
   current = old; f.events.get('focus')(); await flush(); f.render();
-  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, restarted.lanes.baseline.answer);
-  f.remount(old); assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, restarted.lanes.baseline.answer); f.dispose();
+  assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, restarted.lanes.baseline.answer);
+  f.remount(old); assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, restarted.lanes.baseline.answer); f.dispose();
 });
 test('paired answers delegate Markdown and inline artifact mentions to the native safe renderer', async () => {
   const f = fixture(); await flush(); f.render();
-  const markdown = f.all(row => row.type === f.MarkdownText); assert.equal(markdown.length, 2);
+  const markdown = f.all(row => f.isMarkdown(row)); assert.equal(markdown.length, 2);
   assert.match(markdown[0].props.text, /\*\*结果\*\*/);
   assert.equal(markdown[0].props.streaming, false);
   assert.equal(markdown[0].props.fileMentions.resolve('/app/work/outputs/report/research_report.pdf').title, 'research_report.pdf');
@@ -330,7 +342,7 @@ test('verified native file labels show the filename without altering Markdown, t
   assert.equal(unknown.textNode.nodeValue, '/app/work/not-approved.pdf');
   assert.equal(code.textNode.nodeValue, '/app/work/' + artifact.name); assert.equal(external.textNode.nodeValue, artifact.name);
   for (const row of rows) { assert.equal(row.node.childNodes[0], row.icon); assert.equal(row.node.onClick, row.onClick); }
-  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, original, 'do not rewrite inline or fenced source code');
+  assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, original, 'do not rewrite inline or fenced source code');
   assert.equal(value.lanes.baseline.answer, original);
   f.dispose();
 });
@@ -357,7 +369,7 @@ test('artifact label adaptation follows stream completion and remains effective 
   f.all(row => row.props.className === 'harless-paired-answer')[0].props.ref(root);
   assert.equal(textNode.nodeValue, 'research_report.pdf', 'native text refresh is compacted even when the title was already normalized');
   assert.equal(button.childNodes[0], icon);
-  const mention = f.all(row => row.type === f.MarkdownText)[0].props.fileMentions.resolve('/app/work/' + artifact.name);
+  const mention = f.all(row => f.isMarkdown(row))[0].props.fileMentions.resolve('/app/work/' + artifact.name);
   mention.open();
   assert.deepEqual(f.downloaded, [], 'opening a file mention never downloads');
   assert.deepEqual(f.openedPreviews, ['dsh-resource://geneloop-delivery/session-a/comparison-a/baseline/file-one/research_report.pdf']);
@@ -383,7 +395,7 @@ test('network read failure keeps rendered output and backs off; recovery stops p
   let reads = 0; const value = comparison();
   const f = fixture(() => { if (++reads < 3) throw TypeError('Failed to fetch'); return Response.json(value); });
   await flush(); f.render();
-  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, value.lanes.baseline.answer);
+  assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, value.lanes.baseline.answer);
   assert.match(f.content(f.all(row => row.props.className === 'harless-paired-connection')[0]), /自动重连/);
   let timer = [...f.timers.values()][0]; assert.equal(timer.delay, 3600); f.timers.clear(); await timer.fn();
   timer = [...f.timers.values()][0]; assert.equal(timer.delay, 7200); f.timers.clear(); await timer.fn(); f.render();
@@ -508,7 +520,7 @@ test('completed model text without delivery is visibly distinguished and cannot 
   const pane = f.all(row => row.type === 'section' && row.props['aria-label'] === 'Motif')[0];
   assert.match(f.content(pane), /回复完成/); assert.match(f.content(pane), /没有可下载成品/);
   assert.equal(f.all(row => row.type === 'a' && row.props.download, pane).length, 0);
-  assert.equal(f.all(row => row.type === f.MarkdownText, pane)[0].props.fileMentions.resolve(artifact.name), undefined); f.dispose();
+  assert.equal(f.all(row => f.isMarkdown(row), pane)[0].props.fileMentions.resolve(artifact.name), undefined); f.dispose();
 });
 test('an admission failure displays not started with corrective guidance instead of a delivery failure', async () => {
   const value = comparison(); value.status = 'failed'; value.scoring_available = false;
@@ -520,7 +532,7 @@ test('an admission failure displays not started with corrective guidance instead
   for (const pane of panes) {
     assert.match(f.content(pane), /任务未启动/); assert.match(f.content(pane), /UTF-8/);
     assert.doesNotMatch(f.content(pane), /交付校验|另一侧结果已保留/);
-    assert.equal(f.all(row => row.type === f.MarkdownText, pane).length, 0);
+    assert.equal(f.all(row => f.isMarkdown(row), pane).length, 0);
     assert.equal(f.all(row => row.type === 'a' && row.props.download, pane).length, 0);
   }
   assert.equal(f.timers.size, 0); f.dispose();
@@ -542,7 +554,7 @@ test('overlapping old GET cannot undo saved feedback; followup read still happen
 test('duplicate basenames stay inert while exact approved paths remain downloadable', async () => {
   const value = comparison(); value.lanes.baseline.artifacts.push({ ...artifact, id: 'other', name: 'outputs/other/research_report.pdf' });
   const f = fixture(undefined, value); await flush(); f.render();
-  const mentions = f.all(row => row.type === f.MarkdownText)[0].props.fileMentions;
+  const mentions = f.all(row => f.isMarkdown(row))[0].props.fileMentions;
   assert.equal(mentions.resolve('research_report.pdf'), undefined);
   assert.equal(mentions.resolve('/app/work/' + artifact.name).title, 'research_report.pdf'); f.dispose();
 });
@@ -570,7 +582,7 @@ test('reassembled start-event objects cannot roll newer completed results back t
   f.setNodeData(structuredClone(initial)); f.render(); f.render();
   assert.equal(f.all(row => row.type === 'a' && row.props.download).length, 2);
   assert.equal(f.all(row => row.props['aria-label'] === '赞 Baseline 回复')[0].props['aria-pressed'], true);
-  assert.equal(f.all(row => row.type === f.MarkdownText)[1].props.streaming, false);
+  assert.equal(f.all(row => f.isMarkdown(row))[1].props.streaming, false);
   assert.equal(f.timers.size, 0); f.dispose();
 });
 test('GET deadline covers stalled response JSON and frees polling for backoff recovery', async () => {
@@ -621,7 +633,7 @@ test('unmount aborts a stalled request silently and leaves no retry timer', asyn
 test('single conversation continuation renders one streamed answer without comparison labels or rating', async () => {
   const value=comparison();value.presentation='single';delete value.lanes.motif;value.scoring_available=false;
   const f=fixture(undefined,value);await flush();f.render();
-  assert.equal(f.all(row=>row.type===f.MarkdownText).length,1);
+  assert.equal(f.all(row=>f.isMarkdown(row)).length,1);
   assert.equal(f.all(row=>row.type==='fieldset').length,0);
   assert.equal(f.all(row=>row.type==='strong'&&f.content(row).includes('Baseline')).length,0);
   assert.equal(f.all(row=>row.props.className==='harless-paired-error').length,0);f.dispose();
@@ -635,14 +647,14 @@ test('live stream renders incremental text and real activity before terminal com
   const partial=structuredClone(value);partial.lanes.baseline.answer='正在分析第一';
   partial.lanes.baseline.progress={label:'正在读取数据',status:'running'};
   partial.lanes.baseline.activity=[{label:'读取数据',status:'running'}];stream.emit(partial);f.render();
-  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一');
-  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.streaming,true);
+  assert.equal(f.all(row=>f.isMarkdown(row))[0].props.text,'正在分析第一');
+  assert.equal(f.all(row=>f.isMarkdown(row))[0].props.streaming,true);
   assert.match(f.content(f.all(row=>row.props.className==='geneloop-process-status')[0]),/正在读取数据/);
   assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,undefined,'tool details remain collapsed');
   partial.lanes.baseline.answer+='组数据';stream.emit(partial);f.render();
-  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'正在分析第一组数据');
+  assert.equal(f.all(row=>f.isMarkdown(row))[0].props.text,'正在分析第一组数据');
   stream.emit(comparison());f.render();assert.equal(stream.closed,true);
-  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.streaming,false);f.dispose();
+  assert.equal(f.all(row=>f.isMarkdown(row))[0].props.streaming,false);f.dispose();
 });
 
 test('paired live status shares Chat wording and GeneLooping, with no placeholder delivery warnings', async () => {
@@ -662,7 +674,7 @@ test('a stale initial GET cannot replace newer streaming text; unmount closes th
   const f=fixture(()=>blocked,value,{streaming:true}),stream=f.streams[0];stream.onopen();
   const partial=structuredClone(value);partial.lanes.baseline.answer='新的流式片段';stream.emit(partial);f.render();
   resolve(Response.json(value));await flush();f.render();
-  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'新的流式片段');
+  assert.equal(f.all(row=>f.isMarkdown(row))[0].props.text,'新的流式片段');
   f.dispose();assert.equal(stream.closed,true);assert.equal(f.timers.size,0);
 });
 
@@ -670,7 +682,7 @@ test('a streamed result for another conversation is rejected and never shown', a
   const value=comparison();value.status='running';for(const row of Object.values(value.lanes))row.status='running';
   const f=fixture(undefined,value,{streaming:true});await flush();const foreign=structuredClone(value);foreign.session_id='another-user';foreign.lanes.baseline.answer='foreign secret';
   f.streams[0].emit(foreign);await flush();f.render();
-  assert.equal(f.streams[0].closed,true);assert.ok(f.all(row=>row.type===f.MarkdownText).every(row=>!row.props.text.includes('foreign secret')));f.dispose();
+  assert.equal(f.streams[0].closed,true);assert.ok(f.all(row=>f.isMarkdown(row)).every(row=>!row.props.text.includes('foreign secret')));f.dispose();
 });
 
 
@@ -682,7 +694,7 @@ test('old stream snapshots cannot replace newer retry output or close the active
   stream.emit(next);f.render();
   const stale=structuredClone(value);stale.snapshot_revision=11;stale.status='failed';stale.lanes.baseline.answer='旧尝试失败';
   stream.emit(stale);f.render();
-  assert.equal(f.all(row=>row.type===f.MarkdownText)[0].props.text,'新尝试的流式回复');assert.notEqual(stream.closed,true);
+  assert.equal(f.all(row=>f.isMarkdown(row))[0].props.text,'新尝试的流式回复');assert.notEqual(stream.closed,true);
   f.dispose();
 });
 
@@ -697,8 +709,8 @@ test('an open but buffered stream keeps polling real incremental output before c
   assert.ok(poll, 'onopen alone must not suppress the GET recovery path');
   current.snapshot_revision = 2; current.lanes.baseline.status = 'running'; current.lanes.baseline.answer = '真实第一段';
   f.timers.delete(poll[0]); await poll[1].fn(); await flush(); f.render();
-  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '真实第一段');
-  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.streaming, true);
+  assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, '真实第一段');
+  assert.equal(f.all(row => f.isMarkdown(row))[0].props.streaming, true);
   assert.ok(f.requests.every(row => row.init.method === 'GET'));
   f.dispose(); assert.equal(f.timers.size, 0);
 });
@@ -717,12 +729,12 @@ test('stream liveness has a read-only watchdog and ignores callbacks from a reti
   current = structuredClone(partial); current.snapshot_revision = 12; current.lanes.baseline.answer += '，第二段';
   const watchdog = [...f.timers.entries()].find(([, timer]) => timer.delay === 10000);
   f.timers.delete(watchdog[0]); watchdog[1].fn(); await flush(); f.render();
-  assert.equal(old.closed, true); assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '第一段，第二段');
+  assert.equal(old.closed, true); assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, '第一段，第二段');
   const reconnect = [...f.timers.entries()].find(([, timer]) => timer.delay === 2000);
   f.timers.delete(reconnect[0]); reconnect[1].fn(); assert.equal(f.streams.length, 2);
   const late = structuredClone(current); late.snapshot_revision = 99; late.lanes.baseline.answer = 'retired connection';
   old.emit(late); old.onerror(); f.render();
-  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '第一段，第二段');
+  assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, '第一段，第二段');
   const done = comparison(); done.snapshot_revision = 13; current = done;
   f.streams[1].emit(done); f.render();
   assert.equal(f.streams[1].closed, true); assert.ok(f.requests.every(row => row.init.method === 'GET'));
@@ -749,7 +761,7 @@ test('switching conversations closes the old stream before accepting the new ses
   f.setNodeData(current); f.render(); assert.equal(old.closed, true);
   const late = comparison(); late.snapshot_revision = 999; late.lanes.baseline.answer = '旧会话迟到内容';
   old.emit(late); await flush(); f.render();
-  assert.equal(f.all(row => row.type === f.MarkdownText)[0].props.text, '第二个会话');
+  assert.equal(f.all(row => f.isMarkdown(row))[0].props.text, '第二个会话');
   assert.match(f.streams[1].url, /session-b/); f.dispose(); assert.equal(f.timers.size, 0);
 });
 
@@ -781,7 +793,7 @@ test('successive real assistant messages stay visible during tools and collapse 
   next.lanes.baseline.messages.push({id:'second',text:'已经核验，正在',status:'streaming'});
   next.lanes.baseline.progress={label:'正在调用数据分析工具',status:'running'};f.streams[0].emit(next);f.render();
   const old=f.all(row=>row.props.className==='harless-stream-messages')[0];assert.ok(old);
-  assert.equal(f.all(row=>row.type===f.MarkdownText,old)[0].props.text,'先读取资料');
+  assert.equal(f.all(row=>f.isMarkdown(row),old)[0].props.text,'先读取资料');
   assert.equal(f.all(row=>row.props.className==='harless-paired-answer')[0].children[0].props.text,'已经核验，正在');
   assert.match(f.content(f.all(row=>row.props.className==='geneloop-process-status')[0]),/分析工具/);
   next.status='completed';next.snapshot_revision=3;next.lanes.baseline.status='completed';next.lanes.baseline.answer='完整结论';
@@ -967,15 +979,15 @@ test('completed process messages retain verified artifact routing without repeat
   const process=f.all(row=>row.props.className==='harless-process-message')[0];assert.equal(typeof process.props.ref,'function');
   let prevented=false;process.props.onClickCapture({target:{closest:()=>({getAttribute:()=>'/private/not-approved.pdf'})},
     preventDefault(){prevented=true;},stopPropagation(){}});assert.equal(prevented,true);
-  const texts=f.all(row=>row.type===f.MarkdownText).map(row=>row.props.text);assert.ok(texts.includes('结果 1.25'));
-  assert.equal(texts.some(text=>text.includes('{{estimate}}')),false);assert.equal(f.all(row=>row.type===f.MarkdownText,process)[0].props.fileMentions.resolve('/app/work/'+artifact.name).title,'research_report.pdf');
+  const texts=f.all(row=>f.isMarkdown(row)).map(row=>row.props.text);assert.ok(texts.includes('结果 1.25'));
+  assert.equal(texts.some(text=>text.includes('{{estimate}}')),false);assert.equal(f.all(row=>f.isMarkdown(row),process)[0].props.fileMentions.resolve('/app/work/'+artifact.name).title,'research_report.pdf');
   f.dispose();
 });
 
 test('approved relative Markdown links retain captions and open preview; examples, images and remote links stay untouched',async()=>{
   const value=comparison();value.lanes.baseline.answer='[阅读报告](research_report.pdf)\n\n`[示例](research_report.pdf)`\n\n```md\n[代码](research_report.pdf)\n```\n\n![图片](research_report.pdf) [网站](https://example.com/research_report.pdf) [未知](missing.pdf)';
   const f=fixture(undefined,value);await flush();f.render();
-  const markdown=f.all(row=>row.type===f.MarkdownText)[0].props.text;
+  const markdown=f.all(row=>f.isMarkdown(row))[0].props.text;
   const href=/\[阅读报告\]\(([^)]+)\)/.exec(markdown)[1];
   assert.match(href,/^https:\/\/geneloop\.example\/#geneloop-preview=/);
   assert.match(decodeURIComponent(href),/session-a\/comparison-a\/baseline\/file-one\/research_report.pdf/);

@@ -7,6 +7,58 @@ window.__ModuleLoader__.load({
     // Use the exact safe AST renderer used by native Harness assistant messages.
     const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
     const MarkdownText = primitives?.MarkdownText;
+    // Display-only pacing: leave the authenticated snapshots, copying, files
+    // and model events intact. Render at most 25 times/s, in the text seat only.
+    function useBufferedBlocks(blocks, live, identity) {
+      const text = blocks.map(block => typeof block.text === 'string' ? block.text : '').join('');
+      const state = React.useRef(null), [, redraw] = React.useState(0);
+      if (!state.current || state.current.identity !== identity) {
+        state.current = { identity, target: text, shown: live ? Math.min(8, text.length) : text.length,
+          live, seenLive: live, timer: null, last: Date.now(), ended: null };
+      }
+      const cursor = state.current;
+      if (!text.startsWith(cursor.target)) cursor.shown = text.length; // authoritative correction, never stale prose
+      cursor.target = text;
+      cursor.live = live;
+      cursor.seenLive ||= live;
+      if (!live && cursor.ended === null) cursor.ended = Date.now();
+      if (live) cursor.ended = null;
+      const instant = document.hidden || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (instant || !cursor.seenLive) cursor.shown = text.length;
+      if (cursor.shown < text.length && /[\uD800-\uDBFF]/.test(text[cursor.shown - 1])) cursor.shown++;
+      React.useEffect(() => {
+        if (cursor.timer !== null || cursor.shown >= cursor.target.length) return;
+        cursor.last = Date.now();
+        const advance = () => {
+          cursor.timer = null;
+          const now = Date.now(), remaining = cursor.target.length - cursor.shown;
+          // Keep a small reserve through uneven chunks; catch up faster when
+          // the backlog grows, and finish a completed response within 1.2s.
+          const elapsed = Math.min(80, Math.max(1, now - cursor.last)); cursor.last = now;
+          const rate = Math.max(90, Math.min(720, remaining / 0.7));
+          const finalRate = cursor.ended === null ? 0 : remaining / Math.max(0.04, (1200 - (now - cursor.ended)) / 1000);
+          let next = Math.min(cursor.target.length, cursor.shown + Math.max(1, Math.floor(Math.max(rate, finalRate) * elapsed / 1000)));
+          // Never split an emoji's UTF-16 surrogate pair.
+          if (next < cursor.target.length && /[\uD800-\uDBFF]/.test(cursor.target[next - 1])) next++;
+          if (document.hidden) next = cursor.target.length;
+          cursor.shown = next; redraw(value => value + 1);
+          if (next < cursor.target.length) cursor.timer = setTimeout(advance, 40);
+        };
+        cursor.timer = setTimeout(advance, 40);
+      }, [identity, text, live]);
+      React.useEffect(() => () => { clearTimeout(cursor.timer); cursor.timer = null; }, [identity]);
+      let remaining = cursor.shown;
+      return blocks.map(block => {
+        if (typeof block.text !== 'string') return block;
+        const length = Math.min(remaining, block.text.length); remaining -= length;
+        return length === block.text.length ? block : { ...block, text: block.text.slice(0, length) };
+      });
+    }
+    function BufferedMarkdown({ text, streaming, identity, ...props }) {
+      const blocks = useBufferedBlocks([{ text }], streaming, identity);
+      return MarkdownText ? React.createElement(MarkdownText, { ...props, text: blocks[0].text,
+        streaming: streaming || blocks[0].text !== text }) : React.createElement('p', null, blocks[0].text);
+    }
     const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'uiConversation', 'slots', 'workspaces', 'uiWorkspace', 'layout', 'sidebarRight', 'sidebarRightTabs'];
     const endpoint = '/api/harless/settings';
     const observers = new Map(), lexiconObservers = new Map(), cache = new Map(), choosing = new Map(), revisions = new Map();
@@ -837,15 +889,17 @@ window.__ModuleLoader__.load({
               ...(!settled(result) ? [] : previousMessages).map(message => h('section', { key: message.id, className: 'harless-process-message',
                 onClickCapture: captureLink, ref: root => compactArtifactLabels(root, files) },
                 MarkdownText ? h(MarkdownText, { text: artifactMarkdown(message.text, files, value, lane), streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
-            result.fallback_reason && h('p', { className: 'harless-paired-notice' }, '优化未启用，已回退普通模式：' + result.fallback_reason),
+            result.fallback_reason && h('p', { className: result.fallback_reason === 'rsi_requires_approved_sources' ? 'harless-paired-muted' : 'harless-paired-notice' },
+              result.fallback_reason === 'rsi_requires_approved_sources'
+                ? '本轮未绑定可复用的资料，按标准流程回答。上传资料并通过校验后，才会尝试优化。'
+                : '优化未启用，已回退普通模式：' + result.fallback_reason),
             result.failure && h('p', { role: 'alert', className: 'harless-paired-notice' }, result.failure),
             !settled(result) && previousMessages.length > 0 && h('div', { className: 'harless-stream-messages', onClickCapture: captureLink,
               ref: root => compactArtifactLabels(root, files) }, ...previousMessages.map(message => h('section', {
                 key: message.id, className: 'harless-process-message', 'data-message-id': message.id,
               }, MarkdownText ? h(MarkdownText, { text: artifactMarkdown(message.text, files, value, lane), streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
             h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, answer
-              ? MarkdownText ? h(MarkdownText, { text: artifactMarkdown(answer, files, value, lane), streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
-                : h('p', { style: { whiteSpace: 'pre-wrap' } }, answer)
+              ? h(BufferedMarkdown, { text: artifactMarkdown(answer, files, value, lane), streaming: !settled(result), identity: key + ':' + lane + ':' + (messages.at(-1)?.id || 'answer'), labels: markdownLabels, fileMentions: mentions })
               : settled(result) && h('p', { className: 'harless-paired-muted' }, notStarted ? '任务未启动，暂无回复。' : '本轮未生成文字回复。')),
             !settled(result) && looping(),
             files.length > 0 && h('section', { className: 'harless-paired-deliveries', 'aria-label': title + '交付文件' },
@@ -1291,7 +1345,12 @@ window.__ModuleLoader__.load({
         });
         wrapWebSeat('conversation.input.model', (props, id) => optimisticModel(id, props), { component: ReasoningModelSelect });
         wrapWebSeat('conversation.view', props => props, { id: 'chat',
-          renderProps: props => ({ t: (key, ...args) => key === 'chat.deepDiving' ? 'GeneLooping…' : props.t(key, ...args) }) });
+          renderProps: props => ({ t: (key, ...args) => key === 'chat.deepDiving' ? 'GeneLooping…' : props.t(key, ...args),
+            // The native submission echo exists synchronously on Send, before
+            // model selection/network dispatch. Project activity only in this
+            // view; never change the session's execution/queue state.
+            useSession: select => props.useSession(snapshot => select({ ...snapshot,
+              running: snapshot.running || snapshot.pendingSubmissions?.some(row => row.placement !== 'queued') || false })) }) });
         // Only adapt display data. The native controller still owns keyboard
         // navigation, focus, outside-click dismissal and atomic reference picks.
         const menuFaces = new WeakMap();
@@ -1539,9 +1598,10 @@ window.__ModuleLoader__.load({
           text && h('pre', null, text),
           ...(block.subCalls || []).map(child => h(ToolEvidence, { key: child.callId, block: child })));
       }
-      function AssistantContent({ node, owner, process = false }) {
+      function AssistantContent({ node, owner, process = false, live = false }) {
         const original = ctx.slots.entries?.('conversation.chat.node').find(entry => entry.options.key === 'assistant-step' && entry.component !== ProductChatNode);
-        const blocks = process ? node.data.blocks.filter(block => ['text', 'image', 'reasoning'].includes(block.kind)) : visibleBlocks(node);
+        const sourceBlocks = process ? node.data.blocks.filter(block => ['text', 'image', 'reasoning'].includes(block.kind)) : visibleBlocks(node);
+        const blocks = useBufferedBlocks(sourceBlocks, !process && live, owner.sessionId + ':' + node.key + ':' + process);
         // A registered public renderer preserves authorized file mentions,
         // images, Markdown and interruption presentation without private APIs.
         if (original) return h(original.component, { ...owner, node: { ...node, data: { ...node.data, blocks } }, turnProcess: undefined });
@@ -1581,7 +1641,7 @@ window.__ModuleLoader__.load({
               : h('section', { key: row.key }, h('div', { className: 'geneloop-process-label' }, row.kind === 'model-retry' ? '请求重试' : '上下文'),
                 h('pre', null, row.kind === 'model-retry' ? '请求暂未完成，正在尝试恢复。' : contentText(row.data.content)))),
             ...reasoning.map((block, i) => h('section', { key: 'reasoning-' + i }, h('div', { className: 'geneloop-process-label' }, '思考过程'), h('pre', null, publicProcessText(block.text))))]),
-          answer && h(AssistantContent, { node: answer, owner }));
+          answer && h(AssistantContent, { node: answer, owner, live: running && answer.data.status === 'running' }));
       }
       function ProductChatNode(owner) {
         const { node } = owner;

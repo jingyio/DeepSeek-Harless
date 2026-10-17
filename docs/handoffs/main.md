@@ -1,5 +1,12 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-17：即时发送状态与回复流缓冲
+
+- 分支 `codex/responsive-reply-stream`，基线 `654ff31`。Chat 视图将本地非排队 submission 投影为活动状态，点击发送即可显示 GeneLooping；失败/取消沿用原生退役清理，不改变实际执行状态。
+- Chat 和场景双栏共用显示缓冲：40ms 调度，仅文本组件更新；按积压自适应 90–720 UTF-16 单元/秒，结束尾部 1.2s 内追平。历史/减少动态/后台直接展示，保留原始消息、复制、下载、安全 Markdown 和链接路由；修订文本直接采用权威版本。
+- Paper/PPT 无版本绑定来源时改为中性中文解释，仍记录原 fallback_reason，不绕过来源/权限/版本/schema/认证校验。Data receipts runtime 在工具结果出现时校验，故无同一前置提示；加载优化器不等于实际发生 verified skip。
+- 定向检查 117 项通过，覆盖突发/高频增量、终止、切换会话、Unicode、原生 Markdown、即时状态及原有选择/下载。待 CI、网页实际发送与发布验收；不据此宣称模型性能或净降本。
+
 ## 2026-10-17：交付文件右侧预览与已选定的黑灰登录组合（未部署）
 
 - 基线 `2c28b27`，独立分支 `codex/file-preview-visual-options`，最终实现 `15d65e9`，[PR #65](https://github.com/jingyio/DeepSeek-Harless/pull/65) 已合入 main `c1aaff1a4747d718c97446550cc35c701e93724c`。交付卡片和正文文件链接打开原生右侧标签，独立按钮下载；两侧及文件版本地址分开。沿用认证下载路由、字节/SHA 校验，未修改任务执行、原始文件、账号隔离或 Motif 库。

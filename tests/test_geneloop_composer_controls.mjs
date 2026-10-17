@@ -43,6 +43,7 @@ function fixture() {
   original.set('conversation.composer.bar', { options: {}, children: { 'conversation.input.model': { kind: 'single', scope: 'session' } },
     inject: () => ({ command: () => {}, keyboard, hooks: { menuLauncher: launcher } }), component() {} });
   original.set('conversation.input.model', { options: {}, inject: id => native.get(id), component() {} });
+  original.set('conversation.view', { options: { id: 'chat' }, component() {} });
   const ctx = { slots: { entries: name => [original.get(name)].filter(Boolean), subscribe: () => () => {},
     inject(_name, install) { effects.push(install()); }, register(spec, component) { wrappers.set(spec.name, { ...spec, component }); return () => {}; } } };
   let cursor = 0; const hooks = [];
@@ -68,6 +69,22 @@ function fixture() {
     settle: (id, accepted = true) => queues.get(id).shift()(accepted),
     dispose: () => effects.reverse().forEach(fn => fn?.()) };
 }
+
+test('GeneLooping is immediate for local sends, stops on rejection, and never changes execution state', () => {
+  const f = fixture();
+  let snapshot = { running: false, pendingSubmissions: [{ placement: 'transcript' }], queue: [] };
+  const view = f.wrappers.get('conversation.view').component({ useSession: select => select(snapshot), t: key => key });
+  assert.equal(view.props.useSession(s => s.running), true);
+  assert.equal(view.props.t('chat.deepDiving'), 'GeneLooping…');
+  assert.equal(snapshot.running, false, 'optimism is limited to presentation');
+  snapshot = { ...snapshot, pendingSubmissions: [] };
+  assert.equal(view.props.useSession(s => s.running), false, 'failed/abandoned sends retire immediately');
+  snapshot = { ...snapshot, pendingSubmissions: [{ placement: 'queued' }] };
+  assert.equal(view.props.useSession(s => s.running), false, 'queued sends must not pretend to execute');
+  snapshot = { ...snapshot, running: true, pendingSubmissions: [] };
+  assert.equal(view.props.useSession(s => s.running), true, 'server activity takes over without a gap');
+  f.dispose();
+});
 test('model and reasoning update immediately, queue behind the current write, and ignore intermediate projections', async () => {
   const f = fixture(), model = f.model('alice');
   await model.select(pro);
