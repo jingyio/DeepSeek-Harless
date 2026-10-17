@@ -987,7 +987,7 @@ test('completed process messages retain verified artifact routing without repeat
 test('approved relative Markdown links retain captions and open preview; examples, images and remote links stay untouched',async()=>{
   const value=comparison();value.lanes.baseline.answer='[阅读报告](research_report.pdf)\n\n`[示例](research_report.pdf)`\n\n```md\n[代码](research_report.pdf)\n```\n\n![图片](research_report.pdf) [网站](https://example.com/research_report.pdf) [未知](missing.pdf)';
   const f=fixture(undefined,value);await flush();f.render();
-  const markdown=f.all(row=>row.type===f.MarkdownText)[0].props.text;
+  const markdown=f.all(row=>f.isMarkdown(row))[0].props.text;
   const href=/\[阅读报告\]\(([^)]+)\)/.exec(markdown)[1];
   assert.match(href,/^https:\/\/geneloop\.example\/#geneloop-preview=/);
   assert.match(decodeURIComponent(href),/session-a\/comparison-a\/baseline\/file-one\/research_report.pdf/);
