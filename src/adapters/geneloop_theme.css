@@ -393,11 +393,8 @@ html body[data-geneloop-style=air] { --gl-canvas:#fff;--gl-sidebar:#f0f4fa;--gl-
 html body[data-ds-dark-theme][data-geneloop-style=air] { --gl-canvas:#181b22;--gl-sidebar:#1e232d;--gl-surface:#262d38;--gl-inset:#222832;--gl-raised:#303746;--gl-ink:#f0f4fa;--gl-secondary:#b3c0d3;--gl-muted:#9eacc1;--gl-line:#404a5c;--gl-hairline:#303a49;--gl-hover:#343e50;--gl-blue:#98c3ff;--gl-selection:#2c4265; }
 html body[data-geneloop-style=aurora] { --gl-canvas:#fcfefe;--gl-sidebar:#eef6f6;--gl-surface:#fff;--gl-raised:#fff;--gl-inset:#f0f6f7;--gl-line:#d5e5e6;--gl-hairline:#e1edee;--gl-ink:#152e37;--gl-secondary:#526d78;--gl-muted:#617985;--gl-hover:#e0eff0;--gl-blue:#076b84;--gl-selection:#daf0f1;--gl-green:#0c8067; }
 html body[data-ds-dark-theme][data-geneloop-style=aurora] { --gl-canvas:#0c1722;--gl-sidebar:#101e2b;--gl-surface:#192a3a;--gl-inset:#142534;--gl-raised:#203346;--gl-ink:#edf6fc;--gl-secondary:#b1c9d6;--gl-muted:#95afbf;--gl-line:#344d60;--gl-hairline:#253c4d;--gl-hover:#233e50;--gl-blue:#68d7e7;--gl-selection:#183e4b;--gl-green:#7ae4be; }
-html body[data-geneloop-style=clear] .harless-paired-pane { background:transparent;border-radius:18px; }
 html body[data-geneloop-style=clear] .uV2eYG_card { border-radius:24px; }
-html body[data-geneloop-style=air] .harless-paired-pane { border-color:var(--gl-hairline);border-radius:24px;box-shadow:0 4px 24px #25476a09; }
 html body[data-geneloop-style=air] .uV2eYG_card { border-radius:28px; }
-html body[data-geneloop-style=aurora] .harless-paired-pane { background:var(--gl-sidebar);border-radius:20px; }
 html body[data-geneloop-style=aurora] .uV2eYG_card { border-color:color-mix(in srgb,var(--gl-blue) 40%,var(--gl-line));box-shadow:0 5px 30px #26768112; }
 /* Login concepts share the exact existing forms and account endpoints. */
 html body.geneloop-account-page .auth-side .field label { font-size:14px; }
@@ -405,10 +402,6 @@ html body.geneloop-account-page .auth-side .field input { height:52px;font-size:
 html body.geneloop-account-page .auth-side .primary { height:50px;border-radius:25px;font-size:16px; }
 html body.geneloop-account-page .card h2 { font-size:32px;line-height:1.25;letter-spacing:-.6px; }
 html body.geneloop-account-page .hint { font-size:15px;line-height:1.7; }
-.geneloop-auth-styles { border:0;margin:28px 0 0;padding:18px 0 0;border-top:1px solid var(--gl-hairline);display:flex;gap:8px;flex-wrap:wrap; }
-.geneloop-auth-styles legend { color:var(--gl-secondary);font-size:12px;padding:0 6px 0 0; }
-.geneloop-auth-styles button { padding:7px 13px;border:1px solid var(--gl-line);border-radius:18px;background:transparent;color:var(--gl-secondary);font:500 13px var(--gl-font); }
-.geneloop-auth-styles button[aria-pressed=true] { color:var(--gl-blue);border-color:var(--gl-blue);background:var(--gl-selection); }
 .geneloop-auth-spiral { width:clamp(190px,24vw,330px);height:330px;position:relative;margin:20px auto;display:grid;place-items:center; }
 .geneloop-auth-spiral img { width:100%;height:100%;object-fit:contain;animation:geneloop-spiral-drift 9s ease-in-out infinite; }
 .auth .brand-mark img { animation:geneloop-logo-arrive 1.2s var(--gl-ease) both; }
@@ -433,6 +426,21 @@ html body.geneloop-account-page[data-geneloop-style=aurora] .story:after { displ
 html body.geneloop-account-page[data-geneloop-style=aurora] .story h1 { font-size:42px;letter-spacing:-1px; }
 html body.geneloop-account-page[data-geneloop-style=aurora] .geneloop-auth-spiral { height:360px; }
 html body.geneloop-account-page[data-geneloop-style=aurora] .primary { background:linear-gradient(105deg,#167c8d,#5365d1);color:#fff; }
+/* Selected combination: clear chat + C's login layout, in black/gray.
+   Scope to auth so account settings and workspace preferences stay independent. */
+html body.geneloop-account-page[data-auth-active=true] {
+  color-scheme:dark;
+  --gl-canvas:#151515;--gl-sidebar:#101010;--gl-surface:#222;--gl-raised:#292929;--gl-inset:#1c1c1c;
+  --gl-ink:#f7f7f7;--gl-secondary:#b5b5b5;--gl-muted:#9c9c9c;--gl-line:#3a3a3a;--gl-hairline:#2d2d2d;
+  --gl-hover:#303030;--gl-blue:#ededed;--gl-blue-hover:#fff;--gl-selection:#333;--gl-green:#dedede;--gl-focus:0 0 0 4px #ffffff24;
+}
+html body.geneloop-account-page[data-auth-active=true] .story { background:#101010;color:var(--gl-ink); }
+html body.geneloop-account-page[data-auth-active=true] .story :is(.brand,h1) { color:var(--gl-ink); }
+html body.geneloop-account-page[data-auth-active=true] .story:before { background:radial-gradient(ellipse,#ffffff10,transparent 64%); }
+html body.geneloop-account-page[data-auth-active=true] :is(.brand-mark img,.geneloop-auth-spiral img) { filter:grayscale(1) brightness(1.6); }
+html body.geneloop-account-page[data-auth-active=true] .primary { background:#fff;color:#171717; }
+html body.geneloop-account-page[data-auth-active=true] .primary:hover { background:#e8e8e8;color:#171717; }
+html body.geneloop-account-page[data-auth-active=true] .primary:active { background:#dedede; }
 @media(max-width:700px) {
   .geneloop-style-choices [role=radiogroup] { grid-template-columns:1fr; }
   .geneloop-style-choices button { display:grid;grid-template-columns:64px 1fr; }

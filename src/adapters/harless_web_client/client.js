@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
       function StyleChoices() {
         const [selected, setSelected] = React.useState(storedStyle), [notice, setNotice] = React.useState('');
         return React.createElement('section', { className: 'geneloop-style-choices', 'aria-label': '界面风格' },
-          React.createElement('h3', null, '界面风格'), React.createElement('p', null, '选择一种风格，立即预览。明暗模式仍由外观设置控制。'),
+          React.createElement('h3', null, '界面风格'), React.createElement('p', null, '默认使用清晰风格。这里仅调整工作区，登录页使用独立的黑灰主题。'),
           React.createElement('div', { role: 'radiogroup', 'aria-label': '界面风格' }, ...styleChoices.map(style => React.createElement('button', {
             key: style.id, type: 'button', role: 'radio', 'aria-checked': selected === style.id, 'data-style': style.id,
             onClick: () => { document.body.dataset.geneloopStyle = style.id; setSelected(style.id);

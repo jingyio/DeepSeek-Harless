@@ -72,7 +72,6 @@
         <form id="claim-form"><div class="field"><label for="claim-user">用户名</label><input id="claim-user" name="username" minlength="3" maxlength="32" pattern="[a-zA-Z][a-zA-Z0-9_-]{2,31}" autocomplete="username" required></div><div class="field"><label for="claim-name">显示名称</label><input id="claim-name" name="displayName" maxlength="40" autocomplete="name" required></div><div class="field"><label for="claim-pass">密码</label><input id="claim-pass" name="password" type="password" minlength="10" autocomplete="new-password" required><small>至少 10 位。激活链接只能使用一次。</small></div><button class="primary">激活并进入</button></form>
         <p id="claim-error" class="notice" role="status"></p>
       </section>
-      <fieldset class="geneloop-auth-styles"><legend>界面风格</legend><button type="button" data-visual-style="clear" aria-pressed="false">清晰</button><button type="button" data-visual-style="air" aria-pressed="false">轻盈</button><button type="button" data-visual-style="aurora" aria-pressed="false">极光</button></fieldset>
     </div></main>
   </div>
   <div id="account" class="account" hidden>
@@ -88,12 +87,13 @@
     (()=>{'use strict';const $=id=>document.getElementById(id), path=location.pathname;
       const styles=['clear','air','aurora'],styleKey='geneloop-visual-style-v1';
       const colorMode=matchMedia('(prefers-color-scheme: dark)');
-      const syncColor=()=>document.body.toggleAttribute('data-ds-dark-theme',colorMode.matches);syncColor();colorMode.addEventListener('change',syncColor);
-      const chooseStyle=value=>{document.body.dataset.geneloopStyle=styles.includes(value)?value:'clear';for(const button of document.querySelectorAll('[data-visual-style]'))button.setAttribute('aria-pressed',String(button.dataset.visualStyle===document.body.dataset.geneloopStyle))};
+      const syncColor=()=>document.body.toggleAttribute('data-ds-dark-theme',document.body.dataset.authActive==='true'||colorMode.matches);syncColor();colorMode.addEventListener('change',syncColor);
+      const chooseStyle=value=>{document.body.dataset.geneloopStyle=styles.includes(value)?value:'clear'};
       try{chooseStyle(localStorage.getItem(styleKey))}catch{chooseStyle('clear')}
-      for(const button of document.querySelectorAll('[data-visual-style]'))button.addEventListener('click',()=>{chooseStyle(button.dataset.visualStyle);try{localStorage.setItem(styleKey,button.dataset.visualStyle)}catch{}});
       document.title=({'/login':'登录','/register':'注册','/account':'账户设置','/claim':'激活账号','/starting':'正在打开工作区'}[path]||'工作区')+' · GeneLoop';
-      const show=id=>{document.body.dataset.authActive=String(id==='auth');$('loading').hidden=true;$(id).hidden=false};
+      // The selected login design is independent of workspace appearance.
+      // Never persist its dark palette or layout as a chat preference.
+      const show=id=>{document.body.dataset.authActive=String(id==='auth');if(id==='auth')chooseStyle('aurora');syncColor();$('loading').hidden=true;$(id).hidden=false};
       const notice=(id,message,ok=false)=>{const node=$(id);node.textContent=message;node.classList.toggle('ok',ok)};
       async function api(path,body){const res=await fetch('/api/account/'+path,{method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await res.json();if(!res.ok)throw Error(data.error||'操作失败，请稍后重试');return data}
       const formObject=form=>Object.fromEntries(new FormData(form).entries());
