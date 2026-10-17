@@ -207,7 +207,7 @@ html body .geneloop-workspace-home-chats button { border-color: var(--gl-hairlin
 
 /* Comparison, file cards and trajectory remain first-class surfaces. */
 html body .harless-paired-grid { gap: 20px; }
-html body .harless-paired-pane { padding: 22px; border-color: var(--gl-line); border-radius: 20px; background: var(--gl-surface); box-shadow: var(--gl-shadow-sm); }
+html body .harless-paired-pane { padding: 22px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 html body .harless-paired-pane>header { border-color: var(--gl-hairline); padding-bottom: 16px; }
 html body .harless-paired-pane>header>strong { font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
 html body .harless-paired-pane>footer { border-color: var(--gl-hairline); padding-top: 18px; }
@@ -332,6 +332,6 @@ html body :is(.geneloop-chat-name,.geneloop-workspace-name,.VOzbGW_navCell):acti
   html body :is([role=menu],[data-trigger-menu],.geneloop-workspace-menu) { background: var(--gl-raised); backdrop-filter: none; }
 }
 @media(forced-colors:active) {
-  html body :is(.uV2eYG_card,.harless-paired-pane,[role=dialog],[role=menu],[data-trigger-menu]) { border: 1px solid CanvasText; box-shadow: none; }
+  html body :is(.uV2eYG_card,[role=dialog],[role=menu],[data-trigger-menu]) { border: 1px solid CanvasText; box-shadow: none; }
   html body :is(.wSkVaW_tabActive,[aria-current=page]) { outline: 1px solid Highlight; }
 }
