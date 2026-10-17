@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "status": "certified_read_library",
+  "artifacts": [
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_38d39011b73c",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__ppt__pin_deck_pages",
+        "mcp__ppt__read_pinned_deck_pages"
+      ],
+      "source_trace_ids": [
+        "train-1",
+        "train-2"
+      ],
+      "source_task_fingerprints": [
+        "rag-adoption-v3",
+        "qlora-single-gpu-v3"
+      ],
+      "contract_signature": "e2e12d327500e39351836e603eb632f46ea6348468d0be227c3fc0b6e9c29fb2",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__ppt__pin_deck_pages",
+          "mcp__ppt__read_pinned_deck_pages"
+        ],
+        "operators": {
+          "mcp__ppt__pin_deck_pages": {
+            "tool": "mcp__ppt__pin_deck_pages",
+            "read_only": true,
+            "required_params": [
+              "deck_id",
+              "pages_csv"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__ppt__read_pinned_deck_pages": {
+            "tool": "mcp__ppt__read_pinned_deck_pages",
+            "read_only": true,
+            "required_params": [
+              "source_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__ppt__pin_deck_pages",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__ppt__pin_deck_pages",
+                "from_field": "source_id",
+                "to_param": "source_id"
+              }
+            ]
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt__pin_deck_pages",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__ppt__read_pinned_deck_pages",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "train-1": 1,
+        "train-2": 1
+      },
+      "validation_trace_id": "heldout-1",
+      "validation_task_fingerprint": "dora-weight-decomposition-adoption",
+      "certified_digest": "591b6aa714232ef7a4b25ad873f9728321d1df74496d84be063a48b1b2270ff3"
+    },
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_714ddc12b11d",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__ppt__pin_source",
+        "mcp__ppt__read_source"
+      ],
+      "source_trace_ids": [
+        "train-1",
+        "train-2"
+      ],
+      "source_task_fingerprints": [
+        "rag-adoption-v3",
+        "qlora-single-gpu-v3"
+      ],
+      "contract_signature": "c8e74dbbf87af327e7b5539df43c9f92881b8941c84faefd7e8e51f84b8086fc",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__ppt__pin_source",
+          "mcp__ppt__read_source"
+        ],
+        "operators": {
+          "mcp__ppt__pin_source": {
+            "tool": "mcp__ppt__pin_source",
+            "read_only": true,
+            "required_params": [
+              "document_id"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__ppt__read_source": {
+            "tool": "mcp__ppt__read_source",
+            "read_only": true,
+            "required_params": [
+              "source_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__ppt__pin_source",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__ppt__pin_source",
+                "from_field": "source_id",
+                "to_param": "source_id"
+              }
+            ]
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt__pin_source",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__ppt__read_source",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "train-1": 1,
+        "train-2": 1
+      },
+      "validation_trace_id": "heldout-1",
+      "validation_task_fingerprint": "dora-weight-decomposition-adoption",
+      "certified_digest": "9042b46211f045cf50ec4f1902e33b2517d520023b03d28e7bb0232bca225930"
+    }
+  ],
+  "connectors": {},
+  "links": [],
+  "rejected": [],
+  "training_trace_ids": [
+    "train-1",
+    "train-2"
+  ],
+  "heldout_trace_ids": [
+    "heldout-1"
+  ],
+  "library_digest": "a76c43648c189046bed414c2acc45587e725a7974057446193c251fa6ab3372f",
+  "task_identity_evidence": {
+    "train-1": {
+      "research_decision_id": "rag-adoption-v3",
+      "task_id": "d19178ad04764a018c7e5a691c643082",
+      "question_sha256": "5ca7ae1a01e5826230dde691fbabd78e1ba8d1e42bc1bc4c78b6f58138f4c86e",
+      "manifest_sha256": "6e249df00502462a141c3b630d25fcb88e590fcf96dfbcb2745e91a9a421d00d",
+      "events_sha256": "d4b1fe20c3b6e29329073565693fcc7f32914459ea0419a9b5e232237c91de04",
+      "identity_sha256": "2c46b590df072b245f0b4858e022fd5003fc3dd4c3fe45a60e98a3755c839fd2"
+    },
+    "train-2": {
+      "research_decision_id": "qlora-single-gpu-v3",
+      "task_id": "d19178addd0b47d8a1700ec6c2d6b362",
+      "question_sha256": "3c0659e4af6c47324768e246034cf4510c17a23d52f3fe1ee1f4c645da80a327",
+      "manifest_sha256": "432c5d0178ee020ac02eb583dc9f1e715abd9c4717af3f6e45d8e12dd3dfbaaa",
+      "events_sha256": "ebb373a7a5e2a50f5e557cec9c9b507363b6e52578f5faf8d7ed7bbbe742b9bb",
+      "identity_sha256": "de16649026c1208ee00720e331b948002667c778c00001b05e4f72b733dae1a1"
+    },
+    "heldout-1": {
+      "research_decision_id": "dora-weight-decomposition-adoption",
+      "task_id": "d19178adf6bb4b92954fc2d77bc48b43",
+      "question_sha256": "d22ce2a02a828134b232a0a1ee3b114b9f4c363ba1812c603a1cfe9bd14a5dae",
+      "manifest_sha256": "42d9066856e2492c93e6ecd957588e8e0d6e86433151f8b67a56276fee1a034a",
+      "events_sha256": "1a3c82487b87b4bd0cb1f4bed3decd71c5c78453c0742f303a7590f95391095a",
+      "identity_sha256": "0341a78d59ea70983565014d13dc7c4ded01add119a4689410c83927289309fc"
+    }
+  }
+}

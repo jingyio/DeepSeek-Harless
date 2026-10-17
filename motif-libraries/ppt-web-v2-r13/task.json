@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "task_id": "ppt-web-v2-admission",
+  "session_id": "ppt-web-v2-admission",
+  "intent": "Read current approved sources and explicitly selected current deck pages.",
+  "input_version": "0000000000000000000000000000000000000000000000000000000000000000",
+  "bindings": {},
+  "source_versions": {
+    "mcp__ppt__pin_source": "0000000000000000000000000000000000000000000000000000000000000000",
+    "mcp__ppt__read_source": "0000000000000000000000000000000000000000000000000000000000000000",
+    "mcp__ppt__pin_deck_pages": "0000000000000000000000000000000000000000000000000000000000000000",
+    "mcp__ppt__read_pinned_deck_pages": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
