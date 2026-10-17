@@ -437,7 +437,6 @@ html body.geneloop-account-page[data-auth-active=true] {
 html body.geneloop-account-page[data-auth-active=true] .story { background:#101010;color:var(--gl-ink); }
 html body.geneloop-account-page[data-auth-active=true] .story :is(.brand,h1) { color:var(--gl-ink); }
 html body.geneloop-account-page[data-auth-active=true] .story:before { background:radial-gradient(ellipse,#ffffff10,transparent 64%); }
-html body.geneloop-account-page[data-auth-active=true] :is(.brand-mark img,.geneloop-auth-spiral img) { filter:grayscale(1) brightness(1.6); }
 html body.geneloop-account-page[data-auth-active=true] .primary { background:#fff;color:#171717; }
 html body.geneloop-account-page[data-auth-active=true] .primary:hover { background:#e8e8e8;color:#171717; }
 html body.geneloop-account-page[data-auth-active=true] .primary:active { background:#dedede; }
