@@ -22,8 +22,11 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence',type=Path,required=True)
     parser.add_argument('--out',type=Path,required=True)
+    parser.add_argument('--source',type=Path,default=ROOT/'motif-libraries/ppt-web-v2-r6')
+    parser.add_argument('--publish',type=Path,default=ROOT/'motif-libraries/ppt-web-v2-r7')
     args=parser.parse_args()
-    old=ROOT/'motif-libraries/ppt-web-v2-r6';new=ROOT/'motif-libraries/ppt-web-v2-r7'
+    old=args.source.resolve(strict=True);new=args.publish.resolve()
+    if not old.is_relative_to(ROOT/'motif-libraries') or not new.is_relative_to(ROOT/'motif-libraries'):raise ValueError('registered release paths required')
     out=args.out.resolve()
     if not out.is_relative_to(ROOT/'.local') or out.exists() or new.exists():raise ValueError('new private compilation and release paths required')
     out.mkdir(parents=True)
@@ -39,7 +42,7 @@ def main():
     write(out/'schema.json',{'tools':[{'name':s['name'],'description':s['description'],'inputSchema':s['parameters']} for s in schemas]})
     guards=[ROOT/'src/adapters'/name for name in ('harless_task_scope.ts','harless_ppt_recovery.ts','dsh_web_tasks.ts',
         'harless_scenarios.py','harless_rsi_binding.ts','harless_rsi_bundle.py','geneloop_capabilities.ts','geneloop_shell.ts','geneloop_web_search.ts',
-        'geneloop_command_broker.ts','geneloop_command_client.mjs')]
+        'geneloop_command_broker.ts','geneloop_command_client.mjs','harless_paper_learning.ts')]
     manifest=learn(out/'dataset.json',contracts_path=ROOT/'scenarios/research_ppt/web-read-contracts.json',
         version_fields_path=ROOT/'scenarios/research_ppt/web-read-version-fields.json',tool_schema_path=out/'schema.json',
         out_dir=out/'compiled',guard_paths=tuple(guards),mining='witnessed_edges')
@@ -66,6 +69,6 @@ def main():
     binding['validation']['common_capabilities']='Additive native tools; original certified MCP contracts and original certificate unchanged.'
     write(legacy/'runtime-bindings.json',binding)
     entry=read(legacy/'entry.json');entry['files']['runtime-bindings.json']=sha(legacy/'runtime-bindings.json');write(legacy/'entry.json',entry)
-    print(json.dumps({'release':'ppt-web-v2-r7','same_witnessed_artifacts':True,'model_requests':0}))
+    print(json.dumps({'release':new.name,'same_witnessed_artifacts':True,'model_requests':0}))
 
 if __name__=='__main__':main()

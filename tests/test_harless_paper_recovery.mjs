@@ -5,7 +5,7 @@ const execution=name=>({name:'mcp__paper_checks__'+name});
 const result=value=>({structuredContent:value});
 test('paper export needs an explicit file request and respects text-only requests',()=>{
  for(const text of ['交付可下载的PDF校对报告','generate a PDF report','请导出报告'])assert.equal(paperExportRequested(text),true);
- for(const text of ['你好','校对这一句','不要导出报告，只在聊天回答',"Don't generate a PDF report."])assert.equal(paperExportRequested(text),false);
+ for(const text of ['你好','校对这一句','不要导出报告，只在聊天回答','只检查字面信息，不生成 PDF。','不导出报告，聊天回答即可。',"Don't generate a PDF report."])assert.equal(paperExportRequested(text),false);
 });
 test('paper source read cannot masquerade as a real exported report',()=>{
  const g=createPaperRecovery();assert.equal(g.stop({aborted:false}),null);

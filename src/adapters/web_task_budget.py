@@ -185,7 +185,17 @@ class TaskBudgetRegistry:
             route = self._route(session_id)
             route.cancelled = True
             route.active = False
-            return self.stats(session_id)
+            result = self.stats(session_id)
+            # Project only this authenticated route's existing accounting. No
+            # prompts, keys, other users' rows or new budget state are exported.
+            fields = {'task_id', 'session_id', 'request_id', 'global_request_id',
+                      'response_status', 'response_usage', 'observed_peak_usd'}
+            result['request_receipts'] = [
+                {key: value for key, value in row.items() if key in fields}
+                for line in route.state.record.read_text(encoding='utf-8').splitlines() if line.strip()
+                for row in [json.loads(line)]
+                if row.get('task_id') == route.task_id and 'response_status' in row]
+            return result
 
     def state_for(self, headers: Mapping[str, str]) -> RoutedState:
         session_id = next((value for key, value in headers.items()

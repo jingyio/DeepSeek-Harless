@@ -1,5 +1,13 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-17：Paper Web 自动学习接线（PR #61，未部署）
+
+- 基线 main `547be11`，独立分支 `codex/web-paper-auto-learning`。复用任务索引、原始事件、账本、Python 挖掘器、产品认证和 Shared RSI Runtime；只补完成通知、私有编译/发布、下一任务冻结版本。没有修改账号认证或上游核心。
+- Paper v3 / PPT r10 用原冻结证据重编兼容代码锁，原包保留；不作为新增公共训练或成本收益。Paper 自动学习仅认证 `pin_document → read_pinned_document(page=1)`；不学习任意脚本或科研判断。
+- 真实论文摘录复测：三次 Baseline 自动发布 round-0001，第四次 Execute 加载并验证跳过 1 次，4 项完成/0 工具错误。首轮导出错误保留，修复“不生成 PDF”否定及 Prompt 后复测；两轮共 55 真实请求/$0.051121236 代理估费，账单实付未知。完整论文质量、跨论文和持续净降本未证明。
+- 两实际成员进程、10 场景草稿及各自私有编译/加载诊断通过；模拟事件不当作真实学习效果。最终测试及边界见[自动学习验收](../experiments/web-paper-auto-learning-20261017-v1.md)、[论文交接](paper-proofreading.md)。
+- 实现 `17b852a` 已推送至 [PR #61](https://github.com/jingyio/DeepSeek-Harless/pull/61)，与当前 main 无冲突，GitHub Ubuntu/Windows CI 运行中；未合并、未部署生产。发布需同步代码和预算回执接口，保留原账本与用户数据，不能只替换前端。其他场景自动学习后续单独接线。
+
 ## 2026-10-17：横向思考强度滑杆
 
 - 基线 `eda501e`，分支 `codex/reasoning-strength-slider`。用户将旧 On/Off 扩为关闭/低/高/最高（off/low/high/max），按模型原生能力显示离散横向滑杆，支持拖动、点击与键盘。显示即时更新、后台串行保存、发送等待确认与失败回滚沿用原队列；默认 Off，旧 high 无需迁移。

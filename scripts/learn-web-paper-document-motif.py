@@ -117,7 +117,12 @@ def reconcile(state, request, ledger, *, qualifying):
 
 
 def structural_review(task, request, contracts):
-    events = [json.loads(line) for line in (task / 'events.jsonl').read_text(encoding='utf-8').splitlines() if line.strip()]
+    effective = read(task / 'effective-config.json')
+    lines = (task / 'events.jsonl').read_text(encoding='utf-8').splitlines()
+    start = effective.get('trace_start_index', 0)
+    if type(start) is not int or not 0 <= start <= len(lines):
+        raise ValueError('invalid frozen task event boundary')
+    events = [json.loads(line) for line in lines[start:] if line.strip()]
     if any(event.get('ptc_analysis_source') for event in events):
         raise ValueError('不能把派生的分析事件当原始采集事件')
     trace = extract_dsh_trace(events, contracts, trace_id='actual-task', task_fingerprint=request['task_id'],
@@ -151,7 +156,7 @@ def schema_compatibility(observed, current):
             'scope': 'Recompile the witnessed read edge against the captured current complete tool set; not old whole-schema equivalence.'}
 
 
-def export_run(row, ledger, out, current, contracts, base):
+def export_run(row, ledger, out, current, contracts, base, *, reuse_task_files=False):
     if not isinstance(row, dict) or not isinstance(row.get('decision_id'), str):
         raise ValueError('每条训练/留出记录必须有 task_dir 和 decision_id')
     task = private(row['task_dir'], relative_to=base)
@@ -172,15 +177,21 @@ def export_run(row, ledger, out, current, contracts, base):
     # 完整原始字节保留私有；不从答案、工具参数或人工脚本重建事件。
     for name in ('effective-config.json', 'task-state.json', 'task.json', 'events.jsonl', 'answer.md'):
         source = private(task / name)
-        shutil.copyfile(source, out / name)
+        (os.link if reuse_task_files else shutil.copyfile)(source, out / name)
     if (task / 'answer.json').is_file():
-        shutil.copyfile(private(task / 'answer.json'), out / 'answer.json')
-    shutil.copyfile(task / 'events.jsonl', out / 'agent-events.jsonl')
+        (os.link if reuse_task_files else shutil.copyfile)(private(task / 'answer.json'), out / 'answer.json')
+    # Preserve original event bytes; previous conversation turns are context, not new witnesses.
+    event_lines = (task / 'events.jsonl').read_bytes().splitlines(keepends=True)
+    start = effective.get('trace_start_index', 0)
+    if reuse_task_files and start == 0:
+        os.link(task / 'events.jsonl', out / 'agent-events.jsonl')
+    else:
+        (out / 'agent-events.jsonl').write_bytes(b''.join(event_lines[start:]))
     write(out / 'structural-review.json', review)
     manifest = {'schema_version': 1, 'task_id': request['task_id'], 'question': question,
                 'source_effective_sha256': sha(task / 'effective-config.json'),
                 'source_state_sha256': sha(task / 'task-state.json'), 'source_request_sha256': sha(task / 'task.json'),
-                'original_events_sha256': sha(task / 'events.jsonl'), 'answer_sha256': sha(task / 'answer.md'),
+                'original_events_sha256': sha(task / 'events.jsonl'), 'task_event_start_index': start, 'answer_sha256': sha(task / 'answer.md'),
                 'review_sha256': sha(out / 'structural-review.json'), 'provider_mode': effective['provider_mode'],
                 'model': state.get('model'), 'reasoning_effort': state.get('reasoning_effort'),
                 'stats': state['stats'], 'schema_compatibility': compatibility}
@@ -204,7 +215,7 @@ def code_paths():
         'src/adapters/dsh_online_motif.mjs', 'src/adapters/dsh_trajectory.py', 'src/adapters/dsh_event_projection.py',
         'src/adapters/task_identity.py', 'src/adapters/tool_contract_loader.py', 'src/adapters/tool_schema_contracts.py',
         'src/adapters/session_files.py', 'src/adapters/harless_attachment_text.py', 'src/adapters/session_report.py',
-        'src/adapters/file_lock.py', 'src/adapters/paper_static_checks.py', 'src/adapters/paper_archive.py',
+        'src/adapters/file_lock.py', 'src/adapters/harless_paper_learning.ts', 'scripts/learn-web-paper-tasks.py', 'src/adapters/web_task_budget.py', 'src/adapters/paper_static_checks.py', 'src/adapters/paper_archive.py',
         'src/adapters/paper_bibliography.py', 'src/adapters/paper_query_recovery.py', 'src/adapters/paper_renderer.py',
         'src/adapters/harless_paper_renderer.py', 'src/adapters/harless_paper_recovery.ts',
         'scenarios/data_analysis/table_inputs.py', 'benchmarks/research_report_agent_v2/document_engine.py',
@@ -226,14 +237,20 @@ def code_paths():
     return tuple(sorted({path.resolve(strict=True) for path in paths}))
 
 
-def main():
+def collection_commit():
+    # Installed member code has no Git checkout; exact file locks stay authoritative.
+    result = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True, capture_output=True) if shutil.which('git') else None
+    return result.stdout.strip() if result and result.returncode == 0 else None
+
+
+def main(argv=None, *, private_publish_root=None, reuse_task_files=False):
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dataset', type=Path, required=True)
     parser.add_argument('--schemas', type=Path, required=True, help='私有当前实际完整24工具 schema JSON')
     parser.add_argument('--out', type=Path, required=True, help='新的 .local 私有目录，不覆盖')
     parser.add_argument('--publish', type=Path, help='新的 motif-libraries 目录，不覆盖')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     dataset_path = private(args.dataset)
     dataset = read(dataset_path)
     if not isinstance(dataset, dict) or len(dataset.get('train', [])) != 2 or len(dataset.get('heldout', [])) != 1:
@@ -267,7 +284,7 @@ def main():
         evidence[split], runs[split] = [], []
         for index, row in enumerate(dataset[split], 1):
             dest = output / (split + '-' + str(index))
-            item = export_run(row, ledger, dest, current, contracts, dataset_path.parent)
+            item = export_run(row, ledger, dest, current, contracts, dataset_path.parent, reuse_task_files=reuse_task_files)
             if item['task_id'] in source_tasks:
                 raise ValueError('训练与留出不能复用同一个真实任务')
             source_tasks.add(item['task_id']);evidence[split].append(item);runs[split].append(str(dest))
@@ -312,7 +329,7 @@ def main():
               'current_candidate_source_tree_sha256': tree_digest,
               'collection_tracked_dirty': dataset.get('collection_tracked_dirty'),
               'collection_tree_scope': 'Candidate tracked-source snapshot, including uncommitted changes when present; commit alone is not a clean-source claim.',
-              'compilation_source_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+              'compilation_source_sha': collection_commit(),
               'compilation_source_binding': 'exact_file_code_locks_include_uncommitted_candidate',
               'compilation_model_requests': 0, 'compilation_seconds': time.monotonic() - started,
               'model_weights_trained': False, 'compilation_executes_scene_tools': False,
@@ -328,7 +345,8 @@ def main():
     write(output / 'public-learning-report.json', report)
     if args.publish:
         target = args.publish.resolve()
-        if not target.is_relative_to((ROOT / 'motif-libraries').resolve()) or target.exists():
+        boundary = private(private_publish_root) if private_publish_root is not None else (ROOT / 'motif-libraries').resolve()
+        if not target.is_relative_to(boundary) or target.exists():
             raise ValueError('publish 必须是 motif-libraries 下的新目录，禁止覆盖已有版本')
         # 再校验全部私有来源和编译文件，避免检查后被替换。
         validate_compilation(manifest_path)
@@ -361,7 +379,7 @@ def main():
                     'files': {path.name: sha(path) for path in sorted(target.iterdir())},
                     'scientific_quality_reviewed': False, 'quality_cost_promoted': False})
         from src.adapters.harless_rsi_bundle import load_product_bundle
-        load_product_bundle(ROOT, target, 'paper-proofreading')
+        load_product_bundle(ROOT, target, 'paper-proofreading', private_root=private_publish_root)
     print(json.dumps({'compiled_manifest': str(manifest_path), 'published': str(args.publish) if args.publish else None,
                       **report}, ensure_ascii=False))
 

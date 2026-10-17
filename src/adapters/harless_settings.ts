@@ -2,6 +2,7 @@
 import type { ExecutionMode } from './web_task_request.ts';
 import { COMMON_TOOLS } from './geneloop_capabilities.ts';
 export type Scene = {
+  learning_version?: string;
   id: string; label: string; preset: string; allowed_tools: string[];
   common_tools?: string[];
   config_sha256?: string; instructions?: string;
