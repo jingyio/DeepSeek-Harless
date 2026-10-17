@@ -11,11 +11,13 @@ from datetime import datetime, timezone
 
 from src.adapters.deepseek_cost_gate import (
     PEAK_USD_PER_MILLION, CACHE_HIT_PEAK_USD_PER_MILLION,
-    DEEPSEEK_OUTPUT_DEFAULTS, validate_cost_cap,
+    provider_output_reservation, validate_cost_cap,
 )
 
 CATALOG_URL = 'https://api.deepseek.com/models'
 MODEL_LABELS = {'deepseek-flash': 'DeepSeek V4.1 Flash', 'deepseek-v4-pro': 'DeepSeek V4 Pro'}
+REASONING_EFFORTS = ('off', 'low', 'high', 'max')
+REASONING_LABELS = {'off': 'Off', 'low': 'Low', 'high': 'High', 'max': 'Max'}
 
 
 def model_options(catalog: dict, *, budget_usd: float | None, max_output_tokens: int | None = None) -> list[dict]:
@@ -29,23 +31,39 @@ def model_options(catalog: dict, *, budget_usd: float | None, max_output_tokens:
         raise ValueError('invalid configured output limit')
     if not isinstance(catalog, dict) or not isinstance(catalog.get('data'), list):
         raise ValueError('invalid provider model catalog')
-    ids = {row.get('id') for row in catalog['data'] if isinstance(row, dict) and isinstance(row.get('id'), str)}
+    rows = {row['id']: row for row in catalog['data'] if isinstance(row, dict) and isinstance(row.get('id'), str)}
     result = []
     for model, label in MODEL_LABELS.items():
-        if model not in ids:
+        if model not in rows:
             continue
+        row = rows[model]
+        # Omitted metadata is common in the authenticated /models response.
+        # Leave it absent so the installed adapter supplies native capability.
+        support = row.get('supported_reasoning_efforts')
+        if 'supported_reasoning_efforts' in row:
+            if not isinstance(support, list) or any(not isinstance(value, str) for value in support):
+                raise ValueError('invalid provider reasoning capability metadata')
+            # Off is the separate thinking.disabled switch; providers may omit
+            # it when listing only the strengths of enabled thinking.
+            support = [effort for effort in REASONING_EFFORTS if effort == 'off' or effort in support]
         unavailable = {}
-        for effort, native_mode in (('off', 'disabled'), ('high', 'enabled')):
-            output = max_output_tokens or DEEPSEEK_OUTPUT_DEFAULTS[native_mode]
+        for effort in support if support is not None else REASONING_EFFORTS:
+            output = max_output_tokens or provider_output_reservation(model, {
+                'thinking': {'type': 'disabled' if effort == 'off' else 'enabled'},
+                **({'reasoning_effort': effort} if effort != 'off' else {}),
+            })
             reserve = output * PEAK_USD_PER_MILLION[model][1] / 1_000_000
             if budget_usd is not None and reserve >= budget_usd:
-                unavailable[effort] = (f'{"On" if effort == "high" else "Off"} 暂不可用：'
+                unavailable[effort] = (f'{REASONING_LABELS[effort]} 暂不可用：'
                     f'当前每任务预算 ${budget_usd:g} 不足以预留该模型的'
                     f'{"默认" if max_output_tokens is None else "已配置"}输出费用（至少 ${reserve:.6f}）。')
-        if 'high' in unavailable and 'off' not in unavailable:
-            unavailable['high'] += '请先选择 Off，再选择该模型。'
+        if 'off' not in unavailable:
+            for effort in unavailable:
+                unavailable[effort] += '请先选择 Off，再选择该模型。'
         result.append({'provider': 'deepseek-official', 'model': model, 'label': label,
-                       'available': True, **({'reasoning_unavailable': unavailable} if unavailable else {})})
+                       'available': True,
+                       **({'supported_reasoning_efforts': support} if support is not None else {}),
+                       **({'reasoning_unavailable': unavailable} if unavailable else {})})
     if not result:
         raise ValueError('provider catalog contains no supported, priced DeepSeek models')
     return result

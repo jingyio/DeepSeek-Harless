@@ -19,7 +19,9 @@ function canonical(path: string): string {
 export function memberTaskRoots(taskRoot = '/user/tasks', sceneRoot = '/app/.local/web'): string[] {
   const roots = [resolve(taskRoot, 'sessions'), resolve(taskRoot, 'managed-workspaces')];
   if (!existsSync(sceneRoot)) return roots;
-  const original = statSync(taskRoot), alias = statSync(sceneRoot);
+  // Windows file IDs can exceed Number's exact integer range. Compare full
+  // identifiers so adjacent, unrelated directories cannot alias by rounding.
+  const original = statSync(taskRoot, { bigint: true }), alias = statSync(sceneRoot, { bigint: true });
   if (!original.isDirectory() || !alias.isDirectory() ||
       original.dev !== alias.dev || original.ino !== alias.ino) throw denied();
   roots.push(resolve(sceneRoot, 'sessions'), resolve(sceneRoot, 'managed-workspaces'));

@@ -1,5 +1,12 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-17：横向思考强度滑杆
+
+- 基线 `eda501e`，分支 `codex/reasoning-strength-slider`。用户将旧 On/Off 扩为关闭/低/高/最高（off/low/high/max），按模型原生能力显示离散横向滑杆，支持拖动、点击与键盘。显示即时更新、后台串行保存、发送等待确认与失败回滚沿用原队列；默认 Off，旧 high 无需迁移。
+- 参数由原生 Adapter 序列化，不修改 Harness 核心。所有非 Off 值进入任务幂等摘要，两个对照侧冻结同一实际选择。完整 Schema/权限/来源和取消守卫保持。
+- 新 PPT r9/Paper v2 为同一真实冻结证据的免费代码兼容重编，旧 r8/v1、图和证据字节保留，Data 不变；三个场景默认 Execute。无需新模型训练或采集，不能将这次兼容发布当作新降本证据。
+- 验证、真实费用与最终发布见[滑杆验收](../experiments/geneloop-reasoning-strength-slider-20261017-v1.md)及对应 PR；私有原始日志保留 `.local/reasoning-slider-*`。所有应用额度仍为 null，账本与共享预算进程保留；部署只更新应用与相应场景配置，不回滚用户资料。
+
 ## 2026-10-17：三个网页场景默认 Execute
 
 - 基线 `30b5a37`，已合并新主线 `914cc25`，分支 `codex/all-scene-motif-execute`。`/paper` 默认接入新学的 `paper-web-v1`；PPT 使用 r8，保留 PR #57 已上线 r7，Data 使用原回执库，三个 Motif 默认均为 Execute。旧 Shadow 库和历史结果不追改，联网/命令/后台能力完整保留。

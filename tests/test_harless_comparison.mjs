@@ -140,18 +140,18 @@ test('Partial failure retry preserves the successful lane; scores bind output an
  }finally{f.close();}
 });
 
-test('reasoning selection is immutable for both lanes and the same request cannot change its mode', async () => {
+for(const effort of ['off','low','high','max'])test(`reasoning ${effort} is immutable for both lanes and the same request cannot change its strength`, async () => {
  const seen=[]; const f=fixture({prepare:async(t,lane,requestId)=>{
   seen.push({lane,effort:t.reasoning_effort});f.tasks.set(requestId,{status:'queued',answer:lane,deliveries:[]});return{task_id:requestId};
  }});
  try {
-  const sent=await f.send('a','reasoning','question',{...context,reasoning_effort:'high'});
+  const sent=await f.send('a','reasoning','question',{...context,reasoning_effort:effort});
   await f.wait(sent.comparison_id);
-  assert.deepEqual(seen,[{lane:'baseline',effort:'high'},{lane:'motif',effort:'high'}]);
+  assert.deepEqual(seen,[{lane:'baseline',effort},{lane:'motif',effort}]);
   const stored=JSON.parse(readFileSync(join(f.root,'comparisons.json'),'utf8')).turns[0];
-  assert.equal(stored.reasoning_effort,'high');
-  await assert.rejects(f.send('a','reasoning','question',{...context,reasoning_effort:'off'}),/不能更改/);
-  assert.equal((await f.send('a','reasoning','question',{...context,reasoning_effort:'high'})).comparison_id,sent.comparison_id);
+  assert.equal(stored.reasoning_effort,effort);
+  await assert.rejects(f.send('a','reasoning','question',{...context,reasoning_effort:effort==='off'?'high':'off'}),/不能更改/);
+  assert.equal((await f.send('a','reasoning','question',{...context,reasoning_effort:effort})).comparison_id,sent.comparison_id);
   assert.equal(f.submitted.length,2);
  }finally{f.close();}
 });

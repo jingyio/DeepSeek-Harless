@@ -21,7 +21,9 @@ function fixture() {
   for (const id of ['alice', 'bob']) {
     scopes.set(id, { effect(install) { effects.push(install()); } });
     queues.set(id, []);
-    native.set(id, { available: true, directory: store({ current: flash, status: 'ready', error: null, groups: [], routable: true }), load() {},
+    const reasoning = { defaultEffort: 'off', efforts: ['off', 'low', 'high', 'max'].map(id => ({ id, name: id })) };
+    native.set(id, { available: true, directory: store({ current: flash, status: 'ready', error: null,
+      groups: [{ id: 'deepseek-official', models: [{ id: 'flash', name: 'Flash', reasoning }, { id: 'pro', name: 'Pro', reasoning }] }], routable: true }), load() {},
       select(selection) {
         requests.push({ id, selection });
         this.directory.set({ ...this.directory.getSnapshot(), status: 'selecting' });
@@ -43,7 +45,14 @@ function fixture() {
   original.set('conversation.input.model', { options: {}, inject: id => native.get(id), component() {} });
   const ctx = { slots: { entries: name => [original.get(name)].filter(Boolean), subscribe: () => () => {},
     inject(_name, install) { effects.push(install()); }, register(spec, component) { wrappers.set(spec.name, { ...spec, component }); return () => {}; } } };
-  runInNewContext(code, { ctx, React: {}, h: () => {}, Promise,
+  let cursor = 0; const hooks = [];
+  const h = (type, props, ...children) => ({ type, props: props || {}, children });
+  const React = { useSyncExternalStore: (_subscribe, snapshot) => snapshot(),
+    useState(initial) { const slot = cursor++; if (!(slot in hooks)) hooks[slot] = initial;
+      return [hooks[slot], next => { hooks[slot] = next; }]; },
+    useRef(initial) { const slot = cursor++; return hooks[slot] ||= { current: initial }; },
+    useId: () => 'effort-test', useEffect() {}, useLayoutEffect() {} };
+  runInNewContext(code, { ctx, React, ReactDOM: { createPortal: node => node }, document: { body: {} }, h, Promise,
     mirrorPublicSlot(a, b) { mirrors.push([a, b]); return () => {}; },
     sessions: { scope: id => { const scope = scopes.get(id); scope.id = id; return scope; }, binding: id => ({ session: faces.get(id) }) },
     triggers: { sessionOf: scope => ({ menu: menus.get(scope.id), toggleSource: (...args) => launches.push(args) }) },
@@ -52,6 +61,10 @@ function fixture() {
   return { requests, prompts, notices, menus, launches, mirrors, wrappers, native, faces,
     model: id => wrappers.get('conversation.input.model').inject(id),
     composer: id => wrappers.get('conversation.composer.bar').inject(id),
+    ui(id, locked = false) { cursor = 0;
+      const wrapper = wrappers.get('conversation.input.model');
+      const element = wrapper.component({ ...wrapper.inject(id), locked });
+      return element.type(element.props); },
     settle: (id, accepted = true) => queues.get(id).shift()(accepted),
     dispose: () => effects.reverse().forEach(fn => fn?.()) };
 }
@@ -70,6 +83,54 @@ test('model and reasoning update immediately, queue behind the current write, an
   f.settle('alice'); await flush();
   assert.equal(model.directory.getSnapshot().current.reasoningEffort, 'high');
   assert.equal(model.directory.getSnapshot().status, 'ready');
+});
+
+function nodes(tree, match) {
+  if (!tree || typeof tree !== 'object') return [];
+  if (Array.isArray(tree)) return tree.flatMap(item => nodes(item, match));
+  return [...(match(tree) ? [tree] : []), ...nodes(tree.children, match)];
+}
+
+test('discrete slider exposes native levels and rapid input is optimistic while persistence stays ordered', async () => {
+  const f = fixture(), model = f.model('alice');
+  const trigger = nodes(f.ui('alice'), node => node.props['aria-haspopup'] === 'dialog')[0];
+  trigger.props.onClick();
+  let range = nodes(f.ui('alice'), node => node.type === 'input')[0];
+  assert.equal(range.props.type, 'range'); assert.equal(range.props.min, 0);
+  assert.equal(range.props.max, 3); assert.equal(range.props.step, 1);
+  assert.equal(range.props.value, 0); assert.equal(range.props['aria-valuetext'], '关闭');
+  assert.equal(nodes(f.ui('alice'), node => node.props['aria-label']?.startsWith('思考强度：')).length, 4);
+  range.props.onChange({ target: { value: '1' } });
+  assert.equal(model.directory.getSnapshot().current.reasoningEffort, 'low');
+  assert.equal(model.directory.getSnapshot().selectionPending, true);
+  // Retain the same render handler to exercise same-event-batch stale values.
+  range.props.onChange({ target: { value: '3' } });
+  range.props.onChange({ target: { value: '2' } });
+  assert.equal(model.directory.getSnapshot().current.reasoningEffort, 'high');
+  range = nodes(f.ui('alice'), node => node.type === 'input')[0];
+  assert.equal(range.props.value, 2); assert.equal(range.props['aria-valuetext'], '高');
+  await flush(); assert.equal(f.requests.length, 1);
+  for (let i = 0; i < 3; i++) { f.settle('alice'); await flush(); }
+  assert.deepEqual(f.requests.map(row => row.selection.reasoningEffort), ['low', 'max', 'high']);
+  assert.equal(model.directory.getSnapshot().selectionPending, false);
+});
+
+test('slider follows each model capability and locks during a running task without inventing levels', async () => {
+  const f = fixture(), original = f.native.get('alice').directory;
+  const before = original.getSnapshot();
+  original.set({ ...before, groups: [{ id: 'deepseek-official', models: [
+    { id: 'flash', name: 'Flash', reasoning: { defaultEffort: 'off', efforts: [{ id: 'off' }, { id: 'max' }] } }] }] });
+  nodes(f.ui('alice'), node => node.props['aria-haspopup'] === 'dialog')[0].props.onClick();
+  const range = nodes(f.ui('alice'), node => node.type === 'input')[0];
+  assert.equal(range.props.max, 1);
+  const stops = nodes(f.ui('alice'), node => node.props['aria-label']?.startsWith('思考强度：'));
+  assert.deepEqual(stops.map(node => node.props['aria-label']), ['思考强度：关闭', '思考强度：最高']);
+  assert.equal(nodes(f.ui('alice', true), node => node.type === 'input')[0].props.disabled, true);
+  stops[1].props.onClick();
+  assert.equal(f.model('alice').directory.getSnapshot().current.reasoningEffort, 'max');
+  await flush(); f.settle('alice', false); await flush();
+  assert.equal(f.model('alice').directory.getSnapshot().current.reasoningEffort, 'off');
+  assert.match(f.notices[0].text, /已恢复之前/);
 });
 test('a send waits for its selected model, and subsequent choices cannot overtake that send', async () => {
   const f = fixture(), model = f.model('alice');

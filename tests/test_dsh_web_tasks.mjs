@@ -491,7 +491,9 @@ test('model catalog is read-only, authenticated and omits server configuration',
   const result=await get(sessionId),value=await result.json();
   assert.equal(result.status,200);assert.equal(result.headers.get('Cache-Control'),'no-store');
   assert.equal(value.default.reasoning_effort,'off');assert.equal(value.session_selection.model,'deepseek-flash');
-  assert.deepEqual(value.models[1].reasoning_modes,[{id:'off',label:'Off',available:true},{id:'high',label:'On',available:false,unavailable_reason:'当前预算仅支持 Off。'}]);
+  assert.deepEqual(value.models[1].supported_reasoning_efforts,['off','low','high','max']);
+  assert.deepEqual(value.models[1].reasoning_modes,[{id:'off',label:'Off',available:true},{id:'low',label:'Low',available:true},
+   {id:'high',label:'High',available:false,unavailable_reason:'当前预算仅支持 Off。'},{id:'max',label:'Max',available:true}]);
   assert.doesNotMatch(JSON.stringify(value),/private-provider|private-key|control_token|endpoint/);
   assert.equal(f.controlCalls.length,before);assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0);
  }finally{await f.close();}
@@ -578,7 +580,7 @@ test('Native On/Off selection survives restart, freezes each real request contra
     const {sessionId}=await f.ctx.sessionController.create({});
     assert.equal(f.modelCalls.at(-1).reasoningEffort,'off');
     const select=effort=>f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:effort},new AbortController().signal);
-    for(const effort of ['on','low','max']) await assert.rejects(select(effort),error=>error.code==='model_not_allowed');
+    for(const effort of ['on','medium','ultra']) await assert.rejects(select(effort),error=>error.code==='model_not_allowed');
     await select('high'); await f.restart();
     await f.ctx.sessionController.prompt({sessionId,requestId:'thinking-on',mode:'queue',content:[{type:'text',text:'Explain the method'}]},new AbortController().signal);
     const first=(await f.api()).value.tasks[0];
@@ -609,9 +611,54 @@ test('Task preview binds reasoning in its confirmation and rejects changing a re
     const duplicate=await f.api({action:'preview',request:{instruction:'Diagnose this result',request_id:'same-input',reasoning_effort:'off'}});
     assert.equal(duplicate.status,409);assert.equal(duplicate.value.error.code,'request_id_conflict');
     assert.equal((await f.api()).value.tasks.length,1);
-    const unsupported=await f.api({action:'preview',request:{instruction:'Diagnose',reasoning_effort:'max'}});
+    for(const effort of ['low','max']){
+      const task=await f.preview({instruction:'Bind every strength',request_id:'strength-'+effort,reasoning_effort:effort});
+      assert.equal(task.reasoning_effort,effort);
+      const duplicate=await f.api({action:'preview',request:{instruction:'Bind every strength',request_id:'strength-'+effort,reasoning_effort:'off'}});
+      assert.equal(duplicate.status,409);assert.equal(duplicate.value.error.code,'request_id_conflict');
+    }
+    const unsupported=await f.api({action:'preview',request:{instruction:'Diagnose',reasoning_effort:'medium'}});
     assert.equal(unsupported.status,400);assert.equal(unsupported.value.error.code,'model_not_allowed');
   }finally{await f.close();}
+});
+
+test('Low and Max survive restart, bind each task request, and preserve prior task effort',options,async()=>{
+ const f=await fixture({broker:true,max_output_tokens:null});try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const next=async function*(){yield {type:'text-delta',index:0,text:'diagnostic'};};
+  const tasks=[];
+  for(const effort of ['low','max','off']){
+   await f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:effort},new AbortController().signal);
+   await f.restart();
+   await f.ctx.sessionController.prompt({sessionId,requestId:'native-strength-'+effort,mode:'queue',content:[{type:'text',text:'Use the selected effort'}]},new AbortController().signal);
+   const task=(await f.api()).value.tasks.at(-1);tasks.push(task);
+   assert.equal(task.reasoning_effort,effort);
+   assert.throws(()=>f.stream(f.modelRequest(task,{reasoningEffort:effort==='max'?'low':'max',maxTokens:undefined}),next),/Unapproved/);
+   for await(const _chunk of f.stream(f.modelRequest(task,{reasoningEffort:effort,maxTokens:undefined}),next)){}
+   assert.equal(JSON.parse(readFileSync(join(f.directory,'tasks',task.task_id,'model-request-config.json'))).reasoning_effort,effort);
+   await f.complete(task);
+  }
+  for(const [index,effort] of ['low','max','off'].entries())assert.equal(JSON.parse(readFileSync(join(f.directory,'tasks',tasks[index].task_id,'effective-config.json'))).reasoning_effort,effort);
+  assert.equal(f.registrations.size,3);
+ }finally{await f.close();}
+});
+
+test('Per-model supported reasoning strengths filter catalog and reject unsupported selection before admission',options,async()=>{
+ const f=await fixture({broker:true,models:[{provider:'deepseek-official',model:'deepseek-flash',label:'Flash',available:true,supported_reasoning_efforts:['off','low','high']},
+  {provider:'deepseek-official',model:'deepseek-v4-pro',label:'Pro',available:true,supported_reasoning_efforts:['off','high','max'],reasoning_unavailable:{max:'Max 当前预算不足。'}}]});try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const request=new Request('http://local/api/harless/models');request.authorized=true;
+  const catalog=await (await f.routes.get('/api/harless/models').fetch(request)).json();
+  assert.deepEqual(catalog.models.map(row=>row.reasoning_modes.map(mode=>mode.id)),[['off','low','high'],['off','high','max']]);
+  const count=f.modelCalls.length;
+  await assert.rejects(f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'max'},new AbortController().signal),error=>error.code==='model_not_allowed');
+  assert.equal(f.modelCalls.length,count);
+  const unsupported=await f.api({action:'preview',request:{instruction:'Do not silently downgrade',model:'deepseek-v4-pro',reasoning_effort:'low'}});
+  assert.equal(unsupported.status,400);assert.equal(unsupported.value.error.code,'model_not_allowed');
+  const budget=await f.api({action:'preview',request:{instruction:'Do not silently downgrade',model:'deepseek-v4-pro',reasoning_effort:'max'}});
+  assert.equal(budget.status,400);assert.equal(budget.value.error.code,'model_budget_unavailable');
+  assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0);
+ }finally{await f.close();}
 });
 
 test('Submit requires the current confirmation and never reruns a retry; only one task is active', options, async () => {
@@ -1036,8 +1083,9 @@ test('paired invalid Paper reuse falls back to ordinary model execution without 
 test('real Paper product manifest mounts the page-one continuation only on Motif and verifies its tool result',options,async()=>{
  // Uses the committed learned bundle, but the native model/tool envelopes here
  // are explicit free protocol diagnostics, not new training or quality claims.
- const base=fileURLToPath(new URL('../motif-libraries/paper-web-v1/',import.meta.url));
  const root=fileURLToPath(new URL('../',import.meta.url));
+ const sceneRegistry=JSON.parse(readFileSync(join(root,'config/harless-scenes.json'),'utf8'));
+ const base=join(root,sceneRegistry.scenes.find(row=>row.id==='paper-proofreading').rsi.runtime_bundle);
  const read=name=>JSON.parse(readFileSync(join(base,name),'utf8'));
  const hash=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
  const entry=read('entry.json'),cert=read('certification.json'),schemas=read('tool-schemas.json');

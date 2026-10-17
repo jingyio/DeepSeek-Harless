@@ -8,7 +8,8 @@ import pytest
 from src.adapters.harless_rsi_bundle import load_product_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE = ROOT / 'motif-libraries/paper-web-v1'
+REGISTRY = json.loads((ROOT / 'config/harless-scenes.json').read_text(encoding='utf-8'))
+RELEASE = ROOT / next(row for row in REGISTRY['scenes'] if row['id'] == 'paper-proofreading')['rsi']['runtime_bundle']
 PAIR = ['mcp__paper_checks__pin_document', 'mcp__paper_checks__read_pinned_document']
 
 
@@ -23,7 +24,7 @@ def sha(path):
 def copy_release(tmp_path):
     """Copy real bytes/locks to an isolated repository for destructive-negative tests."""
     root = tmp_path / 'repo'
-    bundle = root / 'motif-libraries/paper-web-v1'
+    bundle = root / 'motif-libraries' / RELEASE.name
     shutil.copytree(RELEASE, bundle)
     paths = set(read(RELEASE / 'certification.json')['code_locks'])
     paths.add('scenarios/paper_proofreading/scenario.json')

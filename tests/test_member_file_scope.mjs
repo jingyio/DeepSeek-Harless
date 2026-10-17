@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, basename, sep } from 'node:path';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 const options={skip:!process.features?.typescript};
 test('Scene task mount alias is allowed only for the same directory identity',options,async()=>{
  const {memberTaskRoots}=await import('../src/adapters/harless_member_file_scope.ts');
@@ -13,6 +15,26 @@ test('Scene task mount alias is allowed only for the same directory identity',op
   assert.deepEqual(memberTaskRoots(own,own),[join(own,'sessions'),join(own,'managed-workspaces'),join(own,'sessions'),join(own,'managed-workspaces')]);
   assert.throws(()=>memberTaskRoots(own,foreign),/只允许/);
  }finally{assert.ok(resolve(directory).startsWith(resolve(tmpdir())+sep));rmSync(directory,{recursive:true,force:true});}
+});
+test('Directory alias identity retains file IDs beyond Number precision',options,async()=>{
+ const {memberTaskRoots}=await import('../src/adapters/harless_member_file_scope.ts');
+ const directory=mkdtempSync(join(tmpdir(),'harless-member-files-wide-id-'));
+ const own=join(directory,'own'),foreign=join(directory,'foreign');mkdirSync(own);mkdirSync(foreign);
+ const nativeStat=fs.statSync,ownId=2n**53n,foreignId=ownId+1n;
+ assert.equal(Number(ownId),Number(foreignId)); // Explicit precision-loss diagnostic, not actual NTFS telemetry.
+ try{
+  fs.statSync=(path,settings)=>{
+   const result=nativeStat(path,settings),target=resolve(String(path));
+   if(target===own||target===foreign){const id=target===own?ownId:foreignId;result.ino=settings?.bigint?id:Number(id);}
+   return result;
+  };
+  syncBuiltinESMExports();
+  assert.throws(()=>memberTaskRoots(own,foreign),/只允许/);
+  assert.equal(memberTaskRoots(own,own).length,4);
+ }finally{
+  fs.statSync=nativeStat;syncBuiltinESMExports();
+  assert.ok(resolve(directory).startsWith(resolve(tmpdir())+sep));rmSync(directory,{recursive:true,force:true});
+ }
 });
 async function fixture(){
  const {guardMemberFileRpc}=await import('../src/adapters/harless_member_file_scope.ts');

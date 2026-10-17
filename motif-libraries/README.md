@@ -4,12 +4,14 @@
 
 | 场景 | 目录 | 现有能力与边界 |
 | --- | --- | --- |
-| `/ppt` | `ppt-web-v2-r8/` | 沿用两项正常网页研究决定和独立认证轨迹，针对当前共享适配器兼容重编两条读取续接：`pin_source → read_source`、`pin_deck_pages → read_pinned_deck_pages`。实际 MCP 的完整 1–30 页 schema 与主线 r7 相同，新增通用能力独立授权，代码锁覆盖其依赖；无新采样或模型请求，原始事件、费用和质量负例保留。只认证读取结构，尚未晋级为同质降本。历史 r4/r5/r6/r7 和 `ppt/` 原库/manifest/证书保持，当前兼容记录单列。 |
+| `/ppt` | `ppt-web-v2-r9/` | 沿用两项正常网页研究决定和独立认证轨迹，针对当前共享适配器兼容重编两条读取续接：`pin_source → read_source`、`pin_deck_pages → read_pinned_deck_pages`。实际 MCP 的完整 1–30 页 schema 与主线 r7 相同，新增通用能力独立授权，代码锁覆盖其依赖；无新采样或模型请求，原始事件、费用和质量负例保留。只认证读取结构，尚未晋级为同质降本。历史 r4/r5/r6/r7/r8 和 `ppt/` 原库/manifest/证书保持，当前兼容记录单列。 |
 | `/data` | `data/` | 原 V3 报告库的 10 个回执续接，保留全部 17 个场景工具（其中 14 个为统计、图表和 PDF 主流程）。分析、展示和正文三次语义决定仍由模型完成；来源、工作区、回执、工具 schema 或许可不匹配时交回模型。 |
-| `/paper` | `paper-web-v1/` | **Execute**：从两个独立正常任务及一个留出任务学习认证 `pin_document → read_pinned_document`。模型选择并固定当前上传来源后，只续接同一版本的默认第一页读取。完整保留 24 个工具，后续页、校对与修改仍由模型判断。旧 `paper/` 的 Shadow 认证及历史运行保持原样。 |
+| `/paper` | `paper-web-v2/` | **Execute**：从两个独立正常任务及一个留出任务学习认证 `pin_document → read_pinned_document`。模型选择并固定当前上传来源后，只续接同一版本的默认第一页读取。完整保留 24 个工具，后续页、校对与修改仍由模型判断。旧 `paper/` 的 Shadow 认证及历史运行保持原样。 |
 
 `scripts/import-trained-motif-pack.py` 用于从管理员已有产物导入，禁止把私人原文、原始模型日志或凭证提交到这里。PPT 当前代码改变后，兼容锁失效，界面显示回退；应先做实际 MCP/schema、版本守卫与交付验证，再独立更新兼容记录，不能改写历史训练认证来伪装有效。
 
 数据报告额外依赖：在服务器选用的 Python 环境执行 `python -m pip install -r scenarios/data_analysis/requirements-report.txt`；缺少这些依赖时 Registry 明确标为不可用。PPT 需先构建场景代码并部署固定渲染/字体安装，账户挂载的安装符号链接应直接指向规范化的绝对依赖目录。
 
 账户数据、上传内容、任务执行目录、双路历史和评分仍保存在服务器私有运行区。共享的只读 Motif 库不共享用户工作区。当前三库接入不代表文献场景已有可部署的训练库，也不构成科研质量或成本优越性结论。
+
+2026-10-17 的 r9/v2 只兼容网页四档思考强度所需的任务准入代码；沿用相同真实冻结证据与完整 Schema，无新采集、模型请求或质量/成本晋级。原包字节保留，见[验收记录](../docs/experiments/geneloop-reasoning-strength-slider-20261017-v1.md)。

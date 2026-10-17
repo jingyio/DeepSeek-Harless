@@ -83,7 +83,9 @@ def test_paper_default_library_and_generic_export_survive_without_private_deploy
     assert row['runtime_kind'] == 'paper_document_read_v1'
     assert row['runtime_mode'] == 'execute'
     assert row['binding_policy'] == 'approved_uploaded_reads_v1'
-    assert row['runtime_library'] == str(ROOT/'motif-libraries/paper-web-v1/library.json')
+    registry=json.loads((ROOT/'config/harless-scenes.json').read_text(encoding='utf-8'))
+    current=next(item for item in registry['scenes'] if item['id']=='paper-proofreading')['rsi']['runtime_bundle']
+    assert row['runtime_library'] == str(ROOT/current/'library.json')
     assert 'rsi_unavailable_reason' not in row and 'output_unavailable_reason' not in row
     assert row['paper_reference_output_unavailable_reason'] == 'paper_renderer_not_deployed'
     assert 'mcp__paper_checks__export_review_report' in row['allowed_tools']

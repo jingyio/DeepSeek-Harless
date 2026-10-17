@@ -1,5 +1,10 @@
 # 论文校对场景当前交接
 
+## 2026-10-17：四档思考强度代码兼容
+
+- 当前产品默认 `paper-web-v2` 为四档任务准入代码的免费兼容重编；原 `paper-web-v1` 包、两训练/一留出决定、图、完整 24 工具 Schema、来源证据保持。无新采集或质量/成本晋级；默认仍为 Execute。
+- 模型选择和校对判断不变，off/low/high/max 由本轮冻结，两侧同档。新界面与实际请求验证见[滑杆验收](../experiments/geneloop-reasoning-strength-slider-20261017-v1.md)。
+
 ## 2026-10-17：普通文档读取 Execute
 
 - `codex/all-scene-motif-execute` 基于已合并 `30b5a37`。产品默认库切换为 `motif-libraries/paper-web-v1`；旧 `paper/` Shadow 及私有论文/参考文献 Execute 路线保留，不把旧证书改成新授权。
