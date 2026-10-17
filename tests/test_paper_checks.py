@@ -124,3 +124,46 @@ def test_booked_request_keeps_reservation_until_terminal_usage(tmp_path, monkeyp
         'observed_peak_usd':0.002,'reserved_upper_usd':upper})+'\n')
     rows, cost, _ = experiment.account(tmp_path/'new')
     assert len(rows) == 2 and cost == pytest.approx(0.003)
+
+
+@pytest.fixture
+def allocated_paper_budget(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location('allocated_paper_budget',
+                Path(__file__).parents[1]/'scripts/paper-motif-experiment.py')
+    experiment = importlib.util.module_from_spec(spec); spec.loader.exec_module(experiment)
+    monkeypatch.setattr(experiment, 'ROOT', tmp_path)
+    monkeypatch.setattr(experiment, 'PRIOR', [])
+    return experiment
+
+
+def test_cross_host_money_is_preserved_without_becoming_model_requests(tmp_path, allocated_paper_budget):
+    import json
+    folder = tmp_path/'.local/paper-motif/allocations'; folder.mkdir(parents=True)
+    for name, kind, amount in [('remote', 'remote_budget_allocation', .25),
+                               ('prior', 'historical_cost_floor', .1)]:
+        (folder/(name+'.json')).write_text(json.dumps({
+            'schema_version': 1, 'kind': kind, 'reserved_usd': amount}))
+    ledger = tmp_path/'.local/paper-motif/previous/runs/baseline/cost-ledger.jsonl'
+    ledger.parent.mkdir(parents=True)
+    ledger.write_text(json.dumps({'request_id': 1, 'observed_peak_usd': .2,
+                                  'reserved_upper_usd': .3})+'\n')
+    for experiment_id in ('first', 'second'):
+        rows, cost, snapshots = allocated_paper_budget.account(tmp_path/experiment_id)
+        assert len(rows) == 1
+        assert cost == pytest.approx(.55)
+        assert len(snapshots) == 3
+        assert snapshots[str((folder/'remote.json').relative_to(tmp_path))] == allocated_paper_budget.sha(folder/'remote.json')
+
+
+@pytest.mark.parametrize('change', [
+    {'reserved_usd': -1}, {'reserved_usd': True}, {'reserved_usd': '0.25'},
+    {'reserved_usd': float('inf')}, {'reserved_usd': float('nan')},
+    {'kind': 'unknown'}, {'schema_version': 2}])
+def test_invalid_cross_host_allocations_fail_closed(tmp_path, allocated_paper_budget, change):
+    import json
+    path = tmp_path/'.local/paper-motif/allocations/invalid.json'
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({'schema_version': 1, 'kind': 'remote_budget_allocation',
+                               'reserved_usd': .25, **change}))
+    with pytest.raises(ValueError, match='invalid paper budget allocation'):
+        allocated_paper_budget.account(tmp_path/'new')
