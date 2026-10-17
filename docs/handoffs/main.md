@@ -1,5 +1,10 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-17：隐藏历史结果加载占位框
+
+- 分支 `codex/hide-result-loading`，基线 `c7b02a7`。单栏回复和双栏 Baseline/Motif 在权威结果快照加载前不渲染输出框；删除占位标题、边框和加载文案。已有缓存结果、实际流式执行、轨迹页和失败后的重新连接入口保持。
+- `node --test tests/test_harless_paired_client.mjs` 54 项通过，覆盖延迟加载、切换会话、缓存、重连及下载。纯前端变更，没有新的模型调用；待合并发布。
+
 ## 2026-10-17：场景标签替换与旧 Files 续聊
 
 - 分支 `codex/composer-switching-fluidity`，基线 `2c28b27`；生产当前 `547be11`。加号菜单允许替换完整场景，转换原生标签 detect/clipboard 坐标；保留正文、附件和后续引用。

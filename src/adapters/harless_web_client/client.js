@@ -558,12 +558,10 @@ window.__ModuleLoader__.load({
           finally { downloadBusy.current.delete(key); transferControllers.current.delete(abort); }
         };
         const labels = { preparing: '准备中', queued: '等待执行', running: '运行中', completed: '回复完成', failed: '失败', cancelled: '已取消' };
-        if (!hydrated) return h('div', { className: 'harless-paired-loading', 'data-comparison-id': value.id, 'aria-busy': true },
-          h('style', null, '.harless-paired-loading{width:100%;margin:18px 0}.harless-paired-loading-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.harless-paired-loading section{border:1px solid #8885;border-radius:16px;padding:18px;min-width:0}.harless-paired-loading p{font-size:13px;color:var(--dsw-alias-label-secondary,inherit);line-height:1.6}@media(max-width:650px){.harless-paired-loading-grid{grid-template-columns:1fr}}'),
-          traceOnly ? h('p', { role: 'status' }, '正在加载此轮轨迹…') : h('div', { className: 'harless-paired-loading-grid' },
-            ...(value.presentation === 'single' ? ['baseline'] : ['baseline', 'motif']).map(lane => h('section', { key: lane },
-              h('strong', null, value.presentation === 'single' ? '回复' : lane === 'baseline' ? 'Baseline' : 'Motif'),
-              h('p', { role: 'status' }, '正在加载此轮结果…')))),
+        // Cold history has no verified output yet. Render no result frame until
+        // hydration finishes; keep connection recovery reachable on failure.
+        if (!hydrated) return !traceOnly && !connection ? null : h('div', { 'data-comparison-id': value.id, 'aria-busy': true },
+          traceOnly && h('p', { role: 'status' }, '正在加载此轮轨迹…'),
           connection && h('div', { role: 'status', className: 'harless-paired-connection' }, connection,
             h('button', { type: 'button', onClick: () => refreshNow.current() }, '重新连接'),
             connection.includes('登录') && h('a', { href: '/login', style: { marginLeft: 8 } }, '登录')));
