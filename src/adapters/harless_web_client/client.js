@@ -1431,7 +1431,7 @@ window.__ModuleLoader__.load({
       // A user message starts a displayed round, including legacy task messages
       // whose native turn location stayed on the preceding ordinary turn.
       const traceTime = value => typeof value === 'number' ? value : Date.parse(value);
-      const traceText = node => (node.blocks || node.content || []).map(part =>
+      const traceText = node => (node.kind === 'user' ? displayUserContent(node.blocks || node.content || []) : (node.blocks || node.content || [])).map(part =>
         part.text || (part.type === 'file' ? '文件：' + (part.attachment?.name || part.attachment?.filename || '附件') : '')).filter(Boolean).join('\n') || node.message || node.text || '';
       function nativeTraceRows(nodes) {
         const rows = [];

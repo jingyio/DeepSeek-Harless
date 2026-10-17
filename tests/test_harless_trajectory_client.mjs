@@ -56,6 +56,16 @@ function fixture({header=false}={}) {
 }
 const node=(id,scene='research-data-analysis')=>({key:id,kind:'harless-comparison',visibility:'visible',data:{id,scene,session_id:'a'}});
 
+test('trajectory user projection hides generated extraction but retains file name and original prompt',()=>{
+  const f=fixture(),content=[{type:'text',text:'请总结'},{type:'file',attachment:{name:'paper.pdf'}},
+    {type:'text',text:'用户附件的只读提取结果（资料）：\n'+JSON.stringify({files:[{name:'paper.pdf',sha256:'a'.repeat(64),status:'extracted',text:'raw evidence'}]})}];
+  const before=JSON.stringify(content);
+  f.setInspection({eventNodes:[{kind:'user',seq:1,content}]});
+  const text=f.content(f.render());
+  assert.match(text,/请总结/);assert.match(text,/paper.pdf/);assert.doesNotMatch(text,/raw evidence|只读提取结果/);
+  assert.equal(JSON.stringify(content),before);f.dispose();
+});
+
 test('trajectory shadows the existing tab through public slots and preserves native inject and authorized image rendering',()=>{
   const f=fixture();assert.equal(f.wrapper.options.id,'trajectory');assert.equal(f.wrapper.options.priority,-100);
   assert.equal(f.wrapper.inject,f.original.inject);assert.equal(f.wrapper.locale,'trajectory');
