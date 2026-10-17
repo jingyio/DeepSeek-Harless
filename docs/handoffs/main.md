@@ -3,7 +3,8 @@
 ## 2026-10-17：隐藏历史结果加载占位框
 
 - 分支 `codex/hide-result-loading`，基线 `c7b02a7`。单栏回复和双栏 Baseline/Motif 在权威结果快照加载前不渲染输出框；删除占位标题、边框和加载文案。已有缓存结果、实际流式执行、轨迹页和失败后的重新连接入口保持。
-- `node --test tests/test_harless_paired_client.mjs` 54 项通过，覆盖延迟加载、切换会话、缓存、重连及下载。纯前端变更，没有新的模型调用；待合并发布。
+- `node --test tests/test_harless_paired_client.mjs` 54 项通过，覆盖延迟加载、切换会话、缓存、重连及下载；Windows/Linux CI 均通过。纯前端变更，没有新的模型调用。
+- [PR #63](https://github.com/jingyio/DeepSeek-Harless/pull/63) 已合并；生产运行 `416f6a65b60df22ec4eb0715d885207584668523`。2026-10-17 17:34（北京时间）发布，219 个任务预检，用户数据哈希核对保持；预算和 broker 进程保持。备份与回执保留私有 `hidden-result-loading-releases/20261017T093436Z`，旧代码 `62246f5` 可回滚。
 
 ## 2026-10-17：场景标签替换与旧 Files 续聊
 
