@@ -1,5 +1,13 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-17：场景标签替换与旧 Files 续聊
+
+- 分支 `codex/composer-switching-fluidity`，基线 `2c28b27`；生产当前 `547be11`。加号菜单允许替换完整场景，转换原生标签 detect/clipboard 坐标；保留正文、附件和后续引用。
+- 完成的 Files 工作台任务可在原对话中按默认 Chat 继续，使用独立任务代理，保留旧工具范围与历史；修复切 Pro/推理档位后发送触发的 `scene_requires_new_session`。
+- 连续滑杆只在松手后保存最终档位；加粗蓝紫轨道、接近放大滑块、SVG 箭头；移除空保存状态行。Paper v4 / PPT r11 兼容重编，原冻结证据和旧库保持。
+- 已完成隔离网页三轮真实 Flash Off → Pro Low → Flash High，保留结果 29，绘图下载合格，再次计算得到 87。Python 839 / Node 799 通过，跳过 193 / 3，smoke 18 案例通过。首次原生标签失败已补回归。
+- 详见[验收记录](../experiments/geneloop-composer-switching-20261017.md)。正在准备 PR 与生产空闲切换，尚未部署；上线必须同步已合并 PR #61 的预算回执接口，保留原累计账本和用户数据。
+
 ## 2026-10-17：Paper Web 自动学习接线（PR #61，未部署）
 
 - 基线 main `547be11`，独立分支 `codex/web-paper-auto-learning`。复用任务索引、原始事件、账本、Python 挖掘器、产品认证和 Shared RSI Runtime；只补完成通知、私有编译/发布、下一任务冻结版本。没有修改账号认证或上游核心。

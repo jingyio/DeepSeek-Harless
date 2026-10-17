@@ -280,6 +280,29 @@ test('Real native controller space and menu picks insert the same addressed scen
   n.controller.dispose();
 });
 
+test('the add menu replaces an existing scene chip and preserves the draft and attachments', async () => {
+  const f = fixture({ allAvailable: true }), input = f.inputs.get('alice');
+  await f.trigger.candidates({sessionId:'alice'}, {query:'',position:'leading'});
+  input.setDraft('/ppt 保留正文'); input.addAttachments(['document','image']);
+  // A real native chip uses one detect character, unlike its clipboard label.
+  input.editor = { getEditorState: () => ({ toJSON: () => ({ root: { children: [{ children: [
+    { type:'reference-chip', source:'harless-scenes', clipboardText:input.state.getSnapshot().draft.split(' ')[0] },
+    { type:'text', text:' 保留正文' },
+  ] }] } }) }) };
+  const insert = input.insertReference.bind(input);
+  input.insertReference = (ref, span) => {
+    assert.equal(span.end, 1);
+    return insert(ref, { ...span, end:input.state.getSnapshot().draft.indexOf(' ') });
+  };
+  await f.pick('alice','research-data-analysis',4);
+  assert.equal(input.state.getSnapshot().draft,'/data 保留正文');
+  assert.deepEqual(input.state.getSnapshot().attachmentIds,['document','image']);
+  assert.equal(f.values.get('alice').selection.scene,'research-data-analysis');
+  await f.pick('alice','paper-proofreading',5);
+  assert.equal(input.state.getSnapshot().draft,'/paper 保留正文');
+  assert.equal(input.notices.length,0);
+});
+
 test('A stale PPT candidate cannot apply to a current /d span or a changed revision', async () => {
   const f = fixture({ allAvailable: true }), session = { sessionId: 'alice' }, input = f.inputs.get('alice');
   await f.trigger.candidates(session, { query: 'p', position: 'leading' });

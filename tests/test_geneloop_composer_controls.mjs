@@ -91,28 +91,46 @@ function nodes(tree, match) {
   return [...(match(tree) ? [tree] : []), ...nodes(tree.children, match)];
 }
 
-test('discrete slider exposes native levels and rapid input is optimistic while persistence stays ordered', async () => {
+test('continuous drag previews locally and commits only the final native level on release', async () => {
   const f = fixture(), model = f.model('alice');
   const trigger = nodes(f.ui('alice'), node => node.props['aria-haspopup'] === 'dialog')[0];
   trigger.props.onClick();
   let range = nodes(f.ui('alice'), node => node.type === 'input')[0];
   assert.equal(range.props.type, 'range'); assert.equal(range.props.min, 0);
-  assert.equal(range.props.max, 3); assert.equal(range.props.step, 1);
-  assert.equal(range.props.value, 0); assert.equal(range.props['aria-valuetext'], '关闭');
+  assert.equal(range.props.max, 3); assert.equal(range.props.step, 'any');
+  assert.equal(range.props.defaultValue, 0); assert.equal(range.props['aria-valuetext'], '关闭');
   assert.equal(nodes(f.ui('alice'), node => node.props['aria-label']?.startsWith('思考强度：')).length, 4);
-  range.props.onChange({ target: { value: '1' } });
-  assert.equal(model.directory.getSnapshot().current.reasoningEffort, 'low');
-  assert.equal(model.directory.getSnapshot().selectionPending, true);
-  // Retain the same render handler to exercise same-event-batch stale values.
-  range.props.onChange({ target: { value: '3' } });
-  range.props.onChange({ target: { value: '2' } });
+  const styles = {}, attributes = {};
+  const input = { value: '0', style: { setProperty(k,v) {styles[k]=v;} },
+    setAttribute(k,v) {attributes[k]=v;}, setPointerCapture() {} };
+  const event = { currentTarget: input, pointerId: 1 };
+  range.props.onPointerDown(event);
+  for (const value of ['0.12', '1.4', '2.9', '2.1']) {
+    input.value = value; range.props.onInput(event); range.props.onChange(event);
+    assert.equal(input.value, value);
+  }
+  assert.equal(model.directory.getSnapshot().current.reasoningEffort, 'off');
+  assert.equal(f.requests.length, 0);
+  assert.equal(attributes['aria-valuetext'], '高');
+  assert.match(styles['--geneloop-effort-color'], /^hsl\(254/);
+  range.props.onPointerUp(event);
+  assert.equal(input.value, '2');
   assert.equal(model.directory.getSnapshot().current.reasoningEffort, 'high');
-  range = nodes(f.ui('alice'), node => node.type === 'input')[0];
-  assert.equal(range.props.value, 2); assert.equal(range.props['aria-valuetext'], '高');
   await flush(); assert.equal(f.requests.length, 1);
-  for (let i = 0; i < 3; i++) { f.settle('alice'); await flush(); }
-  assert.deepEqual(f.requests.map(row => row.selection.reasoningEffort), ['low', 'max', 'high']);
+  f.settle('alice'); await flush();
+  assert.deepEqual(f.requests.map(row => row.selection.reasoningEffort), ['high']);
   assert.equal(model.directory.getSnapshot().selectionPending, false);
+  assert.equal(nodes(f.ui('alice'),node => node.props.className === 'geneloop-model-status').length,0);
+  // Cancellation restores the confirmed position without saving a draft value.
+  range = nodes(f.ui('alice'), node => node.type === 'input')[0];
+  range.props.onPointerDown(event); input.value='0.2'; range.props.onInput(event);
+  range.props.onPointerCancel(event);
+  assert.equal(input.value,'2'); assert.equal(f.requests.length,1);
+  let prevented = false;
+  range.props.onKeyDown({...event,key:'End',preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  assert.equal(model.directory.getSnapshot().current.reasoningEffort,'max');
+  await flush(); f.settle('alice'); await flush();
 });
 
 test('slider follows each model capability and locks during a running task without inventing levels', async () => {
