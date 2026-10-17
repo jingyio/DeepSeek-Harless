@@ -296,7 +296,7 @@ export function apply(ctx: any) {
         // The visible conversation routes to immutable private task agents.
         // Never mount a different tool composition over its earlier tool log.
         const routed = Boolean(brokerMode && config.comparison_scenes?.length &&
-          (config.comparison_scenes.includes(next.scene) || comparisons?.hasSession(sessionId) || legacyChatSessions.has(sessionId) || (await controller.inspect(sessionId)).meta.isSeeded));
+          (config.comparison_scenes.includes(next.scene) || previous || comparisons?.hasSession(sessionId) || legacyChatSessions.has(sessionId) || (await controller.inspect(sessionId)).meta.isSeeded));
         if (!routed) {
           const snapshot = await controller.inspect(sessionId);
           if (boundSessions.has(sessionId) || legacyChatSessions.has(sessionId) || snapshot.events.some((event: any) =>
@@ -1310,7 +1310,8 @@ export function apply(ctx: any) {
       await setSelection(request.sessionId, { scene: chatScene.id });
     }
     const selected = admitted ? {...selections.get(request.sessionId)!,scene:admitted.scene} : selections.get(request.sessionId)!;
-    if (comparisons && (config.comparison_scenes?.includes(selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
+    const previousScene = forSession(request.sessionId)?.scene.id;
+    if (comparisons && (config.comparison_scenes?.includes(selected.scene) || (previousScene && previousScene !== selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
       const priorTask = forSession(request.sessionId);
       if (priorTask && !terminal.has(priorTask.status)) throw new TaskError('session_busy', '请等待当前回复完成或取消后再发送。', 409);
       await priorTask?.closing;

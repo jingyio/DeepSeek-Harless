@@ -837,6 +837,8 @@ window.__ModuleLoader__.load({
           const state = React.useSyncExternalStore(directory.subscribe, directory.getSnapshot);
           const [open, setOpen] = React.useState(false), [position, setPosition] = React.useState(null);
           const trigger = React.useRef(null), panel = React.useRef(null), root = React.useRef(null), placedFocus = React.useRef(false);
+          const slider = React.useRef(null), previewLabel = React.useRef(null), previewHint = React.useRef(null);
+          const dragging = React.useRef(false);
           const id = React.useId();
           const choices = state.groups.flatMap(group => group.models.map(model => ({ provider: group.id, model })));
           const chosen = choices.find(row => row.provider === state.current?.provider && row.model.id === state.current?.model);
@@ -856,6 +858,32 @@ window.__ModuleLoader__.load({
             // same input event batch, instead of submitting a stale render.
             select({ ...current, reasoningEffort: row.id });
           };
+          // Keep continuous pointer feedback local to the range. Neither React
+          // renders nor backend writes belong on every pointer movement.
+          const paintEffort = (input, raw) => {
+            const value = Math.max(0, Math.min(levels.length - 1, Number(raw) || 0));
+            const fraction = levels.length < 2 ? 0 : value / (levels.length - 1);
+            const row = levels[Math.round(value)];
+            input.value = String(value);
+            input.style.setProperty('--geneloop-effort-progress', fraction * 100 + '%');
+            input.style.setProperty('--geneloop-effort-color', 'hsl(' + (214 + fraction * 58) + ' 82% 68%)');
+            input.setAttribute('aria-valuetext', levelName(row));
+            if (previewLabel.current) previewLabel.current.textContent = levelName(row);
+            if (previewHint.current) previewHint.current.textContent = row?.description || '拖动滑杆调整，或点击档位；也可用方向键。';
+          };
+          const commitEffort = input => {
+            dragging.current = false;
+            const next = Math.max(0, Math.min(levels.length - 1, Math.round(Number(input.value))));
+            paintEffort(input, next); chooseEffort(levels[next]);
+          };
+          const cancelDrag = input => {
+            if (!dragging.current) return;
+            dragging.current = false;
+            paintEffort(input, Math.max(0, levels.findIndex(row => row.id === directory.getSnapshot().current?.reasoningEffort)));
+          };
+          React.useLayoutEffect(() => {
+            if (slider.current && !dragging.current) paintEffort(slider.current, Math.max(index, 0));
+          }, [open, index, chosen?.model, disabled]);
           React.useEffect(() => {
             if (!open) return;
             const outside = event => { if (!within(event.target)) close(); };
@@ -901,12 +929,29 @@ window.__ModuleLoader__.load({
             })),
             levels.length > 0 && h('section', { className: 'geneloop-reasoning' },
               h('div', { className: 'geneloop-reasoning-heading' }, h('span', { id: id + '-label' }, '思考强度'),
-                h('strong', { 'aria-live': 'polite', 'aria-atomic': true }, currentName)),
-              index >= 0 ? h('input', { type: 'range', min: 0, max: levels.length - 1, step: 1, value: index,
+                h('strong', { ref: previewLabel, 'aria-live': 'polite', 'aria-atomic': true }, currentName)),
+              index >= 0 ? h('input', { ref: slider, type: 'range', min: 0, max: levels.length - 1, step: 'any', defaultValue: index,
                 disabled: disabled || levels.length < 2, 'aria-labelledby': id + '-label', 'aria-valuetext': currentName, 'aria-describedby': id + '-hint',
-                style: { '--geneloop-effort-progress': (levels.length < 2 ? 0 : index / (levels.length - 1) * 100) + '%' },
-                onChange: event => { const value = Number(event.target.value);
-                  if (Number.isInteger(value) && value >= 0 && value < levels.length) chooseEffort(levels[value]); } })
+                onPointerDown: event => { if (!disabled) { dragging.current = true; event.currentTarget.setPointerCapture(event.pointerId); } },
+                onInput: event => paintEffort(event.currentTarget, event.currentTarget.value),
+                onChange: event => { if (!dragging.current) commitEffort(event.currentTarget); },
+                onPointerUp: event => { if (dragging.current) commitEffort(event.currentTarget); },
+                onPointerCancel: event => cancelDrag(event.currentTarget),
+                onLostPointerCapture: event => cancelDrag(event.currentTarget),
+                onBlur: event => cancelDrag(event.currentTarget),
+                onPointerMove: event => {
+                  const input = event.currentTarget, box = input.getBoundingClientRect();
+                  const fraction = levels.length < 2 ? 0 : Number(input.value) / (levels.length - 1);
+                  input.dataset.thumbNear = String(dragging.current || Math.abs(event.clientX - (box.left + 9 + fraction * (box.width - 18))) < 24);
+                },
+                onPointerLeave: event => { event.currentTarget.dataset.thumbNear = 'false'; },
+                onKeyDown: event => {
+                  const delta = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[event.key];
+                  if (delta === undefined && event.key !== 'Home' && event.key !== 'End') return;
+                  event.preventDefault();
+                  const next = event.key === 'Home' ? 0 : event.key === 'End' ? levels.length - 1 : Math.round(Number(event.currentTarget.value)) + delta;
+                  paintEffort(event.currentTarget, next); commitEffort(event.currentTarget);
+                } })
                 : h('p', { role: 'status', className: 'geneloop-model-status' }, '当前思考档位不在可用目录中，请重新选择。'),
               h('div', { className: 'geneloop-reasoning-stops' },
                 ...levels.map((row, i) => {
@@ -915,15 +960,16 @@ window.__ModuleLoader__.load({
                     style: { left: 'calc(' + fraction * 100 + '% + ' + (8 - fraction * 16) + 'px)' },
                     'aria-label': '思考强度：' + levelName(row), onClick: () => chooseEffort(row) }, levelName(row));
                 })),
-              h('p', { id: id + '-hint', className: 'geneloop-model-hint' }, levels[index]?.description || '拖动滑杆调整，或点击档位；也可用方向键。')),
-            h('div', { className: 'geneloop-model-status', role: 'status', 'aria-live': 'polite' },
-              state.selectionPending ? '正在保存选择…' : state.status === 'loading' ? '正在读取模型…' : ''),
+              h('p', { ref: previewHint, id: id + '-hint', className: 'geneloop-model-hint' }, levels[index]?.description || '拖动滑杆调整，或点击档位；也可用方向键。')),
+            state.status === 'loading' && h('div', { className: 'geneloop-model-status', role: 'status' }, '正在读取模型…'),
             state.error && h('div', { className: 'geneloop-model-error', role: 'alert' }, state.error,
               h('button', { type: 'button', onClick: () => load() }, '重新读取')));
           return h('div', { ref: root, className: 'geneloop-model-select', onKeyDown: keyDown, onBlur: blur },
             h('style', null, `.geneloop-model-select{min-width:0}
 .geneloop-model-trigger{display:flex;align-items:center;gap:5px;max-width:min(360px,45cqw);height:28px;padding:0 8px;border:0;border-radius:24px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
-.geneloop-model-trigger:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.geneloop-model-trigger:hover,.geneloop-model-trigger[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover)}
+.geneloop-model-chevron{width:14px;height:14px;flex:none;color:var(--dsw-alias-label-tertiary);transition:transform 160ms ease}
+.geneloop-model-trigger[aria-expanded=true] .geneloop-model-chevron{transform:rotate(180deg)}
 .geneloop-model-trigger>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .geneloop-model-effort{white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
 .geneloop-model-trigger:disabled{cursor:default;opacity:.5}
@@ -936,21 +982,24 @@ window.__ModuleLoader__.load({
 .geneloop-reasoning-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
 .geneloop-reasoning-heading strong{font-size:12px;font-weight:500;color:var(--dsw-alias-state-business-primary,#729cf7)}
 .geneloop-reasoning input[type=range]{display:block;box-sizing:border-box;width:100%;height:32px;margin:0;appearance:none;-webkit-appearance:none;background:transparent;cursor:ew-resize;touch-action:pan-y}
-.geneloop-reasoning input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:linear-gradient(to right,var(--dsw-alias-state-business-primary,#729cf7) 0 var(--geneloop-effort-progress),var(--dsw-alias-border-l3,#8885) var(--geneloop-effort-progress) 100%)}
-.geneloop-reasoning input[type=range]::-moz-range-track{height:4px;border-radius:4px;background:var(--dsw-alias-border-l3,#8885)}
-.geneloop-reasoning input[type=range]::-moz-range-progress{height:4px;border-radius:4px;background:var(--dsw-alias-state-business-primary,#729cf7)}
-.geneloop-reasoning input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;box-sizing:border-box;width:16px;height:16px;margin-top:-6px;border:2px solid var(--dsw-alias-state-business-primary,#729cf7);border-radius:50%;background:var(--dsw-specific-menu,#262626);box-shadow:0 1px 4px #0002}
-.geneloop-reasoning input[type=range]::-moz-range-thumb{box-sizing:border-box;width:16px;height:16px;border:2px solid var(--dsw-alias-state-business-primary,#729cf7);border-radius:50%;background:var(--dsw-specific-menu,#262626)}
+.geneloop-reasoning input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:6px;background:linear-gradient(to right,#6aabf5,var(--geneloop-effort-color,#6aabf5)) 0/var(--geneloop-effort-progress,0%) 100% no-repeat,var(--dsw-alias-border-l3,#8885)}
+.geneloop-reasoning input[type=range]::-moz-range-track{height:6px;border-radius:6px;background:var(--dsw-alias-border-l3,#8885)}
+.geneloop-reasoning input[type=range]::-moz-range-progress{height:6px;border-radius:6px;background:linear-gradient(to right,#6aabf5,var(--geneloop-effort-color,#6aabf5))}
+.geneloop-reasoning input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;box-sizing:border-box;width:18px;height:18px;margin-top:-6px;border:2px solid var(--geneloop-effort-color,#6aabf5);border-radius:50%;background:var(--dsw-specific-menu,#262626);box-shadow:0 1px 4px #0002;transition:transform 140ms ease}
+.geneloop-reasoning input[type=range]::-moz-range-thumb{box-sizing:border-box;width:18px;height:18px;border:2px solid var(--geneloop-effort-color,#6aabf5);border-radius:50%;background:var(--dsw-specific-menu,#262626);transition:transform 140ms ease}
+.geneloop-reasoning input[type=range][data-thumb-near=true]::-webkit-slider-thumb,.geneloop-reasoning input[type=range]:active::-webkit-slider-thumb{transform:scale(1.18)}
+.geneloop-reasoning input[type=range][data-thumb-near=true]::-moz-range-thumb,.geneloop-reasoning input[type=range]:active::-moz-range-thumb{transform:scale(1.18)}
 .geneloop-reasoning-stops{position:relative;height:32px}
 .geneloop-reasoning-stops button{position:absolute;transform:translateX(-50%);min-width:32px;min-height:32px;padding:4px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;cursor:pointer}
 .geneloop-reasoning-stops button:hover{background:var(--dsw-alias-interactive-bg-hover,#8882)}
 .geneloop-reasoning-stops button[aria-pressed=true]{color:var(--dsw-alias-state-business-primary,#729cf7);font-weight:600}
-.geneloop-model-hint{min-height:3.2em;margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.6}
-.geneloop-model-status{min-height:18px;margin-top:6px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.geneloop-model-hint{margin:6px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.6}
+.geneloop-model-status{margin-top:6px;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .geneloop-model-error{margin-top:8px;color:var(--dsw-alias-state-error-primary,#d66);font-size:12px;overflow-wrap:anywhere}
 .geneloop-model-error button{border:0;background:transparent;color:inherit;text-decoration:underline;cursor:pointer;font:inherit}
 .geneloop-model-trigger:focus-visible,.geneloop-model-panel button:focus-visible,.geneloop-reasoning input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}
 .geneloop-model-panel button:disabled,.geneloop-reasoning input:disabled{cursor:default;opacity:.5}
+@media(prefers-reduced-motion:reduce){.geneloop-model-chevron{transition:none}.geneloop-reasoning input[type=range]::-webkit-slider-thumb{transition:none}.geneloop-reasoning input[type=range]::-moz-range-thumb{transition:none}}
 @media(forced-colors:active){.geneloop-reasoning input[type=range]{appearance:auto;-webkit-appearance:auto}
 .geneloop-model-choice[aria-pressed=true],.geneloop-reasoning-stops button[aria-pressed=true]{outline:1px solid Highlight}
 }
@@ -961,7 +1010,8 @@ window.__ModuleLoader__.load({
               onClick: toggle, onKeyDown: event => { if (event.key === 'ArrowDown' && !open) { event.preventDefault(); toggle(); } } },
               h('span', null, chosen?.model.name || state.current?.model || '选择模型'),
               currentName && h('span', { className: 'geneloop-model-effort' }, currentName),
-              h('span', { 'aria-hidden': true }, open ? '⌃' : '⌄')),
+              h('svg', { className: 'geneloop-model-chevron', viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true },
+                h('path', { d: 'm4.5 6.25 3.5 3.5 3.5-3.5', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' }))),
             panelNode && ReactDOM.createPortal(panelNode, document.body));
         }
         function wrapWebSeat(name, adapt, options = {}) {
@@ -1458,7 +1508,12 @@ window.__ModuleLoader__.load({
         const token = initial.draft.slice(span.start, span.end).toLowerCase();
         const known = cache.get(session.sessionId)?.scenes.find(row => row.id === id);
         const leadingInsertion = span.start === 0 && span.end === 0;
-        if ((!leadingInsertion && !/^\/[a-z0-9_-]*$/i.test(token)) || (fromCommand ? token !== '/harless' : known && !('/' + shortcut(known)).startsWith(token)))
+        // The add menu can replace a complete, existing scene chip. Partial
+        // typed queries still constrain candidates; stale spans still fail CAS.
+        const replacingScene = !automatic && !fromCommand
+          && span.start === (initial.draft.match(/^\s*/)?.[0].length || 0)
+          && cache.get(session.sessionId)?.scenes.some(row => '/' + shortcut(row) === token);
+        if ((!leadingInsertion && !/^\/[a-z0-9_-]*$/i.test(token)) || (fromCommand ? token !== '/harless' : known && !replacingScene && !('/' + shortcut(known)).startsWith(token)))
           throw Error('候选已更新，请按当前输入重新选择场景');
         const previous = choosing.get(session.sessionId), version = (choiceVersions.get(session.sessionId) || 0) + 1;
         choiceVersions.set(session.sessionId, version);
@@ -1466,7 +1521,23 @@ window.__ModuleLoader__.load({
         // an MCP; that must not delay visual acknowledgement of a valid pick.
         let expectedSpan = span, optimistic = false;
         if (known && known.available !== false) {
-          if (!oldInput.insertReference(reference(known), span)) throw Error('输入已改变，请重新选择场景');
+          // The launcher spans clipboard text; native chips occupy ONE detect
+          // character. Keep the native edit/undo path and all following chips.
+          let insertSpan = span;
+          if (replacingScene && oldInput.editor) {
+            const children = oldInput.editor.getEditorState().toJSON().root.children[0]?.children || [];
+            let offset = 0;
+            for (const node of children) {
+              if (node.type === 'reference-chip') {
+                if (offset === span.start && node.source === 'harless-scenes' && node.clipboardText.toLowerCase() === token)
+                  insertSpan = { ...span, end: span.start + 1 };
+                break;
+              }
+              if (node.type !== 'text' || !/^\s*$/.test(node.text)) break;
+              offset += node.text.length;
+            }
+          }
+          if (!oldInput.insertReference(reference(known), insertSpan)) throw Error('输入已改变，请重新选择场景');
           optimistic = true;
           expectedSpan = { ...span, draftRev: oldInput.state.getSnapshot().draftRev };
           displaySelection(session.sessionId, id);
@@ -1483,7 +1554,7 @@ window.__ModuleLoader__.load({
           if (!sameDraft(oldInput, expectedSpan, initial.attachmentIds)
             && !(optimistic && !automatic && knownDraftScene(session.sessionId, oldInput.state.getSnapshot().draft) === id))
             throw Error('输入或附件已改变，请重新选择场景');
-          if (!fromCommand && !('/' + shortcut(scene)).startsWith(token)) throw Error('候选已更新，请按当前输入重新选择场景');
+          if (!fromCommand && !replacingScene && !('/' + shortcut(scene)).startsWith(token)) throw Error('候选已更新，请按当前输入重新选择场景');
           const next = await request(session, { action: 'select', session_id: session.sessionId, selection: { scene: id } }, guard.signal);
           checkChoice();
           if (!optimistic && !sameDraft(oldInput, expectedSpan, initial.attachmentIds)
