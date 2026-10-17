@@ -724,8 +724,8 @@ window.__ModuleLoader__.load({
         return () => { unsubscribe?.(); cleanups.reverse().forEach(dispose => dispose()); };
       }
       window.__installGeneLoopLoading?.(ctx, React, mirrorPublicSlot);
-      // Adapt public seats/stores only: keep native menus, keyboard handling,
-      // upload/editor ownership and server-side permission enforcement.
+      // Adapt public seats/stores only: preserve native upload/editor ownership
+      // and server-side permission enforcement; add an accessible effort range.
       if (ctx.slots.entries && ctx.slots.subscribe) {
         const hiddenCommands = new Set(['export', 'feedback', 'harless', 'permission', 'model']);
         const filteredMenus = new WeakSet(), modelChoices = new Map();
@@ -763,7 +763,7 @@ window.__ModuleLoader__.load({
             const source = native.directory.getSnapshot();
             if (awaitingProjection && same(source.current, awaitingProjection)) awaitingProjection = undefined;
             if (!pending && !awaitingProjection) confirmed = source.current;
-            snapshot = { ...source, current: desired || confirmed, status: pending ? 'ready' : error ? 'error' : source.status,
+            snapshot = { ...source, current: desired || confirmed, selectionPending: pending > 0, status: pending ? 'ready' : error ? 'error' : source.status,
               error: error || (pending ? null : source.error) };
             for (const listener of listeners) listener();
           };
@@ -831,6 +831,139 @@ window.__ModuleLoader__.load({
           }, 'geneloop: model selection queue');
           modelChoices.set(id, value); return value;
         }
+        // One public model seat, the native directory and the same serialized
+        // selection queue. Range steps come from the selected model's metadata.
+        function ReasoningModelSelect({ locked, available, directory, load, select }) {
+          const state = React.useSyncExternalStore(directory.subscribe, directory.getSnapshot);
+          const [open, setOpen] = React.useState(false), [position, setPosition] = React.useState(null);
+          const trigger = React.useRef(null), panel = React.useRef(null), root = React.useRef(null), placedFocus = React.useRef(false);
+          const id = React.useId();
+          const choices = state.groups.flatMap(group => group.models.map(model => ({ provider: group.id, model })));
+          const chosen = choices.find(row => row.provider === state.current?.provider && row.model.id === state.current?.model);
+          const levels = chosen?.model.reasoning?.efforts || [];
+          const effort = state.current?.reasoningEffort ?? chosen?.model.reasoning?.defaultEffort;
+          const index = levels.findIndex(row => row.id === effort);
+          const labels = { off: '关闭', low: '低', high: '高', max: '最高' };
+          const levelName = row => labels[row?.id] || row?.name || row?.id || '';
+          const currentName = index < 0 ? '' : levelName(levels[index]);
+          const disabled = locked || !available || state.status === 'selecting';
+          const close = (restore = false) => { setOpen(false); if (restore) trigger.current?.focus(); };
+          const within = target => target && (root.current?.contains(target) || panel.current?.contains(target));
+          const chooseEffort = row => {
+            const current = directory.getSnapshot().current;
+            if (!row || !current || disabled || current.reasoningEffort === row.id) return;
+            // Read the current optimistic choice, including changes made in the
+            // same input event batch, instead of submitting a stale render.
+            select({ ...current, reasoningEffort: row.id });
+          };
+          React.useEffect(() => {
+            if (!open) return;
+            const outside = event => { if (!within(event.target)) close(); };
+            document.addEventListener('pointerdown', outside);
+            return () => document.removeEventListener('pointerdown', outside);
+          }, [open]);
+          React.useLayoutEffect(() => {
+            if (!open) { setPosition(null); return; }
+            const place = () => {
+              const box = trigger.current?.getBoundingClientRect(), menu = panel.current;
+              if (!box || !menu) return;
+              const margin = 12;
+              setPosition({ left: Math.max(margin, Math.min(box.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - margin)),
+                top: Math.max(margin, Math.min(box.top - menu.offsetHeight - 8, window.innerHeight - menu.offsetHeight - margin)) });
+            };
+            place();
+            window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
+            return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
+          }, [open, chosen?.model, state.error]);
+          React.useEffect(() => {
+            if (!open) { placedFocus.current = false; return; }
+            if (!position || placedFocus.current) return;
+            const target = panel.current?.querySelector('input[type="range"]:not(:disabled),button[aria-pressed="true"]:not(:disabled),button:not(:disabled)');
+            if (target) { target.focus(); placedFocus.current = true; }
+          }, [open, Boolean(position), choices.length, levels.length, state.error, disabled]);
+          if (!available) return null;
+          const toggle = () => { if (disabled) return; setOpen(!open); if (!open) load(); };
+          const keyDown = event => {
+            if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); close(true); }
+          };
+          const blur = event => { if (!event.relatedTarget || !within(event.relatedTarget)) close(); };
+          const panelNode = open && h('div', { id, ref: panel, role: 'dialog', 'aria-label': '模型与思考强度',
+            className: 'geneloop-model-panel', style: position || { visibility: 'hidden', left: 0, top: 0 }, onKeyDown: keyDown, onBlur: blur },
+            h('div', { className: 'geneloop-model-heading' }, '模型'),
+            h('div', { className: 'geneloop-model-choices', role: 'group', 'aria-label': '选择模型' }, ...choices.map(row => {
+              const active = row === chosen;
+              return h('button', { key: row.provider + '/' + row.model.id, type: 'button', 'aria-pressed': active,
+                className: 'geneloop-model-choice', disabled, onClick: () => {
+                  if (active) return;
+                  const defaultEffort = row.model.reasoning?.defaultEffort;
+                  select({ provider: row.provider, model: row.model.id, ...(defaultEffort === undefined ? {} : { reasoningEffort: defaultEffort }) });
+                } }, h('span', null, row.model.name || row.model.id), active && h('span', { 'aria-hidden': true }, '✓'));
+            })),
+            levels.length > 0 && h('section', { className: 'geneloop-reasoning' },
+              h('div', { className: 'geneloop-reasoning-heading' }, h('span', { id: id + '-label' }, '思考强度'),
+                h('strong', { 'aria-live': 'polite', 'aria-atomic': true }, currentName)),
+              index >= 0 ? h('input', { type: 'range', min: 0, max: levels.length - 1, step: 1, value: index,
+                disabled: disabled || levels.length < 2, 'aria-labelledby': id + '-label', 'aria-valuetext': currentName, 'aria-describedby': id + '-hint',
+                style: { '--geneloop-effort-progress': (levels.length < 2 ? 0 : index / (levels.length - 1) * 100) + '%' },
+                onChange: event => { const value = Number(event.target.value);
+                  if (Number.isInteger(value) && value >= 0 && value < levels.length) chooseEffort(levels[value]); } })
+                : h('p', { role: 'status', className: 'geneloop-model-status' }, '当前思考档位不在可用目录中，请重新选择。'),
+              h('div', { className: 'geneloop-reasoning-stops' },
+                ...levels.map((row, i) => {
+                  const fraction = levels.length < 2 ? .5 : i / (levels.length - 1);
+                  return h('button', { key: row.id, type: 'button', disabled, 'aria-pressed': row.id === effort, title: row.description,
+                    style: { left: 'calc(' + fraction * 100 + '% + ' + (8 - fraction * 16) + 'px)' },
+                    'aria-label': '思考强度：' + levelName(row), onClick: () => chooseEffort(row) }, levelName(row));
+                })),
+              h('p', { id: id + '-hint', className: 'geneloop-model-hint' }, levels[index]?.description || '拖动滑杆调整，或点击档位；也可用方向键。')),
+            h('div', { className: 'geneloop-model-status', role: 'status', 'aria-live': 'polite' },
+              state.selectionPending ? '正在保存选择…' : state.status === 'loading' ? '正在读取模型…' : ''),
+            state.error && h('div', { className: 'geneloop-model-error', role: 'alert' }, state.error,
+              h('button', { type: 'button', onClick: () => load() }, '重新读取')));
+          return h('div', { ref: root, className: 'geneloop-model-select', onKeyDown: keyDown, onBlur: blur },
+            h('style', null, `.geneloop-model-select{min-width:0}
+.geneloop-model-trigger{display:flex;align-items:center;gap:5px;max-width:min(360px,45cqw);height:28px;padding:0 8px;border:0;border-radius:24px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
+.geneloop-model-trigger:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.geneloop-model-trigger>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.geneloop-model-effort{white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
+.geneloop-model-trigger:disabled{cursor:default;opacity:.5}
+.geneloop-model-panel{position:fixed;z-index:1100;box-sizing:border-box;width:320px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;padding:16px;border:1px solid var(--dsw-alias-border-l1,#8883);border-radius:18px;background:var(--dsw-specific-menu,#262626);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-prominent,0 8px 32px #0003);font-family:var(--dsw-font-family,inherit);font-size:13px;line-height:1.5}
+.geneloop-model-heading{margin:0 0 6px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.geneloop-model-choices{display:grid;gap:4px}
+.geneloop-model-choice{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;min-height:38px;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.geneloop-model-choice[aria-pressed=true],.geneloop-model-choice:hover{background:var(--dsw-alias-interactive-bg-hover,#8882)}
+.geneloop-reasoning{margin-top:14px;padding-top:14px;border-top:1px solid var(--dsw-alias-border-l1,#8883)}
+.geneloop-reasoning-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+.geneloop-reasoning-heading strong{font-size:12px;font-weight:500;color:var(--dsw-alias-state-business-primary,#729cf7)}
+.geneloop-reasoning input[type=range]{display:block;box-sizing:border-box;width:100%;height:32px;margin:0;appearance:none;-webkit-appearance:none;background:transparent;cursor:ew-resize;touch-action:pan-y}
+.geneloop-reasoning input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:linear-gradient(to right,var(--dsw-alias-state-business-primary,#729cf7) 0 var(--geneloop-effort-progress),var(--dsw-alias-border-l3,#8885) var(--geneloop-effort-progress) 100%)}
+.geneloop-reasoning input[type=range]::-moz-range-track{height:4px;border-radius:4px;background:var(--dsw-alias-border-l3,#8885)}
+.geneloop-reasoning input[type=range]::-moz-range-progress{height:4px;border-radius:4px;background:var(--dsw-alias-state-business-primary,#729cf7)}
+.geneloop-reasoning input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;box-sizing:border-box;width:16px;height:16px;margin-top:-6px;border:2px solid var(--dsw-alias-state-business-primary,#729cf7);border-radius:50%;background:var(--dsw-specific-menu,#262626);box-shadow:0 1px 4px #0002}
+.geneloop-reasoning input[type=range]::-moz-range-thumb{box-sizing:border-box;width:16px;height:16px;border:2px solid var(--dsw-alias-state-business-primary,#729cf7);border-radius:50%;background:var(--dsw-specific-menu,#262626)}
+.geneloop-reasoning-stops{position:relative;height:32px}
+.geneloop-reasoning-stops button{position:absolute;transform:translateX(-50%);min-width:32px;min-height:32px;padding:4px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;cursor:pointer}
+.geneloop-reasoning-stops button:hover{background:var(--dsw-alias-interactive-bg-hover,#8882)}
+.geneloop-reasoning-stops button[aria-pressed=true]{color:var(--dsw-alias-state-business-primary,#729cf7);font-weight:600}
+.geneloop-model-hint{min-height:3.2em;margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.6}
+.geneloop-model-status{min-height:18px;margin-top:6px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.geneloop-model-error{margin-top:8px;color:var(--dsw-alias-state-error-primary,#d66);font-size:12px;overflow-wrap:anywhere}
+.geneloop-model-error button{border:0;background:transparent;color:inherit;text-decoration:underline;cursor:pointer;font:inherit}
+.geneloop-model-trigger:focus-visible,.geneloop-model-panel button:focus-visible,.geneloop-reasoning input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}
+.geneloop-model-panel button:disabled,.geneloop-reasoning input:disabled{cursor:default;opacity:.5}
+@media(forced-colors:active){.geneloop-reasoning input[type=range]{appearance:auto;-webkit-appearance:auto}
+.geneloop-model-choice[aria-pressed=true],.geneloop-reasoning-stops button[aria-pressed=true]{outline:1px solid Highlight}
+}
+`),
+            h('button', { ref: trigger, type: 'button', className: 'geneloop-model-trigger', disabled,
+              'aria-haspopup': 'dialog', 'aria-expanded': open, 'aria-controls': id,
+              'aria-label': '选择模型，当前 ' + (chosen?.model.name || state.current?.model || '未选择') + (currentName ? '，思考强度' + currentName : ''),
+              onClick: toggle, onKeyDown: event => { if (event.key === 'ArrowDown' && !open) { event.preventDefault(); toggle(); } } },
+              h('span', null, chosen?.model.name || state.current?.model || '选择模型'),
+              currentName && h('span', { className: 'geneloop-model-effort' }, currentName),
+              h('span', { 'aria-hidden': true }, open ? '⌃' : '⌄')),
+            panelNode && ReactDOM.createPortal(panelNode, document.body));
+        }
         function wrapWebSeat(name, adapt, options = {}) {
           ctx.slots.inject(name, () => {
             let release, mirrors = [], installing = false;
@@ -844,7 +977,7 @@ window.__ModuleLoader__.load({
                 const children = Object.fromEntries(Object.entries(original.children || {}).map(([child, spec]) => [names[child], spec]));
                 release = ctx.slots.register({ name, ...original.options, priority: -100, locale: original.locale,
                   ...(original.store ? { store: original.store } : {}), ...(original.select ? { select: original.select } : {}),
-                  children, inject: (...args) => adapt(original.inject?.(...args) || {}, args[0]) }, props => h(original.component, {
+                  children, inject: (...args) => adapt(original.inject?.(...args) || {}, args[0]) }, props => h(options.component || original.component, {
                   ...props, ...(options.renderProps?.(props) || {}), renderSlot: (child, owner, options) => props.renderSlot(names[child] || child, owner, options),
                   ...(props.renderSlotChain ? { renderSlotChain: (child, owner, options) => props.renderSlotChain(names[child] || child, owner, options) } : {}),
                 }));
@@ -872,7 +1005,7 @@ window.__ModuleLoader__.load({
                 end: prefix ? prefix[0].length : 0, draftRev: draft.draftRev } });
           } : props.toggleCommandMenu };
         });
-        wrapWebSeat('conversation.input.model', (props, id) => optimisticModel(id, props));
+        wrapWebSeat('conversation.input.model', (props, id) => optimisticModel(id, props), { component: ReasoningModelSelect });
         wrapWebSeat('conversation.view', props => props, { id: 'chat',
           renderProps: props => ({ t: (key, ...args) => key === 'chat.deepDiving' ? 'GeneLooping…' : props.t(key, ...args) }) });
         // Only adapt display data. The native controller still owns keyboard

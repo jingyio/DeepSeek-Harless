@@ -4,7 +4,7 @@ import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeF
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
-import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels } from './harless_reasoning.ts';
+import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels, WEB_REASONING_EFFORTS, WEB_REASONING_LABELS } from './harless_reasoning.ts';
 import type { WebReasoningEffort, WebModelOption } from './harless_reasoning.ts';
 import { isAgentLoopRequest, createUserMessage, createAssistantMessage } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
@@ -116,8 +116,11 @@ export function apply(ctx: any) {
   const defaultModel = modelOptions.find(option => option.available);
   if (!defaultModel || modelOptions.some(option => !/^[a-z][a-z0-9-]*$/.test(option.provider) || !/^[A-Za-z0-9._-]+$/.test(option.model) ||
         typeof option.label !== 'string' || !option.label || typeof option.available !== 'boolean' ||
+        (option.supported_reasoning_efforts !== undefined && (!Array.isArray(option.supported_reasoning_efforts) ||
+          !option.supported_reasoning_efforts.includes('off') || new Set(option.supported_reasoning_efforts).size !== option.supported_reasoning_efforts.length ||
+          option.supported_reasoning_efforts.some(effort => !WEB_REASONING_EFFORTS.includes(effort)))) ||
         (option.reasoning_unavailable !== undefined && (!option.reasoning_unavailable || typeof option.reasoning_unavailable !== 'object' || Array.isArray(option.reasoning_unavailable) ||
-          Object.entries(option.reasoning_unavailable).some(([effort, reason]) => !['off', 'high'].includes(effort) || typeof reason !== 'string' || !reason)))) ||
+          Object.entries(option.reasoning_unavailable).some(([effort, reason]) => !WEB_REASONING_EFFORTS.includes(effort as WebReasoningEffort) || typeof reason !== 'string' || !reason)))) ||
       new Set(modelOptions.map(option => option.model)).size !== modelOptions.length) throw Error('Invalid server model catalog');
   const modelSelections = new Map<string, ModelOption>();
   const reasoningSelections = new Map<string, WebReasoningEffort>();
@@ -949,6 +952,8 @@ export function apply(ctx: any) {
     const switchingModel = current.provider !== option.provider || current.model !== option.model;
     try { effort = webReasoningEffort(option.provider, request.reasoningEffort ?? (switchingModel ? 'off' : reasoningFor(request.sessionId, option))); }
     catch { throw new TaskError('model_not_allowed', '该模型不支持所选推理模式。'); }
+    if (effort !== undefined && !(await deepseekAdapter.resolveModel(option.provider, option.model)).reasoning?.efforts.some(row => row.id === effort))
+      throw new TaskError('model_not_allowed', '该模型不支持所选思考强度。');
     try { webReasoningAvailability(option, effort); }
     catch (error) { throw new TaskError('model_budget_unavailable', (error as Error).message); }
     const requested = { ...request };
@@ -984,6 +989,8 @@ export function apply(ctx: any) {
     try { chosenReasoning = webReasoningEffort(chosenModel.provider,
       supplied.reasoning_effort ?? (existingSession && !modelChanged ? reasoningFor(existingSession, chosenModel) : 'off')); }
     catch { throw new TaskError('model_not_allowed', '该模型不支持所选推理模式。'); }
+    if (chosenReasoning !== undefined && !(await deepseekAdapter.resolveModel(chosenModel.provider, chosenModel.model)).reasoning?.efforts.some(row => row.id === chosenReasoning))
+      throw new TaskError('model_not_allowed', '该模型不支持所选思考强度。');
     try { webReasoningAvailability(chosenModel, chosenReasoning); }
     catch (error) { throw new TaskError('model_budget_unavailable', (error as Error).message); }
     const taskInput = input && typeof input === 'object' && !Array.isArray(input)
@@ -1021,7 +1028,7 @@ export function apply(ctx: any) {
     if(options.allow_output && scene.output_unavailable_reason)throw new TaskError('scene_output_unavailable',scene.output_unavailable_reason,409);
     const selection = changeSelection(selected, { scene: scene.id, mode: requestedMode }, scenes, executeUnavailable);
     request.request_sha256 = digest({ request: request.request_sha256, selection, scene_options: options, user_id: principal,
-      ...(chosenReasoning === 'high' ? {reasoning_effort: chosenReasoning} : {}) });
+      ...(chosenReasoning && chosenReasoning !== 'off' ? {reasoning_effort: chosenReasoning} : {}) });
     const previous = requests.get(request.request_id);
     if (previous) {
       const task = get(previous);
@@ -1552,11 +1559,12 @@ export function apply(ctx: any) {
   // default so the native adapter leaves max_tokens off the provider request.
   if (config.max_output_tokens == null) delete (options as any).maxTokens;
   options.models = webDeepSeekModels(options.models, modelOptions);
-  ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], new WebDeepSeekAdapter({ options: () => options,
+  const deepseekAdapter = new WebDeepSeekAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
     resolveAttachments: () => ctx.attachments,
     resolveUserId: () => principal, prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
-  }, modelOptions)), 'sss-web-task-provider');
+  }, modelOptions);
+  ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], deepseekAdapter), 'sss-web-task-provider');
   ctx.on('agent/created', ({ agent }: any) => {
     agents.set(agent.session.id, agent);
     if (ownedSessions.has(agent.session.id)) {
@@ -1759,13 +1767,18 @@ export function apply(ctx: any) {
         const sessionId = new URL(request.url).searchParams.get('session_id');
         if (sessionId) await ensureOwned(sessionId);
         const selected = sessionId ? modelSelections.get(sessionId) ?? defaultModel : undefined;
-        return browserJson({ models:modelOptions.map(option => ({ provider:option.provider,model:option.model,label:option.label,available:option.available,
+        const models = await Promise.all(modelOptions.map(async option => {
+          const native = option.provider === 'deepseek-official' ? await deepseekAdapter.resolveModel(option.provider, option.model) : undefined;
+          const efforts = native?.reasoning?.efforts.map(row => row.id as WebReasoningEffort) ?? [];
+          return { provider:option.provider,model:option.model,label:option.label,available:option.available,
+          ...(native ? {supported_reasoning_efforts:efforts} : {}),
           ...(option.reasoning_unavailable ? {reasoning_unavailable:option.reasoning_unavailable} : {}),
-          reasoning_modes:option.provider === 'deepseek-official' ? (['off','high'] as const).map(id => ({
-            id, label:id === 'off' ? 'Off' : 'On', available:option.available && !option.reasoning_unavailable?.[id],
+          reasoning_modes:efforts.map(id => ({
+            id, label:WEB_REASONING_LABELS[id], available:option.available && !option.reasoning_unavailable?.[id],
             ...(option.reasoning_unavailable?.[id] ? { unavailable_reason:option.reasoning_unavailable[id] } : {}),
-          })) : [],
-        })), default:{provider:defaultModel.provider,model:defaultModel.model,reasoning_effort:reasoningFor('',defaultModel) ?? null},
+          })),
+        }; }));
+        return browserJson({ models, default:{provider:defaultModel.provider,model:defaultModel.model,reasoning_effort:reasoningFor('',defaultModel) ?? null},
           ...(selected ? {session_selection:{provider:selected.provider,model:selected.model,reasoning_effort:reasoningFor(sessionId!,selected) ?? null}} : {}),
         }, {headers:{'Cache-Control':'no-store'}});
       } catch (error: any) {

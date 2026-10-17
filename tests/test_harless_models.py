@@ -40,10 +40,13 @@ class ModelCatalogTests(unittest.TestCase):
             'unpriced-future', 'deepseek-v4-pro', 'deepseek-flash', 'deepseek-v4-flash', 'deepseek-flash')]}, budget_usd=.23)
         self.assertEqual([row['model'] for row in options], ['deepseek-flash', 'deepseek-v4-pro'])
         self.assertNotIn('reasoning_unavailable', options[0])
-        self.assertEqual(list(options[1]['reasoning_unavailable']), ['high'])
+        self.assertEqual(list(options[1]['reasoning_unavailable']), ['low', 'high', 'max'])
         self.assertIn('$0.23', options[1]['reasoning_unavailable']['high'])
         self.assertIn('$0.259523', options[1]['reasoning_unavailable']['high'])
-        self.assertNotIn('reasoning_unavailable', model_options({'data': [{'id': 'deepseek-v4-pro'}]}, budget_usd=.5)[0])
+        self.assertIn('$0.519045', options[1]['reasoning_unavailable']['max'])
+        max_only = model_options({'data': [{'id': 'deepseek-v4-pro'}]}, budget_usd=.5)[0]
+        self.assertEqual(list(max_only['reasoning_unavailable']), ['max'])
+        self.assertNotIn('reasoning_unavailable', model_options({'data': [{'id': 'deepseek-v4-pro'}]}, budget_usd=.6)[0])
         prices = price_basis(options)
         self.assertEqual(prices['deepseek-flash']['output'], 1.20)
         self.assertEqual(prices['deepseek-v4-pro']['output'], 3.96)
@@ -74,6 +77,28 @@ class ModelCatalogTests(unittest.TestCase):
         options = model_options({'data': [{'id': 'deepseek-flash'}, {'id': 'deepseek-v4-pro'}]}, budget_usd=None)
         self.assertEqual(len(options), 2)
         self.assertTrue(all(row['available'] and 'reasoning_unavailable' not in row for row in options))
+        self.assertTrue(all('supported_reasoning_efforts' not in row for row in options), 'ID-only catalogs defer to installed provider metadata')
+
+    def test_capability_metadata_filters_strengths_without_conflating_budget_annotation(self):
+        options = model_options({'data': [
+            {'id': 'deepseek-flash', 'supported_reasoning_efforts': ['max', 'low', 'medium', 'low']},
+            {'id': 'deepseek-v4-pro', 'supported_reasoning_efforts': ['high']},
+        ]}, budget_usd=.23)
+        self.assertEqual(options[0]['supported_reasoning_efforts'], ['off', 'low', 'max'])
+        self.assertEqual(options[1]['supported_reasoning_efforts'], ['off', 'high'])
+        self.assertEqual(list(options[1]['reasoning_unavailable']), ['high'])
+        off_only = model_options({'data': [{'id': 'deepseek-flash', 'supported_reasoning_efforts': []}]}, budget_usd=None)
+        self.assertEqual(off_only[0]['supported_reasoning_efforts'], ['off'])
+        for invalid in (None, 'high', [1], {}):
+            with self.assertRaisesRegex(ValueError, 'reasoning capability'):
+                model_options({'data': [{'id': 'deepseek-flash', 'supported_reasoning_efforts': invalid}]}, budget_usd=None)
+
+    def test_configured_output_limit_reserves_all_enabled_strengths_consistently(self):
+        options = model_options({'data': [{'id': 'deepseek-v4-pro'}]}, budget_usd=.003, max_output_tokens=1000)
+        self.assertEqual(list(options[0]['reasoning_unavailable']), ['off', 'low', 'high', 'max'])
+        for reason in options[0]['reasoning_unavailable'].values():
+            self.assertIn('$0.003960', reason)
+            self.assertIn('已配置', reason)
 
     def test_pro_off_fits_both_comparison_lanes_but_pro_on_is_rejected_before_counting(self):
         with tempfile.TemporaryDirectory() as directory:

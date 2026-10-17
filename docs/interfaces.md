@@ -2,7 +2,7 @@
 
 ## 网页 Paper 默认 Execute（2026-10-17）
 
-公共 Registry 的 `/ppt`、`/paper`、`/data` Motif 均默认 Execute。新增产品种类 `paper_document_read_v1` 使用 `paper-web-v1`，完整 24 工具不变；只授权模型已观察到的 `pin_document` 结果续接同源默认 `read_pinned_document(source_id, page=1)`。绑定检查完整上传许可、实际 Schema、独立轨迹证据、来源版本和代码锁；通过既有 `closedContinuation` 插件钩子，不修改核心或训练模型权重。未命中仍回到模型，Shadow 历史和管理员研究入口保持原协议。学习与兼容证据见 [本轮记录](experiments/all-scene-motif-execute-20261017-v1.md)。
+公共 Registry 的 `/ppt`、`/paper`、`/data` Motif 均默认 Execute。产品种类 `paper_document_read_v1` 当前使用 `paper-web-v2`（四档任务准入兼容重编，原 v1 保留），完整 24 工具不变；只授权模型已观察到的 `pin_document` 结果续接同源默认 `read_pinned_document(source_id, page=1)`。绑定检查完整上传许可、实际 Schema、独立轨迹证据、来源版本和代码锁；通过既有 `closedContinuation` 插件钩子，不修改核心或训练模型权重。未命中仍回到模型，Shadow 历史和管理员研究入口保持原协议。学习证据见 [原始记录](experiments/all-scene-motif-execute-20261017-v1.md)，最新兼容见[思考强度验收](experiments/geneloop-reasoning-strength-slider-20261017-v1.md)。
 
 ## 网页通用能力
 
@@ -50,7 +50,7 @@ Web 每次发送从本轮序列化文本的前导 `/data`、`/ppt`、`/paper` �
 
 `session/selectModel` 和任务预览显式更换模型且省略推理参数时使用 Off；同模型省略参数则保留已有设置，显式不可用模式仍拒绝。业务错误转换官方 `RemoteError`，网关只展示固定安全提示。实际已挂载工具场景独立保存在 `mounted_scenes`，旧会话可从原 preset 元信息恢复，避免把下一轮预选场景误当已挂载范围。
 
-认证 `GET /api/harless/models[?session_id=…]` 提供安全模型目录、Off/On 可用性与原因、默认项及可选会话当前项；会话参数仍验证归属，不返回凭据，也不修改全局默认。路由声明 `requestBody: 'buffered'`，确保原生 HTTP bridge 的 GET 没有非法请求体。
+认证 `GET /api/harless/models[?session_id=…]` 提供安全模型目录、Off/Low/High/Max 可用性与原因、默认项及可选会话当前项；会话参数仍验证归属，不返回凭据，也不修改全局默认。能力与已安装原生 Adapter 取交集，不支持的档位不展示；预算不满足单独说明。路由声明 `requestBody: 'buffered'`，确保原生 HTTP bridge 的 GET 没有非法请求体。
 
 设置复用公开 `settings.section` 与原生 shell；同 id 模型页只显示一个导航项，归档、最近删除、账户表单在右栏切换。加载遮罩依赖公开 sessions list、`openState`、视图布局提交和当前页对照快照读取；不等待任务完成，不抓取更早分页。读取错误即时释放遮罩，异常长等待显示已加载内容与重试提示，减少动画偏好受支持。
 
@@ -251,7 +251,7 @@ Harness 原生 `SessionPromptRequest.content` 的实际格式为：
 
 通用 Web 入口每任务、全启动费用和请求次数默认均为 `null`，表示不限。Web 不对单次用户文字另设长度上限；输出配置 `max_output_tokens: null` 时，移除适配器的默认输出值并在真实模型请求中省略 `max_tokens`，不截断模型返回。服务商自身的上下文容量、输出容量和未指定参数时的默认值仍适用。上传容量、账号/路径权限及 HTTP 协议安全边界继续保留。前端预算只能下调服务器任务费用上限；`harness-web.py --budget-usd` 定任务上限，`--run-budget-usd` 定全启动上限，两者显式 `0` 均表示取消对应费用限制。累计 cap 在 policy/effective config/统计中以 `null` 表示不限，禁止使用 Infinity 或巨大数代替；内部 `State(cap_usd=0)` 仍代表零费用预算。可选 `--request-limit/--run-request-limit` 正整数保留次数限制；CLI `0`、配置/统计中的 `null` 表示不限次数，仍完整累计请求与费用。`TaskBudgetRegistry` 支持任务与累计费用分别设为 `null`；有限服务器上限仍禁止客户端提交不限或越界的任务；先不可变注册，原生聊天随发送激活，显式 API 经 submit 激活。预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子记录任务与累计费用，检查仍有效的上限，完整成功用量两层结算，新任务不重置累计账本。
 
-私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。每任务冻结已选 provider/model、推理档位（Off=`off`、On=`high`）和输出配置（允许 `null`），关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
+私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。每任务冻结已选 provider/model、思考档位（`off/low/high/max`，旧 On=`high`）和输出配置（允许 `null`），关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
 
 默认模拟模式无实际支出；`npm run web:real` 显式开放 DeepSeek 连接，官方聊天发送后直接执行并产生真实模型费用。服务器私有根 `.env` 通过统一 `scripts/project.mjs` 的 `loadEnvFile` 加载（Node 20.12+，已有环境值优先），字段见 `.env.example`。SDK 基本连通已通过真实 API 验证；当前直接发送的真实 Web 浏览器流程尚未验收。其他收费 MCP 和人工费用也不在这份模型代理额度内。
 
@@ -721,7 +721,7 @@ PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历
 
 `geneloop_conversation_titles.ts` 在首次有效用户请求提取简短主题，不额外调用付费模型；问候名暂存，后续实质请求可替换。同一工作区的自动重名追加编号；用户手动改名、独立分支名和已有非占位名不覆盖。账号私有 `conversation-titles.json` 记录状态；所有改名仍走原生 Controller，保留其返回值与通知契约。
 
-真实启动通过已认证的 DeepSeek `/models` GET 与已支持、已定价模型求交集，失败不伪造可用目录。记录只保留公共模型元信息，不保存凭据或提供商异常正文。会话选中的模型和推理档位进入该轮冻结配置、预算检查与原生请求；不在服务端静默替换。默认输出费用已超过每任务预算的档位以 `reasoning_unavailable` 提前说明并拒绝，不降低服务商默认输出、不增加预算。共享服务目前取消任务上限，Flash/Pro 的 Off/On 均不因本地费用预约而禁用；服务商真实失败仍如实返回，不降级替换。
+真实启动通过已认证的 DeepSeek `/models` GET 与已支持、已定价模型求交集，失败不伪造可用目录。记录只保留公共模型元信息，不保存凭据或提供商异常正文。会话选中的模型和推理档位进入该轮冻结配置、预算检查与原生请求；不在服务端静默替换。默认输出费用已超过每任务预算的档位以 `reasoning_unavailable` 提前说明并拒绝，不降低服务商默认输出、不增加预算。共享服务目前取消任务上限，Flash/Pro 的 Off/Low/High/Max 均不因本地费用预约而禁用；服务商真实失败仍如实返回，不降级替换。
 
 ## 会话回收站与工作区折叠（2026-10-15）
 
@@ -735,7 +735,9 @@ PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历
 
 客户端收到有效 `snapshot` 才认定 SSE 正常工作，HTTP `open` 本身不证明数据已送达。流正常时仍保留低频只读 GET 恢复；静默连接会重建，权限拒绝终止重试，切换会话会丢弃旧连接的迟到回调。以上恢复不重新提交模型请求。任务在模型调用前失败时，公开结果标记 `delivery_status:"not_started"`，页面显示“任务未启动”，不描述为报告交付失败；只有已知公开错误码映射用户提示，原始异常保留私有诊断。
 
-DeepSeek 原生模型目录展示 Off / On，内部值分别为 `off` / `high`。默认 Off；会话、分支、场景执行子会话保存选择，比较任务按本轮冻结，确认摘要和幂等指纹包括 On。提供商请求由原生适配器序列化为 `thinking.disabled` 或 `thinking.enabled + reasoning_effort:high`；未配置推理能力的模型不显示假开关。推理不会自动调整费用或添加输出 token 上限。
+2026-10-17 起，DeepSeek 思考强度提供关闭/低/高/最高（`off/low/high/max`），按当前模型原生能力显示为离散横向滑杆；支持拖动、点击档位与键盘方向键/Home/End。默认 Off，旧 On 保存的 `high` 继续表示高。滑动即时更新当前选项，后台沿用原模型选择队列保存；紧接发送等待所选档位确认，保存失败恢复已生效项并保留草稿、附件。切换模型使用目标模型默认 Off。
+
+会话、分支、场景执行子会话保存选择，Baseline/Motif 两侧按本轮冻结；所有非 Off 档位均纳入请求摘要，不能以相同请求 ID 改变强度。提供商请求由原生适配器序列化：Off 为 `thinking.disabled` 且省略 `reasoning_effort`；其他档位为 `thinking.enabled` 并原样传递 `low/high/max`。这不改变 Agent 循环或 Motif 模式，不添加输出 token 上限；Max 的默认输出费用预约沿用原预算 gate。
 
 上传准入不再按场景限制文件扩展名，所有附件仍校验所属账号、回执、容量、字节和 SHA。工具输入只引用其能处理的来源子集，其他附件作为参考资料保留。只读提取器读取 PDF 文字层、Word DOCX 正文和表格、Office 表格/演示文本及普通文本；旧 DOC 使用已部署的 antiword。文档视觉元素不宣称已审阅，扫描文字标记待 OCR，未知或损坏内容提供明确读取状态。提取全文作为用户资料传入原生 DSH 请求，不增加工具权限、不执行宏或附件代码、不信任附件中的系统指令。
 

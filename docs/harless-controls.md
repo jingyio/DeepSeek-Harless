@@ -22,7 +22,7 @@
 | 校验后复用 (`execute`) | On | 启动核验库、完整有序 Schema、代码/证据绑定；结构提案须通过参数来源和版本守卫，实际工具结果通过后才计 Verified Skip |
 | 观察候选/校验后复用 | Off | 保留选择，当前任务实际 `baseline`；再次 On 重新检查准入 |
 
-RSI 表示已有 Motif 的复用开关，菜单现显示“Motif 复用：允许/关闭”，与模型推理 On/Off 独立，不代表在线训练。标准执行即使 RSI On 也不会复用；双栏对照由后端按各侧配置执行，不由父会话的这两个选项控制。默认 Chat 输入栏不显示这两个标签。网页不再显示或提交 1–5 分评分，保留赞/踩与历史评分数据。
+RSI 表示已有 Motif 的复用开关，菜单现显示“Motif 复用：允许/关闭”，与模型思考强度 off/low/high/max 独立，不代表在线训练。标准执行即使 RSI On 也不会复用；双栏对照由后端按各侧配置执行，不由父会话的这两个选项控制。默认 Chat 输入栏不显示这两个标签。网页不再显示或提交 1–5 分评分，保留赞/踩与历史评分数据。
 
 PPT 通过服务器 `HARLESS_PPT_RUNTIME_BUNDLE` 加载 `online-manifest.json/library.json/tool-schemas.json/task.json/certification.json`。认证包只允许 `independent_trace_structure / structural_only / ppt_uploaded_sources_v1`。每次预览把批准输入的 SHA 与当前 Task/Session 绑定到 `bound-motif-task.json`，冻结摘要；不复用历史题面或历史 source_id。`source_id` 只能从本任务真实成功 pin 的结果绑定。
 

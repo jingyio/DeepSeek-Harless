@@ -3,6 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { hasReportPlaceholders, REPORT_ANSWER_BINDING } from './harless_report_answer.ts';
+import type { WebReasoningEffort } from './harless_reasoning.ts';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const terminal = new Set(['completed', 'failed', 'cancelled']);
@@ -17,7 +18,7 @@ type Lane = { session_id: string; task_id?: string; status: string; answer?: str
   attempt: number; output_sha256?: string; stats?: any; fallback_reason?: string; artifacts?: any[] };
 type Turn = { id: string; session_id: string; request_id: string; fingerprint: string; scene: string;
   options: any; model: any; input_sha256: string; created_at: string; status: string;
-  reasoning_effort?: 'off' | 'high';
+  reasoning_effort?: WebReasoningEffort;
   lanes: Record<LaneName, Lane>; scores: Partial<Record<LaneName, number>>; score_revision: number; input: any;
   presentation?: 'paired' | 'single'; prior_artifacts?: Partial<Record<LaneName,any[]>>; prior_sources?: any[];
   published?: boolean; cancellation_requested?: boolean; source_files?:Record<string,any>; prior_context?: Partial<Record<LaneName,string>> };
