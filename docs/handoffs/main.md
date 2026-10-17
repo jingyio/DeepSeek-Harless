@@ -6,15 +6,16 @@
 - 完成的 Files 工作台任务可在原对话中按默认 Chat 继续，使用独立任务代理，保留旧工具范围与历史；修复切 Pro/推理档位后发送触发的 `scene_requires_new_session`。
 - 连续滑杆只在松手后保存最终档位；加粗蓝紫轨道、接近放大滑块、SVG 箭头；移除空保存状态行。Paper v4 / PPT r11 兼容重编，原冻结证据和旧库保持。
 - 已完成隔离网页三轮真实 Flash Off → Pro Low → Flash High，保留结果 29，绘图下载合格，再次计算得到 87。Python 839 / Node 799 通过，跳过 193 / 3，smoke 18 案例通过。首次原生标签失败已补回归。
-- 详见[验收记录](../experiments/geneloop-composer-switching-20261017.md)。正在准备 PR 与生产空闲切换，尚未部署；上线必须同步已合并 PR #61 的预算回执接口，保留原累计账本和用户数据。
+- [PR #62](https://github.com/jingyio/DeepSeek-Harless/pull/62) 已通过 Windows/Linux CI 并合并，生产运行 `62246f57e70f99a88e1918829d6bc7a99cf23629`，2026-10-17 17:21（北京时间）完成部署，包含 PR #61。发布回执私有目录 `composer-switching-releases/20261017T092107Z`；213 个任务预检，用户数据保持，切换前后 checkpoint 和 ledger 摘要一致。备份保留，回滚仅恢复代码/配置，不回退用户数据及累计账本。
+- 公网复核：PPT→Data 成功；Files/Flash Off 得到 28，随后默认 Chat/Pro High 记住 28 并生成 `normal-live.png`，真实下载后检查标题、坐标及曲线正常，无 gateway/internal。详见[验收记录](../experiments/geneloop-composer-switching-20261017.md)。
 
-## 2026-10-17：Paper Web 自动学习接线（PR #61，未部署）
+## 2026-10-17：Paper Web 自动学习接线（PR #61，随 PR #62 部署）
 
 - 基线 main `547be11`，独立分支 `codex/web-paper-auto-learning`。复用任务索引、原始事件、账本、Python 挖掘器、产品认证和 Shared RSI Runtime；只补完成通知、私有编译/发布、下一任务冻结版本。没有修改账号认证或上游核心。
 - Paper v3 / PPT r10 用原冻结证据重编兼容代码锁，原包保留；不作为新增公共训练或成本收益。Paper 自动学习仅认证 `pin_document → read_pinned_document(page=1)`；不学习任意脚本或科研判断。
 - 真实论文摘录复测：三次 Baseline 自动发布 round-0001，第四次 Execute 加载并验证跳过 1 次，4 项完成/0 工具错误。首轮导出错误保留，修复“不生成 PDF”否定及 Prompt 后复测；两轮共 55 真实请求/$0.051121236 代理估费，账单实付未知。完整论文质量、跨论文和持续净降本未证明。
 - 两实际成员进程、10 场景草稿及各自私有编译/加载诊断通过；模拟事件不当作真实学习效果。最终测试及边界见[自动学习验收](../experiments/web-paper-auto-learning-20261017-v1.md)、[论文交接](paper-proofreading.md)。
-- 实现 `17b852a` 已推送至 [PR #61](https://github.com/jingyio/DeepSeek-Harless/pull/61)，与当前 main 无冲突，GitHub Ubuntu/Windows CI 运行中；未合并、未部署生产。发布需同步代码和预算回执接口，保留原账本与用户数据，不能只替换前端。其他场景自动学习后续单独接线。
+- 实现 `17b852a` 已通过 CI 并合并于 [PR #61](https://github.com/jingyio/DeepSeek-Harless/pull/61)，随上述 `62246f5` 同步代码及预算回执接口上线；原账本与用户数据保留。其他场景自动学习后续单独接线。
 
 ## 2026-10-17：横向思考强度滑杆
 
