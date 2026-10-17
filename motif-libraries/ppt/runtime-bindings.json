@@ -90,7 +90,7 @@
     "scenarios/research_ppt/web_scope.py": "ff29d51e120f2e492702795d520435c0e054fb5c42d04bbe5a957afe48b4fa75",
     "scripts/learn-web-ppt-motif.py": "f3d910821825134904da986e9dfcceb9c1ce07b247bca7276ec11632c5106a79",
     "src/adapters/dsh_online_motif.mjs": "dd163f546abe149ffa468f13c8f541a1b18f05c4812006fe3f80b54b21a59b38",
-    "src/adapters/dsh_web_tasks.ts": "1a2f3fce054b0048c7132ca140658d1912fdc1fc9aa1e090d590269eaa373ed4",
+    "src/adapters/dsh_web_tasks.ts": "fcfaef97285b26544461c9f3620c94d1ca85fe65a327dd3c835f9f716e8c524b",
     "src/adapters/geneloop_capabilities.ts": "8f0a651550dd0e6fc25f7c97bc80ef5839b1f369b6f0e7b96a2d5d2e765f5c3b",
     "src/adapters/geneloop_command_broker.ts": "53dd140acf0911f45d5bcb8170cd7e36becf655aa04587acec7119f5f0326f57",
     "src/adapters/geneloop_command_client.mjs": "401f6c6c77e603dee4362126bb72bfa4e2fea1629272e521d4bb62d06503cf00",

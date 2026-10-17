@@ -1542,7 +1542,7 @@ test('Empty file scenes keep normal scene tools and model routing across turns a
   }
 });
 
-test('native Chat keeps extracted sources out of history and accepts replacement uploads in the same conversation', options, async()=>{
+test('native Chat preserves frozen model requests and accepts replacement uploads in the same conversation', options, async()=>{
  const scenes=[{...multiScenes[0],id:'new-scene',label:'Chat',adapter:'workspace',mcp_rows:[]},
   {...multiScenes[0],id:'ppt',label:'PPT',preset:'sss-ppt',adapter:'ppt',mcp_rows:[]}];
  const f=await fixture({broker:true,scenes,capability_profile:'new-scene',comparison_scenes:['ppt']});
@@ -1554,13 +1554,15 @@ test('native Chat keeps extracted sources out of history and accepts replacement
    {type:'text',text:'Read the attached notes'},{type:'file',receiptId}]},new AbortController().signal);
   await send('upload-first',one.receiptId);
   const first=(await f.api()).value.tasks.find(row=>row.session_id===sessionId);
-  assert.equal(f.promptCalls[0].content.length,2,'extracted JSON is not a third visible text block');
+  assert.equal(f.promptCalls[0].content.length,3,'evidence is logged so requests remain reconstructable; UI filters its generated block');
   const before=JSON.stringify(f.agents.get(sessionId).events);
   const model=f.modelRequest(first); let called=false;
+  for(const message of model.messages){Object.freeze(message.content);Object.freeze(message);}
+  Object.freeze(model.messages);Object.freeze(model);
   for await(const chunk of f.stream(model,async function*(){called=true;yield {type:'text-delta',index:0,text:'read'};})){}
   assert.ok(called);assert.equal(model.messages[0].content.length,3,'model still receives verified attachment evidence');
   assert.match(model.messages[0].content.at(-1).text,/用户附件的只读提取结果/);
-  assert.equal(JSON.stringify(f.agents.get(sessionId).events),before,'LLM expansion must not mutate Session history');
+  assert.equal(JSON.stringify(f.agents.get(sessionId).events),before,'stream middleware must not mutate Session history');
   await f.complete(first);
   const two=await upload('source version two');
   const accepted=await send('upload-second',two.receiptId);
