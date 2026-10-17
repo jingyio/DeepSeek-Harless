@@ -8,13 +8,34 @@
 - 验收覆盖原生浏览器 PDF 画布、正文/卡片预览、独立下载落地、内容格式与恢复、1600×1000 和 390×844；均为合成 UI 验收，无模型请求/费用，无生产资料改动。116 项定向前端回归通过，最后下载恢复改动后相关 60 项再次通过；全量 Node 本机 806 项为 786 通过/7 跳过/13 失败，12 个 Windows 符号链接权限失败和 1 个未改动的纯代码节点诊断需单独看 CI，未删检查。
 - 详细接口、设计依据、格式能力和回退边界见[视觉规范](../geneloop-visual-system.md#交付文件预览与三套候选风格2026-10-17)。原始测试与本机演示配置保存在本分支私有 `.local/file-preview-*` 和 `.local/ui-*`；正式部署须使用原数据库和账本，不恢复演示夹具。
 
-## 2026-10-17：Paper Web 自动学习接线（PR #61，未部署）
+## 2026-10-17：场景回复去掉卡片外观
+
+- 分支 `codex/frameless-scene-replies`，基线 `03868e5`。单栏及双栏场景回复移除外层边框、背景填充、圆角和阴影；基础样式和主题覆盖同步，高对比度不再补回外框。双栏布局、内部间距、标题及操作和下载功能保持。
+- 纯样式修改，不新增模型调用；主题同步与结果展示回归 55 项通过，Windows/Linux CI 全通过。[PR #64](https://github.com/jingyio/DeepSeek-Harless/pull/64) 已合并，生产运行 `b589e6a9f30db49f32289312c8291f41d4dbc975`。
+- 2026-10-17 17:46（北京时间）发布；219 个任务预检通过，用户数据哈希与预算/broker 进程保持。备份及回执在私有 `frameless-scene-releases/20261017T094606Z`，旧版本 `416f6a6` 可回滚。真实网页既有 Data 双栏结果验证：两侧背景透明、边框 0px、阴影 none，正文与下载入口保留；截图在私有 `.local/deliverables/frameless-scene-20261017/after.png`。
+
+## 2026-10-17：隐藏历史结果加载占位框
+
+- 分支 `codex/hide-result-loading`，基线 `c7b02a7`。单栏回复和双栏 Baseline/Motif 在权威结果快照加载前不渲染输出框；删除占位标题、边框和加载文案。已有缓存结果、实际流式执行、轨迹页和失败后的重新连接入口保持。
+- `node --test tests/test_harless_paired_client.mjs` 54 项通过，覆盖延迟加载、切换会话、缓存、重连及下载；Windows/Linux CI 均通过。纯前端变更，没有新的模型调用。
+- [PR #63](https://github.com/jingyio/DeepSeek-Harless/pull/63) 已合并；生产运行 `416f6a65b60df22ec4eb0715d885207584668523`。2026-10-17 17:34（北京时间）发布，219 个任务预检，用户数据哈希核对保持；预算和 broker 进程保持。备份与回执保留私有 `hidden-result-loading-releases/20261017T093436Z`，旧代码 `62246f5` 可回滚。
+
+## 2026-10-17：场景标签替换与旧 Files 续聊
+
+- 分支 `codex/composer-switching-fluidity`，基线 `2c28b27`；生产当前 `547be11`。加号菜单允许替换完整场景，转换原生标签 detect/clipboard 坐标；保留正文、附件和后续引用。
+- 完成的 Files 工作台任务可在原对话中按默认 Chat 继续，使用独立任务代理，保留旧工具范围与历史；修复切 Pro/推理档位后发送触发的 `scene_requires_new_session`。
+- 连续滑杆只在松手后保存最终档位；加粗蓝紫轨道、接近放大滑块、SVG 箭头；移除空保存状态行。Paper v4 / PPT r11 兼容重编，原冻结证据和旧库保持。
+- 已完成隔离网页三轮真实 Flash Off → Pro Low → Flash High，保留结果 29，绘图下载合格，再次计算得到 87。Python 839 / Node 799 通过，跳过 193 / 3，smoke 18 案例通过。首次原生标签失败已补回归。
+- [PR #62](https://github.com/jingyio/DeepSeek-Harless/pull/62) 已通过 Windows/Linux CI 并合并，生产运行 `62246f57e70f99a88e1918829d6bc7a99cf23629`，2026-10-17 17:21（北京时间）完成部署，包含 PR #61。发布回执私有目录 `composer-switching-releases/20261017T092107Z`；213 个任务预检，用户数据保持，切换前后 checkpoint 和 ledger 摘要一致。备份保留，回滚仅恢复代码/配置，不回退用户数据及累计账本。
+- 公网复核：PPT→Data 成功；Files/Flash Off 得到 28，随后默认 Chat/Pro High 记住 28 并生成 `normal-live.png`，真实下载后检查标题、坐标及曲线正常，无 gateway/internal。详见[验收记录](../experiments/geneloop-composer-switching-20261017.md)。
+
+## 2026-10-17：Paper Web 自动学习接线（PR #61，随 PR #62 部署）
 
 - 基线 main `547be11`，独立分支 `codex/web-paper-auto-learning`。复用任务索引、原始事件、账本、Python 挖掘器、产品认证和 Shared RSI Runtime；只补完成通知、私有编译/发布、下一任务冻结版本。没有修改账号认证或上游核心。
 - Paper v3 / PPT r10 用原冻结证据重编兼容代码锁，原包保留；不作为新增公共训练或成本收益。Paper 自动学习仅认证 `pin_document → read_pinned_document(page=1)`；不学习任意脚本或科研判断。
 - 真实论文摘录复测：三次 Baseline 自动发布 round-0001，第四次 Execute 加载并验证跳过 1 次，4 项完成/0 工具错误。首轮导出错误保留，修复“不生成 PDF”否定及 Prompt 后复测；两轮共 55 真实请求/$0.051121236 代理估费，账单实付未知。完整论文质量、跨论文和持续净降本未证明。
 - 两实际成员进程、10 场景草稿及各自私有编译/加载诊断通过；模拟事件不当作真实学习效果。最终测试及边界见[自动学习验收](../experiments/web-paper-auto-learning-20261017-v1.md)、[论文交接](paper-proofreading.md)。
-- 实现 `17b852a` 已推送至 [PR #61](https://github.com/jingyio/DeepSeek-Harless/pull/61)，与当前 main 无冲突，GitHub Ubuntu/Windows CI 运行中；未合并、未部署生产。发布需同步代码和预算回执接口，保留原账本与用户数据，不能只替换前端。其他场景自动学习后续单独接线。
+- 实现 `17b852a` 已通过 CI 并合并于 [PR #61](https://github.com/jingyio/DeepSeek-Harless/pull/61)，随上述 `62246f5` 同步代码及预算回执接口上线；原账本与用户数据保留。其他场景自动学习后续单独接线。
 
 ## 2026-10-17：横向思考强度滑杆
 

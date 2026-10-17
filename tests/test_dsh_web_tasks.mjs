@@ -1554,6 +1554,44 @@ test('General workspace keeps its tools without requiring uploads', options, asy
 });
 
 
+test('a persisted Files workbench conversation can switch model and return to default Chat without replacing its original tools',options,async()=>{
+ const scenes=[{...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'files',preset:'sss-files',adapter:'files',mcp_rows:[]},
+  {...multiScenes[0],id:'ppt',preset:'sss-ppt',adapter:'workspace',mcp_rows:[]}];
+ const f=await fixture({broker:true,scenes,capability_profile:'files',comparison_scenes:['ppt'],models:[
+  {provider:'deepseek-official',model:'deepseek-flash',label:'Flash',available:true},
+  {provider:'deepseek-official',model:'deepseek-v4-pro',label:'Pro',available:true}]});
+ try{
+  const preview=await f.api({action:'preview',request:{instruction:'Remember the verified calculation: 29.',capability_profile:'files',scene_options:{allow_output:true}}});
+  assert.equal(preview.status,200,JSON.stringify(preview.value));const first=preview.value;
+  assert.equal((await f.submit(first)).status,200);
+  f.agents.get(first.session_id).session.append('assistant/message',{message:{content:[{type:'text',text:'Verified sum is 29.'}]}});
+  await f.complete(first); await f.restart();
+  const sessionId=first.session_id;
+  await f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-v4-pro',reasoningEffort:'low'},new AbortController().signal);
+  const scopes=f.presetCalls.filter(row=>row.session_id===sessionId).length;
+  const result=await f.ctx.sessionController.prompt({sessionId,requestId:'files-to-chat-pro-low',mode:'queue',content:[{type:'text',text:'Draw a normal distribution using Python.'}]},new AbortController().signal);
+  assert.ok(result.comparison_id);
+  let continued;
+  for(let i=0;i<100;i++){
+   const tasks=(await f.api()).value.tasks;
+   const child=tasks.find(row=>row.session_id!==sessionId&&row.status==='running');
+   if(child){
+    continued=child;
+    assert.equal(child.scene,'new-scene');assert.equal(child.model,'deepseek-v4-pro');assert.equal(child.reasoning_effort,'low');
+    await f.complete(child);break;
+   }
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.ok(continued,'the continuation must start a private Chat task');
+  const turn=JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(row=>row.id===result.comparison_id);
+  assert.equal(turn.presentation,'single');assert.match(JSON.stringify(turn.prior_context),/Verified sum is 29/);
+  assert.equal(f.presetCalls.filter(row=>row.session_id===sessionId).length,scopes);
+  assert.equal((await f.api(undefined,'?task_id='+first.task_id)).value.scene,'files');
+  assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.selection.scene,'new-scene');
+ }finally{await f.close();}
+});
+
 test('Completed parent routes ordinary → data → PPT → chat without moving history or mutating prior scopes',options,async()=>{
  const scenes=[{...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]},
   {...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]},
