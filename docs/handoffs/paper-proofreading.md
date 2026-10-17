@@ -2,7 +2,7 @@
 
 - 更新时间与交接人：2026-10-17，Codex。
 - 目标与本次范围：复用已有 `/paper`、原生任务轨迹、Python 编译器及 Shared RSI Runtime，自动连接“任务完成→编译认证→私有版本→下一任务”。不增加 Agent 循环、认证管理或第二套轨迹存储。
-- 分支 / commit / 工作区：`codex/web-paper-auto-learning`，基于 main `547be11`；最终提交与 PR 见 Git/PR 回执。用户桌面协作者分支未改，生产服务未动。
+- 分支 / commit / 工作区：`codex/web-paper-auto-learning`，基于 main `547be11`；实现 `17b852a` 已推送，[PR #61](https://github.com/jingyio/DeepSeek-Harless/pull/61) 待审、未合并，GitHub Ubuntu/Windows CI 运行中。用户桌面协作者分支未改，生产服务未动。
 - 已完成：`dsh_web_tasks.ts` 完成通知/冻结版本，`harless_paper_learning.ts` 后台协调与版本准入，`learn-web-paper-tasks.py` 重用已有编译器；`web_task_budget.py` 只投影当前路由的结算回执，不重置累计用量。任务事件起点排除历史对话；不可变 round、固定留出、去重和失败状态按现有隔离目录保存。其他场景自动学习不在范围。
 - 已完成：保留 main 四档思考、六项通用能力、24 个论文工具、三模式与 RSI Off。Paper v3 / PPT r10 免费重编原证据兼容当前锁；原 v2/r9、历史 Paper Shadow 库和所有私人材料保留。修复已有“不生成 PDF”否定识别与 Prompt 冲突、后台写日志关闭异常。
 - 已验证：最终 V100 全量 `npm test` Python 1,032/Node 797 通过，Node 3 跳过。两个真实成员 bubblewrap、10 草稿跨用户拒绝及各自私有学习编译/加载通过（合成事件、零模型）。`smoke`、`motif:check`、`web:controls:check`、`web:scenes:check` 均通过，后者含 30 种选择组合与 28 项有效冻结预览。
