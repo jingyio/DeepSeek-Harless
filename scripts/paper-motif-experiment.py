@@ -9,6 +9,7 @@ from collections import Counter
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import platform
 import shutil
@@ -164,6 +165,21 @@ def account(exp):
         rows.extend(booked.values())
     cost = sum(row.get('observed_peak_usd') if row.get('observed_peak_usd') is not None
                else row['reserved_upper_usd'] for row in rows)
+    # Cross-host allocations reserve money, not model calls. Keep them when a
+    # new experiment ID is selected without inflating the request denominator.
+    allocations = ROOT / '.local/paper-motif/allocations'
+    for path in sorted(allocations.glob('*.json')):
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 16384:
+            raise ValueError('invalid paper budget allocation')
+        allocation = json.loads(path.read_text(encoding='utf-8'))
+        amount = allocation.get('reserved_usd')
+        if (allocation.get('schema_version') != 1 or
+                allocation.get('kind') not in ('remote_budget_allocation', 'historical_cost_floor') or
+                isinstance(amount, bool) or not isinstance(amount, (int, float)) or
+                not math.isfinite(amount) or amount < 0):
+            raise ValueError('invalid paper budget allocation')
+        cost += amount
+        snapshots[str(path.relative_to(ROOT))] = sha(path)
     return rows, cost, snapshots
 
 
