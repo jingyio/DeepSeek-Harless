@@ -4,7 +4,7 @@
    by Harness. See docs/geneloop-visual-system.md for coverage and rollback. */
 
 :root, html body {
-  --gl-font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --gl-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;
   --gl-canvas: #ffffff;
   --gl-sidebar: #f5f5f7;
   --gl-surface: #ffffff;
@@ -60,6 +60,7 @@ html body[data-ds-dark-theme] {
 html body, html body[data-ds-dark-theme] {
   --geneloop-ui-font: var(--gl-font);
   --dsw-font-family: var(--gl-font);
+  --dsw-font: var(--gl-font);
   --dsw-alias-bg-base: var(--gl-canvas);
   --dsw-alias-bg-module: var(--gl-surface);
   --dsw-alias-bg-module-platform: var(--gl-inset);
@@ -335,3 +336,114 @@ html body :is(.geneloop-chat-name,.geneloop-workspace-name,.VOzbGW_navCell):acti
   html body :is(.uV2eYG_card,.harless-paired-pane,[role=dialog],[role=menu],[data-trigger-menu]) { border: 1px solid CanvasText; box-shadow: none; }
   html body :is(.wSkVaW_tabActive,[aria-current=page]) { outline: 1px solid Highlight; }
 }
+
+/* Readable, consistent UI type. Native content px preferences remain authoritative. */
+html body { font-size: 15px; font-weight: 450; letter-spacing: 0; }
+html body :is(.geneloop-workspaces,.geneloop-settings-page) { font-size: 15px; }
+html body .geneloop-workspace-heading { font-size: 13px; }
+html body :is([role=menuitem],[role=menuitemradio],[role=option],.geneloop-workspace-menu button,.VOzbGW_navCell) { font-size: 15px; font-weight: 450; }
+html body :is(.geneloop-product-turn,.harless-paired-answer,.Sixlwa_bubble,.hWmORq_root) { font-family: var(--gl-font); font-weight: 450; line-height: 1.8; }
+html body :is(.geneloop-product-turn,.harless-paired-answer) :is(p,li,td,blockquote) { font-weight:450; }
+html body :is(.geneloop-product-turn,.harless-paired-answer) :is(h1,h2,h3,h4,strong) { font-weight: 650; }
+html body .harless-paired-pane>header>strong { font-size: 17px; }
+html body .harless-paired-notice { font-size: 14px; }
+html body .harless-paired-deliveries h4 { font-size: 15px; font-weight: 600; }
+html body .harless-artifact-card { height: 76px; padding: 0 10px 0 0; gap: 2px; border-radius: 18px; overflow: hidden; }
+html body .harless-artifact-preview { display:flex;align-items:center;gap:12px;flex:1;min-width:0;align-self:stretch;border:0;border-radius:0;padding:12px 14px;background:transparent;color:inherit;text-align:left; }
+html body .harless-artifact-preview:hover { background:var(--gl-hover); }
+html body .harless-artifact-preview:focus-visible { outline-offset:-4px;border-radius:14px; }
+html body .harless-paired-filename { font-size:15px;font-weight:600;line-height:23px; }
+html body .harless-artifact-meta { font-size:13px;line-height:19px; }
+html body .harless-artifact-download { width:36px;height:36px; }
+html body .geneloop-delivery-preview { display:flex;flex-direction:column;height:100%;min-height:0;background:var(--gl-canvas);font:450 15px/1.75 var(--gl-font);color:var(--gl-ink); }
+.geneloop-delivery-preview>header { display:flex;align-items:center;gap:6px;padding:14px 16px;border-bottom:1px solid var(--gl-hairline);flex:none; }
+.geneloop-delivery-preview>header>div { flex:1;min-width:0; }
+.geneloop-delivery-preview>header strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600; }
+.geneloop-delivery-preview>header small { color:var(--gl-secondary);font-size:12px; }
+.geneloop-delivery-preview button { display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:6px 10px;background:transparent;color:var(--gl-blue);border:0;border-radius:9px;font:inherit;cursor:pointer; }
+.geneloop-delivery-preview button:hover { background:var(--gl-hover); }
+.geneloop-delivery-preview button:disabled { opacity:.5;cursor:wait; }
+.geneloop-preview-content { flex:1;min-height:0;overflow:auto;overflow-wrap:anywhere;scrollbar-gutter:stable; }
+.geneloop-preview-content>img { display:block;max-width:100%;height:auto;margin:20px auto; }
+.geneloop-preview-content>pre { margin:0;padding:20px;white-space:pre-wrap;tab-size:4;font:13px/1.75 ui-monospace,SFMono-Regular,Consolas,monospace; }
+.geneloop-preview-content>.ds-markdown { padding:22px; }
+.geneloop-preview-note { flex:none;color:var(--gl-secondary);font-size:12px;padding:9px 16px;margin:0;border-bottom:1px solid var(--gl-hairline); }
+.geneloop-preview-status { flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:28px;text-align:center;color:var(--gl-secondary); }
+.geneloop-preview-table { padding:16px;overflow:auto; }
+.geneloop-preview-table table { border-collapse:collapse;min-width:100%;white-space:nowrap;font-size:14px; }
+.geneloop-preview-table :is(th,td) { padding:9px 14px;border-bottom:1px solid var(--gl-hairline);text-align:left; }
+.geneloop-preview-table th { background:var(--gl-inset);font-weight:600; }
+.geneloop-office-page { padding:24px;border-bottom:8px solid var(--gl-inset); }
+.geneloop-office-page h2 { margin:0 0 20px;font-size:20px; }
+.geneloop-office-page p { margin:0 0 14px; }
+.geneloop-style-choices { padding:24px 0; }
+.geneloop-style-choices h3 { font-size:16px;margin:0 0 6px; }
+.geneloop-style-choices>p { font-size:13px;color:var(--gl-secondary);margin:0 0 16px; }
+.geneloop-style-choices [role=radiogroup] { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px; }
+.geneloop-style-choices button { display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:12px;min-width:0;border:1px solid var(--gl-line);border-radius:14px;background:var(--gl-canvas);color:var(--gl-ink);font:inherit;text-align:left;cursor:pointer; }
+.geneloop-style-choices button[aria-checked=true] { border-color:var(--gl-blue);box-shadow:0 0 0 1px var(--gl-blue); }
+.geneloop-style-choices strong { font-size:14px;font-weight:600; }
+.geneloop-style-choices small { font-size:12px;line-height:1.5;color:var(--gl-secondary); }
+.geneloop-style-swatch { display:block;width:100%;height:60px;border-radius:7px;background:linear-gradient(90deg,#e8e8e8 23%,#fafafa 23%);border:1px solid #0001; }
+[data-style=air] .geneloop-style-swatch { background:linear-gradient(90deg,#e6edf7 23%,#fff 23%);box-shadow:inset 0 0 22px #c2dcff44; }
+[data-style=aurora] .geneloop-style-swatch { background:radial-gradient(ellipse at 65% 50%,#55cdbf55,transparent 60%),linear-gradient(90deg,#192b3d 23%,#0c1726 23%); }
+html body[data-geneloop-style=clear] { --gl-canvas:#fff;--gl-sidebar:#f7f7f8;--gl-surface:#fff;--gl-raised:#fff;--gl-inset:#f2f2f4;--gl-ink:#171719;--gl-secondary:#55565c;--gl-muted:#73737b;--gl-line:#e1e1e5;--gl-hairline:#ececef;--gl-hover:#ededf0;--gl-blue:#1670d9;--gl-selection:#e8f1ff;--gl-shadow-input:0 3px 16px #00000008; }
+html body[data-ds-dark-theme][data-geneloop-style=clear] { --gl-canvas:#151515;--gl-sidebar:#1b1b1b;--gl-surface:#242424;--gl-inset:#242424;--gl-raised:#292929;--gl-ink:#f1f1f1;--gl-secondary:#b7b7bc;--gl-muted:#a1a1a8;--gl-line:#3b3b3e;--gl-hairline:#303033;--gl-hover:#303033;--gl-selection:#263650;--gl-blue:#86b6ff; }
+html body[data-geneloop-style=air] { --gl-canvas:#fff;--gl-sidebar:#f0f4fa;--gl-surface:#fff;--gl-raised:#fff;--gl-inset:#f4f7fb;--gl-ink:#1b293b;--gl-secondary:#56667b;--gl-muted:#67768c;--gl-hover:#e7eef8;--gl-line:#dde4ee;--gl-hairline:#e9eef5;--gl-blue:#1169db;--gl-selection:#e5efff;--gl-shadow-input:0 5px 30px #365d9120; }
+html body[data-ds-dark-theme][data-geneloop-style=air] { --gl-canvas:#181b22;--gl-sidebar:#1e232d;--gl-surface:#262d38;--gl-inset:#222832;--gl-raised:#303746;--gl-ink:#f0f4fa;--gl-secondary:#b3c0d3;--gl-muted:#9eacc1;--gl-line:#404a5c;--gl-hairline:#303a49;--gl-hover:#343e50;--gl-blue:#98c3ff;--gl-selection:#2c4265; }
+html body[data-geneloop-style=aurora] { --gl-canvas:#fcfefe;--gl-sidebar:#eef6f6;--gl-surface:#fff;--gl-raised:#fff;--gl-inset:#f0f6f7;--gl-line:#d5e5e6;--gl-hairline:#e1edee;--gl-ink:#152e37;--gl-secondary:#526d78;--gl-muted:#617985;--gl-hover:#e0eff0;--gl-blue:#076b84;--gl-selection:#daf0f1;--gl-green:#0c8067; }
+html body[data-ds-dark-theme][data-geneloop-style=aurora] { --gl-canvas:#0c1722;--gl-sidebar:#101e2b;--gl-surface:#192a3a;--gl-inset:#142534;--gl-raised:#203346;--gl-ink:#edf6fc;--gl-secondary:#b1c9d6;--gl-muted:#95afbf;--gl-line:#344d60;--gl-hairline:#253c4d;--gl-hover:#233e50;--gl-blue:#68d7e7;--gl-selection:#183e4b;--gl-green:#7ae4be; }
+html body[data-geneloop-style=clear] .harless-paired-pane { background:transparent;border-radius:18px; }
+html body[data-geneloop-style=clear] .uV2eYG_card { border-radius:24px; }
+html body[data-geneloop-style=air] .harless-paired-pane { border-color:var(--gl-hairline);border-radius:24px;box-shadow:0 4px 24px #25476a09; }
+html body[data-geneloop-style=air] .uV2eYG_card { border-radius:28px; }
+html body[data-geneloop-style=aurora] .harless-paired-pane { background:var(--gl-sidebar);border-radius:20px; }
+html body[data-geneloop-style=aurora] .uV2eYG_card { border-color:color-mix(in srgb,var(--gl-blue) 40%,var(--gl-line));box-shadow:0 5px 30px #26768112; }
+/* Login concepts share the exact existing forms and account endpoints. */
+html body.geneloop-account-page .auth-side .field label { font-size:14px; }
+html body.geneloop-account-page .auth-side .field input { height:52px;font-size:16px;border-radius:13px; }
+html body.geneloop-account-page .auth-side .primary { height:50px;border-radius:25px;font-size:16px; }
+html body.geneloop-account-page .card h2 { font-size:32px;line-height:1.25;letter-spacing:-.6px; }
+html body.geneloop-account-page .hint { font-size:15px;line-height:1.7; }
+.geneloop-auth-styles { border:0;margin:28px 0 0;padding:18px 0 0;border-top:1px solid var(--gl-hairline);display:flex;gap:8px;flex-wrap:wrap; }
+.geneloop-auth-styles legend { color:var(--gl-secondary);font-size:12px;padding:0 6px 0 0; }
+.geneloop-auth-styles button { padding:7px 13px;border:1px solid var(--gl-line);border-radius:18px;background:transparent;color:var(--gl-secondary);font:500 13px var(--gl-font); }
+.geneloop-auth-styles button[aria-pressed=true] { color:var(--gl-blue);border-color:var(--gl-blue);background:var(--gl-selection); }
+.geneloop-auth-spiral { width:clamp(190px,24vw,330px);height:330px;position:relative;margin:20px auto;display:grid;place-items:center; }
+.geneloop-auth-spiral img { width:100%;height:100%;object-fit:contain;animation:geneloop-spiral-drift 9s ease-in-out infinite; }
+.auth .brand-mark img { animation:geneloop-logo-arrive 1.2s var(--gl-ease) both; }
+@keyframes geneloop-logo-arrive { from { opacity:0;transform:translateY(6px) rotate(-12deg) scale(.9); } to { opacity:1;transform:none; } }
+@keyframes geneloop-spiral-drift { 0%,100% { transform:translateY(0) rotate(-6deg); } 50% { transform:translateY(-12px) rotate(3deg); } }
+html body.geneloop-account-page[data-geneloop-style=clear] .auth { display:block; }
+html body.geneloop-account-page[data-geneloop-style=clear] .story { display:none; }
+html body.geneloop-account-page[data-geneloop-style=clear] .auth-side { min-height:100dvh;background:var(--gl-canvas); }
+html body.geneloop-account-page[data-geneloop-style=clear] .mobile-brand { display:flex;justify-content:center;margin-bottom:48px;font-size:24px; }
+html body.geneloop-account-page[data-geneloop-style=clear] .card h2 { text-align:center; }
+html body.geneloop-account-page[data-geneloop-style=clear] .card>.hint,html body.geneloop-account-page[data-geneloop-style=clear] section>.hint { text-align:center; }
+html body.geneloop-account-page[data-geneloop-style=clear] .primary { background:var(--gl-ink);color:var(--gl-canvas); }
+html body.geneloop-account-page[data-geneloop-style=air] .auth { max-width:1120px;min-height:650px;margin:auto;border-radius:32px;overflow:hidden;background:var(--gl-surface);border:1px solid var(--gl-line);box-shadow:0 24px 80px #244e7c10; }
+html body.geneloop-account-page[data-geneloop-style=air][data-auth-active=true] { min-height:100dvh;display:grid;place-items:center;padding:40px;background:var(--gl-inset); }
+html body.geneloop-account-page[data-geneloop-style=air] .story { padding:36px 40px;background:var(--gl-sidebar);border:0; }
+html body.geneloop-account-page[data-geneloop-style=air] .story h1 { font-size:36px;letter-spacing:-.8px; }
+html body.geneloop-account-page[data-geneloop-style=air] .story:before,html body.geneloop-account-page[data-geneloop-style=air] .story:after { display:none; }
+html body.geneloop-account-page[data-geneloop-style=aurora] .story { background:#0c1726;color:#edf6fc;border:0; }
+html body.geneloop-account-page[data-geneloop-style=aurora] .story .brand,html body.geneloop-account-page[data-geneloop-style=aurora] .story h1 { color:#edf6fc; }
+html body.geneloop-account-page[data-geneloop-style=aurora] .story:before { border:0;inset:5% -40%;width:auto;height:90%;border-radius:50%;background:radial-gradient(ellipse,#266e7955,transparent 64%); }
+html body.geneloop-account-page[data-geneloop-style=aurora] .story:after { display:none; }
+html body.geneloop-account-page[data-geneloop-style=aurora] .story h1 { font-size:42px;letter-spacing:-1px; }
+html body.geneloop-account-page[data-geneloop-style=aurora] .geneloop-auth-spiral { height:360px; }
+html body.geneloop-account-page[data-geneloop-style=aurora] .primary { background:linear-gradient(105deg,#167c8d,#5365d1);color:#fff; }
+@media(max-width:700px) {
+  .geneloop-style-choices [role=radiogroup] { grid-template-columns:1fr; }
+  .geneloop-style-choices button { display:grid;grid-template-columns:64px 1fr; }
+  .geneloop-style-swatch { grid-row:span 2;height:56px; }
+  html body.geneloop-account-page[data-geneloop-style=air][data-auth-active=true] { padding:0;background:var(--gl-canvas); }
+  html body.geneloop-account-page[data-geneloop-style=air] .auth { border:0;border-radius:0;min-height:100dvh;width:100%; }
+  html body.geneloop-account-page[data-geneloop-style=air] .auth-side { min-height:100dvh; }
+}
+@media(max-height:800px) and (min-width:901px) {
+  html body.geneloop-account-page[data-geneloop-style=air][data-auth-active=true] { padding:28px; }
+  html body.geneloop-account-page[data-geneloop-style=air] .auth { min-height:calc(100dvh - 56px); }
+  html body.geneloop-account-page[data-geneloop-style=air] .geneloop-auth-spiral { height:230px; }
+}
+@media(prefers-reduced-motion:reduce) { .geneloop-auth-spiral img,.auth .brand-mark img { animation:none; } }

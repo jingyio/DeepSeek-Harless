@@ -7,7 +7,7 @@ window.__ModuleLoader__.load({
     // Use the exact safe AST renderer used by native Harness assistant messages.
     const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
     const MarkdownText = primitives?.MarkdownText;
-    const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'uiConversation', 'slots', 'workspaces', 'uiWorkspace', 'layout'];
+    const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'uiConversation', 'slots', 'workspaces', 'uiWorkspace', 'layout', 'sidebarRight', 'sidebarRightTabs'];
     const endpoint = '/api/harless/settings';
     const observers = new Map(), lexiconObservers = new Map(), cache = new Map(), choosing = new Map(), revisions = new Map();
     const draftSelections = new Map();
@@ -84,6 +84,32 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       window.__installGeneLoopBrand?.(ctx, React);
       window.__installGeneLoopWorkspaces?.(ctx, React, primitives);
+      const styleChoices = [
+        { id: 'clear', title: '清晰', detail: '石墨色与清楚的文字，专注阅读。' },
+        { id: 'air', title: '轻盈', detail: '冷白与柔和的层次，轻巧安静。' },
+        { id: 'aurora', title: '极光', detail: '青绿与紫色螺旋，更鲜明的 GeneLoop。' },
+      ];
+      const styleKey = 'geneloop-visual-style-v1';
+      const storedStyle = () => { try { const value = window.localStorage?.getItem(styleKey); return styleChoices.some(row => row.id === value) ? value : 'clear'; } catch { return 'clear'; } };
+      if (typeof document !== 'undefined' && document.body?.dataset) document.body.dataset.geneloopStyle = storedStyle();
+      function StyleChoices() {
+        const [selected, setSelected] = React.useState(storedStyle), [notice, setNotice] = React.useState('');
+        return React.createElement('section', { className: 'geneloop-style-choices', 'aria-label': '界面风格' },
+          React.createElement('h3', null, '界面风格'), React.createElement('p', null, '选择一种风格，立即预览。明暗模式仍由外观设置控制。'),
+          React.createElement('div', { role: 'radiogroup', 'aria-label': '界面风格' }, ...styleChoices.map(style => React.createElement('button', {
+            key: style.id, type: 'button', role: 'radio', 'aria-checked': selected === style.id, 'data-style': style.id,
+            onClick: () => { document.body.dataset.geneloopStyle = style.id; setSelected(style.id);
+              try { window.localStorage?.setItem(styleKey, style.id); setNotice('已应用' + style.title + '风格。'); } catch { setNotice('已预览此风格；浏览器未能保存选择。'); }
+              // Use the native preference writer so the displayed px value and
+              // actual content size agree. Subsequent manual resizing is retained.
+              const theme = ctx.get('theme'); if (theme?.setFontSize) theme.setFontSize(16);
+            }, onKeyDown: event => { const delta = ['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 0;
+              if (!delta) return; event.preventDefault(); const buttons = [...event.currentTarget.parentElement.querySelectorAll('[role=radio]')];
+              const next = buttons[(buttons.indexOf(event.currentTarget) + delta + buttons.length) % buttons.length]; next.focus(); next.click(); },
+          }, React.createElement('span', { className: 'geneloop-style-swatch', 'aria-hidden': true }), React.createElement('strong', null, style.title), React.createElement('small', null, style.detail)))),
+          notice && React.createElement('p', { role: 'status' }, notice));
+      }
+      ctx.slots.inject('settings.general.item', () => ctx.slots.register({ name: 'settings.general.item', id: 'geneloop-visual-style', order: 5 }, StyleChoices));
       const command = ctx.get('commandUi'), triggers = ctx.get('inputTriggers');
       const sessions = ctx.get('sessions'), conversation = ctx.get('conversation');
       // The server allocates branch suffixes atomically. Native client-side
@@ -268,6 +294,228 @@ window.__ModuleLoader__.load({
         }
       }
       const artifactName = file => file.name.split(/[\\/]/).pop();
+      // A delivery address contains only public identities, never a workspace path.
+      const previewAddress = (value, lane, file) => 'dsh-resource://geneloop-delivery/' +
+        [value.session_id, value.id, lane, file.id, artifactName(file)].map(encodeURIComponent).join('/');
+      const artifactPreviewLink = (value, lane, file) => new URL('/#geneloop-preview=' + encodeURIComponent(previewAddress(value, lane, file)), window.location.href).href;
+      // Native Markdown intentionally omits relative links. Give only approved
+      // delivery links a same-origin preview address; retain captions and code.
+      function artifactMarkdown(text, files, value, lane) {
+        let fence;
+        return text.split('\n').map(line => {
+          const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+          if (marker) { if (!fence) fence = marker; else if (marker[0] === fence[0] && marker.length >= fence.length) fence = undefined; return line; }
+          if (fence) return line;
+          return line.replace(/(`+)[\s\S]*?\1|(!?\[(?:\\.|[^\]\\])*\]\()(<[^>\n]+>|[^\s)]+)([^)\n]*\))/g,
+            (match, code, caption, target, tail) => {
+              if (code || caption.startsWith('!')) return match;
+              const path = target.startsWith('<') ? target.slice(1, -1) : target;
+              if (/^(?:https?:|mailto:|#)/i.test(path)) return match;
+              const file = artifactFor(files, path);
+              return file ? caption + artifactPreviewLink(value, lane, file) + tail : match;
+            });
+        }).join('\n');
+      }
+      function parsePreview(address) {
+        const prefix = 'dsh-resource://geneloop-delivery/';
+        if (!address.startsWith(prefix)) throw Error('无效的文件预览。');
+        const parts = address.slice(prefix.length).split('/').map(decodeURIComponent);
+        if (parts.length !== 5 || parts.slice(0, 4).some(part => !/^[a-zA-Z0-9-]{1,120}$/.test(part)) ||
+            !['baseline', 'motif'].includes(parts[2]) || /[\\/\x00-\x1f]/.test(parts[4])) throw Error('无效的文件预览。');
+        return { value: { session_id: parts[0], id: parts[1] }, lane: parts[2], file: { id: parts[3], name: parts[4] } };
+      }
+      async function readArtifact(value, lane, file, signal) {
+        const response = await fetch(comparisonUrl(value, lane, file), { credentials: 'same-origin', cache: 'no-store', signal });
+        if (!response.ok) throw apiError(response.status);
+        const contentType = response.headers.get('content-type') || '';
+        if (/text\/html|application\/json/i.test(contentType) && !/\.(html|json)$/i.test(file.name)) throw apiError(502, '未收到交付文件，请刷新后重试。');
+        const blob = await response.blob();
+        if (Number.isFinite(file.bytes) && blob.size !== file.bytes) throw apiError(409, '文件大小校验失败，请刷新后重试。');
+        if (file.sha256 && window.crypto?.subtle) {
+          const digest = await window.crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+          const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+          if (hex !== file.sha256) throw apiError(409, '文件内容校验失败，请刷新后重试。');
+        }
+        return blob;
+      }
+      const previewType = name => {
+        const ext = name.split('.').pop().toLowerCase();
+        if (ext === 'pdf') return 'pdf';
+        if (/^(png|jpe?g|gif|webp|bmp|ico|svg)$/.test(ext)) return 'image';
+        if (/^(md|markdown)$/.test(ext)) return 'markdown';
+        if (/^(csv|tsv)$/.test(ext)) return 'table';
+        if (/^(docx|pptx|xlsx)$/.test(ext)) return 'office';
+        if (/^(txt|json|jsonl|log|tex|bib|py|js|ts|css|yaml|yml|xml|html|htm)$/.test(ext)) return 'text';
+        return 'unsupported';
+      };
+      // CSV keeps quoted delimiters and embedded newlines. Rendering uses text nodes.
+      function previewTable(text, delimiter = ',') {
+        const rows = []; let row = [], cell = '', quoted = false;
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          if (ch === '"') { if (quoted && text[i + 1] === '"') { cell += '"'; i++; } else quoted = !quoted; }
+          else if (!quoted && ch === delimiter) { row.push(cell); cell = ''; }
+          else if (!quoted && (ch === '\n' || ch === '\r')) {
+            if (ch === '\r' && text[i + 1] === '\n') i++;
+            row.push(cell); rows.push(row); row = []; cell = '';
+          } else cell += ch;
+        }
+        if (cell || row.length) { row.push(cell); rows.push(row); }
+        if (quoted) throw Error('表格中的引号未闭合，请下载原文件检查。');
+        return rows;
+      }
+      // Office content previews are bounded local XML extraction. No document is
+      // sent to an external viewer; macros, external links and scripts never run.
+      async function officePreview(blob, name, signal) {
+        const bytes = new Uint8Array(await blob.arrayBuffer()), view = new DataView(bytes.buffer);
+        if (bytes.length < 22) throw Error('文件内容不完整。');
+        let end = bytes.length - 22;
+        while (end >= Math.max(0, bytes.length - 65557) && view.getUint32(end, true) !== 0x06054b50) end--;
+        if (end < 0 || view.getUint32(end, true) !== 0x06054b50) throw Error('无法读取此 Office 文件。');
+        const count = view.getUint16(end + 10, true), offset = view.getUint32(end + 16, true);
+        if (count > 10000 || offset >= bytes.length) throw Error('文件结构过大，建议下载查看。');
+        const xml = new Map(); let cursor = offset, total = 0;
+        for (let i = 0; i < count; i++) {
+          signal.throwIfAborted();
+          if (cursor + 46 > bytes.length || view.getUint32(cursor, true) !== 0x02014b50) throw Error('文件目录损坏。');
+          const flags = view.getUint16(cursor + 8, true), method = view.getUint16(cursor + 10, true);
+          const size = view.getUint32(cursor + 20, true), length = view.getUint32(cursor + 24, true);
+          const n = view.getUint16(cursor + 28, true), extra = view.getUint16(cursor + 30, true), comment = view.getUint16(cursor + 32, true);
+          const local = view.getUint32(cursor + 42, true);
+          const path = new TextDecoder().decode(bytes.subarray(cursor + 46, cursor + 46 + n));
+          cursor += 46 + n + extra + comment;
+          if (!/^(word\/document|ppt\/slides\/slide\d+|xl\/sharedStrings|xl\/worksheets\/sheet\d+)\.xml$/.test(path)) continue;
+          if (flags & 1 || length > 8 * 1024 * 1024 || (total += length) > 24 * 1024 * 1024 || local + 30 > bytes.length) throw Error('此文件已加密或超出预览容量，请下载查看。');
+          if (view.getUint32(local, true) !== 0x04034b50) throw Error('文件结构损坏。');
+          const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+          if (start + size > bytes.length) throw Error('文件内容不完整。');
+          let data = bytes.subarray(start, start + size);
+          if (method === 8) {
+            const reader = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+            const chunks = []; let received = 0;
+            const cancel = () => { void reader.cancel(); }; signal.addEventListener('abort', cancel, { once: true });
+            try { while (true) { const chunk = await reader.read(); if (chunk.done) break;
+              if ((received += chunk.value.length) > length) { await reader.cancel(); throw Error('文件解压内容不符合声明。'); } chunks.push(chunk.value); }
+            } finally { signal.removeEventListener('abort', cancel); reader.releaseLock(); }
+            data = new Uint8Array(await new Blob(chunks).arrayBuffer());
+          } else if (method !== 0) throw Error('此文件压缩方式暂不支持，请下载查看。');
+          if (data.length !== length) throw Error('文件内容长度不匹配。');
+          const source = new TextDecoder('utf-8', { fatal: true }).decode(data);
+          if (/<!DOCTYPE|<!ENTITY/i.test(source)) throw Error('此文件包含不支持的 XML 声明，请下载查看。');
+          const document = new DOMParser().parseFromString(source, 'application/xml');
+          if (document.getElementsByTagName('parsererror').length || document.doctype) throw Error('文件 XML 损坏。');
+          xml.set(path, document);
+        }
+        const nodes = (root, local) => [...root.getElementsByTagNameNS('*', local)];
+        const ext = name.split('.').pop().toLowerCase();
+        if (ext === 'xlsx') {
+          const strings = xml.get('xl/sharedStrings.xml');
+          const shared = strings ? nodes(strings, 'si').map(n => nodes(n, 't').map(t => t.textContent).join('')) : [];
+          const sheets = [...xml].filter(([path]) => path.startsWith('xl/worksheets/')).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+          if (!sheets.length) throw Error('没有可预览的工作表。');
+          return sheets.map(([path, doc], i) => ({ title: '工作表 ' + (i + 1), rows: nodes(doc, 'row').map(row => {
+            const result = []; for (const cell of nodes(row, 'c')) {
+              const ref = cell.getAttribute('r')?.match(/^[A-Z]+/)?.[0]; let col = 0;
+              if (ref) for (const ch of ref) col = col * 26 + ch.charCodeAt(0) - 64;
+              if (col > 256) continue;
+              const raw = nodes(cell, 'v')[0]?.textContent || '';
+              result[(col || result.length + 1) - 1] = cell.getAttribute('t') === 's' ? shared[Number(raw)] || '' : cell.getAttribute('t') === 'inlineStr' ? nodes(cell, 't').map(n => n.textContent).join('') : raw;
+            } return Array.from(result, value => value ?? '');
+          }) }));
+        }
+        const documents = [...xml].filter(([path]) => ext === 'docx' ? path === 'word/document.xml' : path.startsWith('ppt/slides/')).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+        if (!documents.length) throw Error('没有可预览的正文。');
+        return documents.map(([path, doc], i) => ({ title: ext === 'pptx' ? '第 ' + (i + 1) + ' 页' : '文档正文',
+          paragraphs: nodes(doc, 'p').map(p => nodes(p, 't').map(t => t.textContent).join('')).filter(Boolean) }));
+      }
+      function openArtifact(value, lane, file) {
+        const sidebar = ctx.get('sidebarRight');
+        if (!sidebar) throw Error('文件预览暂未就绪，请稍后重试。');
+        sidebar.openResource(previewAddress(value, lane, file));
+      }
+      function DeliveryPreview({ useTabInfo, renderSlot }) {
+        const { tab } = useTabInfo(), address = tab.contentId;
+        const [state, setState] = React.useState({ phase: 'loading' }), [revision, setRevision] = React.useState(0);
+        const [downloadState, setDownloadState] = React.useState('');
+        const scrollportRef = React.useRef(null), busy = React.useRef(false);
+        const identity = parsePreview(address), name = identity.file.name;
+        React.useEffect(() => {
+          const abort = new AbortController(); let objectUrl;
+          const cancel = () => abort.abort(); tab.signal.addEventListener('abort', cancel, { once: true });
+          setState({ phase: 'loading' }); setDownloadState('');
+          (async () => {
+            // Refresh the authenticated list; persisted layout metadata is never a grant.
+            const current = await withDeadline(abort.signal, 60000, async signal => {
+              const response = await fetch(comparisonUrl(identity.value), { credentials: 'same-origin', cache: 'no-store', signal });
+              if (!response.ok) throw apiError(response.status);
+              const value = await response.json();
+              if (value.session_id !== identity.value.session_id || value.id !== identity.value.id) throw Error('文件不属于当前预览。');
+              return value;
+            });
+            const file = current.lanes?.[identity.lane]?.artifacts?.find(row => row.id === identity.file.id);
+            if (!file) throw Error('文件已不可用，请返回对话重新选择。');
+            // Decoder failure must not remove the independent original-file
+            // download. It still goes through authenticated byte checks.
+            setState({ phase: 'loading', file, current });
+            let shown = file;
+            const companion = /\.(pptx|docx)$/i.test(name) && current.lanes[identity.lane].artifacts.find(row => row.name === file.name.replace(/\.[^.]+$/, '.pdf'));
+            if (companion) shown = companion;
+            const blob = await withDeadline(abort.signal, 60000, signal => readArtifact(current, identity.lane, shown, signal));
+            const kind = previewType(shown.name); let content;
+            if (kind === 'office') content = await officePreview(blob, shown.name, abort.signal);
+            else if (['text', 'markdown', 'table'].includes(kind)) {
+              content = await blob.text();
+              if (kind === 'table') content = previewTable(content.replace(/^\uFEFF/, ''), /\.tsv$/i.test(name) ? '\t' : ',');
+              else if (/\.json$/i.test(name)) { try { content = JSON.stringify(JSON.parse(content), null, 2); } catch {} }
+            } else if (kind === 'pdf') content = new Uint8Array(await blob.arrayBuffer());
+            else if (kind === 'image') objectUrl = URL.createObjectURL(new Blob([blob], { type: /\.svg$/i.test(name) ? 'image/svg+xml' : 'image/' + name.split('.').pop().replace('jpg', 'jpeg') }));
+            if (!abort.signal.aborted) setState({ phase: 'ready', kind, content, objectUrl, file, current, companion: companion && artifactName(companion) });
+          })().catch(error => { if (!abort.signal.aborted) setState(previous => ({ ...previous, phase: 'error', message: networkMessage(error) })); });
+          return () => { abort.abort(); tab.signal.removeEventListener('abort', cancel); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+        }, [address, revision, tab.signal]);
+        const downloadCurrent = async () => {
+          if (busy.current || !state.file) return; busy.current = true; setDownloadState('正在准备下载…');
+          try {
+            const blob = await withDeadline(tab.signal, 60000, signal => readArtifact(state.current, identity.lane, state.file, signal));
+            if (tab.signal.aborted) return;
+            const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = name; link.hidden = true;
+            document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+            setDownloadState('已交给浏览器下载。');
+          } catch (error) { if (!tab.signal.aborted) setDownloadState(networkMessage(error) + ' 可重新点击下载。'); }
+          finally { busy.current = false; }
+        };
+        const table = rows => h('div', { className: 'geneloop-preview-table' }, h('table', null, h('tbody', null,
+          ...rows.map((row, i) => h('tr', { key: i }, ...row.map((cell, j) => h(i === 0 ? 'th' : 'td', { key: j }, cell)))))));
+        return h('section', { className: 'geneloop-delivery-preview', 'aria-label': '文件预览：' + name },
+          h('header', null, h('div', null, h('strong', { title: name }, name), h('small', null, identity.lane === 'motif' ? 'Motif 交付文件' : 'Baseline 交付文件')),
+            h('button', { type: 'button', 'aria-label': '重新加载预览', onClick: () => setRevision(n => n + 1) }, '刷新'),
+            h('button', { type: 'button', disabled: !state.file || busy.current, 'aria-label': '下载 ' + name, onClick: downloadCurrent }, h(primitives.IconDownloadOutline16), '下载')),
+          state.phase === 'loading' ? h('div', { className: 'geneloop-preview-status', role: 'status', 'aria-busy': true }, h('span', { className: 'harless-artifact-spinner' }), '正在打开文件…')
+          : state.phase === 'error' ? h('div', { className: 'geneloop-preview-status', role: 'alert' }, h('p', null, state.message), h('button', { type: 'button', onClick: () => setRevision(n => n + 1) }, '重试'))
+          : h(React.Fragment, null,
+            state.companion && h('p', { className: 'geneloop-preview-note' }, '显示配套 PDF 的排版预览；下载获取原文件。'),
+            state.kind === 'office' && h('p', { className: 'geneloop-preview-note' }, '内容预览，原始排版、图形和公式请下载查看。'),
+            h('div', { className: 'geneloop-preview-content', ref: scrollportRef },
+              state.kind === 'pdf' ? renderSlot('geneloop.delivery.document', { resourceAddress: address, content: { kind: 'bytes', data: state.content }, wrap: true, scrollportRef },
+                { entryKey: '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/pdf', hookContext: useTabInfo, fallback: h('p', null, 'PDF 预览器暂未就绪，请刷新重试。') })
+              : state.kind === 'image' ? h('img', { src: state.objectUrl, alt: name, onError: () => setState(previous => ({ ...previous, phase: 'error', message: '无法显示这张图片，请下载原文件查看。' })) })
+              : state.kind === 'markdown' && MarkdownText ? h(MarkdownText, { text: state.content, streaming: false, labels: markdownLabels })
+              : state.kind === 'table' ? table(state.content)
+              : state.kind === 'office' ? state.content.map((part, i) => h('section', { key: i, className: 'geneloop-office-page' }, h('h2', null, part.title), part.rows ? table(part.rows) : part.paragraphs.map((p, j) => h('p', { key: j }, p))))
+              : state.kind === 'unsupported' ? h('p', null, '此格式暂不支持在线预览，可使用上方下载按钮保存原文件。')
+              : h('pre', null, state.content))),
+          downloadState && h('p', { className: 'geneloop-preview-note', role: 'status' }, downloadState));
+      }
+      // Public right-sidebar slots retain native tabs, resizing and fullscreen.
+      if (ctx.slots.entries && ctx.get('sidebarRightTabs')) {
+        const id = 'geneloop-delivery-preview';
+        ctx.effect(() => ctx.get('sidebarRightTabs').register({ id, kind: id, patterns: ['dsh-resource://geneloop-delivery/**'],
+          canOpen: address => { try { parsePreview(address); return true; } catch { return false; } }, title: address => parsePreview(address).file.name }));
+        ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: id,
+          children: { 'geneloop.delivery.document': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: (_standard, useTabInfo) => useTabInfo } } } },
+        }, DeliveryPreview));
+        ctx.slots.inject('sidebar.right.tab.document', () => mirrorPublicSlot('sidebar.right.tab.document', 'geneloop.delivery.document'));
+      }
       const artifactMeta = file => {
         const name = artifactName(file);
         const extension = (primitives.fileExtension ? primitives.fileExtension(name) : name.includes('.') ? name.split('.').pop() : '').toUpperCase().slice(0, 8);
@@ -533,21 +781,7 @@ window.__ModuleLoader__.load({
           const state = row => { if (alive.current) setDownloads(old => ({ ...old, [key]: row })); };
           state({ phase: 'pending', message: '正在准备下载…' });
           try {
-            const blob = await withDeadline(abort.signal, 60000, async requestSignal => {
-              const response = await fetch(comparisonUrl(value, lane, file), { credentials: 'same-origin', cache: 'no-store', signal: requestSignal });
-              if (!response.ok) throw apiError(response.status);
-              // A gateway/login HTML document must never be saved as the requested PDF.
-              const contentType = response.headers.get('content-type') || '';
-              if (/text\/html|application\/json/i.test(contentType) && !/\.(html|json)$/i.test(file.name)) throw apiError(502, '未收到交付文件，请刷新后重试。');
-              const blob = await response.blob();
-              if (Number.isFinite(file.bytes) && blob.size !== file.bytes) throw apiError(409, '文件大小校验失败，请刷新后重试。');
-              if (file.sha256 && window.crypto?.subtle) {
-                const digest = await window.crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
-                const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-                if (hex !== file.sha256) throw apiError(409, '文件内容校验失败，请刷新后重试。');
-              }
-              return blob;
-            });
+            const blob = await withDeadline(abort.signal, 60000, requestSignal => readArtifact(value, lane, file, requestSignal));
             if (abort.signal.aborted) return;
             const url = URL.createObjectURL(blob), link = document.createElement('a');
             link.href = url; link.download = file.name.split('/').pop(); link.hidden = true;
@@ -581,15 +815,15 @@ window.__ModuleLoader__.load({
           const progressLabel = progressText(result);
           const captureLink = event => {
             const link = event.target.closest?.('a'); if (!link) return;
-            const raw = link.getAttribute('href') || '', file = artifactFor(files, raw);
-            if (file) { event.preventDefault(); event.stopPropagation(); void download(lane, file); }
+            const raw = link.getAttribute('href') || '', file = artifactFor(files, raw) || files.find(file => raw === artifactPreviewLink(value, lane, file));
+            if (file) { event.preventDefault(); event.stopPropagation(); try { openArtifact(value, lane, file); } catch (error) { setError(error.message); } }
             else if (raw && !/^(https?:|mailto:|#)/i.test(raw)) {
               event.preventDefault(); event.stopPropagation();
               setError('此路径尚未登记为可下载成品，请使用该侧“交付文件”中的下载按钮。');
             }
           };
           const mentions = { resolve: raw => { const file = artifactFor(files, raw); return file ? {
-            title: artifactName(file), label: '下载 ' + artifactName(file), open: () => { void download(lane, file); },
+            title: artifactName(file), label: '预览 ' + artifactName(file), open: () => { try { openArtifact(value, lane, file); } catch (error) { setError(error.message); } },
           } : undefined; } };
           const usage = usageFacts(result), duration = result.duration_ms ?? (Number.isFinite(result.stats?.elapsed_seconds) ? result.stats.elapsed_seconds * 1000 : undefined);
           const count = value => Number.isFinite(value) ? value.toLocaleString('en-US') + ' tok' : '待统计';
@@ -604,15 +838,15 @@ window.__ModuleLoader__.load({
                 h('span', null, entry.label), h('small', null, ({ running: '进行中', completed: '完成', failed: '未完成' })[entry.status] || '')))),
               ...(!settled(result) ? [] : previousMessages).map(message => h('section', { key: message.id, className: 'harless-process-message',
                 onClickCapture: captureLink, ref: root => compactArtifactLabels(root, files) },
-                MarkdownText ? h(MarkdownText, { text: message.text, streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
+                MarkdownText ? h(MarkdownText, { text: artifactMarkdown(message.text, files, value, lane), streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
             result.fallback_reason && h('p', { className: 'harless-paired-notice' }, '优化未启用，已回退普通模式：' + result.fallback_reason),
             result.failure && h('p', { role: 'alert', className: 'harless-paired-notice' }, result.failure),
             !settled(result) && previousMessages.length > 0 && h('div', { className: 'harless-stream-messages', onClickCapture: captureLink,
               ref: root => compactArtifactLabels(root, files) }, ...previousMessages.map(message => h('section', {
                 key: message.id, className: 'harless-process-message', 'data-message-id': message.id,
-              }, MarkdownText ? h(MarkdownText, { text: message.text, streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
+              }, MarkdownText ? h(MarkdownText, { text: artifactMarkdown(message.text, files, value, lane), streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
             h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, answer
-              ? MarkdownText ? h(MarkdownText, { text: answer, streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
+              ? MarkdownText ? h(MarkdownText, { text: artifactMarkdown(answer, files, value, lane), streaming: !settled(result), labels: markdownLabels, fileMentions: mentions })
                 : h('p', { style: { whiteSpace: 'pre-wrap' } }, answer)
               : settled(result) && h('p', { className: 'harless-paired-muted' }, notStarted ? '任务未启动，暂无回复。' : '本轮未生成文字回复。')),
             !settled(result) && looping(),
@@ -621,10 +855,12 @@ window.__ModuleLoader__.load({
                 const status = downloads[lane + ':' + file.id];
                 const name = artifactName(file);
                 return h('li', { key: file.id }, h('div', { className: 'harless-artifact-card' },
+                  h('button', { className: 'harless-artifact-preview', type: 'button', 'aria-label': '预览 ' + name,
+                    onClick: () => { try { openArtifact(value, lane, file); } catch (error) { setError(error.message); } } },
                   h('span', { className: 'harless-artifact-icon', 'aria-hidden': true }, primitives.FileTypeIcon ? h(primitives.FileTypeIcon, { path: name }) : h('span', null, '▤')),
                   h('span', { className: 'harless-artifact-body' },
                     h('span', { className: 'harless-paired-filename', title: name }, name),
-                    h('span', { className: 'harless-artifact-meta' }, artifactMeta(file))),
+                    h('span', { className: 'harless-artifact-meta' }, artifactMeta(file)))),
                   h(primitives.Tooltip, { label: status?.phase === 'pending' ? '正在准备下载…' : '下载 ' + name, side: 'bottom' },
                     h('a', { className: 'harless-artifact-download', href: comparisonUrl(value, lane, file), download: name, rel: 'nofollow',
                       'aria-label': '下载 ' + name, 'aria-disabled': status?.phase === 'pending', 'aria-busy': status?.phase === 'pending',
