@@ -120,12 +120,12 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
     dispose: () => { for (const child of mountedChildren) child.dispose(); cleanups.forEach(fn => fn?.()); } };
 }
 
-test('cold history displays loading until an authoritative snapshot arrives, never a fictional queued task', async () => {
+test('cold history renders no output frame until an authoritative snapshot arrives', async () => {
   const initial = comparison(); initial.status = 'running'; initial.scoring_available = false; initial.snapshot_revision = 1;
   for (const lane of Object.values(initial.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
   let finish;
   const f = fixture(() => new Promise(resolve => { finish = resolve; }), initial);
-  assert.match(f.content(f.render()), /正在加载此轮结果/);
+  assert.equal(f.render(), null);
   assert.doesNotMatch(f.content(f.render()), /等待执行|等待当前任务|停止生成/);
   assert.equal(f.blocks.size, 0, 'historical submission data does not block the composer');
   const done = comparison(); done.snapshot_revision = 8; finish(Response.json(done)); await flush(); f.render();
@@ -177,7 +177,7 @@ test('cached results cannot leak into a different conversation during navigation
   for (const lane of Object.values(next.lanes)) { lane.status = 'queued'; lane.answer = ''; lane.artifacts = []; }
   f.setNodeData(next); f.render();
   assert.equal(f.all(row => row.type === f.MarkdownText).length, 0);
-  assert.match(f.content(f.render()), /正在加载此轮结果/); f.dispose();
+  assert.equal(f.render(), null); f.dispose();
 });
 
 test('numeric scoring is absent for running, completed and failed comparisons and never submits on refresh', async () => {
