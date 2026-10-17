@@ -17,6 +17,23 @@ USAGE = {"prompt_tokens": 12, "prompt_cache_hit_tokens": 8,
 
 
 class WebTaskBudgetTests(unittest.TestCase):
+    def test_cancel_exports_only_current_route_receipts_and_does_not_reset_usage(self):
+        session=self.register()
+        self.registry.activate(session)
+        route=self.registry.state_for({'x-deepseek-harness-session-id':session})
+        booked=route.book(BODY)
+        route.settle(booked[0],booked[1],200,USAGE)
+        route.log({'request_id':booked[0],'response_status':200,'response_usage':USAGE,
+                   'observed_peak_usd':0.0001,'private_header':'never-export'})
+        route.state.log({'task_id':'f'*32,'response_status':200,'private_header':'foreign'})
+        before=self.registry.run_state.request_count
+        response=self.registry.cancel(session)
+        self.assertEqual(len(response['request_receipts']),1)
+        self.assertEqual(response['request_receipts'][0]['task_id'],route.task_id)
+        self.assertNotIn('private_header',response['request_receipts'][0])
+        self.assertEqual(self.registry.run_state.request_count,before)
+        self.assertEqual(self.registry.cancel(session)['request_receipts'],response['request_receipts'])
+
     def test_cumulative_checkpoint_survives_routed_admission_crash_and_cap_expansion(self):
         checkpoint = self.root / 'cumulative.json'
         self.root.mkdir(parents=True, exist_ok=True)

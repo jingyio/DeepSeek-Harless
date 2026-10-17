@@ -8,9 +8,15 @@ from pathlib import Path
 def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def load_product_bundle(root: Path, directory: Path, scene: str):
+def load_product_bundle(root: Path, directory: Path, scene: str, *, private_root: Path | None = None):
     base = directory.resolve(strict=True)
-    if not base.is_relative_to((root / 'motif-libraries').resolve()):
+    if private_root is not None:
+        private = private_root.resolve(strict=True)
+        if (scene != 'paper-proofreading' or private_root.is_symlink()
+                or not private.is_relative_to((root / '.local').resolve())
+                or not base.is_relative_to(private) or directory.is_symlink()):
+            raise ValueError('private learning release escapes its owning store')
+    elif not base.is_relative_to((root / 'motif-libraries').resolve()):
         raise ValueError('product bundles must be registered repository artifacts')
     entry_path = base / 'entry.json'
     entry = json.loads(entry_path.read_text(encoding='utf-8'))
@@ -19,6 +25,8 @@ def load_product_bundle(root: Path, directory: Path, scene: str):
     expected = {'ppt': 'ppt_read_v1', 'research-data-analysis': 'data_receipts_v3', 'paper-proofreading': 'paper_shadow_v1'}
     learned_ppt=scene=='ppt' and entry.get('runtime_kind')=='ppt_read_v2'
     learned_paper=scene=='paper-proofreading' and entry.get('runtime_kind')=='paper_document_read_v1'
+    if private_root is not None and not learned_paper:
+        raise ValueError('private learning only admits the existing paper document protocol')
     learned=learned_ppt or learned_paper
     if entry.get('schema_version') != 1 or entry.get('scene') != scene or (not learned and entry.get('runtime_kind') != expected.get(scene)) or entry.get('new_training') is not learned:
         raise ValueError('invalid existing product library')

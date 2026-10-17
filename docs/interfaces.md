@@ -2,7 +2,17 @@
 
 ## 网页 Paper 默认 Execute（2026-10-17）
 
-公共 Registry 的 `/ppt`、`/paper`、`/data` Motif 均默认 Execute。产品种类 `paper_document_read_v1` 当前使用 `paper-web-v2`（四档任务准入兼容重编，原 v1 保留），完整 24 工具不变；只授权模型已观察到的 `pin_document` 结果续接同源默认 `read_pinned_document(source_id, page=1)`。绑定检查完整上传许可、实际 Schema、独立轨迹证据、来源版本和代码锁；通过既有 `closedContinuation` 插件钩子，不修改核心或训练模型权重。未命中仍回到模型，Shadow 历史和管理员研究入口保持原协议。学习证据见 [原始记录](experiments/all-scene-motif-execute-20261017-v1.md)，最新兼容见[思考强度验收](experiments/geneloop-reasoning-strength-slider-20261017-v1.md)。
+公共 Registry 的 `/ppt`、`/paper`、`/data` Motif 均默认 Execute。产品种类 `paper_document_read_v1` 当前使用 `paper-web-v3`（自动学习接线的兼容重编，原 v1/v2 保留），完整 24 工具不变；只授权模型已观察到的 `pin_document` 结果续接同源默认 `read_pinned_document(source_id, page=1)`。绑定检查完整上传许可、实际 Schema、独立轨迹证据、来源版本和代码锁；通过既有 `closedContinuation` 插件钩子，不修改核心或训练模型权重。未命中仍回到模型，Shadow 历史和管理员研究入口保持原协议。学习证据见 [原始记录](experiments/all-scene-motif-execute-20261017-v1.md)，最新接线见[自动学习验收](experiments/web-paper-auto-learning-20261017-v1.md)。
+
+## Paper 自动学习接线
+
+- `/paper` 仍只选择既有场景、库和模式。真实 Provider 的 `dsh_web_tasks.ts` 在完成普通 Baseline 后保存最终账本回执，并通知 `harless_paper_learning.ts`。原任务索引、事件、答案和用户归属仍是唯一来源；没有第二套轨迹库或 Agent 循环。启动时会重扫当前运行目录的原任务索引。
+- 原 `/tasks/cancel` 继续关闭同一鉴权预算路由，额外返回当前 task 的 `request_receipts`。它只是既有账本的有限投影：请求 ID、状态、用量、估费；不包含提示、凭证或其他用户记录。未结算、用量不全、失败、Execute/Shadow、历史上下文和重复问题不进入本轮认证。取消及全部失败/重试仍计入原账本。
+- 固定后台脚本 `learn-web-paper-tasks.py` 复用 `learn-web-paper-document-motif.py` 与原挖掘器。至少三个不同任务，最早一项永久留出，最新两个兼容任务用于训练。相同问题或同一源任务不会被算成新的独立决定；不同问题也不自动证明跨论文独立性。仅认证已见证的 `pin_document → read_pinned_document(page=1)`，不学习任意 Bash、工具或科研判断。
+- 私有版本位于当前 `output/learning/sha256(user + NUL + runScope)/round-NNNN/`。`status.json` 记录等待证据、编译、失败、发布或版本拒绝；只有完整编译与原产品准入通过后才原子更新 `latest.json`。版本目录不覆盖，已有任务配置不修改。相同证据和代码不重复发布；无模型编译、原始大文件优先硬链接，不复制上传资料。
+- 新任务预览时检查私有版本文件、认证、代码和完整工具 Schema，冻结 `learning_version` 与执行配置；已确认、运行中及恢复的任务保留原冻结版本。篡改/失效私有版本回退服务端既有库并记录原因；该库也失效时，Execute 按既有规则拒绝。菜单本身不调用模型，Baseline/Shadow/Execute 与 RSI Off 语义保持。
+- 自动学习仅在真实 Web、配置了 Python 的 Paper 路径启用。子进程不继承 API 密钥。沿用既有账号进程与文件隔离；同一账号当前运行目录可重启恢复，换新运行目录不会自动迁移旧私有库。产品部署需同步代码及预算服务的回执接口；旧服务缺回执时不发布新库，不能伪称完成学习。
+- 结构认证不等于报告质量或净费用认证。本轮真实材料、失败和有限机制结果见验收记录；其他场景的自动学习尚未接线。公共 Paper v3 / PPT r10 只由原冻结证据免费重编，原包不改。
 
 ## 网页通用能力
 

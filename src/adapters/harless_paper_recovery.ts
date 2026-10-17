@@ -1,6 +1,6 @@
 /** Require a real export after a source was read for a requested paper review. */
 export function paperExportRequested(text:string){
-  if(/不(?:要|用|需要).{0,12}(?:报告|导出|生成|文件|pdf)|(?:do not|don't|no need to).{0,24}(?:export|report|file|pdf)/i.test(text))return false;
+  if(/不(?:要|用|需要).{0,12}(?:报告|导出|生成|文件|pdf)|不(?:生成|导出|输出|提供).{0,12}(?:报告|文件|pdf)|(?:do not|don't|no need to).{0,24}(?:export|report|file|pdf)/i.test(text))return false;
   return /(?:生成|导出|交付|下载|提供|输出).{0,16}(?:报告|pdf|文件)|(?:报告|pdf).{0,8}(?:文件|下载)|(?:export|generate|deliver|download).{0,20}(?:report|pdf|file)/i.test(text);
 }
 export function createPaperRecovery(){
