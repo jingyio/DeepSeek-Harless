@@ -276,6 +276,24 @@ function interactiveWorkspaceBrowser() {
     failTrash: code => { trashFailure = code; }, delayTrash: promise => { delayTrash = promise; } };
 }
 
+test('workspace search matches folder names and chats, deduplicating identities without losing same-name folders', () => {
+  const ui = interactiveWorkspaceBrowser();
+  ui.workspaces.list.value.items.push({ ...ui.workspaces.list.value.items[0] }, { workspaceId:'c', title:'论文', sessionIds:[] });
+  let nodes = ui.nodes(ui.render());
+  ui.click(nodes.find(node => node.props?.['aria-label'] === '搜索工作区或对话'));
+  nodes = ui.nodes(ui.render());
+  const search = nodes.find(node => node.props?.type === 'search');
+  search.props.onChange({ target: { value: '论文' } });
+  nodes = ui.nodes(ui.render());
+  assert.equal(nodes.filter(node => node.props?.className === 'geneloop-workspace-name').length, 2);
+  assert.ok(nodes.some(node => node.props?.className === 'geneloop-chat-name' && node.children.includes('已有聊天')));
+  assert.ok(!JSON.stringify(nodes).includes('没有匹配的对话'));
+  search.props.onChange({ target: { value: '已有聊天' } });
+  nodes = ui.nodes(ui.render());
+  assert.equal(nodes.filter(node => node.props?.className === 'geneloop-workspace-name').length, 1);
+  ui.dispose();
+});
+
 test('workspace browser restores folder controls and an accessible menu with durable pinning', async () => {
   const ui = interactiveWorkspaceBrowser(); let tree = ui.render(), nodes = ui.nodes(tree);
   const primary = nodes.find(node => node.props?.className === 'geneloop-workspace-name');

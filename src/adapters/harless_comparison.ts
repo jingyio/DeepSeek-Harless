@@ -130,7 +130,7 @@ export function createComparisonService(output: string, principal: string, host:
         delivery_message: delivery_status === 'available' ? '结果文件已保存，可下载到本地。'
           : delivery_status === 'pending' ? '结果文件会在生成并通过交付检查后显示。'
           : delivery_status === 'not_started' ? '本轮尚未开始执行，暂无结果文件。'
-          : lane.source_pending ? '本轮没有生成结果文件。你可以继续提问或上传资料。'
+          : lane.source_pending ? ''
           : t.scene === 'research-data-analysis' ? '本轮尚无通过交付校验的报告。模型回复结束不表示报告已成功生成。'
           : '本轮没有可下载的结果文件。' }];
     })) });

@@ -75,7 +75,8 @@ test('GeneLooping is immediate for local sends, stops on rejection, and never ch
   let snapshot = { running: false, pendingSubmissions: [{ placement: 'transcript' }], queue: [] };
   const view = f.wrappers.get('conversation.view').component({ useSession: select => select(snapshot), t: key => key });
   assert.equal(view.props.useSession(s => s.running), true);
-  assert.equal(view.props.t('chat.deepDiving'), 'GeneLooping…');
+  assert.equal(view.props.t('chat.deepDiving').children[0], 'GeneLooping…');
+  assert.equal(view.props.t('chat.deepDiving').props.className, 'geneloop-native-looping');
   assert.equal(snapshot.running, false, 'optimism is limited to presentation');
   snapshot = { ...snapshot, pendingSubmissions: [] };
   assert.equal(view.props.useSession(s => s.running), false, 'failed/abandoned sends retire immediately');
@@ -211,7 +212,7 @@ test('navigation keeps the same queue, different sessions remain independent, ca
   assert.match((await pending).message, /会话已关闭/);
   assert.equal(f.prompts.length, 0);
 });
-test('web command filtering keeps scene and file sources, preserves keyboard highlight identity and uses the scene launcher', () => {
+test('web command filtering keeps scenes, preserves keyboard highlight identity and uses the scene launcher', () => {
   const f = fixture(), props = f.composer('alice'), menu = f.menus.get('alice');
   const keep = { name: 'custom' };
   menu.set({ open: true, groups: [
@@ -233,4 +234,17 @@ test('web command filtering keeps scene and file sources, preserves keyboard hig
   props.toggleCommandMenu({ start: 14, end: 14 });
   assert.equal(f.launches[1][1].span.end, 5);
   assert.ok(f.mirrors.some(([name]) => name === 'conversation.input.model'));
+});
+
+test('@ references expose only conversation titles and keep the native reference value', () => {
+  const f = fixture(); f.composer('alice');
+  const menu = f.menus.get('alice'), value = JSON.stringify({ kind: 'session', label: '实验笔记', mention: 'session:one' });
+  menu.set({ open: true, groups: [{ source: 'reference', status: 'ready', items: [
+    { name: 'code/', value: JSON.stringify({ kind: 'file' }) },
+    { name: '实验笔记', description: '/home/backend/private · 1小时', value },
+  ] }], highlight: { source: 'reference', index: 1 } });
+  const items = menu.getSnapshot().groups[0].items;
+  assert.equal(items.length, 1); assert.equal(items[0].name, '实验笔记'); assert.equal(items[0].value, value);
+  assert.equal(items[0].description, undefined); assert.equal(menu.getSnapshot().highlight.index, 0);
+  f.dispose();
 });
