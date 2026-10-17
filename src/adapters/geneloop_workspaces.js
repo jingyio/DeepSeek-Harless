@@ -356,7 +356,9 @@
         return () => { active = false; };
       }, []);
       const error = message => setNotice(message);
-      const visible = row => publicSession(row) && !isArchived(ws, row.id) && (!query || (row.title || row.displayTitle || '新会话').toLowerCase().includes(query.toLowerCase()));
+      const matches = title => String(title || '').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+      const visible = row => publicSession(row) && !isArchived(ws, row.id);
+      const matchesChat = row => visible(row) && matches(row.title || row.displayTitle || '新会话');
       const open = openSession;
       const edit = (kind, id, title) => { setMenu(null); setName(title); setEditing({ kind, id }); setNotice(''); };
       const closeMenu = restore => { if (restore) menu?.trigger?.focus(); setMenu(null); };
@@ -396,20 +398,29 @@
         h('button', { className: 'geneloop-row-action', 'aria-label': '会话操作 ' + (item.title || '新会话'), 'aria-haspopup': 'menu',
           'aria-expanded': menu?.kind === 'session' && menu.id === item.id, onClick: event => openMenu(event, 'session', item.id, item.title || '新会话') }, '⋯'));
       const grouped = new Set(ws.items.flatMap(item => item.sessionIds));
-      const ordered = [...ws.items].sort((a, b) => Number(pinned.includes(b.workspaceId)) - Number(pinned.includes(a.workspaceId)));
-      const ungrouped = list.ids.map(id => list.byId[id]).filter(item => item && !grouped.has(item.id) && visible(item));
+      // Reconnection can replay one workspace identity; same-title workspaces
+      // with different identities remain separate and retain all their chats.
+      const ordered = [...new Map(ws.items.map(item => [item.workspaceId, item])).values()].sort((a, b) => Number(pinned.includes(b.workspaceId)) - Number(pinned.includes(a.workspaceId)));
+      const displayNames = new Map();
+      for (const item of ordered) {
+        const peers = ordered.filter(row => row.title === item.title).sort((a, b) => a.workspaceId.localeCompare(b.workspaceId));
+        displayNames.set(item.workspaceId, peers.length > 1 ? item.title + '（' + (peers.indexOf(item) + 1) + '）' : item.title);
+      }
+      const ungrouped = [...new Set(list.ids)].map(id => list.byId[id]).filter(item => item && !grouped.has(item.id) && matchesChat(item));
       return h('section', { className: 'geneloop-workspaces', 'data-geneloop-workspaces': '2', 'aria-label': '工作区' },
         h('div', { className: 'geneloop-workspace-heading' }, wide && h('span', null, '工作区'),
           h('span', { className: 'geneloop-workspace-heading-actions' },
-            wide && h('button', { onClick: () => { setSearching(!searching); setQuery(''); }, 'aria-label': searching ? '关闭搜索' : '搜索对话', 'aria-expanded': searching }, icon('search')),
+            wide && h('button', { onClick: () => { setSearching(!searching); setQuery(''); }, 'aria-label': searching ? '关闭搜索' : '搜索工作区或对话', 'aria-expanded': searching }, icon('search')),
             h('button', { onClick: () => setAdding(true), 'aria-label': '新建工作区' }, icon('plus')))),
-        wide && searching && h('input', { className: 'geneloop-workspace-search', type: 'search', 'aria-label': '搜索对话', placeholder: '搜索对话', autoFocus: true, value: query, onChange: event => setQuery(event.target.value) }),
+        wide && searching && h('input', { className: 'geneloop-workspace-search', type: 'search', 'aria-label': '搜索工作区或对话', placeholder: '搜索工作区或对话', autoFocus: true, value: query, onChange: event => setQuery(event.target.value) }),
         status && h('p', { role: noticeIsError ? 'alert' : 'status' }, status),
         wide && h('div', { className: 'geneloop-workspace-list' }, ordered.map(item => {
-          const children = item.sessionIds.map(id => list.byId[id]).filter(Boolean).filter(visible);
-          if (query && !children.length && !item.title.toLowerCase().includes(query.toLowerCase())) return null;
+          const workspaceMatches = matches(item.title);
+          const children = [...new Set(item.sessionIds)].map(id => list.byId[id]).filter(Boolean).filter(workspaceMatches ? visible : matchesChat);
+          if (query && !children.length && !workspaceMatches) return null;
           const expanded = expandedGroups.has(item.workspaceId) || (Boolean(query) && !collapsedGroups.has(item.workspaceId));
-          return h('section', { key: item.workspaceId, 'aria-label': item.title },
+          const displayName = displayNames.get(item.workspaceId);
+          return h('section', { key: item.workspaceId, 'aria-label': displayName },
             h('div', { className: 'geneloop-workspace-row', 'data-selected': selectedId === item.workspaceId },
               h('button', { className: 'geneloop-workspace-name', 'aria-pressed': selectedId === item.workspaceId, 'aria-expanded': expanded,
                 onClick: () => {
@@ -419,11 +430,11 @@
                   else { expandedGroups.add(item.workspaceId); collapsedGroups.delete(item.workspaceId); }
                   notify(); layout?.selectPanel('geneloop-workspace');
                 } },
-                icon('folder', 20), h('span', { className: 'geneloop-workspace-label' }, item.title),
+                icon('folder', 20), h('span', { className: 'geneloop-workspace-label' }, displayName),
                 pinned.includes(item.workspaceId) && h('span', { className: 'geneloop-workspace-pin', 'aria-label': '已置顶' }, icon('pin', 13))),
               h('button', { className: 'geneloop-row-action', 'aria-label': '工作区操作 ' + item.title, 'aria-haspopup': 'menu', 'aria-expanded': menu?.kind === 'workspace' && menu.id === item.workspaceId,
                 onClick: event => { event.stopPropagation(); openMenu(event, 'workspace', item.workspaceId, item.title); } }, '⋯')),
-            expanded && (children.length ? children.map(row) : query ? h('p', { className: 'geneloop-workspace-empty' }, '没有匹配的对话') : h('button', { className: 'geneloop-workspace-empty', onClick: () => { void start(item.workspaceId); } }, '开始新对话')));
+            expanded && (children.length ? children.map(row) : query && !workspaceMatches ? h('p', { className: 'geneloop-workspace-empty' }, '没有匹配的对话') : h('button', { className: 'geneloop-workspace-empty', onClick: () => { void start(item.workspaceId); } }, '开始新对话')));
         }), ungrouped.length > 0 && h('div', { className: 'geneloop-ungrouped' }, h('div', { className: 'geneloop-workspace-subheading' }, '未分组'), ungrouped.map(row)),
         ws.items.length === 0 && !query && (ws.phase === 'pending' || list.phase === 'pending'
           ? h('p', { className: 'geneloop-workspace-empty', role: 'status' }, ws.state === 'error' ? '工作区连接中断，正在重新连接…' : '正在连接工作区…')

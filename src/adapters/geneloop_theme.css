@@ -143,8 +143,15 @@ html body [data-slot=sidebar] button[class$="_newSession"]:hover { background: v
 html body .wSkVaW_header { padding: 14px 24px 8px; border-bottom: 1px solid var(--gl-hairline); min-height: 88px; }
 html body .wSkVaW_crumbCurrent { font-weight: 600; letter-spacing: -.15px; }
 html body .wSkVaW_tabs { width: fit-content; gap: 3px; margin: 8px 0 0; padding: 3px; background: var(--gl-inset); border-radius: 10px; }
-html body .wSkVaW_tab { padding: 6px 16px; border-radius: 7px; color: var(--gl-secondary); line-height: 18px; }
-html body .wSkVaW_tabActive { color: var(--gl-ink); background: var(--gl-surface); box-shadow: var(--gl-shadow-sm); }
+html body .wSkVaW_tab { padding: 6px 16px; border-radius: 7px; color: var(--gl-secondary); line-height: 18px; background: color-mix(in srgb,var(--gl-surface) 88%,white); }
+html body .wSkVaW_tabActive { color: var(--gl-ink); background: color-mix(in srgb,var(--gl-surface) 82%,black); box-shadow: var(--gl-shadow-sm); }
+/* Keep the editor mounted so a draft survives a read-only trajectory visit. */
+[data-conversation-scroll]:has(.geneloop-unified-trace) > [data-composer-seat] { display:none; }
+/* Native pending bubbles follow TurnStatus in DOM; visually order feedback
+   after those bubbles, without changing execution or pending queue state. */
+div:has(> [role=status] > .geneloop-native-looping) { display:flex;flex-direction:column; }
+[role=status]:has(> .geneloop-native-looping) { order:1; }
+div:has(> [role=status] > .geneloop-native-looping):has(.geneloop-looping) > [role=status]:has(> .geneloop-native-looping) { display:none; }
 html body .wSkVaW_tab:after { background: transparent; }
 html body .pXSMma_headline { font-size: 28px; font-weight: 600; letter-spacing: -.7px; line-height: 1.4; gap: 14px; }
 html body .pXSMma_stack { gap: 24px; }

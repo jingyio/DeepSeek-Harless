@@ -1024,6 +1024,15 @@ window.__ModuleLoader__.load({
           const filter = () => {
             const before = menu.getSnapshot(); let changed = false;
             const groups = before.groups.map(group => {
+              if (group.source === 'reference') {
+                const items = group.items.filter(item => {
+                  try { return JSON.parse(item.value).kind === 'session'; } catch { return false; }
+                }).map(item => item.description === undefined ? item : { ...item, description: undefined });
+                if (items.length !== group.items.length || items.some((item, i) => item !== group.items[i])) {
+                  changed = true; return { ...group, items };
+                }
+                return group;
+              }
               if (group.source !== 'command') return group;
               const items = group.items.filter(item => !hiddenCommands.has(item.name));
               if (items.length === group.items.length) return group;
@@ -1345,7 +1354,7 @@ window.__ModuleLoader__.load({
         });
         wrapWebSeat('conversation.input.model', (props, id) => optimisticModel(id, props), { component: ReasoningModelSelect });
         wrapWebSeat('conversation.view', props => props, { id: 'chat',
-          renderProps: props => ({ t: (key, ...args) => key === 'chat.deepDiving' ? 'GeneLooping…' : props.t(key, ...args),
+          renderProps: props => ({ t: (key, ...args) => key === 'chat.deepDiving' ? h('span', { className: 'geneloop-native-looping' }, 'GeneLooping…') : props.t(key, ...args),
             // The native submission echo exists synchronously on Send, before
             // model selection/network dispatch. Project activity only in this
             // view; never change the session's execution/queue state.
@@ -1643,6 +1652,26 @@ window.__ModuleLoader__.load({
             ...reasoning.map((block, i) => h('section', { key: 'reasoning-' + i }, h('div', { className: 'geneloop-process-label' }, '思考过程'), h('pre', null, publicProcessText(block.text))))]),
           answer && h(AssistantContent, { node: answer, owner, live: running && answer.data.status === 'running' }));
       }
+      function displayUserContent(content) {
+        if (!Array.isArray(content) || !content.some(part => part.type === 'file')) return content;
+        // Compatibility with old sends: only hide the exact generated evidence
+        // block beside real file cards, not arbitrary JSON typed by the user.
+        return content.filter(part => {
+          if (part.type !== 'text' || !part.text.startsWith('用户附件的只读提取结果（')) return true;
+          try {
+            const value = JSON.parse(part.text.slice(part.text.indexOf('\n') + 1));
+            return !Array.isArray(value.files) || !value.files.length || !value.files.every(file =>
+              typeof file.name === 'string' && /^[a-f0-9]{64}$/.test(file.sha256) && typeof file.status === 'string');
+          } catch { return true; }
+        });
+      }
+      ctx.slots.inject('conversation.chat.node', () => {
+        const original = ctx.slots.entries?.('conversation.chat.node').find(entry => entry.options.key === 'user' && (entry.options.priority ?? 0) >= 0);
+        if (!original) return () => {};
+        return ctx.slots.register({ name: 'conversation.chat.node', ...original.options, priority: -100, locale: original.locale,
+          inject: original.inject, ...(original.store ? { store: original.store } : {}) }, owner => h(original.component, {
+          ...owner, node: { ...owner.node, data: { ...owner.node.data, content: displayUserContent(owner.node.data.content) } } }));
+      });
       function ProductChatNode(owner) {
         const { node } = owner;
         const snapshot = owner.useChat(value => value), turn = turnOf(node);

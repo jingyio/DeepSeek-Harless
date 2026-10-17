@@ -1542,6 +1542,40 @@ test('Empty file scenes keep normal scene tools and model routing across turns a
   }
 });
 
+test('native Chat keeps extracted sources out of history and accepts replacement uploads in the same conversation', options, async()=>{
+ const scenes=[{...multiScenes[0],id:'new-scene',label:'Chat',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'ppt',label:'PPT',preset:'sss-ppt',adapter:'ppt',mcp_rows:[]}];
+ const f=await fixture({broker:true,scenes,capability_profile:'new-scene',comparison_scenes:['ppt']});
+ try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const upload=async text=>f.ctx.fileUploads.uploadStream({sessionId,name:'notes.txt',data:(async function*(){yield Buffer.from(text);})()});
+  const one=await upload('source version one');
+  const send=(requestId,receiptId)=>f.ctx.sessionController.prompt({sessionId,requestId,mode:'queue',content:[
+   {type:'text',text:'Read the attached notes'},{type:'file',receiptId}]},new AbortController().signal);
+  await send('upload-first',one.receiptId);
+  const first=(await f.api()).value.tasks.find(row=>row.session_id===sessionId);
+  assert.equal(f.promptCalls[0].content.length,2,'extracted JSON is not a third visible text block');
+  const before=JSON.stringify(f.agents.get(sessionId).events);
+  const model=f.modelRequest(first); let called=false;
+  for await(const chunk of f.stream(model,async function*(){called=true;yield {type:'text-delta',index:0,text:'read'};})){}
+  assert.ok(called);assert.equal(model.messages[0].content.length,3,'model still receives verified attachment evidence');
+  assert.match(model.messages[0].content.at(-1).text,/用户附件的只读提取结果/);
+  assert.equal(JSON.stringify(f.agents.get(sessionId).events),before,'LLM expansion must not mutate Session history');
+  await f.complete(first);
+  const two=await upload('source version two');
+  const accepted=await send('upload-second',two.receiptId);
+  assert.ok(accepted.comparison_id,'new source version is admitted in a fresh private lane');
+  let child;
+  for(let i=0;i<150;i++){
+   child=(await f.api()).value.tasks.find(row=>row.session_id!==sessionId && f.promptCalls.some(call=>call.requestId===row.request_id));
+   if(child)break;await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.ok(child);assert.equal(child.scene_inputs.length,1);
+  assert.notEqual(child.scene_inputs[0].version_sha256,first.scene_inputs[0].version_sha256);
+  await f.complete(child);
+ } finally {await f.close();}
+});
+
 test('General workspace keeps its tools without requiring uploads', options, async()=>{
  const scene={...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]};
  const f=await fixture({broker:true,scenes:[scene],capability_profile:'new-scene'});

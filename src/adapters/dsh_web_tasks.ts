@@ -1262,13 +1262,16 @@ export function apply(ctx: any) {
       // PPT owns versioned, complete source reading through its MCP tools.
       // Injecting the full text here too duplicates it in every later request.
       const attachmentContext = task.scene.adapter==='ppt' ? '' : await sceneAttachmentContext(task.workspace, task.scene_inputs);
+      // Keep extracted evidence out of the durable user bubble and transport
+      // projection. Add it as user-provided data only at the model boundary.
+      json(join(task.output, 'attachment-context.json'), { request_id: task.request.request_id, text: attachmentContext });
       if (scopeDigest(task.workspace, task.scene) !== task.scope_sha256)
         throw new TaskError('confirmation_changed', '附件内容已改变，请重新发送。', 409);
       configureMotif(task);
       await control('/tasks/activate', { session_id: task.budget_session_id });
       await broker('/bind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       await original.prompt({ requestId: task.request.request_id, sessionId: task.request.session_id,
-        mode: 'queue', content: attachmentContext ? [...task.delivery, {type:'text',text:attachmentContext}] : task.delivery }, signal);
+        mode: 'queue', content: task.delivery }, signal);
       return view(task, true);
     } catch (error) { finish(task, 'failed', String(error)); throw error; }
   }
@@ -1311,7 +1314,11 @@ export function apply(ctx: any) {
     }
     const selected = admitted ? {...selections.get(request.sessionId)!,scene:admitted.scene} : selections.get(request.sessionId)!;
     const previousScene = forSession(request.sessionId)?.scene.id;
-    if (comparisons && (config.comparison_scenes?.includes(selected.scene) || (previousScene && previousScene !== selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
+    // A native Chat task with bound sources cannot admit a new source version
+    // into the old task workspace. Continue in a fresh, private single lane,
+    // just as scene switches do, while retaining the public conversation.
+    const replacesSources = previousScene && !forSession(request.sessionId)?.source_pending && content.some((part: any) => part.type === 'file');
+    if (comparisons && (replacesSources || config.comparison_scenes?.includes(selected.scene) || (previousScene && previousScene !== selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
       const priorTask = forSession(request.sessionId);
       if (priorTask && !terminal.has(priorTask.status)) throw new TaskError('session_busy', '请等待当前回复完成或取消后再发送。', 409);
       await priorTask?.closing;
@@ -1704,6 +1711,22 @@ export function apply(ctx: any) {
       tools_order: requestedTools.map((tool: any) => tool.name), tools_sha256: digest(requestedTools),
       human_message_sha256: humans.map((message: any) => digest(message.content)), mode: task.request.mode });
     task.stats.llm_decisions = Number(task.stats.llm_decisions) + 1; record(task);
+    const attachmentContexts = new Map<string, string>();
+    for (const previous of tasks.values()) {
+      if (previous.request.session_id !== task.request.session_id) continue;
+      try {
+        const context = JSON.parse(readFileSync(join(previous.output, 'attachment-context.json'), 'utf8'));
+        if (context.request_id === previous.request.request_id && typeof context.text === 'string' && context.text)
+          attachmentContexts.set(context.request_id, context.text);
+      } catch { /* Old tasks already carry their source text in history. */ }
+    }
+    // Validation above checks the unchanged, admitted user envelope. Copies
+    // below affect only this LLM request, never Session history or UI events.
+    request.messages = request.messages.map((message: any) => {
+      const text = message.role === 'user' && message.source?.kind === 'user'
+        ? attachmentContexts.get(message.source.rpcId) : undefined;
+      return text ? { ...message, content: [...message.content, { type: 'text', text }] } : message;
+    });
     const live = progress.get(task.request.task_id) ?? createTaskProgress(); progress.set(task.request.task_id, live); live.beginAttempt();
     return (async function* () {
       const stream = task.interceptor ? await task.interceptor.intercept(request.sessionId, request, next) : next();
