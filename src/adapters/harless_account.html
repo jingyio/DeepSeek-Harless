@@ -55,7 +55,7 @@
   <div id="auth" class="auth" hidden>
     <aside class="story">
       <a href="/login" class="brand"><span class="brand-mark" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></span><span>GeneLoop</span></a>
-      <div class="story-main"><h1>你的研究空间，<br><span>从这里开始。</span></h1></div>
+      <div class="story-main"><div class="geneloop-auth-spiral" aria-hidden="true"><img src="/assets/geneloop-spiral.svg?v=1" alt=""></div><h1>让研究，<br><span>向前一步。</span></h1></div>
       <div class="foot">GeneLoop · 研究工作空间</div>
     </aside>
     <main class="auth-side"><div class="card">
@@ -85,8 +85,15 @@
   </div>
   <script>
     (()=>{'use strict';const $=id=>document.getElementById(id), path=location.pathname;
+      const styles=['clear','air','aurora'],styleKey='geneloop-visual-style-v1';
+      const colorMode=matchMedia('(prefers-color-scheme: dark)');
+      const syncColor=()=>document.body.toggleAttribute('data-ds-dark-theme',document.body.dataset.authActive==='true'||colorMode.matches);syncColor();colorMode.addEventListener('change',syncColor);
+      const chooseStyle=value=>{document.body.dataset.geneloopStyle=styles.includes(value)?value:'clear'};
+      try{chooseStyle(localStorage.getItem(styleKey))}catch{chooseStyle('clear')}
       document.title=({'/login':'登录','/register':'注册','/account':'账户设置','/claim':'激活账号','/starting':'正在打开工作区'}[path]||'工作区')+' · GeneLoop';
-      const show=id=>{$('loading').hidden=true;$(id).hidden=false};
+      // The selected login design is independent of workspace appearance.
+      // Never persist its dark palette or layout as a chat preference.
+      const show=id=>{document.body.dataset.authActive=String(id==='auth');if(id==='auth')chooseStyle('aurora');syncColor();$('loading').hidden=true;$(id).hidden=false};
       const notice=(id,message,ok=false)=>{const node=$(id);node.textContent=message;node.classList.toggle('ok',ok)};
       async function api(path,body){const res=await fetch('/api/account/'+path,{method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await res.json();if(!res.ok)throw Error(data.error||'操作失败，请稍后重试');return data}
       const formObject=form=>Object.fromEntries(new FormData(form).entries());

@@ -44,7 +44,7 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
   const unlisten = (name, fn) => { listeners.get(name)?.delete(fn); if (!listeners.get(name)?.size) events.delete(name); };
   const document = { hidden: false, addEventListener: listener, removeEventListener: unlisten,
     body: { appendChild() {} }, createElement: () => ({ click() { downloaded.push({ href: this.href, name: this.download }); }, remove() {} }) };
-  const window = { crypto: webcrypto, navigator: { clipboard }, addEventListener: listener, removeEventListener: unlisten,
+  const window = { crypto: webcrypto, location: { href: 'https://geneloop.example/' }, navigator: { clipboard }, addEventListener: listener, removeEventListener: unlisten,
     __ModuleLoader__: { load(value) { plugin = value; } } };
   const primitives = {
     MarkdownText, Tooltip: function NativeTooltip() {},
@@ -67,6 +67,7 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
     },
   };
   const ReactDOM = { createPortal: (child, target) => ({ type: 'portal', props: { target }, children: [child] }) };
+  const openedPreviews = [];
   const streams = [];
   if (streaming) window.EventSource = class {
     constructor(url, options) { this.url = url; this.options = options; streams.push(this); }
@@ -76,12 +77,13 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
   };
   const fetch = async (url, init) => { requests.push({ url, init }); return fetcher ? fetcher(url, init, requests.length) : Response.json(initial); };
   runInNewContext(source, { window, document, fetch, AbortController, Uint8Array,
-    URL: { createObjectURL: () => 'blob:verified-file', revokeObjectURL: value => revoked.push(value) },
+    URL: class extends URL { static createObjectURL() { return 'blob:verified-file'; } static revokeObjectURL(value) { revoked.push(value); } },
     setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id) });
   const blocks = new Map();
   plugin.factory(name => name === 'react' ? React : name === 'react-dom' ? ReactDOM : name === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : undefined).apply({
     get: name => ({ commandUi: { decorate: () => () => {} }, inputTriggers: { registerSource: () => () => {} }, sessions,
-      conversation: { blocks: { storeFor: id => ({ getSnapshot: () => blocks.get(id) }), set: (id, value) => blocks.set(id, value) } } })[name],
+      conversation: { blocks: { storeFor: id => ({ getSnapshot: () => blocks.get(id) }), set: (id, value) => blocks.set(id, value) } },
+      sidebarRight: { openResource: address => openedPreviews.push(address) } })[name],
     effect: fn => fn(), uiConversation: { events: { register: () => () => {} } },
     slots: { inject(_name, fn) { fn(); }, register(spec, component) { if (spec.key === 'harless-comparison') Component = component; } },
   });
@@ -110,7 +112,7 @@ function fixture(fetcher, initial = comparison(), { streaming = false, sessions 
   };
   render();
   return { render, all, content, requests, timers, downloaded, revoked, events, streams, MarkdownText, primitives, initial,
-    mount, positioning, dismissals, clipboardWrites, document,
+    mount, positioning, dismissals, clipboardWrites, document, openedPreviews,
     isMarkdown: row => row.type === MarkdownText || row.type?.name === 'BufferedMarkdown',
     setChatSnapshot: value => { chatSnapshot = value; }, setNodeLocation: value => { node.location = value; },
     setNodeData: value => { node.data = value; },
@@ -368,10 +370,26 @@ test('artifact label adaptation follows stream completion and remains effective 
   assert.equal(textNode.nodeValue, 'research_report.pdf', 'native text refresh is compacted even when the title was already normalized');
   assert.equal(button.childNodes[0], icon);
   const mention = f.all(row => f.isMarkdown(row))[0].props.fileMentions.resolve('/app/work/' + artifact.name);
-  mention.open(); await waitUntil(() => f.downloaded.length > 0);
-  assert.deepEqual(f.downloaded, [{ href: 'blob:verified-file', name: 'research_report.pdf' }]);
-  assert.ok(f.requests.some(row => row.url.endsWith('&lane=baseline&file=file-one') && row.init.credentials === 'same-origin'));
+  mention.open();
+  assert.deepEqual(f.downloaded, [], 'opening a file mention never downloads');
+  assert.deepEqual(f.openedPreviews, ['dsh-resource://geneloop-delivery/session-a/comparison-a/baseline/file-one/research_report.pdf']);
   f.dispose();
+});
+
+test('delivery card and inline link preview in the native right sidebar while the download control remains independent', async () => {
+  const f = fixture(url => url.includes('&file=') ? new Response(fileBytes, { headers: { 'content-type': 'application/pdf' } }) : Response.json(comparison()));
+  await flush(); f.render();
+  const preview = f.all(row => row.props['aria-label'] === '预览 research_report.pdf' && row.type === 'button');
+  assert.equal(preview.length, 2); preview[1].props.onClick();
+  assert.equal(f.openedPreviews[0], 'dsh-resource://geneloop-delivery/session-a/comparison-a/motif/file-one/research_report.pdf');
+  assert.equal(f.downloaded.length, 0);
+  const pane = f.all(row => row.props.className === 'harless-paired-answer')[0];
+  let prevented = false;
+  pane.props.onClickCapture({ target: { closest: () => ({ getAttribute: () => artifact.name }) }, preventDefault() { prevented = true; }, stopPropagation() {} });
+  assert.ok(prevented); assert.match(f.openedPreviews[1], /\/baseline\//); assert.equal(f.downloaded.length, 0);
+  const download = f.all(row => row.type === 'a' && row.props['aria-label'] === '下载 research_report.pdf')[0];
+  download.props.onClick({ preventDefault() {} }); await waitUntil(() => f.downloaded.length === 1);
+  assert.equal(f.openedPreviews.length, 2); assert.equal(f.downloaded[0].name, 'research_report.pdf'); f.dispose();
 });
 test('network read failure keeps rendered output and backs off; recovery stops polling completed turns', async () => {
   let reads = 0; const value = comparison();
@@ -964,4 +982,18 @@ test('completed process messages retain verified artifact routing without repeat
   const texts=f.all(row=>f.isMarkdown(row)).map(row=>row.props.text);assert.ok(texts.includes('结果 1.25'));
   assert.equal(texts.some(text=>text.includes('{{estimate}}')),false);assert.equal(f.all(row=>f.isMarkdown(row),process)[0].props.fileMentions.resolve('/app/work/'+artifact.name).title,'research_report.pdf');
   f.dispose();
+});
+
+test('approved relative Markdown links retain captions and open preview; examples, images and remote links stay untouched',async()=>{
+  const value=comparison();value.lanes.baseline.answer='[阅读报告](research_report.pdf)\n\n`[示例](research_report.pdf)`\n\n```md\n[代码](research_report.pdf)\n```\n\n![图片](research_report.pdf) [网站](https://example.com/research_report.pdf) [未知](missing.pdf)';
+  const f=fixture(undefined,value);await flush();f.render();
+  const markdown=f.all(row=>row.type===f.MarkdownText)[0].props.text;
+  const href=/\[阅读报告\]\(([^)]+)\)/.exec(markdown)[1];
+  assert.match(href,/^https:\/\/geneloop\.example\/#geneloop-preview=/);
+  assert.match(decodeURIComponent(href),/session-a\/comparison-a\/baseline\/file-one\/research_report.pdf/);
+  assert.ok(markdown.includes('`[示例](research_report.pdf)`'));assert.ok(markdown.includes('```md\n[代码](research_report.pdf)\n```'));
+  assert.ok(markdown.includes('![图片](research_report.pdf)'));assert.ok(markdown.includes('[网站](https://example.com/research_report.pdf) [未知](missing.pdf)'));
+  let prevented=false;const answer=f.all(row=>row.props.className==='harless-paired-answer')[0];
+  answer.props.onClickCapture({target:{closest:()=>({getAttribute:()=>href})},preventDefault(){prevented=true;},stopPropagation(){}});
+  assert.equal(prevented,true);assert.equal(f.openedPreviews.length,1);assert.equal(f.downloaded.length,0);f.dispose();
 });
