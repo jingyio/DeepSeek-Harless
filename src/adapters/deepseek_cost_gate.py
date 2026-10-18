@@ -501,8 +501,9 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
             try:
                 if vision:
                     payload = json.loads(body)
-                    if (not isinstance(payload, dict) or set(payload) != {'model', 'messages', 'stream', 'thinking'} or
+                    if (not isinstance(payload, dict) or set(payload) != {'model', 'messages', 'stream', 'thinking','response_format'} or
                             payload['model'] != 'deepseek-flash' or payload['stream'] is not False or
+                            payload['response_format'] != {'type':'json_object'} or
                             payload['thinking'] != {'type': 'disabled'} or
                             not isinstance(payload['messages'], list) or len(payload['messages']) != 1 or
                             not isinstance(payload['messages'][0], dict) or

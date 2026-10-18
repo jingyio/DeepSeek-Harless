@@ -27,7 +27,7 @@ def tessdata_directory():
 
 
 def read_pdf(data: bytes, *, visuals=False, page_number=None):
-    import fitz
+    import pymupdf as fitz
     digest = hashlib.sha256(data).hexdigest()
     with fitz.open(stream=data, filetype='pdf') as pdf:
         if pdf.needs_pass:

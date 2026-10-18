@@ -26,7 +26,7 @@ def test_pdf_vision_gate_ownership_model_payload_and_accounting(tmp_path):
     gate=create_server('127.0.0.1',0,f'http://127.0.0.1:{upstream.server_port}',state,
         state_selector=registry.state_for,allow_vision=True,allowed_models={'deepseek-flash','deepseek-v4-pro'})
     for server in (upstream,gate): threading.Thread(target=server.serve_forever,daemon=True).start()
-    payload={'model':'deepseek-flash','stream':False,'thinking':{'type':'disabled'},
+    payload={'model':'deepseek-flash','stream':False,'thinking':{'type':'disabled'},'response_format':{'type':'json_object'},
              'messages':[{'role':'user','content':[{'type':'text','text':'read Figure 1'},
                 {'type':'image_url','image_url':{'url':'data:image/jpeg;base64,YWJj'}}]}]}
     def send(body,session='owned-pro-task',path='/v1/vision/chat/completions'):

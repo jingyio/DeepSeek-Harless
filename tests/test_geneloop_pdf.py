@@ -2,7 +2,7 @@ import hashlib
 import os
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 import pytest
 
 from src.adapters.geneloop_pdf import read_pdf

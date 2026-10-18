@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import {execFileSync} from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, utimesSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { randomUUID, createHash } from 'node:crypto';
@@ -26,7 +27,7 @@ const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
-async function fixture({ broker = false, dshHome = false, fixtureSchemas: schemaOverride, fixture_schemas, strictMountedTools = false, ...overrides } = {}) {
+async function fixture({ broker = false, dshHome = false, visionReply, fixtureSchemas: schemaOverride, fixture_schemas, strictMountedTools = false, ...overrides } = {}) {
   const fixtureSchemas = schemaOverride ?? fixture_schemas ?? toolSchemas;
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
@@ -50,6 +51,13 @@ async function fixture({ broker = false, dshHome = false, fixtureSchemas: schema
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const brokerCalls = [], brokerRoutes = new Map();
   const brokerServer = broker ? createServer(async (req, res) => {
+    if(req.url.startsWith('/v1/vision/')&&visionReply){
+      assert.equal(req.headers.authorization,'Bearer sss-mock-only');
+      let raw='';for await(const part of req)raw+=part;
+      const answer=await visionReply(JSON.parse(raw));
+      if(!res.destroyed){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:answer}}]}));}
+      return;
+    }
     if (req.headers['x-sss-control-token'] !== token) { res.writeHead(401); res.end('{}'); return; }
     let raw = ''; for await (const part of req) raw += part;
     const value = JSON.parse(raw); brokerCalls.push({ path: req.url, value });
@@ -1585,6 +1593,32 @@ test('native Chat preserves frozen model requests and accepts replacement upload
   assert.equal(readFileSync(join(f.directory,'sessions',sessionId,'work','inputs',first.scene_inputs[0].file),'utf8'),'source version one');
   await f.complete(child);
  } finally {await f.close();}
+});
+
+test('first PDF Chat send is accepted before visual work and cancellation prevents a late model prompt',options,async()=>{
+ const scenes=[{...multiScenes[0],id:'new-scene',label:'Chat',adapter:'workspace',mcp_rows:[]},
+  {...multiScenes[0],id:'ppt',label:'PPT',preset:'sss-ppt',adapter:'ppt',mcp_rows:[]}];
+ let started,release;const began=new Promise(resolve=>started=resolve),waiting=new Promise(resolve=>release=resolve);
+ const f=await fixture({broker:true,scenes,capability_profile:'new-scene',comparison_scenes:['ppt'],
+  visionReply:async body=>{assert.equal(body.model,'deepseek-flash');started();await waiting;return 'Source-bound visible rectangle';}});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const bytes=execFileSync(process.env.SSS_PYTHON??'python3',['-c',
+   "import pymupdf as fitz,sys; d=fitz.open(); p=d.new_page(); p.insert_text((40,50),'Figure 1: native text and vector'); p.draw_rect((40,80,220,180),fill=(0,0,1)); sys.stdout.buffer.write(d.tobytes())"]);
+  const uploaded=await f.ctx.fileUploads.uploadStream({sessionId,name:'paper.pdf',data:(async function*(){yield bytes;})()});
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'first-pdf-async',mode:'queue',content:[
+   {type:'text',text:'Read the figure'},{type:'file',receiptId:uploaded.receiptId}]},new AbortController().signal);
+  assert.ok(sent.accepted&&sent.comparison_id);assert.equal(f.promptCalls.length,0);
+  await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('vision preparation did not start')),10000);began.then(()=>{clearTimeout(timeout);resolve();});});
+  const request=new Request('http://local/api/harless/comparisons',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({action:'cancel',session_id:sessionId,id:sent.comparison_id})});request.authorized=true;
+  const response=await f.routes.get('/api/harless/comparisons').fetch(request);assert.equal(response.status,200);
+  release();
+  const tasks=(await f.api()).value.tasks;assert.equal(tasks.length,1);
+  const final=(await f.api(undefined,'?task_id='+tasks[0].task_id)).value;
+  assert.equal(final.status,'cancelled');assert.equal(f.promptCalls.length,0);
+  assert.ok(f.controlCalls.some(row=>row.path==='/tasks/cancel'));
+ }finally{release();await f.close();}
 });
 
 // Deterministic routing diagnostics only: no provider calls or document making.

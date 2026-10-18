@@ -1642,7 +1642,9 @@ export function apply(ctx: any) {
           : body.action === 'retry' ? await comparisons!.retry(body.session_id, body.id, body.lane)
           : body.action === 'cancel' ? await comparisons!.cancel(body.session_id, body.id)
           : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })();
-        const result = await (feedbackAction ? perform() : serialize(perform));
+        // Cancellation must interrupt OCR/vision while preparation owns the
+        // admission queue; waiting behind it would prevent AbortController.
+        const result = await (feedbackAction || body.action==='cancel' ? perform() : serialize(perform));
         return browserJson(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error: any) { return browserJson({ error: { code: error.code ?? 'comparison_failed', message: error.message } }, { status: error.status ?? 400 }); }
     } }), 'harless-comparison-api');
