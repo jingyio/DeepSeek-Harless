@@ -5,7 +5,7 @@
 - 分支 `codex/attachment-inheritance`，基于前序界面投影修复。`harless_comparison.ts` 在接收任务时冻结同一父对话的全部原件引用；`dsh_web_tasks.ts` 合并新旧附件、为同名旧版本单独命名，并把原生 Chat 的任务期代码交付和双栏对应侧 DOCX 带入 `/paper`。旧回执退休、重启恢复、字节校验和会话/侧隔离保留。
 - 针对性诊断覆盖四场景连续追加、同名版本、原生及双栏 DOCX、带新附件切换、篡改拒绝、容量不静默丢失、原生图像与分支历史；114 项各自通过。排队气泡沿用前序 user/steering 展示投影并通过回归；未改模型证据。没有付费模型调用或实际制作/分析任务。
 - `ppt-master-v4` / `paper-web-v9` 使用原始两项训练/一项留出证据兼容重编；结构、工具和科学范围不变，新增比较输入代码锁。旧库保留；不称新学习、质量或费用提升。
-- 完整 `npm test`、smoke、motif 与发布状态待本分支最终验证更新。本机全量因缺 MCP 无法收集；服务器第一次全量的两个文献 MCP 用例缺 Poppler 动态库路径，保留记录后使用项目已有 test-bin 包装器重跑。私有日志在 `.local/attachment-inheritance-20261018/`，服务器独立验证目录同名。
+- 完整 Python 1056 通过/2 跳过、Node 828 通过/3 跳过；本地缺 MCP、服务器 Poppler 子进程环境和合成 DOCX 时间精度问题及后续修订均保留在[验证记录](../experiments/geneloop-attachment-inheritance-20261018.md)。原始日志在 `.local/attachment-inheritance-20261018/`，服务器独立验证目录同名；最终 CI、合并/发布状态见 [PR #77](https://github.com/jingyio/GeneLoop/pull/77)。未放宽产品时间/版本守卫。
 - [输入与视觉边界说明](../attachment-input-behavior.md)记录 PPT 目前只提取文字、扫描 PDF 尚无自动 OCR 和建议实现。当前修复不声称已经增加视觉或 OCR；回退需代码、场景注册和匹配旧证书配套恢复，原件与累计账本不变。
 
 ## 2026-10-18：统一加载与场景后续聊状态

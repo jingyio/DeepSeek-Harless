@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, utimesSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { randomUUID, createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -1647,6 +1647,9 @@ test('generated DOCX transfers to paper with exact lane bytes',options,async()=>
   const first=await settleAttachmentTurn(f,sessionId,a.comparison_id,async task=>{
    const folder=join(f.directory,'sessions',task.session_id,'work','outputs','code');mkdirSync(folder,{recursive:true});
    writeFileSync(join(folder,'result.docx'),'DOCX transfer marker: '+task.session_id);
+   // The marker is synthetic; put it explicitly inside the task window so
+   // filesystem mtime precision cannot decide this routing assertion.
+   const generatedAt=new Date(Date.parse(task.started_at)+1);utimesSync(join(folder,'result.docx'),generatedAt,generatedAt);
    await new Promise(r=>setTimeout(r,15));
   });
   assert.equal(first.status,'completed');
@@ -1670,6 +1673,7 @@ test('native Chat DOCX is pinned before switching to paper and remains readable 
   await send('Native document routing diagnostic','native-docx');const first=(await f.api()).value.tasks.find(t=>t.session_id===sessionId);
   const folder=join(f.directory,'sessions',sessionId,'work','outputs','code');mkdirSync(folder,{recursive:true});
   const bytes=Buffer.from('native DOCX transfer marker, not an authored document');writeFileSync(join(folder,'native.docx'),bytes);
+  const generatedAt=new Date(Date.parse(first.started_at)+1);utimesSync(join(folder,'native.docx'),generatedAt,generatedAt);
   await new Promise(r=>setTimeout(r,15));await f.complete(first);await f.restart();
   const followup=await send('/paper Read my previously generated DOCX','native-docx-paper');
   const result=await settleAttachmentTurn(f,sessionId,followup.comparison_id);assert.equal(result.status,'completed',JSON.stringify(result));
