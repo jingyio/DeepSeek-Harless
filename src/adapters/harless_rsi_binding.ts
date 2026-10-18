@@ -155,7 +155,9 @@ export function bindUploadedSourceTask(workspace:string,inputs:any[],request:any
   const source_versions:any={};
   for (const [tool,contract] of Object.entries(manifest.contracts) as any[]) {
     if (!manifest.version_fields[tool]) throw Error('rsi_unversioned_contract');
-    source_versions[tool]=contract.observed_anchor === true ? '@observed' : '@from_anchor';
+    const conversion = 'mcp__ppt_master__convert_source' in manifest.contracts;
+    source_versions[tool]=contract.observed_anchor === true ? '@observed' :
+      conversion ? [...new Set(inputs.map(row=>row.version_sha256))] : '@from_anchor';
   }
   return {schema_version:1,task_id:request.task_id,session_id:request.session_id,
     intent:bindingIntent(request.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n')),
@@ -166,3 +168,27 @@ export const structuralOnlySimilarity=async():Promise<number[]>=>{throw Error('s
 
 export const closedPaperDocumentFirstPage=(row:any,manifest:any)=>closedUploadedFirstPage(row,manifest,['mcp__paper_checks__pin_document','mcp__paper_checks__read_pinned_document']);
 export const closedPptSourceFirstPage=(row:any,manifest:any)=>closedUploadedFirstPage(row,manifest,['mcp__ppt_master__pin_source','mcp__ppt_master__read_source_page']);
+
+/** Permission boundary for two independently learned source-preparation edges.
+ * Actual edges and bindings come from the compiler, never from this guard.
+ */
+export function closedPptConvertedSource(row:any,manifest:any):boolean{
+  const pin='mcp__ppt_master__pin_source',convert='mcp__ppt_master__convert_source',read='mcp__ppt_master__read_converted_source';
+  const pair=row?.tool===convert?[pin,convert,'source_id','source']:
+    row?.tool===read?[convert,read,'converted_id','result']:null;
+  if(!pair || row.version_relation!=='same_source' || !Array.isArray(row.code_node_ids) || row.code_node_ids.length)return false;
+  const artifact=manifest?.artifacts?.find((a:any)=>a.motif_id===row.motif_id);
+  const edge=artifact?.transfer_evidence, args=row.arguments;
+  if(!artifact || artifact.tools?.join('|')!==pair.slice(0,2).join('|') ||
+      (artifact.code_nodes??[]).length || artifact.code_dag || edge?.length!==1 ||
+      edge[0].from_tool!==pair[0] || edge[0].to_tool!==pair[1] ||
+      edge[0].from_field!==pair[2] || edge[0].to_param!==pair[2] ||
+      (edge[0].version_relation??'same_source')!=='same_source')return false;
+  const target=manifest.contracts?.[pair[1]], anchor=manifest.contracts?.[pair[0]];
+  return !!(anchor?.read_only===true && target?.read_only===true &&
+    (pair[0]!==pin || anchor.observed_anchor===true) &&
+    target.required_params?.join(',')===pair[2] && target.default_params &&
+    Object.keys(target.default_params).length===0 && args &&
+    Object.keys(args).join(',')===pair[2] && typeof args[pair[2]]==='string' &&
+    new RegExp('^'+pair[3]+'-[a-f0-9]{32}$').test(args[pair[2]]));
+}

@@ -17,7 +17,8 @@ from src.adapters.task_identity import load_trace_identity,require_distinct_deci
 spec=importlib.util.spec_from_file_location('web_evidence',ROOT/'scripts/learn-web-paper-document-motif.py')
 accounting=importlib.util.module_from_spec(spec);spec.loader.exec_module(accounting)
 SCENE=ROOT/'scenarios/ppt_master'
-PAIR=['mcp__ppt_master__pin_source', 'mcp__ppt_master__read_source_page']
+CHAIN=['mcp__ppt_master__pin_source', 'mcp__ppt_master__convert_source', 'mcp__ppt_master__read_converted_source']
+ALL_MCP=sorted([*CHAIN,'mcp__ppt_master__read_skill_entry','mcp__ppt_master__read_source_page'])
 
 
 def read(p): return json.loads(Path(p).read_text(encoding='utf-8'))
@@ -35,10 +36,10 @@ def code_paths():
     files=[p for p in SCENE.iterdir() if p.is_file() and p.name!='README.md']
     files += [ROOT/p for p in ('src/adapters/dsh_web_tasks.ts','src/adapters/harless_scenarios.py',
         'src/adapters/harless_settings.ts','src/adapters/harless_task_scope.ts','src/adapters/harless_rsi_binding.ts','src/adapters/session_files.py','src/adapters/harless_rsi_bundle.py',
-        'src/adapters/dsh_online_motif.mjs','src/motif_core/online_skill_runtime.mjs',
+        'src/adapters/dsh_online_motif.mjs','src/motif_core/online_skill_runtime.mjs','src/adapters/ppt_master_recovery.ts',
         'src/adapters/geneloop_skill_installation.mjs','src/adapters/geneloop_shell.ts',
         'src/adapters/geneloop_command_broker.ts','src/adapters/geneloop_capabilities.ts',
-        'scripts/harless_gateway.mjs','scripts/harless_member_scenes.mjs','scripts/install-ppt-master.py',
+        'scripts/harless_gateway.mjs','scripts/harless_member_scenes.mjs','scripts/install-ppt-master.py','scenarios/research_ppt/motif_v6.py',
         'config/geneloop-capabilities.json','config/geneloop-capabilities.md')]
     return sorted(set(files+[Path(__file__).resolve()]))
 
@@ -65,7 +66,7 @@ def main():
             totals=accounting.reconcile(state,req,ledger,qualifying=True)
             current=accounting.native_schemas(effective['tools'])
             mcp=[t for t in current if t['name'].startswith('mcp__')]
-            if [t['name'] for t in mcp]!=sorted([*PAIR,'mcp__ppt_master__read_skill_entry']) or (full_schemas is not None and current!=full_schemas):
+            if [t['name'] for t in mcp]!=ALL_MCP or (full_schemas is not None and current!=full_schemas):
                 raise ValueError('complete actual tool schema/order changed across collection')
             full_schemas=current;schemas=mcp
             dest=out/(split+'-'+str(i+1));dest.mkdir()
@@ -87,9 +88,9 @@ def main():
     write(out/'dataset.json',runs)
     write(out/'schema.json',{'tools':[{'name':t['name'],'description':t['description'],'inputSchema':t['parameters']} for t in schemas]})
     manifest_path=learn(out/'dataset.json',contracts_path=SCENE/'contracts.json',version_fields_path=SCENE/'version-fields.json',
-        tool_schema_path=out/'schema.json',out_dir=out/'compiled',guard_paths=tuple(code_paths()),mining='witnessed_edges')
+        tool_schema_path=out/'schema.json',out_dir=out/'compiled',guard_paths=tuple(code_paths()),mining='witnessed_edges',admit_edges_only=True)
     validate_compilation(manifest_path);manifest=read(manifest_path);library=read(manifest_path.parent/'library.json')
-    if len(manifest['artifacts'])!=1 or manifest['artifacts'][0]['tools']!=PAIR:
+    if {tuple(a['tools']) for a in manifest['artifacts']}!={tuple(CHAIN[:2]),tuple(CHAIN[1:])}:
         raise ValueError('actual traces did not certify the supported continuation; never invent a graph')
     excluded=[]
     for value in data.get('excluded_task_dirs',[]):
@@ -106,7 +107,7 @@ def main():
         'excluded_collection':excluded,'actual_paid_usd':None,
         'total_collection_requests':sum(x['requests'] for x in identities+excluded),
         'total_collection_proxy_usd':sum(x['proxy_peak_usd'] for x in identities+excluded),
-        'scope':'Model-selected uploaded PDF pin and first-page read only; not slide design, scientific interpretation, writing, or script execution.'}
+        'scope':'Model-selected PDF pin, official source conversion in private derivative cache, and exact converted text read; no slide authoring or scientific interpretation.'}
     write(out/'source-evidence.json',evidence);write(out/'learning-report.json',report)
     if a.publish:
         target=a.publish.resolve()
@@ -116,13 +117,13 @@ def main():
         for name in ('source-evidence.json','learning-report.json'):shutil.copyfile(out/name,target/name)
         write(target/'tool-schemas.json',schemas)
         write(target/'task.json',{'schema_version':1,'task_id':'ppt-master-admission','session_id':'ppt-master-admission',
-            'intent':'Read the first page of the exact model-selected uploaded PDF.','input_version':lock['package_sha256'],
-            'bindings':{},'source_versions':{PAIR[0]:'@observed',PAIR[1]:'@from_anchor'}})
+            'intent':'Convert and read the exact model-selected uploaded PDF using official version-locked tools.','input_version':lock['package_sha256'],
+            'bindings':{},'source_versions':{CHAIN[0]:'@observed',CHAIN[1]:lock['package_sha256'],CHAIN[2]:lock['package_sha256']}})
         write(target/'certification.json',{'schema_version':1,'scene':'ppt','binding_policy':'ppt_master_sources_v1',
             'matching_policy':'structural_only','certification_scope':'independent_trace_structure','quality_cost_promoted':False,
             'source_evidence_sha256':sha(target/'source-evidence.json'),'learning_report_sha256':sha(target/'learning-report.json'),
             'file_locks':{p.name:sha(p) for p in target.iterdir()},'code_locks':{p.relative_to(ROOT).as_posix():sha(p) for p in code_paths()}})
-        write(target/'entry.json',{'schema_version':1,'scene':'ppt','runtime_kind':'ppt_master_v1','mode':'execute','new_training':True,
+        write(target/'entry.json',{'schema_version':1,'scene':'ppt','runtime_kind':'ppt_master_v2','mode':'execute','new_training':True,
             'files':{p.name:sha(p) for p in target.iterdir()},'quality_cost_promoted':False})
     print(json.dumps(report,ensure_ascii=False))
 

@@ -2,7 +2,24 @@
   "schema_version": 1,
   "name": "ppt_master",
   "prompt": "prompt.md",
-  "servers": [{"server_name":"ppt_master","transport":"stdio","command":"${PYTHON}",
-    "args":["${PROJECT_ROOT}/scenarios/ppt_master/server.py","${SESSION_WORKSPACE}/inputs"],"cwd":"${PROJECT_ROOT}","tool_call_timeout_ms":120000}],
-  "allowed_tools":["mcp__ppt_master__read_skill_entry","mcp__ppt_master__pin_source","mcp__ppt_master__read_source_page"]
+  "servers": [
+    {
+      "server_name": "ppt_master",
+      "transport": "stdio",
+      "command": "${PYTHON}",
+      "args": [
+        "${PROJECT_ROOT}/scenarios/ppt_master/server.py",
+        "${SESSION_WORKSPACE}/inputs"
+      ],
+      "cwd": "${PROJECT_ROOT}",
+      "tool_call_timeout_ms": 120000
+    }
+  ],
+  "allowed_tools": [
+    "mcp__ppt_master__read_skill_entry",
+    "mcp__ppt_master__pin_source",
+    "mcp__ppt_master__read_source_page",
+    "mcp__ppt_master__convert_source",
+    "mcp__ppt_master__read_converted_source"
+  ]
 }
