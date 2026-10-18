@@ -4,7 +4,7 @@
 
 - 分支 `codex/ppt-style-input`，基线 `d0458c4`。所有场景补充主题/母版/布局/字体/配色/几何声明和整页像素，原件只读；新 TypeScript 适配器复用会话命令沙箱，输入渲染收紧为无网络并禁宏/链接更新，Flash 辅助视觉仍按同任务记账。旧 PPT 可转换 PDF/标准 PPTX，保留原始与派生 SHA。
 - 原始 PPTX 模板加新内容按官方 ppt-master Edit Native 路线，由 GeneLoop 自主映射、编辑和导出；宿主不制作幻灯片。既有 PDF Motif 只准入 PDF 版本，不把 PPTX 模板误送 PDF 转换。版本化源读取支持 PPTX 文字/样式声明，视觉成功与否单独记录。
-- 五场景实际六页读取均通过；初轮四页成功/两页格式不合格和独立 Harness 跨场景范围拒绝保留。兼容重编 `ppt-master-v6` / `paper-web-v11` 使用不变历史证据与结构，不称新学习或降本。制作质量、最终检查与发布状态见[实验记录](../experiments/ppt-style-input-20261018.md)，完成后补充。
+- 五场景实际六页读取均通过；初轮四页成功/两页格式不合格和独立 Harness 跨场景范围拒绝保留。GeneLoop 首次填充保留样式但留下错误图示；自行修复后，三页渲染、17/43图形和文字/备注/原生样式复核通过，测试者未修稿。132请求/$1.06036217代理峰值估费，非账单。服务器完整测试、smoke、motif与场景检查通过，Windows/Linux CI通过。兼容重编 `ppt-master-v6` / `paper-web-v11` 使用不变历史证据与结构，不称新学习或降本。[实验记录](../experiments/ppt-style-input-20261018.md)保留失败和边界；发布跟踪 [PR #81](https://github.com/jingyio/GeneLoop/pull/81)。
 
 ## 2026-10-18：全场景 PDF OCR 与论文图像输入
 
