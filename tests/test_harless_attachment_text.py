@@ -183,7 +183,7 @@ def test_real_pdf_text_and_scan_only_state(tmp_path):
 
 
 def test_pdf_file_only_reader_uses_private_exact_bytes_without_pypdf(tmp_path, monkeypatch):
-    monkeypatch.setitem(sys.modules, 'fitz', None)  # Exercise the legacy fallback explicitly.
+    monkeypatch.setitem(sys.modules, 'pymupdf', None)  # Exercise the legacy fallback explicitly.
     executable = put(tmp_path, 'pdftotext.exe', b'test executable placeholder')
     monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
     monkeypatch.setattr(attachment.shutil, 'which', lambda name: str(executable))
@@ -210,7 +210,7 @@ def test_pdf_file_only_reader_uses_private_exact_bytes_without_pypdf(tmp_path, m
 
 
 def test_pdf_failed_file_retry_cleans_private_copy_without_fabricating_text(tmp_path, monkeypatch):
-    monkeypatch.setitem(sys.modules, 'fitz', None)
+    monkeypatch.setitem(sys.modules, 'pymupdf', None)
     executable = put(tmp_path, 'pdftotext.exe', b'test executable placeholder')
     monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
     monkeypatch.setattr(attachment.shutil, 'which', lambda name: str(executable))
@@ -229,7 +229,7 @@ def test_pdf_failed_file_retry_cleans_private_copy_without_fabricating_text(tmp_
 
 
 def test_real_pypdf_strict_fallback_reads_the_valid_fixture(tmp_path, monkeypatch):
-    monkeypatch.setitem(sys.modules, 'fitz', None)
+    monkeypatch.setitem(sys.modules, 'pymupdf', None)
     pytest.importorskip('pypdf')
     monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
     monkeypatch.setattr(attachment.shutil, 'which', lambda name: None)
