@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "paper-web-v1-admission",
+  "session_id": "paper-web-v1-admission",
+  "intent": "Read the default first page of a current approved document already selected and pinned by the model.",
+  "input_version": "0000000000000000000000000000000000000000000000000000000000000000",
+  "bindings": {},
+  "source_versions": {
+    "mcp__paper_checks__pin_document": "0000000000000000000000000000000000000000000000000000000000000000",
+    "mcp__paper_checks__read_pinned_document": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
