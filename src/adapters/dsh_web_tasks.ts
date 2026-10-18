@@ -29,6 +29,7 @@ import {paperPdfDelivered,paperReferenceReportRequired} from './harless_paper_de
 import {bindReportAnswer} from './harless_report_answer.ts';
 import {createTaskProgress} from './harless_task_progress.ts';
 import {pdfVisionClient} from './geneloop_pdf_vision.ts';
+import {renderPresentation} from './geneloop_presentation.ts';
 import {bindProductPrompt} from './harless_product_prompt.ts';
 import {commonToolDenial, sceneCertifiedTools} from './geneloop_capabilities.ts';
 import {createPptRecovery} from './harless_ppt_recovery.ts';
@@ -44,6 +45,7 @@ export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController'];
 type Policy = {
   learning_python?: string; output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number | null;
+  command_resources?: any;
   mode: ExecutionMode; budget_usd: number | null; request_limit?: number | null; run_budget_usd?: number | null; run_request_limit?: number | null; capability_profile: string;
   provider_mode: 'mock' | 'real'; control_endpoint: string; control_token: string;
   budget_broker_endpoint?: string;
@@ -1273,6 +1275,7 @@ export function apply(ctx: any) {
       await broker('/bind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       const attachmentContext = await sceneAttachmentContext(task.workspace, task.scene_inputs,{
         signal:inputSignal,instruction:task.delivery.filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n'),versionedPpt:task.scene.adapter==='ppt',
+        renderPresentation:renderPresentation(task.workspace,task.request.session_id,config.command_resources),
         analyze:(parts,signal)=>pdfVisionClient(brokerMode?config.budget_broker_endpoint+'/v1':config.endpoint,task.request.session_id,
           config.provider_mode==='mock'?'sss-mock-only':process.env.DEEPSEEK_API_KEY!)(parts,signal),
       });
@@ -1328,7 +1331,7 @@ export function apply(ctx: any) {
     // into the old task workspace. Continue in a fresh, private single lane,
     // just as scene switches do, while retaining the public conversation.
     const replacesSources = previousScene && !forSession(request.sessionId)?.source_pending && content.some((part: any) => part.type === 'file');
-    const hasPdf=content.some((part:any)=>part.type==='file'&&/\.pdf$/i.test(ctx.fileUploads.resolve(agents.get(request.sessionId),part.receiptId)?.name??''));
+    const hasPdf=content.some((part:any)=>part.type==='file'&&/\.(pdf|pptx|ppt)$/i.test(ctx.fileUploads.resolve(agents.get(request.sessionId),part.receiptId)?.name??''));
     if (comparisons && (hasPdf || replacesSources || config.comparison_scenes?.includes(selected.scene) || (previousScene && previousScene !== selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
       const priorTask = forSession(request.sessionId);
       if (priorTask && !terminal.has(priorTask.status)) throw new TaskError('session_busy', '请等待当前回复完成或取消后再发送。', 409);

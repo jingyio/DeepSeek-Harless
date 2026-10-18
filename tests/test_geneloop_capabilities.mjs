@@ -37,6 +37,10 @@ test('Private account command transport computes without nested namespaces and r
   assert.equal((await call({...payload,session:'session-22222222-2222-4222-8222-222222222222'})).status,400);
   assert.equal((await call({...payload,cwd:'/work/../../etc'})).status,400);
   assert.equal((await call({...payload,env:{DEEPSEEK_API_KEY:'untrusted'}})).status,400);
+  assert.equal((await call({...payload,network:'host'})).status,400);
+  const isolated=await call({...payload,network:'none',command:'python3 -c "import socket; assert all(name==\'lo\' for _,name in socket.if_nameindex()); print(\'isolated\')"'});
+  assert.equal(isolated.status,200);
+  assert.equal(JSON.parse(isolated.body.trim().split('\n').at(-1)).exit,0);
  }finally{broker.close();rmSync(root,{recursive:true,force:true});}
 });
 test('native search discovers without an Agent, but dispatch requires an owning Session and accounted endpoint',ts,async()=>{

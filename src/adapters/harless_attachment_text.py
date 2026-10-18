@@ -325,7 +325,7 @@ def _legacy_word(data: bytes) -> tuple[str, dict]:
         raise ExtractionIssue('legacy_word_text_extraction_failed') from None
 
 
-def extract_attachment(path: Path | str, original_name: str | None = None, *, pdf_visuals=False) -> dict:
+def extract_attachment(path: Path | str, original_name: str | None = None, *, pdf_visuals=False, presentation_render=None) -> dict:
     """Return full text or honest metadata; the path is never included in output."""
     path = Path(path)
     name = (original_name or path.name).replace('\\', '/').split('/')[-1]
@@ -364,7 +364,22 @@ def extract_attachment(path: Path | str, original_name: str | None = None, *, pd
             result.update(extra)
             if not text.strip():
                 raise ExtractionIssue('pdf_has_no_extractable_text')
-        elif data.startswith(b'PK\x03\x04') or suffix in ('.docx', '.pptx', '.xlsx'):
+        elif suffix in ('.pptx', '.ppt'):
+            try:
+                from .geneloop_presentation import read_presentation
+            except ImportError:
+                from geneloop_presentation import read_presentation
+            rendered_pdf = None
+            if presentation_render:
+                rendered_pdf = _read(Path(presentation_render['path']))
+                if hashlib.sha256(rendered_pdf).hexdigest() != presentation_render['sha256']:
+                    raise ExtractionIssue('presentation_derivative_changed')
+            extra = read_presentation(data, suffix=suffix, rendered_pdf=rendered_pdf)
+            text = extra.pop('text')
+            if presentation_render and presentation_render.get('normalized_source'):
+                extra['normalized_source'] = presentation_render['normalized_source']
+            result['format'] = suffix.lstrip('.')
+        elif data.startswith(b'PK\x03\x04') or suffix in ('.docx', '.xlsx'):
             kind, text, extra = _office(data, suffix)
             result['format'] = kind
         elif suffix == '.doc':
@@ -378,6 +393,8 @@ def extract_attachment(path: Path | str, original_name: str | None = None, *, pd
             result['reason'] = 'no_safe_text_extractor_for_format'
             return result
         result.update(status='extracted', text=text, **{'coverage':'text_only', **extra})
+        if suffix == '.ppt' and not extra.get('pages'):
+            result.update(status='unsupported', reason='legacy_presentation_requires_isolated_renderer')
         if not text.strip():
             result['warnings'] = [*result.get('warnings', []), 'No stored text was found; visual content has not been read.']
     except ExtractionIssue as error:
@@ -395,7 +412,8 @@ def main() -> None:
     files = request.get('files')
     if not isinstance(files, list):
         raise ValueError('files_array_required')
-    rows = [extract_attachment(row['path'], row.get('name'), pdf_visuals=request.get('pdf_visuals') is True) for row in files]
+    rows = [extract_attachment(row['path'], row.get('name'), pdf_visuals=request.get('pdf_visuals') is True,
+                               presentation_render=row.get('presentation_render')) for row in files]
     sys.stdout.buffer.write(json.dumps({'files': rows}, ensure_ascii=False).encode('utf-8'))
 
 

@@ -169,10 +169,15 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
 export async function sceneAttachmentContext(workspace: string, inputs: any[], options: {
   signal?:AbortSignal; instruction?:string; versionedPpt?:boolean;
   analyze?:(content:any[],signal?:AbortSignal)=>Promise<string>;
+  renderPresentation?:(file:any,signal?:AbortSignal)=>Promise<any>;
 } = {}): Promise<string> {
   if (!inputs.length) return '';
   const script=fileURLToPath(new URL('./harless_attachment_text.py',import.meta.url));
-  const files=inputs.map(row=>({path:join(workspace,'inputs',row.file),name:row.name}));
+  const files:any[]=inputs.map(row=>({path:join(workspace,'inputs',row.file),name:row.name}));
+  for(let i=0;i<inputs.length;i++)if(/\.(pptx|ppt)$/i.test(inputs[i].name)&&options.renderPresentation){
+    try{files[i].presentation_render=await options.renderPresentation(inputs[i],options.signal);}
+    catch{options.signal?.throwIfAborted();} // Retain native text/style with honest unavailable pixels.
+  }
   let result: any;
   try {
     const output=await new Promise<string>((resolve,reject)=>{

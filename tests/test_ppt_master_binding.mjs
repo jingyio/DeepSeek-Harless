@@ -1,5 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync,realpathSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createHash} from 'node:crypto';
+
+test('PPTX template pins cannot enter the historical PDF conversion edges, including mixed input',
+ {skip:!process.features?.typescript},async()=>{
+ const {bindUploadedSourceTask}=await import('../src/adapters/harless_rsi_binding.ts');
+ const {parseStructuredTask}=await import('../src/motif_core/online_skill_runtime.mjs');
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'ppt-version-scope-')));mkdirSync(join(root,'inputs'));
+ try{
+  const inputs=[['paper.pdf','%PDF-1.7 test'],['template.pptx','PK test'],['fake.pdf','not a PDF']].map(([file,bytes])=>{
+   writeFileSync(join(root,'inputs',file),bytes);return {file,version_sha256:createHash('sha256').update(bytes).digest('hex')};
+  });
+  writeFileSync(join(root,'approved-inputs.json'),JSON.stringify({files:Object.fromEntries(inputs.map(x=>[x.file,x.version_sha256]))}));
+  const pin='mcp__ppt_master__pin_source',convert='mcp__ppt_master__convert_source',read='mcp__ppt_master__read_converted_source';
+  const manifest={contracts:{[pin]:{observed_anchor:true},[convert]:{},[read]:{}},version_fields:{[pin]:'version_sha256',[convert]:'version_sha256',[read]:'version_sha256'}};
+  for(const selected of [inputs,[inputs[1]]]){
+   const bound=bindUploadedSourceTask(root,selected,{task_id:'task',session_id:'session',content:[{type:'text',text:'Reuse this template'}]},manifest);
+   assert.equal(bound.source_versions[pin],'@observed');
+   assert.deepEqual(bound.source_versions[convert],selected.length===1?undefined:[inputs[0].version_sha256]);
+   assert.deepEqual(bound.source_versions[read],bound.source_versions[convert]);
+   assert.doesNotThrow(()=>parseStructuredTask(bound,manifest));
+  }
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
 test('PPT source continuation allows only the selected PDF first page, never authoring or another page',
  {skip:!process.features?.typescript},async()=>{
  const {closedPptSourceFirstPage:closed}=await import('../src/adapters/harless_rsi_binding.ts');

@@ -42,6 +42,7 @@ def code_paths():
         'scripts/harless_gateway.mjs','scripts/harless_member_scenes.mjs','scripts/install-ppt-master.py','scenarios/research_ppt/motif_v6.py',
         'config/geneloop-capabilities.json','config/geneloop-capabilities.md',
         'src/adapters/geneloop_pdf.py','src/adapters/geneloop_pdf_vision.ts','src/adapters/harless_attachment_text.py',
+        'src/adapters/geneloop_presentation.py','src/adapters/geneloop_presentation.ts','src/adapters/geneloop_presentation_render.py',
         'src/adapters/deepseek_cost_gate.py','src/adapters/web_task_budget.py','scripts/web_budget_broker.mjs',
         'scripts/serve-web-budget.py','config/pdf-ocr-assets.json')]
     return sorted(set(files+[Path(__file__).resolve()]))

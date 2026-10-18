@@ -21,6 +21,14 @@ class SourceReader(SessionFiles):
     def document(self, source_id, page=1):
         name,data,version=self.pinned(source_id)
         if type(page) is not int or page<1: raise ValueError('positive_page_required')
+        if Path(name).suffix.lower()=='.pptx':
+            from src.adapters.geneloop_presentation import read_presentation
+            deck=read_presentation(data,slide_number=page)
+            self.pinned(source_id)
+            return {'source_id':source_id,'version_sha256':version,'name':name,'page':page,
+                    'page_count':deck['page_count'],'text':deck['text'],'truncated':False,
+                    'presentation_style':deck['presentation_style'],'slide_style':deck['pages'][0]['style'],
+                    'visual_checked':False,'coverage':'stored_text_and_style_declarations_visual_analysis_in_task_context'}
         if Path(name).suffix.lower()!='.pdf': raise ValueError('pdf_source_required_use_official_converter_for_other_formats')
         from src.adapters.geneloop_pdf import read_pdf
         pdf=read_pdf(data,page_number=page)

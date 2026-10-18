@@ -17,12 +17,13 @@ export async function startCommandBroker(options:{output:string;python:string;no
     try{
       for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>1024*1024)throw Error('command request too large');}
       const value=JSON.parse(body);
-      if(Object.keys(value).sort().join(',')!=='command,cwd,readOnly,session'||typeof value.command!=='string'||
+      if(!['command,cwd,readOnly,session','command,cwd,network,readOnly,session'].includes(Object.keys(value).sort().join(','))||
+        ('network' in value&&value.network!=='none')||typeof value.command!=='string'||
         typeof value.cwd!=='string'||!/^\/work(?:\/|$)/.test(value.cwd)||value.cwd.split('/').includes('..')||
         typeof value.readOnly!=='boolean'||!/^session-[a-f0-9-]{36}$/.test(value.session)||
         !existsSync(join(options.output,'sessions',value.session,'work')))throw Error('invalid owning Session command');
       const layout=commandLayout(options.output,value.session);
-      const [bin,...args]=commandArgv(layout,value.command,value.cwd,options.python,options.node,value.readOnly,options.resources);
+      const [bin,...args]=commandArgv(layout,value.command,value.cwd,options.python,options.node,value.readOnly,{...options.resources,network:value.network});
       const child=spawn(bin,args,{stdio:['ignore','pipe','pipe'],detached:true,env:{}});children.add(child);
       res.writeHead(200,{'Content-Type':'application/x-ndjson','Cache-Control':'no-store'});
       const send=(value:unknown)=>{if(!res.destroyed)res.write(JSON.stringify(value)+'\n');};

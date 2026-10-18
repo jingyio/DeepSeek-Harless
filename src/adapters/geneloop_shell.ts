@@ -22,11 +22,12 @@ export function commandLayout(output: string, session: string) {
 }
 export function commandArgv(layout: ReturnType<typeof commandLayout>, command: string, cwd: string,
     python = process.env.SSS_PYTHON ?? '/usr/bin/python3', node = process.execPath, readOnly = false,
-    resources: {pptMasterRoot?:string;rendererRoot?:string;fontRoot?:string;projectRoot?:string} = {}) {
+    resources: {pptMasterRoot?:string;rendererRoot?:string;fontRoot?:string;projectRoot?:string;network?:'none'} = {}) {
   if (process.platform !== 'linux' || !existsSync('/usr/bin/bwrap')) throw Error('isolated command execution requires Linux bubblewrap');
   // env -i also supports the server's older bubblewrap (without --clearenv).
   const args = ['/usr/bin/env', '-i', '/usr/bin/bwrap', '--unshare-user', '--unshare-pid', '--unshare-ipc', '--unshare-uts',
     '--die-with-parent', '--new-session', '--cap-drop', 'ALL'];
+  if(resources.network==='none')args.push('--unshare-net');
   for (const path of ['/usr', '/bin', '/lib', '/lib64']) if (existsSync(path)) args.push('--ro-bind', path, path);
   args.push('--dir', '/etc');
   for (const path of ['/etc/ssl', '/etc/resolv.conf', '/etc/hosts', '/etc/nsswitch.conf'])

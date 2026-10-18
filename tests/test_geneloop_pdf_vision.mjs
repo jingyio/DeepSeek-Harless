@@ -41,3 +41,16 @@ test('HTTP success cannot certify a missing image, wrong page, or unstructured m
   assert.equal(page.visual_content_reviewed,false);assert.equal(page.visual_analysis,undefined);
  }
 });
+
+test('PPT style observations require actual slide pixels and retain theme evidence separately',async()=>{
+ for(const style of [undefined,'Observed teal header, large white title, generous margins']){
+  const page={page:1,source_id:'pptx:exact:slide:1',text:'Title',visual_present:true,style:{fonts:['Aptos']},image:{media_type:'image/jpeg',data:'YWJj',sha256:'exact-render'}};
+  const file={format:'pptx',name:'reference.pptx',pages:[page],presentation_style:{coverage:'stored_declarations_not_resolved_rendering'}};
+  await analyzePdfPages({files:[file]},async parts=>{
+    assert.match(parts[0].text,/style_observations/);assert.match(parts[0].text,/Aptos/);
+    return JSON.stringify({source_id:page.source_id,page:1,image_observed:true,observations:'Title page',unreadable:[],style_observations:style});
+  },'Use the design with new content');
+  assert.equal(page.visual_content_reviewed,!!style);assert.equal(page.image,undefined);
+  assert.equal(page.rendered_image.sha256,'exact-render');
+ }
+});

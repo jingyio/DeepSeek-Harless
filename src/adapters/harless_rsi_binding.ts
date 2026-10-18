@@ -153,11 +153,17 @@ export function bindUploadedSourceTask(workspace:string,inputs:any[],request:any
         approved[row.file]!==row.version_sha256 || sha(readFileSync(path))!==row.version_sha256) throw Error('rsi_source_version_mismatch');
   }
   const source_versions:any={};
+  // Historical conversion edges were learned only for PDF. A model may pin
+  // a PPTX template, but that observation cannot authorize PDF conversion.
+  const pdfVersions=inputs.filter(row=>/\.pdf$/i.test(row.file)&&
+    readFileSync(join(root,row.file)).subarray(0,1024).toString('latin1').trimStart().startsWith('%PDF-'))
+    .map(row=>row.version_sha256);
   for (const [tool,contract] of Object.entries(manifest.contracts) as any[]) {
     if (!manifest.version_fields[tool]) throw Error('rsi_unversioned_contract');
     const conversion = 'mcp__ppt_master__convert_source' in manifest.contracts;
+    if(conversion&&contract.observed_anchor!==true&&!pdfVersions.length)continue;
     source_versions[tool]=contract.observed_anchor === true ? '@observed' :
-      conversion ? [...new Set(inputs.map(row=>row.version_sha256))] : '@from_anchor';
+      conversion ? [...new Set(pdfVersions)] : '@from_anchor';
   }
   return {schema_version:1,task_id:request.task_id,session_id:request.session_id,
     intent:bindingIntent(request.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n')),
