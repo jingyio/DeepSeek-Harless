@@ -45,7 +45,7 @@ const publicUser = user => ({ id: user.id, username: user.username,
 export function memberProductProfile() {
   return {
     persona: productPersona(),
-    sandboxArgs: ['--dir', '/app/config', ...['geneloop-persona.json', 'geneloop-capabilities.json', 'geneloop-capabilities.md']
+    sandboxArgs: ['--dir', '/app/config', ...['geneloop-persona.json', 'geneloop-capabilities.json', 'geneloop-capabilities.md', 'pdf-ocr-assets.json']
       .flatMap(name => ['--ro-bind', fileURLToPath(new URL('../config/' + name, import.meta.url)), '/app/config/' + name])],
   };
 }

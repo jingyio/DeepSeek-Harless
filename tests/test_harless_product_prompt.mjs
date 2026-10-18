@@ -75,12 +75,24 @@ test('new bound presets use the same trusted persona without changing MCP rows',
   }finally{assert.ok(directory.startsWith(join(tmpdir(),'geneloop-product-prompt-')));rmSync(directory,{recursive:true,force:true});}
 });
 
-test('member startup mounts only the shared public persona and capability policy even without scenes',()=>{
+test('member startup mounts only public product policy and every certified public config dependency',()=>{
   const profile=memberProductProfile();
   assert.deepEqual(profile.persona,productPersona());
   assert.deepEqual(profile.sandboxArgs.slice(0,3),['--dir','/app/config','--ro-bind']);
-  assert.equal(profile.sandboxArgs.length,11);
+  assert.equal(profile.sandboxArgs.length,14);
   assert.equal(profile.sandboxArgs[4],'/app/config/geneloop-persona.json');
   assert.deepEqual(JSON.parse(readFileSync(profile.sandboxArgs[3],'utf8')),productPersona());
   assert.deepEqual([profile.sandboxArgs[7],profile.sandboxArgs[10]],['/app/config/geneloop-capabilities.json','/app/config/geneloop-capabilities.md']);
+  assert.equal(profile.sandboxArgs[13],'/app/config/pdf-ocr-assets.json');
+  const targets=new Set();
+  for(let i=2;i<profile.sandboxArgs.length;i+=3){assert.equal(profile.sandboxArgs[i],'--ro-bind');targets.add(profile.sandboxArgs[i+2]);}
+  const registry=JSON.parse(readFileSync(new URL('../config/harless-scenes.json',import.meta.url),'utf8'));
+  for(const scene of registry.scenes){
+    if(!scene.rsi?.runtime_bundle)continue;
+    const cert=JSON.parse(readFileSync(new URL('../'+scene.rsi.runtime_bundle+'/certification.json',import.meta.url),'utf8'));
+    for(const path of Object.keys(cert.code_locks??{}))if(path.startsWith('config/'))
+      assert.ok(targets.has('/app/'+path),'certified public dependency must exist inside member namespace: '+path);
+  }
+  assert.ok(!profile.sandboxArgs.some(value=>value==='/app/config/'||value.endsWith('/config'))||
+    profile.sandboxArgs.filter(value=>value==='/app/config').length===1,'never mount all config siblings');
 });
