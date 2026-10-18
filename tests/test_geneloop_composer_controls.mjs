@@ -53,13 +53,15 @@ function fixture() {
       return [hooks[slot], next => { hooks[slot] = next; }]; },
     useRef(initial) { const slot = cursor++; return hooks[slot] ||= { current: initial }; },
     useId: () => 'effort-test', useEffect() {}, useLayoutEffect() {} };
+  const comparisonSnapshots = new Map();
   runInNewContext(code, { ctx, React, ReactDOM: { createPortal: node => node }, document: { body: {} }, h, Promise,
+    comparisonSnapshots, comparisonActivity: { subscribe: () => () => {}, getSnapshot: () => 0 },
     mirrorPublicSlot(a, b) { mirrors.push([a, b]); return () => {}; },
     sessions: { scope: id => { const scope = scopes.get(id); scope.id = id; return scope; }, binding: id => ({ session: faces.get(id) }) },
     triggers: { sessionOf: scope => ({ menu: menus.get(scope.id), toggleSource: (...args) => launches.push(args) }) },
     conversation: { input: { for: scope => ({ notify: (level, text) => notices.push({ id: scope.id, level, text }) }) } },
   });
-  return { requests, prompts, notices, menus, launches, mirrors, wrappers, native, faces,
+  return { requests, prompts, notices, menus, launches, mirrors, wrappers, native, faces, comparisonSnapshots,
     model: id => wrappers.get('conversation.input.model').inject(id),
     composer: id => wrappers.get('conversation.composer.bar').inject(id),
     ui(id, locked = false) { cursor = 0;
@@ -85,6 +87,19 @@ test('GeneLooping is immediate for local sends, stops on rejection, and never ch
   snapshot = { ...snapshot, running: true, pendingSubmissions: [] };
   assert.equal(view.props.useSession(s => s.running), true, 'server activity takes over without a gap');
   f.dispose();
+});
+
+test('one native footer spans scene admission and completion, and an old scene cannot mark a later Chat turn busy', () => {
+  const f=fixture(), session={running:false,pendingSubmissions:[]};
+  let chat={order:['scene'],nodes:new Map([['scene',{kind:'harless-comparison',location:{turn:{turn:1}},data:{session_id:'alice',id:'c1',status:'running'}}]]),
+    timeline:{turnOrder:[1]}};
+  const view=()=>f.wrappers.get('conversation.view').component({useSession:select=>select(session),useChat:select=>select(chat),t:key=>key});
+  assert.equal(view().props.useSession(s=>s.running),true,'child task keeps the same native footer alive');
+  f.comparisonSnapshots.set('alice:c1',{status:'completed'});
+  assert.equal(view().props.useSession(s=>s.running),false,'authoritative completion clears the footer');
+  f.comparisonSnapshots.clear();chat={...chat,timeline:{turnOrder:[1,2]}};
+  assert.equal(view().props.useSession(s=>s.running),false,'old running start event cannot leak into the next round');
+  assert.equal(session.running,false);f.dispose();
 });
 test('model and reasoning update immediately, queue behind the current write, and ignore intermediate projections', async () => {
   const f = fixture(), model = f.model('alice');

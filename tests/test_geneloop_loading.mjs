@@ -55,7 +55,9 @@ test('head loader waits for ready list, current history and committed comparison
   assert.equal(f.cover.hidden, false, 'open is insufficient before view commit');
   const rendered = f.render('a', state);
   assert.equal(f.cover.hidden, false, 'view stays covered until its comparison GET settles');
+  assert.equal(f.cover.parent.attributes['data-loading'],'true','history and composer share the loading boundary');
   finish(); assert.equal(f.cover.hidden, true);
+  assert.equal(f.cover.parent.attributes['data-loading'],'false');
   assert.equal(f.timers.size, 0);
   assert.equal(rendered.type, 'div');
   assert.equal(rendered.props.className, 'geneloop-conversation-load-region');
@@ -105,6 +107,9 @@ test('loading is accessible without animation and teardown removes public subscr
   const css = f.document.head.children.map(node => node.textContent || '').join('\n');
   assert.match(css, /prefers-reduced-motion:reduce.*animation:none/);
   assert.match(css, /button:focus-visible/);
+  assert.match(css, /data-loading=true.*visibility:hidden;pointer-events:none/);
+  assert.match(css, /position:absolute;inset:0;z-index:20/);
+  assert.match(css, /loading-mark img\{width:20px;height:30px/);
   assert.equal(f.cover.attributes['aria-live'], 'polite');
   f.disposers.reverse().forEach(dispose => dispose?.());
   assert.equal(state.count(), 0); assert.equal(f.list.count(), 0); assert.equal(f.cover.hidden, true);

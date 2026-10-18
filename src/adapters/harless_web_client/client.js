@@ -175,7 +175,6 @@ window.__ModuleLoader__.load({
       const uploads = new Map();
       const liveStyle = '.geneloop-process-status{font:inherit;font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary);margin:0 0 12px}.geneloop-looping{font:inherit;font-size:14px;color:var(--dsw-alias-state-business-primary,#729cf7);margin:20px 0 8px}.geneloop-menu-name{display:inline-flex;align-items:center;gap:10px}.geneloop-menu-name svg{flex:none;vertical-align:middle}';
       const liveStatus = label => h('p', { role: 'status', 'aria-live': 'polite', className: 'geneloop-process-status' }, label + '…');
-      const looping = () => h('p', { role: 'status', className: 'geneloop-looping' }, 'GeneLooping…');
       const documentSubject = raw => {
         let args; try { args = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return; }
         if (!args || typeof args !== 'object' || Array.isArray(args)) return;
@@ -211,6 +210,16 @@ window.__ModuleLoader__.load({
       // Keep recent authenticated snapshots across chat/trace navigation only;
       // never persist private replies in browser storage.
       const comparisonSnapshots = new Map(), comparisonObservers = new Map();
+      const comparisonActivityListeners = new Set();
+      let comparisonActivityRevision = 0;
+      const comparisonActivity = {
+        subscribe: listener => { comparisonActivityListeners.add(listener); return () => comparisonActivityListeners.delete(listener); },
+        getSnapshot: () => comparisonActivityRevision,
+      };
+      function notifyComparisonActivity() {
+        comparisonActivityRevision++;
+        for (const listener of comparisonActivityListeners) listener();
+      }
       let comparisonIdentity = 0;
       const comparisonKey = value => value.session_id + ':' + value.id;
       const olderSnapshot = (next, previous) => previous && (
@@ -229,11 +238,13 @@ window.__ModuleLoader__.load({
         comparisonSnapshots.delete(key); comparisonSnapshots.set(key, value);
         if (comparisonSnapshots.size > 40) comparisonSnapshots.delete(comparisonSnapshots.keys().next().value);
         for (const listener of comparisonObservers.get(key) || []) listener(value);
+        notifyComparisonActivity();
         return true;
       }
       function discardComparisonMemory() {
         comparisonIdentity++;
         comparisonSnapshots.clear();
+        notifyComparisonActivity();
       }
       ctx.effect(() => {
         const leavePage = () => discardComparisonMemory();
@@ -901,7 +912,6 @@ window.__ModuleLoader__.load({
             h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, answer
               ? h(BufferedMarkdown, { text: artifactMarkdown(answer, files, value, lane), streaming: !settled(result), identity: key + ':' + lane + ':' + (messages.at(-1)?.id || 'answer'), labels: markdownLabels, fileMentions: mentions })
               : settled(result) && h('p', { className: 'harless-paired-muted' }, notStarted ? '任务未启动，暂无回复。' : '本轮未生成文字回复。')),
-            !settled(result) && looping(),
             files.length > 0 && h('section', { className: 'harless-paired-deliveries', 'aria-label': title + '交付文件' },
               h('h4', null, '交付文件'), h('ul', { className: 'harless-paired-files' }, ...files.map(file => {
                 const status = downloads[lane + ':' + file.id];
@@ -1354,12 +1364,25 @@ window.__ModuleLoader__.load({
         });
         wrapWebSeat('conversation.input.model', (props, id) => optimisticModel(id, props), { component: ReasoningModelSelect });
         wrapWebSeat('conversation.view', props => props, { id: 'chat',
-          renderProps: props => ({ t: (key, ...args) => key === 'chat.deepDiving' ? h('span', { className: 'geneloop-native-looping' }, 'GeneLooping…') : props.t(key, ...args),
+          renderProps: props => {
+            // One native footer owns pending sends, ordinary Chat and child
+            // scene execution. Never render a second footer inside a lane.
+            React.useSyncExternalStore(comparisonActivity.subscribe, comparisonActivity.getSnapshot);
+            const chat = props.useChat?.(value => value);
+            const latest = chat?.timeline?.turnOrder.at(-1);
+            const childRunning = (chat?.order || []).some(key => {
+              const node = chat.nodes.get(key);
+              if (node?.kind !== 'harless-comparison' || node.location?.turn?.turn !== latest) return false;
+              const value = comparisonSnapshots.get(node.data.session_id + ':' + node.data.id) || node.data;
+              return !['completed', 'failed', 'cancelled'].includes(value.status);
+            });
+            return { t: (key, ...args) => key === 'chat.deepDiving' ? h('span', { className: 'geneloop-native-looping' }, 'GeneLooping…') : props.t(key, ...args),
             // The native submission echo exists synchronously on Send, before
             // model selection/network dispatch. Project activity only in this
             // view; never change the session's execution/queue state.
             useSession: select => props.useSession(snapshot => select({ ...snapshot,
-              running: snapshot.running || snapshot.pendingSubmissions?.some(row => row.placement !== 'queued') || false })) }) });
+              running: snapshot.running || snapshot.pendingSubmissions?.some(row => row.placement !== 'queued') || childRunning })) };
+          } });
         // Only adapt display data. The native controller still owns keyboard
         // navigation, focus, outside-click dismissal and atomic reference picks.
         const menuFaces = new WeakMap();
@@ -1654,23 +1677,29 @@ window.__ModuleLoader__.load({
       }
       function displayUserContent(content) {
         if (!Array.isArray(content) || !content.some(part => part.type === 'file')) return content;
-        // Compatibility with old sends: only hide the exact generated evidence
-        // block beside real file cards, not arbitrary JSON typed by the user.
-        return content.filter(part => {
-          if (part.type !== 'text' || !part.text.startsWith('用户附件的只读提取结果（')) return true;
+        // Old queued messages can concatenate the prompt and extraction into
+        // one text block. Preserve the actual prompt and native file cards.
+        return content.flatMap(part => {
+          if (part.type !== 'text' || typeof part.text !== 'string') return [part];
+          const start = part.text.indexOf('用户附件的只读提取结果（');
+          const newline = part.text.indexOf('\n', start);
+          if (start < 0 || newline < 0) return [part];
           try {
-            const value = JSON.parse(part.text.slice(part.text.indexOf('\n') + 1));
-            return !Array.isArray(value.files) || !value.files.length || !value.files.every(file =>
+            const value = JSON.parse(part.text.slice(newline + 1));
+            const generated = Array.isArray(value.files) && value.files.length && value.files.every(file =>
               typeof file.name === 'string' && /^[a-f0-9]{64}$/.test(file.sha256) && typeof file.status === 'string');
-          } catch { return true; }
+            if (!generated) return [part];
+            return start ? [{ ...part, text: part.text.slice(0, start) }] : [];
+          } catch { return [part]; }
         });
       }
       ctx.slots.inject('conversation.chat.node', () => {
-        const original = ctx.slots.entries?.('conversation.chat.node').find(entry => entry.options.key === 'user' && (entry.options.priority ?? 0) >= 0);
-        if (!original) return () => {};
-        return ctx.slots.register({ name: 'conversation.chat.node', ...original.options, priority: -100, locale: original.locale,
+        const originals = (ctx.slots.entries?.('conversation.chat.node') || []).filter(entry =>
+          ['user', 'steering'].includes(entry.options.key) && (entry.options.priority ?? 0) >= 0);
+        const cleanups = originals.map(original => ctx.slots.register({ name: 'conversation.chat.node', ...original.options, priority: -100, locale: original.locale,
           inject: original.inject, ...(original.store ? { store: original.store } : {}) }, owner => h(original.component, {
-          ...owner, node: { ...owner.node, data: { ...owner.node.data, content: displayUserContent(owner.node.data.content) } } }));
+          ...owner, node: { ...owner.node, data: { ...owner.node.data, content: displayUserContent(owner.node.data.content) } } })));
+        return () => cleanups.forEach(dispose => dispose?.());
       });
       function ProductChatNode(owner) {
         const { node } = owner;
