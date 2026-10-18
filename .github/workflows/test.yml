@@ -26,6 +26,11 @@ jobs:
         run: |
           .venv-sss/$([[ "$RUNNER_OS" == "Windows" ]] && echo Scripts || echo bin)/python scripts/install-pdf-ocr.py --root "$RUNNER_TEMP/geneloop-pdf-ocr"
           echo "GENELOOP_PDF_OCR_ROOT=$RUNNER_TEMP/geneloop-pdf-ocr" >> "$GITHUB_ENV"
+      - name: Provide an embedded CJK font for PDF export integration tests
+        shell: bash
+        run: |
+          .venv-sss/$([[ "$RUNNER_OS" == "Windows" ]] && echo Scripts || echo bin)/python -c "import pathlib,pymupdf,sys; pathlib.Path(sys.argv[1]).write_bytes(pymupdf.Font('cjk').buffer)" "$RUNNER_TEMP/geneloop-report-font.ttf"
+          echo "HARLESS_REPORT_FONT=$RUNNER_TEMP/geneloop-report-font.ttf" >> "$GITHUB_ENV"
       - run: npm test
       - name: Annotate test failures
         if: failure()
