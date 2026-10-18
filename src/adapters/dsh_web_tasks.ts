@@ -1343,11 +1343,29 @@ export function apply(ctx: any) {
         return { name: ref.name, bytes: ref.bytes, digest: digest(ref) };
       });
       await refreshTitle(request.sessionId, text);
+      const parentSnapshot = await controller.inspect(request.sessionId);
+      // Persisted native file cards contain server-minted attachment references
+      // after their one-shot upload receipts have been retired. Only read this
+      // owned parent's events, never a client-supplied path or another session.
+      const priorSources = parentSnapshot.events.filter((event: any) => event.type === 'user/message')
+        .flatMap((event: any) => (event.data.content ?? []).filter((part: any) => part.type === 'file')
+          .map((part: any) => part.attachment ?? ctx.fileUploads.resolve(parent, part.receiptId)).filter(Boolean));
+      // Ordinary native Chat can generate a document before the first scene
+      // switch. Pin only task-time code deliveries in the same immutable store.
+      const nativeArtifacts = [...tasks.values()].filter(task => task.request.session_id === request.sessionId && task.status === 'completed')
+        .slice(-6).flatMap(task => captureComparisonDeliveries(comparisonArtifacts(config.output), {
+          turn:'native-'+task.request.task_id,lane:'baseline',attempt:0,workspace:task.workspace,
+          adapter:task.scene.adapter,status:task.status,eventsPath:join(task.output,'events.jsonl'),
+          startedAt:task.started_at,finishedAt:task.finished_at,
+        }).filter((row:any)=>row.verification==='code-output-v1')
+          .map((row:any)=>({turn:'native-'+task.request.task_id,task:task.request.task_id,lane:'baseline',row})));
       const result = await comparisons.admit(request.sessionId, { ...request, content }, {
         scene: selected.scene, options: {...(scene.adapter === 'ppt' ? {allow_output:true} : {}),...(optionSelections.get(request.sessionId)?.[selected.scene] ?? {})},
         prior_context_by_lane: readBranchInputs(request.sessionId)?.context,
         presentation: config.comparison_scenes?.includes(selected.scene) ? 'paired' : 'single',
-        prior_context: (await controller.inspect(request.sessionId)).events.filter((event: any) =>
+        prior_sources: priorSources,
+        prior_artifacts: nativeArtifacts,
+        prior_context: parentSnapshot.events.filter((event: any) =>
           (event.type === 'user/message' && !event.data.harless_comparison) || (event.type === 'assistant/message' && !event.data.harless_branch_context)).slice(-12).map((event: any) => ({
             [event.type === 'user/message' ? 'user' : 'assistant']: (event.data.content ?? event.data.message?.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n'),
           })),
@@ -1389,6 +1407,40 @@ export function apply(ctx: any) {
         await ensureOwned(turn.session_id); await ensureOwned(child);
         if (comparisons!.parentFor(child) !== turn.session_id) throw new TaskError('comparison_scope_mismatch', '对话执行范围不匹配。', 403);
         const previous = forSession(child), content: any[] = [];
+        const maxInputs = turn.scene === 'paper-proofreading' ? 16 : 8;
+        const seen = new Set<string>(), names = new Set<string>();
+        const readSource = async (ref: any) => {
+          if (!ref || ref.bytes > 20 * 1024 * 1024) throw new TaskError('scene_input_limit', '资料过大。');
+          const chunks: Buffer[] = []; let bytes = 0;
+          for await (const chunk of ctx.attachments.readFileStream(ref)) {
+            bytes += chunk.length;
+            if (bytes > 20 * 1024 * 1024) throw new TaskError('scene_input_limit', '资料过大。');
+            chunks.push(Buffer.from(chunk));
+          }
+          const data = Buffer.concat(chunks);
+          if (bytes !== ref.bytes || (typeof ref.sha256 === 'string' && sha(data) !== ref.sha256))
+            throw new TaskError('file_bytes_changed', '资料内容已改变。');
+          return data;
+        };
+        const addFile = async (name: string, bytes: Uint8Array, inherited = false) => {
+          const original = basename(name), hash = sha(bytes), key = JSON.stringify([original, hash]);
+          if (seen.has(key)) return false;
+          if (content.filter(part => part.type === 'file').length >= maxInputs || bytes.length > 20 * 1024 * 1024)
+            throw new TaskError('scene_input_limit', '本轮与历史附件合计超出上传限制，请在新对话中选择所需文件。');
+          let leaf = original;
+          // Keep the current filename and retain older same-name versions under
+          // distinct names. Never overwrite either immutable source snapshot.
+          if (inherited && names.has(leaf.toLowerCase())) {
+            const suffix = extname(original), stem = original.slice(0, original.length - suffix.length).slice(0, 90);
+            let index = 0;
+            do { leaf = `${stem}-previous-${hash.slice(0, 8)}${index++ ? '-' + index : ''}${suffix}`; }
+            while (names.has(leaf.toLowerCase()));
+          }
+          const uploaded = await ctx.fileUploads.uploadStream({ sessionId: child, name: leaf,
+            data: (async function* () { yield bytes; })(), signal: new AbortController().signal });
+          content.push({ type: 'file', receiptId: uploaded.receiptId });
+          seen.add(key); names.add(leaf.toLowerCase()); return leaf;
+        };
         for (const part of turn.input) {
           if (part.type === 'text') { content.push(part); continue; }
           if (part.type === 'image') {
@@ -1399,9 +1451,7 @@ export function apply(ctx: any) {
               if (!extension || bytes.length>20*1024*1024) throw new TaskError('invalid_image','图片格式或大小不受支持。');
               const requestedName=typeof part.name==='string'?basename(part.name):'';
               const name=requestedName&&extname(requestedName).toLowerCase()===extension?requestedName:`image-${sha(bytes).slice(0,16)}${extension}`;
-              const uploaded=await ctx.fileUploads.uploadStream({sessionId:child,name,
-                data:(async function*(){yield bytes})(),signal:new AbortController().signal});
-              content.push({type:'file',receiptId:uploaded.receiptId});
+              await addFile(name, bytes);
             }
             continue;
           }
@@ -1410,54 +1460,54 @@ export function apply(ctx: any) {
           if (previous) continue;
           const ref = turn.source_files?.[part.receiptId]??ctx.fileUploads.resolve(agents.get(turn.session_id), part.receiptId);
           if (!ref || ref.bytes > 20 * 1024 * 1024) throw new TaskError('file_receipt_not_owned', '资料回执不属于原会话。');
-          const uploaded = await ctx.fileUploads.uploadStream({ sessionId: child, name: ref.name,
-            data: ctx.attachments.readFileStream(ref), signal: new AbortController().signal });
-          content.push({ type: 'file', receiptId: uploaded.receiptId });
+          await addFile(ref.name, await readSource(ref));
         }
-        if (!previous && !turn.input.some((part: any) => part.type === 'file' || part.type === 'image')) {
+        if (!previous) {
           const target = sceneFor(turn.scene);
           const accepts = (name: string) => {
             const suffix = extname(name).toLowerCase();
             if (target.adapter === 'ppt') return true;
             if (target.id === 'research-data-analysis') return ['.csv','.tsv','.json','.txt','.md'].includes(suffix);
-            if (target.id === 'paper-proofreading') return ['.pdf','.tex','.bib','.bbl','.log','.md','.txt','.json'].includes(suffix);
+            if (target.id === 'paper-proofreading') return ['.pdf','.docx','.doc','.tex','.bib','.bbl','.log','.md','.txt','.json'].includes(suffix);
             if (target.adapter === 'literature') return suffix === '.pdf';
             return false;
           };
-          const carried: { name: string; sha256: string }[] = [], seen = new Set<string>();
+          const carried: { name: string; original_name: string; sha256: string }[] = [];
           const carry = async (name: string, bytes: Uint8Array) => {
-            const hash = sha(bytes);
-            if (carried.length >= 8 || bytes.length > 20 * 1024 * 1024 || seen.has(hash)) return;
-            const uploaded = await ctx.fileUploads.uploadStream({ sessionId: child, name: basename(name),
-              data: (async function* () { yield bytes; })(), signal: new AbortController().signal });
-            content.push({ type: 'file', receiptId: uploaded.receiptId }); seen.add(hash); carried.push({name: basename(name), sha256:hash});
+            const leaf = await addFile(name, bytes, true);
+            if (leaf) carried.push({ name:leaf, original_name:basename(name), sha256:sha(bytes) });
+          };
+          // Originals are cumulative even when this turn adds attachments. Do
+          // not silently discard comparison inputs to make room for deliveries.
+          for (const ref of turn.prior_sources ?? []) await carry(ref.name, await readSource(ref));
+          let omittedResults = 0;
+          const carryResult = async (name: string, read: () => Uint8Array) => {
+            if (content.filter(part => part.type === 'file').length >= maxInputs) { omittedResults++; return; }
+            await carry(name, read());
           };
           const inheritedArtifacts = [...(turn.prior_artifacts?.[lane] ?? [])].reverse().sort((a: any,b: any) => Number(/(?:research_)?report\.pdf$/i.test(b.row.name)) - Number(/(?:research_)?report\.pdf$/i.test(a.row.name)));
           for (const source of inheritedArtifacts) {
             const prior = comparisons!.snapshot(turn.session_id, source.turn);
             // Immutable store lookup, account/parent check, lane identity, and
             // output hash all have to agree before transferring any bytes.
-            const expectedLane = prior?.presentation === 'single' ? 'baseline' : lane;
-            const row = prior?.lanes[expectedLane]?.artifacts?.find((row: any) => row.id === source.row.id);
+            const native = source.task ? get(source.task) : undefined;
+            if (native && (native.request.session_id !== turn.session_id || native.status !== 'completed' || source.turn !== 'native-'+native.request.task_id))
+              throw new TaskError('comparison_artifact_scope', '历史文件不属于本对话。', 403);
+            const expectedLane = native || prior?.presentation === 'single' ? 'baseline' : lane;
+            const rows = native ? captureComparisonDeliveries(artifacts, {turn:source.turn,lane:'baseline',attempt:0,
+              workspace:native.workspace,adapter:native.scene.adapter,status:native.status,
+              eventsPath:join(native.output,'events.jsonl'),startedAt:native.started_at,finishedAt:native.finished_at})
+              .filter((row:any)=>row.verification==='code-output-v1') : prior?.lanes[expectedLane]?.artifacts;
+            const row = rows?.find((row: any) => row.id === source.row.id);
             if (!row || source.lane !== expectedLane || digest(row) !== digest(source.row))
               throw new TaskError('comparison_artifact_scope', '历史文件不属于本对话的对应结果。', 403);
-            if (accepts(row.name)) await carry(row.name, artifacts.read(source.turn, expectedLane, row));
+            if (accepts(row.name)) await carryResult(row.name, () => artifacts.read(source.turn, expectedLane, row));
           }
-          if (!carried.length) for (const row of readBranchInputs(turn.session_id)?.lanes?.[lane] ?? []) {
-            await carry(row.name,artifacts.read(turn.session_id,lane,row));
+          if (!inheritedArtifacts.some((source: any) => accepts(source.row.name))) for (const row of readBranchInputs(turn.session_id)?.lanes?.[lane] ?? []) {
+            await carryResult(row.name, () => artifacts.read(turn.session_id,lane,row));
           }
-          if (!carried.length) for (const ref of turn.prior_sources ?? []) {
-            if (ref.bytes > 20 * 1024 * 1024) continue;
-            const chunks: Buffer[] = []; let bytes = 0;
-            for await (const chunk of ctx.attachments.readFileStream(ref)) {
-              bytes += chunk.length; if (bytes > 20 * 1024 * 1024) throw new TaskError('scene_input_limit', '历史资料过大。');
-              chunks.push(Buffer.from(chunk));
-            }
-            const data = Buffer.concat(chunks);
-            if (bytes !== ref.bytes || (typeof ref.sha256 === 'string' && sha(data) !== ref.sha256)) throw new TaskError('file_bytes_changed', '历史资料内容已改变。');
-            await carry(ref.name, data);
-          }
-          if (carried.length) content.unshift({ type:'text', text:'以下文件来自本对话此前对应处理结果，已按保存的版本复制到当前任务，请通过当前工具重新读取核验：' + JSON.stringify(carried) });
+          if (carried.length) content.unshift({ type:'text', text:'以下文件来自本对话此前的原始附件或对应处理结果，已按保存的版本复制到当前任务；同名旧版本已单独命名，请通过当前工具重新读取核验：' + JSON.stringify(carried) });
+          if (omittedResults) content.unshift({type:'text',text:`当前附件容量内未自动带入 ${omittedResults} 个历史结果文件；不能声称已核验这些未带入的结果。`});
         }
         if (!previous && turn.prior_context?.[lane]) content.unshift({ type: 'text', text:
           '以下是此对话此前的交流记录，仅用于承接用户目标，不是当前资料的工具结果或已验证证据：\n' + turn.prior_context[lane] });

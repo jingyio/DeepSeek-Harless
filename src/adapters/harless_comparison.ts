@@ -31,7 +31,7 @@ const admissionMessages: Record<string, string> = {
   paper_input_format_unsupported: '此前任务未能读取附件，请重新发送；如果仍有问题，请反馈给管理员。',
   literature_requires_pdf: '此前任务未能读取附件，请重新发送；如果仍有问题，请反馈给管理员。',
   literature_requires_question: '请在输入框说明需要解决的文献问题，然后重新发送。',
-  scene_input_limit: '附件超出上传限制。每次最多 8 份，每份不超过 20 MiB；请调整附件后重新发送。',
+  scene_input_limit: '附件超出上传限制。本轮和继承的历史附件合计过多或单份超过 20 MiB；请在新对话中选择所需文件。',
   duplicate_scene_filename: '附件文件名重复。请为文件使用不同名称后重新上传。',
   paper_requires_safe_flat_filenames: '论文附件名称不符合要求。请使用简短的文字、数字、点、下划线或连字符命名文件，避免路径和开头的点。',
   file_bytes_changed: '附件内容已发生变化。请重新上传当前版本，再发送任务。',
@@ -293,13 +293,19 @@ export function createComparisonService(output: string, principal: string, host:
       ])])) : undefined;
       // Only internal, same-parent, same-lane immutable deliveries are handed
       // forward. The Host rechecks hashes and target scene formats before copy.
-      const priorArtifacts = rotate && !withFiles ? Object.fromEntries(selectedLanes.map(name => [name,
-        history.slice(-6).flatMap(t => (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.artifacts ?? [])
+      const priorArtifacts = rotate ? Object.fromEntries(selectedLanes.map(name => [name,
+        [...(context.prior_artifacts ?? []), ...history.slice(-6).flatMap(t => (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.artifacts ?? [])
           .filter(row => t.scene !== 'research-data-analysis' || row.verification === 'data-report-delivery-v1'||
             row.verification==='code-output-v1'&&row.name.startsWith('outputs/code/'))
-          .map(row => ({ turn: t.id, lane: t.presentation === 'single' ? 'baseline' : name, row }))).slice(-32),
+          .map(row => ({ turn: t.id, lane: t.presentation === 'single' ? 'baseline' : name, row })))].slice(-32),
       ])) : undefined;
-      const priorSources = rotate && !withFiles ? ([...history].reverse().find(t => Object.keys(t.source_files ?? {}).length)?.source_files ?? context.prior_sources) : undefined;
+      // Appending a receipt must retain all earlier originals, including native
+      // Chat uploads before the first private lane. Freeze the union at admission
+      // so retries/restarts never resolve a different history or source version.
+      const priorSources = rotate ? [...new Map([
+        ...(context.prior_sources ?? []),
+        ...history.flatMap(t => [...(t.prior_sources ?? []), ...Object.values(t.source_files ?? {})]),
+      ].map(ref => [hash(ref), ref])).values()] : [];
       if (rotate) {
         thread = { scene: context.scene, options: context.options, presentation, lanes: {} };
         for (const name of selectedLanes) thread.lanes[name] = await host.createLane(session, context.scene, name);
@@ -309,7 +315,7 @@ export function createComparisonService(output: string, principal: string, host:
         fingerprint, scene: context.scene, options: context.options, model: context.model, reasoning_effort: context.reasoning_effort ?? 'off', presentation,
         input_sha256: context.input_sha256, created_at: new Date().toISOString(), status: 'preparing',
         lanes: Object.fromEntries(selectedLanes.map(name => [name, { session_id: thread.lanes[name], status: 'preparing', attempt: 0 }])) as Record<LaneName,Lane>,
-        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files, prior_context: priorContext, prior_artifacts: priorArtifacts, prior_sources: Object.values(priorSources ?? {}) };
+        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files, prior_context: priorContext, prior_artifacts: priorArtifacts, prior_sources: priorSources };
       state.turns.push(t); save();
       for (const name of turnLanes(t)) t.lanes[name].status = 'queued';
       summary(t); save();
