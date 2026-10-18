@@ -354,7 +354,9 @@ export function createGateway(config) {
       store(join(userDir, 'config', 'presets', 'sss-task', 'agent.cordis.yml'), [{ id: 'sss-persona',
         name: '@deepseek-ai/dsh-persona', config: product.persona }]);
       if(sceneDeployment&&!commandBrokers.has(user.id))commandBrokers.set(user.id,await startCommandBroker({
-        output:join(userDir,'tasks'),python:config.memberSceneDeployment.pythonExecutable,node:process.execPath}));
+        output:join(userDir,'tasks'),python:config.memberSceneDeployment.pythonExecutable,node:process.execPath,
+        resources:{pptMasterRoot:config.memberSceneDeployment.pptMasterRoot,rendererRoot:config.memberSceneDeployment.rendererRoot,
+          fontRoot:config.memberSceneDeployment.fontRoot,projectRoot:config.memberSceneDeployment.projectRoot}}));
       const commandBroker=commandBrokers.get(user.id);
       const bin = '/opt/node/bin/node';
       const args = ['--unshare-user', '--unshare-pid', '--uid', '1000', '--gid', '1000', '--die-with-parent',

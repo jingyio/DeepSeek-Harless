@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "new_training": true,
+  "method": "existing_witnessed_edge_compiler",
+  "training_tasks": 2,
+  "heldout_tasks": 1,
+  "artifacts": 1,
+  "skill_package_sha256": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+  "library_digest": "5a7ec5c37f071a20d3db58dfc311939bda69db5cf0332907d9adab31cf4f710f",
+  "manifest_digest": "b45b15357d131211d947babc24fcd54637880ce2466d6c9b2a220ec881e7c504",
+  "model_weights_trained": false,
+  "quality_cost_promoted": false,
+  "scientific_quality_reviewed": false,
+  "compilation_model_requests": 0,
+  "compilation_seconds": 1.037080685608089,
+  "trace_collection_requests": 261,
+  "trace_collection_proxy_usd": 2.0835118100000005,
+  "excluded_collection": [
+    {
+      "task_id": "16cb5e1c3daa481aa33e674b14e82682",
+      "status": "completed",
+      "requests": 111,
+      "tokens": {
+        "prompt_tokens": 12331311,
+        "prompt_cache_hit_tokens": 12201088,
+        "prompt_cache_miss_tokens": 130223,
+        "completion_tokens": 52530,
+        "total_tokens": 12383841
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 111
+      },
+      "proxy_peak_usd": 0.91676106,
+      "actual_paid_usd": null,
+      "tool_calls": 110,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "d0a3b96535074190947c5d6e3d22567d",
+      "status": "completed",
+      "requests": 92,
+      "tokens": {
+        "prompt_tokens": 8925333,
+        "prompt_cache_hit_tokens": 8802816,
+        "prompt_cache_miss_tokens": 122517,
+        "completion_tokens": 42012,
+        "total_tokens": 8967345
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 92
+      },
+      "proxy_peak_usd": 0.7154138600000001,
+      "actual_paid_usd": null,
+      "tool_calls": 91,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "8e3a41a266ee4c81afcbd2fa3bedb5d4",
+      "status": "completed",
+      "requests": 89,
+      "tokens": {
+        "prompt_tokens": 7696684,
+        "prompt_cache_hit_tokens": 7578368,
+        "prompt_cache_miss_tokens": 118316,
+        "completion_tokens": 33227,
+        "total_tokens": 7729911
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 89
+      },
+      "proxy_peak_usd": 0.6212042700000001,
+      "actual_paid_usd": null,
+      "tool_calls": 89,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    }
+  ],
+  "actual_paid_usd": null,
+  "total_collection_requests": 553,
+  "total_collection_proxy_usd": 4.3368910000000005,
+  "scope": "Model-selected uploaded PDF pin and first-page read only; not slide design, scientific interpretation, writing, or script execution."
+}

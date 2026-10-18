@@ -1,0 +1,55 @@
+[
+  {
+    "name": "mcp__ppt_master__pin_source",
+    "description": "Pin a model-selected listed upload to its exact current version. Never choose the paper for the model.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "sha256"
+      ],
+      "title": "pin_sourceArguments"
+    }
+  },
+  {
+    "name": "mcp__ppt_master__read_skill_entry",
+    "description": "Read the official skill entry and guarded routing together; list this Session's approved sources. No slide authoring.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "title": "read_skill_entryArguments"
+    }
+  },
+  {
+    "name": "mcp__ppt_master__read_source_page",
+    "description": "Read one page of the pinned PDF, default first page for title/abstract identification. No visual or scientific certification.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "page": {
+          "default": 1,
+          "title": "Page",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_id"
+      ],
+      "title": "read_source_pageArguments"
+    }
+  }
+]

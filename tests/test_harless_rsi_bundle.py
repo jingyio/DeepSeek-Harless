@@ -15,19 +15,12 @@ def test_registered_ppt_compatibility_matches_current_source_and_original_artifa
     assert binding['original_certification_sha256'] == sha(bundle / 'certification.json')
     for name, expected in entry['files'].items():
         assert sha(bundle / name) == expected, name
-    generated_missing = False
-    for name, expected in binding['code_locks'].items():
-        path = root / name
-        # The root test command does not build optional PPT TypeScript. Source
-        # locks must still fail immediately; deployments also verify the build.
-        if '/dist/' in name and not path.exists():
-            generated_missing = True
-            continue
-        assert sha(path) == expected, name
-    if not generated_missing:
-        admitted = load_product_bundle(root, bundle, 'ppt')
-        assert admitted['binding_policy'] == 'ppt_uploaded_sources_v1'
-        assert admitted['quality_cost_promoted'] is False
+    # Archived rollback bytes remain immutable. Changed current adapters must
+    # reject the old runtime certificate rather than silently re-admit it.
+    assert any((root/name).is_file() and sha(root/name)!=expected
+               for name,expected in binding['code_locks'].items())
+    with pytest.raises((ValueError,FileNotFoundError)):
+        load_product_bundle(root,bundle,'ppt')
 
 
 def test_new_ppt_release_keeps_artifact_and_current_source_locks():
@@ -35,23 +28,18 @@ def test_new_ppt_release_keeps_artifact_and_current_source_locks():
     registry=json.loads((root/'config/harless-scenes.json').read_text(encoding='utf-8'))
     bundle=root/next(row for row in registry['scenes'] if row['id']=='ppt')['rsi']['runtime_bundle']
     sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
-    entry=json.loads((bundle/'entry.json').read_text(encoding='utf-8'));cert=json.loads((bundle/'certification.json').read_text(encoding='utf-8'))
-    report=json.loads((bundle/'learning-report.json').read_text(encoding='utf-8'));missing_build=False
+    entry=json.loads((bundle/'entry.json').read_text());cert=json.loads((bundle/'certification.json').read_text())
+    report=json.loads((bundle/'learning-report.json').read_text())
     assert entry['new_training'] is True and report['training_tasks']==2 and report['heldout_tasks']==1
     assert report['compilation_model_requests']==0 and report['quality_cost_promoted'] is False
-    previous=root/'motif-libraries/ppt-web-v2-r8'
-    assert json.loads((bundle/'online-manifest.json').read_text(encoding='utf-8'))['artifacts']==json.loads((previous/'online-manifest.json').read_text(encoding='utf-8'))['artifacts']
-    assert sha(bundle/'source-evidence.json')==sha(previous/'source-evidence.json')
-    assert report['new_collection_tasks_for_recompilation']==0
+    assert report['trace_collection_requests']>0
     for name,version in entry['files'].items():assert sha(bundle/name)==version,name
-    for name,version in cert['code_locks'].items():
-        path=root/name
-        if '/dist/' in name and not path.exists():missing_build=True;continue
-        assert sha(path)==version,name
-    if not missing_build:
-        admitted=load_product_bundle(root,bundle,'ppt')
-        assert admitted['binding_policy']=='ppt_uploaded_sources_v2'
-        assert len(admitted['certified_tool_schema_variants'])==30
+    for name,version in cert['code_locks'].items():assert sha(root/name)==version,name
+    admitted=load_product_bundle(root,bundle,'ppt')
+    assert admitted['binding_policy']=='ppt_master_sources_v1'
+    assert len(admitted['certified_tool_schemas'])==3
+    manifest=json.loads((bundle/'online-manifest.json').read_text())
+    assert manifest['artifacts'][0]['tools']==['mcp__ppt_master__pin_source','mcp__ppt_master__read_source_page']
 
 
 def test_bundle_freezes_runtime_code_artifacts_and_whole_schema(tmp_path):

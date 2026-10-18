@@ -2,6 +2,7 @@
 import { readdirSync, realpathSync, statSync, existsSync, lstatSync, readlinkSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, relative, dirname, basename, isAbsolute, sep, resolve, posix } from 'node:path';
+import {pptMasterInstallation} from '../src/adapters/geneloop_skill_installation.mjs';
 
 const inside = (base, value) => value === base || (!relative(base, value).startsWith('..') && !isAbsolute(relative(base, value)));
 function fixedPath(value, kind, label) {
@@ -49,6 +50,10 @@ export function memberSceneDeployment(policy, deployment) {
     return { source, target: '/app/' + name };
   });
   const mounts = [...mappings, ...pythonRoots.map(source => ({ source, target: source }))];
+  const skill=pptMasterInstallation(deployment.pptMasterRoot,root);
+  if(skill){mounts.push(skill);mappings.push(skill);}
+  if(policy.scenes.some(s=>!s.unavailable_reason&&s.ppt_execution_strategy==='ppt_master')&&!skill)
+    throw Error('PPT scene requires a pinned ppt-master installation');
   // Only the explicit public config files in memberProductProfile are mounted.
   // Translate their certification locks without mounting the whole config directory.
   mappings.push({source:join(root,'config'),target:'/app/config'});
@@ -150,7 +155,7 @@ export function memberSceneDeployment(policy, deployment) {
     for (const row of rows) {
       const cfg=row.config;
       if (row.name !== '@deepseek-ai/dsh-mcp-client' || cfg?.transport !== 'stdio' || cfg.cwd !== root ||
-          !['ppt','workspace','paper_checks','paper_trace_rsi','data_analysis','research_report','file_management','literature_web'].includes(cfg.serverName) ||
+          !['ppt','ppt_master','workspace','paper_checks','paper_trace_rsi','data_analysis','research_report','file_management','literature_web'].includes(cfg.serverName) ||
           !(cfg.command === 'node' || cfg.command === deployment.pythonExecutable || realpathSync(cfg.command) === binary) ||
           !Array.isArray(cfg.args) || !cfg.args.length || !inside(join(root,'scenarios'), cfg.args[cfg.args[0]==='--experimental-strip-types'?1:0]))
         throw Error('Member MCP deployment is outside approved scene code');
@@ -180,9 +185,13 @@ export function memberSceneDeployment(policy, deployment) {
         scene.adapter==='files' ? ['FM_WEB_WORKSPACE','FM_TASK_FILE','FM_OUTPUT'] :
         cfg.serverName==='paper_checks'?['HARLESS_REPORT_FONT',...parserEnv]:
         cfg.serverName==='paper_trace_rsi'?['HARLESS_PRIVATE_ROOT']:
+        cfg.serverName==='ppt_master'?['GENELOOP_PPT_MASTER_ROOT','PYTHONDONTWRITEBYTECODE']:
         ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH','HARLESS_PRIVATE_ROOT',...parserEnv];
       if (Object.keys(env).some(k=>!permittedEnv.includes(k)))
         throw Error('Member scene environment contains unapproved authority');
+      if(cfg.serverName==='ppt_master' && (!skill || cfg.args.length!==2 ||
+          cfg.args[0]!=='/app/scenarios/ppt_master/server.py' || cfg.args[1]!=='__HARLESS_SESSION_WORKSPACE__/inputs' || env.GENELOOP_PPT_MASTER_ROOT!==skill.source))
+        throw Error('Member ppt-master requires the exact pinned deployment');
       if(scene.adapter==='data-report'||scene.adapter==='ppt'||cfg.serverName==='paper_checks'){
         if(('HARLESS_PDF_TOOLCHAIN_ROOT' in env || scene.pdf_toolchain_root!==undefined) &&
             (!pdf || scene.pdf_toolchain_root!==pdf || env.HARLESS_PDF_TOOLCHAIN_ROOT!==pdf))

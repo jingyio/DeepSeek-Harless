@@ -1,5 +1,16 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-18：ppt-master 默认接入、真实结构训练及网页对照
+
+- 分支 `codex/ppt-master-motif`，基线 `7d74e9e`。`/ppt` 改用完整官方 ppt-master 6.6.0：固定 13,016 文件摘要、只读挂载、新 MCP 入口和模型选定来源的 pin/read；旧制作工具与 host_delivery 不再用于默认 PPT。全部幻灯片由 GeneLoop 制作，测试者未修稿。
+- 新 `motif-libraries/ppt-master-v1` 来自 Attention/DoRA 两训练与 LoftQ 独立留出，经原 witnessed-edge 编译器生成一个首页读取衔接；真实 AdaLoRA 网页对照命中 1 次 verified skip。普通批量读取/会话私有临时目录/渲染环境优化不算 Motif 学习。Paper v7 仅用原证据重新编译共享代码兼容锁，0 新模型请求，旧库保留。
+- 两路完成六页 PPTX/PDF/PNG、备注及可编辑对象；网页上传/双路发送/预览/下载 SHA/刷新保留通过。Baseline 74 请求/$0.68057381/546.154s；Motif 86/$0.73033102/617.852s。Motif 费用高 7.31%，整体成本收益未成立，且两版都有公式/表格/来源缺陷，`quality_cost_promoted=false`。
+- Linux全量 Python 1046通过2跳过、Node817通过3跳过，smoke/motif:check通过；Windows定向28通过1跳过，全量受符号链接/环境限制不能称通过。完整失败、费用、配置和质量证据见[实验记录](../experiments/ppt-master-motif-20261018.md)。含被拒绝候选，共713请求，代理估费$5.74779583，账单/人工/CPU未计价，原累计账本未清零。
+- 私有原稿、下载核验、评测报告位于 `.local/deliverables/ppt-master-motif-20261018/`；服务器隔离实验的 `evaluation/private-evidence/` 保存原事件和有效配置。公开只存匿名摘要与认证。权限沿用真实API不限请求/费用/额外输出的测试授权。
+- 未完成：独立人类盲评、重复同质成本验证。接手优先处理普通流程的事实与渲染恢复，不将新库描述成全流程或科学判断学习。回退必须把旧代码、旧场景注册表、旧证书配套恢复；旧技能/库未删除。
+- 合并与正式切换状态将在完成发布后追加；当前这段不声称已上线。
+
+
 ## 2026-10-18：PPT 技能原生重测完成（原稿未人工修改）
 
 - 分支 `codex/scene-skill-effect-tests`，基线 `5a27208`。用户明确要求 GeneLoop 自己完成原技能和 ppt-master 制作，测试者不得参与内容、设计、修订。独立 SDK 候选及后来模型反馈修订、人工公式排版修订全部排除；不能当成 GeneLoop 原样效果。

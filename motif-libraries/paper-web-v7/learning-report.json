@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "new_training": true,
+  "method": "existing_witnessed_edge_compiler",
+  "training_tasks": 2,
+  "heldout_tasks": 1,
+  "artifacts": 1,
+  "library_digest": "0d8ea2f703b635f808e00b50cc64d429d901049aa752cadc5726498559d63f9c",
+  "manifest_digest": "18a69646917830c3d1206e9bdaa758125939e755f9aa6332ffb3b39b7fa05c83",
+  "evidence_sha256": "76ddb181021106915fea64ee02117c78db8fb3ef9d6324cb35a488fc9f459629",
+  "schema_capture_sha256": "0ba797b7a3ed5155d92e4fda235ba4b251162cc0e7f014bb778ea956d29da0b0",
+  "current_whole_schema_sha256": "f9b6146e3a51f6a783577809ed81168da2afb014c6e1350b00d1094363acc979",
+  "current_tool_count": 24,
+  "collection_source_sha": "30b5a37423f4f2b5e1568dc44d8442610069dc0c",
+  "collection_source_sha_basis": "optional_dataset_collection_metadata_not_inferred_from_current_checkout",
+  "current_candidate_source_tree_sha256": "e29f2a5f21ae6a804771b4255462ff36d67e91767811239e9d3ed6aaca9397bd",
+  "collection_tracked_dirty": true,
+  "collection_tree_scope": "Candidate tracked-source snapshot, including uncommitted changes when present; commit alone is not a clean-source claim.",
+  "compilation_source_sha": null,
+  "compilation_source_binding": "Archived candidate based on the recorded base commit plus the exact code_locks; no Git checkout at compile location. Original collection metadata is retained separately.",
+  "compilation_model_requests": 0,
+  "compilation_seconds": null,
+  "model_weights_trained": false,
+  "compilation_executes_scene_tools": false,
+  "common_native_tools": [
+    "web_search",
+    "web_fetch",
+    "bash",
+    "job_list",
+    "job_output",
+    "job_kill"
+  ],
+  "common_native_tools_in_certified_mcp_schema": false,
+  "common_capabilities_compatibility_scope": "Current native network, command and job policy/adapters/wiring are code-locked; their six tools remain separately admitted and are not learned, replayed or executed by this offline compiler. The complete 24-tool MCP descriptions and parameters remain exact-match guards.",
+  "trace_collection_requests": 15,
+  "trace_collection_proxy_usd": 0.00775239,
+  "excluded_collection": [
+    {
+      "task_id": "b285d931caea437b8eeffe3bdea9417b",
+      "status": "completed",
+      "mode": "baseline",
+      "events_sha256": "3434a02beb17385ec76b045f2b84f3b51ddca28cf704d0eb884971d9f846b544",
+      "failure_sha256": null,
+      "document_read_edge_observed": true,
+      "exclusion_scope": "retained_collection_attempt_not_used_for_independent_certification",
+      "requests": 10,
+      "tokens": {
+        "prompt_tokens": 50273,
+        "prompt_cache_hit_tokens": 46592,
+        "prompt_cache_miss_tokens": 3681,
+        "completion_tokens": 3879,
+        "total_tokens": 54152
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 10
+      },
+      "proxy_peak_usd": 0.0060386599999999995,
+      "actual_paid_usd": null,
+      "tool_calls": 8,
+      "tool_errors": 1,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "b285d931f2a64ee08e4cb700a4d08d92",
+      "status": "completed",
+      "mode": "baseline",
+      "events_sha256": "ecc549bdb1504d4b6355b6f8a13dfb6f0a9471f3998fb2ab44e06d076f8622f8",
+      "failure_sha256": null,
+      "document_read_edge_observed": false,
+      "exclusion_scope": "retained_collection_attempt_not_used_for_independent_certification",
+      "requests": 1,
+      "tokens": {
+        "prompt_tokens": 3481,
+        "prompt_cache_hit_tokens": 2944,
+        "prompt_cache_miss_tokens": 537,
+        "completion_tokens": 394,
+        "total_tokens": 3875
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 1
+      },
+      "proxy_peak_usd": 0.00065156,
+      "actual_paid_usd": null,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "b285d931fe6049aca440adbfbf0c0ca8",
+      "status": "completed",
+      "mode": "baseline",
+      "events_sha256": "d8910a32f333f81b38e8709a5afa8b0046b533c2f6edea4ffbfd43dac43ea2ac",
+      "failure_sha256": null,
+      "document_read_edge_observed": true,
+      "exclusion_scope": "retained_collection_attempt_not_used_for_independent_certification",
+      "requests": 4,
+      "tokens": {
+        "prompt_tokens": 15159,
+        "prompt_cache_hit_tokens": 13824,
+        "prompt_cache_miss_tokens": 1335,
+        "completion_tokens": 707,
+        "total_tokens": 15866
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 4
+      },
+      "proxy_peak_usd": 0.00133184,
+      "actual_paid_usd": null,
+      "tool_calls": 3,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "b285d93193af4b5cac5061e87c1fc339",
+      "status": "completed",
+      "mode": "baseline",
+      "events_sha256": "2d535deef6173adb8847aa6e5bf45bd3499f071dbdc34e4435427fadc6414c92",
+      "failure_sha256": null,
+      "document_read_edge_observed": true,
+      "exclusion_scope": "retained_collection_attempt_not_used_for_independent_certification",
+      "requests": 5,
+      "tokens": {
+        "prompt_tokens": 20547,
+        "prompt_cache_hit_tokens": 19072,
+        "prompt_cache_miss_tokens": 1475,
+        "completion_tokens": 1681,
+        "total_tokens": 22228
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 5
+      },
+      "proxy_peak_usd": 0.00257413,
+      "actual_paid_usd": null,
+      "tool_calls": 4,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    }
+  ],
+  "learning_total_requests": 35,
+  "learning_total_proxy_usd": 0.01834858,
+  "collection_cost_basis": "exact_task_id_ledger_observed_peak_estimate_not_provider_invoice",
+  "actual_paid_usd": null,
+  "review_scope": "structural_provenance_only",
+  "scientific_quality_reviewed": false,
+  "visual_quality_reviewed": false,
+  "quality_cost_promoted": false,
+  "scope": "model_selected_uploaded_document_default_first_page_read_not_manuscript_semantics_or_report_generation",
+  "new_training_for_recompilation": false,
+  "new_collection_tasks_for_recompilation": 0,
+  "compatibility_compilation_model_requests": 0,
+  "recompilation_of_manifest_digest": "18a69646917830c3d1206e9bdaa758125939e755f9aa6332ffb3b39b7fa05c83",
+  "previous_manifest_file_sha256": "7b5e9274b712501a59369403e5707b771a32bd7ffa75bf512844206bb85ad0d1",
+  "compatibility_changed_code_locks": [
+    "src/adapters/dsh_web_tasks.ts"
+  ],
+  "compatibility_scope": "Preserve the original pin_document/default-first-page artifacts, full 24-tool schemas, and independent two-train/one-heldout events. Recompile against the shared uploaded-source closed-continuation helper and session-private command temp/resources used by ppt-master. No new paper trace collection, model requests, tools, scientific judgment or quality/cost promotion.",
+  "previous_certification_sha256": "a85c887327fdc9ef94cd8781ebbd98692205723a0c6cc266354f015a0038cf2b",
+  "compilation_base_commit": "7d74e9e2fa05353a3cf0a1fcb054378e196a66b3",
+  "compilation_timing_note": "New compatibility compilation wall time not independently recorded; do not reuse the previous compilation duration."
+}

@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "status": "certified_read_library",
+  "artifacts": [
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_e182309c1157",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__ppt_master__pin_source",
+        "mcp__ppt_master__read_source_page"
+      ],
+      "source_trace_ids": [
+        "train-1",
+        "train-2"
+      ],
+      "source_task_fingerprints": [
+        "ppt-master-source-train-attention-v1",
+        "ppt-master-source-train-dora-v1"
+      ],
+      "contract_signature": "0c175b5ce299d49c1a96acb3adcbcf78359db15c8b93c9e00154e7903548df4e",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__ppt_master__pin_source",
+          "mcp__ppt_master__read_source_page"
+        ],
+        "operators": {
+          "mcp__ppt_master__pin_source": {
+            "tool": "mcp__ppt_master__pin_source",
+            "read_only": true,
+            "required_params": [
+              "name",
+              "sha256"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__ppt_master__read_source_page": {
+            "tool": "mcp__ppt_master__read_source_page",
+            "read_only": true,
+            "required_params": [
+              "source_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__ppt_master__pin_source",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__ppt_master__pin_source",
+                "from_field": "source_id",
+                "to_param": "source_id"
+              }
+            ],
+            "default_params": {
+              "page": 1
+            }
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt_master__pin_source",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__ppt_master__read_source_page",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "train-1": 1,
+        "train-2": 1
+      },
+      "validation_trace_id": "heldout-1",
+      "validation_task_fingerprint": "ppt-master-source-heldout-loftq-v1",
+      "certified_digest": "3bc4c22856eb6aad24ce988d8a1f565404d0adc67688c3c3236ad2822ba27cfc"
+    }
+  ],
+  "connectors": {},
+  "links": [],
+  "rejected": [],
+  "training_trace_ids": [
+    "train-1",
+    "train-2"
+  ],
+  "heldout_trace_ids": [
+    "heldout-1"
+  ],
+  "library_digest": "5a7ec5c37f071a20d3db58dfc311939bda69db5cf0332907d9adab31cf4f710f",
+  "task_identity_evidence": {
+    "train-1": {
+      "research_decision_id": "ppt-master-source-train-attention-v1",
+      "task_id": "cddefaf4f49447848d0f0263b7a0425f",
+      "question_sha256": "ec95f61d63345aaa3c9cdb6d76691128dc80fa18d2f3f2e180183b62637b7513",
+      "manifest_sha256": "4e3196dacb04d59fe0bc5a47d8754df94f759072ea3b0d6adf352fa20797b79a",
+      "events_sha256": "4eefa4d5f47091baa8464ef4515332be05430dd85ecd2ef98e13965a420c070e",
+      "identity_sha256": "e07405c151db7e3569aff576b4c32daedbeda2c9cac7829eb57f3411759d02b7"
+    },
+    "train-2": {
+      "research_decision_id": "ppt-master-source-train-dora-v1",
+      "task_id": "0dd4002fa2c149f8b742d3007beff63f",
+      "question_sha256": "9177e32051b55646bf355ccb63990c2f1ab807491061a3011857546374d5af21",
+      "manifest_sha256": "f75e397af2662bfe793e9107d27aa531ce26c6d6e386e08e57a6c8aab2a1308b",
+      "events_sha256": "5146ec815f8f0e780810f77270f0e78bec4dcba5287d68af051067af678465f2",
+      "identity_sha256": "98d5f91a9e2c71606e39565eb12a7dc1dd7d1cfed079b52c86de061438c7c0c0"
+    },
+    "heldout-1": {
+      "research_decision_id": "ppt-master-source-heldout-loftq-v1",
+      "task_id": "46afa6226320463c9049077901d93945",
+      "question_sha256": "bbad1e64ab7a1e315dab24eb57478afbd25c8aa053397ce041ebd2993264d233",
+      "manifest_sha256": "724d05092647b9753762f5d2fbf11c4e83e8b2583261b72759a34d70ea145a05",
+      "events_sha256": "aa6e467671d579faed46f853e811c9a68e3066060006df77219e9b82dec81d88",
+      "identity_sha256": "351da4c6cd753abffd334a6ea67defa055bdfab5d8cd23dd6c7d12edab58a29f"
+    }
+  }
+}

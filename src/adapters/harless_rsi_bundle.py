@@ -25,9 +25,10 @@ def load_product_bundle(root: Path, directory: Path, scene: str, *, private_root
     expected = {'ppt': 'ppt_read_v1', 'research-data-analysis': 'data_receipts_v3', 'paper-proofreading': 'paper_shadow_v1'}
     learned_ppt=scene=='ppt' and entry.get('runtime_kind')=='ppt_read_v2'
     learned_paper=scene=='paper-proofreading' and entry.get('runtime_kind')=='paper_document_read_v1'
+    learned_master=scene=='ppt' and entry.get('runtime_kind')=='ppt_master_v1'
     if private_root is not None and not learned_paper:
         raise ValueError('private learning only admits the existing paper document protocol')
-    learned=learned_ppt or learned_paper
+    learned=learned_ppt or learned_paper or learned_master
     if entry.get('schema_version') != 1 or entry.get('scene') != scene or (not learned and entry.get('runtime_kind') != expected.get(scene)) or entry.get('new_training') is not learned:
         raise ValueError('invalid existing product library')
     for name, version in entry['files'].items():
@@ -39,6 +40,8 @@ def load_product_bundle(root: Path, directory: Path, scene: str, *, private_root
             raise ValueError('product library artifact changed')
     info = {'runtime_kind': entry['runtime_kind'], 'runtime_mode': entry['mode'],
             'runtime_library': str(base / 'library.json'), 'runtime_library_sha256': sha(base / 'library.json')}
+    if learned_master:
+        return {**info, **_load_ppt_master_bundle(root, base, entry)}
     if learned_paper:
         return {**info, **_load_paper_document_bundle(root, base, entry)}
     if learned_ppt:
@@ -189,10 +192,69 @@ def _load_paper_document_bundle(root: Path, base: Path, entry: dict):
     return load_uploaded_bundle(root,base,'paper-proofreading',approved_read=True)
 
 
-def load_uploaded_bundle(root: Path, directory: Path, scene: str, *, approved_read: bool = False):
+def _load_ppt_master_bundle(root: Path, base: Path, entry: dict):
+    required={'certification.json','library.json','online-manifest.json','task.json','tool-schemas.json','source-evidence.json','learning-report.json'}
+    if not required.issubset(entry['files']) or entry.get('mode')!='execute':
+        raise ValueError('ppt-master release lacks locked evidence')
+    cert=json.loads((base/'certification.json').read_text(encoding='utf-8'))
+    evidence=json.loads((base/'source-evidence.json').read_text(encoding='utf-8'))
+    report=json.loads((base/'learning-report.json').read_text(encoding='utf-8'))
+    lock=json.loads((root/'scenarios/ppt_master/skill-lock.json').read_text(encoding='utf-8'))
+    if (cert.get('source_evidence_sha256')!=sha(base/'source-evidence.json') or
+            cert.get('learning_report_sha256')!=sha(base/'learning-report.json') or
+            report.get('skill_package_sha256')!=lock['package_sha256'] or
+            report.get('new_training') is not True or report.get('quality_cost_promoted') is not False or
+            len(evidence.get('train',[]))<2 or len(evidence.get('heldout',[]))!=1 or
+            report.get('training_tasks')!=len(evidence['train']) or report.get('heldout_tasks')!=1):
+        raise ValueError('ppt-master independent evidence or skill version invalid')
+    from .task_identity import require_distinct_decisions
+    require_distinct_decisions([*evidence['train'],*evidence['heldout']])
+    manifest=json.loads((base/'online-manifest.json').read_text(encoding='utf-8'))
+    pair=['mcp__ppt_master__pin_source', 'mcp__ppt_master__read_source_page']
+    if (len(manifest.get('artifacts',[]))!=1 or manifest['artifacts'][0].get('tools')!=pair or
+            set(manifest.get('contracts',{}))!=set(pair) or
+            manifest['contracts'][pair[0]].get('required_params')!=['name','sha256'] or
+            manifest['contracts'][pair[1]].get('required_params')!=['source_id'] or
+            manifest['contracts'][pair[0]].get('default_params')!={} or
+            manifest['contracts'][pair[0]].get('observed_anchor') is not True or
+            manifest['contracts'][pair[1]].get('default_params')!={'page':1} or
+            any(manifest['contracts'][t].get('read_only') is not True for t in pair) or
+            manifest.get('version_fields')!=dict.fromkeys(pair,'version_sha256')):
+        raise ValueError('ppt-master continuation exceeds the certified skill read')
+    schemas=json.loads((base/'tool-schemas.json').read_text(encoding='utf-8'))
+    if [t.get('name') for t in schemas]!=sorted([*pair,'mcp__ppt_master__read_skill_entry']):
+        raise ValueError('ppt-master complete schema mismatch')
+    library=json.loads((base/'library.json').read_text(encoding='utf-8'))
+    from src.motif_core.offline.trace_compiler import artifact_signature
+    from src.motif_core.offline.library_builder import validate_read_motif_library
+    validate_read_motif_library(library)
+    if (report.get('artifacts')!=1 or len(library.get('artifacts',[]))!=1 or
+            report.get('library_digest')!=library.get('library_digest') or
+            report.get('manifest_digest')!=manifest.get('manifest_digest') or
+            manifest.get('source_library_digest')!=library.get('library_digest')):
+        raise ValueError('ppt-master compilation digests disagree')
+    artifact=library['artifacts'][0]; online=manifest['artifacts'][0]
+    witnessed=artifact.get('source_task_fingerprints',[])
+    edge=artifact.get('transfer_evidence',[])
+    if (artifact.get('tools')!=pair or artifact.get('code_nodes') or online.get('code_nodes') or
+            artifact.get('certified_digest')!=artifact_signature(artifact) or
+            online.get('certified_digest')!=artifact.get('certified_digest') or
+            len(witnessed)<2 or len(witnessed)!=len(set(witnessed)) or
+            not set(witnessed).issubset(row['research_decision_id'] for row in evidence['train']) or
+            artifact.get('validation_task_fingerprint') not in {row['research_decision_id'] for row in evidence['heldout']} or
+            online.get('supporting_task_count')!=len(witnessed) or online.get('transfer_evidence')!=edge or
+            len(edge)!=1 or any(edge[0].get(k)!=v for k,v in {
+                'from_tool':pair[0],'to_tool':pair[1],'from_field':'source_id','to_param':'source_id'}.items()) or
+            edge[0].get('version_relation','same_source')!='same_source' or
+            any(row.get('skill_package_sha256')!=lock['package_sha256'] for row in [*evidence['train'],*evidence['heldout']])):
+        raise ValueError('ppt-master continuation lacks independent witnessed bindings')
+    return load_uploaded_bundle(root,base,'ppt',skill_read=True)
+
+
+def load_uploaded_bundle(root: Path, directory: Path, scene: str, *, approved_read: bool = False, skill_read: bool = False):
     if scene not in ('ppt', 'paper-proofreading', 'research-data-analysis', 'literature'):
         raise ValueError('unsupported uploaded scene')
-    policies = ('approved_uploaded_reads_v1',) if approved_read else (('ppt_uploaded_sources_v1','ppt_uploaded_sources_v2') if scene == 'ppt' else ('uploaded_source_handles_v1',))
+    policies = ('ppt_master_sources_v1',) if skill_read else ('approved_uploaded_reads_v1',) if approved_read else (('ppt_uploaded_sources_v1','ppt_uploaded_sources_v2') if scene == 'ppt' else ('uploaded_source_handles_v1',))
     base=directory.resolve(strict=True)
     cert_path=base/'certification.json'
     if cert_path.is_symlink() or cert_path.stat().st_size>1000000: raise ValueError('invalid certification')
