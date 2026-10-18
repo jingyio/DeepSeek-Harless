@@ -16,7 +16,7 @@ function setup() {
     createElement, querySelectorAll: () => [] };
   const timers = new Map(); let sequence = 0, reloads = 0;
   const window = { location: { reload: () => reloads++ } };
-  vm.runInNewContext(source, { window, document, MutationObserver: class { observe() {} },
+  vm.runInNewContext(source, { window, document, getComputedStyle: node => ({display:node.display || 'block'}), MutationObserver: class { observe() {} },
     setTimeout: (fn, delay) => { const id = ++sequence; timers.set(id, { fn, delay }); return id; },
     clearTimeout: id => timers.delete(id) });
   const [cover, notice] = document.documentElement.children;
@@ -68,6 +68,22 @@ test('head loader waits for ready list, current history and committed comparison
   assert.equal(rendered.children[0].props.renderSlot('conversation.view', {}, { only: 'chat' })[0], 'geneloop.loading.view');
   assert.deepEqual(f.mirrors, [['conversation.view', 'geneloop.loading.view']]);
   assert.equal(f.records[0].options.children['geneloop.loading.view'].scope, 'session');
+});
+
+test('native scroll and composer remain siblings; only their fixed body owns the mask',()=>{
+  const f=setup(),body=f.document.createElement('main'),scroll=f.document.createElement('section'),region=f.document.createElement('div');
+  let hostClass;
+  body.classList={add:name=>{hostClass=name;},remove:()=>{}};
+  scroll.closest=selector=>selector==='.wSkVaW_body'?body:null;
+  region.parentElement=scroll;
+  f.window.__geneLoopPageLoad.mount(region);
+  assert.equal(f.cover.parent,body,'the mask must be outside the scrolling history');
+  assert.equal(body.attributes['data-loading'],'true');
+  assert.equal(hostClass,'geneloop-conversation-load-host');
+  assert.equal(region.children.length,0,'no layout box or loader is appended inside the view seat');
+  const css=f.document.head.children.map(row=>row.textContent||'').join('\n');
+  assert.match(css,/geneloop-conversation-load-region\{display:contents\}/);
+  assert.doesNotMatch(css,/geneloop-conversation-load-region\{display:flex/);
 });
 
 test('late previous-page completion cannot uncover the next page and streaming never remasks', () => {
