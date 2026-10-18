@@ -26,7 +26,7 @@ def tessdata_directory():
     return str(path)
 
 
-def read_pdf(data: bytes, *, visuals=False, page_number=None):
+def read_pdf(data: bytes, *, visuals=False, page_number=None, force_visuals=False):
     import pymupdf as fitz
     digest = hashlib.sha256(data).hexdigest()
     with fitz.open(stream=data, filetype='pdf') as pdf:
@@ -68,7 +68,7 @@ def read_pdf(data: bytes, *, visuals=False, page_number=None):
                     method, text, warning = 'text_layer', native, 'pdf_page_ocr_failed_or_unavailable'
             # Include vector diagrams as well as embedded raster figures. A
             # scanned page also needs pixels; OCR does not interpret its plots.
-            visual = bool(images or page.get_drawings())
+            visual = force_visuals or bool(images or page.get_drawings())
             row = {'page': index + 1, 'source_id': f'pdf:{digest}:page:{index+1}',
                    'text': text, 'text_method': method, 'ocr_performed': 'ocr' in method,
                    'ocr_needed': needs_ocr, 'visual_present': visual,
