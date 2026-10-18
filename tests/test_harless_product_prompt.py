@@ -1,6 +1,7 @@
 """Web-only trusted persona configuration; never starts a server or model."""
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,13 +12,20 @@ from src.adapters.harless_product_prompt import product_persona, product_system_
 from src.adapters.harless_scenarios import prepare_scene_registry
 
 
-def test_sdk_defaults_are_unchanged_and_web_identity_does_not_rewrite_task_text():
+@pytest.mark.parametrize('python_parent', ['neutral', 'GeneLoop'])
+def test_sdk_defaults_are_unchanged_and_web_identity_does_not_rewrite_task_text(tmp_path, monkeypatch, python_parent):
+    # A product name in an interpreter or checkout path is ordinary MCP config.
+    # This preparation-only diagnostic never runs the synthetic interpreter.
+    monkeypatch.setattr(sys, 'executable', str(tmp_path / python_parent / 'python'))
     scenario = ROOT / 'scenarios/example/scenario.json'
     sdk = prepare_scenario(scenario)
     web = prepare_scenario(scenario, web_deployment=True)
     sdk_patch = Path(sdk['patch']).read_text(encoding='utf-8')
     web_patch = Path(web['patch']).read_text(encoding='utf-8')
-    assert 'GeneLoop' not in sdk_patch and 'includeHarnessIdentity' not in sdk_patch
+    sdk_prompt_header = sdk_patch.split('\n- {', 1)[0]
+    sdk_overrides = [json.loads(line[2:]) for line in sdk_patch.splitlines() if line.startswith('- {"id": "system-prompt"')]
+    assert 'GeneLoop' not in sdk_prompt_header and 'includeHarnessIdentity' not in sdk_prompt_header
+    assert sdk_overrides == []
     rows = [json.loads(line[2:]) for line in web_patch.splitlines() if line.startswith('- {"id": "system-prompt"')]
     assert next(row['config'] for row in rows if row.get('id') == 'system-prompt') == product_system_prompt()
     assert web['prompt'] == sdk['prompt']
