@@ -176,7 +176,7 @@ test('known preparation errors give safe actionable messages and are not report 
   ['data_input_format_unsupported', /未能读取附件，请重新发送/],
   ['data_requires_csv_or_tsv', /未能读取附件，请重新发送/],
   ['data_text_requires_utf8', /另存为 UTF-8/],
-  ['scene_input_limit', /最多 8 份/],
+  ['scene_input_limit', /本轮和继承的历史附件/],
   ['file_bytes_changed', /重新上传当前版本/],
  ]) {
   const error = code === 'scene_input_limit' ? Object.assign(Error('/home/private/secret'), {code}) : Error(code);

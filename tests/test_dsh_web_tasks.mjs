@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, utimesSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { randomUUID, createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -1564,6 +1564,12 @@ test('native Chat preserves frozen model requests and accepts replacement upload
   assert.match(model.messages[0].content.at(-1).text,/用户附件的只读提取结果/);
   assert.equal(JSON.stringify(f.agents.get(sessionId).events),before,'stream middleware must not mutate Session history');
   await f.complete(first);
+  // Production logs own attachment references after the upload receipt is
+  // consumed. The next turn must not rely on that retired one-shot receipt.
+  for(const event of f.agents.get(sessionId).events)if(event.type==='user/message')
+   event.data.content=event.data.content.map(part=>part.type==='file'?{type:'file',attachment:one.file}:part);
+  const resolve=f.ctx.fileUploads.resolve;
+  f.ctx.fileUploads.resolve=(agent,receipt)=>receipt===one.receiptId?undefined:resolve(agent,receipt);
   const two=await upload('source version two');
   const accepted=await send('upload-second',two.receiptId);
   assert.ok(accepted.comparison_id,'new source version is admitted in a fresh private lane');
@@ -1572,10 +1578,146 @@ test('native Chat preserves frozen model requests and accepts replacement upload
    child=(await f.api()).value.tasks.find(row=>row.session_id!==sessionId && f.promptCalls.some(call=>call.requestId===row.request_id));
    if(child)break;await new Promise(resolve=>setTimeout(resolve,10));
   }
-  assert.ok(child);assert.equal(child.scene_inputs.length,1);
+  assert.ok(child);assert.equal(child.scene_inputs.length,2,'new versions retain the original file for comparison');
   assert.notEqual(child.scene_inputs[0].version_sha256,first.scene_inputs[0].version_sha256);
+  assert.equal(child.scene_inputs[1].version_sha256,first.scene_inputs[0].version_sha256);
+  assert.match(child.scene_inputs[1].name,/notes-previous-[a-f0-9]{8}\.txt$/);
+  assert.equal(readFileSync(join(f.directory,'sessions',sessionId,'work','inputs',first.scene_inputs[0].file),'utf8'),'source version one');
   await f.complete(child);
  } finally {await f.close();}
+});
+
+// Deterministic routing diagnostics only: no provider calls or document making.
+async function settleAttachmentTurn(f, sessionId, id, onRunning=async()=>{}) {
+ for(let i=0;i<250;i++){
+  for(const task of (await f.api()).value.tasks)if(task.status==='running'&&f.promptCalls.some(c=>c.requestId===task.request_id)){
+   await onRunning(task);await f.complete(task);
+  }
+  const req=new Request('http://local/api/harless/comparisons?session_id='+sessionId+'&id='+id);req.authorized=true;
+  const value=await(await f.routes.get('/api/harless/comparisons').fetch(req)).json();
+  if(['completed','failed','cancelled'].includes(value.status))return value;
+  await new Promise(r=>setTimeout(r,10));
+ }
+ throw Error('attachment fixture did not settle');
+}
+const attachmentScenes=()=>[{...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]},
+ {...multiScenes[0],id:'ppt',preset:'sss-ppt',adapter:'ppt',mcp_rows:[]},
+ {...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]},
+ {...multiScenes[0],id:'paper-proofreading',preset:'sss-paper',adapter:'workspace',mcp_rows:[]}];
+
+test('original attachments accumulate across new receipts, scene changes and restart without crossing conversations',options,async()=>{
+ for(const [scene,shortcut] of [['new-scene',''],['ppt','/ppt '],['research-data-analysis','/data '],['paper-proofreading','/paper ']]){
+  const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['ppt','research-data-analysis','paper-proofreading']});
+  try{
+   const {sessionId}=await f.ctx.sessionController.create({});
+   const upload=async(name,text,parent=sessionId)=>f.ctx.fileUploads.uploadStream({sessionId:parent,name,data:(async function*(){yield Buffer.from(text);})()});
+   const send=async(id,name,text,prefix=shortcut)=>{
+    const file=await upload(name,text);
+    return f.ctx.sessionController.prompt({sessionId,requestId:id,mode:'queue',content:[{type:'text',text:prefix+'Compare all attached versions'},{type:'file',receiptId:file.receiptId}]},new AbortController().signal);
+   };
+   const first=await send('append-a','a.txt','original A');
+   if(first.comparison_id)assert.equal((await settleAttachmentTurn(f,sessionId,first.comparison_id)).status,'completed');
+   else await f.complete((await f.api()).value.tasks.find(t=>t.session_id===sessionId));
+   const foreign=await f.ctx.sessionController.create({});
+   await upload('foreign.txt','must not enter another conversation',foreign.sessionId);
+   const second=await send('append-b','b.txt','original B');
+   const view=await settleAttachmentTurn(f,sessionId,second.comparison_id);assert.equal(view.status,'completed',scene+JSON.stringify(view));
+   for(const lane of Object.values(view.lanes)){
+    const task=(await f.api()).value.tasks.find(t=>t.task_id===lane.task_id);
+    assert.deepEqual(task.scene_inputs.map(x=>x.name).sort(),['a.txt','b.txt'],scene);
+   }
+   await f.restart();
+   const third=await send('append-c','c.txt','original C',scene==='paper-proofreading'?'/ppt ':'/paper ');
+   const final=await settleAttachmentTurn(f,sessionId,third.comparison_id);assert.equal(final.status,'completed',scene+JSON.stringify(final));
+   for(const lane of Object.values(final.lanes)){
+    const task=(await f.api()).value.tasks.find(t=>t.task_id===lane.task_id);
+    assert.deepEqual(task.scene_inputs.map(x=>x.name).sort(),['a.txt','b.txt','c.txt']);
+    for(const input of task.scene_inputs)assert.equal(readFileSync(join(f.directory,'sessions',task.session_id,'work','inputs',input.file),'utf8'),'original '+input.name[0].toUpperCase());
+   }
+  }finally{await f.close();}
+ }
+});
+
+test('generated DOCX transfers to paper with exact lane bytes',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['ppt','paper-proofreading']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const send=(text,id)=>f.ctx.sessionController.prompt({sessionId,requestId:id,mode:'queue',content:[{type:'text',text}]},new AbortController().signal);
+  const a=await send('/ppt source routing diagnostic','docx-first');
+  const first=await settleAttachmentTurn(f,sessionId,a.comparison_id,async task=>{
+   const folder=join(f.directory,'sessions',task.session_id,'work','outputs','code');mkdirSync(folder,{recursive:true});
+   writeFileSync(join(folder,'result.docx'),'DOCX transfer marker: '+task.session_id);
+   // The marker is synthetic; put it explicitly inside the task window so
+   // filesystem mtime precision cannot decide this routing assertion.
+   const generatedAt=new Date(Date.parse(task.started_at)+1);utimesSync(join(folder,'result.docx'),generatedAt,generatedAt);
+   await new Promise(r=>setTimeout(r,15));
+  });
+  assert.equal(first.status,'completed');
+  const extra=await f.ctx.fileUploads.uploadStream({sessionId,name:'notes.txt',data:(async function*(){yield Buffer.from('review notes');})()});
+  const b=await f.ctx.sessionController.prompt({sessionId,requestId:'docx-paper',mode:'queue',content:[
+   {type:'text',text:'/paper Review the document produced in the previous turn with these notes'},{type:'file',receiptId:extra.receiptId}]},new AbortController().signal);
+  const second=await settleAttachmentTurn(f,sessionId,b.comparison_id);assert.equal(second.status,'completed',JSON.stringify(second));
+  for(const lane of ['baseline','motif']){
+   const task=(await f.api()).value.tasks.find(t=>t.task_id===second.lanes[lane].task_id);
+   assert.equal(task.scene_inputs.length,2);const document=task.scene_inputs.find(x=>x.name==='result.docx');assert.ok(document);
+   assert.equal(readFileSync(join(f.directory,'sessions',task.session_id,'work','inputs',document.file),'utf8'),'DOCX transfer marker: '+first.lanes[lane].session_id);
+  }
+ }finally{await f.close();}
+});
+
+test('native Chat DOCX is pinned before switching to paper and remains readable after a restart',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const send=(text,id)=>f.ctx.sessionController.prompt({sessionId,requestId:id,mode:'queue',content:[{type:'text',text}]},new AbortController().signal);
+  await send('Native document routing diagnostic','native-docx');const first=(await f.api()).value.tasks.find(t=>t.session_id===sessionId);
+  const folder=join(f.directory,'sessions',sessionId,'work','outputs','code');mkdirSync(folder,{recursive:true});
+  const bytes=Buffer.from('native DOCX transfer marker, not an authored document');writeFileSync(join(folder,'native.docx'),bytes);
+  const generatedAt=new Date(Date.parse(first.started_at)+1);utimesSync(join(folder,'native.docx'),generatedAt,generatedAt);
+  await new Promise(r=>setTimeout(r,15));await f.complete(first);await f.restart();
+  const followup=await send('/paper Read my previously generated DOCX','native-docx-paper');
+  const result=await settleAttachmentTurn(f,sessionId,followup.comparison_id);assert.equal(result.status,'completed',JSON.stringify(result));
+  for(const lane of Object.values(result.lanes)){
+   const task=(await f.api()).value.tasks.find(t=>t.task_id===lane.task_id);
+   assert.equal(task.scene_inputs.length,1);assert.equal(task.scene_inputs[0].name,'native.docx');
+   assert.deepEqual(readFileSync(join(f.directory,'sessions',task.session_id,'work','inputs',task.scene_inputs[0].file)),bytes);
+  }
+ }finally{await f.close();}
+});
+
+test('changed historical attachment bytes fail before any subsequent model dispatch',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const bytes=Buffer.from('original A'),file=await f.ctx.fileUploads.uploadStream({sessionId,name:'a.txt',data:(async function*(){yield bytes;})()});
+  file.file.sha256=createHash('sha256').update(bytes).digest('hex');
+  await f.ctx.sessionController.prompt({sessionId,requestId:'hash-a',mode:'queue',content:[{type:'text',text:'Inspect A'},{type:'file',receiptId:file.receiptId}]},new AbortController().signal);
+  await f.complete((await f.api()).value.tasks.find(t=>t.session_id===sessionId));
+  const read=f.ctx.attachments.readFileStream;
+  f.ctx.attachments.readFileStream=async function*(ref){if(ref.name==='a.txt')yield Buffer.from('modified A');else yield* read(ref);};
+  const calls=f.promptCalls.length;
+  const next=await f.ctx.sessionController.prompt({sessionId,requestId:'hash-b',mode:'queue',content:[{type:'text',text:'/paper inspect the earlier original'}]},new AbortController().signal);
+  const result=await settleAttachmentTurn(f,sessionId,next.comparison_id);
+  assert.equal(result.status,'failed');assert.match(result.lanes.baseline.failure,/内容已发生变化/);assert.equal(f.promptCalls.length,calls);
+ }finally{await f.close();}
+});
+
+test('attachment inheritance reports capacity overflow instead of silently omitting originals',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['ppt']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({}),files=[];
+  for(let i=0;i<8;i++){
+   const file=await f.ctx.fileUploads.uploadStream({sessionId,name:`source-${i}.txt`,data:(async function*(){yield Buffer.from('source '+i);})()});
+   files.push({type:'file',receiptId:file.receiptId});
+  }
+  await f.ctx.sessionController.prompt({sessionId,requestId:'capacity-a',mode:'queue',content:[{type:'text',text:'Read originals'},...files]},new AbortController().signal);
+  await f.complete((await f.api()).value.tasks.find(t=>t.session_id===sessionId));
+  const extra=await f.ctx.fileUploads.uploadStream({sessionId,name:'extra.txt',data:(async function*(){yield Buffer.from('extra');})()});
+  const calls=f.promptCalls.length;
+  const next=await f.ctx.sessionController.prompt({sessionId,requestId:'capacity-b',mode:'queue',content:[{type:'text',text:'Compare all nine originals'},{type:'file',receiptId:extra.receiptId}]},new AbortController().signal);
+  const result=await settleAttachmentTurn(f,sessionId,next.comparison_id);
+  assert.equal(result.status,'failed');assert.match(result.lanes.baseline.failure,/附件超出上传限制/);assert.equal(f.promptCalls.length,calls);
+ }finally{await f.close();}
 });
 
 test('General workspace keeps its tools without requiring uploads', options, async()=>{
