@@ -19,7 +19,7 @@
   "compilation_source_sha": null,
   "compilation_source_binding": "exact source locks; compatibility recompilation from unchanged collection evidence",
   "compilation_model_requests": 0,
-  "compilation_seconds": 0.46955698542296886,
+  "compilation_seconds": 0.4832990746945143,
   "model_weights_trained": false,
   "compilation_executes_scene_tools": false,
   "common_native_tools": [

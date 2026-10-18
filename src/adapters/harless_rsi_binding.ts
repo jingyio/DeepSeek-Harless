@@ -161,6 +161,7 @@ export function bindUploadedSourceTask(workspace:string,inputs:any[],request:any
   for (const [tool,contract] of Object.entries(manifest.contracts) as any[]) {
     if (!manifest.version_fields[tool]) throw Error('rsi_unversioned_contract');
     const conversion = 'mcp__ppt_master__convert_source' in manifest.contracts;
+    if(conversion&&contract.observed_anchor!==true&&!pdfVersions.length)continue;
     source_versions[tool]=contract.observed_anchor === true ? '@observed' :
       conversion ? [...new Set(pdfVersions)] : '@from_anchor';
   }

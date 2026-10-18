@@ -12,7 +12,7 @@
   "quality_cost_promoted": false,
   "scientific_quality_reviewed": false,
   "compilation_model_requests": 0,
-  "compilation_seconds": 0.9215876730158925,
+  "compilation_seconds": 0.9879891080781817,
   "trace_collection_requests": 380,
   "trace_collection_proxy_usd": 3.9790195099999988,
   "excluded_collection": [

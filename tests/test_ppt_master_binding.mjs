@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 test('PPTX template pins cannot enter the historical PDF conversion edges, including mixed input',
  {skip:!process.features?.typescript},async()=>{
  const {bindUploadedSourceTask}=await import('../src/adapters/harless_rsi_binding.ts');
+ const {parseStructuredTask}=await import('../src/motif_core/online_skill_runtime.mjs');
  const root=realpathSync(mkdtempSync(join(tmpdir(),'ppt-version-scope-')));mkdirSync(join(root,'inputs'));
  try{
   const inputs=[['paper.pdf','%PDF-1.7 test'],['template.pptx','PK test'],['fake.pdf','not a PDF']].map(([file,bytes])=>{
@@ -19,8 +20,9 @@ test('PPTX template pins cannot enter the historical PDF conversion edges, inclu
   for(const selected of [inputs,[inputs[1]]]){
    const bound=bindUploadedSourceTask(root,selected,{task_id:'task',session_id:'session',content:[{type:'text',text:'Reuse this template'}]},manifest);
    assert.equal(bound.source_versions[pin],'@observed');
-   assert.deepEqual(bound.source_versions[convert],selected.length===1?[]:[inputs[0].version_sha256]);
+   assert.deepEqual(bound.source_versions[convert],selected.length===1?undefined:[inputs[0].version_sha256]);
    assert.deepEqual(bound.source_versions[read],bound.source_versions[convert]);
+   assert.doesNotThrow(()=>parseStructuredTask(bound,manifest));
   }
  }finally{rmSync(root,{recursive:true,force:true});}
 });
