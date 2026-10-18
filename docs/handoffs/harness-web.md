@@ -1,5 +1,9 @@
 # DeepSeek Harless Web 当前交接
 
+## 2026-10-18：Paper / Data benchmark 实际测试
+
+用户已测 PPT，本次正式网页 Pro/Off 各做一次成对任务。Paper 两侧通过参考评分；Data Baseline 数值与原脚本重跑通过，Motif 将非法数错计为 10（应为 8）、脚本未进入下载交付，未通过。63 次请求、代理估费 $0.31953671，只有 Paper 有一次验证跳过。发现 Paper 发送后草稿残留；本次仅记录和测试，没有修复运行代码。详见[单次对照记录](../experiments/paper-data-benchmark-20261018.md)，不能泛化为稳定降本。
+
 ## 2026-10-18：双栏分别显示进度
 
 用户最新要求覆盖下方“统一一个提示”的旧决定。Baseline/Motif 各自在回复下方显示 GeneLooping，各侧独立结束；双栏水合后不再重复显示原生全局提示，普通 Chat 继续使用原生即时反馈。隐藏无报告/文件和空回复占位，保留真实错误与已验证文件。当前 DeepSeek 两侧原本已并行，新增覆盖三个场景及预算隔离的回归，详情见[复核记录](../experiments/geneloop-paired-progress-20261018.md)。
