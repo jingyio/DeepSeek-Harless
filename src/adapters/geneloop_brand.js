@@ -33,17 +33,22 @@
       // network stalls must never leave an opaque mask over the application.
       timeout = setTimeout(() => release(true), 20000);
     };
-    // Keep all Session content, including its composer, inside one explicit
-    // loading boundary. The indicator is anchored to the viewport-sized seat.
-    style.textContent += `.geneloop-page-loader{background:var(--dsw-alias-bg-base,#141414)}.geneloop-conversation-load-region{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;position:relative;isolation:isolate}.geneloop-conversation-load-region>:not(.geneloop-page-loader):not(.geneloop-load-notice){flex:1;min-height:0}.geneloop-conversation-load-region[data-loading=true]>:not(.geneloop-page-loader):not(.geneloop-load-notice){visibility:hidden;pointer-events:none}.geneloop-conversation-load-region>.geneloop-page-loader{position:absolute;inset:0;z-index:20;background:var(--dsw-alias-bg-base,#141414)}.geneloop-conversation-load-region>.geneloop-page-loader .geneloop-loading-mark{width:44px;height:44px}.geneloop-conversation-load-region>.geneloop-page-loader .geneloop-loading-mark img{width:20px;height:30px}.geneloop-conversation-load-region>.geneloop-load-notice{position:absolute;z-index:21;max-width:calc(100% - 32px)}`;
-    let mountedRegion;
-    const syncBoundary = () => mountedRegion?.setAttribute('data-loading', String(!cover.hidden));
+    // Preserve native display:contents seats. The composer is a sibling of
+    // the Session view, so mask the fixed body outside the history scroller.
+    style.textContent += `.geneloop-page-loader{background:var(--dsw-alias-bg-base,#141414)}.geneloop-conversation-load-region{display:contents}.geneloop-conversation-load-host{position:relative;isolation:isolate}.geneloop-conversation-load-host[data-loading=true]>:not(.geneloop-page-loader):not(.geneloop-load-notice){visibility:hidden;pointer-events:none}.geneloop-conversation-load-host>.geneloop-page-loader{position:absolute;inset:0;z-index:20;background:var(--dsw-alias-bg-base,#141414)}.geneloop-conversation-load-host>.geneloop-page-loader .geneloop-loading-mark{width:44px;height:44px}.geneloop-conversation-load-host>.geneloop-page-loader .geneloop-loading-mark img{width:20px;height:30px}.geneloop-conversation-load-host>.geneloop-load-notice{position:absolute;z-index:21;max-width:calc(100% - 32px)}`;
+    let mountedHost;
+    const syncBoundary = () => mountedHost?.setAttribute('data-loading', String(!cover.hidden));
     arm();
     return window.__geneLoopPageLoad = {
       mount(region) {
         if (!region) return;
-        mountedRegion = region;
-        region.append(cover, notice); label.textContent = '正在加载对话…'; syncBoundary();
+        let host = region.parentElement;
+        while (host && getComputedStyle(host).display === 'contents') host = host.parentElement;
+        // Pinned DSH 0.1.5-rc.3 body owns both history and resident composer.
+        host = host?.closest?.('.wSkVaW_body') || host || region;
+        if (host !== mountedHost) mountedHost?.classList?.remove('geneloop-conversation-load-host');
+        mountedHost = host; host.classList?.add('geneloop-conversation-load-host');
+        host.append(cover, notice); label.textContent = '正在加载对话…'; syncBoundary();
       },
       select(id, ready, state) {
         if (current.id !== id) {
