@@ -19,10 +19,11 @@ from transformers import AutoModel, AutoTokenizer
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIR = ROOT / ".local/models/qwen3-embedding-0.6b"
+MODEL_DIR = Path(os.environ.get('SSS_EMBED_MODEL_DIR', ROOT / ".local/models/qwen3-embedding-0.6b"))
 MODEL_ID = "Qwen/Qwen3-Embedding-0.6B"
 MODEL_SHA256 = "0437e45c94563b09e13cb7a64478fc406947a93cb34a7e05870fc8dcd48e23fd"
-MAX_TOKENS = 2048  # The Motif decision scope is much smaller than model capacity.
+MAX_TOKENS = int(os.environ.get('SSS_EMBED_MAX_TOKENS', '2048'))
+MAX_CHARS = int(os.environ.get('SSS_EMBED_MAX_CHARS', '2000'))
 
 
 class LocalEmbedder:
@@ -30,18 +31,20 @@ class LocalEmbedder:
         if not (MODEL_DIR / "model.safetensors").is_file():
             raise FileNotFoundError("download the pinned embedding weights first")
         with (MODEL_DIR / "model.safetensors").open("rb") as stream:
-            if hashlib.file_digest(stream, "sha256").hexdigest() != MODEL_SHA256:
+            checksum = hashlib.sha256()
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''): checksum.update(chunk)
+            if checksum.hexdigest() != MODEL_SHA256:
                 raise ValueError("embedding weights do not match the pinned SHA-256")
         device_name = os.environ.get("SSS_EMBED_DEVICE") or (
             "mps" if torch.backends.mps.is_available() else "cpu")
-        if device_name not in {"mps", "cpu"}:
-            raise ValueError("SSS_EMBED_DEVICE must be mps or cpu")
+        if device_name not in {"mps", "cpu", "cuda"}:
+            raise ValueError("SSS_EMBED_DEVICE must be mps, cpu or cuda")
         self.device = torch.device(device_name)
         self.tokenizer = AutoTokenizer.from_pretrained(
             MODEL_DIR, local_files_only=True, padding_side="left")
         self.model = AutoModel.from_pretrained(
             MODEL_DIR, local_files_only=True,
-            dtype=torch.float16 if device_name == "mps" else torch.float32,
+            dtype=torch.float16 if device_name in ("mps", "cuda") else torch.float32,
         ).to(self.device).eval()
 
     def embed(self, texts: list[str]) -> list[list[float]]:
@@ -68,14 +71,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if not 1 <= length <= 32000:
+            if not 1 <= length <= 128000:
                 raise ValueError("invalid request size")
             payload = json.loads(self.rfile.read(length))
             texts = payload.get("input") if isinstance(payload, dict) else None
             if (not isinstance(payload, dict) or payload.get("model") != MODEL_ID
                     or not isinstance(texts, list) or not 2 <= len(texts) <= 13
                     or any(not isinstance(item, str) or not item.strip()
-                           or len(item) > 2000 for item in texts)):
+                           or len(item) > MAX_CHARS for item in texts)):
                 raise ValueError("invalid bounded embedding request")
             vectors = self.embedder.embed(texts)
         except (ValueError, TypeError, json.JSONDecodeError) as error:
@@ -101,8 +104,9 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     os.environ["HF_HUB_OFFLINE"] = "1"
     Handler.embedder = LocalEmbedder()
-    server = HTTPServer(("127.0.0.1", 8776), Handler)
-    print(f"SSS local embeddings ready at http://127.0.0.1:8776/v1/embeddings",
+    port = int(os.environ.get('SSS_EMBED_PORT', '8776'))
+    server = HTTPServer(("127.0.0.1", port), Handler)
+    print(f"SSS local embeddings ready at http://127.0.0.1:{port}/v1/embeddings",
           flush=True)
     server.serve_forever()
 

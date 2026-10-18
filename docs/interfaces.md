@@ -810,3 +810,59 @@ DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路�
 原生图片继续由公开 decoder 验证并同时保留像素和文件来源。论文最多 16 个附件（其中图片最多 8 个），其他场景总数仍为 8。停止钩子按任务实际流程选择 PPT 恢复、普通论文 `export_review_report` 恢复或已启动的引用报告验收；有效引用 PDF 不再要求重复生成普通报告。缺失/过期来源与预算守卫不变。LaTeX 静态诊断中的所有来源相对路径统一用 POSIX `/`，不改变磁盘路径权限判断。
 
 PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿用 r5 原始两训练/一留出的已见证读取图，经既有离线编译器重编并绑定当前执行代码。r5 原库/证书不改；v1/v2 PPT、普通上传与论文专用 `approved_uploaded_reads_v1` 在同一 Shared RSI Runtime 中按各自参数和守卫准入。
+## Script Motif 实验接口
+
+2026-10-19，实验入口 `scripts/script-motif-web.py` 仅替换本次生成的私有 `host.patch.yml` 中两个插件 URI：`script_motif_web.ts` 包装原生 Web 的 provider continuation，`script_motif_shell.ts` 包装现有命令执行器。原生审批、任务归属、模型配置、预算与工具守卫先执行。生产 `dsh_web_tasks.ts`、`geneloop_shell.ts`、Registry 和既有认证库保持原字节。不是独立 Agent 循环，也不是已发布产品功能。
+
+## 编译与认证
+
+`learn-script-motifs.py --task <留出任务目录> --task <正常来源任务目录> --output <新的私有目录>` 消费已完成的真实 baseline 事件。第一项固定留出，后续为挖掘来源。Python AST 仅准入单条 Python `-c`/heredoc（可有 `cd`），从当前工作区中实际存在的路径字面量生成参数槽、文件格式/JSON shape 契约。描述来自原始工具意图与输出标签，不要求每种脚本有手写规则。通用 Bash 管道、外部网络脚本、任意工具 DAG 尚未新增支持。
+
+`certify-script-motifs.mjs` 在 OS 沙箱内重跑原脚本、参数化脚本及不同字节的留出输入，要求历史 stdout 可重现、参数化前后等价、结果确定且随输入变化。出现只在来源数据中存在的常量选择器、未知路径、歧义绑定、过大输出或不允许操作时拒绝。认证不证明算法或领域结论正确；任务专属的数字、正则等常量仍可能漏检。原始轨迹/观察/库只保存在 `.local/`。
+
+IR 为 `sandboxed_script_motif_library` v1：`programs[]` 保存 `id/version/language/template/inputs/description/source_goal/predecessor/intent/certification`，库保存 `code_locks/digest/heldout_task_id/compilation_model_requests`。运行时校验摘要、来源等价证据、程序 ID 和执行代码锁，最多加载 12 个算子。代码变化必须实际重跑认证，不能只更新哈希。当前库不是恶意管理员不可伪造的签名证书。
+
+## 匹配与执行
+
+结构先检查最近一次成功工具的类型、当前可见文件契约、唯一绑定与文件版本；语义分别比较当前完整任务和历史任务目标、最近工具意图和历史前驱意图。候选分差不足、相关性不够、与可选负例更接近、embedding 不可用或输入歧义时回退模型。当前只用一阶前驱与文件证据，没有完整任务进度/Evidence 依赖图，因此不同脚本仍可能重复做相近检查。
+
+默认 `minSimilarity=.88/minGoalSimilarity=.6/minMargin=.04`。本轮诊断用 `.5/.6/.04` 加三个负目标；这是小样本校准，不是一般文档校对的安全阈值。内部调用使用一次性 `geneloop-script <id> <nonce>`，不把整个历史脚本加入模型上下文、不新增工具 schema。grant 绑定当前 session/输入哈希，30 秒失效。Bash 在只读、无网络沙箱执行当前数据，回执验证输出摘要和执行前后输入版本。每个程序/输入版本组合最多执行一次；回执不通过后停止该任务的后续接管，继续模型处理。
+
+在线输出上限 16 KB，CPU 上限 20 秒；Linux 复用 bubblewrap，内存地址空间上限 512 MB。macOS 必须显式 `SSS_LOCAL_SCRIPT_EXPERIMENT=1`，使用 sandbox-exec，未提供 Linux 等价的内存上限；仅在本地隔离实验验收，不代表生产 macOS 支持。命令 broker 模式拒绝；Windows 未支持。Python 是执行历史 Python 脚本所必需的运行时，不宣称已无 Python 依赖。
+
+## 配置与真实复现
+
+先按 README 安装固定依赖，配置真实 API、已审核的 `HARLESS_PAPER_RENDERER_ROOT` 与 `HARLESS_REPORT_FONT`；完整报告实验前确认渲染器可用。本地 embedding 为可选独立环境：`scripts/local_embedding_server.py`，当前固定 Qwen3-Embedding-0.6B 权重摘要；配置 `SSS_EMBED_MODEL_DIR/SSS_EMBED_DEVICE/SSS_EMBED_PORT`。完整长题面需显式 `SSS_EMBED_MAX_CHARS=16000`、`SSS_EMBED_MAX_TOKENS=8192`，超长输入拒绝，不静默截掉限制语句。模型依赖未加入基础插件依赖。
+
+私有 JSON sidecar 示例（路径由实验者填写；默认保守阈值）：
+
+```json
+{
+  "mode": "shadow",
+  "library": "/absolute/private/round/library.json",
+  "endpoint": "http://127.0.0.1:8786/v1/embeddings",
+  "model": "Qwen/Qwen3-Embedding-0.6B",
+  "minSimilarity": 0.88,
+  "minGoalSimilarity": 0.6,
+  "minMargin": 0.04
+}
+```
+
+所有实验在独立检出目录执行。以下启动真实 API；默认本次 1 美元，已有无限额授权时才使用 `--budget-usd 0`。请求不限，默认单次输出 8,000；本轮观察到完整报告会触及此上限，输出完成与质量必须单独检查，不能看到 completed 就判成功。
+
+```sh
+node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
+  --source /path/to/private/submission.zip --mode baseline
+node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
+  --source /path/to/private/submission.zip --mode shadow --script-config /path/to/private/shadow.json
+node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
+  --source /path/to/private/submission.zip --mode execute --script-config /path/to/private/execute.json
+```
+
+三组使用同一模型、题面、工具和输出上限；默认题面为 `scenarios/paper-submission/reference-audit.prompt.md`，可显式 `--prompt`。记录在 `.local/script-motif-experiments/<run-id>/`，原生任务在 `.local/web/runs/<run-id>/tasks/`。生产/native mode 保持 `baseline/rsi=false` 以隔离旧 Motif；**实验 mode 以 sidecar 为准**。原生 UI 的 `verified_skips` 不包含此实验计数，应读取 `script-motif-audit.jsonl` 或 `summarize-script-motif-run.py --task <task-dir>`。该核算区分真实 provider 请求、认证跳过、Shadow 候选、PDF 文件存在与质量评审；不自动计算净节省。
+
+## 自动学习生命周期
+
+`--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。worker 不调用模型、不接受有 Script sidecar 的任务作为来源，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
+
+下个任务的 sidecar 可以用 `learningStore` 替代 `library`，按 owner 加载 pointer，任务开始后冻结。不能用同一论文的重复任务声称独立科研决定。当前是最小实验生命周期，worker 崩溃监控、自动淘汰/覆盖合并、负收益降权与前端可视状态仍待完善。

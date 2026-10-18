@@ -1,5 +1,10 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-19：独立 Script Motif 实验，未发布
+
+- `codex/paper-script-motif` 基于 `9f945a5`，通过独立 launcher/wrapper 跑通真实 Python 脚本参数化、认证、语义匹配、直接执行及自动学习；生产 Web/shell、Registry、旧认证库与原用户工作区保持不变。用户要求稳定后才 PR，当前未推送、未 PR、未部署。
+- 原题真实对照未证明降本：最新 Execute 4 次验证跳过，但 173 请求/$0.260957028，高于 Baseline 88/$0.220640676，最终报告触及输出上限而不合格。完整失败/账本见 [实验](../experiments/paper-script-motif-20261018-v1.md)，接手动作见 [论文交接](paper-proofreading.md)。最终本地 Python 881/Node 850 通过；V100 SSH 失败，远程尝试费用尚待核清。
+
 ## 2026-10-18：成员沙箱公开证书依赖补齐
 
 - PR #81 合入并发布后，真实成员账号首次 PPT Chat 在1.875秒内接收、六页读取通过；第二轮切 Pro/PPT 时，优化侧被 `runtime_bundle_certification_invalid` 正确拒绝并回退。宿主文件摘要全匹配；实际成员命名空间仅缺 `/app/config/pdf-ocr-assets.json`，该公开清单已在 PDF 接入时进入证书，但产品挂载白名单未同步。
