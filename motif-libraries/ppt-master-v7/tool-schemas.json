@@ -1,0 +1,89 @@
+[
+  {
+    "name": "mcp__ppt_master__convert_source",
+    "description": "Convert a pinned PDF with the official ppt-master converter in a fresh session-private directory. Originals stay read-only; no slides are authored.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id"
+      ],
+      "title": "convert_sourceArguments"
+    }
+  },
+  {
+    "name": "mcp__ppt_master__pin_source",
+    "description": "Pin a model-selected listed upload to its exact current version. Never choose the paper for the model.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "sha256"
+      ],
+      "title": "pin_sourceArguments"
+    }
+  },
+  {
+    "name": "mcp__ppt_master__read_converted_source",
+    "description": "Read the complete official Markdown and asset paths after rechecking source permission and every converted file. Does not certify visual or scientific accuracy.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "converted_id": {
+          "title": "Converted Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "converted_id"
+      ],
+      "title": "read_converted_sourceArguments"
+    }
+  },
+  {
+    "name": "mcp__ppt_master__read_skill_entry",
+    "description": "Read the official skill entry and guarded routing together; list this Session's approved sources. No slide authoring.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "title": "read_skill_entryArguments"
+    }
+  },
+  {
+    "name": "mcp__ppt_master__read_source_page",
+    "description": "Read one page of the pinned PDF, default first page for title/abstract identification. No visual or scientific certification.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "page": {
+          "default": 1,
+          "title": "Page",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_id"
+      ],
+      "title": "read_source_pageArguments"
+    }
+  }
+]
