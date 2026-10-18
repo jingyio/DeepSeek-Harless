@@ -54,6 +54,7 @@ export type ComparisonHost = {
   owns(id: string): Promise<void>;
   createLane(parent: string, scene: string, lane: LaneName): Promise<string>;
   prepare(turn: any, lane: LaneName, requestId: string): Promise<{ task_id: string }>;
+  cancelPreparing?(turn: any): Promise<void>;
   submit(taskId: string): Promise<void>;
   inspect(taskId: string, context?: { turn: any; lane: LaneName; recoverMissing?: boolean }): Promise<any>;
   subscribe?(taskId: string, listener: (task: any) => void): () => void;
@@ -415,6 +416,7 @@ export function createComparisonService(output: string, principal: string, host:
     async cancel(session: string, id: string) { return locked(async () => {
       const t = await get(session, id);
       t.cancellation_requested = true;
+      await host.cancelPreparing?.(t);
       for (const name of turnLanes(t)) {
         const lane = t.lanes[name];
         if (terminal.has(lane.status)) continue;

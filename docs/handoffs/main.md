@@ -1,5 +1,12 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-18：全场景 PDF OCR 与论文图像输入
+
+- 公共上传流程逐页读取原生文字，扫描页本地中英文 OCR；整页渲染覆盖嵌入图片与矢量图，Flash 结合图注、当前/相邻正文输出来源与页号绑定的 JSON 观察，最终模型仍按用户选择。Pro 的辅助 Flash 请求通过账号网关、broker 和同任务预算路由记账，正常模型锁不放宽。
+- 支持 Chat、PPT、Paper、Data、Files；PPT/Paper 的版本化 PDF 逐页工具也接入同一 OCR。原件、附件继承、对应侧隔离与气泡隐藏保留。首次 PDF Chat 后台接受后处理；取消可打断 OCR/视觉准备，并绕过其持有的接收队列。
+- 两轮真实读取共 40 请求、代理峰值估费 $0.04088977；初轮 Data 箭头拒答揭示跨页提示混淆及假成功标记，修复后五场景全部通过数值/OCR/箭头人工复核。不是提供商账单，不是复杂论文准确率或 PPT 生成评测；不做质量/费用提升主张。详见[实验记录](../experiments/pdf-ocr-vision-20261018.md)。
+- `ppt-master-v5` / `paper-web-v10` 为原证据兼容重编，旧库留存；生产部署需安装固定 `pdf-ocr-assets.json` 语言包、设置 `GENELOOP_PDF_OCR_ROOT` 与成员 `pdfOcrRoot`，升级预算路由时沿用原累计 checkpoint/ledger，并保留代码/配置回滚快照。
+
 ## 2026-10-18：多轮附件累积与 DOCX 跨场景继承
 
 - 分支 `codex/attachment-inheritance`，基于前序界面投影修复。`harless_comparison.ts` 在接收任务时冻结同一父对话的全部原件引用；`dsh_web_tasks.ts` 合并新旧附件、为同名旧版本单独命名，并把原生 Chat 的任务期代码交付和双栏对应侧 DOCX 带入 `/paper`。旧回执退休、重启恢复、字节校验和会话/侧隔离保留。

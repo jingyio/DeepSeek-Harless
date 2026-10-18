@@ -332,7 +332,8 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                   state_selector=None, allowed_models: set[str] | None = None,
                   chat_path: str = '/v1/chat/completions', allow_files: bool = True,
                   gate_token: str | None = None,
-                  omit_sdk_output_limit: bool = False, allow_search: bool = False) -> ThreadingHTTPServer:
+                  omit_sdk_output_limit: bool = False, allow_search: bool = False,
+                  allow_vision: bool = False) -> ThreadingHTTPServer:
     if omit_sdk_output_limit and state.output_cap is not None:
         raise ValueError('SDK output defaults can only be omitted with an uncapped output policy')
     # macOS can supply system proxies even with no *_PROXY environment variables.
@@ -350,6 +351,8 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
             # Dynamic Web tasks route by the adapter's server-owned session header.
             # Legacy SDK/frozen callers keep their original single State.
             match = re.fullmatch(r'/v1/search/((?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32}))/messages', self.path) if allow_search else None
+            if not match and allow_vision:
+                match = re.fullmatch(r'/v1/vision/((?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32}))/chat/completions', self.path)
             headers = dict(self.headers)
             if match:
                 headers = {k: v for k, v in headers.items() if k.lower() != 'x-deepseek-harness-session-id'}
@@ -426,7 +429,7 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                        and not (stream and key.lower() == 'accept-encoding')}
             if stream: headers['Accept-Encoding'] = 'identity'
             target_path = ('/anthropic/v1/messages' if allow_search and self.path.startswith('/v1/search/') else
-                           chat_path if self.path == '/v1/chat/completions' else self.path)
+                           chat_path if self.path == '/v1/chat/completions' or (allow_vision and self.path.startswith('/v1/vision/')) else self.path)
             request = urllib.request.Request(upstream.rstrip('/') + target_path, data=body,
                                              headers=headers, method=method)
             try:
@@ -468,9 +471,11 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
 
         def do_POST(self) -> None:  # noqa: N802
             file_upload = allow_files and self.path == "/v1/files"
+            vision = allow_vision and (self.path == '/v1/vision/chat/completions' or
+                re.fullmatch(r'/v1/vision/(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})/chat/completions',self.path) is not None)
             search = allow_search and (self.path == '/v1/search/messages' or
                 re.fullmatch(r'/v1/search/(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})/messages', self.path) is not None)
-            if self.path != "/v1/chat/completions" and not file_upload and not search:
+            if self.path != "/v1/chat/completions" and not file_upload and not search and not vision:
                 self._reply(403, "unmetered endpoint refused")
                 return
             try:
@@ -494,6 +499,27 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                 self._reply(403, "model session is not approved")
                 return
             try:
+                if vision:
+                    payload = json.loads(body)
+                    if (not isinstance(payload, dict) or set(payload) != {'model', 'messages', 'stream', 'thinking','response_format'} or
+                            payload['model'] != 'deepseek-flash' or payload['stream'] is not False or
+                            payload['response_format'] != {'type':'json_object'} or
+                            payload['thinking'] != {'type': 'disabled'} or
+                            not isinstance(payload['messages'], list) or len(payload['messages']) != 1 or
+                            not isinstance(payload['messages'][0], dict) or
+                            set(payload['messages'][0]) != {'role', 'content'} or payload['messages'][0]['role'] != 'user'):
+                        raise ValueError('invalid PDF vision request')
+                    parts = payload['messages'][0]['content']
+                    if not isinstance(parts, list) or not parts or not all(isinstance(p, dict) for p in parts) or not any(p.get('type') == 'image_url' for p in parts):
+                        raise ValueError('PDF vision requires page pixels')
+                    for part in parts:
+                        if not isinstance(part, dict): raise ValueError('invalid vision content')
+                        if part.get('type') == 'text' and set(part) == {'type', 'text'} and isinstance(part['text'], str): continue
+                        if (part.get('type') == 'image_url' and set(part) == {'type', 'image_url'} and
+                                isinstance(part['image_url'], dict) and set(part['image_url']) == {'url'} and
+                                isinstance(part['image_url']['url'], str) and
+                                re.fullmatch(r'data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}', part['image_url']['url'])): continue
+                        raise ValueError('only inline PDF page pixels allowed')
                 if search:
                     payload = json.loads(body)
                     def search_text(content):
@@ -522,7 +548,7 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                     body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
                 if allowed_models is not None and json.loads(body).get('model') not in allowed_models:
                     raise ValueError('model is outside this provider gate')
-                booked = request_state.book(body)
+                booked = request_state.book_vision(body) if vision and hasattr(request_state, 'book_vision') else request_state.book(body)
             except (ValueError, TypeError, json.JSONDecodeError):
                 self._reply(400, "unpriced or unbounded model request refused")
                 return
@@ -536,11 +562,12 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                 body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
             started = time.monotonic()
             self.stream_started = False
-            status, content_type, answer = self._call_upstream(body, "POST", stream=not search)
+            status, content_type, answer = self._call_upstream(body, "POST", stream=not search and not vision)
             usage = response_usage(content_type, answer)
             observed, released = request_state.settle(request_id, model, status, usage)
             request_state.log({"request_id": request_id, "model": model,
                        **({'kind': 'web_search', 'search_pricing': 'model_tokens_only_service_fee_not_estimated'} if search else {}),
+                       **({'kind': 'pdf_vision'} if vision else {}),
                        "reserved_upper_usd": round(dollars, 8),
                        "observed_peak_usd": round(observed, 8) if observed is not None else None,
                        "reservation_released_usd": round(released, 8),

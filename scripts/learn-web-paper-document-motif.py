@@ -215,6 +215,7 @@ def code_paths():
         'src/adapters/dsh_online_motif.mjs', 'src/adapters/dsh_trajectory.py', 'src/adapters/dsh_event_projection.py',
         'src/adapters/task_identity.py', 'src/adapters/tool_contract_loader.py', 'src/adapters/tool_schema_contracts.py',
         'src/adapters/session_files.py', 'src/adapters/harless_attachment_text.py', 'src/adapters/session_report.py',
+        'src/adapters/geneloop_pdf.py','src/adapters/geneloop_pdf_vision.ts','config/pdf-ocr-assets.json',
         'src/adapters/file_lock.py', 'src/adapters/harless_paper_learning.ts', 'scripts/learn-web-paper-tasks.py', 'src/adapters/web_task_budget.py', 'src/adapters/paper_static_checks.py', 'src/adapters/paper_archive.py',
         'src/adapters/paper_bibliography.py', 'src/adapters/paper_query_recovery.py', 'src/adapters/paper_renderer.py',
         'src/adapters/harless_paper_renderer.py', 'src/adapters/harless_paper_recovery.ts',

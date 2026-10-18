@@ -1,5 +1,7 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+PDF 上传现已共用逐页文字读取、扫描页本地中英文 OCR、论文图片与矢量图的图文分析，适用于全部场景。图片分析使用 Flash，最终回复仍使用用户选择的模型；费用计入同一任务，原件、附件卡片和多轮继承保留。安装、覆盖与识别限制见[附件输入说明](docs/attachment-input-behavior.md)，真实五场景验收见[实验记录](docs/experiments/pdf-ocr-vision-20261018.md)。当前兼容库为 `ppt-master-v5` / `paper-web-v10`，原有结构和历史证据不变，旧库留存。
+
 GeneLoop 网页的 Chat、`/ppt`、`/data`、`/paper` 和已登记 Files 场景共用联网搜索、网页读取、Bash/Python/Node 执行及后台任务。模型按需求调用工具，过程沿用原生流式事件。正式运行依赖 Linux `bubblewrap`；命令只接触本会话上传文件和工作目录，账号密钥不传入命令环境。当前服务器未安装 PowerShell。接口与隔离约定见 [网页通用能力](docs/interfaces.md#网页通用能力)。
 
 真实 Web 的 Paper 完成普通任务后，会复用已保存的轨迹和 Python 编译器，在当前账号运行目录内自动编译、验证并发布下一版只读 Motif。至少需要两项不同的正常任务和一项固定留出任务；当前只支持文档固定版本后的第一页读取。下一任务冻结新版本，运行中和已确认任务保持原版；编译失败继续使用原库。编译不调用模型，不共享用户轨迹，不代表已证明净降本。入口与限制见 [Paper 自动学习接口](docs/interfaces.md#paper-自动学习接线)。

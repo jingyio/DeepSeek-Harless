@@ -22,15 +22,16 @@ class SourceReader(SessionFiles):
         name,data,version=self.pinned(source_id)
         if type(page) is not int or page<1: raise ValueError('positive_page_required')
         if Path(name).suffix.lower()!='.pdf': raise ValueError('pdf_source_required_use_official_converter_for_other_formats')
-        from pypdf import PdfReader
-        pdf=PdfReader(io.BytesIO(data))
-        if pdf.is_encrypted: raise ValueError('encrypted_pdf_unsupported')
-        if page>len(pdf.pages): raise ValueError('page_not_in_document')
-        text=pdf.pages[page-1].extract_text() or ''
+        from src.adapters.geneloop_pdf import read_pdf
+        pdf=read_pdf(data,page_number=page)
+        extracted=pdf['pages'][0]
+        text=extracted['text']
         self.pinned(source_id)
         return {'source_id':source_id,'version_sha256':version,'name':name,'page':page,
-                'page_count':len(pdf.pages),'text':text[:80000],'truncated':len(text)>80000,
-                'visual_checked':False,'coverage':'one_page_text_only'}
+                'page_count':pdf['page_count'],'text':text[:80000],'truncated':len(text)>80000,
+                'text_method':extracted['text_method'],'ocr_performed':extracted['ocr_performed'],
+                'ocr_warning':extracted.get('warning'),'visual_checked':False,
+                'coverage':'one_page_text_and_optional_ocr_visual_analysis_in_task_context'}
 
 
 class SkillReader:

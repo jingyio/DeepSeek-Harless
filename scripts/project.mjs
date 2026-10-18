@@ -15,7 +15,7 @@ const python = process.env.SSS_PYTHON ?? ['.venv-sss', '.venv312', '.venv']
   .map(dir => join(root, dir, suffix)).find(existsSync) ?? (process.platform === 'win32' ? 'python' : 'python3');
 // Repository files and MCP/CLI output use UTF-8, including redirected Windows output.
 const env = { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8',
-  SSS_PURE_CODE_PYTHON: python };
+  SSS_PURE_CODE_PYTHON: python, SSS_PYTHON: python };
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: root, env, stdio: 'inherit' });
   if (result.error) { console.error(result.error.message); process.exit(1); }

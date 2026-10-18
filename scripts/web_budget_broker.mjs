@@ -47,16 +47,17 @@ export function startBroker({ port, target, controlToken }) {
       return;
     }
     const searchSession = /^\/v1\/search\/(session-[a-f0-9-]{36})\/messages$/.exec(req.url ?? '')?.[1];
-    if (req.method !== 'POST' || (req.url !== '/v1/chat/completions' && !searchSession)) {
+    const visionSession = /^\/v1\/vision\/(session-[a-f0-9-]{36})\/chat\/completions$/.exec(req.url ?? '')?.[1];
+    if (req.method !== 'POST' || (req.url !== '/v1/chat/completions' && !searchSession && !visionSession)) {
       reply(res, 404, { error: 'Unknown model route' }); return;
     }
-    const dshSession = searchSession ?? req.headers['x-deepseek-harness-session-id'];
+    const dshSession = visionSession ?? searchSession ?? req.headers['x-deepseek-harness-session-id'];
     const budgetSession = typeof dshSession === 'string' ? routes.get(dshSession) : undefined;
     if (!budgetSession) { reply(res, 403, { error: 'No confirmed turn budget' }); return; }
     const headers = { ...req.headers, host: destination.host,
       'x-deepseek-harness-session-id': budgetSession };
     delete headers['x-sss-control-token'];
-    const upstream = httpRequest(destination.origin + (searchSession ? '/v1/search/messages' : req.url), { method: 'POST', headers }, incoming => {
+    const upstream = httpRequest(destination.origin + (visionSession ? '/v1/vision/chat/completions' : searchSession ? '/v1/search/messages' : req.url), { method: 'POST', headers }, incoming => {
       const responseHeaders = { ...incoming.headers };
       for (const name of ['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'proxy-authenticate',
         'proxy-authorization', 'te', 'trailer']) delete responseHeaders[name];

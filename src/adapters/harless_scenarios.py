@@ -27,6 +27,16 @@ def _fixed_dependency(path: Path, *, directory: bool) -> Path:
 def _configure_attachment_parsers(scene: dict) -> None:
     """Forward only explicitly configured, validated public parser resources."""
     env = {}
+    if os.environ.get('GENELOOP_PDF_OCR_ROOT'):
+        root = _fixed_dependency(Path(os.environ['GENELOOP_PDF_OCR_ROOT']), directory=True)
+        languages = _fixed_dependency(root / 'tessdata', directory=True)
+        manifest = json.loads((Path(__file__).resolve().parents[2] / 'config/pdf-ocr-assets.json').read_text())
+        if {p.name for p in root.iterdir()} != {'tessdata'} or {p.name for p in languages.iterdir()} != set(manifest['files']):
+            raise ValueError('PDF OCR installation contains unapproved resources')
+        for name, digest in manifest['files'].items():
+            path = _fixed_dependency(languages / name, directory=False)
+            if hashlib.sha256(path.read_bytes()).hexdigest() != digest: raise ValueError('PDF OCR language hash mismatch')
+        env['GENELOOP_PDF_OCR_ROOT'] = str(root)
     if os.environ.get('HARLESS_PDF_TOOLCHAIN_ROOT'):
         root = _fixed_dependency(Path(os.environ['HARLESS_PDF_TOOLCHAIN_ROOT']), directory=True)
         if any(path.name not in ('bin', 'lib', 'share', 'include') for path in root.iterdir()):
@@ -48,7 +58,7 @@ def _configure_attachment_parsers(scene: dict) -> None:
         scene['antiword_root'] = str(root)
         env.update(HARLESS_ANTIWORD_BIN=str(binary), ANTIWORDHOME=str(mappings))
     for row in scene['mcp_rows']:
-        if row['config']['serverName'] in ('research_report','paper_checks','ppt'):
+        if row['config']['serverName'] in ('research_report','paper_checks','ppt','ppt_master'):
             row['config'].setdefault('env', {}).update(env)
 
 
@@ -119,6 +129,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 verify_installation(skill_root)
                 for mcp in scene['mcp_rows']:
                     mcp['config'].setdefault('env', {}).update(GENELOOP_PPT_MASTER_ROOT=str(skill_root), PYTHONDONTWRITEBYTECODE='1')
+                _configure_attachment_parsers(scene)
             except (ValueError, OSError):
                 scene['unavailable_reason'] = 'ppt_master_installation_missing_or_changed'
         elif row.get('adapter') == 'ppt':

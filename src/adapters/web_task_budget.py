@@ -49,9 +49,18 @@ class RoutedState:
         self._global_ids: dict[int, int] = {}
 
     def book(self, body: bytes) -> tuple[int, str, float, int] | None:
+        return self._book(body)
+
+    def book_vision(self, body: bytes) -> tuple[int, str, float, int] | None:
+        """Only the separately validated PDF vision endpoint may use Flash."""
+        if json.loads(body).get('model') != 'deepseek-flash':
+            raise ValueError('PDF vision requires Flash')
+        return self._book(body, auxiliary=True)
+
+    def _book(self, body: bytes, *, auxiliary=False) -> tuple[int, str, float, int] | None:
         model, dollars, ceiling = reservation(body, max_output=self.state.output_cap,
                                               rates=self.state.rates)
-        if model != self.model:
+        if model != self.model and not auxiliary:
             raise ValueError('request model differs from confirmed task model')
         run = self.registry.run_state
         # All routed admissions/settlements share this lock. Holding both State
@@ -189,7 +198,7 @@ class TaskBudgetRegistry:
             # Project only this authenticated route's existing accounting. No
             # prompts, keys, other users' rows or new budget state are exported.
             fields = {'task_id', 'session_id', 'request_id', 'global_request_id',
-                      'response_status', 'response_usage', 'observed_peak_usd'}
+                      'response_status', 'response_usage', 'observed_peak_usd','model','kind'}
             result['request_receipts'] = [
                 {key: value for key, value in row.items() if key in fields}
                 for line in route.state.record.read_text(encoding='utf-8').splitlines() if line.strip()

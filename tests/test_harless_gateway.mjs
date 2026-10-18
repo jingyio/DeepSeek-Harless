@@ -573,10 +573,17 @@ test('scoped budget rejects cross-account control and model traffic', async t =>
   assert.equal((await scoped('/v1/chat/completions', { model: 'test' }, delegated(bob, 'model'), true)).status, 403);
   assert.equal((await scoped('/v1/chat/completions', { model: 'test' }, delegated(alice, 'model'), true)).status, 200);
   assert.equal(upstream.at(-1).authorization, 'Bearer real-model-key');
+  const visionPath='/v1/vision/'+session+'/chat/completions';
+  assert.equal((await scoped(visionPath,{model:'deepseek-flash'},delegated(bob,'model'),true)).status,403);
+  assert.equal((await scoped(visionPath,{model:'deepseek-flash'},delegated(alice,'model'),true)).status,200);
+  assert.equal(upstream.at(-1).path,visionPath);
+  assert.equal(upstream.at(-1).authorization,'Bearer real-model-key');
+  assert.equal((await scoped('/v1/vision/session-99999999-9999-4999-8999-999999999999/chat/completions',{},delegated(alice,'model'),true)).status,403);
   assert.equal((await fetch(`http://127.0.0.1:${scopePort}/tasks/stats?session_id=${budget}`, {
     headers: { 'x-sss-control-token': delegated(bob, 'control') },
   })).status, 403);
   assert.equal((await scoped('/unbind', { session_id: session, budget_session_id: budget },
     delegated(alice, 'control'))).status, 200);
   assert.equal((await scoped('/v1/chat/completions', { model: 'test' }, delegated(alice, 'model'), true)).status, 403);
+  assert.equal((await scoped(visionPath,{model:'deepseek-flash'},delegated(alice,'model'),true)).status,403);
 });

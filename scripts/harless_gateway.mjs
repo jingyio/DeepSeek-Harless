@@ -147,19 +147,21 @@ export function createGateway(config) {
       res.writeHead(response.statusCode ?? 502, outgoing); response.pipe(res);
     });
     upstream.on('error', () => { if (!res.headersSent) send(res, 502, 'budget service unavailable'); else res.destroy(); });
+    res.on('close',()=>{if(!res.writableEnded)upstream.destroy();});
     upstream.end(body);
   };
   const scopedBudget = scopedPort ? http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url ?? '/', 'http://local');
       const searchSession = /^\/v1\/search\/(session-[a-f0-9-]{36})\/messages$/.exec(path.pathname)?.[1];
-      if (req.method === 'POST' && (path.pathname === '/v1/chat/completions' || searchSession)) {
+      const visionSession = /^\/v1\/vision\/(session-[a-f0-9-]{36})\/chat\/completions$/.exec(path.pathname)?.[1];
+      if (req.method === 'POST' && (path.pathname === '/v1/chat/completions' || searchSession || visionSession)) {
         const auth = req.headers.authorization;
         const user = typeof auth === 'string' && auth.startsWith('Bearer ') ? findDelegated(auth.slice(7), 'model') : null;
-        const session = searchSession ?? req.headers['x-deepseek-harness-session-id'];
+        const session = visionSession ?? searchSession ?? req.headers['x-deepseek-harness-session-id'];
         if (!user || routeOwner.get(session) !== user.id) return json(res, 403, { error: 'No approved user turn' });
-        const body = await readBounded(req, 2 * 1024 * 1024);
-        return scopedForward(config.upstreamBrokerPort, searchSession ? path.pathname : '/v1/chat/completions', 'POST',
+        const body = await readBounded(req, (visionSession ? 8 : 2) * 1024 * 1024);
+        return scopedForward(config.upstreamBrokerPort, searchSession || visionSession ? path.pathname : '/v1/chat/completions', 'POST',
           { ...req.headers, authorization: `Bearer ${config.apiKey}`, 'x-api-key': config.apiKey,
             'x-deepseek-harness-session-id': session }, body, res);
       }

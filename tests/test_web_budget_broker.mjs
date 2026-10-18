@@ -39,10 +39,15 @@ test('budget broker rejects unconfirmed and conflicting routes and streams a con
     const search=await fetch(root+'/v1/search/'+session+'/messages',{method:'POST',body:'{"query":"official docs"}'});
     assert.equal(search.status,200);await search.text();
     assert.deepEqual(received[1],{path:'/v1/search/messages',session:route,body:'{"query":"official docs"}'});
+    const vision=await fetch(root+'/v1/vision/'+session+'/chat/completions',{method:'POST',body:'{"pixels":"fixture"}'});
+    assert.equal(vision.status,200);await vision.text();
+    assert.deepEqual(received[2],{path:'/v1/vision/chat/completions',session:route,body:'{"pixels":"fixture"}'});
+    assert.equal((await fetch(root+'/v1/vision/session-22222222-2222-4222-8222-222222222222/chat/completions',{method:'POST',body:'{}'})).status,403);
     assert.equal((await fetch(root+'/v1/search/session-22222222-2222-4222-8222-222222222222/messages',{method:'POST',body:'{}'})).status,403);
     assert.equal((await control('/unbind', 'turn-' + 'b'.repeat(32))).status, 409);
     assert.equal((await control('/unbind', route)).status, 200);
-    assert.equal((await model()).status, 403); assert.equal(received.length, 2);
+    assert.equal((await model()).status, 403); assert.equal(received.length, 3);
+    assert.equal((await fetch(root+'/v1/vision/'+session+'/chat/completions',{method:'POST',body:'{}'})).status,403);
     assert.equal((await fetch(root+'/v1/search/'+session+'/messages',{method:'POST',body:'{}'})).status,403);
     assert.equal((await fetch(root + '/v1/models')).status, 404);
   } finally {

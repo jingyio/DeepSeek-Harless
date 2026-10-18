@@ -136,13 +136,17 @@ def main():
         bob_draft = web.api(bob, bob_base, {'action': 'preview', 'request': 'Bob private draft'})
         drafts = []
         for scene in args.scenes:
+            registered = next(row for row in json.loads((output/'policy.json').read_text())['scenes'] if row['id']==scene)
+            ppt_master = scene=='ppt' and registered.get('ppt_execution_strategy')=='ppt_master'
             settings(alice, base, {'action': 'select', 'selection': {'scene': scene, 'mode': args.mode, 'rsi': True}})
             text = {'new-scene':'列出上传的文件，读取文件文本，引用真实文件名和 SHA256；不要猜路径。',
                     'ppt':'调用 list_inputs，pin_source 并 read_source 读取 doc_1，简短概括其文本，引用来源句柄与 SHA256。只读检查，不生成幻灯片。',
                     'paper-proofreading':'调用 list_inputs，按实际文件名和 SHA256 使用 pin_document、read_pinned_document 阅读论文文本，给出一句措辞修改建议并引用来源版本。',
                     'research-data-analysis':'调用 inspect_study 读取本任务已上传数据的结构，简短说明实际变量、观测数和缺失情况；只检查资料，不生成报告。',
                     'files':'调用 read_task 和 list_files 盘点获准文件；pin_file 并 read_file 读取文本，引用 file_id 和 SHA256。不要整理或写入。'}[scene]
-            if scene=='ppt' and args.mode=='execute':
+            if ppt_master:
+                text='调用 read_skill_entry 读取技能入口与本轮上传列表，按真实文件名和 SHA256 调用 pin_source，再用 read_source_page 读取第一页；一句话概括并引用来源版本。只读检查，不转换、不生成幻灯片。'
+            elif scene=='ppt' and args.mode=='execute':
                 text='当前已上传 doc_1。请直接调用 pin_source(document_id="doc_1") 固定它，再读取其内容，用一句话概括并引用真实来源句柄和版本。只读检查，不生成幻灯片。'
             draft = web.api(alice, base, {'action': 'preview', 'request': {'instruction': text,
                 **({'scene_options': {'slides': 1, 'allow_output': False}} if scene == 'ppt' else {})}})
@@ -159,7 +163,7 @@ def main():
             prefixes = {'ppt':('mcp__ppt__',),'new-scene':('mcp__workspace__',),
                 'paper-proofreading':('mcp__paper_checks__','mcp__paper_trace_rsi__'),
                 'research-data-analysis':('mcp__research_report__',),'files':('mcp__file_management__',)}[scene]
-            registered = next(row for row in json.loads((output/'policy.json').read_text())['scenes'] if row['id']==scene)
+            if ppt_master: prefixes=('mcp__ppt_master__',)
             actual_shared = validate_scene_tool_scope(frozen['tools'], registered, prefixes, common)
             if shared_parameters is None:
                 shared_parameters = actual_shared

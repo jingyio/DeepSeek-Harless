@@ -28,6 +28,7 @@ import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './har
 import {paperPdfDelivered,paperReferenceReportRequired} from './harless_paper_delivery.ts';
 import {bindReportAnswer} from './harless_report_answer.ts';
 import {createTaskProgress} from './harless_task_progress.ts';
+import {pdfVisionClient} from './geneloop_pdf_vision.ts';
 import {bindProductPrompt} from './harless_product_prompt.ts';
 import {commonToolDenial, sceneCertifiedTools} from './geneloop_capabilities.ts';
 import {createPptRecovery} from './harless_ppt_recovery.ts';
@@ -69,6 +70,7 @@ type Task = {
   closing?: Promise<void>; entrypoint: 'workbench' | 'native_chat';
   model_option: ModelOption; reasoning_effort?: WebReasoningEffort; workspace: string; scene_options: SceneOptions; scene_inputs: any[]; source_pending?: boolean; scope_sha256: string | null;
   budget_session_id: string;
+  input_abort?: AbortController;
   source_task_id?: string;
   ppt_recovery?: ReturnType<typeof createPptRecovery>;
   ppt_master_recovery?: ReturnType<typeof createPptMasterRecovery>;
@@ -645,6 +647,7 @@ export function apply(ctx: any) {
   function finish(task: Task, status: string, failure: string | null = null) {
     if (terminal.has(task.status)) return;
     task.status = status; task.failure = failure; task.finished_at = utc();
+    task.input_abort?.abort(Error('task_finished'));
     progress.get(task.request.task_id)?.finish(status);
     record(task);
     // Every terminal task closes its proxy admission; in-flight calls still settle.
@@ -1264,14 +1267,19 @@ export function apply(ctx: any) {
     active.set(task.request.task_id, {comparison, provider: task.model_option.provider});
     task.status = 'running'; task.started_at = utc(); record(task);
     try {
-      // PPT owns versioned, complete source reading through its MCP tools.
-      // Injecting the full text here too duplicates it in every later request.
-      const attachmentContext = task.scene.adapter==='ppt' ? '' : await sceneAttachmentContext(task.workspace, task.scene_inputs);
+      task.input_abort=new AbortController();
+      const inputSignal=AbortSignal.any([signal,task.input_abort.signal]);
+      await control('/tasks/activate', { session_id: task.budget_session_id });
+      await broker('/bind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
+      const attachmentContext = await sceneAttachmentContext(task.workspace, task.scene_inputs,{
+        signal:inputSignal,instruction:task.delivery.filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n'),versionedPpt:task.scene.adapter==='ppt',
+        analyze:(parts,signal)=>pdfVisionClient(brokerMode?config.budget_broker_endpoint+'/v1':config.endpoint,task.request.session_id,
+          config.provider_mode==='mock'?'sss-mock-only':process.env.DEEPSEEK_API_KEY!)(parts,signal),
+      });
+      inputSignal.throwIfAborted();
       if (scopeDigest(task.workspace, task.scene) !== task.scope_sha256)
         throw new TaskError('confirmation_changed', '附件内容已改变，请重新发送。', 409);
       configureMotif(task);
-      await control('/tasks/activate', { session_id: task.budget_session_id });
-      await broker('/bind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       await original.prompt({ requestId: task.request.request_id, sessionId: task.request.session_id,
         mode: 'queue', content: attachmentContext ? [...task.delivery, {type:'text',text:attachmentContext}] : task.delivery }, signal);
       return view(task, true);
@@ -1320,7 +1328,8 @@ export function apply(ctx: any) {
     // into the old task workspace. Continue in a fresh, private single lane,
     // just as scene switches do, while retaining the public conversation.
     const replacesSources = previousScene && !forSession(request.sessionId)?.source_pending && content.some((part: any) => part.type === 'file');
-    if (comparisons && (replacesSources || config.comparison_scenes?.includes(selected.scene) || (previousScene && previousScene !== selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
+    const hasPdf=content.some((part:any)=>part.type==='file'&&/\.pdf$/i.test(ctx.fileUploads.resolve(agents.get(request.sessionId),part.receiptId)?.name??''));
+    if (comparisons && (hasPdf || replacesSources || config.comparison_scenes?.includes(selected.scene) || (previousScene && previousScene !== selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || (await controller.inspect(request.sessionId)).meta.isSeeded)) {
       const priorTask = forSession(request.sessionId);
       if (priorTask && !terminal.has(priorTask.status)) throw new TaskError('session_busy', '请等待当前回复完成或取消后再发送。', 409);
       await priorTask?.closing;
@@ -1393,6 +1402,11 @@ export function apply(ctx: any) {
       owns: ensureOwned,
       parallel: turn => findModel(turn.model).provider === 'deepseek-official',
       ready: turn => canStart(turn.id, findModel(turn.model).provider),
+      async cancelPreparing(turn) {
+        for(const [id,meta] of taskParents)if(meta.turn.id===turn.id){
+          const task=tasks.get(id);if(task&&!terminal.has(task.status))finish(task,'cancelled','user_cancelled');
+        }
+      },
       async createLane(parent, scene, lane) {
         const request = { sessionId: privateLanes.reserve(parent), agentPreset: sceneFor(scene).preset };
         privateCreations.add(request);
@@ -1628,7 +1642,9 @@ export function apply(ctx: any) {
           : body.action === 'retry' ? await comparisons!.retry(body.session_id, body.id, body.lane)
           : body.action === 'cancel' ? await comparisons!.cancel(body.session_id, body.id)
           : (() => { throw new TaskError('unknown_action', '不支持这个对照操作。'); })();
-        const result = await (feedbackAction ? perform() : serialize(perform));
+        // Cancellation must interrupt OCR/vision while preparation owns the
+        // admission queue; waiting behind it would prevent AbortController.
+        const result = await (feedbackAction || body.action==='cancel' ? perform() : serialize(perform));
         return browserJson(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error: any) { return browserJson({ error: { code: error.code ?? 'comparison_failed', message: error.message } }, { status: error.status ?? 400 }); }
     } }), 'harless-comparison-api');

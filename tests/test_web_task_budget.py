@@ -83,6 +83,21 @@ class WebTaskBudgetTests(unittest.TestCase):
                          record=self.root / "ledger.jsonl")
         self.registry = TaskBudgetRegistry(run_state=self.run, tasks_root=self.root / "tasks")
 
+    def test_auxiliary_flash_vision_uses_actual_model_and_same_task_ledger(self):
+        self.registry.register('a'*32,'pro-task',0.5,model='deepseek-v4-pro')
+        self.registry.activate('pro-task')
+        route=self.registry.state_for({'x-deepseek-harness-session-id':'pro-task'})
+        with self.assertRaises(ValueError): route.book(BODY)
+        booked=route.book_vision(BODY)
+        self.assertEqual(booked[1],'deepseek-flash')
+        observed,_=route.settle(booked[0],booked[1],200,USAGE)
+        self.assertEqual(observed,observed_peak_cost('deepseek-flash',USAGE))
+        self.assertEqual(self.run.request_count,1)
+        self.assertEqual(route.state.request_count,1)
+        with self.assertRaises(ValueError): route.book_vision(b'{"model":"deepseek-v4-pro","max_tokens":10}')
+        self.registry.cancel('pro-task')
+        self.assertIsNone(route.book_vision(BODY))
+
     def tearDown(self):
         self.temporary.cleanup()
 
