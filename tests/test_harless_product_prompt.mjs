@@ -89,10 +89,12 @@ test('member startup mounts only public product policy and every certified publi
   const registry=JSON.parse(readFileSync(new URL('../config/harless-scenes.json',import.meta.url),'utf8'));
   for(const scene of registry.scenes){
     if(!scene.rsi?.runtime_bundle)continue;
+    const entry=JSON.parse(readFileSync(new URL('../'+scene.rsi.runtime_bundle+'/entry.json',import.meta.url),'utf8'));
+    if(!entry.files?.['certification.json'])continue;
     const cert=JSON.parse(readFileSync(new URL('../'+scene.rsi.runtime_bundle+'/certification.json',import.meta.url),'utf8'));
     for(const path of Object.keys(cert.code_locks??{}))if(path.startsWith('config/'))
       assert.ok(targets.has('/app/'+path),'certified public dependency must exist inside member namespace: '+path);
   }
-  assert.ok(!profile.sandboxArgs.some(value=>value==='/app/config/'||value.endsWith('/config'))||
-    profile.sandboxArgs.filter(value=>value==='/app/config').length===1,'never mount all config siblings');
+  assert.deepEqual([...targets].sort(),['geneloop-persona.json','geneloop-capabilities.json','geneloop-capabilities.md','pdf-ocr-assets.json'].map(name=>'/app/config/'+name).sort(),
+    'never mount private config siblings');
 });
