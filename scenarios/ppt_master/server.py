@@ -8,6 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scenarios.ppt_master.package import installation, read_lock, read_verified
 from src.adapters.session_files import SessionFiles
+from scenarios.ppt_master.converted_source import ConvertedSources
 
 
 class SourceReader(SessionFiles):
@@ -66,6 +67,7 @@ def create_server():
     server = MCPServer('GeneLoop ppt-master')
     reader = SkillReader()
     files = SourceReader(Path(sys.argv[1]),max_files=16)
+    converted = ConvertedSources(files, reader)
 
     def read_skill_entry() -> dict:
         """Read the official skill entry and guarded routing together; list this Session's approved sources. No slide authoring."""
@@ -84,7 +86,17 @@ def create_server():
         try: return files.document(source_id,page)
         except (OSError, ValueError) as exc: raise ToolError(str(exc)) from None
 
-    for fn in (read_skill_entry, pin_source, read_source_page):
+    def convert_source(source_id: str) -> dict:
+        """Convert a pinned PDF with the official ppt-master converter in a fresh session-private directory. Originals stay read-only; no slides are authored."""
+        try: return converted.convert(source_id)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc: raise ToolError(str(exc)) from None
+
+    def read_converted_source(converted_id: str) -> dict:
+        """Read the complete official Markdown and asset paths after rechecking source permission and every converted file. Does not certify visual or scientific accuracy."""
+        try: return converted.read(converted_id)
+        except (OSError, ValueError) as exc: raise ToolError(str(exc)) from None
+
+    for fn in (read_skill_entry, pin_source, read_source_page, convert_source, read_converted_source):
         server.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False))(fn)
     return server
 

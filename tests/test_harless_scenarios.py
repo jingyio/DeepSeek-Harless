@@ -44,7 +44,7 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert rows['ppt']['scenario'] == 'scenarios/ppt_master/scenario.json'
     assert rows['ppt']['adapter'] == 'ppt'
     assert rows['ppt']['ppt_execution_strategy']=='ppt_master'
-    assert len(rows['ppt']['allowed_tools'])==9
+    assert len(rows['ppt']['allowed_tools'])==11
     assert 'mcp__ppt_master__read_skill_entry' in rows['ppt']['allowed_tools']
     assert not any(t.startswith('mcp__ppt__') for t in rows['ppt']['allowed_tools'])
     assert rows['ppt']['instructions'].startswith('完成用户的 PPT 任务。')

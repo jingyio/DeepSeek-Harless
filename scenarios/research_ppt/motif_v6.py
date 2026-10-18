@@ -135,10 +135,12 @@ def learn(dataset: Path, *, contracts_path: Path = SCENE / 'contracts.json',
           version_fields_path: Path = SCENE / 'version-fields.json',
           tool_schema_path: Path | None = None, out_dir: Path | None = None,
           generated_tool: str | None = None, guard_paths: tuple[Path, ...] = (),
-          mining='sequence') -> Path:
+          mining='sequence', admit_edges_only=False) -> Path:
     """从实际事件挖掘、独立认证、导出；没有新候选时如实保留结果。"""
     if mining not in {'sequence', 'witnessed_edges'}:
         raise ValueError('mining 只能为 sequence 或 witnessed_edges')
+    if admit_edges_only and mining != 'witnessed_edges':
+        raise ValueError('edge-only admission requires witnessed mining')
     dataset = private_path(dataset, exists=True)
     rows, identities = load_dataset(dataset)
     if mining == 'witnessed_edges' and len(rows['heldout']) != 1:
@@ -169,7 +171,7 @@ def learn(dataset: Path, *, contracts_path: Path = SCENE / 'contracts.json',
         manifest['tool_schema_file'] = str(output / 'tool-schema.json')
     write_new(output / 'contracts.json', raw_contracts)
     write_new(output / 'compile.json', manifest)
-    paths = [dataset, contracts_path, version_fields_path, *guard_paths]
+    paths = [dataset, contracts_path, version_fields_path, Path(__file__).resolve(), *guard_paths]
     paths += [ROOT / path for path in (
         'scripts/compile-dsh-motif-library.py', 'scripts/compile-witnessed-read-chains.py',
         'scripts/export-online-motif-manifest.py', 'src/adapters/dsh_trajectory.py',
@@ -185,6 +187,7 @@ def learn(dataset: Path, *, contracts_path: Path = SCENE / 'contracts.json',
             events = Path(row['events'])
             paths += [events, Path(row['identity']), events.parent / 'manifest.json']
     lock = {'schema_version': 1, 'sources': source_lock(paths), 'mining': mining,
+            'admit_edges_only': admit_edges_only,
             'identity_assertion': 'decision_ids_are_agent_asserted_not_human_blind_review',
             'identities': identities}
     write_new(output / 'evidence-lock.json', lock)
@@ -204,8 +207,11 @@ def learn(dataset: Path, *, contracts_path: Path = SCENE / 'contracts.json',
             edge_report = read(output / 'witnessed-edge-report.json')
             # 全部候选及拒绝由公共脚本给出。这里只封装它已认证的产物，
             # 不指定工具顺序、添加参数边或跳过失败/写入 barrier。
-            learned = library_from_certified(edge_report['artifacts'])
-            learned['rejected'] = edge_report['rejected']
+            admitted = [a for a in edge_report['artifacts'] if not admit_edges_only or len(a['tools']) == 2]
+            learned = library_from_certified(admitted)
+            learned['rejected'] = edge_report['rejected'] + [
+                {'motif_id': a['motif_id'], 'reason': 'runtime_admits_edges_only', 'tools': a['tools']}
+                for a in edge_report['artifacts'] if a not in admitted]
             learned['task_identity_evidence'] = {
                 row['trace_id']: identity for row, identity in zip(
                     rows['train'] + rows['heldout'], identities, strict=True)}

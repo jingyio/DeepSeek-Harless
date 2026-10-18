@@ -54,7 +54,7 @@ def test_registry_replaces_old_writer_but_preserves_old_library():
     row=next(x for x in json.loads((root/'config/harless-scenes.json').read_text())['scenes'] if x['id']=='ppt')
     scenario=json.loads((root/row['scenario']).read_text())
     assert row['ppt_execution_strategy']=='ppt_master'
-    assert scenario['allowed_tools']==['mcp__ppt_master__read_skill_entry','mcp__ppt_master__pin_source','mcp__ppt_master__read_source_page']
+    assert scenario['allowed_tools']==['mcp__ppt_master__read_skill_entry','mcp__ppt_master__pin_source','mcp__ppt_master__read_source_page','mcp__ppt_master__convert_source','mcp__ppt_master__read_converted_source']
     assert (root/'motif-libraries/ppt-web-v2-r13/entry.json').is_file()
     assert (root/'scenarios/research_ppt/web-scenario.json').is_file()
 

@@ -1,5 +1,16 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-18：PPT 转换结构扩大复用与同模板网页对照
+
+- 新 `ppt-master-v2` 从真实完整制作任务训练并通过独立留出，新增 pin→官方转换、转换回执→核验读取两条闭合边；实际网页验证 2 次跳过（上一版 1 次），未认证三节点链，不接管 Bash/页面制作/科研判断。Paper v8 仅兼容重编，旧库保留。
+- 同一 AdaLoRA、官方 presentation_core/academic-research 模板、Pro Off：Baseline 87 请求/$1.17369790/1036.504s；Motif 80/$0.98129175/844.355s。单次估费低 16.39%，不能把 7 次请求差都归因于 2 次跳过。含失败采集共 694 请求/$7.70190830，账单未知、人工/CPU 未计价。
+- 全部幻灯片均 GeneLoop 自制，未人工修订；两路六页、备注、PDF/PNG、网页预览和下载 SHA 完整。两版质量均未通过，Motif 排版更差，实际主题字体也未严格遵守指定字体；只称同模板输入，不称同样式成品或同质稳定降本。
+- 运行代码冻结 `737c41f`；最终实现/守卫测试 `57e0ce4` CI 两平台 Python/Node、smoke/motif 检查通过（含明确跳过项）。共享 provider-length 原生续做仅诊断覆盖，本次未触发。详见[完整结果及测试](../experiments/ppt-master-structure-style-20261018.md)。
+- 发布跟踪 [PR #73](https://github.com/jingyio/GeneLoop/pull/73)；原 PR #72 已合并并部署 `9a25a7d8`，原负向结果不改写。新部署保留数据、累计账本和回滚快照。私有原稿/报告在 `.local/deliverables/ppt-master-structure-style-20261018/`，正式回执与读取探针另存，不混入 PPT 评测费用。
+- 后续优先提高共同流程的事实、公式与排版验收，再做重复盲评；本轮 `quality_cost_promoted=false`。扩大复用仅允许有真实轨迹和守卫证据的结构，不能把固定手写流水线算作学习。
+
+
+
 ## 2026-10-18：ppt-master 默认接入、真实结构训练及网页对照
 
 - 分支 `codex/ppt-master-motif`，基线 `7d74e9e`。`/ppt` 改用完整官方 ppt-master 6.6.0：固定 13,016 文件摘要、只读挂载、新 MCP 入口和模型选定来源的 pin/read；旧制作工具与 host_delivery 不再用于默认 PPT。全部幻灯片由 GeneLoop 制作，测试者未修稿。

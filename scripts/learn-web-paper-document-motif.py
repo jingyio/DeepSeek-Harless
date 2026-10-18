@@ -210,7 +210,7 @@ def export_run(row, ledger, out, current, contracts, base, *, reuse_task_files=F
 def code_paths():
     paths = [Path(__file__).resolve(), CONTRACTS, VERSIONS, SCENE / 'scenario.json']
     paths += [ROOT / value for value in (
-        'src/adapters/dsh_web_tasks.ts', 'src/adapters/harless_scenarios.py', 'src/adapters/harless_task_scope.ts',
+        'src/adapters/dsh_web_tasks.ts', 'src/adapters/ppt_master_recovery.ts', 'src/adapters/harless_scenarios.py', 'src/adapters/harless_task_scope.ts',
         'src/adapters/harless_rsi_binding.ts', 'src/adapters/harless_rsi_bundle.py', 'src/adapters/harless_legacy_motif.ts',
         'src/adapters/dsh_online_motif.mjs', 'src/adapters/dsh_trajectory.py', 'src/adapters/dsh_event_projection.py',
         'src/adapters/task_identity.py', 'src/adapters/tool_contract_loader.py', 'src/adapters/tool_schema_contracts.py',

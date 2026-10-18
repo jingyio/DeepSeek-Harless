@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "scenes": {
-    "ppt": "ppt-web-v2-r10",
+    "ppt": "ppt-master-v2",
     "research-data-analysis": "data",
-    "paper-proofreading": "paper-web-v3"
+    "paper-proofreading": "paper-web-v8"
   },
   "notice": "三种网页对照场景的 Motif 默认 Execute；PPT 与 Paper 使用经独立轨迹认证的读取库，Data 使用已有回执续接库。历史 Shadow 库保留。结构与兼容认证不构成科研质量或节省效果认证。"
 }

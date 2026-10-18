@@ -68,6 +68,10 @@ Python 既有 witnessed-edge 编译器生成一个 `pin_source → read_source_p
 
 总采集及最终对照 **713 请求、代理估费 $5.74779583**，含被拒绝候选全部成本；账单实付未知。后续若有生产模型验收须另列，不能混入本冻结对照。私有原始事件、有效配置、逐任务账本与原稿保存在实验 `experiment/`、`experiment-sources/`、`evaluation/private-evidence/`；本地可审阅交付在 `.local/deliverables/ppt-master-motif-20261018/对照报告.html`，含原始双 PPT/PDF/PNG、逐文件 SHA 和只读质量报告。
 
+## 发布补记
+
+PR #72 已于 2026-10-18 合并 main 为 `9a25a7d8`，正式部署回执为私有 `ppt-master-releases/20261018T073137Z/receipt.json`。用户数据、原累计账本与预算进程保留。CI Ubuntu：Python1040/8跳过、Node815/5跳过；Windows：Python847/201跳过、Node814/6跳过，smoke/motif 检查通过。部署后只读探针 Baseline/Motif 为4/3请求、$0.01300859/$0.01166536、0/1实际跳过，无PPT制作。含探针总计720请求/$5.77246978，原网页质量与费用负结论不变。
+
 ## 回归与复现
 
 - Linux 最终 `npm test`：Python 1046 通过 / 2 跳过；Node 817 通过 / 3 跳过。`npm run smoke` 与 `npm run motif:check` 通过（均无模型）。覆盖版本漂移、跨会话来源、闭合首页权限、完整工具表、运行锁及真实 Linux 命令隔离。

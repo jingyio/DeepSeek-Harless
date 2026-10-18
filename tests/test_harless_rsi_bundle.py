@@ -37,9 +37,10 @@ def test_new_ppt_release_keeps_artifact_and_current_source_locks():
     for name,version in cert['code_locks'].items():assert sha(root/name)==version,name
     admitted=load_product_bundle(root,bundle,'ppt')
     assert admitted['binding_policy']=='ppt_master_sources_v1'
-    assert len(admitted['certified_tool_schemas'])==3
+    assert len(admitted['certified_tool_schemas'])==5
+    assert admitted['runtime_kind']=='ppt_master_v2'
     manifest=json.loads((bundle/'online-manifest.json').read_text())
-    assert manifest['artifacts'][0]['tools']==['mcp__ppt_master__pin_source','mcp__ppt_master__read_source_page']
+    assert {tuple(a['tools']) for a in manifest['artifacts']}=={('mcp__ppt_master__pin_source','mcp__ppt_master__convert_source'),('mcp__ppt_master__convert_source','mcp__ppt_master__read_converted_source')}
 
 
 def test_bundle_freezes_runtime_code_artifacts_and_whole_schema(tmp_path):

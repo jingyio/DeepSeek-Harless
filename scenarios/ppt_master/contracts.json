@@ -15,7 +15,7 @@
     ],
     "description": "Observe a model-selected uploaded PDF and exact version."
   },
-  "mcp__ppt_master__read_source_page": {
+  "mcp__ppt_master__convert_source": {
     "required_params": [
       "source_id"
     ],
@@ -24,19 +24,24 @@
     "provenance_params": [
       "source_id"
     ],
-    "default_params": [
-      [
-        "page",
-        1
-      ]
-    ],
-    "witness_default_only": [
-      "page"
-    ],
     "output_fields": [
-      "source_id",
+      "converted_id",
       "version_sha256"
     ],
-    "description": "Read the pinned PDF first page for title and abstract identification."
+    "description": "Convert the same pinned PDF with the official converter; originals read-only, only private derivative cache is written."
+  },
+  "mcp__ppt_master__read_converted_source": {
+    "required_params": [
+      "converted_id"
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "provenance_params": [
+      "converted_id"
+    ],
+    "output_fields": [
+      "version_sha256"
+    ],
+    "description": "Read the exact revalidated derivative text and asset manifest, without interpretation."
   }
 }

@@ -13,3 +13,20 @@ test('PPT source continuation allows only the selected PDF first page, never aut
    {version_relation:'object_lookup'},{code_node_ids:['script']}])assert.equal(closed({...row,...patch},manifest),false);
  const unsafe=structuredClone(manifest);unsafe.contracts[read].read_only=false;assert.equal(closed(row,unsafe),false);
 });
+
+test('conversion edges only accept exact source/derivative bindings and read-only contracts',
+ {skip:!process.features?.typescript},async()=>{
+ const {closedPptConvertedSource:closed}=await import('../src/adapters/harless_rsi_binding.ts');
+ const chain=['mcp__ppt_master__pin_source','mcp__ppt_master__convert_source','mcp__ppt_master__read_converted_source'];
+ for(let i=0;i<2;i++){
+  const [from,to]=chain.slice(i,i+2),field=i?'converted_id':'source_id',prefix=i?'result':'source';
+  const manifest={contracts:{[from]:{read_only:true,observed_anchor:i===0},[to]:{read_only:true,required_params:[field],default_params:{}}},
+   artifacts:[{motif_id:'witnessed-edge',tools:[from,to],transfer_evidence:[{from_tool:from,to_tool:to,from_field:field,to_param:field}]}]};
+  const row={tool:to,motif_id:'witnessed-edge',version_relation:'same_source',code_node_ids:[],arguments:{[field]:prefix+'-'+'b'.repeat(32)}};
+  assert.equal(closed(row,manifest),true);
+  for(const patch of [{tool:'bash'},{arguments:{...row.arguments,page:2}},
+    {arguments:{[field]:'/etc/passwd'}},{version_relation:'object_lookup'},{code_node_ids:['unsafe']}])assert.equal(closed({...row,...patch},manifest),false);
+  const changed=structuredClone(manifest);changed.artifacts[0].transfer_evidence[0].from_field='other';assert.equal(closed(row,changed),false);
+  changed.artifacts[0].transfer_evidence[0].from_field=field;changed.contracts[to].read_only=false;assert.equal(closed(row,changed),false);
+ }
+});

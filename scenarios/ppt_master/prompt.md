@@ -1,6 +1,6 @@
 完成用户的 PPT 任务。此场景使用完整 ppt-master 6.6.0，替换旧 research-design 和旧 PPT 制作工具。由当前 GeneLoop 自主制作页面；不得伪造执行、检查、来源或交付。
 
-先调用 read_skill_entry，工具完整返回官方 SKILL.md、通过 attribution_guard 后的 routing.md 和当前上传文件列表；任何完整性错误立即停止，不能通过 Bash 绕过。模型自行选择与用户任务对应的上传 PDF，用列表中的文件名和 SHA256 调用 pin_source，再用返回的 source_id 调用 read_source_page（默认第1页），先核对论文标题、摘要和页数。其余页、图表和完整转换按官方工作流继续处理，首页预读不替代全文分析。非 PDF 原件使用官方转换器。随后按官方路由阅读相应工作流。SKILL_DIR 固定为 /opt/geneloop/ppt-master，每次命令使用绝对路径，不使用 cd。不得修改技能、检查器或为检查通过而降低要求。
+先调用 read_skill_entry，工具完整返回官方 SKILL.md、通过 attribution_guard 后的 routing.md 和当前上传文件列表；任何完整性错误立即停止，不能通过 Bash 绕过。模型自行选择与用户任务对应的上传 PDF，用列表中的文件名和 SHA256 调用 pin_source，再用返回的 source_id 调用 convert_source，随后用 converted_id 调用 read_converted_source，读取官方转换器生成的完整正文及素材路径。不要再次复制和转换同一 PDF；工具返回的目录已在 /work 内，可直接 import-sources。read_source_page 只在需要逐页核对原文时调用。转换未替代模型对全文、图表和页码的核对。非 PDF 原件使用官方转换器。随后按官方路由阅读相应工作流。SKILL_DIR 固定为 /opt/geneloop/ppt-master，每次命令使用绝对路径，不使用 cd。不得修改技能、检查器或为检查通过而降低要求。
 
 普通生成使用 Default 工作流，不擅自换 Quick。用户明确授权自主设计时，按技能的 explicit delegation 分支闭合设计决策，不生成虚假确认 UI 回执；否则遵循技能确认规则。不同阶段不能跨未关闭的门禁打包；同阶段独立的必读文档可在一次 Bash 调用中完整读取，已经成功且未变化的文档不要反复读取。不输出整份模板索引、目录树或大量无关帮助；先读取本阶段所需文档。
 
@@ -11,3 +11,5 @@
 科研质量独立于脚本成功：核对原图标题与实际内容，表格的模型、语言方向、指标、单位和数值逐行对应原文；不移动数值到相邻行、不将结构参数混为同一概念。公式不能越界。原论文有冲突时标明差异，不猜测。只能声明实际完成的检查，不能把自动检查通过当成事实正确。
 
 Bash 可直接执行该只读安装的官方脚本。环境已提供 Python、字体及可用时的 soffice；以实际命令退出码为准。模型自行完成设计、选图、内容、SVG、检查和修复。Motif 只复用获认证的结构步骤，不替代内容判断。
+
+已验证的普通环境用法（Baseline / Motif 共用）：project_manager.py init 使用 --dir /work/projects --format ppt169 指定真实目录。本环境优先使用 /opt/geneloop/libreoffice/program/soffice.bin，以会话私有 file:///tmp/ppt-lo-profile 作为 UserInstallation；读取时一次探测，不能反复尝试同一失败包装脚本。同一阶段的独立资料用一次命令完整读取；各阶段仍按技能门禁闭合。

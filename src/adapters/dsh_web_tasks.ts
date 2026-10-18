@@ -20,7 +20,8 @@ import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDi
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
-import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,closedPaperDocumentFirstPage,closedPptSourceFirstPage,structuralOnlySimilarity} from './harless_rsi_binding.ts';
+import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,closedPaperDocumentFirstPage,closedPptSourceFirstPage,closedPptConvertedSource,structuralOnlySimilarity} from './harless_rsi_binding.ts';
+import {createPptMasterRecovery} from './ppt_master_recovery.ts';
 import {createComparisonService} from './harless_comparison.ts';
 import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
 import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
@@ -70,6 +71,7 @@ type Task = {
   budget_session_id: string;
   source_task_id?: string;
   ppt_recovery?: ReturnType<typeof createPptRecovery>;
+  ppt_master_recovery?: ReturnType<typeof createPptMasterRecovery>;
   paper_recovery?: ReturnType<typeof createPaperRecovery>;
   bound_binding_sha256?: string | null;
 };
@@ -1212,6 +1214,7 @@ export function apply(ctx: any) {
         task: binding, mode: task.request.mode, minSimilarity: 0.8, minMargin: 0.1,
         ...(scene.runtime_kind==='paper_document_read_v1'?{closedContinuation:closedPaperDocumentFirstPage}:{}),
         ...(scene.runtime_kind==='ppt_master_v1'?{closedContinuation:closedPptSourceFirstPage}:{}),
+        ...(scene.runtime_kind==='ppt_master_v2'?{closedContinuation:closedPptConvertedSource}:{}),
         similarity: scene.matching_policy==='structural_only' ? structuralOnlySimilarity : loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
         audit: (row: unknown) => audit(task, row) });
       // The migrated flows only observe the same frozen task and tool results.
@@ -1616,6 +1619,16 @@ export function apply(ctx: any) {
     agent.ctx.on('agent/turn-stopping', ({ signal }: any) => {
       const task = forSession(agent.session.id);
       if (!task || task.status !== 'running' || signal.aborted) return;
+      if(task.scene.ppt_execution_strategy==='ppt_master'){
+        const next=task.ppt_master_recovery?.stop(signal.aborted);
+        if(!next)return;
+        if(scopeDigest(task.workspace,task.scene)!==task.scope_sha256)throw Error('PPT continuation source scope changed');
+        audit(task,{kind:'ppt_provider_length_continuation',continuation:next.continuation,truncated:next.truncated});
+        task.stats.provider_length_continuations=next.continuation;record(task);
+        agent.steer(createUserMessage({content:[{type:'text',text:next.instruction}],
+          source:{kind:'ppt-provider-length-recovery',task_id:task.request.task_id,session_id:agent.session.id}}));
+        return;
+      }
       if (task.scene.adapter === 'ppt') {
         // Native steering preserves the original admission, task ID, tool set and budget.
         if(scopeDigest(task.workspace,task.scene)!==task.scope_sha256)throw Error('PPT recovery source scope changed');
@@ -1712,8 +1725,11 @@ export function apply(ctx: any) {
     task.stats.llm_decisions = Number(task.stats.llm_decisions) + 1; record(task);
     const live = progress.get(task.request.task_id) ?? createTaskProgress(); progress.set(task.request.task_id, live); live.beginAttempt();
     return (async function* () {
+      if(task.scene.ppt_execution_strategy==='ppt_master'){
+        task.ppt_master_recovery??=createPptMasterRecovery();task.ppt_master_recovery.begin();
+      }
       const stream = task.interceptor ? await task.interceptor.intercept(request.sessionId, request, next) : next();
-      for await (const chunk of stream) { live.chunk(chunk); task.answer = live.snapshot().answer; notifyTask(task); yield chunk; }
+      for await (const chunk of stream) { task.ppt_master_recovery?.observe(chunk);live.chunk(chunk); task.answer = live.snapshot().answer; notifyTask(task); yield chunk; }
     })();
   }, { global: true });
   const taskRoute = { methods: ['GET', 'POST'] as const, requestBody: 'buffered' as const,

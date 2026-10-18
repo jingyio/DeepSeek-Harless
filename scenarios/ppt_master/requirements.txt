@@ -1,0 +1,5 @@
+# Core PDF/native PowerPoint dependencies; install root requirements first.
+# Additional upstream optional tools remain governed by the pinned skill.
+PyMuPDF==1.26.7
+python-pptx==1.0.2
+PyYAML==6.0.3
