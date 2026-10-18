@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from src.adapters.scenario import ROOT, prepare_scenario
 from src.adapters.harless_product_prompt import product_persona, product_system_prompt
@@ -17,7 +18,13 @@ def test_sdk_defaults_are_unchanged_and_web_identity_does_not_rewrite_task_text(
     web = prepare_scenario(scenario, web_deployment=True)
     sdk_patch = Path(sdk['patch']).read_text(encoding='utf-8')
     web_patch = Path(web['patch']).read_text(encoding='utf-8')
-    assert 'GeneLoop' not in sdk_patch and 'includeHarnessIdentity' not in sdk_patch
+    # Repository paths may contain the product name (e.g. a GeneLoop checkout).
+    # The SDK must not receive the Web's system-prompt override or persona config.
+    sdk_rows = yaml.safe_load(sdk_patch)
+    assert not any(row.get('id') == 'system-prompt' for row in sdk_rows)
+    assert 'includeHarnessIdentity' not in sdk_patch
+    assert not any(item.get('config') == product_persona()
+                   for row in sdk_rows for item in row.get('insert', []))
     rows = [json.loads(line[2:]) for line in web_patch.splitlines() if line.startswith('- {"id": "system-prompt"')]
     assert next(row['config'] for row in rows if row.get('id') == 'system-prompt') == product_system_prompt()
     assert web['prompt'] == sdk['prompt']
