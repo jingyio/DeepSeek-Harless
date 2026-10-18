@@ -108,9 +108,9 @@ export function bindApprovedUploadedReadTask(workspace:string,inputs:any[],reque
       }:{})}};
 }
 
-function paperDocumentFirstPageContracts(manifest:any):boolean{
-  const pin=manifest?.contracts?.mcp__paper_checks__pin_document;
-  const read=manifest?.contracts?.mcp__paper_checks__read_pinned_document;
+function paperDocumentFirstPageContracts(manifest:any,pair=['mcp__paper_checks__pin_document','mcp__paper_checks__read_pinned_document']):boolean{
+  const pin=manifest?.contracts?.[pair[0]];
+  const read=manifest?.contracts?.[pair[1]];
   return !!(pin?.read_only===true && pin.observed_anchor===true &&
     Array.isArray(pin.required_params) && pin.required_params.join(',')==='name,sha256' &&
     pin.default_params && typeof pin.default_params==='object' && !Array.isArray(pin.default_params) &&
@@ -122,9 +122,9 @@ function paperDocumentFirstPageContracts(manifest:any):boolean{
 }
 
 /** A closed permission check; the pin/read graph still comes from real traces. */
-export function closedPaperDocumentFirstPage(row:any,manifest:any):boolean{
-  const pin='mcp__paper_checks__pin_document',read='mcp__paper_checks__read_pinned_document';
-  if(!paperDocumentFirstPageContracts(manifest) || !Array.isArray(manifest?.artifacts) ||
+function closedUploadedFirstPage(row:any,manifest:any,pair:string[]):boolean{
+  const [pin,read]=pair;
+  if(!paperDocumentFirstPageContracts(manifest,pair) || !Array.isArray(manifest?.artifacts) ||
       manifest.artifacts.length!==1)return false;
   const artifact=manifest.artifacts[0],edge=artifact?.transfer_evidence;
   if(!artifact || typeof artifact!=='object' || Array.isArray(artifact))return false;
@@ -163,3 +163,6 @@ export function bindUploadedSourceTask(workspace:string,inputs:any[],request:any
 }
 
 export const structuralOnlySimilarity=async():Promise<number[]>=>{throw Error('semantic_matching_disabled_by_certification');};
+
+export const closedPaperDocumentFirstPage=(row:any,manifest:any)=>closedUploadedFirstPage(row,manifest,['mcp__paper_checks__pin_document','mcp__paper_checks__read_pinned_document']);
+export const closedPptSourceFirstPage=(row:any,manifest:any)=>closedUploadedFirstPage(row,manifest,['mcp__ppt_master__pin_source','mcp__ppt_master__read_source_page']);

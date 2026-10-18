@@ -17,7 +17,12 @@ def test_sdk_defaults_are_unchanged_and_web_identity_does_not_rewrite_task_text(
     web = prepare_scenario(scenario, web_deployment=True)
     sdk_patch = Path(sdk['patch']).read_text(encoding='utf-8')
     web_patch = Path(web['patch']).read_text(encoding='utf-8')
-    assert 'GeneLoop' not in sdk_patch and 'includeHarnessIdentity' not in sdk_patch
+    # Repository paths may contain the product name (e.g. a GeneLoop checkout).
+    # Inspect persona fields, not MCP executable paths in the rest of the patch.
+    sdk_persona = [line for line in sdk_patch.splitlines()
+                   if 'personaPrefix' in line or 'personaSuffix' in line]
+    assert sdk_persona and all('GeneLoop' not in line for line in sdk_persona)
+    assert 'includeHarnessIdentity' not in sdk_patch
     rows = [json.loads(line[2:]) for line in web_patch.splitlines() if line.startswith('- {"id": "system-prompt"')]
     assert next(row['config'] for row in rows if row.get('id') == 'system-prompt') == product_system_prompt()
     assert web['prompt'] == sdk['prompt']

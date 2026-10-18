@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "ppt-master-admission",
+  "session_id": "ppt-master-admission",
+  "intent": "Read the first page of the exact model-selected uploaded PDF.",
+  "input_version": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+  "bindings": {},
+  "source_versions": {
+    "mcp__ppt_master__pin_source": "@observed",
+    "mcp__ppt_master__read_source_page": "@from_anchor"
+  }
+}

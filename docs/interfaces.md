@@ -32,7 +32,8 @@
 
 ## PPT 普通脚本与新学读取库（2026-10-16）
 
-- `Scene.ppt_execution_strategy` 是服务端选项，只接受 `host_delivery` / `baseline_steps`。产品默认前者，后者用于独立实验；绑定 job 的 `execution_policy` 与实际策略写入 effective config，客户端不能覆盖。两侧共用同一普通交付脚本。
+- `Scene.ppt_execution_strategy` 是服务端选项，接受 `ppt_master` / `host_delivery` / `baseline_steps`。网页默认 `ppt_master`，后两者保留研究 CLI 和历史复现；实际策略写入 effective config，客户端不能覆盖。新入口不使用旧交付恢复器。两侧共用固定只读技能、普通环境准备及原生 Bash；模型自行执行技能流程。部署契约见 [ppt-master 场景](../scenarios/ppt_master/README.md)。
+- 新库 runtime kind 为 `ppt_master_v1`，binding policy 为 `ppt_master_sources_v1`。MCP 完整表为 `read_skill_entry`、`pin_source`、`read_source_page`，另有六项既有通用能力。前者合并官方入口、归属检查、路由与上传文件清单；只读候选仅为后两者，`page=1`，禁止脚本节点和其他页自动续接。库及代码锁变更必须重新编译核验；无上传来源时不自动绑定读图。`GENELOOP_PPT_MASTER_ROOT` 与账号部署 `pptMasterRoot` 必须指向通过完整 manifest 校验的同一安装。MCP 与 Bash 均只读挂载为 `/opt/geneloop/ppt-master`，源文件只读，临时目录按 Session 隔离且跨命令保留。
 - Web 白名单包括完整 21 工具及 `read_pending_plan` / `repair_pending_plan`；草稿读取限明确的 1–5 页，更新针对旧版本页号，返回新版本。宿主真实交付后不重复执行原子链。Web 的修复次数由原任务预算控制；CLI 默认有限次数保持兼容。无修改重试、并发未确认结果、来源/权限/实现/旧版本变化仍拒绝。
 - PPT 的 `attachment_context_strategy=versioned_mcp_sources`：完整用户文字、附件原件及来源回执保留，由实际 MCP 读取，不再同时附加一份完整提取文本。其他场景保留只读提取并通过原生已记录消息传给模型，以满足模型请求可重建与只读约束；网页投影只显示用户文字及文件卡片，隐藏带真实文件卡片的自动提取块，适用于新旧记录。不得在 `llm/stream` 修改已冻结的请求或消息。
 - 已绑定附件的原生 Chat 再上传新资料时，通过现有单路任务机制创建独立执行目录，继续同一公开对话；不复用旧任务的来源授权。附件所有权、版本摘要和场景工具校验保持。

@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {commandLayout,commandArgv} from './geneloop_shell.ts';
 
-export async function startCommandBroker(options:{output:string;python:string;node:string}) {
+export async function startCommandBroker(options:{output:string;python:string;node:string;resources?:any}) {
   const directory=mkdtempSync(join(tmpdir(),'geneloop-cmd-')),socketPath=join(directory,'commands.sock');
   chmodSync(directory,0o700);
   const children=new Set<ReturnType<typeof spawn>>();
@@ -22,7 +22,7 @@ export async function startCommandBroker(options:{output:string;python:string;no
         typeof value.readOnly!=='boolean'||!/^session-[a-f0-9-]{36}$/.test(value.session)||
         !existsSync(join(options.output,'sessions',value.session,'work')))throw Error('invalid owning Session command');
       const layout=commandLayout(options.output,value.session);
-      const [bin,...args]=commandArgv(layout,value.command,value.cwd,options.python,options.node,value.readOnly);
+      const [bin,...args]=commandArgv(layout,value.command,value.cwd,options.python,options.node,value.readOnly,options.resources);
       const child=spawn(bin,args,{stdio:['ignore','pipe','pipe'],detached:true,env:{}});children.add(child);
       res.writeHead(200,{'Content-Type':'application/x-ndjson','Cache-Control':'no-store'});
       const send=(value:unknown)=>{if(!res.destroyed)res.write(JSON.stringify(value)+'\n');};

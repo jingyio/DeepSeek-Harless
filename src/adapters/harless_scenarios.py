@@ -77,7 +77,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
         if type(row.get('diagnostic', False)) is not bool: raise ValueError('diagnostic must be boolean')
         scene['diagnostic'] = row.get('diagnostic', False)
         if row.get('adapter') not in (None, 'ppt', 'workspace', 'files', 'literature', 'data-report'): raise ValueError('unsupported scene adapter')
-        if 'ppt_execution_strategy' in row and (row.get('adapter')!='ppt' or row['ppt_execution_strategy'] not in ('host_delivery','baseline_steps')):
+        if 'ppt_execution_strategy' in row and (row.get('adapter')!='ppt' or row['ppt_execution_strategy'] not in ('host_delivery','baseline_steps','ppt_master')):
             raise ValueError('invalid server-owned PPT execution strategy')
         path = (root / row['scenario']).resolve(strict=True)
         prepared = (prepared_default if row['id'] == default_id else
@@ -98,7 +98,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
             except (OSError, ValueError): scene['unavailable_reason'] = 'literature_pdf_dependencies_missing'
         if row.get('adapter') == 'data-report' and any(importlib.util.find_spec(module) is None for module in ('numpy','pandas','scipy','matplotlib','statsmodels')):
             scene['unavailable_reason'] = 'data_report_python_dependencies_missing'
-        if row.get('adapter') in ('data-report','ppt') or row['id']=='paper-proofreading':
+        if (row.get('adapter') in ('data-report','ppt') or row['id']=='paper-proofreading') and row.get('ppt_execution_strategy')!='ppt_master':
             _configure_attachment_parsers(scene)
         if (row.get('adapter') == 'data-report' or row['id']=='paper-proofreading') and os.environ.get('HARLESS_PPT_FONT_ROOT'):
             report_font = Path(os.environ['HARLESS_PPT_FONT_ROOT']).resolve() / 'wqy-microhei.ttc'
@@ -109,7 +109,19 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                         mcp['config'].setdefault('env', {})['HARLESS_REPORT_FONT'] = str(report_font)
             else:
                 scene['unavailable_reason'] = 'data_report_embedded_font_missing'
-        if row.get('adapter') == 'ppt':
+        if row.get('adapter') == 'ppt' and row.get('ppt_execution_strategy') == 'ppt_master':
+            from scenarios.ppt_master.package import installation, read_lock, verify_installation
+            scene['ppt_execution_strategy'] = 'ppt_master'
+            lock = read_lock()
+            scene.update(design_skill_sha256=lock['files']['SKILL.md'], skill_package_sha256=lock['package_sha256'])
+            try:
+                skill_root = installation()
+                verify_installation(skill_root)
+                for mcp in scene['mcp_rows']:
+                    mcp['config'].setdefault('env', {}).update(GENELOOP_PPT_MASTER_ROOT=str(skill_root), PYTHONDONTWRITEBYTECODE='1')
+            except (ValueError, OSError):
+                scene['unavailable_reason'] = 'ppt_master_installation_missing_or_changed'
+        elif row.get('adapter') == 'ppt':
             scene['ppt_execution_strategy']=row.get('ppt_execution_strategy','host_delivery')
             from .harless_ppt_deployment import configure_ppt_rendering
             try:configure_ppt_rendering(scene)
@@ -130,7 +142,7 @@ def prepare_scene_registry(root: Path, registry_path: Path, *, default_id: str, 
                 scene['paper_reference_output_unavailable_reason'] = 'paper_renderer_not_deployed'
         if row.get('instructions'):
             instructions = (root / row['instructions']).read_text(encoding='utf-8')
-            if row.get('adapter') == 'ppt':
+            if row.get('adapter') == 'ppt' and scene.get('ppt_execution_strategy') != 'ppt_master':
                 # Match the research CLI: mentioning the Skill is not loading it.
                 # Both comparison lanes inherit this same immutable scene text.
                 skill = (root / 'scenarios/research_ppt/skills/research-design/SKILL.md').read_text(encoding='utf-8')

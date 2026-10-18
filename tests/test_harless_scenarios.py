@@ -41,20 +41,19 @@ def test_registry_refuses_invalid_registration_before_runtime(tmp_path, change):
 def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     scenes = prepared(tmp_path, ROOT / 'config/harless-scenes.json')
     rows = {scene['id']: scene for scene in scenes}
-    assert rows['ppt']['scenario'] == 'scenarios/research_ppt/web-scenario.json'
+    assert rows['ppt']['scenario'] == 'scenarios/ppt_master/scenario.json'
     assert rows['ppt']['adapter'] == 'ppt'
-    assert rows['ppt']['ppt_execution_strategy']=='host_delivery'
-    assert len(rows['ppt']['allowed_tools'])==27
-    assert 'mcp__ppt__repair_pending_plan' in rows['ppt']['allowed_tools']
-    assert 'SSS_PPT_JOB' in json.dumps(rows['ppt']['mcp_rows'])
-    assert rows['ppt']['instructions'].startswith('完成科研 PPT 任务。')
-    skill=(ROOT/'scenarios/research_ppt/skills/research-design/SKILL.md').read_text(encoding='utf-8')
-    assert skill in rows['ppt']['instructions']
-    assert rows['ppt']['instructions'].count(skill)==1
-    assert rows['ppt']['design_skill_sha256']==hashlib.sha256(skill.encode()).hexdigest()
+    assert rows['ppt']['ppt_execution_strategy']=='ppt_master'
+    assert len(rows['ppt']['allowed_tools'])==9
+    assert 'mcp__ppt_master__read_skill_entry' in rows['ppt']['allowed_tools']
+    assert not any(t.startswith('mcp__ppt__') for t in rows['ppt']['allowed_tools'])
+    assert rows['ppt']['instructions'].startswith('完成用户的 PPT 任务。')
+    lock=json.loads((ROOT/'scenarios/ppt_master/skill-lock.json').read_text(encoding='utf-8'))
+    assert rows['ppt']['design_skill_sha256']==lock['files']['SKILL.md']
+    assert rows['ppt']['skill_package_sha256']==lock['package_sha256']
     assert rows['ppt']['instructions_sha256']==hashlib.sha256(rows['ppt']['instructions'].encode()).hexdigest()
     assert all('design_skill_sha256' not in rows[key] for key in ['paper-proofreading','research-data-analysis','new-scene'])
-    assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['ppt']['mcp_rows'])
+    assert 'scenarios/ppt_master/server.py' in json.dumps(rows['ppt']['mcp_rows']).replace('\\\\','/')
     common = ['web_search', 'web_fetch', 'bash', 'job_list', 'job_output', 'job_kill']
     assert rows['new-scene']['allowed_tools'] == ['mcp__workspace__list_files', 'mcp__workspace__read_file', *common]
     for scene in rows.values():

@@ -20,7 +20,7 @@ import { sessionWorkspace, sessionPreset, bindSceneInputs, sceneOptions, scopeDi
 import type { SceneOptions } from './harless_task_scope.ts';
 import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
-import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,closedPaperDocumentFirstPage,structuralOnlySimilarity} from './harless_rsi_binding.ts';
+import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,closedPaperDocumentFirstPage,closedPptSourceFirstPage,structuralOnlySimilarity} from './harless_rsi_binding.ts';
 import {createComparisonService} from './harless_comparison.ts';
 import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
 import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
@@ -187,7 +187,7 @@ export function apply(ctx: any) {
     if (!structural && !/^[a-f0-9]{64}$/.test(scene.certified_input_sha256 ?? '')) return 'no_certified_input';
     try {
       if(structural){
-        if(!((scene.id==='ppt' && ['ppt_uploaded_sources_v1','ppt_uploaded_sources_v2'].includes(scene.binding_policy??'')) ||
+        if(!((scene.id==='ppt' && ['ppt_uploaded_sources_v1','ppt_uploaded_sources_v2','ppt_master_sources_v1'].includes(scene.binding_policy??'')) ||
              (['paper-proofreading','research-data-analysis','new-scene'].includes(scene.id) &&
               scene.binding_policy==='approved_uploaded_reads_v1') ||
              (['paper-proofreading','research-data-analysis','literature'].includes(scene.id) &&
@@ -1161,7 +1161,8 @@ export function apply(ctx: any) {
       scenario: task.scene.scenario, scenario_version: task.scene.scenario_version,
       instructions: instructionsFor(task.scene, task.source_pending), instructions_sha256: sha(instructionsFor(task.scene, task.source_pending) ?? ''),
       design_skill_sha256:task.scene.design_skill_sha256,
-      attachment_context_strategy:task.scene.adapter==='ppt'?'versioned_mcp_sources':'full_read_only_extract',
+      skill_package_sha256:task.scene.skill_package_sha256,
+      attachment_context_strategy:task.scene.ppt_execution_strategy==='ppt_master'?'readonly_sandbox_sources':task.scene.adapter==='ppt'?'versioned_mcp_sources':'full_read_only_extract',
       ...(task.scene.adapter==='ppt'?{ppt_execution_strategy:JSON.parse(readFileSync(join(task.workspace,'job.json'),'utf8')).execution_policy?.strategy??'legacy_model_selected'}:{}),
       certified_tool_schemas_sha256: task.scene.certified_tool_schemas_sha256, diagnostic: task.scene.diagnostic ?? false,
       bound_binding_sha256:task.bound_binding_sha256,certification_sha256:task.scene.certification_sha256,
@@ -1210,6 +1211,7 @@ export function apply(ctx: any) {
       const core = createOnlineInterceptor({ manifest,
         task: binding, mode: task.request.mode, minSimilarity: 0.8, minMargin: 0.1,
         ...(scene.runtime_kind==='paper_document_read_v1'?{closedContinuation:closedPaperDocumentFirstPage}:{}),
+        ...(scene.runtime_kind==='ppt_master_v1'?{closedContinuation:closedPptSourceFirstPage}:{}),
         similarity: scene.matching_policy==='structural_only' ? structuralOnlySimilarity : loopbackSimilarity(scene.embedding_endpoint!, scene.embedding_model ?? 'fixture-vectors-not-a-semantic-model'),
         audit: (row: unknown) => audit(task, row) });
       // The migrated flows only observe the same frozen task and tool results.
@@ -1604,7 +1606,7 @@ export function apply(ctx: any) {
     agent.ctx.on('tools/result', (execution: any, result: any) => {
       const task=forSession(agent.session.id);
       task?.interceptor?.observe(agent.session.id, execution, result);
-      if(task?.status==='running'&&task.scene.adapter==='ppt'){
+      if(task?.status==='running'&&task.scene.adapter==='ppt'&&task.scene.ppt_execution_strategy!=='ppt_master'){
         task.ppt_recovery??=createPptRecovery();task.ppt_recovery.observe(execution,result);
       }
       if(task?.status==='running'&&task.scene.id==='paper-proofreading'){

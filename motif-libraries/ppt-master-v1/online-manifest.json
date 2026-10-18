@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "source_library_digest": "5a7ec5c37f071a20d3db58dfc311939bda69db5cf0332907d9adab31cf4f710f",
+  "artifacts": [
+    {
+      "motif_id": "edge_motif_e182309c1157",
+      "certified_digest": "3bc4c22856eb6aad24ce988d8a1f565404d0adc67688c3c3236ad2822ba27cfc",
+      "tools": [
+        "mcp__ppt_master__pin_source",
+        "mcp__ppt_master__read_source_page"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt_master__pin_source",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__ppt_master__read_source_page",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__ppt_master__read_source_page": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__ppt_master__read_source_page",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__ppt_master__pin_source",
+              "from_field": "source_id",
+              "to_param": "source_id"
+            }
+          ],
+          "program_digest": "36b2fe222642f4f8583e1abb92a2af0b29d1ec157049166cc97a3ed628739198"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "ppt-master-source-heldout-loftq-v1"
+    }
+  ],
+  "contracts": {
+    "mcp__ppt_master__pin_source": {
+      "required_params": [
+        "name",
+        "sha256"
+      ],
+      "output_fields": [
+        "source_id",
+        "name",
+        "version_sha256",
+        "bytes"
+      ],
+      "default_params": {},
+      "description": "Pin a model-selected listed upload to its exact current version. Never choose the paper for the model.",
+      "read_only": true,
+      "observed_anchor": true
+    },
+    "mcp__ppt_master__read_source_page": {
+      "required_params": [
+        "source_id"
+      ],
+      "output_fields": [
+        "source_id",
+        "version_sha256"
+      ],
+      "default_params": {
+        "page": 1
+      },
+      "description": "Read one page of the pinned PDF, default first page for title/abstract identification. No visual or scientific certification.",
+      "read_only": true
+    }
+  },
+  "slot_rules": {},
+  "version_fields": {
+    "mcp__ppt_master__pin_source": "version_sha256",
+    "mcp__ppt_master__read_source_page": "version_sha256"
+  },
+  "manifest_digest": "b45b15357d131211d947babc24fcd54637880ce2466d6c9b2a220ec881e7c504"
+}

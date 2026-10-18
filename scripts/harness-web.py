@@ -169,6 +169,13 @@ def prepare(args, output, endpoint):
             selected.update({key: policy[key] for key in ('manifest', 'task', 'certified_input_sha256')})
         policy.update(scenes=scenes, allowed_tools=selected.get('allowed_tools', prepared['allowed_tools']),
                       scene_registry_sha256=hashlib.sha256(registry.read_bytes()).hexdigest())
+        if os.environ.get('GENELOOP_PPT_MASTER_ROOT'):
+            policy['command_resources'] = {'projectRoot': str(ROOT),
+                'pptMasterRoot': os.environ['GENELOOP_PPT_MASTER_ROOT']}
+            for field, variable in (('rendererRoot', 'HARLESS_PAPER_RENDERER_ROOT'),
+                                    ('fontRoot', 'HARLESS_PPT_FONT_ROOT')):
+                if os.environ.get(variable):
+                    policy['command_resources'][field] = os.environ[variable]
     save(output / 'policy.json', policy)
     disabled = ['llm-deepseek', 'session-title-llm', 'llm-retry',
                 'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']

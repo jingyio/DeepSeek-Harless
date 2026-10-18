@@ -1,0 +1,93 @@
+{
+  "train": [
+    {
+      "research_decision_id": "ppt-master-source-train-attention-v1",
+      "task_id": "cddefaf4f49447848d0f0263b7a0425f",
+      "question_sha256": "ec95f61d63345aaa3c9cdb6d76691128dc80fa18d2f3f2e180183b62637b7513",
+      "manifest_sha256": "4e3196dacb04d59fe0bc5a47d8754df94f759072ea3b0d6adf352fa20797b79a",
+      "events_sha256": "4eefa4d5f47091baa8464ef4515332be05430dd85ecd2ef98e13965a420c070e",
+      "identity_sha256": "e07405c151db7e3569aff576b4c32daedbeda2c9cac7829eb57f3411759d02b7",
+      "requests": 75,
+      "tokens": {
+        "prompt_tokens": 7765958,
+        "prompt_cache_hit_tokens": 7638784,
+        "prompt_cache_miss_tokens": 127174,
+        "completion_tokens": 41323,
+        "total_tokens": 7807281
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 75
+      },
+      "proxy_peak_usd": 0.6676152100000002,
+      "actual_paid_usd": null,
+      "tool_calls": 90,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0,
+      "skill_package_sha256": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+      "effective_config_sha256": "741003811434475a0d683e322d1836b64a3706f2ca7e35cce9104e038d039386"
+    },
+    {
+      "research_decision_id": "ppt-master-source-train-dora-v1",
+      "task_id": "0dd4002fa2c149f8b742d3007beff63f",
+      "question_sha256": "9177e32051b55646bf355ccb63990c2f1ab807491061a3011857546374d5af21",
+      "manifest_sha256": "f75e397af2662bfe793e9107d27aa531ce26c6d6e386e08e57a6c8aab2a1308b",
+      "events_sha256": "5146ec815f8f0e780810f77270f0e78bec4dcba5287d68af051067af678465f2",
+      "identity_sha256": "98d5f91a9e2c71606e39565eb12a7dc1dd7d1cfed079b52c86de061438c7c0c0",
+      "requests": 74,
+      "tokens": {
+        "prompt_tokens": 6983282,
+        "prompt_cache_hit_tokens": 6875392,
+        "prompt_cache_miss_tokens": 107890,
+        "completion_tokens": 37951,
+        "total_tokens": 7021233
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 74
+      },
+      "proxy_peak_usd": 0.5952180200000001,
+      "actual_paid_usd": null,
+      "tool_calls": 74,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0,
+      "skill_package_sha256": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+      "effective_config_sha256": "45b56fffbdeb567defc79685147a05ffc18cf1d1bc3c93a74ec06123fc4f8605"
+    }
+  ],
+  "heldout": [
+    {
+      "research_decision_id": "ppt-master-source-heldout-loftq-v1",
+      "task_id": "46afa6226320463c9049077901d93945",
+      "question_sha256": "bbad1e64ab7a1e315dab24eb57478afbd25c8aa053397ce041ebd2993264d233",
+      "manifest_sha256": "724d05092647b9753762f5d2fbf11c4e83e8b2583261b72759a34d70ea145a05",
+      "events_sha256": "aa6e467671d579faed46f853e811c9a68e3066060006df77219e9b82dec81d88",
+      "identity_sha256": "351da4c6cd753abffd334a6ea67defa055bdfab5d8cd23dd6c7d12edab58a29f",
+      "requests": 112,
+      "tokens": {
+        "prompt_tokens": 11375045,
+        "prompt_cache_hit_tokens": 11252736,
+        "prompt_cache_miss_tokens": 122309,
+        "completion_tokens": 41442,
+        "total_tokens": 11416487
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 112
+      },
+      "proxy_peak_usd": 0.8206785799999999,
+      "actual_paid_usd": null,
+      "tool_calls": 111,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0,
+      "skill_package_sha256": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+      "effective_config_sha256": "a0e354fedb33cc3a65e8d639845f6232a4da5c6aefd339f8c44d547b48e5ed15"
+    }
+  ]
+}

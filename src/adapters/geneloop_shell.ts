@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {fileURLToPath} from 'node:url';
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local';
 import type { ShellExecRequest, ShellExecSpec } from '@deepseek-ai/dsh-shell';
+import {pptMasterInstallation} from './geneloop_skill_installation.mjs';
 
 const inside = (root: string, path: string) => { const r = relative(root, path); return !r.startsWith('..') && !isAbsolute(r); };
 function fixedDirectory(path: string) {
@@ -14,12 +15,14 @@ function fixedDirectory(path: string) {
 export function commandLayout(output: string, session: string) {
   if (!/^(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})$/.test(session)) throw Error('command requires an owning Session');
   const work = join(output, 'sessions', session, 'work');
-  for (const suffix of ['inputs', 'code', 'outputs/code']) mkdirSync(join(work, suffix), { recursive: true, mode: 0o700 });
+  for (const suffix of ['inputs', 'code', 'outputs/code', 'command-tmp']) mkdirSync(join(work, suffix), { recursive: true, mode: 0o700 });
   return { work: fixedDirectory(work), scratch: fixedDirectory(join(work, 'code')),
-    inputs: fixedDirectory(join(work, 'inputs')), outputs: fixedDirectory(join(work, 'outputs/code')) };
+    inputs: fixedDirectory(join(work, 'inputs')), outputs: fixedDirectory(join(work, 'outputs/code')),
+    temp:fixedDirectory(join(work,'command-tmp')) };
 }
 export function commandArgv(layout: ReturnType<typeof commandLayout>, command: string, cwd: string,
-    python = process.env.SSS_PYTHON ?? '/usr/bin/python3', node = process.execPath, readOnly = false) {
+    python = process.env.SSS_PYTHON ?? '/usr/bin/python3', node = process.execPath, readOnly = false,
+    resources: {pptMasterRoot?:string;rendererRoot?:string;fontRoot?:string;projectRoot?:string} = {}) {
   if (process.platform !== 'linux' || !existsSync('/usr/bin/bwrap')) throw Error('isolated command execution requires Linux bubblewrap');
   // env -i also supports the server's older bubblewrap (without --clearenv).
   const args = ['/usr/bin/env', '-i', '/usr/bin/bwrap', '--unshare-user', '--unshare-pid', '--unshare-ipc', '--unshare-uts',
@@ -36,9 +39,24 @@ export function commandArgv(layout: ReturnType<typeof commandLayout>, command: s
       throw Error('command dependency is not a public runtime installation');
     args.push('--ro-bind', root, root);
   }
-  args.push('--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', readOnly ? '--ro-bind' : '--bind', layout.scratch, '/work',
+  const skill=pptMasterInstallation(resources.pptMasterRoot,resources.projectRoot);
+  if(skill)args.push('--ro-bind',skill.source,skill.target);
+  if(resources.rendererRoot){
+    const renderer=fixedDirectory(resources.rendererRoot);
+    if(!existsSync(join(renderer,'program/soffice.bin')) || !existsSync(join(renderer,'share')))throw Error('invalid command renderer installation');
+    args.push('--ro-bind',renderer,'/opt/geneloop/libreoffice');
+  }
+  if(resources.fontRoot){
+    const fonts=fixedDirectory(resources.fontRoot);
+    if(!existsSync(join(fonts,'fonts-static.conf')))throw Error('invalid command font installation');
+    args.push('--ro-bind',fonts,fonts,'--setenv','FONTCONFIG_FILE',join(fonts,'fonts-static.conf'),'--setenv','FONTCONFIG_PATH',fonts);
+  }
+  // Checkers and converters write reports/caches to /tmp, then read them in a
+  // later native tool call. Persist only this Session's temp tree, never host /tmp.
+  args.push('--proc', '/proc', '--dev', '/dev', '--bind', layout.temp, '/tmp', readOnly ? '--ro-bind' : '--bind', layout.scratch, '/work',
     '--ro-bind', layout.inputs, '/work/inputs', readOnly ? '--ro-bind' : '--bind', layout.outputs, '/work/outputs',
-    '--setenv', 'HOME', '/work', '--setenv', 'PATH', `${dirname(python)}:${dirname(node)}:/usr/bin:/bin`,
+    '--setenv', 'HOME', '/work', '--setenv', 'PATH', `${dirname(python)}:${dirname(node)}:/opt/geneloop/libreoffice/program:/usr/bin:/bin`,
+    '--setenv', 'PYTHONDONTWRITEBYTECODE', '1',
     '--setenv', 'LANG', 'C.UTF-8', '--setenv', 'PYTHONUTF8', '1', '--setenv', 'MPLCONFIGDIR', '/tmp/matplotlib',
     '--setenv', 'OPENBLAS_NUM_THREADS', '1', '--setenv', 'OMP_NUM_THREADS', '1',
     '--setenv', 'NO_COLOR', '1', '--setenv', 'TERM', 'dumb', '--setenv', 'PAGER', 'cat',
@@ -66,7 +84,7 @@ export default class GeneLoopShell extends LocalBashExecutor {
     const socket=process.env.GENELOOP_COMMAND_SOCKET;
     const argv=socket ? [process.execPath,fileURLToPath(new URL('./geneloop_command_client.mjs',import.meta.url)),socket,
       Buffer.from(JSON.stringify({session:agent.session.id,command:request.command,cwd,readOnly})).toString('base64url')]
-      : commandArgv(layout,request.command,cwd,undefined,undefined,readOnly);
+      : commandArgv(layout,request.command,cwd,undefined,undefined,readOnly,policy.command_resources??{});
     Object.assign(spec, { geneloopArgv: argv });
     return spec;
   }

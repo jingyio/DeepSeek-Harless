@@ -1,0 +1,42 @@
+{
+  "mcp__ppt_master__pin_source": {
+    "required_params": [
+      "name",
+      "sha256"
+    ],
+    "read_only": true,
+    "replay_stable": false,
+    "observed_anchor": true,
+    "output_fields": [
+      "source_id",
+      "name",
+      "version_sha256",
+      "bytes"
+    ],
+    "description": "Observe a model-selected uploaded PDF and exact version."
+  },
+  "mcp__ppt_master__read_source_page": {
+    "required_params": [
+      "source_id"
+    ],
+    "read_only": true,
+    "replay_stable": true,
+    "provenance_params": [
+      "source_id"
+    ],
+    "default_params": [
+      [
+        "page",
+        1
+      ]
+    ],
+    "witness_default_only": [
+      "page"
+    ],
+    "output_fields": [
+      "source_id",
+      "version_sha256"
+    ],
+    "description": "Read the pinned PDF first page for title and abstract identification."
+  }
+}

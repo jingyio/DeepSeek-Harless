@@ -75,6 +75,11 @@ test('Linux commands compute, isolate credentials and sessions, protect inputs, 
   assert.equal(result.status,0,result.stderr);assert.equal(result.stdout.trim(),'29');assert.equal(readFileSync(join(layout.outputs,'result.txt'),'utf8'),'29');
   assert.notEqual(run('printf changed > inputs/input.txt').status,0);assert.equal(readFileSync(join(layout.inputs,'input.txt'),'utf8'),'original');
   assert.notEqual(run('touch outputs/forbidden',true).status,0);
+  assert.equal(run('printf report > /tmp/checker-report.txt').status,0);
+  assert.equal(run('cat /tmp/checker-report.txt').stdout,'report');
+  const other=commandLayout(root,'session-22222222-2222-4222-8222-222222222222');
+  const [otherBin,...otherArgs]=commandArgv(other,'test ! -e /tmp/checker-report.txt','/work','/usr/bin/python3',process.execPath);
+  assert.equal(spawnSync(otherBin,otherArgs,{encoding:'utf8',timeout:15000}).status,0);
   assert.throws(()=>commandLayout(root,'../../other'));
   rmSync(layout.scratch,{recursive:true});symlinkSync(root,layout.scratch);assert.throws(()=>commandLayout(root,'session-11111111-1111-4111-8111-111111111111'),/fixed directory/);
  }finally{rmSync(root,{recursive:true,force:true});}

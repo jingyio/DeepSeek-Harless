@@ -66,7 +66,7 @@ def test_real_paper_product_bundle_admits_independent_traces_and_complete_unchan
 
 def test_three_product_defaults_select_execute_releases_without_adding_capabilities():
     registry = {row['id']: row for row in read(ROOT / 'config/harless-scenes.json')['scenes']}
-    for identity, count in [('ppt', 21), ('research-data-analysis', 17), ('paper-proofreading', 24)]:
+    for identity, count in [('ppt', 3), ('research-data-analysis', 17), ('paper-proofreading', 24)]:
         row = registry[identity]
         assert read(ROOT / row['rsi']['runtime_bundle'] / 'entry.json')['mode'] == 'execute'
         assert len(read(ROOT / row['scenario'])['allowed_tools']) == count
