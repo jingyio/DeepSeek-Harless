@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "source_library_digest": "9392b9b3b2f5d132db0c81f96b76818b2b70a3b29e3e8627394d9b2ede9da94a",
+  "artifacts": [
+    {
+      "motif_id": "edge_motif_ac2b06316941",
+      "certified_digest": "99f89de26b00b2b82037dd9ec99ee8478de79fce7e94f53eab6bd1725cb836e5",
+      "tools": [
+        "mcp__ppt_master__convert_source",
+        "mcp__ppt_master__read_converted_source"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt_master__convert_source",
+          "from_field": "converted_id",
+          "to_param": "converted_id",
+          "to_tool": "mcp__ppt_master__read_converted_source",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__ppt_master__read_converted_source": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__ppt_master__read_converted_source",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__ppt_master__convert_source",
+              "from_field": "converted_id",
+              "to_param": "converted_id"
+            }
+          ],
+          "program_digest": "1a2e22463d05e819819a940832b7d3e71789a2e6b6ca17aa04e7d981a1960107"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "ppt-master-style-v2-heldout-loftq-phase"
+    },
+    {
+      "motif_id": "edge_motif_46b2201bf007",
+      "certified_digest": "5232530454b608ef0e9aff7861d694fc77aa97a1c72d4de574074ee032db69e4",
+      "tools": [
+        "mcp__ppt_master__pin_source",
+        "mcp__ppt_master__convert_source"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt_master__pin_source",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__ppt_master__convert_source",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__ppt_master__convert_source": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__ppt_master__convert_source",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__ppt_master__pin_source",
+              "from_field": "source_id",
+              "to_param": "source_id"
+            }
+          ],
+          "program_digest": "b92799cc59503bfacc4d836841f1f719884ea859f78e2c8c4673ae7753cfc163"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "ppt-master-style-v2-heldout-loftq-phase"
+    }
+  ],
+  "contracts": {
+    "mcp__ppt_master__convert_source": {
+      "required_params": [
+        "source_id"
+      ],
+      "output_fields": [
+        "converted_id",
+        "version_sha256"
+      ],
+      "default_params": {},
+      "description": "Convert a pinned PDF with the official ppt-master converter in a fresh session-private directory. Originals stay read-only; no slides are authored.",
+      "read_only": true
+    },
+    "mcp__ppt_master__pin_source": {
+      "required_params": [
+        "name",
+        "sha256"
+      ],
+      "output_fields": [
+        "source_id",
+        "name",
+        "version_sha256",
+        "bytes"
+      ],
+      "default_params": {},
+      "description": "Pin a model-selected listed upload to its exact current version. Never choose the paper for the model.",
+      "read_only": true,
+      "observed_anchor": true
+    },
+    "mcp__ppt_master__read_converted_source": {
+      "required_params": [
+        "converted_id"
+      ],
+      "output_fields": [
+        "version_sha256"
+      ],
+      "default_params": {},
+      "description": "Read the complete official Markdown and asset paths after rechecking source permission and every converted file. Does not certify visual or scientific accuracy.",
+      "read_only": true
+    }
+  },
+  "slot_rules": {},
+  "version_fields": {
+    "mcp__ppt_master__pin_source": "version_sha256",
+    "mcp__ppt_master__convert_source": "version_sha256",
+    "mcp__ppt_master__read_converted_source": "version_sha256"
+  },
+  "manifest_digest": "ad31263ba7a787786a1304e1618181d9bf2ed32861415eb23d30781480709ebd"
+}

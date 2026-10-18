@@ -44,6 +44,10 @@ class ConvertedSources:
             if relative.startswith('scripts/'):
                 read_verified(self.skill.root, relative, self.skill.lock)
         code = self.sources.root.parent / 'code'
+        # MCP conversion may precede the first Bash call that normally creates
+        # scratch space. Initialize only this already-approved Session's child.
+        if not code.is_symlink():
+            code.mkdir(mode=0o700, exist_ok=True)
         if code.is_symlink() or not code.is_dir():
             raise ValueError('session_code_directory_required')
         directory = Path(tempfile.mkdtemp(prefix='ppt-source-', dir=code))

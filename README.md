@@ -10,7 +10,7 @@ GeneLoop 网页的 Chat、`/ppt`、`/data`、`/paper` 和已登记 Files 场景�
 
 网页 `/ppt` 现使用完整、版本固定的 **ppt-master 6.6.0**。Baseline / Motif 使用同一技能、模型、工具和普通环境优化，由 GeneLoop 自主选路线、制作、检查、修复和导出；旧制作 MCP 不再暴露。安装与部署见 [PPT 场景](scenarios/ppt_master/README.md)，真实采集、被拒绝候选和网页对照见 [实验记录](docs/experiments/ppt-master-motif-20261018.md)。
 
-新库 `ppt-master-v2` 扩展到“固定模型选定 PDF → 官方转换”和“转换回执 → 核验并读取完整正文”两条结构续接，使用两项真实完整制作任务与独立留出任务编译。来源转换包装同样提供给 Baseline；只有在线实际跳过的模型请求才计作 Motif 收益。它不复用页面制作、科研判断或任意命令。来源、派生文件、权限、版本检查与取消继续生效；结构认证不代表成品合格或总费用下降。同模板网页对照见[新实验记录](docs/experiments/ppt-master-structure-style-20261018.md)。原 v1、`research-design-v3`、`host_delivery` 和历史检查保留；回退须连同匹配实现和证书恢复。
+新库 `ppt-master-v3` 扩展到“固定模型选定 PDF → 官方转换”和“转换回执 → 核验并读取完整正文”两条结构续接，使用两项真实完整制作任务与独立留出任务编译。来源转换包装同样提供给 Baseline；只有在线实际跳过的模型请求才计作 Motif 收益。它不复用页面制作、科研判断或任意命令。来源、派生文件、权限、版本检查与取消继续生效；结构认证不代表成品合格或总费用下降。同模板网页对照见[新实验记录](docs/experiments/ppt-master-structure-style-20261018.md)。原 v1、`research-design-v3`、`host_delivery` 和历史检查保留；回退须连同匹配实现和证书恢复。
 
 每轮输入默认 Chat，默认不显示场景、Origin 或 RSI 标签；本轮需要数据、PPT 或论文场景时重新输入 `/data`、`/ppt` 或 `/paper`。输入栏标签直接订阅当前草稿，手写、粘贴和候选选中都会立即更新，删除后隐藏。斜杠菜单不再列出 Files / Chat；加号菜单提供带图标的场景和“添加照片或文件”，沿用原生附件上传。菜单可直接替换已有场景标签，保留正文和附件。成功发送后下一轮自动恢复 Chat，已有任务、历史和交付保持；旧 Files 工作台对话也可在同一对话中继续 Chat。切换模型使用目标模型默认的 Off，原模型内调整思考强度仍按明确选择执行。
 

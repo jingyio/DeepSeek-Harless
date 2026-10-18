@@ -24,7 +24,7 @@ export GENELOOP_PPT_MASTER_ROOT=/fixed/public/ppt-master-6.6.0
 额外 HTTP 预览服务在该命令沙箱中不可持续，按上游允许的运行环境分支关闭；保留全部真实文件渲染、检查和下载预览。会话独立的 `/tmp` 在命令间保留转换器和检查器的中间文件，不能读取其他会话或宿主临时目录。两侧共用这些普通环境优化，不把它们计为 Motif 学习收益。
 
 ```sh
-python scripts/learn-ppt-master-motif.py --dataset .local/experiment/dataset.json --out .local/experiment/compiled --publish motif-libraries/ppt-master-v2
+python scripts/learn-ppt-master-motif.py --dataset .local/experiment/dataset.json --out .local/experiment/compiled --publish motif-libraries/ppt-master-v3
 ```
 
 数据集恰好两个独立训练决定、一个独立认证决定，使用真实 GeneLoop Baseline 的原始事件、实际完整工具 schema、任务身份和逐请求费用账本。最终评测不参与编译。公开库只保存匿名证据摘要与版本锁；原始来源、轨迹、凭证和成品留在私有 `.local/`。

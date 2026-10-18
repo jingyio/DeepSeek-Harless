@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenes": {
-    "ppt": "ppt-master-v2",
+    "ppt": "ppt-master-v3",
     "research-data-analysis": "data",
     "paper-proofreading": "paper-web-v8"
   },

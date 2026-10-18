@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "new_training": true,
+  "method": "existing_witnessed_edge_compiler",
+  "training_tasks": 2,
+  "heldout_tasks": 1,
+  "artifacts": 2,
+  "skill_package_sha256": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+  "library_digest": "9392b9b3b2f5d132db0c81f96b76818b2b70a3b29e3e8627394d9b2ede9da94a",
+  "manifest_digest": "ad31263ba7a787786a1304e1618181d9bf2ed32861415eb23d30781480709ebd",
+  "model_weights_trained": false,
+  "quality_cost_promoted": false,
+  "scientific_quality_reviewed": false,
+  "compilation_model_requests": 0,
+  "compilation_seconds": 1.2576905488967896,
+  "trace_collection_requests": 380,
+  "trace_collection_proxy_usd": 3.9790195099999988,
+  "excluded_collection": [
+    {
+      "task_id": "d3852b2b803a492ca815d9d2e6fcf5e3",
+      "status": "completed",
+      "requests": 20,
+      "tokens": {
+        "prompt_tokens": 1200765,
+        "prompt_cache_hit_tokens": 1097728,
+        "prompt_cache_miss_tokens": 103037,
+        "completion_tokens": 12818,
+        "total_tokens": 1213583
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 20
+      },
+      "proxy_peak_usd": 0.23506815000000003,
+      "actual_paid_usd": null,
+      "tool_calls": 30,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "65950983175a4b0db91d3690c06b74e9",
+      "status": "completed",
+      "requests": 127,
+      "tokens": {
+        "prompt_tokens": 19397619,
+        "prompt_cache_hit_tokens": 19243904,
+        "prompt_cache_miss_tokens": 153715,
+        "completion_tokens": 71514,
+        "total_tokens": 19469133
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 127
+      },
+      "proxy_peak_usd": 1.3328309899999995,
+      "actual_paid_usd": null,
+      "tool_calls": 137,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    }
+  ],
+  "actual_paid_usd": null,
+  "total_collection_requests": 527,
+  "total_collection_proxy_usd": 5.5469186499999985,
+  "scope": "Model-selected PDF pin, official source conversion in private derivative cache, and exact converted text read; no slide authoring or scientific interpretation."
+}
