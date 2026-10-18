@@ -80,3 +80,19 @@ def test_pdf_page_version_encryption_and_corruption_boundaries():
     with pytest.raises(ValueError, match='pdf_encrypted'): read_pdf(locked)
     page = read_pdf(data, page_number=1)
     assert len(page['pages']) == 1 and page['page_count'] == 3
+
+
+def test_ocr_fallback_failure_cannot_mislabel_partial_transcription_as_native(tmp_path,monkeypatch):
+    languages=tmp_path/'tessdata';languages.mkdir()
+    for name in ('eng','chi_sim'):(languages/(name+'.traineddata')).write_bytes(b'fixture')
+    monkeypatch.setenv('GENELOOP_PDF_OCR_ROOT',str(tmp_path))
+    source=fitz.open();p=source.new_page();p.insert_text((40,50),'OCR PARTIAL TRANSCRIPTION')
+    partial=p.get_textpage()
+    def ocr(page,*,language,**_):
+        if language=='chi_sim':return partial
+        raise RuntimeError('second OCR engine failed')
+    monkeypatch.setattr(fitz.Page,'get_textpage_ocr',ocr)
+    page=read_pdf(fixture_pdf(),page_number=2)['pages'][0]
+    assert page['text']=='' and page['text_method']=='text_layer' and not page['ocr_performed']
+    assert page['warning']=='pdf_page_ocr_failed_or_unavailable'
+    source.close()

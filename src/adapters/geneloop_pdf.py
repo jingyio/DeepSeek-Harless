@@ -65,7 +65,7 @@ def read_pdf(data: bytes, *, visuals=False, page_number=None):
                         ocr_language = 'eng'
                     method = 'ocr' if not native.strip() else 'text_layer_and_ocr'
                 except Exception:
-                    method, warning = 'text_layer', 'pdf_page_ocr_failed_or_unavailable'
+                    method, text, warning = 'text_layer', native, 'pdf_page_ocr_failed_or_unavailable'
             # Include vector diagrams as well as embedded raster figures. A
             # scanned page also needs pixels; OCR does not interpret its plots.
             visual = bool(images or page.get_drawings())
