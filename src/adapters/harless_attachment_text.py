@@ -393,6 +393,8 @@ def extract_attachment(path: Path | str, original_name: str | None = None, *, pd
             result['reason'] = 'no_safe_text_extractor_for_format'
             return result
         result.update(status='extracted', text=text, **{'coverage':'text_only', **extra})
+        if suffix == '.ppt' and not extra.get('pages'):
+            result.update(status='unsupported', reason='legacy_presentation_requires_isolated_renderer')
         if not text.strip():
             result['warnings'] = [*result.get('warnings', []), 'No stored text was found; visual content has not been read.']
     except ExtractionIssue as error:

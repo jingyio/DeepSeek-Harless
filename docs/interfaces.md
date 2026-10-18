@@ -1,5 +1,15 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## PPT/PPTX 风格输入（2026-10-18）
+
+`sceneAttachmentContext` 可注入 `renderPresentation(file, signal)`；Web 统一从当前任务的不可变 `scene_inputs` 取得原件，TypeScript 通过已有命令沙箱/broker 渲染，新增可选 `network:"none"` 只允许收紧网络，普通 Bash 行为保持。子进程不接收模型密钥，宏与链接更新关闭，新私有目录防止覆盖，取消和超时终止对应沙箱；渲染后再次核验原件及 PDF SHA。原件、衍生物仍受上传/资源边界约束。
+
+`presentation-input-v1` 提供 `pages[]`、原件 SHA 与 `pptx:<sha>:slide:<n>` 或 `ppt:<sha>:slide:<n>` 来源，及 `presentation_style`（画幅、实际关联的主题/母版/布局声明）、逐页 `style`、`rendered_pdf_sha256`。声明覆盖和视觉覆盖分开；每页都生成实际像素，沿用已激活任务的 Flash 辅助视觉路由，必须通过来源/页号/实际看到图片/非空 `style_observations` 的 JSON 校验才标记已识别。内联图像不进入主模型文字或用户气泡；已识别页保留渲染 SHA 和模型观察，失败页保留安全诊断码。未做跨问题或来源版本的语义缓存。
+
+旧 PPT 返回 `normalized_source:{path,sha256,derived_from_sha256}`，新 PPTX 仅为隔离转换派生物。`ppt_master.read_source_page` 对固定版本 PPTX 返回指定页文字、原生样式声明与 `visual_checked:false`；工具 schema 不变，完整工具说明与能力边界仍以返回值和场景指令为准。PDF 转换 Motif 的适用类型仍为 PDF，没有把新视觉分析或模板制作认证成可跳过模型的结构。兼容重编版本 `ppt-master-v6` / `paper-web-v11` 保留旧证据、旧图与旧库。
+
+原始 PPTX 加新内容且要求保留原生设计时，由 GeneLoop 按官方 Edit Native PPTX 路线进行 round-trip；输入宿主不决定语义页映射、不写输出页面。生成、可复用模板等其他请求按官方路由区分，仍需实际渲染并检查交付。
+
 ## PDF 上传 OCR 与图片输入（2026-10-18）
 
 - `sceneAttachmentContext` 在已验证的本任务原件上运行公共 PDF 读取器；每页返回原件 SHA、页号、文字来源、OCR 状态和视觉覆盖。文字层直接读取，扫描页自动 OCR；PPT/Paper 的版本化逐页工具使用同一读取器。完整约定见[附件输入](attachment-input-behavior.md)。

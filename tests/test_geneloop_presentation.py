@@ -72,9 +72,10 @@ def test_renders_bind_original_version_and_every_slide_including_plain_text(tmp_
 
 
 def test_legacy_and_renderer_failure_never_claim_visual_success(tmp_path):
-    legacy = tmp_path / 'old.ppt'; legacy.write_bytes(b'legacy placeholder')
+    legacy = tmp_path / 'old.ppt'; legacy.write_bytes(bytes.fromhex('d0cf11e0a1b11ae1') + b'legacy placeholder')
     result = extract_attachment(legacy)
     assert result['coverage'] == 'metadata_only' and not result['visual_content_reviewed']
+    assert result['status'] == 'unsupported'
     assert any('unavailable' in w for w in result['warnings'])
     path = tmp_path / 'source.pptx'; path.write_bytes(fixture_deck())
     result = extract_attachment(path)

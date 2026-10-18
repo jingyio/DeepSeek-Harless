@@ -93,6 +93,8 @@ def read_presentation(data: bytes, *, suffix='.pptx', rendered_pdf=None, slide_n
     if suffix == '.pptx':
         result = presentation_structure(data)
     else:
+        if suffix != '.ppt' or not data.startswith(bytes.fromhex('d0cf11e0a1b11ae1')):
+            raise ValueError('presentation_format_invalid')
         result = {'pipeline_version': 'presentation-input-v1', 'pages': [],
                   'coverage': 'metadata_only', 'warnings': ['Legacy PPT requires isolated Office conversion; no native theme declarations extracted.']}
     if rendered_pdf is not None:
@@ -126,4 +128,5 @@ def read_presentation(data: bytes, *, suffix='.pptx', rendered_pdf=None, slide_n
             raise ValueError('page_not_in_document')
         result['pages'] = [result['pages'][slide_number - 1]]
     result['text'] = '\n\n'.join('[Slide ' + str(p['page']) + ']\n' + p['text'] for p in result['pages'])
+    result['ocr_performed'] = any(p.get('ocr_performed') for p in result['pages'])
     return result
