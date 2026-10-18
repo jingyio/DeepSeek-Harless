@@ -151,7 +151,8 @@ html body .wSkVaW_tabActive { color: var(--gl-ink); background: color-mix(in srg
    after those bubbles, without changing execution or pending queue state. */
 div:has(> [role=status] > .geneloop-native-looping) { display:flex;flex-direction:column; }
 [role=status]:has(> .geneloop-native-looping) { order:1; }
-div:has(> [role=status] > .geneloop-native-looping):has(.geneloop-looping) > [role=status]:has(> .geneloop-native-looping) { display:none; }
+/* The same native footer continues through scene admission and child work. */
+html body .geneloop-native-looping { font:inherit; font-size:13px; color:var(--gl-blue); }
 html body .wSkVaW_tab:after { background: transparent; }
 html body .pXSMma_headline { font-size: 28px; font-weight: 600; letter-spacing: -.7px; line-height: 1.4; gap: 14px; }
 html body .pXSMma_stack { gap: 24px; }
