@@ -58,6 +58,25 @@ def test_converter_failure_returns_no_receipt(source,monkeypatch):
     assert api.receipts=={}
 
 
+def test_first_conversion_initializes_private_scratch_without_bash(source):
+    root,reader,api,pin,pdf=source
+    (root/'code').rmdir()
+    converted=api.convert(pin['source_id'])
+    assert (root/'code').is_dir()
+    assert api.read(converted['converted_id'])['text'].startswith('Full text')
+
+
+def test_conversion_refuses_symlink_scratch(source):
+    import os
+    root,reader,api,pin,pdf=source
+    (root/'code').rmdir();outside=root/'outside';outside.mkdir()
+    try:os.symlink(outside,root/'code',target_is_directory=True)
+    except OSError:pytest.skip('symlink creation unavailable')
+    with pytest.raises(ValueError,match='session_code_directory_required'):
+        api.convert(pin['source_id'])
+    assert not list(outside.iterdir())
+
+
 def test_markdown_change_after_tree_check_is_not_returned(source,monkeypatch):
     root,reader,api,pin,pdf=source;converted=api.convert(pin['source_id'])
     checked=api._files
