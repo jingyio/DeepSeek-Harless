@@ -36,11 +36,16 @@ def render(request):
 </oor:items>''', encoding='utf-8')
         binary = '/opt/geneloop/libreoffice/program/soffice.bin'
         def convert(kind, directory):
-            completed = subprocess.run([binary, '-env:UserInstallation=' + profile.as_uri(),
+            command = [binary, '-env:UserInstallation=' + profile.as_uri(),
                 '--headless', '--nologo', '--nodefault', '--norestore', '--nofirststartwizard',
-                '--convert-to', kind, '--outdir', str(directory), str(copied)],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180,
-                env={**os.environ, 'SAL_DISABLE_OPENCL': '1', 'SAL_USE_VCLPLUGIN': 'svp'})
+                '--convert-to', kind, '--outdir', str(directory), str(copied)]
+            for attempt in range(2):
+                completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180,
+                    env={**os.environ, 'SAL_DISABLE_OPENCL': '1', 'SAL_USE_VCLPLUGIN': 'svp'})
+                # soffice.bin requests a restart after initializing a fresh
+                # profile (81); its usual shell launcher handles this too.
+                if completed.returncode != 81 or attempt:
+                    break
             if completed.returncode:
                 raise ValueError('presentation_conversion_failed')
         convert('pdf:impress_pdf_Export', output)
