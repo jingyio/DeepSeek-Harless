@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--real-model', action='store_true', required=True)
     parser.add_argument('--source', required=True, type=Path)
     parser.add_argument('--prompt', type=Path, default=ROOT / 'scenarios/paper-submission/reference-audit.prompt.md')
-    parser.add_argument('--mode', choices=['baseline', 'shadow', 'execute'], required=True)
+    parser.add_argument('--mode', choices=['baseline', 'cache', 'shadow', 'execute'], required=True)
     parser.add_argument('--script-config', type=Path)
     parser.add_argument('--learning-store', type=Path)
     parser.add_argument('--user-id', default='script-motif-experiment')
@@ -41,7 +41,7 @@ def main():
     if args.budget_usd < 0 or args.max_output_tokens < 1:
         parser.error('预算非负，输出上限必须为正数')
     if (args.mode == 'baseline') != (args.script_config is None):
-        parser.error('baseline 不加载 Script Motif；shadow/execute 必须提供 --script-config')
+        parser.error('baseline 不加载 Script Motif；cache/shadow/execute 必须提供 --script-config')
     env = dict(os.environ)
     env.pop('SSS_SCRIPT_MOTIF_CONFIG', None)
     env.pop('SSS_SCRIPT_MOTIF_LEARNING_STORE', None)
@@ -79,7 +79,7 @@ def main():
                '--port', str(args.port), '--run-id', run_id, '--user-id', args.user_id,
                '--budget-usd', str(args.budget_usd), '--run-budget-usd', str(args.budget_usd),
                '--request-limit', '0', '--run-request-limit', '0',
-               '--max-output-tokens', str(args.max_output_tokens)]
+               '--script-max-output-tokens', str(args.max_output_tokens)]
     print(json.dumps({'record': str(record), **manifest}, ensure_ascii=False), flush=True)
     with (record / 'web.log').open('w') as log:
         child = subprocess.Popen(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)

@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import * as native from './dsh_web_tasks.ts';
-import {createScriptInterceptor,loadScriptLibrary} from './script_motif_runtime.ts';
+import {createScriptInterceptor,loadScriptLibrary,registerScriptCache} from './script_motif_runtime.ts';
 export const name=native.name;
 export const inject=native.inject;
 export function apply(ctx:any){
@@ -34,10 +34,13 @@ export function apply(ctx:any){
    writeFileSync(join(output,'script-motif-config.json'),JSON.stringify({...settings,library_digest:library.digest}),{mode:0o600});
    runtime=createScriptInterceptor({...settings,library,workspace:effective.workspace,session,
     goal:task.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n'),audit});
+   if(settings.catalog)runtime.catalog=registerScriptCache({...settings,library,workspace:effective.workspace,session,audit});
   }catch(error:any){audit({kind:'script_fallback',reason:error.message});runtime=null;}
   current.set(session,{id:state.task_id,runtime});return runtime;
  }
  ctx.on('agent/created',({agent}:any)=>{
+  agent.ctx.systemPrompt.variable('script_cache_catalog',()=>interceptor(agent.session.id)?.catalog??'');
+  agent.ctx.systemPrompt.section({name:'script-cache-catalog',order:10220,text:'{{script_cache_catalog}}'});
   agent.ctx.on('tools/result',(execution:any,result:any)=>current.get(agent.session.id)?.runtime?.observe(agent.session.id,execution,result));
  },{global:true});
  const scheduled=new Set();

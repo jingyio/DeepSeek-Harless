@@ -1,10 +1,11 @@
 /** Experimental executor; production GeneLoopShell and its certificates stay frozen. */
 import {readFileSync} from 'node:fs';
 import {isAbsolute,relative,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {LocalBashExecutor} from '@deepseek-ai/dsh-bash-local';
 import {commandArgv as linuxArgv,commandLayout} from './geneloop_shell.ts';
 import {localScriptArgv} from './script_motif_macos.ts';
-import {consumeScriptGrant} from './script_motif_runtime.ts';
+import {consumeScriptGrant,prepareCacheInvocation} from './script_motif_runtime.ts';
 export function scriptArgv(layout:any,command:string,cwd:string,readOnly=false,resources:any={}){
  const python=process.env.SSS_PYTHON??'/usr/bin/python3';
  if(process.platform==='darwin')return localScriptArgv(layout,command,cwd,python,process.execPath,readOnly,resources);
@@ -25,9 +26,9 @@ export default class ScriptMotifShell extends LocalBashExecutor {
   const layout=commandLayout(policy.output,agent.session.id),requested=request.workdir??'/work',header=agent.session.header.cwd;
   const cwd=requested==='/work'||requested.startsWith('/work/')?resolve(requested):header&&inside(header,requested)?resolve('/work',relative(header,requested)):!isAbsolute(requested)?resolve('/work',requested):'';
   if(!cwd||!inside('/work',cwd))throw Error('command working directory must stay inside /work');
-  const body=consumeScriptGrant(agent.session.id,request.command);
+  const body=consumeScriptGrant(agent.session.id,request.command)||prepareCacheInvocation(agent.session.id,request.command);
   const spec=super.resolve({...request,workdir:layout.scratch,env:{},dshEnv:{},sandboxPolicy:undefined});
-  spec.geneloopArgv=scriptArgv(layout,body||request.command,cwd,!!body||request.sandboxPolicy?.mode==='read-only',
+  spec.geneloopArgv=body&&typeof body==='object'?[process.execPath,fileURLToPath(new URL('../../scripts/run-certified-script.mjs',import.meta.url)),Buffer.from(JSON.stringify(body)).toString('base64')]:scriptArgv(layout,body||request.command,cwd,!!body||request.sandboxPolicy?.mode==='read-only',
     {...policy.command_resources,...(body?{network:'none',ephemeralTemp:true}:{})});
   return spec;
  }

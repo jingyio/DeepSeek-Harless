@@ -1,16 +1,20 @@
 # 论文校对当前交接
 
 - 更新时间与交接人：2026-10-19，Codex。
-- 目标与本次范围：基于最新 main 的独立 Script Motif 最小真实闭环：从 Bash/Python 轨迹参数化、沙箱认证、本地语义匹配、原生 Runtime 跳过请求、完成后自动学习/下一任务冻结版本，并用原始完整参考文献检查题面对照。不是生产发布，也未达到稳定降本。
-- 分支 / commit / 工作区：`codex/paper-script-motif`，基线 `9f945a5`；本分支本地检查点保留代码/记录，未推送、未 PR、未合并。原桌面脏工作区和生产服务未修改。用户明确要求看到稳定效果后再决定 PR。
-- 已完成：`script_motif_compiler.py` 从真实正常脚本推导路径参数与契约；`learn-script-motifs.py`/`certify-script-motifs.mjs` 重放来源及不同输入，保存拒绝原因、摘要和代码锁；`script_motif_runtime.ts` 用前驱/文件契约筛选、目标及前驱 embedding 排名、一次性 grant 和当前输入回执验证。语义分差不足、输入变更或回执不完整回退。
-- 已完成：`script_motif_web.ts`/`script_motif_shell.ts` 和独立 `script-motif-web.py` 复用原生循环与命令执行器；`advance-script-motifs.py` 接完成事件自动发布私有不可变库。`run-script-motif-experiment.py` 提供统一原生 Web API 复现入口，`summarize-script-motif-run.py` 独立核算。新公开 runner 为本轮实际私有 runner 抽取，参数入口已验证，尚未另开付费全程验收。生产 Web/shell/Registry/认证库均保持原字节。
-- 已验证：本地独立 Python 3.12.14/Node 22.22.3，最终 `npm test` Python **881 通过/199 跳过**、Node **850 通过/5 跳过**；`npm run smoke` 无模型通过。运行测试需指定项目 `SSS_PYTHON`、已审核 `HARLESS_REPORT_FONT`，macOS 使用 `TMPDIR=/private/tmp`。实际 OS 沙箱拒绝外部读、输入写和网络，回执执行/输入版本校验通过；注入相似度的单测仅作诊断。
-- 实验结论：[paper-script-motif-20261018-v1](../experiments/paper-script-motif-20261018-v1.md)。真实轨迹自动发布 5 个算子，下一任务成功冻结并复用；最新完整原题 4 次验证跳过，但 **173 请求/$0.260957028/922.482 秒**，Baseline **88/$0.220640676/489.344 秒**。最新 Execute 最后输出达 8,000 Token 上限，仅留下占位 PDF；旧 Execute 也触顶且无 PDF，均不合格。Baseline/Shadow 仍有计数、编号和优先级问题，未盲评通过。不能声称净降本或跨论文泛化。
-- 配置与数据：公共原题 `scenarios/paper-submission/reference-audit.prompt.md`；原生 30 项工具、同一题面/来源/渲染配置，`deepseek-flash/off`。实际 sidecar mode 独立于 native baseline/RSI off；Qwen3-Embedding-0.6B 本地 MPS，本轮阈值 `.5/.6/.04` 加三个负目标。私有根 `.local/script-motif-20261018-v1/`，原生日志 `.local/web/runs/<run-id>/`；完整 run/task-id、输入/模型/库摘要和失败在实验记录。私有自动库 `auto-library/round-68b12be9b79b4ac8b106808bf1c87d47`，摘要 `232503be043a77f882960f23dedc8b0f65c0cce5d9786b35a27addb020c7d3ea`。凭证只由私有环境加载，不提交。
-- 未完成与阻塞：当前仅单条 Python 脚本，不覆盖任意 Bash/MCP DAG；一阶前驱和文件类型不足以判断必要工作，多个程序会重复检查。最新组 112 次 embedding 累计 107.035 秒；需要候选向量缓存和 Evidence 已完成判断。通用数字/正则参数、自动淘汰、复杂依赖图、worker 崩溃监控和 UI 计数未完成。原生 completed/PDF 存在未保证报告实际交付，长输出恢复未修复。未验证新实现的 Linux 真实执行或 Windows；本地 sandbox-exec 无 Linux 等价内存上限。
-- 接手下一步：1）针对两次 max-tokens 失败，局部修复长输出恢复和内容交付门槛，再按同配置验收；2）为重叠脚本补 Evidence 输入/输出契约、去重与局部前驱图，避免已完成检查再次执行；3）在真正未见论文/普通文档上开展前瞻对照，包含学习/回退和人工修订成本，通过稳定门槛后由用户决定 PR。复现命令见 [接口](../interfaces.md#script-motif-实验接口)。
-- 权限与预算：用户明确本地亦可真实测试；沿用无限额实验授权，单次输出 8,000，保留所有历史费用。本轮本地 **823 请求/$1.471504008 代理估费**，包含失败、重试与 3 次 usage 不完整的保守记账；不是账单。V100 隔离启动尝试后 SSH 持续断开，最终只读重试仍失败，远程状态/费用待核清，不能算 0。没有修改私人原件或投稿、外部写入、生产部署授权。
-- 回退与风险：实验入口默认不启用；停止实验服务、使用原生 `harness-web.py` 即回到主线行为，已有库/用户文件不受影响。回退新代码至 `9f945a5` 时保留 `.local` 中全部轨迹、失败、账本和认证版本，不能重锁旧证书。当前实现仍为实验方案，不适合直接上线。
+- 目标与本次范围：第二轮 Script Motif 实际降本瓶颈改进。复盘上一轮四个完整任务，在两篇未见论文上完成 Baseline/普通脚本 Cache/完整 Execute，并保留协议修复前后 8 次运行。没有达到稳定降本或合格交付。
+- 分支 / commit / 工作区：独立 worktree 的 `codex/paper-script-evidence`，基线 `7e42588d00481d2faeff4a41a0516e8468a0b14a`；本文件随第二轮实现本地提交（具体提交见 `git log -1`），不推送、不提 PR、不合并。桌面原脏工作区、生产入口/认证库未改。用户要求稳定效果后再决定 PR。
+- 已完成：Python 编译器识别保存 `.py`、后续调用和 `sys.argv`；保留真实来源/输入版本/拒绝记录。`certify-script-motifs.mjs` 用实际不同参数及新 HTTP 证据认证。7 个算子：6 本地、1 arXiv；不是任意 Bash 管道工具化。
+- 已完成：`run-certified-script.mjs`/`fetch-script-evidence.py` 在可信固定 arXiv/Crossref GET 边界取新证据，再送入禁网只读沙箱；不复用历史输出。原有 Bash 提供缓存目录和批次执行，不加工具 schema。Runtime 支持已验证前驱文件参数流、需求前驱、原子回执、受限 cd 前缀和管道拒绝提示；当前标量/网络对象仍由模型选择。向量缓存只缓存 embedding，不缓存决策。
+- 已完成：`analyze-script-motif-cost.py` 按完整真实请求归因，区分代码生成、已有脚本调度、搜索内部模型、报告阶段和错误恢复线索。独立 wrapper 统一三组实际输出上限 32,768，公共 `harness-web.py` 恢复原字节，未重锁生产证书。
+- 已验证：Python 3.12.14 / Node 22.22.3 / Harness 0.1.5-rc.3；最终 `npm test` **898 Python 通过/199 跳过、854 Node 通过/5 跳过**。随后仅离线分类器调整，针对性 **4 通过**；`npm run smoke` 无模型通过。实际沙箱、HTTP 哈希、批次原子性、native Shell bridge、cd/head 反馈及不同文件绑定均有针对性诊断；不能把诊断 continuation=0 当付费任务跳过。
+- 实验结论：[paper-script-evidence-20261019-v1](../experiments/paper-script-evidence-20261019-v1.md)。RMSNorm Baseline **113/$0.140660412/630.098 秒**；修复后 Cache **103/$0.155966208/313.740 秒**，2 次真实新参数网络脚本复用、0 自动请求跳过；Execute **113/$0.163707156/772.177 秒**，0 复用/跳过。Cache 请求 -8.85% 但费用 +10.88%；Execute 费用 +16.38%。GELU、RMSNorm v2 负面结果完整保留。八份交付都有计数/编号/版本/交付问题，没有独立人工盲评，不支持同质量降本。
+- 核心证据：v2 Execute 曾主动选择缓存，但 `cd ... && geneloop-cache ... | head` 没进入旧缓存执行器，后来已修复。v3 Execute 未主动选择缓存，因此结构资格未达到、0 embedding，不是相似度阈值拒绝。最差 v2 执行开始报告后还有 314 请求/$0.47636604，占总费约 92%，含补检，不等于纯排版。报告恢复与语义参数选择成为主要剩余成本；只增局部读算子不足。
+- 配置与数据：公共原题 `scenarios/paper-submission/reference-audit.prompt.md` 未变，SHA256 `6199102371fc38c05912b76596bb6c48cbde4ee1eb157bafe0cae4eae0de4a89`。真实 `deepseek-flash/off`、30 工具、native baseline/RSI off，sidecar 决定实验组。Qwen3-Embedding-0.6B 本地 MPS；私有阈值 `.5/.6/.04` 沿用，不降阈值。最终库 `.local/script-evidence-20261019-v1/library-frozen-003/library.json` 摘要 `c517d8d859ad4b8160fc75c84868711dda1a0d76b5b2cd79edfed63f8f472c4a`；实际配置、源码快照和账本在 `.local/script-motif-experiments/<run-id>/`、`.local/web/runs/<run-id>/tasks/<task-id>/`；run/task 表在实验记录。凭证只经私有环境加载。
+- 学习成本：历史训练及留出共 136 请求/$0.282083184，已在上一轮总账；本轮学习没有新增 LLM 请求，计时的 v2 学习认证 5.24 秒，包含 4 HTTP 获取。其他开发重认证、机器/安装/人工成本未完整计时，不算零。新评测轨迹未训练冻结库。
+- 未完成与阻塞：未实现净降本；需求前驱需模型先选缓存、标量/网络目标不能从 Evidence 自动流入，导致完整请求替代入口不足。库覆盖很窄，不支持任意 Bash/网络/写报告脚本；仍无完整任务进度和证据覆盖图。平台报告和最终回复不同版本、摘要与逐条计数矛盾仍存在。没有新 Linux/Windows 真实验收。远程 V100 旧状态/费用未核清。
+- 接手下一步：1）将模型确认的检查计划/对象集合转成有类型 Evidence，自动挖掘的程序绑定字段并运行已授权只读批次，验证完整请求替代及语义交接；2）复用现有 renderer，把审计数据、确定性渲染与导出拆开，强制编号/计数/实际文件版本一致，作为普通工程基线单列；3）以上局部通过后做独立论文重复前瞻对照与人工盲评，包含学习/恢复成本，通过后由用户决定 PR。不要再靠降阈值或重复同一题挑便宜样本。
+- 最短复现：安装锁定依赖、私有 API/renderer/font、启动本地 embedding 后，`node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model --source /path/source.zip --mode execute --script-config /path/execute-v3.json --budget-usd 0 --max-output-tokens 32768`。仅已有无限额授权使用 0；macOS 显式 `SSS_LOCAL_SCRIPT_EXPERIMENT=1`、`SSS_PYTHON`、`TMPDIR=/private/tmp`。完整三臂命令见[接口](../interfaces.md#配置与真实复现)。旧版本复现用对应源快照，不能改库锁。
+- 权限与预算：用户已允许本地真实测试，费用/请求不限；单次输出 32,768。本轮 **1,274 请求/$1.739342400**，全部本轮任务 pending=0/unknown usage=0；两轮本地共 **2,097/$3.210846408**，含上一轮 3 次 usage 不完整的保守估计。全部为代理估费、非账单；不是账户总额，远程未知不算 0。没有改私人原件、投稿、外部应用写入或生产部署。
+- 回退与风险：停止本轮独立实验进程，使用公共 `harness-web.py` 即回到原生行为；代码回退到 `7e42588` 可恢复上一轮，不删除 `.local`、旧认证库/失败/账本。macOS 使用 sandbox-exec，无 Linux 等价内存上限。结果尚不足直接上线。
 
-此前默认第一页读取 Motif 的自动学习历史保留在 [2026-10-17 验收](../experiments/web-paper-auto-learning-20261017-v1.md) 及 Git 历史；本轮 Script Motif 不改写其原结论，也不将旧测试当作新实现验证。
+上一轮记录：[paper-script-motif-20261018-v1](../experiments/paper-script-motif-20261018-v1.md)。此前自动学习历史见 [2026-10-17 验收](../experiments/web-paper-auto-learning-20261017-v1.md)；不改写旧结论、不将其当新实现效果。

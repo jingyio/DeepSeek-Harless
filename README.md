@@ -1,6 +1,6 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
-独立的 Script Motif 实验入口现可从真实 Bash 中的 Python 脚本自动参数化、沙箱认证，再按结构与本地 embedding 匹配，直接通过原生 Bash 执行并核验回执。`scripts/run-script-motif-experiment.py` 复用原生 Web API；不替换生产入口、不扩充模型工具表。原题真实对照已观察到脚本复用和完整请求跳过，**尚未证明净降本，报告交付也未稳定**。配置、复现与限制见 [Script Motif 接口](docs/interfaces.md#script-motif-实验接口)，实际失败和费用见 [实验记录](docs/experiments/paper-script-motif-20261018-v1.md)。本分支暂不提交 PR。
+独立 Script Motif 实验支持从真实 Bash/Python 轨迹生成文件参数与 `sys.argv` 算子，认证后通过原生 Bash 复用；可选结构后继和本地 embedding 接管完整请求。新增普通脚本缓存对照、受控的新鲜元数据 Evidence、参数流绑定与费用归因，不扩充模型工具表、不改生产入口。两轮真实实验仍**未证明稳定净降本或合格交付**。配置见 [接口](docs/interfaces.md#script-motif-实验接口)，最新证据与失败见 [实验记录](docs/experiments/paper-script-evidence-20261019-v1.md)。按用户要求暂不推送或提 PR。
 
 PPT/PPTX 输入现结合原生主题/母版/布局、字体颜色和对象位置声明，以及隔离渲染的逐页视觉观察。GeneLoop 可用上传 PPT 作为设计参考；沿用原生模板填新内容时使用 ppt-master 的 round-trip 编辑流程，原件保留。旧 PPT 可隔离转换为标准 PPTX；字体、媒体和复杂效果仍有保真边界。见[附件说明](docs/attachment-input-behavior.md#pptpptx-的视觉与风格输入)。兼容库更新为 `ppt-master-v6` / `paper-web-v11`，沿用原证据与结构，旧库保留。
 

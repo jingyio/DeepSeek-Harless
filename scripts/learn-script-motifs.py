@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import re
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from src.adapters.script_motif_compiler import observe,sha
 
@@ -17,7 +18,7 @@ def collect(task):
     state=json.loads((task/'task-state.json').read_text())
     if state.get('status')!='completed' or effective.get('provider_mode')!='real' or effective.get('mode')!='baseline':
         raise ValueError('completed_real_baseline_required')
-    calls={};found=[];rejected=[];previous=None
+    calls={};found=[];rejected=[];previous=None;argument_witnesses=[]
     request=json.loads((task/'task.json').read_text())
     goal='\n'.join(p['text'] for p in request['content'] if p['type']=='text')
     events=[json.loads(line) for line in (task/'events.jsonl').read_text().splitlines() if line]
@@ -32,14 +33,24 @@ def collect(task):
             observed=calls.pop(block['toolCallId']);call=observed['args'];prefix=previous
             previous={'tool':observed['name'],'intent':call.get('description',observed['name'])}
             if observed['name']!='bash':continue
+            # A head-filtered invocation is not promoted as a whole operator.
+            # Its actual arguments may independently validate a saved program.
+            stripped=re.sub(r'\s+(?:2>&1\s*)?\|\s*head\s+-(?:n\s*)?\d+\s*$','',call.get('command',''))
+            if stripped!=call.get('command'):
+                try:
+                    from src.adapters.script_motif_compiler import extract
+                    invocation=extract(stripped,effective['workspace'])
+                    if len(invocation)>2:argument_witnesses.append({'source_sha256':invocation[3],'argv':invocation[2],'call_id':block['toolCallId'],'stdout':''.join(c.get('text','') for c in block.get('content',[]) if c.get('type')=='text'),'output_filter':'head'})
+                except (ValueError,OSError,SyntaxError):pass
             try:
                 stdout=''.join(c.get('text','') for c in block.get('content',[]) if c.get('type')=='text')
                 row=observe(call['command'],call.get('description',''),effective['workspace'],stdout,task.name,block['toolCallId'])
                 row.update(source_goal=goal,predecessor=prefix,intent=call.get('description',''))
                 row['witness']['events_sha256']=sha((task/'events.jsonl').read_bytes());found.append(row)
+                previous['program_id']=row['id']
             except (ValueError,SyntaxError,KeyError,TypeError,OSError,UnicodeError) as error:
                 rejected.append({'call_id':block['toolCallId'],'reason':str(error)[:160]})
-    return {'task_id':task.name,'workspace':effective['workspace'],'candidates':found,'rejected':rejected}
+    return {'task_id':task.name,'workspace':effective['workspace'],'candidates':found,'rejected':rejected,'argument_witnesses':argument_witnesses}
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)

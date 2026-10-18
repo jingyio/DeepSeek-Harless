@@ -5,7 +5,8 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {scriptArgv} from '../src/adapters/script_motif_shell.ts';
-import {bindScript,scriptCommand} from '../src/adapters/script_motif_runtime.ts';
+import {bindScript,scriptCommand,programIdentity,scriptCodeLocks} from '../src/adapters/script_motif_runtime.ts';
+import {runCertifiedScript} from './run-certified-script.mjs';
 import {digest} from '../src/motif_core/online_skill_runtime.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const sha=b=>createHash('sha256').update(b).digest('hex');
@@ -21,6 +22,27 @@ function certify(rows){
  for(const task of rows.slice(1))for(const p of task.candidates){
   if(seen.has(p.id))continue;seen.add(p.id);
   try{
+   if(p.argv_contract){
+    const variants=rows.flatMap(t=>[...t.argument_witnesses??[],...t.candidates.filter(c=>c.id===p.id).map(c=>({source_sha256:c.source_sha256,argv:c.observed_argv,call_id:c.witness.call_id,stdout:c.witness.stdout}))])
+      .filter(v=>v.source_sha256===p.source_sha256&&digest(v.argv)!==digest(p.observed_argv));
+    if(!variants.length)throw Error('distinct_real_argument_invocation_required');
+    const results=[];
+    for(const args of [p.observed_argv,variants[0].argv]){
+     const job={workspace:task.workspace,program:p,paths:[],versions:[],nonce:'certification',argv:args};
+     const result=runCertifiedScript(job);
+     const original=runCertifiedScript({...job,program:{...p,template:p.source}});
+     if(result.output!==original.output)throw Error('argv_parameterization_changed_behavior');
+     if(!results.length&&!p.witness.stdout.includes(original.output.trim()))throw Error('historical_stdout_not_reproduced');
+     results.push(result);
+    }
+    if(results[0].output===results[1].output)throw Error('argument_dependency_not_demonstrated');
+    const {source,witness,original_paths,observed_argv,...program}=p;
+    programs.push({...program,certification:{passed:true,cases:2,source_equivalent:true,program_sha256:digest(programIdentity(p)),
+     source_task_id:task.task_id,source_call_id:witness.call_id,events_sha256:witness.events_sha256,
+     argument_witness_call:variants[0].call_id,scope:'distinct_real_argument_invocations_not_independent_task_quality',
+     outputs:results.map(r=>r.output_sha256)}});
+    continue;
+   }
    const own=bindScript(p,task.workspace),other=bindScript(p,held.workspace);
    const ownText=own.map(b=>b.data.toString('utf8')).join('\n'),heldText=other.map(b=>b.data.toString('utf8')).join('\n');
    // A literal copied from this task's data is not an input parameter. Retain
@@ -43,13 +65,13 @@ function certify(rows){
    }
    if(outputs[0]===outputs[1])throw Error('input_dependency_not_demonstrated');
    const {source,witness,original_paths,...program}=p;
-   const programSha=digest({version:p.version,language:p.language,template:p.template,inputs:p.inputs});
+   const programSha=digest(programIdentity(p));
    programs.push({...program,certification:{passed:true,cases:cases.length,source_equivalent:true,program_sha256:programSha,
      witnesses:cases,source_task_id:task.task_id,source_call_id:witness.call_id,events_sha256:witness.events_sha256,
      scope:'deterministic_source_equivalence_on_distinct_inputs_not_semantic_quality_proof'}});
   }catch(error){rejected.push({id:p.id,reason:error.message});}
  }
- const locks=Object.fromEntries(['src/adapters/script_motif_compiler.py','src/adapters/script_motif_runtime.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs'].map(p=>[p,sha(readFileSync(join(root,p)))]));
+ const locks=Object.fromEntries(scriptCodeLocks.map(p=>[p,sha(readFileSync(join(root,p)))]));
  const body={version:1,kind:'sandboxed_script_motif_library',programs,code_locks:locks,compilation_model_requests:0,heldout_task_id:held.task_id};
  return {library:{...body,digest:digest(body)},report:{published:programs.length,rejected,scope:'real_trace_replay_certification'}};
 }

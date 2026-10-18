@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import hashlib
+import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -19,6 +20,8 @@ from transformers import AutoModel, AutoTokenizer
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
+from src.adapters.embedding_cache import VectorCache
 MODEL_DIR = Path(os.environ.get('SSS_EMBED_MODEL_DIR', ROOT / ".local/models/qwen3-embedding-0.6b"))
 MODEL_ID = "Qwen/Qwen3-Embedding-0.6B"
 MODEL_SHA256 = "0437e45c94563b09e13cb7a64478fc406947a93cb34a7e05870fc8dcd48e23fd"
@@ -28,6 +31,7 @@ MAX_CHARS = int(os.environ.get('SSS_EMBED_MAX_CHARS', '2000'))
 
 class LocalEmbedder:
     def __init__(self):
+        self.cache=VectorCache(256)
         if not (MODEL_DIR / "model.safetensors").is_file():
             raise FileNotFoundError("download the pinned embedding weights first")
         with (MODEL_DIR / "model.safetensors").open("rb") as stream:
@@ -48,6 +52,9 @@ class LocalEmbedder:
         ).to(self.device).eval()
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        return self.cache.resolve(texts,self._embed)
+
+    def _embed(self,texts):
         # Reject overlength input instead of silently dropping task evidence.
         encoded = self.tokenizer(texts, padding=True, truncation=False,
                                  return_tensors="pt")

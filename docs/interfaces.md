@@ -816,29 +816,35 @@ PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿
 
 ## 编译与认证
 
-`learn-script-motifs.py --task <留出任务目录> --task <正常来源任务目录> --output <新的私有目录>` 消费已完成的真实 baseline 事件。第一项固定留出，后续为挖掘来源。Python AST 仅准入单条 Python `-c`/heredoc（可有 `cd`），从当前工作区中实际存在的路径字面量生成参数槽、文件格式/JSON shape 契约。描述来自原始工具意图与输出标签，不要求每种脚本有手写规则。通用 Bash 管道、外部网络脚本、任意工具 DAG 尚未新增支持。
+`learn-script-motifs.py --task <留出任务目录> --task <正常来源任务目录> --output <新的私有目录>` 消费已完成的真实 baseline 事件。第一项固定留出，后续为挖掘来源。Python AST 准入单条 Python `-c`/heredoc、保存 `.py` 后执行及独立文件调用（可有 `cd`）；从当前工作区实际路径生成文件槽/JSON shape，识别 `sys.argv` 标量槽。目录描述由导入模块、参数变量、输出标签与 URL 字面量生成；历史任务意图仍保留作来源和前驱语义证据。通用 Bash 管道、任意网络/副作用脚本和任意工具 DAG 未支持；末尾 head 只可贡献真实参数见证，不能被裁掉后冒充整个历史算子。
 
-`certify-script-motifs.mjs` 在 OS 沙箱内重跑原脚本、参数化脚本及不同字节的留出输入，要求历史 stdout 可重现、参数化前后等价、结果确定且随输入变化。出现只在来源数据中存在的常量选择器、未知路径、歧义绑定、过大输出或不允许操作时拒绝。认证不证明算法或领域结论正确；任务专属的数字、正则等常量仍可能漏检。原始轨迹/观察/库只保存在 `.local/`。
+`certify-script-motifs.mjs` 在 OS 沙箱内重跑原脚本、参数化脚本及不同字节的留出输入，要求历史 stdout 可重现、参数化前后等价、结果确定且随输入变化。出现只在来源数据中存在的常量选择器、未知路径、歧义绑定、过大输出或不允许操作时拒绝。认证不证明算法或领域结论正确；任务专属的数字、正则等常量仍可能漏检。带 argv 的程序要求两组实际历史调用参数，重放原程序和参数化程序，验证等价及输出依赖；其认证范围明确不等同独立任务质量证明。原始轨迹/观察/库只保存在 `.local/`。
 
-IR 为 `sandboxed_script_motif_library` v1：`programs[]` 保存 `id/version/language/template/inputs/description/source_goal/predecessor/intent/certification`，库保存 `code_locks/digest/heldout_task_id/compilation_model_requests`。运行时校验摘要、来源等价证据、程序 ID 和执行代码锁，最多加载 12 个算子。代码变化必须实际重跑认证，不能只更新哈希。当前库不是恶意管理员不可伪造的签名证书。
+IR 为 `sandboxed_script_motif_library` v1：`programs[]` 保存 `id/version/language/template/inputs/description/source_goal/predecessor/intent/certification`，可选 `interface/argv_contract/network_policy`；`predecessor.program_id` 保存从真实相邻轨迹发现的参数流边，库保存 `code_locks/digest/heldout_task_id/compilation_model_requests`。运行时校验摘要、来源等价证据、程序 ID 和执行代码锁，最多加载 12 个算子。代码变化必须实际重跑认证，不能只更新哈希。当前库不是恶意管理员不可伪造的签名证书。
 
 ## 匹配与执行
 
-结构先检查最近一次成功工具的类型、当前可见文件契约、唯一绑定与文件版本；语义分别比较当前完整任务和历史任务目标、最近工具意图和历史前驱意图。候选分差不足、相关性不够、与可选负例更接近、embedding 不可用或输入歧义时回退模型。当前只用一阶前驱与文件证据，没有完整任务进度/Evidence 依赖图，因此不同脚本仍可能重复做相近检查。
+结构先检查最近一次成功工具的类型、当前可见文件契约、唯一绑定与文件版本；语义分别比较当前完整任务和历史任务目标、最近工具意图和历史前驱意图。候选分差不足、相关性不够、与可选负例更接近、embedding 不可用或输入歧义时回退模型。启用 `demandBound:true` 时，结构边还要求上一操作是当前模型显式选择且回执已验证的缓存程序；后继优先使用它的文件绑定/版本，避免无关同类型副本造成歧义。标量/网络目标始终交给模型重新选择，不能凭历史频率自动发起。仍没有完整任务进度/Evidence 覆盖图，不能声称已消除重复检查。
 
 默认 `minSimilarity=.88/minGoalSimilarity=.6/minMargin=.04`。本轮诊断用 `.5/.6/.04` 加三个负目标；这是小样本校准，不是一般文档校对的安全阈值。内部调用使用一次性 `geneloop-script <id> <nonce>`，不把整个历史脚本加入模型上下文、不新增工具 schema。grant 绑定当前 session/输入哈希，30 秒失效。Bash 在只读、无网络沙箱执行当前数据，回执验证输出摘要和执行前后输入版本。每个程序/输入版本组合最多执行一次；回执不通过后停止该任务的后续接管，继续模型处理。
+
+`catalog:true` 通过公开 `systemPrompt.variable/section` 挂载稳定目录，普通 `mode:"cache"` 只允许模型选择，不接管 provider。已有 Bash 接受 `geneloop-cache '{"calls":[{"id":"script_...","paths":["/work/当前文件"],"argv":[]}]}'`；每批 1–8 个，参数只绑定当前工作区文件或最多 32 个有界标量。允许已验证的 `cd /work/... &&` 前缀；拒绝 head、管道和重定向并提示保留完整回执，不静默裁剪命令。批量回执全部验证后才发布 Evidence，部分失败不得成为结构前驱。缓存和完整 Motif 具有同样批量能力。目录不增加工具 schema，普通脚本缓存的选择开销仍计入模型请求。
+
+`network_policy:"fixed_metadata_get_v1"` 的子进程仍禁网；`run-certified-script.mjs` 接收沙箱的 HTTP 需求，`fetch-script-evidence.py` 验证既有 arXiv/Crossref 固定元数据权限后抓取本次字节，附 URL/时间/哈希，再重放脚本。只读 GET、响应最多 2 MB、最多 12 次取证、单驱动 90 秒；失败交回模型。只支持这两类元数据，不是任意网络脚本。回执不是语义正确性证明，事实变化后必须重新取证。
 
 在线输出上限 16 KB，CPU 上限 20 秒；Linux 复用 bubblewrap，内存地址空间上限 512 MB。macOS 必须显式 `SSS_LOCAL_SCRIPT_EXPERIMENT=1`，使用 sandbox-exec，未提供 Linux 等价的内存上限；仅在本地隔离实验验收，不代表生产 macOS 支持。命令 broker 模式拒绝；Windows 未支持。Python 是执行历史 Python 脚本所必需的运行时，不宣称已无 Python 依赖。
 
 ## 配置与真实复现
 
-先按 README 安装固定依赖，配置真实 API、已审核的 `HARLESS_PAPER_RENDERER_ROOT` 与 `HARLESS_REPORT_FONT`；完整报告实验前确认渲染器可用。本地 embedding 为可选独立环境：`scripts/local_embedding_server.py`，当前固定 Qwen3-Embedding-0.6B 权重摘要；配置 `SSS_EMBED_MODEL_DIR/SSS_EMBED_DEVICE/SSS_EMBED_PORT`。完整长题面需显式 `SSS_EMBED_MAX_CHARS=16000`、`SSS_EMBED_MAX_TOKENS=8192`，超长输入拒绝，不静默截掉限制语句。模型依赖未加入基础插件依赖。
+先按 README 安装固定依赖，配置真实 API、已审核的 `HARLESS_PAPER_RENDERER_ROOT` 与 `HARLESS_REPORT_FONT`；完整报告实验前确认渲染器可用。本地 embedding 为可选独立环境：`scripts/local_embedding_server.py`，当前固定 Qwen3-Embedding-0.6B 权重摘要；配置 `SSS_EMBED_MODEL_DIR/SSS_EMBED_DEVICE/SSS_EMBED_PORT`。完整长题面需显式 `SSS_EMBED_MAX_CHARS=16000`、`SSS_EMBED_MAX_TOKENS=8192`，超长输入拒绝，不静默截掉限制语句。服务内 256 项 LRU 缓存仅复用固定模型的文本向量，不缓存任务决策；超长输入仍拒绝。模型依赖未加入基础插件依赖。
 
 私有 JSON sidecar 示例（路径由实验者填写；默认保守阈值）：
 
 ```json
 {
   "mode": "shadow",
+  "catalog": true,
+  "demandBound": true,
   "library": "/absolute/private/round/library.json",
   "endpoint": "http://127.0.0.1:8786/v1/embeddings",
   "model": "Qwen/Qwen3-Embedding-0.6B",
@@ -848,18 +854,20 @@ IR 为 `sandboxed_script_motif_library` v1：`programs[]` 保存 `id/version/lan
 }
 ```
 
-所有实验在独立检出目录执行。以下启动真实 API；默认本次 1 美元，已有无限额授权时才使用 `--budget-usd 0`。请求不限，默认单次输出 8,000；本轮观察到完整报告会触及此上限，输出完成与质量必须单独检查，不能看到 completed 就判成功。
+所有实验在独立检出目录执行。以下启动真实 API；默认本次 1 美元，已有无限额授权时才使用 `--budget-usd 0`。请求不限，runner 默认单次输出 8,000；第二轮三组统一显式 `--max-output-tokens 32768`。该参数经实验 wrapper 的 `--script-max-output-tokens` 同时进入预算代理与 native 配置，公共 CLI 保持原样。输出完成与质量必须单独检查，不能看到 completed 就判成功。
 
 ```sh
 node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
-  --source /path/to/private/submission.zip --mode baseline
+  --source /path/to/private/submission.zip --mode baseline --max-output-tokens 32768
 node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
-  --source /path/to/private/submission.zip --mode shadow --script-config /path/to/private/shadow.json
+  --source /path/to/private/submission.zip --mode cache --script-config /path/to/private/cache.json --max-output-tokens 32768
 node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
-  --source /path/to/private/submission.zip --mode execute --script-config /path/to/private/execute.json
+  --source /path/to/private/submission.zip --mode shadow --script-config /path/to/private/shadow.json --max-output-tokens 32768
+node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
+  --source /path/to/private/submission.zip --mode execute --script-config /path/to/private/execute.json --max-output-tokens 32768
 ```
 
-三组使用同一模型、题面、工具和输出上限；默认题面为 `scenarios/paper-submission/reference-audit.prompt.md`，可显式 `--prompt`。记录在 `.local/script-motif-experiments/<run-id>/`，原生任务在 `.local/web/runs/<run-id>/tasks/`。生产/native mode 保持 `baseline/rsi=false` 以隔离旧 Motif；**实验 mode 以 sidecar 为准**。原生 UI 的 `verified_skips` 不包含此实验计数，应读取 `script-motif-audit.jsonl` 或 `summarize-script-motif-run.py --task <task-dir>`。该核算区分真实 provider 请求、认证跳过、Shadow 候选、PDF 文件存在与质量评审；不自动计算净节省。
+三组使用同一模型、题面、工具和输出上限；默认题面为 `scenarios/paper-submission/reference-audit.prompt.md`，可显式 `--prompt`。记录在 `.local/script-motif-experiments/<run-id>/`，原生任务在 `.local/web/runs/<run-id>/tasks/`。生产/native mode 保持 `baseline/rsi=false` 以隔离旧 Motif；**实验 mode 以 sidecar 为准**。原生 UI 的 `verified_skips` 不包含此实验计数，应读取 `script-motif-audit.jsonl` 或 `summarize-script-motif-run.py --task <task-dir>`。该核算区分真实 provider 请求、认证跳过、Shadow 候选、PDF 文件存在与质量评审；不自动计算净节省。`analyze-script-motif-cost.py --task <task-dir> --output <新私有文件>` 按完整请求对齐账本和可见动作，单列搜索工具内部模型、代码生成、现成脚本调度和报告协议，不把类别费用直接视为可替代费用。
 
 ## 自动学习生命周期
 
