@@ -56,3 +56,22 @@ def test_converter_failure_returns_no_receipt(source,monkeypatch):
     monkeypatch.setattr(module.subprocess,'run',lambda *args,**kwargs:SimpleNamespace(returncode=2))
     with pytest.raises(ValueError,match='failed_exit_2'):api.convert(pin['source_id'])
     assert api.receipts=={}
+
+
+def test_markdown_change_after_tree_check_is_not_returned(source,monkeypatch):
+    root,reader,api,pin,pdf=source;converted=api.convert(pin['source_id'])
+    checked=api._files
+    def change_after_hash(directory):
+        hashes=checked(directory)
+        (directory/'source.md').write_text('changed after tree check',encoding='utf-8')
+        return hashes
+    monkeypatch.setattr(api,'_files',change_after_hash)
+    with pytest.raises(ValueError,match='version_changed'):api.read(converted['converted_id'])
+
+
+def test_new_derivative_hardlink_is_rejected(source):
+    import os
+    root,reader,api,pin,pdf=source;converted=api.convert(pin['source_id'])
+    directory=api.receipts[converted['converted_id']][3]
+    os.link(directory/'source.md',directory/'alias.md')
+    with pytest.raises(ValueError,match='hardlink'):api.read(converted['converted_id'])

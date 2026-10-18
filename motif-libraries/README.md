@@ -2,6 +2,8 @@
 
 版本化运行库进入 Git，不依赖开发者的 `.local/`。来源哈希、运行模式和每个文件的版本在 `catalog.json`、各目录的 `entry.json` 中；历史库与本轮真实轨迹新编译库分别保留。
 
+2026-10-18 当前注册版本为 PPT `ppt-master-v2`、Paper `paper-web-v8`、Data `data`。PPT v2 从新的真实完整制作轨迹认证 pin→官方转换、转换→完整正文读取两条边；页面制作、Bash 和科研判断仍交给模型。Paper v8 只沿用原证据重编共享代码兼容锁，无新采集或语义能力。下表保留前代能力说明；当前注册表是 `config/harless-scenes.json`，同模板验证见[实验记录](../docs/experiments/ppt-master-structure-style-20261018.md)。
+
 | 场景 | 目录 | 现有能力与边界 |
 | --- | --- | --- |
 | `/ppt` | `ppt-web-v2-r10/` | 沿用两项正常网页研究决定和独立认证轨迹，针对当前共享适配器兼容重编两条读取续接：`pin_source → read_source`、`pin_deck_pages → read_pinned_deck_pages`。实际 MCP 的完整 1–30 页 schema 与主线 r7 相同，新增通用能力独立授权，代码锁覆盖其依赖；无新采样或模型请求，原始事件、费用和质量负例保留。只认证读取结构，尚未晋级为同质降本。历史 r4/r5/r6/r7/r8 和 `ppt/` 原库/manifest/证书保持，当前兼容记录单列。 |
