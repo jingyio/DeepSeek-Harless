@@ -1,5 +1,11 @@
 # DeepSeek Harless 主线当前交接
 
+## 2026-10-18：成员沙箱公开证书依赖补齐
+
+- PR #81 合入并发布后，真实成员账号首次 PPT Chat 在1.875秒内接收、六页读取通过；第二轮切 Pro/PPT 时，优化侧被 `runtime_bundle_certification_invalid` 正确拒绝并回退。宿主文件摘要全匹配；实际成员命名空间仅缺 `/app/config/pdf-ocr-assets.json`，该公开清单已在 PDF 接入时进入证书，但产品挂载白名单未同步。
+- `memberProductProfile` 仅追加此公开清单的只读挂载；不挂载整个 config、不降低证书校验。新增回归核对当前注册证书的每个公开 config 依赖均有明确挂载。`ppt-master-v7` / `paper-web-v12` 沿用同一历史证据与图兼容重编，v6/v11 保留。
+- 此修复不改变模型、输入解析、PPT制作或 PDF OCR 行为；最终 CI、合并及真实成员复测以关联 PR 的发布记录为准。原件、旧轨迹与累计账本继续保留。
+
 ## 2026-10-18：PPT/PPTX 原生样式与逐页视觉输入
 
 - 分支 `codex/ppt-style-input`，基线 `d0458c4`。所有场景补充主题/母版/布局/字体/配色/几何声明和整页像素，原件只读；新 TypeScript 适配器复用会话命令沙箱，输入渲染收紧为无网络并禁宏/链接更新，Flash 辅助视觉仍按同任务记账。旧 PPT 可转换 PDF/标准 PPTX，保留原始与派生 SHA。

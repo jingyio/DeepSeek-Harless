@@ -2,6 +2,8 @@
 
 ## PPT/PPTX 风格输入（2026-10-18）
 
+成员产品必须将公开 `config/pdf-ocr-assets.json` 单独只读挂载为 `/app/config/pdf-ocr-assets.json`，供注册场景的原样证书摘要验证；即使语言包已挂载，缺少此文件仍会触发优化回退。不得用移除代码锁、忽略缺失项或暴露整个配置目录规避失败。挂载修复对应兼容库 `ppt-master-v7` / `paper-web-v12`，旧版本保留。
+
 `sceneAttachmentContext` 可注入 `renderPresentation(file, signal)`；Web 统一从当前任务的不可变 `scene_inputs` 取得原件，TypeScript 通过已有命令沙箱/broker 渲染，新增可选 `network:"none"` 只允许收紧网络，普通 Bash 行为保持。子进程不接收模型密钥，宏与链接更新关闭，新私有目录防止覆盖，取消和超时终止对应沙箱；渲染后再次核验原件及 PDF SHA。原件、衍生物仍受上传/资源边界约束。
 
 `presentation-input-v1` 提供 `pages[]`、原件 SHA 与 `pptx:<sha>:slide:<n>` 或 `ppt:<sha>:slide:<n>` 来源，及 `presentation_style`（画幅、实际关联的主题/母版/布局声明）、逐页 `style`、`rendered_pdf_sha256`。声明覆盖和视觉覆盖分开；每页都生成实际像素，沿用已激活任务的 Flash 辅助视觉路由，必须通过来源/页号/实际看到图片/非空 `style_observations` 的 JSON 校验才标记已识别。内联图像不进入主模型文字或用户气泡；已识别页保留渲染 SHA 和模型观察，失败页保留安全诊断码。未做跨问题或来源版本的语义缓存。
