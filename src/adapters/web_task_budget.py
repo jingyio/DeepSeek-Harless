@@ -198,7 +198,7 @@ class TaskBudgetRegistry:
             # Project only this authenticated route's existing accounting. No
             # prompts, keys, other users' rows or new budget state are exported.
             fields = {'task_id', 'session_id', 'request_id', 'global_request_id',
-                      'response_status', 'response_usage', 'observed_peak_usd'}
+                      'response_status', 'response_usage', 'observed_peak_usd','model','kind'}
             result['request_receipts'] = [
                 {key: value for key, value in row.items() if key in fields}
                 for line in route.state.record.read_text(encoding='utf-8').splitlines() if line.strip()

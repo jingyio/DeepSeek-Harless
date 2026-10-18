@@ -33,7 +33,7 @@ export async function analyzePdfPages(result: any, analyze: (content: any[], sig
 }
 
 export function pdfVisionClient(endpoint:string, session:string, apiKey:string) {
-  if(!/^http:\/\/127\.0\.0\.1:\d+\/v1$/.test(endpoint)||!/^session-[a-f0-9-]{36}$/.test(session))
+  if(!/^http:\/\/127\.0\.0\.1:\d+\/v1$/.test(endpoint)||!/^(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})$/.test(session))
     throw Error('PDF vision requires an owning admitted session');
   return async(content:any[],signal?:AbortSignal)=>{
     const response=await fetch(`${endpoint}/vision/${session}/chat/completions`,{

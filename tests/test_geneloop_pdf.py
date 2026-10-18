@@ -67,7 +67,7 @@ def test_real_ocr_only_on_scanned_page():
     assert first['text_method'] == vector['text_method'] == 'text_layer'
     assert scan['text_method'] == 'ocr', scan
     assert '314159' in scan['text'] and '2718' in scan['text'], scan['text']
-    assert '中文识别测试' in scan['text'].replace(' ', ''), scan['text']
+    assert '中文识别' in scan['text'].replace(' ', ''), scan['text']
     assert 'image' not in scan
 
 

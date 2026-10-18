@@ -351,6 +351,8 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
             # Dynamic Web tasks route by the adapter's server-owned session header.
             # Legacy SDK/frozen callers keep their original single State.
             match = re.fullmatch(r'/v1/search/((?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32}))/messages', self.path) if allow_search else None
+            if not match and allow_vision:
+                match = re.fullmatch(r'/v1/vision/((?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32}))/chat/completions', self.path)
             headers = dict(self.headers)
             if match:
                 headers = {k: v for k, v in headers.items() if k.lower() != 'x-deepseek-harness-session-id'}
@@ -427,7 +429,7 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                        and not (stream and key.lower() == 'accept-encoding')}
             if stream: headers['Accept-Encoding'] = 'identity'
             target_path = ('/anthropic/v1/messages' if allow_search and self.path.startswith('/v1/search/') else
-                           chat_path if self.path == '/v1/chat/completions' or (allow_vision and self.path == '/v1/vision/chat/completions') else self.path)
+                           chat_path if self.path == '/v1/chat/completions' or (allow_vision and self.path.startswith('/v1/vision/')) else self.path)
             request = urllib.request.Request(upstream.rstrip('/') + target_path, data=body,
                                              headers=headers, method=method)
             try:
@@ -469,7 +471,8 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
 
         def do_POST(self) -> None:  # noqa: N802
             file_upload = allow_files and self.path == "/v1/files"
-            vision = allow_vision and self.path == '/v1/vision/chat/completions'
+            vision = allow_vision and (self.path == '/v1/vision/chat/completions' or
+                re.fullmatch(r'/v1/vision/(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})/chat/completions',self.path) is not None)
             search = allow_search and (self.path == '/v1/search/messages' or
                 re.fullmatch(r'/v1/search/(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})/messages', self.path) is not None)
             if self.path != "/v1/chat/completions" and not file_upload and not search and not vision:

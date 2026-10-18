@@ -1273,8 +1273,8 @@ export function apply(ctx: any) {
       await broker('/bind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       const attachmentContext = await sceneAttachmentContext(task.workspace, task.scene_inputs,{
         signal:inputSignal,instruction:task.delivery.filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n'),versionedPpt:task.scene.adapter==='ppt',
-        ...(brokerMode?{analyze:pdfVisionClient(config.budget_broker_endpoint+'/v1',task.request.session_id,
-          config.provider_mode==='mock'?'sss-mock-only':process.env.DEEPSEEK_API_KEY!)}:{}),
+        analyze:(parts,signal)=>pdfVisionClient(brokerMode?config.budget_broker_endpoint+'/v1':config.endpoint,task.request.session_id,
+          config.provider_mode==='mock'?'sss-mock-only':process.env.DEEPSEEK_API_KEY!)(parts,signal),
       });
       inputSignal.throwIfAborted();
       if (scopeDigest(task.workspace, task.scene) !== task.scope_sha256)

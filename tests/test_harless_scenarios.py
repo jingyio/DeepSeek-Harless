@@ -114,6 +114,7 @@ def parser_fixture(tmp_path):
 
 
 def test_report_attachment_environment_forwards_only_validated_parser_paths(tmp_path, monkeypatch):
+    monkeypatch.delenv('GENELOOP_PDF_OCR_ROOT', raising=False)
     pdf, antiword, scene = parser_fixture(tmp_path)
     monkeypatch.setenv('HARLESS_PDF_TOOLCHAIN_ROOT', str(pdf))
     monkeypatch.setenv('HARLESS_ANTIWORD_BIN', str(antiword / 'usr/bin/antiword'))
@@ -127,6 +128,7 @@ def test_report_attachment_environment_forwards_only_validated_parser_paths(tmp_
 
 
 def test_optional_report_extractors_do_not_inherit_unconfigured_ambient_environment(tmp_path, monkeypatch):
+    monkeypatch.delenv('GENELOOP_PDF_OCR_ROOT', raising=False)
     _, _, scene = parser_fixture(tmp_path)
     monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
     monkeypatch.delenv('HARLESS_ANTIWORD_BIN', raising=False)
@@ -159,3 +161,15 @@ def test_report_parser_symlinks_are_not_followed(tmp_path, monkeypatch):
     monkeypatch.setenv('HARLESS_PDF_TOOLCHAIN_ROOT', str(linked))
     with pytest.raises(ValueError, match='fixed installation paths'):
         _configure_attachment_parsers(scene)
+
+
+def test_ocr_rejects_unpinned_languages_and_private_resource_directories(tmp_path, monkeypatch):
+    root=tmp_path/'ocr';languages=root/'tessdata';languages.mkdir(parents=True)
+    (languages/'eng.traineddata').write_bytes(b'not the pinned model')
+    (languages/'chi_sim.traineddata').write_bytes(b'not the pinned model')
+    monkeypatch.setenv('GENELOOP_PDF_OCR_ROOT',str(root))
+    with pytest.raises(ValueError,match='hash mismatch'):
+        _configure_attachment_parsers({'mcp_rows':[]})
+    (root/'.env').write_text('private')
+    with pytest.raises(ValueError,match='unapproved resources'):
+        _configure_attachment_parsers({'mcp_rows':[]})

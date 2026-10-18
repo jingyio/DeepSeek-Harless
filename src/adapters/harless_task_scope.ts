@@ -176,13 +176,13 @@ export async function sceneAttachmentContext(workspace: string, inputs: any[], o
   let result: any;
   try {
     const output=await new Promise<string>((resolve,reject)=>{
+      options.signal?.throwIfAborted();
       const parserEnv=Object.fromEntries(['PATH','LD_LIBRARY_PATH','SystemRoot','WINDIR','TEMP','TMP',
         'GENELOOP_PDF_OCR_ROOT','HARLESS_PDF_TOOLCHAIN_ROOT','HARLESS_ANTIWORD_BIN','ANTIWORDHOME',
         'PYTHONUTF8','PYTHONIOENCODING','PYTHONDONTWRITEBYTECODE'].filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]));
       const child=spawn(process.env.SSS_PYTHON??'python3',[script],{stdio:['pipe','pipe','pipe'],windowsHide:true,env:parserEnv});
       const chunks:Buffer[]=[];
       const abort=()=>{child.kill();reject(options.signal?.reason??Error('attachment_read_cancelled'));};
-      options.signal?.throwIfAborted();
       options.signal?.addEventListener('abort',abort,{once:true});
       const timeout=setTimeout(()=>{child.kill();reject(Error('attachment_read_timeout'));},900000);
       child.stdout.on('data',chunk=>chunks.push(Buffer.from(chunk)));

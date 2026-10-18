@@ -50,9 +50,19 @@ def read_pdf(data: bytes, *, visuals=False, page_number=None):
                     if not tessdata:
                         raise ValueError('pdf_ocr_languages_unavailable')
                     # Partial mode retains native text and OCRs image regions.
-                    tp = page.get_textpage_ocr(language='eng+chi_sim', dpi=200,
+                    tp = page.get_textpage_ocr(language='chi_sim', dpi=200,
                                              full=not native.strip(), tessdata=tessdata)
                     text = page.get_text(textpage=tp, sort=True)
+                    # Some supported MuPDF/Tesseract builds bias combined
+                    # eng+chi_sim heavily toward Latin, even on clean Chinese.
+                    # The Chinese model includes Latin/digits. Use the English
+                    # model when its first transcript contains no CJK at all.
+                    ocr_language = 'chi_sim'
+                    if not re.search(r'[\u3400-\u9fff]', text):
+                        tp = page.get_textpage_ocr(language='eng', dpi=200,
+                                                 full=not native.strip(), tessdata=tessdata)
+                        text = page.get_text(textpage=tp, sort=True)
+                        ocr_language = 'eng'
                     method = 'ocr' if not native.strip() else 'text_layer_and_ocr'
                 except Exception:
                     method, warning = 'text_layer', 'pdf_page_ocr_failed_or_unavailable'
@@ -66,6 +76,8 @@ def read_pdf(data: bytes, *, visuals=False, page_number=None):
                    'captions': re.findall(r'(?im)^\s*(?:fig(?:ure)?\.?\s*\d+|图\s*\d+)[^\n]*(?:\n[^\n]+)?', text)}
             if warning:
                 row['warning'] = warning
+            if row['ocr_performed']:
+                row['ocr_language'] = ocr_language
             if visuals and visual:
                 scale = min(200 / 72, 2400 / max(page.rect.width, page.rect.height))
                 pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)

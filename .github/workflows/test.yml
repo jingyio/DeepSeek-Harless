@@ -21,6 +21,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: npm ci
       - run: npm run setup
+      - name: Install pinned OCR languages for real scan tests
+        shell: bash
+        run: |
+          .venv-sss/$([[ "$RUNNER_OS" == "Windows" ]] && echo Scripts || echo bin)/python scripts/install-pdf-ocr.py --root "$RUNNER_TEMP/geneloop-pdf-ocr"
+          echo "GENELOOP_PDF_OCR_ROOT=$RUNNER_TEMP/geneloop-pdf-ocr" >> "$GITHUB_ENV"
       - run: npm test
       - name: Annotate test failures
         if: failure()
