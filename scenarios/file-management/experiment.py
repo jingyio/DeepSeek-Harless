@@ -45,8 +45,10 @@ def accounting():
         if (not review.get('accounting_complete') or review.get('record_sha256')!=sha(record_file)
                 or review.get('ledger_sha256')!=sha(ledger)):
             raise ValueError('continuous task has unresolved API usage')
-    return {'attempts':len(rows)+len(continuous),'upstream_requests':sum((r.get('run') or {}).get('upstream_requests',0) for r in rows)+sum(r['upstream_requests'] for r in continuous),
-            'estimated_usd':sum((r.get('run') or {}).get('budget_accounted_usd',0) for r in rows)+sum(r['cost_usd'] for r in continuous),
+    from src.adapters.management_backup import imported_budget
+    carry=imported_budget(ROOT);original=carry.get('series',{})
+    return {'attempts':len(rows)+len(continuous)+original.get('attempts',0),'upstream_requests':sum((r.get('run') or {}).get('upstream_requests',0) for r in rows)+sum(r['upstream_requests'] for r in continuous)+original.get('upstream_requests',0),
+            'estimated_usd':sum((r.get('run') or {}).get('budget_accounted_usd',0) for r in rows)+sum(r['cost_usd'] for r in continuous)+original.get('estimated_usd',0)+carry.get('pending_usd',0),
             'actual_bill_verified':False}
 
 def run_one(exp,case,protocol,*,call_model=False,manifest=None,motif_task=None,embedding_endpoint=None,

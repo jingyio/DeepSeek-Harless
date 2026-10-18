@@ -226,7 +226,7 @@ export async function apply(ctx: any) {
       comparison_parent_session_id: sessionId ? comparisons?.parentFor(sessionId) ?? null : null,
       preview_scene: selected.scene, // compatibility alias; now an actual registered selection
       preview_scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason })),
-      current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status,confirmation_digest:task.confirmation_digest,verified_skips:task.stats.verified_skips,artifacts:(task.management?.artifacts??[]).map(({path,...r}:any)=>r) } : null,
+      current_task: task ? { task_id: task.request.task_id, scene: task.scene.id, mode: task.request.mode, rsi: task.selection.rsi, status: task.status,confirmation_digest:task.confirmation_digest,verified_skips:task.stats.verified_skips,...(task.management?{goal_status:task.management.artifacts?.find((r:any)=>r.name==='management-report.json')?.goal_status??null}:{}),artifacts:(task.management?.artifacts??[]).map(({path,...r}:any)=>r) } : null,
       ...(task?.management?{continuous_learning:task.management.status}:{}),
       scenes: scenes.map(scene => ({ id: scene.id, label: scene.label, shortcut: sceneShortcut(scene), config_sha256: scene.config_sha256,
         available: !scene.unavailable_reason, unavailable_reason: scene.unavailable_reason,

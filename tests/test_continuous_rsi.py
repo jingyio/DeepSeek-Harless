@@ -45,6 +45,16 @@ def test_series_budget_accounts_for_pending_tasks(configuration):
     cfg=rsi.load_config(path);rsi.initialize(cfg);rsi.reserve(cfg,'one',5)
     with pytest.raises(ValueError,match='series budget'):rsi.reserve(cfg,'two',5)
 
+def test_cold_import_learning_spend_and_reservation_keep_original_cap(configuration,monkeypatch):
+    path,c=configuration;c.update(role='native_certification',auto_worker=False)
+    durable(path,c);cfg=rsi.load_config(path);root=rsi.initialize(cfg)
+    from src.adapters import management_backup
+    monkeypatch.setattr(management_backup,'imported_budget',lambda project:{'learning_spent_usd':4,'learning_reserved_usd':2})
+    with pytest.raises(ValueError,match='learning budget'):rsi.reserve(cfg,'too-large',5)
+    assert not rsi.read(root/'pool.json')['runs']
+    rsi.reserve(cfg,'within-original',4)
+    with pytest.raises(ValueError,match='learning budget'):rsi.reserve(cfg,'next',.01)
+
 def test_lock_recovery_preserves_old_owner_and_budget(configuration):
     path,_=configuration;cfg=rsi.load_config(path);root=rsi.initialize(cfg);rsi.reserve(cfg,'pending',5)
     durable(root/'worker.lock',{'pid':999999999,'created':0})

@@ -6,6 +6,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scenarios/file-management'))
 from common import sha,digest
 from management_tools import ManagementScene,tree
+from management_contract import VERSION as QUALITY_VERSION
 
 @pytest.fixture
 def case(tmp_path):
@@ -74,7 +75,7 @@ def test_paths_cannot_expand_workspace_authority(case,target):
 
 def test_report_freezes_independent_goal_quality_and_actual_file_identities(case):
     s,spec,w,x,out=case
-    s.spec['quality']={'version':'sss-management-quality-v3','requirements':[{'kind':'file','source':'note.txt','path':'copy.txt'}]}
+    s.spec['quality']={'version':QUALITY_VERSION,'requirements':[{'kind':'file','source':'note.txt','path':'copy.txt'}]}
     # New task quality must be fixed before constructing its service.
     spec={**spec,'quality':s.spec['quality']};out=out.parent/uuid4().hex;s=ManagementScene(spec,out);s.read_task()
     with pytest.raises(Exception,match='delivery rejected'):s.submit_report('not yet done',list(s.files()),[])
@@ -90,7 +91,7 @@ def test_read_only_selection_cannot_reuse_write_permission(case):
 
 def test_verifier_rejects_changes_beyond_recorded_effects(case):
     _,spec,w,x,out=case
-    spec={**spec,'quality':{'version':'sss-management-quality-v3','requirements':[]}}
+    spec={**spec,'quality':{'version':QUALITY_VERSION,'requirements':[]}}
     s=ManagementScene(spec,out.parent/uuid4().hex);s.read_task();p=s.preview_actions([{'op':'copy','source':'note.txt','destination':'copy.txt'}]);s.execute_plan(p['plan_id'])
     s.submit_report('copy done',list(s.files()),[])
     import json

@@ -95,7 +95,7 @@ class FileOperationsV2(FileOperations):
 
 class ManagementOperations(FileOperationsV2):
     def validate(self,spec,prepared):
-        if spec.get('management_contract')!='sss-management-v3' or spec.get('quality',{}).get('version')!='sss-management-quality-v3':raise ValueError('independent management contract required')
+        if spec.get('management_contract')!='sss-management-v3' or spec.get('quality',{}).get('version')!='sss-management-quality-v4':raise ValueError('independent management contract required')
         rows=prepared['mcp_rows']
         if len(rows)!=1 or rows[0]['config']['args']!=[str(ROOT/'scenarios/file-management/management_tools.py')]:raise ValueError('registered management service changed')
     def scope(self,spec):
@@ -106,7 +106,7 @@ class ManagementOperations(FileOperationsV2):
           'permission_sha256':digest({'owner':spec['owner'],'workspace_id':spec['workspace_id'],'external_roots':spec.get('external_roots',{}),'low_operations':sorted(LOW_OPS),'read_only':spec.get('rules',{}).get('read_only',False),'high_risk':'one_plan_native_confirmation'}),
           'initial_snapshot_sha256':digest(spec['initial_tree']),'result_read_allowed':True}
     def runtime_sources(self):
-        return [*super().runtime_sources(),'scenarios/file-management/management_tools.py','scenarios/file-management/management_native.py','scenarios/file-management/management_contract.py']
+        return [*super().runtime_sources(),'scenarios/file-management/management_tools.py','scenarios/file-management/management_native.py','scenarios/file-management/management_contract.py','scenarios/file-management/management_goals.py']
     def verify_record(self,spec,record,origin,rows,events):
         import sys,json
         sys.path.insert(0,str(ROOT/'scenarios/file-management'))

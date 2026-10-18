@@ -59,7 +59,7 @@ window.__ModuleLoader__.load({
       const scene = value?.scenes.find(row => row.id === value.selection.scene);
       const name = scene ? '/' + shortcut(scene) : 'GeneLoop';
       const rsi=value?.continuous_learning;
-      const live=rsi?` · 库 v${rsi.library_generation} / ${rsi.active_motifs} 图 · ${rsi.worker_running?'学习认证中':'已记录'} · $${rsi.estimated_cost_usd.toFixed(4)}${value.current_task?.verified_skips?' · 复用 '+value.current_task.verified_skips:''}`:'';
+      const live=rsi?` · 库 v${rsi.library_generation} / ${rsi.active_motifs} 图 · ${rsi.worker_running?'学习认证中':'已记录'} · $${rsi.estimated_cost_usd.toFixed(4)}${value.current_task?.verified_skips?' · 复用 '+value.current_task.verified_skips:''}${value.current_task?.goal_status==='verified'?' · 目标验收通过':value.current_task?.goal_status==='review_required'?' · 目标待复核':''}`:'';
       const detail = value ? value.paired_comparison ? 'Baseline / Motif 对照' : `${modeLabel(value.selection.mode)} · RSI ${value.selection.rsi ? 'On' : 'Off'}${value.conversation_only ? ' · 文字对话' : ''}${live}` : '';
       return React.createElement('span', { role: 'status', 'aria-label': `${name} ${detail}`, title: `${name} ${detail}`,
         style: { display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: 'min(760px, 75vw)', overflow: 'hidden',

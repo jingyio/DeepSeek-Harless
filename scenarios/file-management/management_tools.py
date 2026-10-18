@@ -36,7 +36,7 @@ def tree(root,ignored=()):
     return {'files':files,'directories':directories}
 
 def execution_version():
-    return digest({n:sha(HERE/n) for n in ('management_tools.py','management_native.py','management_contract.py','file_tools.py','report_tools.py','collection_tools.py','common.py')})
+    return digest({n:sha(HERE/n) for n in ('management_tools.py','management_native.py','management_contract.py','management_goals.py','file_tools.py','report_tools.py','collection_tools.py','common.py')})
 
 def operator_contract(name):
     c=inherited_contract(name)
@@ -116,7 +116,9 @@ class ManagementScene(OperationSceneV2):
         return self.stamp({'task_id':self.spec['task_id'],'objective':self.spec['objective'],'copy_only':True,'default_operations':[] if self.spec.get('rules',{}).get('read_only') else sorted(LOW_OPS),
           'approved_inputs':self.spec.get('approved_inputs',[]),
           'high_risk_operations':['overwrite','delete','external_root_access'],'external_root_ids':list(self.spec.get('external_roots',{})),
-          'learning_scope':self.learning_scope,'recovery_state':[{'plan_id':p,'status':j['status']} for p,j in self.journals.items()],
+          'learning_scope':self.learning_scope,'goal_acceptance':self.spec.get('quality',{}).get('goal',{}),
+          'default_type_directories':{'PDF/Word':'documents','Excel/CSV':'tables','images':'images','text':'notes','other':'others'},
+          'recovery_state':[{'plan_id':p,'status':j['status']} for p,j in self.journals.items()],
           'instruction':'Choose actions from the user goal and actual file identities. No fixed source/destination list. High-risk plans need one native human confirmation; do not invent approval tokens.'})
     def list_files(self):
         self.active()

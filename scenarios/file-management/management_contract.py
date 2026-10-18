@@ -2,10 +2,10 @@
 import json,copy
 from pathlib import Path
 from common import digest,sha
-VERSION='sss-management-quality-v3'
+VERSION='sss-management-quality-v4'
 def verify_management(spec,report,output,*,root_paths=None):
     from management_tools import tree,execution_version
-    out=Path(output);errors=[]
+    out=Path(output);errors=[];report=report or {}
     paths={'workspace':spec['workspace'],**{k:v['path'] for k,v in spec.get('external_roots',{}).items()}}
     actual={k:tree((root_paths or paths)[k]) for k in paths}
     if not report or report.get('task_id')!=spec['task_id'] or report.get('input_sha256')!=digest(spec) or report.get('final_tree')!=actual:errors.append('actual report identity/tree differs')
@@ -58,14 +58,27 @@ def verify_management(spec,report,output,*,root_paths=None):
         if chain!=j['after']:errors.append('effect final boundary differs')
         expected=j['after']
     if expected!=actual:errors.append('unrequested filesystem changes')
+    integrity_errors=list(errors)
     requirements=spec.get('quality',{}).get('requirements',[])
+    goal=spec.get('quality',{}).get('goal',{})
+    if goal and goal.get('objective_sha256')!=digest(spec['objective']):errors.append('frozen goal differs from original user objective')
+    if goal.get('state')=='frozen' and 'expected_tree' in goal and actual['workspace']!=goal['expected_tree']:errors.append('goal file/directory coverage differs from frozen objective')
     for r in requirements:
-        if r.get('kind') not in ('directory','missing','file','unchanged') or r.get('root_id','workspace') not in actual:errors.append('unknown frozen predicate');continue
+        if r.get('kind') not in ('directory','empty_directory','missing','file','unchanged','read') or r.get('root_id','workspace') not in actual:errors.append('unknown frozen predicate');continue
         t=actual[r.get('root_id','workspace')];kind=r['kind'];p=r['path']
         if kind=='directory' and p not in t['directories']:errors.append('required directory missing: '+p)
+        elif kind=='empty_directory' and (p not in t['directories'] or any(n.startswith(p+'/') for n in [*t['files'],*t['directories']])):errors.append('required empty directory differs: '+p)
         elif kind=='missing' and (p in t['files'] or p in t['directories']):errors.append('required removal missing: '+p)
         elif kind=='file':
             original=spec['initial_tree'][r.get('source_root','workspace')]['files'][r['source']]
             if t['files'].get(p)!=original:errors.append('required file/bytes differ: '+p)
         elif kind=='unchanged' and t['files'].get(p)!=spec['initial_tree'][r.get('root_id','workspace')]['files'].get(p):errors.append('unrelated file changed: '+p)
-    return {'passed':not errors,'errors':errors,'quality_version':VERSION,'semantic_quality_verified':bool(requirements),'human_blind_review':False,'actual_approval_required':True}
+        elif kind=='read':
+            n=r.get('root_id','workspace')+'/'+p;original=spec['initial_tree'][r.get('root_id','workspace')]['files'].get(p)
+            reads=[v for v in state.get('reads',{}).values() if v.get('path')==n and v.get('sha256')==original]
+            if not any(v.get('status')=='readable' and v.get('truncated') is False for v in reads):errors.append('required complete read missing: '+p)
+    verified=not errors and (bool(requirements) or goal.get('state')=='frozen')
+    return {'passed':not errors,'errors':errors,'quality_version':VERSION,'effect_integrity_verified':not integrity_errors,
+            'semantic_quality_verified':verified,'goal_status':'verified' if verified else 'failed' if errors else 'review_required',
+            'goal_checks':goal.get('checks',[]),'goal_review_reason':goal.get('reason'),
+            'human_blind_review':False,'actual_approval_required':True}

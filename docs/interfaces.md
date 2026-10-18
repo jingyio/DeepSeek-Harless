@@ -1,5 +1,7 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+2026-10-18 本地入口与目标验收更新：`npm run management` 统一启动/状态/经验盘点/私有备份恢复和冷迁移；日常默认真实模型并固定原管理库。新增 `sss-management-backup-v1`、`sss-management-cold-import-v1`、`sss-management-inventory-v1`、`sss-management-goal-v1`，质量升级为 `sss-management-quality-v4`，效果完整性与目标验证分别报告。新源码独立认证，旧证据不重签。范围、字段、预算继承和回退边界见[共享接口变更](changes/management-local.md)，日常步骤见[本地说明](management-local.md)。只用个人分支，不合入 main；以下旧时点记录保留。
+
 2026-10-15最新：已接通工具名无关的 MCP 学习契约与2–8节点参数DAG，并扩展到原授权文件写操作；真实新流从两节点前缀学习并独立认证五节点图，3个新图激活，严格文件流6/6普通任务合格。既有默认 Harness Web 的 file-management profile 已接同一库、任务后封存与自动学习队列；真实Web5/5合格，17次结构续接经实际结果验证。632 Python/211 Node通过、3可选跳过、18smoke；本轮59真实执行/470HTTP/代理USD0.237622092，包含所有失败与认证，最终留出不学习、暂不推送GitHub。其它MCP仍须登记真实权限/材料/验收适配器，任意控制流及稳定完整净收益未验证。 [完整实验](experiments/generic-mcp-operation-rsi-20261015.md)、[共享接口与入口](changes/generic-mcp-operation-rsi.md)。
 
 共享协议新增 `_meta.sss_learning` / `sss-mcp-learning-v1`、`sss-operation-graph-v1`、版本库 `operation_graph` 及Web `continuous_learning` 字段；原HTTP动作/状态名保持。文件适配器在任何效果前核对原目标，原权限、版本、预算与最多2次普通Harness验收修复继续有效。无有效库/不能唯一绑定时普通Harness接管。

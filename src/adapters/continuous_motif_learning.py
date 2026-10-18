@@ -275,6 +275,12 @@ def material(cfg, job, label, origin, role, registry_file=None):
         from management_tools import tree
         spec.update(workspace_marker_sha256=sha(work/'.experiment-copy'),initial_tree={'workspace':tree(work)})
         if spec.get('external_roots'):raise ValueError('certification cannot automatically approve external directories')
+        goal=spec.get('quality',{}).get('goal',{})
+        if goal.get('source')=='bounded_language' and goal.get('state')=='frozen':
+            from management_goals import compile_goal
+            fresh=compile_goal(spec['objective'],spec['initial_tree']['workspace'])
+            if fresh['state']!='frozen' or fresh['requirements']!=spec['quality']['requirements'] or fresh['checks']!=goal['checks']:raise ValueError('independent goal requirements changed')
+            fresh.pop('requirements');spec['quality']['goal']=fresh
     durable(directory/'input.json',spec,exclusive=True)
     prompt=directory/'prompt.md';prompt.write_text(enrollment['prompt']);prompt.chmod(0o600)
     scenario=read(enrollment['scenario_file']);scenario['prompt']=str(prompt);durable(directory/'scenario.json',scenario,exclusive=True)
@@ -373,7 +379,7 @@ def certify_job(cfg,root,job,candidate):
           'payload_sha256':sha(policy_file),'candidate_lock_file':str(job/'candidate-lock.json'),'candidate_lock_sha256':sha(job/'candidate-lock.json'),
           'native_review':read(job/'native-review.json'),'reviews':reviews,'failures':failures,'holdout_used':False,
           'quality_and_permission_required':True,'net_benefit_required':False,'runtime_source':runtime_source,
-          **({'material_quality_contract':'sss-management-quality-v3'} if cfg.get('adapter')=='management_v3' else {}),
+          **({'material_quality_contract':'sss-management-quality-v4'} if cfg.get('adapter')=='management_v3' else {}),
           **({'certification_contract':'sss-operation-certification-v2'} if v2 else {})}
     cert_file=job/'certificate.json'
     if not cert_file.exists():durable(cert_file,cert,exclusive=True)

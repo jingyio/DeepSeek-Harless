@@ -61,7 +61,12 @@ def dispatch(v):
         scene=ManagementScene(spec,delivery);scene.guard();native=private(v['native_workspace'])
         export=native/'outputs'/'management'/spec['task_id'];export.mkdir(parents=True,exist_ok=True)
         report=read(delivery/'report.json');rows=[]
+        from management_contract import verify_management
+        acceptance=verify_management(spec,report,delivery)
+        if not acceptance['passed']:raise ValueError('delivery changed before collection')
         summary={'summary':report['summary'],'gaps':report['gaps'],'files':dict(scene.expected_tree['workspace']['files']),'directories':scene.expected_tree['workspace']['directories'],
+          'goal_status':acceptance['goal_status'],'goal_checks':acceptance['goal_checks'],'goal_review_reason':acceptance['goal_review_reason'],
+          'effect_integrity_verified':acceptance['effect_integrity_verified'],
           'operations':[{'plan_id':k,'actions':scene.plans[k]['actions'],'status':j['status'],'restore_available':not j['irreversible']} for k,j in scene.journals.items()]}
         summary['files'].pop('.experiment-copy',None)
         operation_count=sum(len(scene.plans[k]['actions']) for k,j in scene.journals.items() if j['status']=='executed_verified')
@@ -76,7 +81,7 @@ def dispatch(v):
             if sha(target)!=h:raise ValueError('management export source bytes changed')
             sources.append(('files/'+name,target))
         for name in scene.expected_tree['workspace']['directories']:(export/'files'/name).mkdir(parents=True,exist_ok=True)
-        for name,f in sources:rows.append({'id':digest({'task':spec['task_id'],'file':name}),'name':name,'path':str(f),'sha256':sha(f),'bytes':f.stat().st_size,**({'operation_count':operation_count} if name=='management-report.json' else {})})
+        for name,f in sources:rows.append({'id':digest({'task':spec['task_id'],'file':name}),'name':name,'path':str(f),'sha256':sha(f),'bytes':f.stat().st_size,**({'operation_count':operation_count,'goal_status':acceptance['goal_status']} if name=='management-report.json' else {})})
         return rows
     if action=='recover':
         from src.adapters.continuous_rsi import source_map

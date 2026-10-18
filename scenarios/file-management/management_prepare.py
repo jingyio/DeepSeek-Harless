@@ -14,12 +14,14 @@ def make_spec(workspace,*,task_id,objective,owner,workspace_id,quality=None,exte
         if json.loads(marker.read_text())!=identity:raise ValueError('workspace owner/copy identity changed')
     else:save(marker,identity)
     external_roots=external_roots or {}
+    from management_goals import compile_goal
+    goal=compile_goal(objective,tree(work),quality)
     return {'schema_version':1,'scope_kind':'management_workspace_copy','task_id':task_id,'role':role,'family':'management',
       'objective':objective,'workspace':str(work.resolve()),'owner':owner,'workspace_id':workspace_id,'workspace_marker_sha256':sha(marker),
       'initial_snapshot':snapshot(work),'initial_tree':{'workspace':tree(work),**{k:tree(v['path']) for k,v in external_roots.items()}},
       'external_roots':external_roots,'rules':{'copy_only':True,'default_low_risk':True,'native_high_risk_confirmation':True},
       'allowed_operations':sorted(LOW_OPS|{'overwrite','delete','read'}),'management_contract':VERSION,
-      'report_contract':{'version':'sss-file-report-v3','kind':'task_result'},'quality':{'version':QUALITY_VERSION,'requirements':quality or []}}
+      'report_contract':{'version':'sss-file-report-v3','kind':'task_result'},'quality':{'version':QUALITY_VERSION,'requirements':goal.pop('requirements'),'goal':goal}}
 
 def prepare(directory,workspace,**kwargs):
     directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)

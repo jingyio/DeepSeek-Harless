@@ -47,6 +47,7 @@ LEARNER += ['scenarios/file-management/management_tools.py','scenarios/file-mana
     'scripts/harness-web-legacy.py','scripts/harness-geneloop.py']
 LEARNER += ['scenarios/file-management/management_web.py','scenarios/file-management/management_native.py',
     'src/adapters/harless_management.ts','src/adapters/harless_task_scope.ts','src/adapters/harless_web_client/client.js','scenarios/file-management/management_study.py']
+LEARNER += ['src/adapters/management_backup.py','scenarios/file-management/experiment.py','scenarios/file-management/management_goals.py']
 
 
 def private(path):
@@ -213,8 +214,10 @@ def reserve(cfg, session, cap):
         if current['estimated_usd']+pending+cap>cfg['series_cap_usd']: raise ValueError('original series budget exhausted')
         # A new adapter/version cannot receive a fresh independent learning cap.
         all_runs=[r for p in STATE_HOME.glob('*/pool.json') for r in read(p)['runs'].values()]
-        learned=sum(r['cost_usd'] for r in all_runs if r['status']=='settled' and r['role']!='ordinary')
-        booked=sum(r['cap_usd'] for r in all_runs if r['status']=='reserved' and r['role']!='ordinary')
+        from .management_backup import imported_budget
+        carry=imported_budget(ROOT)
+        learned=sum(r['cost_usd'] for r in all_runs if r['status']=='settled' and r['role']!='ordinary')+carry.get('learning_spent_usd',0)
+        booked=sum(r['cap_usd'] for r in all_runs if r['status']=='reserved' and r['role']!='ordinary')+carry.get('learning_reserved_usd',0)
         if cfg['role']!='ordinary' and learned+booked+cap>cfg['learning_cap_usd']:
             raise ValueError('continuous learning budget exhausted')
         pool['runs'][session]={'status':'reserved','cap_usd':cap,'role':cfg['role'],'pid':os.getpid(),'reserved_at':time.time()}
