@@ -176,13 +176,14 @@ def test_relationship_namespaces_are_validated_before_resolving_parts(tmp_path):
 def test_real_pdf_text_and_scan_only_state(tmp_path):
     result = attachment.extract_attachment(put(tmp_path, 'source.pdf', pdf_bytes()))
     assert result['status'] == 'extracted' and 'Real uploaded PDF text' in result['text'], result.get('reason')
-    assert result['ocr_performed'] is False and result['coverage'] == 'text_only'
+    assert result['ocr_performed'] is False and result['coverage'] in ('text_only','page_text_and_ocr')
     blank = attachment.extract_attachment(put(tmp_path, 'scan.pdf', pdf_bytes('')))
     assert blank['status'] == 'needs_ocr' and blank['text'] == ''
     assert blank['reason'] == 'pdf_has_no_extractable_text' and blank['warnings']
 
 
 def test_pdf_file_only_reader_uses_private_exact_bytes_without_pypdf(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, 'fitz', None)  # Exercise the legacy fallback explicitly.
     executable = put(tmp_path, 'pdftotext.exe', b'test executable placeholder')
     monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
     monkeypatch.setattr(attachment.shutil, 'which', lambda name: str(executable))
@@ -209,6 +210,7 @@ def test_pdf_file_only_reader_uses_private_exact_bytes_without_pypdf(tmp_path, m
 
 
 def test_pdf_failed_file_retry_cleans_private_copy_without_fabricating_text(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, 'fitz', None)
     executable = put(tmp_path, 'pdftotext.exe', b'test executable placeholder')
     monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
     monkeypatch.setattr(attachment.shutil, 'which', lambda name: str(executable))
@@ -227,6 +229,7 @@ def test_pdf_failed_file_retry_cleans_private_copy_without_fabricating_text(tmp_
 
 
 def test_real_pypdf_strict_fallback_reads_the_valid_fixture(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, 'fitz', None)
     pytest.importorskip('pypdf')
     monkeypatch.delenv('HARLESS_PDF_TOOLCHAIN_ROOT', raising=False)
     monkeypatch.setattr(attachment.shutil, 'which', lambda name: None)

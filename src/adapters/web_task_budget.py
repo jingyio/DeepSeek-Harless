@@ -49,9 +49,18 @@ class RoutedState:
         self._global_ids: dict[int, int] = {}
 
     def book(self, body: bytes) -> tuple[int, str, float, int] | None:
+        return self._book(body)
+
+    def book_vision(self, body: bytes) -> tuple[int, str, float, int] | None:
+        """Only the separately validated PDF vision endpoint may use Flash."""
+        if json.loads(body).get('model') != 'deepseek-flash':
+            raise ValueError('PDF vision requires Flash')
+        return self._book(body, auxiliary=True)
+
+    def _book(self, body: bytes, *, auxiliary=False) -> tuple[int, str, float, int] | None:
         model, dollars, ceiling = reservation(body, max_output=self.state.output_cap,
                                               rates=self.state.rates)
-        if model != self.model:
+        if model != self.model and not auxiliary:
             raise ValueError('request model differs from confirmed task model')
         run = self.registry.run_state
         # All routed admissions/settlements share this lock. Holding both State

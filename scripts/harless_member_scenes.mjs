@@ -62,6 +62,20 @@ export function memberSceneDeployment(policy, deployment) {
   const pdf=deployment.pdfToolchainRoot ? fixedPath(deployment.pdfToolchainRoot,'directory','PDF parser') : null;
   const antiword=deployment.antiwordRoot ? fixedPath(deployment.antiwordRoot,'directory','Word parser') : null;
   const attachmentEnvironment={};
+  if(deployment.pdfOcrRoot){
+    const ocr=fixedPath(deployment.pdfOcrRoot,'directory','PDF OCR');
+    const languages=fixedPath(join(ocr,'tessdata'),'directory','PDF OCR languages');
+    const manifest=JSON.parse(readFileSync(join(root,'config/pdf-ocr-assets.json'),'utf8'));
+    if(readdirSync(ocr).some(name=>name!=='tessdata')||readdirSync(languages).some(name=>!Object.hasOwn(manifest.files,name)))
+      throw Error('Member PDF OCR must contain only pinned public languages');
+    for(const [name,digest] of Object.entries(manifest.files)){
+      const path=fixedPath(join(languages,name),'file','PDF OCR language');
+      if(createHash('sha256').update(readFileSync(path)).digest('hex')!==digest)throw Error('Member PDF OCR language hash mismatch');
+    }
+    mounts.push({source:ocr,target:'/opt/geneloop/pdf-ocr'});
+    mappings.push({source:ocr,target:'/opt/geneloop/pdf-ocr'});
+    attachmentEnvironment.GENELOOP_PDF_OCR_ROOT='/opt/geneloop/pdf-ocr';
+  }
   if(pdf){
     if(pdf==='/' || !['pdfinfo','pdftotext'].every(name=>existsSync(join(pdf,'bin',name))) ||
        !existsSync(join(pdf,'lib/x86_64-linux-gnu')) ||
@@ -180,12 +194,12 @@ export function memberSceneDeployment(policy, deployment) {
       cfg.command=cfg.command === 'node' ? 'node' : executable;
       cfg.cwd='/app'; cfg.args=cfg.args.map(translate);
       const env=cfg.env ?? {};
-      const parserEnv=['HARLESS_PDF_TOOLCHAIN_ROOT','HARLESS_ANTIWORD_BIN','ANTIWORDHOME'];
+      const parserEnv=['HARLESS_PDF_TOOLCHAIN_ROOT','HARLESS_ANTIWORD_BIN','ANTIWORDHOME','GENELOOP_PDF_OCR_ROOT'];
       const permittedEnv=scene.adapter==='data-report'?['HARLESS_REPORT_WORKSPACE','HARLESS_PRIVATE_ROOT','HARLESS_REPORT_FONT',...parserEnv]:scene.adapter==='literature' ? ['SSS_PDF_WEB_TASK','PATH','LD_LIBRARY_PATH'] :
         scene.adapter==='files' ? ['FM_WEB_WORKSPACE','FM_TASK_FILE','FM_OUTPUT'] :
         cfg.serverName==='paper_checks'?['HARLESS_REPORT_FONT',...parserEnv]:
         cfg.serverName==='paper_trace_rsi'?['HARLESS_PRIVATE_ROOT']:
-        cfg.serverName==='ppt_master'?['GENELOOP_PPT_MASTER_ROOT','PYTHONDONTWRITEBYTECODE']:
+        cfg.serverName==='ppt_master'?['GENELOOP_PPT_MASTER_ROOT','PYTHONDONTWRITEBYTECODE',...parserEnv]:
         ['SSS_PPT_JOB','SSS_PPT_DELIVERY_PYTHON','PATH','FONTCONFIG_FILE','FONTCONFIG_PATH','HARLESS_PRIVATE_ROOT',...parserEnv];
       if (Object.keys(env).some(k=>!permittedEnv.includes(k)))
         throw Error('Member scene environment contains unapproved authority');
@@ -193,6 +207,8 @@ export function memberSceneDeployment(policy, deployment) {
           cfg.args[0]!=='/app/scenarios/ppt_master/server.py' || cfg.args[1]!=='__HARLESS_SESSION_WORKSPACE__/inputs' || env.GENELOOP_PPT_MASTER_ROOT!==skill.source))
         throw Error('Member ppt-master requires the exact pinned deployment');
       if(scene.adapter==='data-report'||scene.adapter==='ppt'||cfg.serverName==='paper_checks'){
+        if(env.GENELOOP_PDF_OCR_ROOT && env.GENELOOP_PDF_OCR_ROOT!==deployment.pdfOcrRoot)
+          throw Error('Member PDF OCR requires the matching fixed installation');
         if(('HARLESS_PDF_TOOLCHAIN_ROOT' in env || scene.pdf_toolchain_root!==undefined) &&
             (!pdf || scene.pdf_toolchain_root!==pdf || env.HARLESS_PDF_TOOLCHAIN_ROOT!==pdf))
           throw Error('Member report PDF parser requires the matching fixed installation');

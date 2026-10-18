@@ -378,7 +378,7 @@ def main():
         servers.append(control)
     gate = create_server('127.0.0.1', 0, upstream, state,
                          state_selector=registry.state_for if registry else None,
-                         allow_search=not args.frozen,
+                         allow_search=not args.frozen, allow_vision=not args.frozen,
                          allowed_models={'deepseek-flash', 'deepseek-v4-pro'})
     servers.append(gate)
     if args.glm:

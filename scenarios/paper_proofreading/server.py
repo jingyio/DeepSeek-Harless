@@ -97,13 +97,11 @@ class PaperEvidence(SessionFiles):
         name, data, version = self.pinned(source_id)
         if type(page) is not int or page < 1: raise ValueError('positive_page_required')
         if Path(name).suffix.lower() == '.pdf':
-            from pypdf import PdfReader
-            reader = PdfReader(io.BytesIO(data))
-            if reader.is_encrypted: raise ValueError('encrypted_pdf_unsupported')
-            if len(reader.pages) > 200: raise ValueError('paper_page_limit')
-            if page > len(reader.pages): raise ValueError('page_not_in_document')
-            text = reader.pages[page - 1].extract_text() or ''
-            count = len(reader.pages)
+            from src.adapters.geneloop_pdf import read_pdf
+            reader = read_pdf(data,page_number=page)
+            if reader['page_count'] > 200: raise ValueError('paper_page_limit')
+            text = reader['pages'][0]['text']
+            count = reader['page_count']
         else:
             # Preserve main's safe multi-format extraction. Only source text is
             # paginated; Word/table formats keep their single logical page.
@@ -126,6 +124,8 @@ class PaperEvidence(SessionFiles):
         self.pinned(source_id)
         return {'source_id': source_id, 'version_sha256': version, 'name': name, 'page': page,
                 'page_count': count, 'text': text, 'visual_checked': False,
+                **({'text_method':reader['pages'][0]['text_method'],'ocr_performed':reader['ocr_performed'],
+                    'ocr_warning':reader['pages'][0].get('warning')} if Path(name).suffix.lower()=='.pdf' else {}),
                 'table_summaries':summaries,'table_summary_scope':'whole_document_explicit_tables',
                 'coverage': 'extracted_text_for_model_review_not_fact_or_venue_certification'}
 

@@ -7,3 +7,4 @@ defusedxml==0.7.1
 
 reportlab==4.4.9
 pypdf==6.19.0
+PyMuPDF==1.26.7

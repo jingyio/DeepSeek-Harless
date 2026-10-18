@@ -325,7 +325,7 @@ def _legacy_word(data: bytes) -> tuple[str, dict]:
         raise ExtractionIssue('legacy_word_text_extraction_failed') from None
 
 
-def extract_attachment(path: Path | str, original_name: str | None = None) -> dict:
+def extract_attachment(path: Path | str, original_name: str | None = None, *, pdf_visuals=False) -> dict:
     """Return full text or honest metadata; the path is never included in output."""
     path = Path(path)
     name = (original_name or path.name).replace('\\', '/').split('/')[-1]
@@ -348,7 +348,19 @@ def extract_attachment(path: Path | str, original_name: str | None = None) -> di
                     'warnings':['本文件为原生图片输入，请根据实际图像识别文字与图表；未运行确定性OCR，不能把视觉识别称为独立验证。']}
         if data.lstrip().startswith(b'%PDF-') or suffix == '.pdf':
             result['format'] = 'pdf'
-            text, extra = _pdf(data)
+            try:
+                from geneloop_pdf import read_pdf
+            except ImportError:
+                from src.adapters.geneloop_pdf import read_pdf
+            try:
+                extra = read_pdf(data, visuals=pdf_visuals)
+                text = extra.pop('text')
+                extra.pop('sha256')
+                extra['extractor'] = 'pymupdf'
+            except ImportError:
+                text, extra = _pdf(data)
+            except Exception as error:
+                raise ExtractionIssue('pdf_encrypted' if str(error) == 'pdf_encrypted' else 'pdf_text_extraction_failed') from None
             result.update(extra)
             if not text.strip():
                 raise ExtractionIssue('pdf_has_no_extractable_text')
@@ -365,7 +377,7 @@ def extract_attachment(path: Path | str, original_name: str | None = None) -> di
             # executable bytes were understood merely because upload succeeded.
             result['reason'] = 'no_safe_text_extractor_for_format'
             return result
-        result.update(status='extracted', text=text, coverage='text_only', **extra)
+        result.update(status='extracted', text=text, **{'coverage':'text_only', **extra})
         if not text.strip():
             result['warnings'] = [*result.get('warnings', []), 'No stored text was found; visual content has not been read.']
     except ExtractionIssue as error:
@@ -383,7 +395,7 @@ def main() -> None:
     files = request.get('files')
     if not isinstance(files, list):
         raise ValueError('files_array_required')
-    rows = [extract_attachment(row['path'], row.get('name')) for row in files]
+    rows = [extract_attachment(row['path'], row.get('name'), pdf_visuals=request.get('pdf_visuals') is True) for row in files]
     sys.stdout.buffer.write(json.dumps({'files': rows}, ensure_ascii=False).encode('utf-8'))
 
 
