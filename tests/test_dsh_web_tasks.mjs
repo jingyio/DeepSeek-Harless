@@ -2054,9 +2054,9 @@ test('Legacy progress rebuilds anchored tools once and preserves saved activitie
  });
 });
 
-for(const budget of [.25,null]) test(`DeepSeek parallel comparison keeps isolated routes and budget ${budget}`,options,async()=>{
- const scenes=[{...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]}];
- const f=await fixture({budget_usd:budget,broker:true,scenes,capability_profile:'research-data-analysis',comparison_scenes:['research-data-analysis']});
+for(const scene of ['research-data-analysis','paper-proofreading','ppt']) for(const budget of [.25,null]) test(`DeepSeek ${scene} parallel comparison keeps isolated routes and budget ${budget}`,options,async()=>{
+ const scenes=[{...multiScenes[0],id:scene,preset:'sss-compare',adapter:'workspace',mcp_rows:[]}];
+ const f=await fixture({budget_usd:budget,broker:true,scenes,capability_profile:scene,comparison_scenes:[scene]});
  try{
   const {sessionId}=await f.ctx.sessionController.create({});
   const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'parallel-lanes',mode:'queue',content:[{type:'text',text:'compare this synthetic question'}]},new AbortController().signal);

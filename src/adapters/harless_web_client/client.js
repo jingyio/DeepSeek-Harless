@@ -892,7 +892,7 @@ window.__ModuleLoader__.load({
             'data-actions-reveal': isLatestTurn ? 'always' : 'hover' },
             !single && h('header', null, h('strong', null, title), h('span', { role: 'status' }, notStarted ? '任务未启动' : result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
             h('style', null, liveStyle),
-            !settled(result) && liveStatus(progressLabel),
+            single && !settled(result) && liveStatus(progressLabel),
             (activity.length > 0 || previousMessages.length > 0) && h('details', { className: 'harless-activity' },
               h('summary', null, '查看执行过程'),
               activity.length > 0 && h('ol', null, ...activity.map((entry, index) => h('li', { key: index, 'data-status': entry.status },
@@ -911,7 +911,7 @@ window.__ModuleLoader__.load({
               }, MarkdownText ? h(MarkdownText, { text: artifactMarkdown(message.text, files, value, lane), streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
             h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, answer
               ? h(BufferedMarkdown, { text: artifactMarkdown(answer, files, value, lane), streaming: !settled(result), identity: key + ':' + lane + ':' + (messages.at(-1)?.id || 'answer'), labels: markdownLabels, fileMentions: mentions })
-              : settled(result) && h('p', { className: 'harless-paired-muted' }, notStarted ? '任务未启动，暂无回复。' : '本轮未生成文字回复。')),
+              : null),
             files.length > 0 && h('section', { className: 'harless-paired-deliveries', 'aria-label': title + '交付文件' },
               h('h4', null, '交付文件'), h('ul', { className: 'harless-paired-files' }, ...files.map(file => {
                 const status = downloads[lane + ':' + file.id];
@@ -930,7 +930,8 @@ window.__ModuleLoader__.load({
                       status?.phase === 'pending' ? h('span', { className: 'harless-artifact-spinner', 'aria-hidden': true }) : h(primitives.IconDownloadOutline16, { 'aria-hidden': true })))),
                   status && h('small', { role: status.phase === 'error' ? 'alert' : 'status', className: status.phase === 'error' ? 'harless-paired-error' : 'harless-paired-muted' }, status.message));
               }))),
-            !single && settled(result) && result.delivery_message && h('p', { className: 'harless-paired-notice', role: 'status' }, result.delivery_message),
+            !single && !settled(result) && h('p', { className: 'geneloop-looping', role: 'status',
+              'aria-label': title + ' 正在处理', title: progressLabel }, 'GeneLooping…'),
             settled(result) && h('footer', null,
               h('div', { className: 'harless-message-actions', 'aria-label': title + '回复操作' },
                 actionButton({ 'aria-label': '复制 ' + title + ' 回复', disabled: !answer, onClick: () => copy(lane) }, copied === lane ? 'check' : 'copy', copied === lane ? '已复制' : '复制'),
@@ -1365,23 +1366,26 @@ window.__ModuleLoader__.load({
         wrapWebSeat('conversation.input.model', (props, id) => optimisticModel(id, props), { component: ReasoningModelSelect });
         wrapWebSeat('conversation.view', props => props, { id: 'chat',
           renderProps: props => {
-            // One native footer owns pending sends, ordinary Chat and child
-            // scene execution. Never render a second footer inside a lane.
+            // Paired results own one footer per live lane after hydration.
+            // Native Chat still covers local sends and single-lane execution.
             React.useSyncExternalStore(comparisonActivity.subscribe, comparisonActivity.getSnapshot);
             const chat = props.useChat?.(value => value);
             const latest = chat?.timeline?.turnOrder.at(-1);
-            const childRunning = (chat?.order || []).some(key => {
+            const child = (chat?.order || []).map(key => {
               const node = chat.nodes.get(key);
-              if (node?.kind !== 'harless-comparison' || node.location?.turn?.turn !== latest) return false;
-              const value = comparisonSnapshots.get(node.data.session_id + ':' + node.data.id) || node.data;
-              return !['completed', 'failed', 'cancelled'].includes(value.status);
-            });
+              return node?.kind === 'harless-comparison' && node.location?.turn?.turn === latest ? node : undefined;
+            }).find(Boolean);
+            const cached = child && comparisonSnapshots.get(child.data.session_id + ':' + child.data.id);
+            const value = cached || child?.data;
+            const childRunning = value && !['completed', 'failed', 'cancelled'].includes(value.status);
+            const laneFooters = value && value.presentation !== 'single' &&
+              (cached || ['completed', 'failed', 'cancelled'].includes(value.status));
             return { t: (key, ...args) => key === 'chat.deepDiving' ? h('span', { className: 'geneloop-native-looping' }, 'GeneLooping…') : props.t(key, ...args),
             // The native submission echo exists synchronously on Send, before
             // model selection/network dispatch. Project activity only in this
             // view; never change the session's execution/queue state.
             useSession: select => props.useSession(snapshot => select({ ...snapshot,
-              running: snapshot.running || snapshot.pendingSubmissions?.some(row => row.placement !== 'queued') || childRunning })) };
+              running: !laneFooters && Boolean(snapshot.running || snapshot.pendingSubmissions?.some(row => row.placement !== 'queued') || childRunning) })) };
           } });
         // Only adapt display data. The native controller still owns keyboard
         // navigation, focus, outside-click dismissal and atomic reference picks.

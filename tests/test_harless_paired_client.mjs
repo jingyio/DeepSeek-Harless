@@ -513,12 +513,13 @@ test('unknown local markdown links are blocked instead of opening meaningless /a
   f.render(); assert.equal(prevented, true); assert.equal(f.downloaded.length, 0);
   assert.match(f.content(f.all(row => row.props.className === 'harless-paired-error')[0]), /尚未登记/); f.dispose();
 });
-test('completed model text without delivery is visibly distinguished and cannot invent a download', async () => {
+for (const scene of ['ppt', 'paper-proofreading', 'research-data-analysis']) test(`${scene}: no delivery renders no empty-file notice and cannot invent a download`, async () => {
   const value = comparison(); value.lanes.motif.artifacts = []; value.lanes.motif.delivery_status = 'not_delivered';
+  value.scene = scene;
   value.lanes.motif.delivery_message = '本轮未通过交付校验，没有可下载成品。';
   const f = fixture(undefined, value); await flush(); f.render();
   const pane = f.all(row => row.type === 'section' && row.props['aria-label'] === 'Motif')[0];
-  assert.match(f.content(pane), /回复完成/); assert.match(f.content(pane), /没有可下载成品/);
+  assert.match(f.content(pane), /回复完成/); assert.doesNotMatch(f.content(pane), /没有可下载成品/);
   assert.equal(f.all(row => row.type === 'a' && row.props.download, pane).length, 0);
   assert.equal(f.all(row => f.isMarkdown(row), pane)[0].props.fileMentions.resolve(artifact.name), undefined); f.dispose();
 });
@@ -531,11 +532,18 @@ test('an admission failure displays not started with corrective guidance instead
   const panes = f.all(row => row.props.className === 'harless-paired-pane'); assert.equal(panes.length, 2);
   for (const pane of panes) {
     assert.match(f.content(pane), /任务未启动/); assert.match(f.content(pane), /UTF-8/);
-    assert.doesNotMatch(f.content(pane), /交付校验|另一侧结果已保留/);
+    assert.doesNotMatch(f.content(pane), /交付校验|另一侧结果已保留|暂无结果文件|暂无回复/);
     assert.equal(f.all(row => f.isMarkdown(row), pane).length, 0);
     assert.equal(f.all(row => row.type === 'a' && row.props.download, pane).length, 0);
   }
   assert.equal(f.timers.size, 0); f.dispose();
+});
+test('a file-only result leaves the empty answer seat silent while verified cards stay available', async () => {
+  const value=comparison();
+  for (const lane of Object.values(value.lanes)) lane.answer='';
+  const f=fixture(undefined,value);await flush();f.render();
+  assert.equal(f.all(row=>row.props.className==='harless-artifact-card').length,2);
+  assert.doesNotMatch(f.content(),/本轮未生成文字回复|本轮尚无|本轮没有/);f.dispose();
 });
 test('overlapping old GET cannot undo saved feedback; followup read still happens', async () => {
   const value = comparison(), old = comparison(); value.snapshot_revision = old.snapshot_revision = 1; let finishRead, reads = 0;
@@ -649,7 +657,7 @@ test('live stream renders incremental text and real activity before terminal com
   partial.lanes.baseline.activity=[{label:'读取数据',status:'running'}];stream.emit(partial);f.render();
   assert.equal(f.all(row=>f.isMarkdown(row))[0].props.text,'正在分析第一');
   assert.equal(f.all(row=>f.isMarkdown(row))[0].props.streaming,true);
-  assert.match(f.content(f.all(row=>row.props.className==='geneloop-process-status')[0]),/正在读取数据/);
+  assert.equal(f.all(row=>row.props.className==='geneloop-looping')[0].props.title,'正在读取数据');
   assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,undefined,'tool details remain collapsed');
   partial.lanes.baseline.answer+='组数据';stream.emit(partial);f.render();
   assert.equal(f.all(row=>f.isMarkdown(row))[0].props.text,'正在分析第一组数据');
@@ -657,14 +665,24 @@ test('live stream renders incremental text and real activity before terminal com
   assert.equal(f.all(row=>f.isMarkdown(row))[0].props.streaming,false);f.dispose();
 });
 
-test('paired live status shares Chat wording and leaves GeneLooping to the single native chat footer', async () => {
+test('paired lanes own matching bottom GeneLooping indicators and finish independently', async () => {
   const value=comparison();value.status='running';
   for(const row of Object.values(value.lanes))Object.assign(row,{status:'running',answer:'',artifacts:[],delivery_message:'结果文件会在生成并通过交付检查后显示。',progress:{tool:'mcp__files__read_file',subject:'材料.pdf',status:'running'}});
   const f=fixture(undefined,value,{streaming:true});await flush();f.render();
-  assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,0);
+  assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,2);
   assert.equal(f.all(row=>row.type==='footer'||row.type==='fieldset').length,0);
-  assert.match(f.content(f.all(row=>row.props.className==='geneloop-process-status')[0]),/正在阅读文档：材料.pdf/);
+  assert.equal(f.all(row=>row.props.className==='geneloop-process-status').length,0);
+  for (const pane of f.all(row=>row.props.className==='harless-paired-pane')) {
+    const indicator=f.all(row=>row.props.className==='geneloop-looping',pane)[0];
+    assert.equal(f.content(indicator),'GeneLooping…');
+    assert.match(indicator.props.title,/正在阅读文档：材料.pdf/);
+    assert.ok(pane.children.indexOf(indicator)>pane.children.findIndex(row=>row?.props?.className==='harless-paired-answer'));
+  }
   assert.doesNotMatch(f.content(),/正在处理，结果会自动更新|结果文件会在生成/);
+  const partial=structuredClone(value);Object.assign(partial.lanes.baseline,{status:'completed',answer:'Baseline 完成'});
+  f.streams[0].emit(partial);f.render();
+  assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,1);
+  assert.equal(f.all(row=>row.props.className==='geneloop-looping')[0].props['aria-label'],'Motif 正在处理');
   f.streams[0].emit(comparison());f.render();assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,0);f.dispose();
 });
 
@@ -795,7 +813,7 @@ test('successive real assistant messages stay visible during tools and collapse 
   const old=f.all(row=>row.props.className==='harless-stream-messages')[0];assert.ok(old);
   assert.equal(f.all(row=>f.isMarkdown(row),old)[0].props.text,'先读取资料');
   assert.equal(f.all(row=>row.props.className==='harless-paired-answer')[0].children[0].props.text,'已经核验，正在');
-  assert.match(f.content(f.all(row=>row.props.className==='geneloop-process-status')[0]),/分析工具/);
+  assert.match(f.all(row=>row.props.className==='geneloop-looping')[0].props.title,/分析工具/);
   next.status='completed';next.snapshot_revision=3;next.lanes.baseline.status='completed';next.lanes.baseline.answer='完整结论';
   next.lanes.baseline.messages.push({id:'final',text:'完整结论',status:'completed'});f.streams[0].emit(next);f.render();
   assert.equal(f.all(row=>row.props.className==='harless-stream-messages').length,0);

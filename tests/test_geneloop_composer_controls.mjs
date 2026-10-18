@@ -89,9 +89,9 @@ test('GeneLooping is immediate for local sends, stops on rejection, and never ch
   f.dispose();
 });
 
-test('one native footer spans scene admission and completion, and an old scene cannot mark a later Chat turn busy', () => {
+test('single-lane Chat retains its native footer and an old scene cannot mark a later Chat turn busy', () => {
   const f=fixture(), session={running:false,pendingSubmissions:[]};
-  let chat={order:['scene'],nodes:new Map([['scene',{kind:'harless-comparison',location:{turn:{turn:1}},data:{session_id:'alice',id:'c1',status:'running'}}]]),
+  let chat={order:['scene'],nodes:new Map([['scene',{kind:'harless-comparison',location:{turn:{turn:1}},data:{session_id:'alice',id:'c1',status:'running',presentation:'single'}}]]),
     timeline:{turnOrder:[1]}};
   const view=()=>f.wrappers.get('conversation.view').component({useSession:select=>select(session),useChat:select=>select(chat),t:key=>key});
   assert.equal(view().props.useSession(s=>s.running),true,'child task keeps the same native footer alive');
@@ -100,6 +100,21 @@ test('one native footer spans scene admission and completion, and an old scene c
   f.comparisonSnapshots.clear();chat={...chat,timeline:{turnOrder:[1,2]}};
   assert.equal(view().props.useSession(s=>s.running),false,'old running start event cannot leak into the next round');
   assert.equal(session.running,false);f.dispose();
+});
+
+test('paired lane footers replace native progress after hydration, including lingering native pending state', () => {
+  const f=fixture(), session={running:true,pendingSubmissions:[{placement:'transcript'}]};
+  const data={session_id:'alice',id:'c1',status:'running',presentation:'paired'};
+  let chat={order:['scene'],nodes:new Map([['scene',{kind:'harless-comparison',location:{turn:{turn:1}},data}]]),timeline:{turnOrder:[1]}};
+  const running=()=>f.wrappers.get('conversation.view').component({useSession:select=>select(session),useChat:select=>select(chat),t:key=>key}).props.useSession(s=>s.running);
+  assert.equal(running(),true,'local send remains immediate before any paired panes are available');
+  f.comparisonSnapshots.set('alice:c1',data);
+  assert.equal(running(),false,'visible paired panes replace rather than duplicate the native indicator');
+  f.comparisonSnapshots.set('alice:c1',{...data,status:'completed'});
+  assert.equal(running(),false,'a stale parent running flag cannot resurrect progress on a completed comparison');
+  chat={...chat,timeline:{turnOrder:[1,2]}};
+  assert.equal(running(),true,'the next ordinary Chat send owns its native footer again');
+  assert.equal(session.running,true,'only display state is adapted');f.dispose();
 });
 test('model and reasoning update immediately, queue behind the current write, and ignore intermediate projections', async () => {
   const f = fixture(), model = f.model('alice');
