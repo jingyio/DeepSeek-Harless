@@ -8,7 +8,9 @@ http=importlib.util.module_from_spec(spec);spec.loader.exec_module(http)
 
 def test_saved_script_arguments_are_bound_not_historical_constants(tmp_path):
     (tmp_path/'code').mkdir();source='import sys\nprint(sys.argv[1:])\n'
-    (tmp_path/'code/query.py').write_text(source)
+    # Match the bytes claimed by the observed heredoc, without Windows newline
+    # conversion. A genuinely changed saved program must still be rejected.
+    (tmp_path/'code/query.py').write_bytes(source.encode())
     one=extract("cat > query.py <<'PY'\n"+source+"PY\npython3 query.py first",tmp_path)
     two=extract('python3 query.py different another',tmp_path)
     p=compile_script(one[1],{},argv=one[2]);q=compile_script(two[1],{},argv=two[2])
@@ -16,6 +18,10 @@ def test_saved_script_arguments_are_bound_not_historical_constants(tmp_path):
     assert p['argv_contract']['kind']=='explicit_model_selected_scalars'
     with pytest.raises(ValueError):extract('python3 query.py first | head',tmp_path)
     with pytest.raises(ValueError):extract("cat > query.py <<'PY'\nprint('changed')\nPY\npython3 query.py first",tmp_path)
+    (tmp_path/'code/query.py').write_bytes(source.replace('\n','\r\n').encode())
+    assert extract('python3 query.py current',tmp_path)[1]==source.replace('\n','\r\n')
+    with pytest.raises(ValueError, match='saved_source_changed'):
+        extract("cat > query.py <<'PY'\n"+source+"PY\npython3 query.py first",tmp_path)
 
 @pytest.mark.parametrize('source', ['import sys\nprint(sys.modules)','import sys\nsys.argv=[]\nprint(sys.argv)','import urllib.request\nurllib.request.urlopen=lambda x: x'])
 def test_intrinsics_not_mutable(source):
