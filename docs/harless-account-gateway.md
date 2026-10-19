@@ -18,6 +18,16 @@
 
 通过 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json` 启动网关，它只监听 `127.0.0.1`。使用反向代理或 Cloudflare Tunnel 将 HTTPS 公网地址指向网关端口；在反向代理中转发 WebSocket，并限制只有网关可访问内部预算和控制端口。网关初次部署用 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json claim` 生成一次性所有者激活码；所有者登录后从账户页生成成员邀请码。不要在日志、PR 或聊天记录中公开激活码、邀请码、DSH token 或私有配置。临时 `trycloudflare.com` 隧道和手工 `tmux` 进程可能中断、重启或换地址；生产用途应由持久化服务管理器监控入口与后端。
 
+所有者后端每次启动都会生成新的内部 launch token，网关的 `ownerTokenFile` 必须同步；它不是账号密码或模型 API Key。使用直接启动 DSH 的自定义发布/回退脚本时，必须在启动网关前执行以下检查，失败则停止发布。追加日志需要在启动进程前记录字节偏移并传入 `--log-offset`，或每次使用独立日志；不能从混合多次启动的日志猜测令牌。
+
+```sh
+python scripts/harless_owner_access.py --config .local/PRIVATE-GATEWAY-CONFIG.json \
+  --startup-log .local/PRIVATE-CURRENT-OWNER-STARTUP.log
+python scripts/harless_owner_access.py --config .local/PRIVATE-GATEWAY-CONFIG.json --check
+```
+
+该工具只向配置端口的 `127.0.0.1` 发送认证请求，要求 303、内部 cookie 和携带 cookie 的首页 200 全部成功后，才以私有权限原子更新令牌文件，不输出凭证、不调用模型。网关会在下次请求重新读取该文件，正常同步无需重启网关。只检查 TCP 监听、未认证的首页或公开登录页无法证明管理员工作区可用；部署验收应分别检查管理员与测试成员账号。成员的内部凭证在各自后端启动时采集，不读取 `ownerTokenFile`，因此所有者令牌陈旧不等于所有新用户不可用。
+
 升级代码时保留每个账号的 `DSH_HOME`、工作区及任务 `output` 目录，不把持久化数据放进随代码版本删除的检出目录。会话归属现在保存在对应 `DSH_HOME` 中的 `harless-web-ownership-*.json`，因此前端进程重启不会丢失续聊权限。首次升级自动导入当前 `output` 的旧归属记录；如果所有者以前已更换过 `output`，可以在其私有 policy 中设置 `ownership_legacy_outputs`（旧目录的绝对路径列表）。只会导入与当前 DSH Home 匹配的归属文件，不能据聊天标题或浏览器传入的 ID 认领历史。成员后端清除此迁移列表，只访问自身挂载目录。迁移归属不会恢复旧任务额度或移动文件；场景的工作区、生成 preset 和任务记录仍须保留。没有逐轮预算 broker 的入口继续拒绝重用已绑定任务。
 
 从其他旧 `output` 导入的已开始会话按文字对话恢复：保留上下文，每轮继续经过当前预算代理，但不把新版场景工具强行装进已锁定的旧 Harness preset。设置接口的 `conversation_only` 会标记这种兼容会话；需要文件或新版场景工具时新建会话。当前目录内正常重启的会话保留原有能力。
