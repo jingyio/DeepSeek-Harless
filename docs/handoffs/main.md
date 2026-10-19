@@ -1,8 +1,11 @@
 # DeepSeek Harless 主线当前交接
 
+- 2026-10-19（Codex）：附件/上下文与执行展示修复已发布运行代码 `d2291646`。当前原话与 plugin 资料分离、后续轮不重解析历史、完整上下文和图片随场景承接、准备进度提前绑定同一任务；执行展开状态与代码侧栏已真网页验证。paper16/ppt11是原库兼容认证，无新训练。真实四格式24轮/28侧全部严格通过；旧污染会话续聊2轮通过且日志原字节保留。Linux全量Python1114通过/2跳过、Node887通过/3跳过（仅测试完成窗口补丁，旧fixture超时保留），smoke/motif/continuation通过；最新GitHub Actions未取得终态，不称跨平台CI已通过。PPT更新仍16次冗余工具，未保证最短路径；短跨场景样本未测得两侧主请求重叠。发布/完整检查状态与失败费用见[验收记录](../experiments/attachment-context-streaming-20261019.md)；PR89–91已合并，最后证据消费修复跟踪PR92。私有结果在 `.local/attachment-integrity-20261019/`，六组代理估费合计$0.245796300（排除独立网页成员测试及其他流量），账单未知。继续沿用共享账本和不限额度配置。服务仍仅从私有环境的 GENELOOP_SERVICE_HOME/GENELOOP_SERVICE_CONFIG 走统一 npm service 入口；旧代码/计划/库和失败回执保留，勿覆盖或另起临时发布进程。
+
+
 - 2026-10-19（Codex）：正式网站启动/重启/检查/回退统一为 `npm run service -- ACTION`，AGENTS 和 README 固定开发者/AI 的入口，禁止临时发布脚本重复实现启动。私有计划保留持久数据/预算；入口内置认证同步、进程代际核验、互斥、活动任务拒绝与失败回退。流程见[服务生命周期](../service-lifecycle.md)，实际验证边界见[记录](../experiments/unified-service-lifecycle-20261019.md)及关联PR。
 
-- 2026-10-19（Codex）：独立分支 `codex/clickable-generated-files` 修复普通聊天命令产物只有裸文件名、沙箱路径不匹配与旧报告同名干扰；保留私有权限并接入认证快照/原生预览下载。`paper-web-v13`/`ppt-master-v8` 仅对原认证序列化库做兼容重导出，非新训练。完整检查和无模型smoke通过，尚未部署；验收/发布跟踪见[修复记录](../experiments/clickable-generated-files-20261019.md)及Web交接。
+- 2026-10-19（Codex）：独立分支 `codex/clickable-generated-files` 修复普通聊天命令产物只有裸文件名、沙箱路径不匹配与旧报告同名干扰；保留私有权限并接入认证快照/原生预览下载。`paper-web-v13`/`ppt-master-v8` 仅对原认证序列化库做兼容重导出，非新训练。完整检查和无模型smoke通过，现已随本次统一服务版本发布；验收/发布跟踪见[修复记录](../experiments/clickable-generated-files-20261019.md)及Web交接。
 
 
 ## 2026-10-18：成员沙箱公开证书依赖补齐
