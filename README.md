@@ -1,6 +1,6 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
-独立 Script Motif 实验现支持当前语义选择、文件参数自动绑定与认证片段连续执行；复用原生 Bash，不增加模型工具表。真实任务已发生两节点自动接管，但三轮仍**未证明稳定净降本或合格交付**。最新对照发现不同报告路径及大量失败恢复，不能将费用差归为纯 Motif 开销。配置见 [接口](docs/interfaces.md#script-motif-实验接口)，结果和全部失败见 [实验记录](docs/experiments/paper-script-frontier-20261019-v1.md)。按用户要求暂不推送或提 PR。 新增从真实失败轨迹编译 Negative Motif 的实验入口，按“当前失败提示 → 同参数同版本重试早停”执行；仅局部工具门控，效果边界见 [负面模式记录](docs/experiments/paper-negative-motifs-20261019-v1.md)。
+独立 Script Motif 实验现支持当前语义选择、文件参数自动绑定与认证片段连续执行；复用原生 Bash，不增加模型工具表。真实任务已发生两节点自动接管，但三轮仍**未证明稳定净降本或合格交付**。最新对照发现不同报告路径及大量失败恢复，不能将费用差归为纯 Motif 开销。配置见 [接口](docs/interfaces.md#script-motif-实验接口)，结果和全部失败见 [实验记录](docs/experiments/paper-script-frontier-20261019-v1.md)。按用户要求暂不推送或提 PR。 新增从真实失败轨迹编译 Negative Motif 的实验入口，支持从已审阅校验器自动编译字段失败条件，按“当前失败提示 → 重算条件 → 仍失败则局部早停”执行；无关字段和版本变化不再自动放行。当前仅覆盖一种字段条件，历史重放通过，尚无真实降本结论，见 [字段依赖记录](docs/experiments/paper-negative-fields-20261019-v1.md)。
 
 PPT/PPTX 输入现结合原生主题/母版/布局、字体颜色和对象位置声明，以及隔离渲染的逐页视觉观察。GeneLoop 可用上传 PPT 作为设计参考；沿用原生模板填新内容时使用 ppt-master 的 round-trip 编辑流程，原件保留。旧 PPT 可隔离转换为标准 PPTX；字体、媒体和复杂效果仍有保真边界。见[附件说明](docs/attachment-input-behavior.md#pptpptx-的视觉与风格输入)。兼容库更新为 `ppt-master-v6` / `paper-web-v11`，沿用原证据与结构，旧库保留。
 

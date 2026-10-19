@@ -858,9 +858,19 @@ Positive Script Motif 负责复用可执行结构；Negative Tool Motif 负责�
 
 在线顺序：当前 MCP 再次出现已编译失败 → 提示 → 校验提示确实进入原生模型请求 → 若模型再次提交同工具、同完整参数，且对应本地 JSON 状态文件、原始来源、工具 schema 和当前目标均未变，原生 `tools.guard` 阻止工具主体。单靠历史频率不会封禁新任务；缺失/歧义版本绑定、只有提示模式、新反证/错误、参数或版本变化都会放行或使旧负面证据失效。原生 MCP canonical wrapper 复用已有 `observation` 解包；早停的拒绝不被当作新的失败训练来源。
 
-版本槽位来自轨迹，不硬编码 draft 字段名；当前只自动绑定 outputs 内唯一同 SHA256 的有界无符号链接 JSON 文件。没有该权威文件时仅提示，不猜测相关状态。最多 32 类规则，单次只维护最近一条当前失败。当前文件版本是完整哈希：改动无关 notes 也会释放拦截，尚未学习错误相关字段的最小依赖范围。
+版本槽位来自轨迹，不硬编码 draft 字段名；当前只自动绑定 outputs 内唯一同 SHA256 的有界无符号链接 JSON 文件。没有该权威文件时仅提示，不猜测相关状态。最多 32 类规则，单次只维护最近一条当前失败。未认证字段条件的规则仍使用完整文件哈希，改动无关字段也会释放该旧规则。
 
-早停只阻断局部重试，保留其他工具和模型改换路线/解释未完成任务的机会；它**不等于跳过一整个模型请求**，audit 的 `model_requests_skipped` 为 0。旧失败不会因早停变成合格完成。事件为 `negative_current_failure / negative_prompt_delivered / negative_retry_early_stopped`。本次结果与失败见 [Negative Motif 实验](experiments/paper-negative-motifs-20261019-v1.md)。
+新增可选 `--field-profile /private/profile.json`，将已审阅、只读且作为工具必要前置条件的 Python 校验函数切片为 `warn_then_field_guard`。profile 须位于 `.local/`，格式如下；函数文件必须同时在历史工具实现锁中，不能导入模型生成的任意代码：
+
+```json
+{"profiles":[{"tool":"mcp__docs__finalize","validator":"path/in/repository.py:validate","states":["/private/.local/failed.json"],"contrasts":["/private/.local/success.json"]}]}
+```
+
+编译器自动沿别名、静态键、列表映射及 `len/set` 比较追踪依赖，不注册论文错误名或字段名。仅支持无提前返回/可识别写入的校验器中、顶层直接抛错的必要条件；嵌套分支、动态代码、未知方法等不支持的情况保留旧策略。发布要求真实失败状态、实际校验成功的对照，以及至少两处依赖外编辑仍保持同一错误的局部干预。该入口依赖开发者确认函数只读、且确属工具必要条件；源码切片不等于从任意黑盒轨迹学得因果关系。`field-compilation.json` 保留未覆盖原因。
+
+IR 的 `root/item/const/get/map/len/set/compare` 由 TypeScript 有界解释，无任意代码求值。当前失败与 notice 实际投递后，Runtime 对同一权威文件重新解析：原来源/目标/schema、包装中的任务身份/来源版本、非版本参数均须不变，重试提交的版本必须是当前实际 SHA。失败谓词仍成立时，即使完整文件哈希变化也可阻止工具主体；真正修复、类型/字段缺失、状态歧义或范围变化均放行。当前只维护一条失败，不是全局停止或自动修复。版本 SHA 继续校验当前文件，不能用旧版本调用绕过合法版本检查。
+
+早停只阻断局部重试，保留其他工具和模型改换路线/解释未完成任务的机会；它**不等于跳过一整个模型请求**，audit 的 `model_requests_skipped` 为 0。旧失败不会因早停变成合格完成。事件为 `negative_current_failure / negative_prompt_delivered / negative_retry_early_stopped`。历史结果见 [Negative Motif 实验](experiments/paper-negative-motifs-20261019-v1.md)，字段条件验证见 [字段依赖实验](experiments/paper-negative-fields-20261019-v1.md)。
 
 实验 runner 可显式 `--recovery-checkpoint /private/draft.json --max-seconds 180`：仅复制同 worktree 私有历史草稿，要求上传来源哈希完全一致，只替换当前任务身份，并写可读取的 recovery-state 提示；超时走原生取消、保留费用。该入口是历史局部恢复诊断，不是独立完整任务或生产恢复产品。
 

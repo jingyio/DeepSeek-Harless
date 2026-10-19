@@ -11,6 +11,8 @@ from pathlib import Path
 from src.adapters.script_motif_compiler import digest, sha
 
 RUNTIME_FILES = ('src/adapters/script_negative_compiler.py',
+                 'src/adapters/negative_field_compiler.py',
+                 'src/adapters/negative_field_runtime.ts',
                  'src/adapters/script_negative_runtime.ts',
                  'src/adapters/script_motif_web.ts')
 
