@@ -1,19 +1,19 @@
 # 论文校对当前交接
 
 - 更新时间与交接人：2026-10-19，Codex。
-- 目标与本次范围：用户要求先把 Negative Motif 从重复 ID 扩展为不同错误原因自动学习，再测错误恢复与模型费用。本轮实现源码辅助的数据/控制依赖与双向反事实认证；未启动新的付费成本实验。
-- 分支 / commit / 工作区：独立 `codex/negative-cause-learning`，基线 `2acb445`；本记录随实现本地提交，见 git log -1。未推送、PR 或部署，原脏工作区、生产、旧认证库和私人原件未改。
-- 已完成：`negative_field_compiler.py` 通用分析静态 schema、别名、有限展开、动态列表循环、嵌套 if/else、布尔/类型/成员/集合/数量条件；保留控制开关与跨集合字段，同码多分支合并。不注册错误名/论文字段，profile 一次指向整个已审阅只读必要校验器。无法支持的控制流、动态/不透明脚本仍回退。
-- 已完成：字段 IR v2 绑定 failure_code 和双向原因证据。在内存副本中，以真实对照或通用数据扰动验证修复/重新引入，并用有界 delta debugging 缩小改动；记录残余错误与是否整体通过。成功对照和依赖外干预继续要求。不是自动修稿、全局早停或通用黑盒因果证明。
-- 已完成：TypeScript 有界解释带作用域变量的 IR，loader 校验错误码/证据/实现锁；原 current failure→实际请求 notice→重算条件→局部门控协议及来源/身份/目标/schema/参数/SHA 守卫保留，不扩工具表。节点 256、深度 32、数组 10000、步数 100000，未知放行。
-- 已验证：npm test 完整 927 Python/887 Node 通过、199/5 跳过；局部 24 Python/19 Node 通过，无模型 smoke 与最终正负库共同装载通过。7 个不同错误标签的通用诊断跨语言、无关编辑/修复/未知状态检查通过，原生 ToolRuntime 门控保留。
-- 实验结论：[paper-negative-causes-20261019-v1](../experiments/paper-negative-causes-20261019-v1.md)。原校验器静态 11 候选，真实历史认证 2 类：重复 ID 和非法 status/priority。两失败状态用于字段认证，25 个留出状态（8 枚举、17 重复）均复现原错且对应谓词 true；2 个历史成功状态两谓词 false；7 个留出状态同时有两种原因。标签/工具资格使用全轨迹，状态间相关，不是独立任务或 LLM 跳过率。
-- 实验结论：真实枚举原因缩小到一个 priority，修复后原结构校验通过；重复 ID 缩小到一处改动后原错消失，但揭露枚举错误，记录 whole_validator_passed:false。不能把局部原因消除当作整个交付合格，也不将诊断值用于科研修稿。
-- 配置与数据：`.local/negative-causes-20261019-v1/` 保留 field-profile/split/effective-config-final、evaluation-final/node-evaluation-final、学习计量、全部旧失败日志/库与私有复现脚本。最终负面 library-004 digest `08becf591624e9fd2a92222604e5aac6ddfe373d1cef83ea2ede53e85822895c`；正面 positive-library-002 实际重认证 7 算子，digest `111bbbd765b47f0bb4c2a8ca7d2106acab1fb5202923840254b88db427897ac8`，combined-config-final.json 装载通过。旧各轮数据/锁不改。
-- 未完成与阻塞：真实认证仍仅两类，其余广度来自合成局部诊断；没有独立新任务泛化/模型行为/费用验收。控制字符、计数/编号类型分支尚不支持；不透明 Bash/Python、外部依赖和语义/科研错误未解决。草稿可读/可修复接口仍未修复，前轮服务错误与不合格报告负面证据保留。
-- 接手下一步：1）先在更多受信校验器与独立资料检验原因迁移、共存错误及误拦截，未支持的条件继续安全回退，不逐错写规则。2）使草稿可读、可修复并保留原版本/验收要求，再按用户顺序做新任务 Prompt/Enforce 恢复对照。3）比较包含学习、提示、失败和恢复的全费用，稳定后用户决定 PR。
-- 最短复现：项目 Python 运行 `python -m pytest -q tests/test_negative_fields.py tests/test_script_negative.py`；Node `node --experimental-strip-types --test tests/test_script_negative.mjs`。真实历史使用既有 learn-negative-motifs.py + 匹配历史 implementation-file + 新私有 field-profile/output，接口格式见 docs/interfaces.md。当前 macOS 项目环境 TMPDIR=/private/tmp、沙箱显式 SSS_LOCAL_SCRIPT_EXPERIMENT=1；服务器/Windows 未做新验收。
-- 权限与预算：沿用本地真实调用无限额授权，本轮模型新增 0。旧本地 2835 请求/$4.714453692 保守估费与 1 pending 保留，V100 未核清，非账单实付。单独认证原函数调用 23/22 次，各约 0.05 秒，仅部分学习耗时，不含开发/回归/HTTP；没有后台付费任务。
-- 回退与风险：关闭 negativeLibrary 恢复不使用负面逻辑，回退 2acb445 恢复上一版字段守卫。Runtime 升级须实际重编/认证，不能手改旧锁；不删除旧负面证据、私有快照或重置账本。目前不足生产发布或 PR。
+- 目标与本次范围：按用户要求找回此前真实论文任务，先测论文效果，推迟其他场景扩展；完成三组完整任务与两组独立计量的历史恢复。没有修改在线机制或旧认证库。
+- 分支 / commit / 工作区：独立 `codex/paper-negative-real-eval`，Runtime 冻结 `8fa7f23c8affb18c2b16caf2f1948acc16f8cd9f`；报告与离线分析修订见本地 git log。未推送、PR 或部署，原脏工作区、生产、私人原件未改。
+- 已完成：沿用原 `reference-audit.prompt.md` 与 RMSNorm 源码；Baseline / Positive / Positive+Negative 从原件新执行，恢复对照复制真实历史失败草稿，不做故障注入。已知论文参与历史训练，不是独立论文泛化。
+- 已完成：离线 `analyze-script-motif-cost.py` 补记 `finalized:false` 等结构化软拒绝与批量 bibliography 暂存边界，和原生异常分列；不改 Runtime、提示或工具 schema。原始 summary 保持不改，最终质量结论另存。
+- 已验证：五项真实 DeepSeek Flash/off 原生完成，usage 完整、新 pending/未知均 0；端口 3240–3244 已关闭。最终版本 PDF 全页渲染并只读检查，三组均未通过，未做独立人工盲评。分析器针对性 8 项测试通过；本轮未重复全部回归。冻结机制上轮 927 Python/887 Node 与 smoke 通过，仍仅是诊断。
+- 实验结论：[paper-negative-real-20261019-v1](../experiments/paper-negative-real-20261019-v1.md)。完整 Baseline 130/$0.156665400、Positive 162/$0.254353860、正负面 93/$0.142988208。正负面账面低 8.7%，但三组报告均不合格且负面事件为 0，不能归因或声称同质量净降本。正面两组各真实跳过 2 次请求，未覆盖后续脚本/报告/恢复。
+- 实验结论：Baseline/正负面通用导出绕过结构验收且存在计数/编号错误；Positive 17 次结构软失败后回退通用报告。恢复 Baseline 49/$0.030089196、Negative-only 14/$0.009216252；后者实际提示 1、硬早停 0，两组都未成功定稿。前者 6 次重复 ID 失败跨 5 个版本，不能依靠原样重试识别；该单对只支持继续检验提示减少无效恢复。
+- 配置与数据：`.local/paper-negative-real-20261019-v1/` 保存授权、有效配置、runs、五组 summary/breakdown、quality-review、aggregate、final-state、全部中间稿/渲染。原生轨迹/账本在 `.local/web/runs/<run-id>/tasks/`，逐运行 source-snapshot 在 `.local/script-motif-experiments/<run-id>/`。题面/来源/工具/库 SHA 和复现命令见实验记录；凭证仅由私有环境加载，未展示。
+- 配置与数据：沿用 `.local/negative-causes-20261019-v1/positive-library-002` 与 `library-004`，digest 分别 `111bbbd765b47f0bb4c2a8ca7d2106acab1fb5202923840254b88db427897ac8`、`08becf591624e9fd2a92222604e5aac6ddfe373d1cef83ea2ede53e85822895c`。冻结库，无本轮学习调用。编译器 v2、原因双向干预、2 类真实认证与其余合成诊断边界见[原因学习记录](../experiments/paper-negative-causes-20261019-v1.md)。
+- 未完成与阻塞：没有合格净降本、成功自动恢复、真实硬早停或独立新论文泛化。当前草稿读取/替换修复协议不足；不同导出路径门槛不一；确定性计数、原编号与最终版本缺少统一来源。不能用最终有 PDF 或原生 completed 代替验收。
+- 接手下一步：1）支持当前未定稿状态读取与按 SHA 有界修复，先使自然失败恢复成功。2）所有报告出口共用原编号/身份、计数和来源版本验证，语义判断仍由模型负责。3）再做独立论文多次配对，区分 Prompt/Enforce、脚本复用与真正整请求跳过，用户认可稳定效果后再决定 PR。
+- 最短复现：`.venv-sss/bin/python -m pytest -q tests/test_script_cost_breakdown.py`；真实统一入口 `node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model ...`，完整参数见实验记录。当前本地使用 TMPDIR=/private/tmp、SSS_LOCAL_SCRIPT_EXPERIMENT=1 和私有字体/renderer；这不代表生产或 Windows 验收。
+- 权限与预算：用户允许本地真实 API 无限额，`cap_usd:null/reset_history:false`。本轮新增 448 请求/$0.593312916，累计本地 3283/$5.307766608 保守估费；旧 pending 1 与 V100 未核清费用保留，不是账单实付。本轮无后台付费任务、无新学习请求；开发/审阅时间未完整计量。
+- 回退与风险：本轮仅离线分析与文档，可按提交单独回退；关闭 negativeLibrary 停用负面机制。Runtime/协议后续改动仍须重编认证，不改旧锁、不删除私有失败记录，不扩大外部写入或投稿授权。
 
-前轮：[单类字段依赖](../experiments/paper-negative-fields-20261019-v1.md)、[负面提示](../experiments/paper-negative-motifs-20261019-v1.md)、[连续执行](../experiments/paper-script-frontier-20261019-v1.md)。
+前轮：[多错误原因学习](../experiments/paper-negative-causes-20261019-v1.md)、[字段依赖](../experiments/paper-negative-fields-20261019-v1.md)、[负面提示](../experiments/paper-negative-motifs-20261019-v1.md)、[连续执行](../experiments/paper-script-frontier-20261019-v1.md)。

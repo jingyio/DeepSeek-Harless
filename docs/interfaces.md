@@ -911,7 +911,7 @@ node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-mo
   --source /path/to/private/submission.zip --mode execute --script-config /path/to/private/execute.json --max-output-tokens 32768
 ```
 
-三组使用同一模型、题面、工具和输出上限；默认题面为 `scenarios/paper-submission/reference-audit.prompt.md`，可显式 `--prompt`。记录在 `.local/script-motif-experiments/<run-id>/`，原生任务在 `.local/web/runs/<run-id>/tasks/`。生产/native mode 保持 `baseline/rsi=false` 以隔离旧 Motif；**实验 mode 以 sidecar 为准**。原生 UI 的 `verified_skips` 不包含此实验计数，应读取 `script-motif-audit.jsonl` 或 `summarize-script-motif-run.py --task <task-dir>`。该核算区分真实 provider 请求、认证跳过、Shadow 候选、PDF 文件存在与质量评审；不自动计算净节省。`analyze-script-motif-cost.py --task <task-dir> --output <新私有文件>` 按完整请求对齐账本和可见动作，单列搜索工具内部模型、代码生成、现成脚本调度和报告协议，不把类别费用直接视为可替代费用。
+三组使用同一模型、题面、工具和输出上限；默认题面为 `scenarios/paper-submission/reference-audit.prompt.md`，可显式 `--prompt`。记录在 `.local/script-motif-experiments/<run-id>/`，原生任务在 `.local/web/runs/<run-id>/tasks/`。生产/native mode 保持 `baseline/rsi=false` 以隔离旧 Motif；**实验 mode 以 sidecar 为准**。原生 UI 的 `verified_skips` 不包含此实验计数，应读取 `script-motif-audit.jsonl` 或 `summarize-script-motif-run.py --task <task-dir>`。该核算区分真实 provider 请求、认证跳过、Shadow 候选、PDF 文件存在与质量评审；不自动计算净节省。`analyze-script-motif-cost.py --task <task-dir> --output <新私有文件>` 按完整请求对齐账本和可见动作，单列搜索工具内部模型、代码生成、现成脚本调度和报告协议，不把类别费用直接视为可替代费用。 分析器另列 `structured_validation_failures`（带失败码、工具及调用标识）和 `requests_after_structured_validation_failures`，捕捉原生 `isError` 未标错但结果为 `staged/finalized/exported/done:false` 的结构拒绝；与原生异常分开，后续请求关联不等于失败的全部因果费用。`stage_current_bibliography_assessments` 与 audit 暂存均进入报告边界，阶段内可能包含补检，不能称为纯报告正文生成费用。
 
 ## 自动学习生命周期
 

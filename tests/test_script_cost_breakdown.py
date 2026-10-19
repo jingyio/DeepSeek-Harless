@@ -44,3 +44,25 @@ def test_unknown_usage_failure_is_not_a_zero_cost_success(tmp_path):
     assert result['requests_with_known_usage']==0
     assert result['requests_without_usage']==1
     assert not result['categories']
+
+
+def test_bibliography_batch_starts_report_phase_and_is_report_protocol():
+    message={'content':[{'type':'tool-call','name':'mcp__paper_checks__stage_current_bibliography_assessments','arguments':{}}]}
+    assert m.report_start(message)
+    assert m.category(message)=='report_protocol'
+
+
+def test_soft_validation_rejection_counts_without_a_native_exception(tmp_path):
+    events=[{'type':'assistant/message','time':1000,'data':{'usage':{'outputTokens':1},'message':{'content':[]}}},
+      {'type':'tool/call','time':1100,'data':{'callId':'f','name':'mcp__paper_checks__finalize_current_audit','arguments':{}}},
+      {'type':'tool/result','time':1200,'data':{'message':{'content':[{'toolCallId':'f','isError':False,'content':[{'type':'text','text':json.dumps({'finalized':False,'validation_error':'shape'})}]}]}}},
+      {'type':'assistant/message','time':2000,'data':{'usage':{'outputTokens':1},'message':{'content':[]}}}]
+    ledger=[{'request_id':1,'request_utc_epoch':1,'response_usage':{'completion_tokens':1},'observed_peak_usd':.01},
+      {'request_id':2,'request_utc_epoch':2,'response_usage':{'completion_tokens':1},'observed_peak_usd':.01}]
+    for name,rows in [('events',events),('ledger',ledger)]:
+        (tmp_path/(name+'.jsonl')).write_text('\n'.join(map(json.dumps,rows)))
+    result=m.analyze(tmp_path)
+    assert result['requests_after_tool_errors']==0
+    assert result['requests_after_structured_validation_failures']==1
+    assert result['structured_validation_failures'][0]['code']=='shape'
+    assert m.structured_validation_error({'content':[{'type':'text','text':json.dumps({'finalized':True,'validation_error':'old_metadata'})}]}) is None

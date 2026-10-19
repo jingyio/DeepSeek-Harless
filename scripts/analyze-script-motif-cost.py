@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 
 FIELDS=('prompt_tokens','prompt_cache_hit_tokens','prompt_cache_miss_tokens','completion_tokens')
+REPORT_WRITES=('stage_current_audit','stage_current_bibliography_assessments')
 
 def read_rows(path):
     return [json.loads(line) for line in path.read_text().splitlines() if line] if path.exists() else []
@@ -33,21 +34,34 @@ def category(message):
             elif re.search(r'\b(curl|wget)\b',command):label='shell_network_dispatch'
             elif re.search(r'\b(cat|ls|grep|rg|sed|head|tail|find|wc|unzip)\b',command):label='shell_read_dispatch'
             else:label='shell_other_dispatch'
-        elif any(k in name for k in ('stage_current_audit','finalize_current_audit','export_','read_current_audit')):label='report_protocol'
+        elif any(k in name for k in (*REPORT_WRITES,'finalize_current_audit','export_','read_current_audit')):label='report_protocol'
         elif name in ('web_search','web_fetch'):label=name+'_dispatch'
         else:label='other_tool_dispatch'
         labels.add(label)
     return next(iter(labels)) if len(labels)==1 else 'mixed_tool_request' if labels else 'final_or_intermediate_text'
 
 def report_start(message):
-    return any('stage_current_audit' in name or 'export_review_report' in name or
+    return any(any(marker in name for marker in REPORT_WRITES) or 'export_review_report' in name or
                name=='bash' and re.search(r'canvas\.Canvas|SimpleDocTemplate|BaseDocTemplate|reportlab[\s\S]*\.build\(',args.get('command',''))
                for name,args in actions(message))
+
+def structured_validation_error(block):
+    # A report protocol can reject a write without native isError=true. Keep
+    # these failures separate from exceptions; success metadata is not failure.
+    for content in block.get('content',[]):
+        if content.get('type')!='text':continue
+        try:value=json.loads(content.get('text',''))
+        except (ValueError,TypeError):continue
+        if not isinstance(value,dict):continue
+        outcomes=[value[k] for k in ('staged','finalized','exported','done') if k in value]
+        code=value.get('validation_error')
+        if isinstance(code,str) and code and any(v is False for v in outcomes) and not any(v is True for v in outcomes):return code
+    return None
 
 def analyze(task):
     task=Path(task);events=read_rows(task/'events.jsonl');ledger=read_rows(task/'ledger.jsonl')
     messages=[e for e in events if e.get('type')=='assistant/message' and e['data'].get('usage')]
-    intervals=[];calls={};errors=[];repeats=Counter()
+    intervals=[];calls={};errors=[];validation_errors=[];repeats=Counter()
     for e in events:
         d=e.get('data',{})
         if e.get('type')=='tool/call':
@@ -58,6 +72,8 @@ def analyze(task):
                 start=calls.get(b.get('toolCallId'))
                 if not start:continue
                 if b.get('isError'):errors.append(e['time'])
+                code=structured_validation_error(b)
+                if code:validation_errors.append({'time':e['time'],'tool':start['data']['name'],'call_id':b.get('toolCallId'),'code':code})
                 if start['data']['name']=='web_search':intervals.append((start['time'],e['time']))
     totals=defaultdict(lambda:{'requests':0,'estimated_usd':0,**{k:0 for k in FIELDS}});assigned=set();records=[]
     for row in ledger:
@@ -73,7 +89,8 @@ def analyze(task):
         for field in FIELDS:total[field]+=row['response_usage'].get(field,0) or 0
         prior=next((e for e in reversed(messages) if e['time']<stamp-500),None)
         recovery=any((prior['time'] if prior else 0)<t<stamp for t in errors)
-        records.append({'request_id':row.get('request_id'),'completed_epoch_ms':stamp,'completion_tokens':row['response_usage'].get('completion_tokens',0),'category':kind,'step':step,'estimated_usd':row.get('observed_peak_usd'),'after_tool_error':recovery,'elapsed_seconds':row.get('elapsed_seconds')})
+        after_validation=any((prior['time'] if prior else 0)<v['time']<stamp for v in validation_errors)
+        records.append({'request_id':row.get('request_id'),'completed_epoch_ms':stamp,'completion_tokens':row['response_usage'].get('completion_tokens',0),'category':kind,'step':step,'estimated_usd':row.get('observed_peak_usd'),'after_tool_error':recovery,'after_structured_validation_failure':after_validation,'elapsed_seconds':row.get('elapsed_seconds')})
     report_boundary=next((e['time'] for e in messages if report_start(e['data']['message'])),None)
     report_rows=[row for row in ledger if report_boundary is not None and row.get('response_usage') and row['request_utc_epoch']*1000>=report_boundary-500]
     phase_categories=defaultdict(lambda:{'requests':0,'estimated_usd':0,'completion_tokens':0})
@@ -88,6 +105,7 @@ def analyze(task):
       'alignment':'provider completion timestamp within 500 ms of assistant message; remaining web_search tool intervals',
       'categories':dict(totals),'report_phase':report_phase,'requests_with_known_usage':len(records),'requests_without_usage':sum(not r.get('response_usage') for r in ledger),'requests_after_tool_errors':sum(r['after_tool_error'] for r in records),
       'unassigned_assistant_messages':len(messages)-len(assigned),'exact_repeated_tool_arguments':sum(n-1 for n in repeats.values() if n>1),
+      'structured_validation_failures':validation_errors,'requests_after_structured_validation_failures':sum(r['after_structured_validation_failure'] for r in records),
       'script_events':dict(counts),'embedding_elapsed_ms':sum(r.get('elapsed_ms',0) for r in audit if r['kind']=='script_embedding'),'requests':records}
 
 if __name__=='__main__':
