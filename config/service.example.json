@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "state_dir": "/srv/geneloop/private/service",
+  "gateway_config": "/srv/geneloop/private/releases/RELEASE/gateway.json",
+  "owner_output": "/srv/geneloop/data/owner/tasks",
+  "owner": {
+    "argv": ["/srv/toolchains/node/bin/node", "/srv/geneloop/releases/RELEASE/node_modules/@deepseek-ai/dsh/lib/bin.js", "--profile", "web", "--patch", "/srv/geneloop/private/releases/RELEASE/owner.patch.yml", "--host", "127.0.0.1", "--port", "33102", "--no-open", "--trusted-host", "app.example.com"],
+    "cwd": "/srv/geneloop/data/owner/work",
+    "env": {
+      "PATH": "/srv/toolchains/node/bin:/usr/bin:/bin",
+      "HOME": "/srv/geneloop/data/owner/work",
+      "DSH_HOME": "/srv/geneloop/data/owner/dsh",
+      "SSS_WEB_POLICY": "/srv/geneloop/private/releases/RELEASE/owner-policy.json",
+      "HARLESS_GATEWAY_ENABLED": "1",
+      "DEEPSEEK_API_KEY": "REPLACE_WITH_EXISTING_PRIVATE_BUDGET_DELEGATION_CREDENTIAL",
+      "PYTHONUTF8": "1"
+    }
+  },
+  "gateway": {
+    "argv": ["/srv/toolchains/node/bin/node", "/srv/geneloop/releases/RELEASE/scripts/harless_gateway.mjs", "/srv/geneloop/private/releases/RELEASE/gateway.json"],
+    "cwd": "/srv/geneloop/releases/RELEASE",
+    "env": {"PATH": "/srv/toolchains/node/bin:/usr/bin:/bin", "HOME": "/srv/geneloop/private"}
+  }
+}

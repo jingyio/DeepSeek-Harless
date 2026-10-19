@@ -1,5 +1,9 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 正式网站服务生命周期（2026-10-19）
+
+`npm run service -- <start|status|check|restart|rollback>` 通过 `scripts/project.mjs` 调用 `scripts/geneloop_service.py`。Linux 私有计划 version=1 指定 owner/gateway 配方和持久路径，使用 `GENELOOP_SERVICE_CONFIG` 或 `--config`；不通过 HTTP 接收启动配置，不输出凭证。`start` 幂等，认证同步与健康检查强制执行；`restart`/`rollback` 校验现有进程身份、活动任务和持久路径，启动失败尝试上一份冻结计划。模型预算服务和累计账本不在其启停范围。准备场景配置/证书和维护窗口仍须按[统一流程](service-lifecycle.md)完成，内部检查不能代替公网与场景验证。
+
 ## PPT/PPTX 风格输入（2026-10-18）
 
 成员产品必须将公开 `config/pdf-ocr-assets.json` 单独只读挂载为 `/app/config/pdf-ocr-assets.json`，供注册场景的原样证书摘要验证；即使语言包已挂载，缺少此文件仍会触发优化回退。不得用移除代码锁、忽略缺失项或暴露整个配置目录规避失败。挂载修复对应兼容库 `ppt-master-v7` / `paper-web-v12`，旧版本保留。

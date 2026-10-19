@@ -39,8 +39,10 @@ if (action === 'setup') {
   run(python, ['scripts/run-scenario.py', ...args]);
 } else if (action === 'web') {
   run(python, ['scripts/harness-web.py', ...args]);
+} else if (action === 'service') {
+  run(python, ['scripts/geneloop_service.py', ...args]);
 } else if (action === 'smoke') {
   run(python, ['scripts/smoke.py', ...args]);
 } else if (action === 'python') {
   run(python, args);
-} else { console.error('Use setup, test, scenario, web, smoke or python'); process.exit(1); }
+} else { console.error('Use setup, test, scenario, web, service, smoke or python'); process.exit(1); }

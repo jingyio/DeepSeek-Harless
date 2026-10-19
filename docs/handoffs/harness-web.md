@@ -1,5 +1,9 @@
 # DeepSeek Harless Web 当前交接
 
+## 2026-10-19：统一服务启动、发布与回退入口
+
+`npm run service -- <start|status|check|restart|rollback>` 是正式 owner/gateway 的统一入口，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定。历史私有发布脚本只可参考配置准备，启动段退役。入口处理身份/配置/互斥检查、认证与令牌同步、活跃任务保护、失败回退及运行记录；保持预算进程/账本与用户数据。后续开发先读 [统一流程](../service-lifecycle.md)，验证与边界见[实施记录](../experiments/unified-service-lifecycle-20261019.md)。本地开发 `web`/`web:real` 不等于正式网站发布，Linux 管理验证不代表 Windows 托管。
+
 ## 2026-10-19：管理员内部令牌陈旧导致服务不可用
 
 - 公开登录页/进程正常，所有者内部认证失败。直接重启 DSH 后漏写 `ownerTokenFile`；旧令牌 401、新令牌 303。已备份并原子同步当前有效令牌，网关热读取恢复，未重启、未调用模型、未改账号/数据/账本。
