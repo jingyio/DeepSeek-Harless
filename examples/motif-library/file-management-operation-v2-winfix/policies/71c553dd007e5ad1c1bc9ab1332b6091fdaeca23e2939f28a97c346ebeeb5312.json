@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "format": "sss-operation-graph-v2",
+  "execution_version_sha256": "4527cdc1b839b187e082b50dd90cc07cd11b56761bcaef3844258f54f6946f8e",
+  "artifact": {
+    "kind": "learned_mcp_operation_dag",
+    "status": "trace_validated_effectful",
+    "nodes": [
+      {
+        "tool": "mcp__file_management__execute_plan",
+        "bindings": {}
+      },
+      {
+        "tool": "mcp__file_management__inspect_plan_result",
+        "bindings": {
+          "receipt_id": {
+            "node": 0,
+            "path": "receipt_id"
+          }
+        }
+      },
+      {
+        "tool": "mcp__file_management__pin_files",
+        "bindings": {
+          "file_ids": {
+            "node": 1,
+            "path": "files[].file_id"
+          }
+        }
+      },
+      {
+        "tool": "mcp__file_management__read_files",
+        "bindings": {
+          "source_ids": {
+            "node": 2,
+            "path": "source_ids"
+          }
+        }
+      }
+    ],
+    "tool_contracts": {
+      "mcp__file_management__execute_plan": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "authorized_write",
+          "auto_continue": true,
+          "exports": [
+            "receipt_id"
+          ],
+          "statuses": [
+            "executed_verified"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "plan_id": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plan_id"
+          ],
+          "title": "execute_planArguments"
+        },
+        "schema_sha256": "0150218bed7fc8df5be5bcb92cccb9269815477feb74eca7e9963b2915c33fc7"
+      },
+      "mcp__file_management__inspect_plan_result": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [
+            "primary_file_id",
+            "files[].file_id"
+          ],
+          "statuses": [
+            "verified_plan_results"
+          ],
+          "scope_requirements": {
+            "result_read_allowed": true
+          }
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "receipt_id": {
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "receipt_id"
+          ],
+          "title": "inspect_plan_resultArguments"
+        },
+        "schema_sha256": "20b129f454b43a473bfb93551cc25c5a5bb90dbc73c79f566380701dba75124b"
+      },
+      "mcp__file_management__pin_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [
+            "source_ids"
+          ],
+          "statuses": [
+            "pinned_batch"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "file_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "File Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "file_ids"
+          ],
+          "title": "pin_filesArguments"
+        },
+        "schema_sha256": "085ba4a25493a78dbb43948a8d36d5751cda1fa7aab55dd268730909cc30197f"
+      },
+      "mcp__file_management__read_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [],
+          "statuses": [
+            "read_batch_complete"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "source_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "Source Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "source_ids"
+          ],
+          "title": "read_filesArguments"
+        },
+        "schema_sha256": "5334cd754943e86c079782219efa181bd4ab2c7afbc0de0a450b56ca6954750b"
+      }
+    },
+    "max_nodes": 8,
+    "interleaving_contracts": {
+      "mcp__file_management__list_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": false,
+          "exports": [],
+          "safe_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "list_filesArguments"
+        },
+        "schema_sha256": "fbe3e382dd6c8e9281fe26492070587b61f9dd4de908bb735cd9697af616533d"
+      }
+    },
+    "execution_version": "4527cdc1b839b187e082b50dd90cc07cd11b56761bcaef3844258f54f6946f8e",
+    "certification_contract": "sss-operation-certification-v2",
+    "source_task_fingerprints": [
+      "d5bf15ff9bc08f71705b129b5cb3adf5d3610a4ca2959f69e5c6881a96426978",
+      "38e53dc50ade60fee7c4a5c08f2501714e95d0e6a1210d60bf3127a7a0262118"
+    ],
+    "witnesses": [
+      {
+        "session_id": "sss-6297641c1a4b459cb80d22daaff87437",
+        "calls": [
+          "call_00_AZZm4OL5jwg9JhBdceF26496",
+          "call_00_emPquucor3t8AyLtbXRh5402",
+          "call_00_lE4QnweJMDUPXXQmxW0Z3366",
+          "call_00_bFpSc0cgV9spTJGStSdR2963"
+        ],
+        "native_new_nodes": [
+          1,
+          2,
+          3
+        ],
+        "inherited_policy": null,
+        "events_sha256": "5d22f3c82b455e752350eb9ac5101cae003f0239be645dded870eb2ff43c1a3a"
+      },
+      {
+        "session_id": "sss-a86dacebf78d41c390f90cc31b9aa85b",
+        "calls": [
+          "call_00_n7zfqEUOoZMipJZSd4d89556",
+          "call_00_m9fG01HBrQDh7EvkbvNV6523",
+          "call_00_hJQ7u99wVtapGi1Q4hqL2988",
+          "call_00_K4lvteGEuB1JrOdmIkVV5122"
+        ],
+        "native_new_nodes": [
+          1,
+          2,
+          3
+        ],
+        "inherited_policy": null,
+        "events_sha256": "dfb90fbcfe1f5ca4a28d6cac062f3f8e683ce301291895facd5f6c20443aef36"
+      }
+    ],
+    "validation_task_fingerprint": "b7c1bcb9c3a73867a35d44e31d8dffc3768f0186a894231a88e0a63279eef378",
+    "validation_witness": {
+      "nodes": [
+        {
+          "tool": "mcp__file_management__execute_plan",
+          "bindings": {}
+        },
+        {
+          "tool": "mcp__file_management__inspect_plan_result",
+          "bindings": {
+            "receipt_id": {
+              "node": 0,
+              "path": "receipt_id"
+            }
+          }
+        },
+        {
+          "tool": "mcp__file_management__pin_files",
+          "bindings": {
+            "file_ids": {
+              "node": 1,
+              "path": "files[].file_id"
+            }
+          }
+        },
+        {
+          "tool": "mcp__file_management__read_files",
+          "bindings": {
+            "source_ids": {
+              "node": 2,
+              "path": "source_ids"
+            }
+          }
+        }
+      ],
+      "values": {
+        "1:receipt_id": "receipt-afa33b0a6e2749dca03fd953fc8b419c",
+        "2:file_ids": [
+          "file:local:b7a97a08892242a7b4204391",
+          "file:local:15389169515e19947ee22313"
+        ],
+        "3:source_ids": [
+          "source-20069b4ebd39b2e9d3d53de0ee727fb3",
+          "source-d0e5f7a6758a83f8fefaebe1aaaa99e5"
+        ]
+      },
+      "calls": [
+        "call_00_Oiurulcygl753xIAg97w6774",
+        "call_00_cF83lZIHwD3MX3qPwv8h1468",
+        "call_00_UUjUMm5XxMpmXEpkUMS91798",
+        "call_00_biVUww70Nn5YQR4TuL200464"
+      ],
+      "native_new_nodes": [
+        1,
+        2,
+        3
+      ],
+      "inherited_policy": null
+    },
+    "certified_digest": "e97c646123c2c7ff9f80f78d62617faacd303ee4463a4146bbb4d7e0e2104f25"
+  },
+  "policy_digest": "71c553dd007e5ad1c1bc9ab1332b6091fdaeca23e2939f28a97c346ebeeb5312"
+}

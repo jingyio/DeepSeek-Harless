@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "new_certification": false,
+  "original_catalog_sha256": "f10c3a221aeb27f6846f35c4a6d2dcae07ba5a4da092cca92b29684fd0fda262",
+  "runtime_validators": {
+    "src/motif_core/online_skill_runtime.mjs": "d951e7d0ab15ba49c00f99726f82c328e0bb283fd40af0d6eb0252c80d4e54ec",
+    "src/motif_core/collection_read_policy.ts": "87fff039cc317364c3ab85cd240e7d7bef321c76d87de103f1fdb480ba183a9d",
+    "src/motif_core/collection_reentry_policy.ts": "caaa25beb2a41714e14b7501673c8e579e391819d02d7e22cc7f2d5844364355",
+    "src/motif_core/authorized_plan_policy.ts": "7cda12b995586cdab57d176b214f139c3661f24f94bafa5f11d1c9052b2c6632"
+  },
+  "validation": "Original signed payloads preserved; checked with current main validators; no new execution certificate or activation"
+}

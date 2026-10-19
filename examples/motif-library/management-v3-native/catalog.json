@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "format": "sss-public-operation-library-v2",
+  "original_generation": 10,
+  "original_registry_sha256": "dc3081d89eb35e907a029301aae009aced03004d1c5583232c1338a8cdfdb1b0",
+  "default_activation": false,
+  "includes_private_runtime_admission_proofs": false,
+  "artifact_bytes": "exact original learned policy bytes; no re-signing",
+  "entries": [
+    {
+      "entry_id": "42b5a5fdbbce798080ab16843fa4b29d4402ca137660999d53e4958beadac769",
+      "path": "policies/42b5a5fdbbce798080ab16843fa4b29d4402ca137660999d53e4958beadac769.json",
+      "sha256": "5bcf1dd72473e1469ac846860c93ec4fa46459cd03cae619d0add919afa18b5e",
+      "policy_digest": "42b5a5fdbbce798080ab16843fa4b29d4402ca137660999d53e4958beadac769",
+      "original_certificate_sha256": "994959fe348e69db3084485c5bbe2883c4ff7a8fe67cabc879ade7389b21f46c",
+      "original_status": "certified_motif_v2",
+      "certification_contract": "sss-operation-certification-v2",
+      "runtime_source": {
+        "src/adapters/dsh_operation_motif.ts": "49221340e403df8369817d5f490432bac5da8b08cfc1e5cd702cdfe1d2ef2ab5",
+        "src/motif_core/operation_graph_policy.ts": "76ffa0be50572f7be61dbf72b70fb94743715952a037815707debd329290125d",
+        "src/motif_core/online_skill_runtime.mjs": "7bfdc12632631ab6f1d26ce246af93b97f9edb51b0067523e160cb12e23bd77f",
+        "scenarios/file-management/operation_tools.py": "ad1be569ea60cbe4745a0b8eda8ac9b767aa8aaad2d8f81d1416e84ba476b018",
+        "scenarios/file-management/operation_contract.py": "debf4b79de4b5f17ed2ea2c8db1d085306d479940fc29c102b6ec898c5d591e4",
+        "scenarios/file-management/report_tools.py": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+        "scenarios/file-management/collection_tools.py": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+        "scenarios/file-management/file_tools.py": "7abb038e6bdf6c7922f1440d9caa9a019c74fc8bc37257570d0076d4294a6e61",
+        "scenarios/file-management/common.py": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+        "src/motif_core/operation_graph_policy_v1.ts": "30f5e0e274cd42f2cdec0b9aed314876d91553dc63287828e8d1c4dccf3f9cdb",
+        "scenarios/file-management/operation_tools_v2.py": "d48caa676a62438816219f68d504b3d28a4e54a9feec6e711933fa995ecfd973",
+        "scenarios/file-management/operation_contract_v2.py": "6c0562533692d62d7951a5dd24fe05ba6167ae5ceb6060915f0bdf1992e7e646",
+        "src/adapters/operation_job.ts": "bdfb4a7d81726fcdfd79b8e78b541861c3ade34b36f20b99290fa3e94aaec75e",
+        "src/adapters/file_workflow_job.ts": "af033605856e07e2face32c8ed6e4156aaee81a6bf29aa16a467ef3bed129480",
+        "scenarios/file-management/management_tools.py": "2742623f551823bcd96815bb0dbcbcf352f00d179f43fe5895cff67edc08ba24",
+        "scenarios/file-management/management_native.py": "22fd83392a33b93059e955e98719266e93c6a0ea5b5263564ad635dbb2304dcf",
+        "scenarios/file-management/management_contract.py": "3bdf21aa60c5f2cdc03c7828c61f85a556925547d327e2282b391ff51626461c"
+      },
+      "material_quality_contract": "sss-management-quality-v3",
+      "nodes": [
+        "mcp__file_management__pin_files",
+        "mcp__file_management__read_files"
+      ],
+      "holdout_used": false,
+      "quality_and_permission_required": true,
+      "reviews": [
+        {
+          "role": "native_certification",
+          "task_fingerprint": "718e4ade8b658d87ce47a317098ba6cca6ad96ca54d6e3fae53d09da48ab073d",
+          "record_sha256": "35851f3a7a349258452c144fe9e3f18fbda61e3ee6bdb2c7a0aa8080144c90cb"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "b7866143102555dcd1b0ee54578eec13fcaff6df3be7abd2944fb708fd7ee549",
+          "record_sha256": "4232c7aadc81858e57fdf72056503b118cffee4e72e92a00e819f94f56ca7b66",
+          "completion_count": 2,
+          "audit_sha256": "5fac2b6f6b6af5c98825bb026205c9924a54aa164aeea0e8fc98a66de9395eb2"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "8ddc8872fd58a7f25f0dd545c9a178fb65636be185d450600b4cda06590272a6",
+          "record_sha256": "7115671ac01473b908eb209124895d3a930310a6340ec8b0da4a9a5279901900",
+          "completion_count": 1,
+          "audit_sha256": "955ff7d2f88ff25f67ef96fade69752742a64673472e5d4017543a46140ab6ba"
+        }
+      ]
+    }
+  ],
+  "private_evidence_required_for_original_activation": true
+}

@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "format": "sss-operation-graph-v2",
+  "execution_version_sha256": "2a681ea318f1dce09e42016d7305d62a6e8ee4a472268838cfc74caf55c0c440",
+  "artifact": {
+    "kind": "learned_mcp_operation_dag",
+    "status": "trace_validated_read_only",
+    "nodes": [
+      {
+        "tool": "mcp__file_management__select_files",
+        "bindings": {}
+      },
+      {
+        "tool": "mcp__file_management__pin_files",
+        "bindings": {
+          "file_ids": {
+            "node": 0,
+            "path": "files[].file_id"
+          }
+        }
+      },
+      {
+        "tool": "mcp__file_management__read_files",
+        "bindings": {
+          "source_ids": {
+            "node": 1,
+            "path": "source_ids"
+          }
+        }
+      },
+      {
+        "tool": "mcp__file_management__collect_reads",
+        "bindings": {
+          "collection_id": {
+            "node": 0,
+            "path": "collection_id"
+          },
+          "source_ids": {
+            "node": 1,
+            "path": "source_ids"
+          }
+        }
+      }
+    ],
+    "tool_contracts": {
+      "mcp__file_management__select_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "semantic",
+          "auto_continue": false,
+          "exports": [
+            "collection_id",
+            "files[].file_id"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "file_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 32,
+              "minItems": 0,
+              "title": "File Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "file_ids"
+          ],
+          "title": "select_filesArguments"
+        },
+        "schema_sha256": "29d14868457a6a7a5ced7e3cba558c7b5e0884ca57f04ca818c4e6974cae6708"
+      },
+      "mcp__file_management__pin_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [
+            "source_ids"
+          ],
+          "statuses": [
+            "pinned_batch"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "file_ids": {
+              "description": "Unique actual file_ids from list_files or inspect_plan_result.files. Returns source_ids for later reading.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "File Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "file_ids"
+          ],
+          "title": "pin_filesArguments"
+        },
+        "schema_sha256": "8e3e70422123716562472fa583443282874de98464e14bdd5df604390c5049a8"
+      },
+      "mcp__file_management__read_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [],
+          "statuses": [
+            "read_batch_complete"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "source_ids": {
+              "description": "Unique actual source_ids returned by a completed pin_files or pin_file call. Do not substitute file_ids or guess handles.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "Source Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "source_ids"
+          ],
+          "title": "read_filesArguments"
+        },
+        "schema_sha256": "89d0f6c08e26ce80323be57ef01ab5db9950d7b40c9ffc2c4fb1f57624d0556e"
+      },
+      "mcp__file_management__collect_reads": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [],
+          "statuses": [
+            "collection_complete"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "collection_id": {
+              "title": "Collection Id",
+              "type": "string"
+            },
+            "source_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 32,
+              "minItems": 0,
+              "title": "Source Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "collection_id",
+            "source_ids"
+          ],
+          "title": "collect_readsArguments"
+        },
+        "schema_sha256": "01170d947b85e7d03cce7723a8304c553b53635e80c550909fc9050e198e475e"
+      }
+    },
+    "max_nodes": 8,
+    "execution_version": "2a681ea318f1dce09e42016d7305d62a6e8ee4a472268838cfc74caf55c0c440",
+    "certification_contract": "sss-operation-certification-v2",
+    "interleaving_contracts": {
+      "mcp__file_management__list_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": false,
+          "exports": [],
+          "safe_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "list_filesArguments"
+        },
+        "schema_sha256": "fbe3e382dd6c8e9281fe26492070587b61f9dd4de908bb735cd9697af616533d"
+      }
+    },
+    "request_lane_contracts": {},
+    "source_task_fingerprints": [
+      "2d4d4c422b4de422f4b38591c6cf6dbaa491d2fa9759a9c7dcdb914c9b879b73",
+      "48c2bf27ea44a2b4206291dc2118e151d5bad93f187e4b5fc52dea9ba146bc15",
+      "52bf86f3787dc7e18414219044e19256f66a2eb14ced4efc8c2decd236853523",
+      "56634c5912c8f0684a0348afa96fd507dcbca8f08ba2163e060cf39271b10f26",
+      "833b2af1662d6fb57b93559dc25ef822151a1119a999b388df91aa8d575383ee",
+      "a8e2e2c2b01fae99c8137df901c5a1180960e4b3ee6c48e1a7a63b500070c22a",
+      "a9b54946b8e67dcd88007f1fa310326a89a47d0e9bf399b484a2308e2bc8257e",
+      "af24e666d3aa7c7ad6be16c561e667db6d771190086401d479c6443d968d8827",
+      "c5f6f9e4afaaea57e6a50e50f4d57dc565e64308c31517386b8488f0a4d376a2",
+      "c6ea4da8001318658335d52f708d712d5b168aa9e3a22c54d645544a5d12aea3",
+      "fa245010ed6a167841275b381e8ad5a5179d8121453dd807d318e40c6a7e6808"
+    ],
+    "witnesses": [],
+    "recertification_provenance": {
+      "old_policy_digest": "1463656f2e8d773e1990c2cc1637a159ab84fed4ab0c0f10b63094ff496c55a8",
+      "old_payload_sha256": "081e597d7d1b7829993914a9bf71c438a9cc560954434b41ffd5a138be10a899",
+      "old_certificate_sha256": "516acc9bfecf9b6b0a441736b1a5685eac3516b3b128ae764db0a54d1747ec6d",
+      "candidate_lock_sha256": "fdabc3af963b991509afc76fee340188433b6be624344f25342a052084fda69e",
+      "recertifier_sha256": "808b887c760152ffc0a0acbd2ccf8c552ff07e022ee04d47bad5f5bfb084a30c",
+      "native_prefix": {
+        "format": "sss-native-connected-prefix-v1",
+        "calls": [
+          "call_00_iuzs6YTXTECfzyHTPTGs3256",
+          "call_00_uD99nAAOGVqAGfv3lEyl0382",
+          "call_00_9emoW8IIB4gxmXAmM7y66609",
+          "call_00_ZepS95fbba32qzjMpotD8380"
+        ],
+        "view_end_result_seq": 34,
+        "full_events_sha256": "69e38fbcd4fc2a22575ea9acbb1343494fee7a3d8fbc131bac9c8e2dd9a19416",
+        "full_native_witness_calls": [
+          "call_00_iuzs6YTXTECfzyHTPTGs3256",
+          "call_00_uD99nAAOGVqAGfv3lEyl0382",
+          "call_00_9emoW8IIB4gxmXAmM7y66609",
+          "call_00_ZepS95fbba32qzjMpotD8380"
+        ],
+        "raw_events_unchanged": true
+      }
+    },
+    "validation_task_fingerprint": "f0bf62692bcd63b0d58b482caae448bb7bfe9614c5d6295b16dc34879a90470f",
+    "validation_witness": {
+      "nodes": [
+        {
+          "tool": "mcp__file_management__select_files",
+          "bindings": {}
+        },
+        {
+          "tool": "mcp__file_management__pin_files",
+          "bindings": {
+            "file_ids": {
+              "node": 0,
+              "path": "files[].file_id"
+            }
+          }
+        },
+        {
+          "tool": "mcp__file_management__read_files",
+          "bindings": {
+            "source_ids": {
+              "node": 1,
+              "path": "source_ids"
+            }
+          }
+        },
+        {
+          "tool": "mcp__file_management__collect_reads",
+          "bindings": {
+            "collection_id": {
+              "node": 0,
+              "path": "collection_id"
+            },
+            "source_ids": {
+              "node": 1,
+              "path": "source_ids"
+            }
+          }
+        }
+      ],
+      "values": {
+        "1:file_ids": [
+          "file:local:bfa843552bacb8d1d7c700ef",
+          "file:local:2ca224938b9638acb6626b5b",
+          "file:local:0e546b5aad26edfd8be5132d",
+          "file:local:aeeb0fff664d841a28c02dba",
+          "file:local:55f4250d45efd540cda0127f",
+          "file:local:dd345adae0e7b126f79c6b43",
+          "file:local:f9520b3998e35b57bb8c809f",
+          "file:local:4cf6f1acbcbcd9a7a1282a62"
+        ],
+        "2:source_ids": [
+          "source-564c0049d8daa85dffa9c4854de6519f",
+          "source-e393acb8f3a47c3586a8f839f87d7890",
+          "source-eba11472aa9c81913014e36a722c055b",
+          "source-ebc3b15b12648361caf10f841d0aee20",
+          "source-59c7cb220934b84f89138ad3f5976a14",
+          "source-2c9a34d2920f8adfe10d68661eedf69e",
+          "source-ab12a365942a04498cc1d20be1954bab",
+          "source-daa2b2d40e8f5cc249e193289646c78f"
+        ],
+        "3:collection_id": "collection-e8614803786a435c8fd9f7304d2f013f",
+        "3:source_ids": [
+          "source-564c0049d8daa85dffa9c4854de6519f",
+          "source-e393acb8f3a47c3586a8f839f87d7890",
+          "source-eba11472aa9c81913014e36a722c055b",
+          "source-ebc3b15b12648361caf10f841d0aee20",
+          "source-59c7cb220934b84f89138ad3f5976a14",
+          "source-2c9a34d2920f8adfe10d68661eedf69e",
+          "source-ab12a365942a04498cc1d20be1954bab",
+          "source-daa2b2d40e8f5cc249e193289646c78f"
+        ]
+      },
+      "calls": [
+        "call_00_iuzs6YTXTECfzyHTPTGs3256",
+        "call_00_uD99nAAOGVqAGfv3lEyl0382",
+        "call_00_9emoW8IIB4gxmXAmM7y66609",
+        "call_00_ZepS95fbba32qzjMpotD8380"
+      ],
+      "native_new_nodes": [
+        1,
+        2,
+        3
+      ],
+      "inherited_policy": null
+    },
+    "certified_digest": "2764bd48dbf3d00d029d5937785aa9a296c4f37902c1904f390937c316dea10b"
+  },
+  "policy_digest": "2cb93bf5772d77c6f8ed5f199a8355857112b4a89ca762fcccbe57e971607c7e"
+}

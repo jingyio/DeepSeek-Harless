@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "format": "sss-public-operation-library-v2",
+  "original_generation": 10,
+  "original_registry_sha256": "7f14b239fdc2faecc6db676737548faf2ead6107ad5cda083d5fb223b85d9833",
+  "default_activation": false,
+  "includes_private_runtime_admission_proofs": false,
+  "artifact_bytes": "exact original learned policy bytes; no re-signing",
+  "entries": [
+    {
+      "entry_id": "bafc7cf0a46dc98ef84ca194bc7cfa91c600e31de743fdb8bf4c6d8267c8ab48",
+      "path": "policies/bafc7cf0a46dc98ef84ca194bc7cfa91c600e31de743fdb8bf4c6d8267c8ab48.json",
+      "sha256": "ccc2db6d91677e6d7942cf6eebdefa95b877953edff96d7856493fddeb0f3328",
+      "policy_digest": "bafc7cf0a46dc98ef84ca194bc7cfa91c600e31de743fdb8bf4c6d8267c8ab48",
+      "original_certificate_sha256": "7a4444f75f33e1fc94640a06b77af35a499271d937daf8dc69c76d8d470459d6",
+      "original_status": "certified_motif_v2",
+      "certification_contract": "sss-operation-certification-v2",
+      "runtime_source": {
+        "src/adapters/dsh_operation_motif.ts": "49221340e403df8369817d5f490432bac5da8b08cfc1e5cd702cdfe1d2ef2ab5",
+        "src/motif_core/operation_graph_policy.ts": "76ffa0be50572f7be61dbf72b70fb94743715952a037815707debd329290125d",
+        "src/motif_core/online_skill_runtime.mjs": "cceff463594423c418585fb35784b542b125c9512dcf79067506caa56a986927",
+        "scenarios/file-management/operation_tools.py": "ad1be569ea60cbe4745a0b8eda8ac9b767aa8aaad2d8f81d1416e84ba476b018",
+        "scenarios/file-management/operation_contract.py": "debf4b79de4b5f17ed2ea2c8db1d085306d479940fc29c102b6ec898c5d591e4",
+        "scenarios/file-management/report_tools.py": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+        "scenarios/file-management/collection_tools.py": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+        "scenarios/file-management/file_tools.py": "c993ae7014bf538ff0a4cc0b0b832f6e44cb74132b385e1cd4600cc894cc94b9",
+        "scenarios/file-management/common.py": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+        "src/motif_core/operation_graph_policy_v1.ts": "30f5e0e274cd42f2cdec0b9aed314876d91553dc63287828e8d1c4dccf3f9cdb",
+        "scenarios/file-management/operation_tools_v2.py": "d48caa676a62438816219f68d504b3d28a4e54a9feec6e711933fa995ecfd973",
+        "scenarios/file-management/operation_contract_v2.py": "6c0562533692d62d7951a5dd24fe05ba6167ae5ceb6060915f0bdf1992e7e646",
+        "src/adapters/operation_job.ts": "bdfb4a7d81726fcdfd79b8e78b541861c3ade34b36f20b99290fa3e94aaec75e",
+        "src/adapters/file_workflow_job.ts": "af033605856e07e2face32c8ed6e4156aaee81a6bf29aa16a467ef3bed129480"
+      },
+      "nodes": [
+        "mcp__file_management__pin_files",
+        "mcp__file_management__read_files"
+      ],
+      "holdout_used": false,
+      "quality_and_permission_required": true,
+      "reviews": [
+        {
+          "role": "native_certification",
+          "task_fingerprint": "4fe973cfdd8c01406917c9d76b0f2f57a22a2dfad12b1bcb6bf3195e9441f8b7",
+          "record_sha256": "308717fa294b36b494cc2df171c098da3522a1f1808ab196a39985555622ca33"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "cb1e3374930e050b1997525adab43ce4c470d222fcf81d69f0335f6ba65de169",
+          "record_sha256": "813e457ddea511d15abf4815f56c6142aca22e38742ce841d9a7afb61bd06019",
+          "completion_count": 2,
+          "audit_sha256": "a0870ff25bd40d7b0053c78aa9258457639e7a5fe0aab236555a14123c044b64"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "f552f121cd5af42ba35b24b7df17340c8644305f05048b0ac0c156a3c888c8ca",
+          "record_sha256": "d03f08cd5b281e0b587a7ed3a8cf083cbb52ff4d17bea472ce83d4dc3972b1a5",
+          "completion_count": 2,
+          "audit_sha256": "17f37f37fe77b602a46a14aa8a58bf5fa621c0490a0c7b76ee5a7cc0d51bf211"
+        }
+      ]
+    },
+    {
+      "entry_id": "cd6123756f347c72ea1bbf60a6138f849178d4811178e061ad5c476cc405fe89",
+      "path": "policies/cd6123756f347c72ea1bbf60a6138f849178d4811178e061ad5c476cc405fe89.json",
+      "sha256": "a04613d49520c0f38f2d5b8f7ce3e787479e549c79ca15a3b00f1b43ee90233b",
+      "policy_digest": "cd6123756f347c72ea1bbf60a6138f849178d4811178e061ad5c476cc405fe89",
+      "original_certificate_sha256": "77ab2e8809a0daf34154a1dc3038439ff7d35e909618628c101414c5c7e3f382",
+      "original_status": "certified_motif_v2",
+      "certification_contract": "sss-operation-certification-v2",
+      "runtime_source": {
+        "src/adapters/dsh_operation_motif.ts": "49221340e403df8369817d5f490432bac5da8b08cfc1e5cd702cdfe1d2ef2ab5",
+        "src/motif_core/operation_graph_policy.ts": "76ffa0be50572f7be61dbf72b70fb94743715952a037815707debd329290125d",
+        "src/motif_core/online_skill_runtime.mjs": "cceff463594423c418585fb35784b542b125c9512dcf79067506caa56a986927",
+        "scenarios/file-management/operation_tools.py": "ad1be569ea60cbe4745a0b8eda8ac9b767aa8aaad2d8f81d1416e84ba476b018",
+        "scenarios/file-management/operation_contract.py": "debf4b79de4b5f17ed2ea2c8db1d085306d479940fc29c102b6ec898c5d591e4",
+        "scenarios/file-management/report_tools.py": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+        "scenarios/file-management/collection_tools.py": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+        "scenarios/file-management/file_tools.py": "c993ae7014bf538ff0a4cc0b0b832f6e44cb74132b385e1cd4600cc894cc94b9",
+        "scenarios/file-management/common.py": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+        "src/motif_core/operation_graph_policy_v1.ts": "30f5e0e274cd42f2cdec0b9aed314876d91553dc63287828e8d1c4dccf3f9cdb",
+        "scenarios/file-management/operation_tools_v2.py": "d48caa676a62438816219f68d504b3d28a4e54a9feec6e711933fa995ecfd973",
+        "scenarios/file-management/operation_contract_v2.py": "6c0562533692d62d7951a5dd24fe05ba6167ae5ceb6060915f0bdf1992e7e646",
+        "src/adapters/operation_job.ts": "bdfb4a7d81726fcdfd79b8e78b541861c3ade34b36f20b99290fa3e94aaec75e",
+        "src/adapters/file_workflow_job.ts": "af033605856e07e2face32c8ed6e4156aaee81a6bf29aa16a467ef3bed129480"
+      },
+      "nodes": [
+        "mcp__file_management__preview_actions",
+        "mcp__file_management__execute_plan",
+        "mcp__file_management__inspect_plan_result",
+        "mcp__file_management__pin_files",
+        "mcp__file_management__read_files"
+      ],
+      "holdout_used": false,
+      "quality_and_permission_required": true,
+      "reviews": [
+        {
+          "role": "native_certification",
+          "task_fingerprint": "159fab449bf05071787eb46333c73b41b8b9b49e2a3b358eb70c7716e10a61bd",
+          "record_sha256": "9de0cec0579300297efa20711843148a2b771dbcff83a08e4f9e8b980c1a018e"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "556f4e10e7be6950a4d6f09d5e74751de82ec4b5e6afe64733f49db2fc1d1c98",
+          "record_sha256": "663af769dc9016b63dd8bdd19828ae87185e275f397638c91c6ff2ae172185d1",
+          "completion_count": 1,
+          "audit_sha256": "74a115e5cba70bb9dce7c973605bedc51494136147f48af9076287df95398b80"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "63573cfc0062c1396189cd8b7c6eccf969f59c2358345b81660ef45e9f698554",
+          "record_sha256": "564c50ee72d52361e3fd99a4596f553513edd3e68701def025701d7a15899917",
+          "completion_count": 1,
+          "audit_sha256": "bdb4de3af5266330447498db9461d95954fd8b2a6b7baaeb7a8353cdecf6df04"
+        }
+      ]
+    },
+    {
+      "entry_id": "71c553dd007e5ad1c1bc9ab1332b6091fdaeca23e2939f28a97c346ebeeb5312",
+      "path": "policies/71c553dd007e5ad1c1bc9ab1332b6091fdaeca23e2939f28a97c346ebeeb5312.json",
+      "sha256": "21ff6b690facd8af29bce9372f8cc014a6d47c0e488d877943a8fea642dcedec",
+      "policy_digest": "71c553dd007e5ad1c1bc9ab1332b6091fdaeca23e2939f28a97c346ebeeb5312",
+      "original_certificate_sha256": "13beddc2a32e7ec019167c4e0413872536c1fc7fd1a19442dd8f3d014945ef2d",
+      "original_status": "certified_motif_v2",
+      "certification_contract": "sss-operation-certification-v2",
+      "runtime_source": {
+        "src/adapters/dsh_operation_motif.ts": "49221340e403df8369817d5f490432bac5da8b08cfc1e5cd702cdfe1d2ef2ab5",
+        "src/motif_core/operation_graph_policy.ts": "76ffa0be50572f7be61dbf72b70fb94743715952a037815707debd329290125d",
+        "src/motif_core/online_skill_runtime.mjs": "cceff463594423c418585fb35784b542b125c9512dcf79067506caa56a986927",
+        "scenarios/file-management/operation_tools.py": "ad1be569ea60cbe4745a0b8eda8ac9b767aa8aaad2d8f81d1416e84ba476b018",
+        "scenarios/file-management/operation_contract.py": "debf4b79de4b5f17ed2ea2c8db1d085306d479940fc29c102b6ec898c5d591e4",
+        "scenarios/file-management/report_tools.py": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+        "scenarios/file-management/collection_tools.py": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+        "scenarios/file-management/file_tools.py": "c993ae7014bf538ff0a4cc0b0b832f6e44cb74132b385e1cd4600cc894cc94b9",
+        "scenarios/file-management/common.py": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+        "src/motif_core/operation_graph_policy_v1.ts": "30f5e0e274cd42f2cdec0b9aed314876d91553dc63287828e8d1c4dccf3f9cdb",
+        "scenarios/file-management/operation_tools_v2.py": "d48caa676a62438816219f68d504b3d28a4e54a9feec6e711933fa995ecfd973",
+        "scenarios/file-management/operation_contract_v2.py": "6c0562533692d62d7951a5dd24fe05ba6167ae5ceb6060915f0bdf1992e7e646",
+        "src/adapters/operation_job.ts": "bdfb4a7d81726fcdfd79b8e78b541861c3ade34b36f20b99290fa3e94aaec75e",
+        "src/adapters/file_workflow_job.ts": "af033605856e07e2face32c8ed6e4156aaee81a6bf29aa16a467ef3bed129480"
+      },
+      "nodes": [
+        "mcp__file_management__execute_plan",
+        "mcp__file_management__inspect_plan_result",
+        "mcp__file_management__pin_files",
+        "mcp__file_management__read_files"
+      ],
+      "holdout_used": false,
+      "quality_and_permission_required": true,
+      "reviews": [
+        {
+          "role": "native_certification",
+          "task_fingerprint": "b7c1bcb9c3a73867a35d44e31d8dffc3768f0186a894231a88e0a63279eef378",
+          "record_sha256": "39a17e961049c901935fbe30f37f1e64c5266bf4d1931d3ebd0278764f03269a"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "de10b888034d1b2822c7413c8340dd590b765d4147b3ee7f93211d5702d19311",
+          "record_sha256": "12944d43c3ef5adf5cd169d0a6dbec7936009be3b09e1759bc20ba04f7d27a63",
+          "completion_count": 1,
+          "audit_sha256": "c8cc963665f29eb27b793beb83a0c9dbd60b58c51f25dc18dabaa7cd0c072ffc"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "10ac0d7d5079a747a29d3b9d5af80d80c3103ff29e8fc8070ef020d78dd8d72e",
+          "record_sha256": "14561392da5ea670ace1bcde534bf0a5b607f2b3264a9f32fb615ca67f3c0b08",
+          "completion_count": 1,
+          "audit_sha256": "68bf0bc8df3047c55a739fcdd85ea43f96dc0ffacd2bddf7196753ac89f9aec1"
+        }
+      ]
+    },
+    {
+      "entry_id": "a311c72fdc3cd37f254ea7698e14e2a3bc1fd8e2a7012e6503899c7cc896e1e4",
+      "path": "policies/a311c72fdc3cd37f254ea7698e14e2a3bc1fd8e2a7012e6503899c7cc896e1e4.json",
+      "sha256": "ea2fbf9ed3762a3665137b635a2102b968735749339c8488c4c891fc885e92d6",
+      "policy_digest": "a311c72fdc3cd37f254ea7698e14e2a3bc1fd8e2a7012e6503899c7cc896e1e4",
+      "original_certificate_sha256": "b0d5732d42d71458d76e15328429a78aa2ce6b475c317a969c29b51c5c019311",
+      "original_status": "certified_motif_v2",
+      "certification_contract": "sss-operation-certification-v2",
+      "runtime_source": {
+        "src/adapters/dsh_operation_motif.ts": "49221340e403df8369817d5f490432bac5da8b08cfc1e5cd702cdfe1d2ef2ab5",
+        "src/motif_core/operation_graph_policy.ts": "76ffa0be50572f7be61dbf72b70fb94743715952a037815707debd329290125d",
+        "src/motif_core/online_skill_runtime.mjs": "cceff463594423c418585fb35784b542b125c9512dcf79067506caa56a986927",
+        "scenarios/file-management/operation_tools.py": "ad1be569ea60cbe4745a0b8eda8ac9b767aa8aaad2d8f81d1416e84ba476b018",
+        "scenarios/file-management/operation_contract.py": "debf4b79de4b5f17ed2ea2c8db1d085306d479940fc29c102b6ec898c5d591e4",
+        "scenarios/file-management/report_tools.py": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+        "scenarios/file-management/collection_tools.py": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+        "scenarios/file-management/file_tools.py": "c993ae7014bf538ff0a4cc0b0b832f6e44cb74132b385e1cd4600cc894cc94b9",
+        "scenarios/file-management/common.py": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+        "src/motif_core/operation_graph_policy_v1.ts": "30f5e0e274cd42f2cdec0b9aed314876d91553dc63287828e8d1c4dccf3f9cdb",
+        "scenarios/file-management/operation_tools_v2.py": "d48caa676a62438816219f68d504b3d28a4e54a9feec6e711933fa995ecfd973",
+        "scenarios/file-management/operation_contract_v2.py": "6c0562533692d62d7951a5dd24fe05ba6167ae5ceb6060915f0bdf1992e7e646",
+        "src/adapters/operation_job.ts": "bdfb4a7d81726fcdfd79b8e78b541861c3ade34b36f20b99290fa3e94aaec75e",
+        "src/adapters/file_workflow_job.ts": "af033605856e07e2face32c8ed6e4156aaee81a6bf29aa16a467ef3bed129480"
+      },
+      "nodes": [
+        "mcp__file_management__inspect_plan_result",
+        "mcp__file_management__pin_files",
+        "mcp__file_management__read_files"
+      ],
+      "holdout_used": false,
+      "quality_and_permission_required": true,
+      "reviews": [
+        {
+          "role": "native_certification",
+          "task_fingerprint": "b899301107c49fa33b3829e2d3316e7de792c924bdb151c5873b3e899f8fa93e",
+          "record_sha256": "9cd41e8f62b4203af065bf3defcc3d2f63a265556d76aa96c0d3f8d949cd0943"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "1c0029be08651445f744122861432f18bd994d7b2937890b43daadf110a643c7",
+          "record_sha256": "e1ceb45ef7339799a9d5bb59777bea9c09dfa380cbbcc55494eef77866937b6d",
+          "completion_count": 1,
+          "audit_sha256": "5f00e35b8a8a099fe152c7d67b313c2fd45097c345a651baa89cf8a56c5768c7"
+        },
+        {
+          "role": "candidate_certification",
+          "task_fingerprint": "e2a2e9183f5950496ca99e1935cb48cbd4a704f488e07982c61244a3363c91f2",
+          "record_sha256": "207d7ed3af260c7409fca4f63b8f19bb70f6e436692678d729eb202fc64abb54",
+          "completion_count": 1,
+          "audit_sha256": "b0290a17d683b57195ef260f432c25e11dc343ff6658fb39a131f2494d9fabbd"
+        }
+      ]
+    }
+  ],
+  "private_evidence_required_for_original_activation": true
+}
