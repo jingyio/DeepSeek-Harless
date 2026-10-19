@@ -30,7 +30,7 @@ print(json.dumps({'state':cfg['state_root'],'entries':len(state['entries']),'pai
 
 
 def test_seed_release_contains_only_policies_and_sanitized_certification():
-    release=ROOT/'motif-libraries/file-v4';manifest=json.loads((release/'entry.json').read_text())
+    release=ROOT/'motif-libraries/file-v5';manifest=json.loads((release/'entry.json').read_text())
     assert manifest['raw_private_evidence_published'] is False
     for name in manifest['files']:
         raw=(release/name).read_text()

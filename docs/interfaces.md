@@ -835,3 +835,5 @@ PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿
 - 公共 `file-v*` 种子只含当前重新认证的 IR 与脱敏摘要；原资料、轨迹、私有证书、费用及旧授权不发布。安装与在线执行均核验源码/目录版本，账号后续学习相互独立，未认证或失配时回普通 Harness。
 
 文件内容工具、质量v7、复杂控制流和历史迁移契约见 [使用说明](management-local.md) 与文件场景 `docs/changes/`；本次移植不将所有自然语言目标视为可自动严格验收，未完整解析的目标继续标记复核。
+
+文件场景通用 MCP 的注册目录、请求、回执和任务文本均显式 UTF-8。下游 Python MCP 强制 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`，补传 Windows 必需系统变量；凭证仍只通过既有已登记 provider 的显式环境引用绑定，不整包转发主机环境。实际 native MCP 的中文目标/产物往返与独立源版本认证保留在本轮实验记录。

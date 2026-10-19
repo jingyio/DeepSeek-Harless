@@ -18,7 +18,7 @@ NAMES=['discover_tools','describe_tool','prepare_tool_call','execute_tool_call',
 def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 def save(path,value):
     path=Path(path);path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
-    temp=path.with_name(path.name+'.tmp');temp.write_text(json.dumps(value,ensure_ascii=False,indent=2));temp.chmod(0o600);os.replace(temp,path)
+    temp=path.with_name(path.name+'.tmp');temp.write_text(json.dumps(value,ensure_ascii=False,indent=2),encoding='utf-8');temp.chmod(0o600);os.replace(temp,path)
 
 class ProviderConnection:
     """Own a live MCP session in one long-lived task, across native tool turns."""
@@ -31,7 +31,8 @@ class ProviderConnection:
                 row=self.row
                 if row['transport']=='stdio':
                     env={'PATH':os.environ.get('PATH','/usr/bin:/bin:/opt/homebrew/bin'),'LANG':'en_US.UTF-8',
-                         'PYTHONPATH':str(ROOT),'PYTHONUNBUFFERED':'1',**{k:self.bound(v) for k,v in row.get('env',{}).items()}}
+                         'PYTHONPATH':str(ROOT),'PYTHONUNBUFFERED':'1','PYTHONUTF8':'1','PYTHONIOENCODING':'utf-8',
+                         **{k:os.environ[k] for k in ('SystemRoot','ComSpec','WINDIR','TEMP','TMP') if k in os.environ},**{k:self.bound(v) for k,v in row.get('env',{}).items()}}
                     connection=StdioServerParameters(command=self.bound(row['command']),args=[self.bound(v) for v in row.get('args',[])],
                         cwd=self.bound(row.get('cwd','${PROJECT_ROOT}')),env=env)
                 else:
@@ -75,8 +76,8 @@ class Gateway:
         self.clients={};self.locks={};self.generation=uuid4().hex
 
     def providers(self):
-        public=json.loads((ROOT/'scenarios/file-management/general-tools.json').read_text())
-        custom=json.loads(self.config.read_text()) if self.config.exists() else {'format':FORMAT,'providers':[]}
+        public=json.loads((ROOT/'scenarios/file-management/general-tools.json').read_text(encoding='utf-8'))
+        custom=json.loads(self.config.read_text(encoding='utf-8')) if self.config.exists() else {'format':FORMAT,'providers':[]}
         if custom.get('format')!=FORMAT:raise ToolError('unsupported host tool registry version')
         entries={}
         for raw in [*public['providers'],*custom['providers']]:
@@ -143,7 +144,7 @@ class Gateway:
         """
         row,_,tools,version=await self.catalog(provider_id)
         for p in (self.home/'requests').glob('*.json'):
-            prior=json.loads(p.read_text())
+            prior=json.loads(p.read_text(encoding='utf-8'))
             if (prior.get('scope')==self.scope and prior.get('provider_id')==provider_id and prior.get('tool_name')==tool_name
                     and prior.get('arguments')==arguments and prior.get('status') in ('executing','transport_error')):
                 raise ToolError('matching earlier call has unknown effects; inspect original request '+prior['request_id']+' before any retry')
@@ -168,7 +169,7 @@ class Gateway:
         if not re.fullmatch(r'tool-request-[a-f0-9]{32}',qid):raise ToolError('invalid request_id')
         p=self.home/'requests'/f'{qid}.json'
         if not p.exists():raise ToolError('unknown request_id')
-        q=json.loads(p.read_text())
+        q=json.loads(p.read_text(encoding='utf-8'))
         if q['scope']!=self.scope:raise ToolError('original task/permission/version changed')
         expected=digest({k:v for k,v in q.items() if k not in ('status','created_at','request_sha256','receipt_id')})
         if q['request_sha256']!=expected:raise ToolError('prepared request changed')
@@ -212,7 +213,7 @@ class Gateway:
         if not re.fullmatch(r'tool-result-[a-f0-9]{32}',receipt_id):raise ToolError('invalid receipt_id')
         p=self.home/'results'/f'{receipt_id}.json'
         if not p.exists():raise ToolError('unknown receipt_id')
-        r=json.loads(p.read_text())
+        r=json.loads(p.read_text(encoding='utf-8'))
         if r['scope']!=self.scope or r['receipt_sha256']!=digest({k:v for k,v in r.items() if k!='receipt_sha256'}):raise ToolError('tool receipt changed')
         return r
 
@@ -238,7 +239,7 @@ class GeneralTools:
                 if hashlib.sha256(p.read_bytes()).hexdigest()!=h:raise ToolError('general tool source version changed')
                 approved[name]=h
             save(work/'approved-inputs.json',{'files':approved})
-            report=work/'report';report.mkdir(exist_ok=True);(report/'request.txt').write_text(self.spec['objective'])
+            report=work/'report';report.mkdir(exist_ok=True);(report/'request.txt').write_text(self.spec['objective'],encoding='utf-8')
             ppt_inputs=[
                 {'document_id':'doc_'+str(i),'name':n,'path':str(inputs/n),'version_sha256':h}
                 for i,(n,h) in enumerate(approved.items()) if Path(n).suffix.lower() in ('.pdf','.pptx')]

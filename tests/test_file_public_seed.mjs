@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 const options={skip:!process.features?.typescript};
 test('online file runtime validates portable public seeds and rejects altered witnesses',options,async()=>{
  const {validatePublicManagementSeed}=await import('../src/adapters/management_seed.ts');
- const release=new URL('../motif-libraries/file-v4/',import.meta.url);
+ const release=new URL('../motif-libraries/file-v5/',import.meta.url);
  const manifest=JSON.parse(readFileSync(new URL('entry.json',release)));
  for(const entry of manifest.entries){
   const bytes=readFileSync(new URL(entry.payload,release)),policy=JSON.parse(bytes),cert=JSON.parse(readFileSync(new URL(entry.certificate,release)));
