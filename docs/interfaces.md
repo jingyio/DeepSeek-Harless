@@ -825,3 +825,17 @@ PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿
 普通聊天复用安全 Markdown 文件 mentions 和右侧预览，附独立预览/下载入口；对照正文同时支持命令环境路径和唯一文件名，包括表格内行内代码。未知文件和歧义文件名不猜测绑定；HTML 继续只预览源码，不在应用同源环境执行脚本。600/700私有权限不改为全员可读。历史文件若已被后续轮次覆盖且没有快照，不冒充原交付。
 
 发布库兼容变更见 `scripts/reexport-delivery-compat.py`：对原已认证序列化库重新运行公共 exporter 与当前完整工具契约检查，要求输出在线程序语义完全一致；发布独立 `paper-web-v13`/`ppt-master-v8`，旧版本保留。该检查不回放私人原始轨迹，不是新挖掘、质量认证或降本证据。
+
+## PPT 用户轨迹后台学习（2026-10-19）
+
+`dsh_web_tasks.ts` 在真实 PPT 任务结算与不可变对照成品保存后，调度 `harless_ppt_learning.ts` / `learn-web-ppt-tasks.py`。不新增 Agent/模型循环，不给编译 worker 模型密钥，不重新运行付费任务。普通聊天、文件交付和 `/ppt` 入口保持。Baseline 不继承私有候选，只有优化侧可在下一任务准入时选择候选；正在执行的任务不热换库。
+
+账号私有 `<output>/learning/ppt-<SHA256(user + NUL + run_scope)>/` 保存请求、状态、独立轮次、认证与晋级证据。三项合格独立 Baseline 产生 `probation`；两个来源/决定/问句均独立于训练的后续匹配对照必须具有当前候选库 SHA、真实 verified-skip 审计、实际 PPTX/PDF/PNG 成品、完整含失败重试账本及更低代理费用，才进入 `active`。无需表单或用户确认；没有对照或证据不足时保持候选状态，不后台偷偷购买验证任务。当前认证器只接受已有两条来源准备边，没有无限扩图或工具生成。
+
+自动晋级标为 `mechanical_cost_promoted`，科学内容/审美和未记录人工分钟仍未知；`quality_cost_promoted` 仅在两个对照均有明确完整人工评审时成立。现有 `action: feedback` 的踩会立即暂停私有候选并异步复核，费用增加、交付失败、来源/代码/证据字节改变或撤回均回原库。回退不删除失败证据，也不承诺后续任务必然省钱。`effective-config.json` 保存 `learning_version`、`learning_phase` 和实际库/认证 SHA。
+
+样本在各兼容配置内独立去重，用户切换模型后可用新配置的三条任务认证。否定反馈持久化后更新 `feedback-version.json`；worker在读取评估快照前冻结其摘要，选用指针保存 `feedback_version`，在线准入必须与当前摘要一致。旧worker即使较晚结束，也不能恢复已撤回候选。
+
+可选内部评审接口复用 `POST /api/harless/comparisons`，不在默认前端新增问卷：`{action:"learning-review",session_id,id,lane,output_sha256,quality:{scientific,visual,usable},human_minutes,allow_learning}`。需现有会话权限、当前完成成品 SHA、三个布尔质量字段和有限非负分钟；版本过期/无效评审拒绝。正反馈不冒充事实评审；负反馈或明确评审可否决自动保留。
+
+`scripts/reexport-ppt-learning-compat.py` 对旧已认证序列化库运行 exporter，要求在线程序、来源证据、schema 与库保持不变，再发布 `ppt-master-v9` / `paper-web-v14` 的新接线兼容锁。旧证书不修改、不冒充重训或新增费用收益。

@@ -132,14 +132,16 @@ def test_original_paper_shadow_release_stays_shadow_and_cannot_be_relabelled_as_
         load_product_bundle(tmp_path, bundle, 'paper-proofreading')
 
 
-@pytest.mark.parametrize('before,after,scene', [
-    ('paper-web-v12','paper-web-v13','paper-proofreading'),
-    ('ppt-master-v7','ppt-master-v8','ppt'),
+@pytest.mark.parametrize('before,after,scene,report_key', [
+    ('paper-web-v12','paper-web-v13','paper-proofreading','delivery_compatibility'),
+    ('ppt-master-v7','ppt-master-v8','ppt','delivery_compatibility'),
+    ('paper-web-v13','paper-web-v14','paper-proofreading','ppt_learning_compatibility'),
+    ('ppt-master-v8','ppt-master-v9','ppt','ppt_learning_compatibility'),
 ])
-def test_delivery_compatibility_reuses_validated_program_without_rewriting_previous_release(before,after,scene):
+def test_delivery_compatibility_reuses_validated_program_without_rewriting_previous_release(before,after,scene,report_key):
     original=ROOT/'motif-libraries'/before
     candidate=ROOT/'motif-libraries'/after
-    report=read(candidate/'learning-report.json')['delivery_compatibility']
+    report=read(candidate/'learning-report.json')[report_key]
     assert report['previous_certification_sha256']==sha(original/'certification.json')
     assert report['method']=='reexport_certified_serialized_library'
     assert report['model_requests']==0 and report['new_training_tasks']==0
@@ -147,4 +149,10 @@ def test_delivery_compatibility_reuses_validated_program_without_rewriting_previ
     for name in ('library.json','source-evidence.json','task.json','tool-schemas.json'):
         assert (candidate/name).read_bytes()==(original/name).read_bytes()
     assert read(candidate/'online-manifest.json')==read(original/'online-manifest.json')
-    assert load_product_bundle(ROOT,candidate,scene)['quality_cost_promoted'] is False
+    current=next(row for row in REGISTRY['scenes'] if row['id']==scene)['rsi']['runtime_bundle']
+    if candidate==ROOT/current:
+        assert load_product_bundle(ROOT,candidate,scene)['quality_cost_promoted'] is False
+    else:
+        # Historical certificates remain immutable and must reject newer code.
+        with pytest.raises(ValueError,match='code changed'):
+            load_product_bundle(ROOT,candidate,scene)

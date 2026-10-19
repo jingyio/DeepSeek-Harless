@@ -2,6 +2,8 @@
 
 - 2026-10-19（Codex）：正式网站启动/重启/检查/回退统一为 `npm run service -- ACTION`，AGENTS 和 README 固定开发者/AI 的入口，禁止临时发布脚本重复实现启动。私有计划保留持久数据/预算；入口内置认证同步、进程代际核验、互斥、活动任务拒绝与失败回退。流程见[服务生命周期](../service-lifecycle.md)，实际验证边界见[记录](../experiments/unified-service-lifecycle-20261019.md)及关联PR。
 
+- 2026-10-19（Codex，未发布）：以 main `a1c0fa2` 在 `codex/ppt-user-learning-20261019` 接通 PPT 任务轨迹→后台编译/认证→后续试用/晋级及负评停用，沿用官方 ppt-master 和既有两条来源准备结构。最终服务器 `npm test` Python900/Node855通过（199/3跳过），smoke/motif检查通过；真实读取17→15请求、2次verified skip，仅为局部结构证据。后台只有1/3合格Baseline，新用户候选尚未真实晋级；未commit/push/PR或切正式服务。兼容库v9/v14保留旧证据，细节与接手入口见[PPT交接](research_ppt.md)和[接线记录](../experiments/ppt-user-learning-20261019.md)。
+
 - 2026-10-19（Codex）：独立分支 `codex/clickable-generated-files` 修复普通聊天命令产物只有裸文件名、沙箱路径不匹配与旧报告同名干扰；保留私有权限并接入认证快照/原生预览下载。`paper-web-v13`/`ppt-master-v8` 仅对原认证序列化库做兼容重导出，非新训练。完整检查和无模型smoke通过，尚未部署；验收/发布跟踪见[修复记录](../experiments/clickable-generated-files-20261019.md)及Web交接。
 
 
