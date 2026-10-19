@@ -1,14 +1,17 @@
 # 论文校对当前交接
 
-- 更新时间与交接人：2026-10-17，Codex。
-- 目标与本次范围：复用已有 `/paper`、原生任务轨迹、Python 编译器及 Shared RSI Runtime，自动连接“任务完成→编译认证→私有版本→下一任务”。不增加 Agent 循环、认证管理或第二套轨迹存储。
-- 分支 / commit / 工作区：`codex/web-paper-auto-learning`，基于 main `547be11`；实现 `17b852a` 已推送，[PR #61](https://github.com/jingyio/DeepSeek-Harless/pull/61) 待审、未合并，GitHub Ubuntu/Windows CI 运行中。用户桌面协作者分支未改，生产服务未动。
-- 已完成：`dsh_web_tasks.ts` 完成通知/冻结版本，`harless_paper_learning.ts` 后台协调与版本准入，`learn-web-paper-tasks.py` 重用已有编译器；`web_task_budget.py` 只投影当前路由的结算回执，不重置累计用量。任务事件起点排除历史对话；不可变 round、固定留出、去重和失败状态按现有隔离目录保存。其他场景自动学习不在范围。
-- 已完成：保留 main 四档思考、六项通用能力、24 个论文工具、三模式与 RSI Off。Paper v3 / PPT r10 免费重编原证据兼容当前锁；原 v2/r9、历史 Paper Shadow 库和所有私人材料保留。修复已有“不生成 PDF”否定识别与 Prompt 冲突、后台写日志关闭异常。
-- 已验证：最终 V100 全量 `npm test` Python 1,032/Node 797 通过，Node 3 跳过。两个真实成员 bubblewrap、10 草稿跨用户拒绝及各自私有学习编译/加载通过（合成事件、零模型）。`smoke`、`motif:check`、`web:controls:check`、`web:scenes:check` 均通过，后者含 30 种选择组合与 28 项有效冻结预览。
-- 实验结论：[自动学习验收](../experiments/web-paper-auto-learning-20261017-v1.md)。真实论文原书目四份摘录，三次 Baseline 后自动发布，后续 Execute 冻结 round-0001、1 次验证跳过、0 工具错误。首轮两个导出错误完整保留；两轮共 55 请求/$0.051121236 代理估费。质量未独立审阅，不能宣称完整论文或持续降本通过。
-- 配置与数据：Registry `config/harless-scenes.json`；静态 `HARLESS_PAPER_RUNTIME_BUNDLE`、历史排版 `HARLESS_PAPER_RENDERER_ROOT` 沿用。实际候选在 V100 `.local/integration/web-paper-auto-learning-20261017`，原题/结果 `.local/auto-paper-real-20261017{,-v2}`；材料、密钥、原始事件不入 Git。私有版本位于本账号当前运行 `output/learning/<user+scope hash>/round-NNNN`。
-- 未完成与阻塞：仅支持固定来源后默认第一页读取，重复问题/源任务不计独立证据，至少两训练/一留出；生成新版本不代表覆盖增长或降本。换新运行目录不迁移旧私有版本，其他场景没有自动学习；前端新增状态面板未做。正式共享预算服务需同步回执接口，本次没有重启。
-- 接手下一步：1）审阅 PR 与双平台 CI；2）如批准部署，同步代码/回执接口和 owner/member 配置，保护原账本与用户文件；3）小流量真实业务记录新任务/覆盖/费用及失败，不扩大到任意脚本执行。
-- 权限与预算：沿用真实论文实验持续无限额授权，仍逐请求记账；不扩大外部写、私人原件或投稿权限。新 PR 目前无生产部署/合并动作。
-- 回退与风险：回退本分支代码和 Registry 至 `547be11`；保留所有私有 round、任务、费用及失败证据。原库旧代码锁会随代码变化拒绝，不能只改哈希假认证；按现有真实证据重新编译或回退匹配代码。
+- 更新时间与交接人：2026-10-20，Codex。
+- 目标与范围：沿用已有Baseline，先审计真实费用，再改善当前恢复接管；复杂恢复增益未稳定，不扩场景、不调Embedding、不更换挖掘算法。用户最新授权验证后提交并合并PR，覆盖此前只审阅不合并；不包含部署。
+- 分支/提交：`codex/paper-recovery-evidence`，本轮实现`a0074e2`；基于aff4d86，已包含main5e545b4，原脏工作区未动。PR94已推送；实现与CI修复87a16ff的四项CI全部通过。最终文档提交的检查及合并commit以PR94为权威记录，本轮已获通过后合并授权，不部署。
+- 已完成：`reuse_mediation.ts`根据受保护的显式当前执行义务，核验task/grant/来源/参数/Schema后，在首次模型请求前执行一次；失败交回语义修订，成功核验文件并交回总结。runner新增`--resume-current-operation`，非默认、非历史相似性授权。拒绝复合shell时给静态计划的精确修正建议，不执行原命令。成功通知说明Bash目录边界、附实际字段差异；不能保证模型因果解释正确。
+- 跨平台修复：原PR94 Windows失败是测试LF/CRLF与边界路径问题；实际字节摘要不放宽，Python读UTF-8原字节并统一POSIX见证，LF/CRLF均测试。旧Linux证据不追改。
+- 已验证：本轮正常恢复003/005均1个真实模型请求（仅总结），1次Runtime原生执行，完整参数逐字段未变，0工具错误/成功后额外工具。页数恢复004为18请求，37条详细记录及来源未变；最终修改说明仍有不准确处。006为43请求，7次导出、三次同字段长度失败，最终报告改写逐条表/来源且总结有错误，不能算无损成功。
+- 测试：义务接管后的npm test Python1297/Node1149通过（213/5跳过）；增加差异交接后定向Node29通过；无模型smoke通过。实现及CI修复87a16ff的GitHub Ubuntu/Windows、Push/PR四项CI全部通过；PR工作流39299513983，包含全量测试、smoke、motif:check。第二处Windows旧heredoc夹具已修复，定向Python29项通过；两轮失败记录保留。
+- 实验结论：[本轮Breakdown与全部六次真实运行](../experiments/paper-recovery-control-20261020-v2.md)。只支持显式当前操作的窄接管机制；001/002没有该义务，9/67请求，后者脚本及搜索额外成本全部保留。短协议、实际差异提示均不足以保证复杂修订稳定降本或总结正确。
+- 配置与数据：`.local/paper-recovery-control-20261020-v2/`含authorization、aggregate、逐运行quality/native/breakdown、全部测试日志；execute-final.json指向native-003。native-only的2原生契约/1诊断契约，无脚本库或embedding调用。完整代码和有效配置在各run快照，不改旧hash。
+- 最短复现：本轮实验记录引用前轮统一runner命令，增加`--resume-current-operation`；需execute、reuse-checkpoint、preserve-recovery-structure、SSS_LOCAL_SCRIPT_EXPERIMENT=1及已核验HARLESS_REPORT_FONT。当前操作义务来自显式选择，不能仅由相似轨迹设置；代码锁变化需重编库。
+- 权限与预算：本地DeepSeek Flash、reasoning off、输出32768、请求/费用不限，reset_history:false。本轮139请求/$0.200397576代理估费；本地累计4972/$8.312584668。无新pending；旧pending2、V100/账单待核保留，非账单实付。全部六项运行已结束，无生产修改。
+- 未完成/下一步：1）对同一长度约束连续失败，研究从当前可信约束生成有类型的修订缺口，避免改无关字段；不能将相关性当根因。2）真实核验复杂修订是否保留科研信息、最终总结是否与证据相符。3）局部增益稳定后再考虑独立论文、其他场景和高效挖掘。通用自然语言到当前义务尚未自动化，持续RSI增长未证实。
+- 回退：关闭实验sidecar、report-evidence及resume-current-operation回原路径；不碰生产/原件/公共认证库。代码合入与部署分开，不能直接重启正式服务。
+
+前轮：[恢复与成功复用](../experiments/paper-recovery-evidence-20261020-v1.md)、[边界证据](../experiments/paper-evidence-slice-20261019-v1.md)、[统一复用](../experiments/paper-unified-reuse-20261019-v1.md)。

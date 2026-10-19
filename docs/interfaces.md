@@ -826,6 +826,164 @@ DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路�
 原生图片继续由公开 decoder 验证并同时保留像素和文件来源。论文最多 16 个附件（其中图片最多 8 个），其他场景总数仍为 8。停止钩子按任务实际流程选择 PPT 恢复、普通论文 `export_review_report` 恢复或已启动的引用报告验收；有效引用 PDF 不再要求重复生成普通报告。缺失/过期来源与预算守卫不变。LaTeX 静态诊断中的所有来源相对路径统一用 POSIX `/`，不改变磁盘路径权限判断。
 
 PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿用 r5 原始两训练/一留出的已见证读取图，经既有离线编译器重编并绑定当前执行代码。r5 原库/证书不改；v1/v2 PPT、普通上传与论文专用 `approved_uploaded_reads_v1` 在同一 Shared RSI Runtime 中按各自参数和守卫准入。
+## Script Motif 实验接口
+
+2026-10-19，实验入口 `scripts/script-motif-web.py` 仅替换本次生成的私有 `host.patch.yml` 中两个插件 URI：`script_motif_web.ts` 包装原生 Web 的 provider continuation，`script_motif_shell.ts` 包装现有命令执行器。原生审批、任务归属、模型配置、预算与工具守卫先执行。生产 `dsh_web_tasks.ts`、`geneloop_shell.ts`、Registry 和既有认证库保持原字节。不是独立 Agent 循环，也不是已发布产品功能。
+
+## 编译与认证
+
+`learn-script-motifs.py --task <留出任务目录> --task <正常来源任务目录> --output <新的私有目录>` 消费已完成的真实 baseline 事件。第一项固定留出，后续为挖掘来源。Python AST 准入单条 Python `-c`/heredoc、保存 `.py` 后执行及独立文件调用（可有 `cd`）；从当前工作区实际路径生成文件槽/JSON shape，识别 `sys.argv` 标量槽。目录描述由导入模块、参数变量、输出标签与 URL 字面量生成；历史任务意图仍保留作来源和前驱语义证据。通用 Bash 管道、任意网络/副作用脚本和任意工具 DAG 未支持；末尾 head 只可贡献真实参数见证，不能被裁掉后冒充整个历史算子。
+
+`certify-script-motifs.mjs` 在 OS 沙箱内重跑原脚本、参数化脚本及不同字节的留出输入，要求历史 stdout 可重现、参数化前后等价、结果确定且随输入变化。出现只在来源数据中存在的常量选择器、未知路径、歧义绑定、过大输出或不允许操作时拒绝。认证不证明算法或领域结论正确；任务专属的数字、正则等常量仍可能漏检。带 argv 的程序要求两组实际历史调用参数，重放原程序和参数化程序，验证等价及输出依赖；其认证范围明确不等同独立任务质量证明。原始轨迹/观察/库只保存在 `.local/`。
+
+IR 为 `sandboxed_script_motif_library` v1：`programs[]` 保存 `id/version/language/template/inputs/description/source_goal/predecessor/intent/certification`，可选 `interface/argv_contract/network_policy`；`predecessor.program_id` 保存从真实相邻轨迹发现的参数流边，库保存 `code_locks/digest/heldout_task_id/compilation_model_requests`。运行时校验摘要、来源等价证据、程序 ID 和执行代码锁，最多加载 12 个算子。代码变化必须实际重跑认证，不能只更新哈希。当前库不是恶意管理员不可伪造的签名证书。
+
+## 匹配与执行
+
+结构先检查最近一次成功工具的类型、当前可见文件契约、唯一绑定与文件版本；语义分别比较当前完整任务和历史任务目标、最近工具意图和历史前驱意图。候选分差不足、相关性不够、与可选负例更接近、embedding 不可用或输入歧义时回退模型。启用 `demandBound:true` 时，结构边还要求上一操作是当前模型显式选择且回执已验证的缓存程序；后继优先使用它的文件绑定/版本，避免无关同类型副本造成歧义。标量/网络目标始终交给模型重新选择，不能凭历史频率自动发起。仍没有完整任务进度/Evidence 覆盖图，不能声称已消除重复检查。
+
+默认 `minSimilarity=.88/minGoalSimilarity=.6/minMargin=.04`。本轮诊断用 `.5/.6/.04` 加三个负目标；这是小样本校准，不是一般文档校对的安全阈值。内部调用使用一次性 `geneloop-script <id> <nonce>`，不把整个历史脚本加入模型上下文、不新增工具 schema。grant 绑定当前 session/输入哈希，30 秒失效。Bash 在只读、无网络沙箱执行当前数据，回执验证输出摘要和执行前后输入版本。每个程序/输入版本组合最多执行一次；回执不通过后停止该任务的后续接管，继续模型处理。
+
+`catalog:true` 通过公开 `systemPrompt.variable/section` 挂载稳定目录，普通 `mode:"cache"` 只允许模型选择，不接管 provider。已有 Bash 接受 `geneloop-cache '{"calls":[{"id":"script_...","paths":["/work/当前文件"],"argv":[]}]}'`；每批 1–8 个，参数只绑定当前工作区文件或最多 32 个有界标量。允许已验证的 `cd /work/... &&` 前缀；拒绝 head、管道和重定向并提示保留完整回执，不静默裁剪命令。批量回执全部验证后才发布 Evidence，部分失败不得成为结构前驱。缓存和完整 Motif 具有同样批量能力。目录不增加工具 schema，普通脚本缓存的选择开销仍计入模型请求。
+
+实验可显式设置 `mode:"execute",catalog:true,executionFrontier:true`。此时使用 `script_execution_frontier.ts`：从库中真实前驱关系发现无分支、同文件输入契约的 2–8 节点片段，绑定当前唯一输入；通过原系统提示接口暴露一次当前需求选择，模型仅用已有 Bash 返回：
+
+```sh
+geneloop-resolve '{"request_id":"当前请求 ID","status":"selected","candidate_id":"当前候选 ID"}'
+```
+
+允许 `unknown/ambiguous/unneeded`（不带 candidate_id），不会执行。严格校验字段、当前候选、一次性回执、输入版本及用户消息范围；不接受路径改写或代码字段。命令必须独立，追加 shell 操作或非法 JSON 会撤回本任务的候选邀请并回退，避免反复发送未解决的邀请。确认后 Runtime 在原生循环中逐节点执行并验收，直至完成或失败；失败回退语义处理，最终结论仍由模型生成。结构确定的路径/哈希不再由模型复述。当前参数缺口仅支持片段枚举选择，尚未实现一般文献身份判断或任意 argv 自动解析。每任务最多提出两个新版本请求；不调用额外子模型，不压缩原上下文，也不把 confirmation 请求算作跳过。此路径不依赖 embedding 排名，仍保留其他模式的原匹配能力。
+
+当前输入扫描包括 `inputs`、`code` 和 `/work/outputs` 对应的 `outputs/code`；Python 来源提取与 TS 绑定使用同一映射。路径必须规范、当前且无符号链接/越界，多候选仍回退。验证过且版本未变的缓存节点可以满足片段中的已完成节点；更改输入或当前用户目标会失效。这里是显式当前语义选择后的执行控制，不是凭历史轨迹推断任务必要性，也不等于完整任务进度图。真实证据及失败见[Frontier 实验](experiments/paper-script-frontier-20261019-v1.md)。
+
+`network_policy:"fixed_metadata_get_v1"` 的子进程仍禁网；`run-certified-script.mjs` 接收沙箱的 HTTP 需求，`fetch-script-evidence.py` 验证既有 arXiv/Crossref 固定元数据权限后抓取本次字节，附 URL/时间/哈希，再重放脚本。只读 GET、响应最多 2 MB、最多 12 次取证、单驱动 90 秒；失败交回模型。只支持这两类元数据，不是任意网络脚本。回执不是语义正确性证明，事实变化后必须重新取证。
+
+在线输出上限 16 KB，CPU 上限 20 秒；Linux 复用 bubblewrap，内存地址空间上限 512 MB。macOS 必须显式 `SSS_LOCAL_SCRIPT_EXPERIMENT=1`，使用 sandbox-exec，未提供 Linux 等价的内存上限；仅在本地隔离实验验收，不代表生产 macOS 支持。命令 broker 模式拒绝；Windows 未支持。Python 是执行历史 Python 脚本所必需的运行时，不宣称已无 Python 依赖。
+
+## Negative Motif 实验接口
+
+Positive Script Motif 负责复用可执行结构；Negative Tool Motif 负责标记有轨迹证据的失败重试。两库可同时装载，不增加模型工具。负面规则只通过当前显式实验 sidecar 启用，默认仅提示：
+
+```json
+{"mode":"execute","negativeLibrary":"/private/negative/library.json","negativeMode":"prompt"}
+```
+
+将 `negativeMode` 设为 `enforce` 才会启用局部早停。需要正面片段时再提供原有 `library/catalog/executionFrontier`；不带正面库也能单独做负面消融。由于 Web adapter 依赖变更，旧正面库要按既有历史源重新认证，不能只更新旧代码锁。
+
+离线 `scripts/learn-negative-motifs.py` 接纳已结束的真实成功/失败/取消轨迹及显式工具实现文件，从 MCP 结构化 `validation_error` 学习工具与失败码、参数/结果回显的版本槽位，保留事件摘要和独立调用标识。相同调用复制不算重复证据；至少两次失败才发布提示候选。有同 schema 的非失败对照、区别于非失败结果的 false outcome 标志及共同版本槽位才生成 `warn_then_exact_version_block`；这仍不是失败因果或质量认证。只有不透明错误、HTTP 失败或一个失败时不会自动生成执行封禁。库包含 Python/TS 共享 digest、工具 schema 与实现/Runtime 代码锁；当前仍是独立离线编译入口，未接成生产自动学习服务。
+
+在线顺序：当前 MCP 再次出现已编译失败 → 提示 → 校验提示确实进入原生模型请求 → 若模型再次提交同工具、同完整参数，且对应本地 JSON 状态文件、原始来源、工具 schema 和当前目标均未变，原生 `tools.guard` 阻止工具主体。单靠历史频率不会封禁新任务；缺失/歧义版本绑定、只有提示模式、新反证/错误、参数或版本变化都会放行或使旧负面证据失效。原生 MCP canonical wrapper 复用已有 `observation` 解包；早停的拒绝不被当作新的失败训练来源。
+
+版本槽位来自轨迹，不硬编码 draft 字段名；当前只自动绑定 outputs 内唯一同 SHA256 的有界无符号链接 JSON 文件。没有该权威文件时仅提示，不猜测相关状态。最多 32 类规则，单次只维护最近一条当前失败。未认证字段条件的规则仍使用完整文件哈希，改动无关字段也会释放该旧规则。
+
+新增可选 `--field-profile /private/profile.json`，将已审阅、只读且作为工具必要前置条件的 Python 校验函数切片为 `warn_then_field_guard`。profile 须位于 `.local/`，格式如下；函数文件必须同时在历史工具实现锁中，不能导入模型生成的任意代码：
+
+```json
+{"profiles":[{"tool":"mcp__docs__finalize","validator":"path/in/repository.py:validate","states":["/private/.local/failed.json"],"contrasts":["/private/.local/success.json"]}]}
+```
+
+编译器自动追踪数据和控制依赖：静态别名、键、字面量 schema、有限静态展开、动态列表循环、嵌套 if/else、布尔短路、枚举成员资格、集合关系、类型及数量比较。同一错误的多条支持路径合并，保留分支开关和跨集合字段；保留 tuple/list/range 的内部类型，生成器仅支持立即聚合，延迟消费回退；不注册论文错误名/字段规则。常量须来自源文件的字面量且匹配当前函数全局值，不接受运行时改写后的 schema。返回/捕获异常/break/continue、动态代码、未知方法、Python int/float 身份判断等仍回退；不是任意校验器解释器。
+
+新编译字段 IR 为 `version:2`，额外绑定 `failure_code` 与双向 `cause_interventions`：在失败副本中，只改候选依赖，要求谓词 false 且原工具校验器不再报该错；在对照副本中引入问题，要求谓词 true 并复现原错。优先真实对照值，无法按行对齐时尝试通用数据扰动；用有界 delta debugging 缩小改动，不保证全局最小原因。成功对照仍必需，同轨迹的其他错误状态可以作局部中性对照。残余错误写入 `result_error/whole_validator_passed`，不能将消除一个错误视作完整修复。干预只在内存副本中，不自动修改用户草稿。
+
+仍要求至少两处依赖外编辑保持原错误；缺少真实见证、成功对照、双向干预或超出 IR 限制均保留原策略。`field-compilation.json` 保留覆盖/拒绝；库内仅存字段、谓词、哈希及干预摘要。开发者仍须确认只读函数确为工具必要前置条件；这是源码辅助、经局部反事实验证的原因候选，不能称作通用黑盒因果学习或科研事实认证。
+
+IR 的根/字段读取、带作用域的映射与量词、布尔/类型/集合及比较运算由 TypeScript 有界解释，无任意代码求值。新库继续校验工具与 Runtime 锁，并核对字段错误码与双向证据；旧 version:1 仅在代码锁兼容时读取，不能修改旧锁来适配升级。节点最多 256、深度 32、数组最多 10000、执行最多 100000 步，超限回退。当前失败与 notice 实际投递后，Runtime 对同一权威文件重新解析：原来源/目标/schema、包装中的任务身份/来源版本、非版本参数均须不变，重试提交的版本必须是当前实际 SHA。失败谓词仍成立时，即使完整文件哈希变化也可阻止工具主体；真正修复、类型/字段缺失、状态歧义或范围变化均放行。当前只维护一条失败，不是全局停止或自动修复。版本 SHA 继续校验当前文件，不能用旧版本调用绕过合法版本检查。
+
+早停只阻断局部重试，保留其他工具和模型改换路线/解释未完成任务的机会；它**不等于跳过一整个模型请求**，audit 的 `model_requests_skipped` 为 0。旧失败不会因早停变成合格完成。事件为 `negative_current_failure / negative_prompt_delivered / negative_retry_early_stopped`。历史结果见 [Negative Motif 实验](experiments/paper-negative-motifs-20261019-v1.md)，初版字段条件见 [字段依赖实验](experiments/paper-negative-fields-20261019-v1.md)，多错误原因学习见 [原因学习实验](experiments/paper-negative-causes-20261019-v1.md)。
+
+实验 runner 可显式 `--recovery-checkpoint /private/draft.json --max-seconds 180`：仅复制同 worktree 私有历史草稿，要求上传来源哈希完全一致，只替换当前任务身份，并写可读取的 recovery-state 提示；超时走原生取消、保留费用。该入口是历史局部恢复诊断，不是独立完整任务或生产恢复产品。
+
+## 配置与真实复现
+
+先按 README 安装固定依赖，配置真实 API、已审核的 `HARLESS_PAPER_RENDERER_ROOT` 与 `HARLESS_REPORT_FONT`；完整报告实验前确认渲染器可用。本地 embedding 为可选独立环境：`scripts/local_embedding_server.py`，当前固定 Qwen3-Embedding-0.6B 权重摘要；配置 `SSS_EMBED_MODEL_DIR/SSS_EMBED_DEVICE/SSS_EMBED_PORT`。完整长题面需显式 `SSS_EMBED_MAX_CHARS=16000`、`SSS_EMBED_MAX_TOKENS=8192`，超长输入拒绝，不静默截掉限制语句。服务内 256 项 LRU 缓存仅复用固定模型的文本向量，不缓存任务决策；超长输入仍拒绝。模型依赖未加入基础插件依赖。
+
+私有 JSON sidecar 示例（路径由实验者填写；默认保守阈值）：
+
+```json
+{
+  "mode": "shadow",
+  "catalog": true,
+  "demandBound": true,
+  "library": "/absolute/private/round/library.json",
+  "endpoint": "http://127.0.0.1:8786/v1/embeddings",
+  "model": "Qwen/Qwen3-Embedding-0.6B",
+  "minSimilarity": 0.88,
+  "minGoalSimilarity": 0.6,
+  "minMargin": 0.04
+}
+```
+
+所有实验在独立检出目录执行。以下启动真实 API；默认本次 1 美元，已有无限额授权时才使用 `--budget-usd 0`。请求不限，runner 默认单次输出 8,000；第二轮三组统一显式 `--max-output-tokens 32768`。该参数经实验 wrapper 的 `--script-max-output-tokens` 同时进入预算代理与 native 配置，公共 CLI 保持原样。输出完成与质量必须单独检查，不能看到 completed 就判成功。
+
+```sh
+node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
+  --source /path/to/private/submission.zip --mode baseline --max-output-tokens 32768
+node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
+  --source /path/to/private/submission.zip --mode cache --script-config /path/to/private/cache.json --max-output-tokens 32768
+node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
+  --source /path/to/private/submission.zip --mode shadow --script-config /path/to/private/shadow.json --max-output-tokens 32768
+node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model \
+  --source /path/to/private/submission.zip --mode execute --script-config /path/to/private/execute.json --max-output-tokens 32768
+```
+
+三组使用同一模型、题面、工具和输出上限；默认题面为 `scenarios/paper-submission/reference-audit.prompt.md`，可显式 `--prompt`。记录在 `.local/script-motif-experiments/<run-id>/`，原生任务在 `.local/web/runs/<run-id>/tasks/`。生产/native mode 保持 `baseline/rsi=false` 以隔离旧 Motif；**实验 mode 以 sidecar 为准**。原生 UI 的 `verified_skips` 不包含此实验计数，应读取 `script-motif-audit.jsonl` 或 `summarize-script-motif-run.py --task <task-dir>`。该核算区分真实 provider 请求、认证跳过、Shadow 候选、PDF 文件存在与质量评审；不自动计算净节省。`analyze-script-motif-cost.py --task <task-dir> --output <新私有文件>` 按完整请求对齐账本和可见动作，单列搜索工具内部模型、代码生成、现成脚本调度和报告协议，不把类别费用直接视为可替代费用。 分析器另列 `structured_validation_failures`（带失败码、工具及调用标识）和 `requests_after_structured_validation_failures`，捕捉原生 `isError` 未标错但结果为 `staged/finalized/exported/done:false` 的结构拒绝；与原生异常分开，后续请求关联不等于失败的全部因果费用。`stage_current_bibliography_assessments` 与 audit 暂存均进入报告边界，阶段内可能包含补检，不能称为纯报告正文生成费用。
+
+`analyze-script-takeover.py --task <task-dir> --library <冻结正面库> [--negative-library <冻结负面库>] --output <新私有文件>` 在相同完整请求口径上增加历史价格分量核对、辅助模型范围、静态准入障碍、frontier 完成后费用和 Bash 文本非零退出诊断。它只读最终工作区，不执行源脚本；候选/AST 骨架和规则兼容均不是认证、在线接管或可兑现节省。多个工具仍只计同一个付费请求，未知用量与金额舍入单列。原 Runtime 精确状态重放的范围与 notice 假设见 [Breakdown](experiments/paper-takeover-breakdown-20261019-v1.md)。
+
+## 自动学习生命周期
+
+`--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。worker 不调用模型，允许学习有 Script sidecar 的已完成任务中的原生调用，排除 `sss-script-` / `sss-reuse-` 合成调用，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
+
+下个任务的 sidecar 可以用 `learningStore` 替代 `library`，按 owner 加载 pointer，任务开始后冻结。不能用同一论文的重复任务声称独立科研决定。当前是最小实验生命周期，worker 崩溃监控、自动淘汰/覆盖合并、负收益降权与前端可视状态仍待完善。
+
+
+## 实验性统一复用协议（2026-10-19）
+
+`reuseLibrary` 是可选私有 sidecar 字段，指向 `compile-reuse-library.py` 从至少两个真实任务成功调用编译的原生工具契约。schema 摘要和代码锁必须一致；该认证仅证明结构化传参，不证明科研判断、当前必要性或写入授权。当前不进入公共产品默认配置。
+
+Python 离线 `script_dataflow_compiler.py` 在一次 Python 调用内部，寻找被后续语句消费的变量，按 AST 向后提取依赖片段；以原始前缀和独立输入沙箱重放验证。不支持的函数、别名、复杂控制流拒绝；读入的当次事实仍是参数，历史科研结论不得成为模板。整个脚本的认证与片段认证使用不同 scope。
+
+TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`，不增加 LLM 可见工具。模型明确选择当前操作、缺失语义字段或局部修改；Runtime 绑定文件/参数/结果引用，逐步派发原生工具并运行现有权限守卫。示例中的 ID 必须来自当前通知，不能自行构造：
+
+```json
+{"calls":[{"tool":"当前已认证工具名","arguments":{"title":"当前标题"},"bindings":[{"at":"/sections","from":{"artifact":"value_ID","pointer":""}}]}]}
+```
+
+单独执行 `geneloop-reuse '<JSON>'`，允许固定 `cd /work &&` 前缀。也可读取当前 `code` 中保存的 `geneloop-reuse --plan /work/plan.json`，计划文件在接收、续接和执行前验证字节版本。不执行命令替换、管道或重定向。`base:{artifact,pointer}` 复用整份参数，不能同时指定 `arguments`；`patches` 支持有界 JSON Pointer 的 add/replace/remove/test。后继通过 `bindings.from:{step:0,pointer:"/source_id"}` 消费前一步成功结果。最多12步；原生软失败、来源变化、schema变化或用户新要求停止执行/交回模型。
+
+同一计划可包含 `{script:"script_ID",paths:["/work/current.bib"]}`；单输入算子可通过 `foreach:{artifact,pointer:"/active_files"},root:"/work/current-source"` 绑定最多16个真实输入。必须有当前完整文件集合，不能由后缀相似推断全文已读。网络/argv算子仍用原缓存协议，未扩展通用写脚本权限。
+
+当前 JSON、原生参数及结果引用仅在本任务有效。文件与批准输入用 SHA 守卫，工具参数按当前 schema 验证；原参数局部修改不自动说明其科研结论仍正确。静态协议放系统前缀，新增引用和修订机会用 Harness 原生 plugin notice 追加。原始结果不改写、不隐藏失败。尚无自动从任意目标合成执行图；模型仍需选择结构计划，选中后的连续执行才可省去后继模型决策。
+
+实验 runner 设置 `SSS_REUSE_TRACE=1`，在工具边界记录受限文本文件版本及私有内容寻址副本（256文件、每文件1MB、每边界8MB、深度5），不是全文件系统快照。新采集器检查输入与脚本是否仍匹配执行前版本；旧轨迹明确标记最终工作区重放，不能冒充边界证据。当前尚未从快照自动恢复被后续覆盖的中间输入，这是高成本片段认证覆盖的限制。
+
+`--reuse-checkpoint <本检出.local下JSON>` 与旧 `--recovery-checkpoint` 互斥，要求历史参数 `source_versions` 与本次批准上传完全一致。该入口复制真实失败调用作为当前可读数据，仅用于单独记录的历史恢复实验；不算新论文完整评测。
+
+自动学习 worker 生成脚本库与原生复用契约库，原子发布包含 `file`/`reuse_file` 的 owner 隔离指针；下任务开始时冻结。学习本身没有模型请求，但沙箱耗时、无合格库/超时等失败仍记录。效果与限制见 [统一复用实验](experiments/paper-unified-reuse-20261019-v1.md)。
+
+### 边界快照、诊断片段与隔离导出变体（2026-10-19）
+
+`learn-script-motifs.py`现在从`reuse-boundaries.jsonl`的调用前快照恢复新的私有重放目录，校验路径、字节摘要、大小与非符号链接。`reuse_snapshot.py`另可把真实原生参数/结果实体化为留出输入，明确标为`native_record_materialization_not_pre_call_file`，不能冒充历史文件快照。认证器重放原程序和切片，在不同真实输入上验证行为；拒绝和容量截断均保留。当前按程序长度优先取12项，只是有界目录策略，不是费用最优化。
+
+`probe_motif_compiler.py`从至少两项完成的真实任务，提取同一工具/schema/失败签名下实际发生的数组子集试验，包含成功子集见证。输出原生库的`probe_contracts`，保存字段路径、回执签名、来源摘要与最多24次的边界，不携带历史报告正文。它学习的是**曾用过的诊断操作**，不认证错误因果关系、单调性或唯一原因；相同论文恢复任务不算独立论文泛化。自动学习worker也编译此项。
+
+仅当私有sidecar显式设置`probeTools:["已授权的原生工具名"]`、当前观察到匹配失败、当前模型通过`geneloop-reuse '{"diagnose":{"contract":"probe_ID","base":{"artifact":"value_ID"}}}'`选择后，`probe_frontier.ts`才连续试验。每次仍经原生schema/权限/来源/用户意图/nonce守卫；不同失败、来源变化、无可用轴、schema不合法或次数上限均交回模型。两个半集成功只记为交互/不稳定，不能推断修复。成功子集均为诊断产物，不能代替完整报告；当前它们仍可能出现在实验下载列表，故该功能默认关闭，未准入产品。
+
+当前产物通知只提示schema兼容的整份参数和明确失败修订，不再枚举全部无关JSON。frontier语义候选按事件追加一次，避免每步改变系统前缀。语义选择仍由当前模型完成；没有加入新的Embedding模型或声称自动推断任务目标。
+
+`run-script-motif-experiment.py --report-evidence`是独立的导出实验变体，Baseline/Execute必须同设。`script-motif-web.py`仅在私有实验配置中将`paper_checks`入口换为`paper-evidence-server.py`，记录相关代码摘要与`production_certified:false`。`evidence_report.py`隔离加载原导出实现，补充缺失字形回退；原生校验失败时返回`argument_issues:[{pointer,value_sha256,check,block_id}]`，SHA256对应当前字符串UTF-8字节。Runtime只接受当前值哈希吻合的位置，已有定位时不再提示盲目子集诊断。失败位置不等于原因，也不允许跳过科研判断。
+
+此变体不改旧生产模块、工具参数schema或认证库，不受旧库证书覆盖；未指定标志时原生产导出路径不变。缺字回退优先使用已有Matplotlib字体，否则使用ReportLab自带Vera，不新增必装依赖，不改写原文字。真实结果、失败和因果归因限制见[执行接管实验](experiments/paper-evidence-slice-20261019-v1.md)。
+
+### 当前错误恢复目标与成功产物复用（2026-10-20）
+
+隔离`--report-evidence`返回`execution_evidence` v1：完整参数摘要、当前source_versions、代码/依赖/字体配置摘要、task/output grant摘要、可选当前恢复目标摘要。失败字段包含pointer、check、value_sha256及受限预览；结构字段用`hash_kind:json`，字符串默认按UTF-8字节计算。Runtime同时核验当前参数、来源、授权与恢复目标，再展示字段证据；检查失败的范围不能作为根因证明。
+
+成功回执另包含delivery receipt相对路径/摘要和delivery_passed。Runtime读取实际receipt与产物，检查来源、任务、路径、大小及SHA256后交回最终总结。隔离服务对相同当前参数/来源/导出配置/授权的成功输出使用最多32项进程内缓存；每次命中重查真实文件，重启不从磁盘自动加载旧成功。`artifact_reused`只代表复用已验收文件，不代表跳过整个模型请求或科研判断。
+
+真实局部恢复runner可显式启用`--preserve-recovery-structure`，必须同时有`--reuse-checkpoint`。受保护的`review-recovery-scope.json`由当前任务入口写入不可供Bash修改的工作区根，绑定task/source与完整参数；这是当前用户范围的具体化，不由Runtime从历史相似性推断。默认拒绝数组长度/对象结构变化，允许叶子文字修订，需结构重设计时另行明确范围。Runtime在初次候选通知提供有界结构摘要和当前目标引用；仍由模型选择必要操作/patch。子集诊断不再被当成完整交付，结构通过也不保证同形状文字的科学正确性。环境快照新增沙箱开关、字体SHA和结构保留标志。验证与全部失败见[本轮记录](experiments/paper-recovery-evidence-20261020-v1.md)。
+
 
 
 ## 普通聊天生成文件入口（2026-10-19）
@@ -872,3 +1030,14 @@ PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿
 
 
 File 公开种子重认证入口为 `scripts/recertify-file-seeds.py`（默认免费预览，显式 `--call-model` 才运行）。历史公开证明只经 `validate_historical_certificate` 作为候选来源；在线仍使用 `validate_certificate` 核对当前源码/目录。当前 `file-v6` 保留四类 v5 图，经新原生见证及两次实际执行发布；旧证书不重签。复杂原生交错可能触发守卫并安全回普通 Harness，不能承诺任意任务都会跳过请求。
+
+
+### 显式恢复当前操作（实验入口，2026-10-20）
+
+`run-script-motif-experiment.py --resume-current-operation` 仅能与 `--mode execute --reuse-checkpoint ... --preserve-recovery-structure` 同用。该选项表示本轮明确选择恢复该原生操作，不能由相似轨迹自动设置。runner 在 Bash 不可写的 `review-recovery-scope.json` 中记录 `execution_obligation={kind:"resume_current_operation",tool,arguments_sha256,max_attempts:1}`。
+
+TypeScript Runtime 在首次模型请求前验证当前任务ID、输出授权、完整参数、来源版本、已认证工具及当前Schema，直接绑定执行一次。未开启时维持原有模型选择；任务/授权/来源/目标变化或资格不足时回退，失败后不自动重试或修改科研内容。成功仍须核验真实文件并交回模型总结；失败交回当前字段与检查证据。它是显式目标的执行接线，不是新挖出的Motif，也不表示所有后续语义恢复都能跳过。
+
+复用协议仍拒绝管道/重定向/组合写入。可识别静态JSON时，拒绝回执可提供保留原计划的 `retry_command`，只作下一次调用的语法修正建议；不会执行原命令、写计划文件或跳过新的守卫。交付通知包含当前参数相对受保护目标的实际差异 `changes`（最多64个pointer，注明截断），帮助最终说明与真实修改一致。文档服务的 `outputs/documents` 不在 Bash 挂载目录，成功文件由 Runtime 直接核验。
+
+边界快照与Python文件见证统一使用POSIX相对路径；保存脚本按UTF-8真实字节读取，保留CRLF再计算摘要，防止跨平台文本转换造成伪失效。旧Linux快照摘要不改写。费用、质量和失败见 [本轮记录](experiments/paper-recovery-control-20261020-v2.md)。

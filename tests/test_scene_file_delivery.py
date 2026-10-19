@@ -133,3 +133,46 @@ def test_review_write_failure_never_publishes_partial_files(tmp_path,monkeypatch
             [{'heading':'Scope','paragraphs':['Only the uploaded manuscript was reviewed.']}],
             {'paper.txt':hashlib.sha256(raw).hexdigest()})
     assert list((root.parent/'outputs/documents').iterdir())==[]
+
+
+def test_failed_render_returns_current_field_hashes_without_guessing_a_cause(tmp_path,monkeypatch):
+    import src.adapters.evidence_report as module
+    root=tmp_path/'work/inputs';root.mkdir(parents=True);(root/'paper.txt').write_text('source')
+    versions={'paper.txt':hashlib.sha256(b'source').hexdigest()}
+    monkeypatch.setattr(module,'build_document',lambda *a: {'quality_passed':False,'audit':{'checks':{'all_text_preserved':False},'missing_text':['section-0-paragraph-1','section-99-paragraph-0','title']}})
+    report=module.SessionReport(module.base.SessionFiles(root),'paper-review')
+    result=report.export('title',[{'heading':'heading','paragraphs':['unchanged','bad glyph']}],versions)
+    assert not result['exported']
+    assert [x['pointer'] for x in result['argument_issues']]==['/sections/0/paragraphs/1','/title']
+    assert result['argument_issues'][0]['value_sha256']==hashlib.sha256(b'bad glyph').hexdigest()
+    assert not (root.parent/'outputs').exists()
+
+
+def test_configured_font_fallback_preserves_primary_glyphs_and_supplies_missing_glyph(monkeypatch):
+    from types import SimpleNamespace
+    from reportlab.pdfbase import pdfmetrics
+    from src.adapters.evidence_report import _fallback_font
+    from benchmarks.research_report_agent_v2.document_engine import _paragraph_markup
+    fallback=SimpleNamespace(fontName='ResearchFallbackSans',face=SimpleNamespace(charToGlyph={ord('a'):1,ord('ğ'):2}))
+    primary=SimpleNamespace(face=SimpleNamespace(charToGlyph={ord('a'):1}))
+    monkeypatch.setattr(pdfmetrics,'getRegisteredFontNames',lambda:['ResearchFallbackSans'])
+    monkeypatch.setattr(pdfmetrics,'getFont',lambda n:fallback if n=='ResearchFallbackSans' else primary)
+    f=_fallback_font('configured')
+    assert f.face.charToGlyph=={ord('ğ'):2}
+    assert _paragraph_markup('ağ',f)=='a<font name="ResearchFallbackSans">ğ</font>'
+
+
+def test_report_variant_is_isolated_and_does_not_reuse_prior_render_evidence(tmp_path,monkeypatch):
+    import src.adapters.evidence_report as variant
+    import src.adapters.session_report as production
+    import benchmarks.research_report_agent_v2.document_engine as engine
+    assert variant.base is not production and variant.engine is not engine
+    assert production.build_document is engine.build_document
+    root=tmp_path/'work/inputs';root.mkdir(parents=True);(root/'paper.txt').write_text('source')
+    versions={'paper.txt':hashlib.sha256(b'source').hexdigest()}
+    monkeypatch.setattr(variant,'build_document',lambda *a: {'quality_passed':False,'audit':{'checks':{'all_text_preserved':False},'missing_text':['title']}})
+    report=variant.SessionReport(production.SessionFiles(root),'paper-review')
+    assert report.export('title',[{'heading':'h','paragraphs':['p']}],versions)['argument_issues']
+    result=report.export('title',[{'heading':'h','paragraphs':['p']}],{})
+    assert result['reason']=='source_versions_mismatch' and 'argument_issues' not in result
+    assert variant.render_result.get() is None
