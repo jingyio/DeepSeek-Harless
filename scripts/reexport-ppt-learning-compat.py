@@ -28,9 +28,9 @@ SHARED = {'src/adapters/dsh_web_tasks.ts', 'src/adapters/dsh_online_motif.mjs', 
 REVIEWED_BY_SCENE = {'paper-proofreading': SHARED, 'ppt': SHARED | {'scripts/learn-ppt-master-motif.py', 'src/adapters/harless_settings.ts'}}
 ADDITIONAL_LOCKS = {'scripts/reexport-ppt-learning-compat.py', 'scripts/learn-web-ppt-tasks.py', 'src/adapters/harless_ppt_learning.ts'}
 RELEASES = [
-    ('paper-web-v15', 'paper-web-v16', 'paper-proofreading',
+    ('paper-web-v16', 'paper-web-v17', 'paper-proofreading',
      'scenarios/paper_proofreading/document-read-contracts.json'),
-    ('ppt-master-v10', 'ppt-master-v11', 'ppt', 'scenarios/ppt_master/contracts.json'),
+    ('ppt-master-v11', 'ppt-master-v12', 'ppt', 'scenarios/ppt_master/contracts.json'),
 ]
 VALIDATION_RECORD = 'docs/experiments/file-ppt-integration-20261019.md'
 

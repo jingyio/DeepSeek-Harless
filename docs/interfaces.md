@@ -2,6 +2,10 @@
 
 ## 附件与多轮上下文（2026-10-19）
 
+内部资料事件使用原生公开 `session.append(..., {surfaceOp:"append"})`；比较 host 的 `prepare` 支持 `taskReady(task_id)`，在 preview 后、异步 submit 完成前绑定同一任务并订阅真实准备进度。取消、预算和原接收锁不因此分叉。
+
+私有资料 envelope version=2 可含 `source_reading_index`（schema_version=1）。索引仅从已接纳来源生成，按原件 SHA/格式/页号/渲染像素绑定像素观察；`origin` 为观察来源，`admitted_origin` 为当前 catalog 状态，同 SHA 重传不会覆盖旧成功或把它称作本轮新核验。完整旧证据、OCR、失败和不清楚项仍保留。该字段既不进入人类输入，也不增加权限或认证主张。
+
 浏览器输入只展示经过接收的用户原话和文件卡片。新附件的只读提取与页面观察以 `geneloop-attachment-context` plugin 来源进入原生会话，放在本轮真实用户消息之前；plugin 只是来源标记，执行权限仍由原有工具、来源、版本及账号守卫决定。它不代表用户又上传一次，也不成为新的人类轮次或标题材料。
 
 历史资料不在普通 follow-up 中重新解析。切换场景或更换来源时，完整既往交流、已有来源观察与已接收图片引用进入新的私有执行会话；原日志不改。旧版混入人类消息的提取后缀，只有与持久任务的原始接收内容逐项吻合才允许展示清理和隔离迁移；用户粘贴同形 JSON 默认保留。预处理状态独立发布实际的读取、渲染、页图像进度，不伪装成主模型已经开始思考。
@@ -864,4 +868,7 @@ PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿
 
 可选内部评审接口复用 `POST /api/harless/comparisons`，不在默认前端新增问卷：`{action:"learning-review",session_id,id,lane,output_sha256,quality:{scientific,visual,usable},human_minutes,allow_learning}`。需现有会话权限、当前完成成品 SHA、三个布尔质量字段和有限非负分钟；版本过期/无效评审拒绝。正反馈不冒充事实评审；负反馈或明确评审可否决自动保留。
 
-`scripts/reexport-ppt-learning-compat.py` 对旧已认证序列化库运行 exporter，要求在线程序、来源证据、schema 与库保持不变，从主线当前 `ppt-master-v10` / `paper-web-v15` 发布 `ppt-master-v11` / `paper-web-v16` 的新接线兼容锁。旧证书不修改、不冒充重训或新增费用收益。
+`scripts/reexport-ppt-learning-compat.py` 对旧已认证序列化库运行 exporter，要求在线程序、来源证据、schema 与库保持不变，从 PR92 主线当前 `ppt-master-v11` / `paper-web-v16` 发布 `ppt-master-v12` / `paper-web-v17` 的新接线兼容锁。旧证书不修改、不冒充重训或新增费用收益。
+
+
+File 公开种子重认证入口为 `scripts/recertify-file-seeds.py`（默认免费预览，显式 `--call-model` 才运行）。历史公开证明只经 `validate_historical_certificate` 作为候选来源；在线仍使用 `validate_certificate` 核对当前源码/目录。当前 `file-v6` 保留四类 v5 图，经新原生见证及两次实际执行发布；旧证书不重签。复杂原生交错可能触发守卫并安全回普通 Harness，不能承诺任意任务都会跳过请求。
