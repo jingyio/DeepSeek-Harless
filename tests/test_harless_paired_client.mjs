@@ -658,7 +658,7 @@ test('live stream renders incremental text and real activity before terminal com
   assert.equal(f.all(row=>f.isMarkdown(row))[0].props.text,'正在分析第一');
   assert.equal(f.all(row=>f.isMarkdown(row))[0].props.streaming,true);
   assert.equal(f.all(row=>row.props.className==='geneloop-looping')[0].props.title,'正在读取数据');
-  assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,undefined,'tool details remain collapsed');
+  assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,false,'tool details remain collapsed');
   partial.lanes.baseline.answer+='组数据';stream.emit(partial);f.render();
   assert.equal(f.all(row=>f.isMarkdown(row))[0].props.text,'正在分析第一组数据');
   stream.emit(comparison());f.render();assert.equal(stream.closed,true);
@@ -684,6 +684,39 @@ test('paired lanes own matching bottom GeneLooping indicators and finish indepen
   assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,1);
   assert.equal(f.all(row=>row.props.className==='geneloop-looping')[0].props['aria-label'],'Motif 正在处理');
   f.streams[0].emit(comparison());f.render();assert.equal(f.all(row=>row.props.className==='geneloop-looping').length,0);f.dispose();
+});
+
+test('each lane keeps manual process expansion through stream updates and view remounts', async () => {
+  const value = comparison(); value.status = 'running'; value.scoring_available = false;
+  for (const lane of Object.values(value.lanes)) { lane.status = 'running'; lane.activity = [{ label: '读取资料', status: 'running' }]; }
+  const f = fixture(undefined, value, { streaming: true }); await flush(); f.render();
+  const details = () => f.all(row => row.props.className === 'harless-activity');
+  details()[0].props.onToggle({ currentTarget: { open: true } }); f.render();
+  assert.equal(details()[0].props.open, true); assert.equal(details()[1].props.open, false);
+  const next = structuredClone(value); next.snapshot_revision = 2; next.lanes.baseline.answer += '新文字';
+  f.streams[0].emit(next); f.render(); assert.equal(details()[0].props.open, true);
+  f.remount(); assert.equal(details()[0].props.open, true); assert.equal(details()[1].props.open, false);
+  details()[0].props.onToggle({ currentTarget: { open: false } }); f.render(); f.remount();
+  assert.equal(details()[0].props.open, false); f.dispose();
+});
+
+test('paired long code uses the same sidebar cards and keeps original copy text and approved deliveries separate', async () => {
+  const value = comparison(); const body = Array.from({ length: 15 }, (_, i) => 'print(' + i + ')').join('\n');
+  for (const lane of Object.values(value.lanes)) { lane.answer = '代码：\n```python\n' + body + '\n```'; lane.artifacts = []; }
+  const before = JSON.stringify(value), f = fixture(undefined, value); await flush(); f.render();
+  const entries = f.all(row => f.isMarkdown(row));
+  const baseline = f.mount(entries[0]), motif = f.mount(entries[1]);
+  const shown = child => child.all(row => row.type === f.MarkdownText)[0].props.text;
+  assert.doesNotMatch(shown(baseline), /print\(0\)/); assert.match(shown(baseline), /代码片段-1.py/);
+  const baselineHref = /\]\(([^)]+)\)/.exec(shown(baseline))[1], motifHref = /\]\(([^)]+)\)/.exec(shown(motif))[1];
+  assert.notEqual(baselineHref, motifHref, 'lanes do not overwrite one another’s code fragments');
+  let prevented = false;
+  f.all(row => row.props.className === 'harless-paired-answer')[0].props.onClickCapture({
+    target: { closest: () => ({ getAttribute: () => baselineHref }) }, preventDefault() { prevented = true; }, stopPropagation() {},
+  });
+  assert.equal(prevented, true); assert.match(f.openedPreviews[0], /^dsh-resource:\/\/geneloop-code\/snippet-/);
+  assert.equal(entries[0].props.fileMentions.resolve('代码片段-1.py'), undefined, 'in-memory reply code is not a server delivery grant');
+  assert.equal(JSON.stringify(value), before); f.dispose();
 });
 
 test('a stale initial GET cannot replace newer streaming text; unmount closes the stream', async () => {
@@ -818,7 +851,7 @@ test('successive real assistant messages stay visible during tools and collapse 
   next.lanes.baseline.messages.push({id:'final',text:'完整结论',status:'completed'});f.streams[0].emit(next);f.render();
   assert.equal(f.all(row=>row.props.className==='harless-stream-messages').length,0);
   assert.equal(f.all(row=>row.props.className==='harless-paired-answer')[0].children[0].props.text,'完整结论');
-  assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,undefined);f.dispose();
+  assert.equal(f.all(row=>row.props.className==='harless-activity')[0].props.open,false);f.dispose();
 });
 
 test('lane footer copies full Markdown, reports actual usage and duration, and persists reversible feedback', async () => {
@@ -1014,4 +1047,18 @@ test('approved relative Markdown links retain captions and open preview; example
   let prevented=false;const answer=f.all(row=>row.props.className==='harless-paired-answer')[0];
   answer.props.onClickCapture({target:{closest:()=>({getAttribute:()=>href})},preventDefault(){prevented=true;},stopPropagation(){}});
   assert.equal(prevented,true);assert.equal(f.openedPreviews.length,1);assert.equal(f.downloaded.length,0);f.dispose();
+});
+
+
+test('sandbox output and scratch paths resolve only to approved files, including bare filenames in tables',async()=>{
+ const value=comparison();value.lanes.baseline.artifacts=[{...artifact,name:'outputs/code/pelican.html'}, {...artifact,id:'scratch',name:'code/bird.svg'}];
+ value.lanes.baseline.answer='| 文件 |\n|---|\n| `pelican.html` |\n| [动画](/work/outputs/pelican.html) |';
+ const f=fixture(undefined,value);await flush();f.render();const md=f.all(row=>f.isMarkdown(row))[0];
+ const mentions=md.props.fileMentions;
+ for(const path of ['pelican.html','/work/outputs/pelican.html','outputs/pelican.html','sandbox:/work/outputs/pelican.html'])assert.equal(mentions.resolve(path).title,'pelican.html');
+ assert.equal(mentions.resolve('/work/bird.svg').title,'bird.svg');assert.equal(mentions.resolve('missing.md'),undefined);
+ assert.match(md.props.text,/#geneloop-preview=/);
+ value.lanes.baseline.artifacts.push({...artifact,id:'duplicate',name:'outputs/other/pelican.html'});
+ f.dispose();const ambiguous=fixture(undefined,value);await flush();ambiguous.render();
+ assert.equal(ambiguous.all(row=>ambiguous.isMarkdown(row))[0].props.fileMentions.resolve('pelican.html'),undefined);ambiguous.dispose();
 });

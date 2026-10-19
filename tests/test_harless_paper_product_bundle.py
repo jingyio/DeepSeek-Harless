@@ -130,3 +130,64 @@ def test_original_paper_shadow_release_stays_shadow_and_cannot_be_relabelled_as_
     (bundle / 'entry.json').write_text(json.dumps(entry), encoding='utf-8')
     with pytest.raises(ValueError, match='invalid existing product library'):
         load_product_bundle(tmp_path, bundle, 'paper-proofreading')
+
+
+@pytest.mark.parametrize('before,after,scene,record', [
+    ('paper-web-v12','paper-web-v13','paper-proofreading','delivery_compatibility'),
+    ('ppt-master-v7','ppt-master-v8','ppt','delivery_compatibility'),
+    ('paper-web-v13','paper-web-v14','paper-proofreading','attachment_context_compatibility'),
+    ('ppt-master-v8','ppt-master-v9','ppt','attachment_context_compatibility'),
+    ('paper-web-v14','paper-web-v15','paper-proofreading','attachment_surface_compatibility'),
+    ('ppt-master-v9','ppt-master-v10','ppt','attachment_surface_compatibility'),
+    ('paper-web-v15','paper-web-v16','paper-proofreading','attachment_evidence_consumption_compatibility'),
+    ('ppt-master-v10','ppt-master-v11','ppt','attachment_evidence_consumption_compatibility'),
+])
+def test_compatibility_reuses_validated_program_without_rewriting_previous_release(before,after,scene,record):
+    original=ROOT/'motif-libraries'/before
+    candidate=ROOT/'motif-libraries'/after
+    report=read(candidate/'learning-report.json')[record]
+    assert report['previous_certification_sha256']==sha(original/'certification.json')
+    assert report['method']=='reexport_certified_serialized_library'
+    assert report['model_requests']==0 and report['new_training_tasks']==0
+    assert report['raw_traces_replayed'] is False
+    for name in ('library.json','source-evidence.json','task.json','tool-schemas.json','online-manifest.json'):
+        assert (candidate/name).read_bytes()==(original/name).read_bytes()
+    assert read(candidate/'online-manifest.json')==read(original/'online-manifest.json')
+    if record=='attachment_evidence_consumption_compatibility':
+        assert report['changed_code_locks']==['src/adapters/harless_attachment_context.ts']
+        assert set(report['additional_code_locks'])=={'src/adapters/harless_attachment_reading.ts',
+                                                    'scripts/reexport-attachment-reading-compat.py'}
+    if record in ('attachment_context_compatibility','attachment_surface_compatibility',
+                  'attachment_evidence_consumption_compatibility'):
+        # New certificate hashes must describe the LF bytes Git will commit,
+        # including when this release is exported on Windows.
+        for path in candidate.iterdir():
+            if path.is_file():
+                assert b'\r\n' not in path.read_bytes(),path.name
+    current=next(row for row in read(ROOT/'config/harless-scenes.json')['scenes'] if row['id']==scene)['rsi']['runtime_bundle']
+    if candidate==ROOT/current:
+        assert load_product_bundle(ROOT,candidate,scene)['quality_cost_promoted'] is False
+    else:
+        # Historical release bytes stay valid for their original runtime, and
+        # must fail closed against today's changed attachment implementation.
+        with pytest.raises(ValueError,match='code changed'):
+            load_product_bundle(ROOT,candidate,scene)
+
+
+@pytest.mark.parametrize('name',[
+    'src/adapters/harless_attachment_context.ts',
+    'src/adapters/geneloop_attachment_cache.ts',
+    'src/adapters/harless_public_output.ts',
+    'src/adapters/harless_task_progress.ts',
+    'scripts/reexport-attachment-context-compat.py',
+    'scripts/reexport-surface-context-compat.py',
+    'src/adapters/harless_attachment_reading.ts',
+    'scripts/reexport-attachment-reading-compat.py',
+])
+def test_attachment_compatibility_locks_each_new_context_and_evidence_boundary(tmp_path,name):
+    root,bundle=copy_release(tmp_path)
+    assert name in read(bundle/'certification.json')['code_locks']
+    assert load_product_bundle(root,bundle,'paper-proofreading')['runtime_mode']=='execute'
+    (root/name).write_bytes((root/name).read_bytes()+b'\n')
+    with pytest.raises(ValueError,match='code changed'):
+        load_product_bundle(root,bundle,'paper-proofreading')

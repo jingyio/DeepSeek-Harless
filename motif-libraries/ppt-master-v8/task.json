@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "task_id": "ppt-master-admission",
+  "session_id": "ppt-master-admission",
+  "intent": "Convert and read the exact model-selected uploaded PDF using official version-locked tools.",
+  "input_version": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+  "bindings": {},
+  "source_versions": {
+    "mcp__ppt_master__pin_source": "@observed",
+    "mcp__ppt_master__convert_source": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+    "mcp__ppt_master__read_converted_source": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794"
+  }
+}

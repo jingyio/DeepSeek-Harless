@@ -1,5 +1,26 @@
 # DeepSeek Harless Web 当前交接
 
+- 2026-10-19（Codex）：附件/上下文与执行展示修复已发布运行代码 `d2291646`。当前原话与 plugin 资料分离、后续轮不重解析历史、完整上下文和图片随场景承接、准备进度提前绑定同一任务；执行展开状态与代码侧栏已真网页验证。paper16/ppt11是原库兼容认证，无新训练。真实四格式24轮/28侧全部严格通过；旧污染会话续聊2轮通过且日志原字节保留。Linux全量Python1114通过/2跳过、Node887通过/3跳过（仅测试完成窗口补丁，旧fixture超时保留），smoke/motif/continuation通过；最新GitHub Actions未取得终态，不称跨平台CI已通过。PPT更新仍16次冗余工具，未保证最短路径；短跨场景样本未测得两侧主请求重叠。发布/完整检查状态与失败费用见[验收记录](../experiments/attachment-context-streaming-20261019.md)；PR89–91已合并，最后证据消费修复跟踪PR92。私有结果在 `.local/attachment-integrity-20261019/`，六组代理估费合计$0.245796300（排除独立网页成员测试及其他流量），账单未知。继续沿用共享账本和不限额度配置。服务仍仅从私有环境的 GENELOOP_SERVICE_HOME/GENELOOP_SERVICE_CONFIG 走统一 npm service 入口；旧代码/计划/库和失败回执保留，勿覆盖或另起临时发布进程。
+
+
+## 2026-10-19：统一服务启动、发布与回退入口
+
+`npm run service -- <start|status|check|restart|rollback>` 是正式 owner/gateway 的统一入口，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定。历史私有发布脚本只可参考配置准备，启动段退役。入口处理身份/配置/互斥检查、认证与令牌同步、活跃任务保护、失败回退及运行记录；保持预算进程/账本与用户数据。后续开发先读 [统一流程](../service-lifecycle.md)，验证与边界见[实施记录](../experiments/unified-service-lifecycle-20261019.md)。本地开发 `web`/`web:real` 不等于正式网站发布，Linux 管理验证不代表 Windows 托管。
+
+## 2026-10-19：管理员内部令牌陈旧导致服务不可用
+
+- 公开登录页/进程正常，所有者内部认证失败。直接重启 DSH 后漏写 `ownerTokenFile`；旧令牌 401、新令牌 303。已备份并原子同步当前有效令牌，网关热读取恢复，未重启、未调用模型、未改账号/数据/账本。
+- `scripts/harless_owner_access.py` 提供认证后首页检查和原子同步；本次私有发布与回退脚本均接入并绑定启动日志偏移。6 项定向回归通过，生产 `--check` 返回认证后 200；已有成员刷新正常，新注册与管理员本人浏览器反馈未验。详见[故障记录](../experiments/owner-access-recovery-20261019.md)及[部署说明](../harless-account-gateway.md)。
+- 所有者与成员令牌独立；后续发布不能只检查 TCP/公开登录页。代码发布与PR状态以本次提交/PR为准；线上运行代码未因此切换。
+
+## 2026-10-19：生成文件只有文件名、不能点击
+
+- 范围/分支：`codex/clickable-generated-files`，基于main `9f945a5` 的独立工作树，原本地工作区未改动。修复提交 `93e5309` 已推送，[PR #83](https://github.com/jingyio/GeneLoop/pull/83) 待审、未合并、未部署。
+- 已完成：普通Chat命令产物快照/API/原生文件mentions/预览下载；双栏沙箱路径匹配；本轮暂存成品明确引用准入和旧报告排除；私有权限保持。新兼容库v13/v8仅重验原认证序列化IR，未重挖原始轨迹；旧库保留。
+- 验证/结论：定向无模型回归已通过，最终全套/发布状态见[修复记录](../experiments/clickable-generated-files-20261019.md)。无真实API请求、新费用或收益结论；未部署线上。
+- 入口/下一步：按接口重建成员policy并随PR发布，检查普通Chat和对照的文件名/卡片/下载、历史刷新及账号拒绝。`/api/harless/deliveries` 只认当前会话/任务文件ID。旧文件已覆盖且缺少快照时无法恢复。
+- 回退/权限：回退PR与registry，不清理.local，不改600/700、不修改私人原件、不改变累计预算。
+
 ## 2026-10-18：Paper / Data benchmark 实际测试
 
 用户已测 PPT，本次正式网页 Pro/Off 各做一次成对任务。Paper 两侧通过参考评分；Data Baseline 数值与原脚本重跑通过，Motif 将非法数错计为 10（应为 8）、脚本未进入下载交付，未通过。63 次请求、代理估费 $0.31953671，只有 Paper 有一次验证跳过。发现 Paper 发送后草稿残留；本次仅记录和测试，没有修复运行代码。详见[单次对照记录](../experiments/paper-data-benchmark-20261018.md)，不能泛化为稳定降本。

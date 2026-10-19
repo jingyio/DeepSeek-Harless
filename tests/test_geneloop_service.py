@@ -1,0 +1,303 @@
+"""Lifecycle protocol diagnostics; local fixture servers never call a model."""
+import importlib.util
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
+sys.path.insert(0, str(SCRIPTS))
+SPEC = importlib.util.spec_from_file_location('geneloop_service', SCRIPTS / 'geneloop_service.py')
+service = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(service)
+
+FIXTURE = r'''
+import os,sys,json
+from http.server import BaseHTTPRequestHandler,HTTPServer
+from uuid import uuid4
+role,config=sys.argv[1:]
+c=json.load(open(config));port=c['ownerPort'] if role=='owner' else c['port']
+if os.environ.get('FAIL_SERVICE')==role:sys.exit(3)
+token=uuid4().hex+uuid4().hex
+class Handler(BaseHTTPRequestHandler):
+ def do_GET(self):
+  if role=='gateway':self.send_response(200 if self.path=='/login' else 404)
+  elif self.path=='/?token='+token:
+   self.send_response(303);self.send_header('Set-Cookie','dsh-auth-test='+token+'; HttpOnly');self.send_header('Location','/')
+  else:self.send_response(200 if self.path=='/' and self.headers.get('Cookie')=='dsh-auth-test='+token else 401)
+  self.end_headers();self.wfile.write(b'fixture protocol diagnostic')
+ def log_message(self,*args):pass
+server=HTTPServer(('127.0.0.1',port),Handler)
+if role=='owner':print('dsh web: http://127.0.0.1:%s/?token=%s'%(port,token),flush=True)
+server.serve_forever()
+'''
+
+
+def port():
+    with socket.socket() as connection:
+        connection.bind(('127.0.0.1', 0))
+        return connection.getsockname()[1]
+
+
+class PlanTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.config = self.root / 'gateway.json'
+        self.policy = self.root / 'policy.json'
+        self.output = self.root / 'tasks'
+        self.output.mkdir()
+        self.members = self.root / 'members'
+        self.members.mkdir()
+        service.save(self.policy, {'output': str(self.output)})
+        service.save(self.config, {'ownerPort': port(), 'port': port(), 'membersDir': str(self.members),
+                                  'dataDir': str(self.root / 'accounts'), 'ownerTokenFile': str(self.root / 'access.txt')})
+        self.fixture = self.root / 'fixture.py'
+        self.fixture.write_text(FIXTURE, encoding='utf-8')
+        env = {**os.environ, 'SSS_WEB_POLICY': str(self.policy), 'DSH_HOME': str(self.root / 'home')}
+        self.plan = {'version': 1, 'state_dir': str(self.root / 'service'), 'gateway_config': str(self.config),
+                     'owner_output': str(self.output), 'owner': {'argv': [sys.executable, str(self.fixture), 'owner', str(self.config)],
+                         'cwd': str(self.root), 'env': env},
+                     'gateway': {'argv': [sys.executable, str(self.fixture), 'gateway', str(self.config)],
+                         'cwd': str(self.root), 'env': env.copy()}}
+        self.plan_file = self.root / 'service.json'
+        self.pointer = self.root / 'runtime.json'
+        service.save(self.pointer, {'budget': {'requests': 19, 'spent': .25}, 'kept_receipt': 'previous',
+                                    'owner_pid': 0, 'gateway_pid': 0})
+        self.plan['runtime_pointer'] = str(self.pointer)
+        service.save(self.plan_file, self.plan)
+
+    def test_plan_validates_private_files_and_output(self):
+        self.assertEqual(service.load_plan(self.plan_file), self.plan)
+        value = service.read(self.policy)
+        value['output'] = str(self.root / 'different')
+        service.save(self.policy, value)
+        with self.assertRaises(RuntimeError):
+            service.load_plan(self.plan_file)
+
+    def test_snapshot_keeps_digest_and_is_independent_of_original_files(self):
+        lifecycle = service.Lifecycle(self.plan)
+        destination = self.root / 'snapshot'
+        destination.mkdir(mode=0o700)
+        frozen = lifecycle.snapshot(self.plan, destination)
+        digest = service.plan_digest(frozen)
+        self.assertEqual(digest, service.plan_digest(self.plan))
+        service.save(self.config, {**service.read(self.config), 'marker': 'changed'})
+        self.assertEqual(digest, service.plan_digest(frozen))
+        self.assertNotEqual(digest, service.plan_digest(self.plan))
+
+    def test_persistent_data_migration_is_rejected(self):
+        second = json.loads(json.dumps(self.plan))
+        other = self.root / 'different-config.json'
+        service.save(other, {**service.read(self.config), 'membersDir': str(self.root / 'other-members')})
+        second['gateway_config'] = str(other)
+        with self.assertRaises(RuntimeError):
+            service.same_data(self.plan, second)
+
+    def test_unknown_and_member_active_states_refuse_restart(self):
+        member = self.members / 'one' / 'tasks' / 'tasks' / 'task'
+        member.mkdir(parents=True)
+        for status in ('running', 'unexpected'):
+            service.save(member / 'task-state.json', {'status': status})
+            with self.assertRaises(RuntimeError):
+                service.assert_idle(self.plan)
+        service.save(member / 'task-state.json', {'status': 'completed'})
+        service.assert_idle(self.plan)
+
+    def test_active_comparison_lane_is_not_treated_as_idle(self):
+        service.save(self.output / 'comparisons.json', {'turns': [{'status': 'completed', 'lanes': {
+            'baseline': {'status': 'completed'}, 'motif': {'status': 'running'}}}]})
+        with self.assertRaises(RuntimeError):
+            service.assert_idle(self.plan)
+
+
+class StartupListenerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.config = self.root / 'gateway.json'
+        self.policy = self.root / 'policy.json'
+        service.save(self.config, {'ownerPort': 31331, 'port': 31332})
+        service.save(self.policy, {'output': str(self.root / 'tasks')})
+        spec = {'argv': [sys.executable, 'fixture.py'], 'cwd': str(self.root),
+                'env': {'SSS_WEB_POLICY': str(self.policy)}}
+        self.plan = {'state_dir': str(self.root / 'service'), 'gateway_config': str(self.config),
+                     'owner': spec, 'gateway': spec.copy()}
+        self.lifecycle = service.Lifecycle(self.plan)
+        self.child = mock.Mock(pid=12345)
+        self.child.poll.return_value = None
+        self.found = {'pid': self.child.pid, 'start_ticks': '42',
+                      'argv_sha256': 'fixture', 'cwd': str(self.root)}
+
+    def row(self, pid=None, port=31332):
+        return ('LISTEN 0 128 127.0.0.1:%s 0.0.0.0:*' % port +
+                (' users:(("fixture",pid=%s,fd=3))' % pid if pid else ''))
+
+    def test_launch_waits_for_missing_or_duplicate_attribution(self):
+        incomplete = self.row()
+        ready = self.row(self.child.pid)
+        for first in (incomplete, incomplete + '\n' + incomplete,
+                      ready + '\n' + incomplete):
+            with self.subTest(snapshot=first):
+                directory = self.root / ('launch-' + str(len(self.lifecycle.started)))
+                directory.mkdir()
+                with mock.patch.object(service.subprocess, 'Popen', return_value=self.child), \
+                        mock.patch.object(service.subprocess, 'check_output', side_effect=[first, ready]) as scan, \
+                        mock.patch.object(service, 'identity', return_value=self.found), \
+                        mock.patch.object(service.time, 'sleep') as sleep:
+                    self.assertEqual(self.lifecycle.launch('gateway', self.plan, directory), self.found)
+                self.assertEqual(scan.call_count, 2)
+                sleep.assert_called_once_with(.1)
+
+    def test_launch_immediately_refuses_any_explicit_foreign_pid(self):
+        foreign = self.row(54321)
+        ready = self.row(self.child.pid)
+        snapshots = (foreign, self.row() + '\n' + foreign, ready + '\n' + foreign,
+                     ready + ' users:(("foreign",pid=54321,fd=4))')
+        for first in snapshots:
+            with self.subTest(snapshot=first):
+                directory = self.root / ('foreign-' + str(len(self.lifecycle.started)))
+                directory.mkdir()
+                with mock.patch.object(service.subprocess, 'Popen', return_value=self.child), \
+                        mock.patch.object(service.subprocess, 'check_output', return_value=first) as scan, \
+                        mock.patch.object(service, 'identity') as identify, \
+                        mock.patch.object(service.time, 'sleep') as sleep:
+                    with self.assertRaisesRegex(RuntimeError, 'Unexpected listener during startup'):
+                        self.lifecycle.launch('gateway', self.plan, directory)
+                self.assertEqual(scan.call_count, 1)
+                identify.assert_not_called()
+                sleep.assert_not_called()
+
+    def test_persistent_unknown_times_out_without_publishing_and_cleans_only_child(self):
+        with mock.patch.object(self.lifecycle, 'inspect', return_value={'owner': None, 'gateway': None}), \
+                mock.patch.object(service.subprocess, 'Popen', return_value=self.child), \
+                mock.patch.object(service.subprocess, 'check_output', return_value=self.row(port=31331)), \
+                mock.patch.object(service.time, 'monotonic', side_effect=[0, 0, 61]), \
+                mock.patch.object(service.time, 'sleep'), \
+                mock.patch.object(self.lifecycle, 'health') as health, \
+                mock.patch.object(self.lifecycle, 'publish_state') as publish:
+            with self.assertRaisesRegex(RuntimeError, 'Service startup timed out'):
+                self.lifecycle.start()
+        self.child.terminate.assert_called_once_with()
+        self.child.wait.assert_called_once_with(timeout=45)
+        health.assert_not_called()
+        publish.assert_not_called()
+        self.assertIsNone(self.lifecycle.current())
+
+    def test_global_listener_still_refuses_incomplete_or_duplicate_rows(self):
+        for snapshot in (self.row(), self.row(self.child.pid) + '\n' + self.row()):
+            with self.subTest(snapshot=snapshot), \
+                    mock.patch.object(service.subprocess, 'check_output', return_value=snapshot):
+                with self.assertRaisesRegex(RuntimeError, 'Cannot identify the local listener safely'):
+                    service.listener(31332)
+
+
+@unittest.skipUnless(sys.platform == 'linux' and shutil.which('ss'), 'Linux process/listener integration')
+class LinuxLifecycleTests(PlanTests):
+    def setUp(self):
+        super().setUp()
+        self.lifecycle = service.Lifecycle(self.plan)
+        self.addCleanup(self.cleanup_processes)
+
+    def cleanup_processes(self):
+        # Explicit Popen handles belong only to this test, never arbitrary PIDs.
+        for child in reversed(self.lifecycle.started):
+            if child.poll() is None:
+                child.terminate()
+                child.wait(timeout=10)
+
+    def test_start_is_idempotent_and_authentication_is_required(self):
+        first = self.lifecycle.run('start')
+        old = self.lifecycle.current()['processes']
+        second = self.lifecycle.run('start')
+        self.assertFalse(first['already_running'])
+        self.assertTrue(second['already_running'])
+        self.assertEqual(old, self.lifecycle.current()['processes'])
+        self.assertTrue(self.lifecycle.run('check')['owner_authenticated'])
+        Path(service.read(self.config)['ownerTokenFile']).write_text('http://127.0.0.1:1/?token=invalid')
+        with self.assertRaises(ValueError):
+            self.lifecycle.run('check')
+
+    def test_restart_rotates_token_preserves_data_and_can_rollback(self):
+        original = self.output / 'user-file.txt'
+        original.write_text('keep original bytes')
+        self.lifecycle.run('start')
+        before = self.lifecycle.current()['processes']
+        token = Path(service.read(self.config)['ownerTokenFile']).read_text()
+        self.lifecycle.run('restart')
+        after = self.lifecycle.current()['processes']
+        self.assertNotEqual(before['owner']['pid'], after['owner']['pid'])
+        self.assertNotEqual(token, Path(service.read(self.config)['ownerTokenFile']).read_text())
+        self.assertEqual(original.read_text(), 'keep original bytes')
+        self.assertEqual(service.read(self.pointer)['budget'], {'requests': 19, 'spent': .25})
+        self.assertEqual(service.read(self.pointer)['owner_pid'], after['owner']['pid'])
+        self.lifecycle.run('rollback')
+        self.assertTrue(self.lifecycle.run('check')['owner_authenticated'])
+        self.assertTrue(self.lifecycle.run('start')['already_running'])
+
+    def test_failed_gateway_start_rolls_back_to_healthy_previous_plan(self):
+        self.lifecycle.run('start')
+        failed = json.loads(json.dumps(self.plan))
+        failed['gateway']['env']['FAIL_SERVICE'] = 'gateway'
+        self.lifecycle.plan = failed
+        with self.assertRaises(RuntimeError):
+            self.lifecycle.run('restart')
+        self.assertTrue(self.lifecycle.run('check')['owner_authenticated'])
+
+    def test_active_task_refuses_restart_without_stopping_processes(self):
+        self.lifecycle.run('start')
+        before = self.lifecycle.current()['processes']
+        task = self.output / 'tasks' / 'running'
+        task.mkdir(parents=True)
+        service.save(task / 'task-state.json', {'status': 'running'})
+        with self.assertRaises(RuntimeError):
+            self.lifecycle.run('restart')
+        self.assertEqual(before, self.lifecycle.current()['processes'])
+        self.assertTrue(all(service.identity(v['pid']) == v for v in before.values()))
+
+    def test_lock_rejects_concurrent_operation(self):
+        with self.lifecycle.lock():
+            other = service.Lifecycle(self.plan)
+            with self.assertRaises(RuntimeError):
+                with other.lock():
+                    self.fail('concurrent operation acquired the lock')
+
+    def test_foreign_listener_is_not_adopted_or_stopped(self):
+        config = service.read(self.config)
+        with socket.socket() as foreign:
+            foreign.bind(('127.0.0.1', config['ownerPort']))
+            foreign.listen()
+            with self.assertRaises(RuntimeError):
+                self.lifecycle.run('start')
+            self.assertGreater(foreign.fileno(), -1)
+
+    def test_changed_process_generation_refuses_restart(self):
+        self.lifecycle.run('start')
+        before = self.lifecycle.current()
+        corrupted = json.loads(json.dumps(before))
+        corrupted['processes']['gateway']['start_ticks'] = 'not-the-current-process'
+        service.save(self.lifecycle.state_path, corrupted)
+        with self.assertRaises(RuntimeError):
+            self.lifecycle.run('restart')
+        self.assertTrue(all(service.identity(v['pid']) == v for v in before['processes'].values()))
+
+    def test_in_place_managed_config_change_refuses_restart(self):
+        self.lifecycle.run('start')
+        before = self.lifecycle.current()
+        config = Path(before['plan']['gateway_config'])
+        service.save(config, {**service.read(config), 'changed_in_place': True})
+        with self.assertRaises(RuntimeError):
+            self.lifecycle.run('restart')
+        self.assertTrue(all(service.identity(v['pid']) == v for v in before['processes'].values()))
+
+
+if __name__ == '__main__':
+    unittest.main()

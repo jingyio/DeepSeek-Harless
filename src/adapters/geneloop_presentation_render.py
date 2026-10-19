@@ -17,7 +17,7 @@ def render(request):
     if len(data) > 20 * 1024 * 1024 or hashlib.sha256(data).hexdigest() != request['sha256']:
         raise ValueError('presentation_version_changed')
     suffix = request['suffix']
-    if suffix not in ('.pptx', '.ppt'):
+    if suffix not in ('.pptx', '.ppt', '.docx', '.doc', '.xlsx'):
         raise ValueError('invalid_presentation_type')
     output = Path('/work') / request['directory']
     if output.parent != Path('/work') or not output.name.startswith('input-visual-'):
@@ -48,7 +48,9 @@ def render(request):
                     break
             if completed.returncode:
                 raise ValueError('presentation_conversion_failed')
-        convert('pdf:impress_pdf_Export', output)
+        exporter = ('impress_pdf_Export' if suffix in ('.pptx', '.ppt') else
+                    'writer_pdf_Export' if suffix in ('.docx', '.doc') else 'calc_pdf_Export')
+        convert('pdf:' + exporter, output)
         pdf = output / 'reference.pdf'
         if pdf.is_symlink() or not pdf.is_file() or not 0 < pdf.stat().st_size <= 20 * 1024 * 1024:
             raise ValueError('presentation_render_unavailable_or_too_large')

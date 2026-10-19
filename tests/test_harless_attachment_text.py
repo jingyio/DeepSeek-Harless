@@ -142,6 +142,39 @@ def test_xlsx_cells_preserve_addresses_and_do_not_recalculate_or_fetch_external_
     assert 'private.invalid' not in json.dumps(result) and 'fake text' not in result['text']
 
 
+@pytest.mark.parametrize('kind', ['docx', 'xlsx'])
+def test_office_rendered_pages_include_visuals_without_replacing_native_text_or_cells(tmp_path, kind):
+    fitz = pytest.importorskip('pymupdf')
+    if kind == 'docx':
+        members = {'word/document.xml': f'<w:document xmlns:w="{attachment.W}"><w:body><w:p><w:r><w:t>Stored document text</w:t></w:r></w:p></w:body></w:document>'}
+        expected = 'Stored document text'
+    else:
+        members = {
+            'xl/workbook.xml': f'<workbook xmlns="{attachment.S}" xmlns:r="{attachment.R}"><sheets><sheet name="Data" r:id="s1"/></sheets></workbook>',
+            'xl/_rels/workbook.xml.rels': f'<Relationships xmlns="{attachment.PACKAGE_R}"><Relationship Id="s1" Target="worksheets/sheet1.xml"/></Relationships>',
+            'xl/worksheets/sheet1.xml': f'<worksheet xmlns="{attachment.S}"><sheetData><row><c r="A1"><f>1+1</f><v>2</v></c></row></sheetData></worksheet>',
+        }
+        expected = 'A1: =1+1 [cached value: 2]'
+    source = package(tmp_path, 'input.' + kind, members)
+    pdf = fitz.open()
+    for label in ('Image and chart on page one', 'Second page visual'):
+        page = pdf.new_page()
+        page.insert_text((30, 50), label)
+        page.draw_rect((30, 70, 150, 150), fill=(0.2, 0.4, 0.8))
+    raw = pdf.tobytes(); derivative = put(tmp_path, 'preview.pdf', raw)
+    result = attachment.extract_attachment(source, presentation_render={
+        'path': str(derivative), 'sha256': hashlib.sha256(raw).hexdigest()})
+    assert result['status'] == 'extracted' and expected in result['text']
+    assert result['page_count'] == 2 and result['visual_input_status'] == 'rendered'
+    assert all(page['source_id'].startswith(kind + ':' + result['sha256']) and
+               page['image']['scope'] == 'entire_rendered_office_page' and
+               not page['visual_content_reviewed'] for page in result['pages'])
+    assert result['rendered_pdf_sha256'] != result['sha256']
+    assert attachment.extract_attachment(source)['visual_error_code'] == 'office_render_unavailable'
+    bad = attachment.extract_attachment(source, presentation_render={'path': str(derivative), 'sha256': '0' * 64})
+    assert bad['status'] == 'unreadable' and bad['reason'] == 'office_derivative_changed'
+
+
 @pytest.mark.parametrize('kind, main, local', [('docx', 'word/document.xml', 'document'),
                                                ('pptx', 'ppt/presentation.xml', 'presentation'),
                                                ('xlsx', 'xl/workbook.xml', 'workbook')])

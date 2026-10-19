@@ -1,6 +1,8 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
-独立 Script Motif 实验现支持当前语义选择、文件参数自动绑定与认证片段连续执行；复用原生 Bash，不增加模型工具表。真实任务已发生两节点自动接管，但三轮仍**未证明稳定净降本或合格交付**。最新对照发现不同报告路径及大量失败恢复，不能将费用差归为纯 Motif 开销。配置见 [接口](docs/interfaces.md#script-motif-实验接口)，结果和全部失败见 [实验记录](docs/experiments/paper-script-frontier-20261019-v1.md)。按用户要求暂不推送或提 PR。 新增从真实失败轨迹编译 Negative Motif 的实验入口，支持从已审阅校验器自动编译字段失败条件，按“当前失败提示 → 重算条件 → 仍失败则局部早停”执行；无关字段和版本变化不再自动放行。现支持循环/分支内多种错误的数据与控制依赖、双向原因干预，真实历史的重复 ID 和枚举错误已认证；其他类型仅有局部诊断，见 [原因学习记录](docs/experiments/paper-negative-causes-20261019-v1.md)。随后已完成原论文真实三组重测与历史恢复：完整任务均未合格，负面机制仅在恢复中实际提示一次、未触发硬早停，尚未证明合格净降本；详见 [真实重测](docs/experiments/paper-negative-real-20261019-v1.md)。 后续对448次真实请求的 [费用与接管障碍 Breakdown](docs/experiments/paper-takeover-breakdown-20261019-v1.md) 确认当前仅一个两节点片段、后续普通匹配未进入，报告语义数据与搜索内部模型也未被接管；本次重放不作为新增省费成绩。
+**开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。本地开发仍用 `npm run web`。
+
+独立 Script Motif 实验现支持当前语义选择、文件参数自动绑定与认证片段连续执行；复用原生 Bash，不增加模型工具表。真实任务已发生两节点自动接管，但三轮仍**未证明稳定净降本或合格交付**。最新对照发现不同报告路径及大量失败恢复，不能将费用差归为纯 Motif 开销。配置见 [接口](docs/interfaces.md#script-motif-实验接口)，结果和全部失败见 [实验记录](docs/experiments/paper-script-frontier-20261019-v1.md)。早期实验保留独立记录，本轮恢复验证与 PR 状态见文末。 新增从真实失败轨迹编译 Negative Motif 的实验入口，支持从已审阅校验器自动编译字段失败条件，按“当前失败提示 → 重算条件 → 仍失败则局部早停”执行；无关字段和版本变化不再自动放行。现支持循环/分支内多种错误的数据与控制依赖、双向原因干预，真实历史的重复 ID 和枚举错误已认证；其他类型仅有局部诊断，见 [原因学习记录](docs/experiments/paper-negative-causes-20261019-v1.md)。随后已完成原论文真实三组重测与历史恢复：完整任务均未合格，负面机制仅在恢复中实际提示一次、未触发硬早停，尚未证明合格净降本；详见 [真实重测](docs/experiments/paper-negative-real-20261019-v1.md)。 后续对448次真实请求的 [费用与接管障碍 Breakdown](docs/experiments/paper-takeover-breakdown-20261019-v1.md) 确认当前仅一个两节点片段、后续普通匹配未进入，报告语义数据与搜索内部模型也未被接管；本次重放不作为新增省费成绩。
 
 论文 Breakdown 的 [具体读写实例](docs/experiments/paper-operation-breakdown-20261019-v1.md) 现展示实际命令、工具参数、费用和复用边界。同一读取算子在另一真实多文件论文中，单主文件覆盖失败，绑定10个来源文件后覆盖一致；这仅为局部无模型检查，不是新端到端降费成绩。
 
@@ -13,6 +15,8 @@ GeneLoop 网页的 Chat、`/ppt`、`/data`、`/paper` 和已登记 Files 场景�
 真实 Web 的 Paper 完成普通任务后，会复用已保存的轨迹和 Python 编译器，在当前账号运行目录内自动编译、验证并发布下一版只读 Motif。至少需要两项不同的正常任务和一项固定留出任务；当前只支持文档固定版本后的第一页读取。下一任务冻结新版本，运行中和已确认任务保持原版；编译失败继续使用原库。编译不调用模型，不共享用户轨迹，不代表已证明净降本。入口与限制见 [Paper 自动学习接口](docs/interfaces.md#paper-自动学习接线)。
 
 网页使用独立的 GeneLoop 视觉样式，统一明暗主题、侧栏、聊天、菜单、设置、账户页、双栏结果与轨迹。用户已选定 A 的清晰聊天排版与 C 的登录布局：登录页固定黑灰配色、原色螺旋动效和白底黑字按钮，工作区默认清晰风格；工作区的明暗及其他风格偏好不影响登录页。选择工作区方案时使用原生字号设置将阅读字号调整为 16px，之后仍可手动调整。减少动态偏好继续生效，单栏和双栏场景保持无框。样式范围、验证与仅回退代码的方法见 [视觉规范](docs/geneloop-visual-system.md)。已于北京时间 2026-10-17 20:56 随 `f8a04e4` 发布，保留同期回复缓冲修复；服务器旧源码差异的保留与整合见[核对记录](docs/experiments/geneloop-server-source-reconciliation-20261017.md)。
+
+普通 Chat 现可直接打开 Bash/Python 生成的 HTML、SVG、Markdown 等交付文件，正文文件名和独立预览/下载入口共用本轮快照。文件保留私有权限；仅当前账号、本会话、本轮已核验的文件可读取，后续修改不覆盖旧交付。HTML 预览显示源代码，可下载后在浏览器运行。修复和兼容库 `paper-web-v13` / `ppt-master-v8` 的验证边界见[文件点击修复记录](docs/experiments/clickable-generated-files-20261019.md)。
 
 交付文件卡片与已登记的正文文件链接点击后，在原生右侧标签页预览，独立下载图标才下载。支持 PDF、图片、Markdown、CSV/TSV、JSON 和文本；DOCX/PPTX/XLSX 提供内容预览，DOCX/PPTX 有同名配套 PDF 时优先预览排版。内容预览不保证原始图形、排版或公式；其他格式保留下载。读取沿用账号认证、文件大小与 SHA 校验，不向外部文档服务发送文件。当前实现与浏览器验收边界见[交付预览说明](docs/geneloop-visual-system.md#交付文件预览与三套候选风格2026-10-17)。
 

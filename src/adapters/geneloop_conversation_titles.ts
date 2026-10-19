@@ -8,6 +8,7 @@ type Host = {
   inspect(id: string): Promise<Snapshot>;
   siblings(id: string): string[];
   rename(id: string, title: string): Promise<any>;
+  humanContentFor?(id: string, event: any): any[];
 };
 const clean = (text: string) => publicText(text).replace(/\/[a-z-]+(?=\s|$)/gi, ' ')
   .replace(/https?:\/\/\S+/g, '').replace(/[\x00-\x1f`*_#<>]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -64,9 +65,9 @@ export function createConversationTitles(output: string, principal: string, host
       if (snapshot.meta?.isSeeded || snapshot.meta?.parentSession || previous?.manual) return;
       if (previous && current !== previous.title) return;
       if (!previous && current && current !== '新会话') return;
-      if (previous && !previous.provisional) return;
+      if (previous && !previous.provisional && !/^用户附件的只读提取结果/u.test(previous.title)) return;
       const texts = snapshot.events.filter(row => row.type === 'user/message' && row.data?.source?.kind === 'user')
-        .map(row => (row.data.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join(' '));
+        .map(row => (host.humanContentFor?.(id, row) ?? row.data.content ?? []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join(' '));
       if (incoming) texts.push(incoming);
       if (!texts.length) return;
       const summary = summarizeConversation(texts);

@@ -1,12 +1,28 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 附件与多轮上下文（2026-10-19）
+
+内部资料事件使用原生公开 `session.append(..., {surfaceOp:"append"})`；比较 host 的 `prepare` 支持 `taskReady(task_id)`，在 preview 后、异步 submit 完成前绑定同一任务并订阅真实准备进度。取消、预算和原接收锁不因此分叉。
+
+私有资料 envelope version=2 可含 `source_reading_index`（schema_version=1）。索引仅从已接纳来源生成，按原件 SHA/格式/页号/渲染像素绑定像素观察；`origin` 为观察来源，`admitted_origin` 为当前 catalog 状态，同 SHA 重传不会覆盖旧成功或把它称作本轮新核验。完整旧证据、OCR、失败和不清楚项仍保留。该字段既不进入人类输入，也不增加权限或认证主张。
+
+浏览器输入只展示经过接收的用户原话和文件卡片。新附件的只读提取与页面观察以 `geneloop-attachment-context` plugin 来源进入原生会话，放在本轮真实用户消息之前；plugin 只是来源标记，执行权限仍由原有工具、来源、版本及账号守卫决定。它不代表用户又上传一次，也不成为新的人类轮次或标题材料。
+
+历史资料不在普通 follow-up 中重新解析。切换场景或更换来源时，完整既往交流、已有来源观察与已接收图片引用进入新的私有执行会话；原日志不改。旧版混入人类消息的提取后缀，只有与持久任务的原始接收内容逐项吻合才允许展示清理和隔离迁移；用户粘贴同形 JSON 默认保留。预处理状态独立发布实际的读取、渲染、页图像进度，不伪装成主模型已经开始思考。
+
+视觉观察按文件、页面及像素身份校验。成功页可由宿主私有缓存复用，缓存还绑定代码、依赖、OCR及Office/字体资源版本；失败页保留具体错误，不标成已读。普通文字追问使用已有观察，重新上传同原件可重试失败页。长代码卡片是浏览器内只读片段，不是已验证落盘交付；点击使用原生右侧栏，下载保留代码字节，预览不执行脚本。
+
+## 正式网站服务生命周期（2026-10-19）
+
+`npm run service -- <start|status|check|restart|rollback>` 通过 `scripts/project.mjs` 调用 `scripts/geneloop_service.py`。Linux 私有计划 version=1 指定 owner/gateway 配方和持久路径，使用 `GENELOOP_SERVICE_CONFIG` 或 `--config`；不通过 HTTP 接收启动配置，不输出凭证。`start` 幂等，认证同步与健康检查强制执行；`restart`/`rollback` 校验现有进程身份、活动任务和持久路径，启动失败尝试上一份冻结计划。模型预算服务和累计账本不在其启停范围。准备场景配置/证书和维护窗口仍须按[统一流程](service-lifecycle.md)完成，内部检查不能代替公网与场景验证。
+
 ## PPT/PPTX 风格输入（2026-10-18）
 
 成员产品必须将公开 `config/pdf-ocr-assets.json` 单独只读挂载为 `/app/config/pdf-ocr-assets.json`，供注册场景的原样证书摘要验证；即使语言包已挂载，缺少此文件仍会触发优化回退。不得用移除代码锁、忽略缺失项或暴露整个配置目录规避失败。挂载修复对应兼容库 `ppt-master-v7` / `paper-web-v12`，旧版本保留。
 
 `sceneAttachmentContext` 可注入 `renderPresentation(file, signal)`；Web 统一从当前任务的不可变 `scene_inputs` 取得原件，TypeScript 通过已有命令沙箱/broker 渲染，新增可选 `network:"none"` 只允许收紧网络，普通 Bash 行为保持。子进程不接收模型密钥，宏与链接更新关闭，新私有目录防止覆盖，取消和超时终止对应沙箱；渲染后再次核验原件及 PDF SHA。原件、衍生物仍受上传/资源边界约束。
 
-`presentation-input-v1` 提供 `pages[]`、原件 SHA 与 `pptx:<sha>:slide:<n>` 或 `ppt:<sha>:slide:<n>` 来源，及 `presentation_style`（画幅、实际关联的主题/母版/布局声明）、逐页 `style`、`rendered_pdf_sha256`。声明覆盖和视觉覆盖分开；每页都生成实际像素，沿用已激活任务的 Flash 辅助视觉路由，必须通过来源/页号/实际看到图片/非空 `style_observations` 的 JSON 校验才标记已识别。内联图像不进入主模型文字或用户气泡；已识别页保留渲染 SHA 和模型观察，失败页保留安全诊断码。未做跨问题或来源版本的语义缓存。
+`presentation-input-v1` 提供 `pages[]`、原件 SHA 与 `pptx:<sha>:slide:<n>` 或 `ppt:<sha>:slide:<n>` 来源，及 `presentation_style`（画幅、实际关联的主题/母版/布局声明）、逐页 `style`、`rendered_pdf_sha256`。声明覆盖和视觉覆盖分开；每页都生成实际像素，沿用已激活任务的 Flash 辅助视觉路由，必须通过来源/页号/实际看到图片/非空 `style_observations` 的 JSON 校验才标记已识别。内联图像不进入主模型文字或用户气泡；已识别页保留渲染 SHA 和模型观察，失败页保留安全诊断码。来源绑定的页面观察允许在后续问题中复用，但不缓存用户任务的语义判断，来源或依赖版本改变会失效。
 
 旧 PPT 返回 `normalized_source:{path,sha256,derived_from_sha256}`，新 PPTX 仅为隔离转换派生物。`ppt_master.read_source_page` 对固定版本 PPTX 返回指定页文字、原生样式声明与 `visual_checked:false`；工具 schema 不变，完整工具说明与能力边界仍以返回值和场景指令为准。PDF 转换 Motif 的适用类型仍为 PDF，没有把新视觉分析或模板制作认证成可跳过模型的结构。兼容重编版本 `ppt-master-v6` / `paper-web-v11` 保留旧证据、旧图与旧库。
 
@@ -16,7 +32,7 @@
 
 - `sceneAttachmentContext` 在已验证的本任务原件上运行公共 PDF 读取器；每页返回原件 SHA、页号、文字来源、OCR 状态和视觉覆盖。文字层直接读取，扫描页自动 OCR；PPT/Paper 的版本化逐页工具使用同一读取器。完整约定见[附件输入](attachment-input-behavior.md)。
 - `GENELOOP_PDF_OCR_ROOT/tessdata` 只保存固定摘要的 `eng`、`chi_sim`，由 `scripts/install-pdf-ocr.py` 安装。成员部署使用 `pdfOcrRoot` 验证后只读挂载；文件解析子进程不继承模型密钥。
-- 辅助图像分析固定 Flash Off，整页像素连同图注、当前/相邻正文及当前问题进入 `/v1/vision/<owning-session>/chat/completions`。账号网关检查该账号持有的会话，broker 映射到已激活 task，预算 gate 验证内联 JPEG、模型与无工具请求。只有此路由允许 Pro 任务使用辅助 Flash；正常模型请求仍必须与任务确认模型一致。
+- 辅助图像分析固定 Flash Off，整页像素连同图注、当前/相邻正文及独立于当前问题的来源观察指令进入 `/v1/vision/<owning-session>/chat/completions`。账号网关检查该账号持有的会话，broker 映射到已激活 task，预算 gate 验证内联 JPEG、模型与无工具请求。只有此路由允许 Pro 任务使用辅助 Flash；正常模型请求仍必须与任务确认模型一致。
 - 图片分析与最终回复同属原任务计费；账本回执保留实际 `model` 与 `kind=pdf_vision`。取消可中断准备过程；已发生的上游请求继续结算。视觉分析仅为来源绑定的模型观察，不可作为 Motif 可复用的科学判断或独立事实认证。
 
 ## 网页 Paper 默认 Execute（2026-10-17）
@@ -967,3 +983,15 @@ TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`�
 成功回执另包含delivery receipt相对路径/摘要和delivery_passed。Runtime读取实际receipt与产物，检查来源、任务、路径、大小及SHA256后交回最终总结。隔离服务对相同当前参数/来源/导出配置/授权的成功输出使用最多32项进程内缓存；每次命中重查真实文件，重启不从磁盘自动加载旧成功。`artifact_reused`只代表复用已验收文件，不代表跳过整个模型请求或科研判断。
 
 真实局部恢复runner可显式启用`--preserve-recovery-structure`，必须同时有`--reuse-checkpoint`。受保护的`review-recovery-scope.json`由当前任务入口写入不可供Bash修改的工作区根，绑定task/source与完整参数；这是当前用户范围的具体化，不由Runtime从历史相似性推断。默认拒绝数组长度/对象结构变化，允许叶子文字修订，需结构重设计时另行明确范围。Runtime在初次候选通知提供有界结构摘要和当前目标引用；仍由模型选择必要操作/patch。子集诊断不再被当成完整交付，结构通过也不保证同形状文字的科学正确性。环境快照新增沙箱开关、字体SHA和结构保留标志。验证与全部失败见[本轮记录](experiments/paper-recovery-evidence-20261020-v1.md)。
+
+
+
+## 普通聊天生成文件入口（2026-10-19）
+
+`GET /api/harless/deliveries?session_id=...&turn=...` 返回该账号普通聊天本轮的 `presentation: single`、`id: native-<TASK_ID>` 和 `lanes.baseline.artifacts`。任务收尾期间返回 HTTP 202，客户端在有界超时内重读。后续可按同一 `session_id`、`id` 查询；加 `lane=baseline&file=<FILE_ID>` 下载私有快照，核验大小与 SHA，未认证401、错误会话/轮次/侧别/文件404、变更字节409。保持 `attachment`、`no-store` 与 `nosniff`，不接受任意磁盘路径。
+
+新任务结束即固定命令成品，保存 `native_turn`；旧任务仅从对应 request_id 后的任务事件恢复轮次。只收本轮修改的普通文件，拒绝符号/硬链接及越界文件，保留32项/单文件30 MiB/合计80 MiB限制。`/work/outputs/...` 对应宿主 `outputs/code/...`；暂存区 `/work/...` 对应 `code/...`，只有最终正文明确引用且在本轮生成的文件才准入。持久工作区旧报告不并入当前普通任务快照。
+
+普通聊天复用安全 Markdown 文件 mentions 和右侧预览，附独立预览/下载入口；对照正文同时支持命令环境路径和唯一文件名，包括表格内行内代码。未知文件和歧义文件名不猜测绑定；HTML 继续只预览源码，不在应用同源环境执行脚本。600/700私有权限不改为全员可读。历史文件若已被后续轮次覆盖且没有快照，不冒充原交付。
+
+发布库兼容变更见 `scripts/reexport-delivery-compat.py`：对原已认证序列化库重新运行公共 exporter 与当前完整工具契约检查，要求输出在线程序语义完全一致；发布独立 `paper-web-v13`/`ppt-master-v8`，旧版本保留。该检查不回放私人原始轨迹，不是新挖掘、质量认证或降本证据。

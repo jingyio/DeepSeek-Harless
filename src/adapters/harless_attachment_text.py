@@ -256,6 +256,38 @@ def _office(data: bytes, suffix: str) -> tuple[str, str, dict]:
     raise ExtractionIssue('office_package_not_supported')
 
 
+def _office_pages(data: bytes, kind: str, derivative: dict | None):
+    """Keep stored Office text/cells separate from actual rendered page pixels.
+
+    Native cell values remain the stored values above. Office may recalculate
+    formulas for its preview; those pixels do not replace original cell facts.
+    The caller produces the derivative in the existing networkless sandbox.
+    """
+    extra = {'visual_content_reviewed': False,
+             'visual_input_status': 'render_unavailable',
+             'visual_error_code': 'office_render_unavailable'}
+    if not derivative:
+        return extra
+    rendered = _read(Path(derivative['path']))
+    if hashlib.sha256(rendered).hexdigest() != derivative['sha256']:
+        raise ExtractionIssue('office_derivative_changed')
+    try:
+        from .geneloop_pdf import read_pdf
+    except ImportError:
+        from geneloop_pdf import read_pdf
+    pages = read_pdf(rendered, visuals=True, force_visuals=True)
+    digest = hashlib.sha256(data).hexdigest()
+    for page in pages['pages']:
+        page['source_id'] = f'{kind}:{digest}:page:{page["page"]}'
+        page['text_method'] = 'office_render_' + page['text_method']
+        if page.get('image'):
+            page['image']['scope'] = 'entire_rendered_office_page'
+    return {'pages': pages['pages'], 'page_count': pages['page_count'],
+            'rendered_pdf_sha256': derivative['sha256'],
+            'visual_content_reviewed': False, 'visual_input_status': 'rendered',
+            'visual_source': 'sandboxed_office_render_not_native_application_fidelity'}
+
+
 def _pdf(data: bytes) -> tuple[str, dict]:
     configured = os.environ.get('HARLESS_PDF_TOOLCHAIN_ROOT')
     executable = str(Path(configured) / 'bin' / 'pdftotext') if configured else shutil.which('pdftotext')
@@ -382,8 +414,21 @@ def extract_attachment(path: Path | str, original_name: str | None = None, *, pd
         elif data.startswith(b'PK\x03\x04') or suffix in ('.docx', '.xlsx'):
             kind, text, extra = _office(data, suffix)
             result['format'] = kind
+            if kind in ('docx', 'xlsx'):
+                extra.update(_office_pages(data, kind, presentation_render))
+                if presentation_render:
+                    extra['warnings'].append('Rendered pages are a separate Office preview, not native-application fidelity; installed fonts and effects may differ. For XLSX, preview calculations do not replace stored cell/formula evidence.')
         elif suffix == '.doc':
-            text, extra = _legacy_word(data)
+            try:
+                text, extra = _legacy_word(data)
+            except ExtractionIssue as error:
+                if not presentation_render:
+                    raise
+                text, extra = '', {'native_text_error_code': str(error)}
+            extra.update(_office_pages(data, 'doc', presentation_render))
+            if not text.strip() and extra.get('pages'):
+                text = '\n\f\n'.join(page['text'] for page in extra['pages'])
+                extra['coverage'] = 'rendered_page_text_and_visuals'
         elif suffix in TEXT_SUFFIXES or not suffix:
             text, encoding = _text(data)
             extra['encoding'] = encoding

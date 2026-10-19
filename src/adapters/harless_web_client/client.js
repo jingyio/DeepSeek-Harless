@@ -54,9 +54,9 @@ window.__ModuleLoader__.load({
         return length === block.text.length ? block : { ...block, text: block.text.slice(0, length) };
       });
     }
-    function BufferedMarkdown({ text, streaming, identity, ...props }) {
+    function BufferedMarkdown({ text, streaming, identity, project, ...props }) {
       const blocks = useBufferedBlocks([{ text }], streaming, identity);
-      return MarkdownText ? React.createElement(MarkdownText, { ...props, text: blocks[0].text,
+      return MarkdownText ? React.createElement(MarkdownText, { ...props, text: project ? project(blocks[0].text) : blocks[0].text,
         streaming: streaming || blocks[0].text !== text }) : React.createElement('p', null, blocks[0].text);
     }
     const inject = ['commandUi', 'inputTriggers', 'sessions', 'conversation', 'uiConversation', 'slots', 'workspaces', 'uiWorkspace', 'layout', 'sidebarRight', 'sidebarRightTabs'];
@@ -173,6 +173,19 @@ window.__ModuleLoader__.load({
       }
       const h = React.createElement;
       const uploads = new Map();
+      // A turn moves between native event seats as the model calls tools. Keep
+      // explicit disclosure choices outside those short-lived React seats.
+      // These maps contain view state only and never enter browser storage.
+      const processExpansion = new Map(), codeSnippets = new Map(), codeSnippetKeys = new Map(), snippetObservers = new Map();
+      let snippetSequence = 0;
+      function rememberExpansion(key, open) {
+        processExpansion.delete(key); processExpansion.set(key, open);
+        if (processExpansion.size > 300) processExpansion.delete(processExpansion.keys().next().value);
+      }
+      function useProcessExpansion(key) {
+        const [, redraw] = React.useState(0);
+        return [processExpansion.get(key) === true, open => { rememberExpansion(key, open); redraw(value => value + 1); }];
+      }
       const liveStyle = '.geneloop-process-status{font:inherit;font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary);margin:0 0 12px}.geneloop-looping{font:inherit;font-size:14px;color:var(--dsw-alias-state-business-primary,#729cf7);margin:20px 0 8px}.geneloop-menu-name{display:inline-flex;align-items:center;gap:10px}.geneloop-menu-name svg{flex:none;vertical-align:middle}';
       const liveStatus = label => h('p', { role: 'status', 'aria-live': 'polite', className: 'geneloop-process-status' }, label + '…');
       const documentSubject = raw => {
@@ -244,6 +257,8 @@ window.__ModuleLoader__.load({
       function discardComparisonMemory() {
         comparisonIdentity++;
         comparisonSnapshots.clear();
+        processExpansion.clear(); codeSnippets.clear(); codeSnippetKeys.clear();
+        for (const listeners of snippetObservers.values()) for (const listener of listeners) listener();
         notifyComparisonActivity();
       }
       ctx.effect(() => {
@@ -272,7 +287,7 @@ window.__ModuleLoader__.load({
       }
       const networkMessage = error => error.status ? error.message : '网络连接暂时中断，已保留当前结果。';
       function comparisonUrl(value, lane, file) {
-        return '/api/harless/comparisons?session_id=' + encodeURIComponent(value.session_id) + '&id=' + encodeURIComponent(value.id)
+        return (value.id?.startsWith('native-') ? '/api/harless/deliveries' : '/api/harless/comparisons') + '?session_id=' + encodeURIComponent(value.session_id) + '&id=' + encodeURIComponent(value.id)
           + (lane ? '&lane=' + lane + '&file=' + encodeURIComponent(file.id) : '');
       }
       async function withDeadline(signal, milliseconds, operation) {
@@ -313,7 +328,9 @@ window.__ModuleLoader__.load({
         try { path = decodeURIComponent(path); } catch { return undefined; }
         path = path.replace(/^sandbox:/, '').replace(/^file:\/\//, '').replace(/\\/g, '/');
         // Match only immutable server-approved rows; ambiguous basenames stay inert.
-        const exact = files.filter(file => path === file.name || path.endsWith('/' + file.name));
+        const exact = files.filter(file => path === file.name || path.endsWith('/' + file.name) ||
+          (file.name.startsWith('outputs/code/') && [file.name.replace('outputs/code/', '/work/outputs/'), file.name.replace('outputs/code/', 'outputs/')].includes(path)) ||
+          (file.name.startsWith('code/') && path === file.name.replace('code/', '/work/')));
         if (exact.length === 1) return exact[0];
         if (!path.includes('/')) {
           const matches = files.filter(file => file.name.split('/').pop() === path);
@@ -496,6 +513,87 @@ window.__ModuleLoader__.load({
         if (!sidebar) throw Error('文件预览暂未就绪，请稍后重试。');
         sidebar.openResource(previewAddress(value, lane, file));
       }
+      const snippetPrefix = 'dsh-resource://geneloop-code/';
+      const codeExtensions = { javascript: 'js', js: 'js', jsx: 'jsx', typescript: 'ts', ts: 'ts', tsx: 'tsx',
+        python: 'py', py: 'py', svg: 'svg', html: 'html', html5: 'html', css: 'css', json: 'json', xml: 'xml',
+        bash: 'sh', sh: 'sh', shell: 'sh', powershell: 'ps1', ps1: 'ps1', sql: 'sql', yaml: 'yaml', yml: 'yml',
+        latex: 'tex', tex: 'tex', c: 'c', cpp: 'cpp', java: 'java', rust: 'rs', go: 'go', r: 'r' };
+      function snippetFromAddress(address) {
+        if (!address.startsWith(snippetPrefix) || !/^snippet-[0-9]+$/.test(address.slice(snippetPrefix.length))) return;
+        return codeSnippets.get(address.slice(snippetPrefix.length));
+      }
+      function rememberSnippet(key, text, language, complete, index) {
+        let id = codeSnippetKeys.get(key), previous = codeSnippets.get(id);
+        if (!previous) { id = 'snippet-' + ++snippetSequence; codeSnippetKeys.set(key, id); }
+        const entry = { id, key, text, language, complete, name: '代码片段-' + (index + 1) + '.' + (codeExtensions[language] || 'txt') };
+        codeSnippets.delete(id); codeSnippets.set(id, entry);
+        // Retain open previews while bounding inactive in-memory fragments.
+        if (codeSnippets.size > 200) for (const [oldId, old] of codeSnippets) {
+          if (!snippetObservers.get(oldId)?.size) { codeSnippets.delete(oldId); codeSnippetKeys.delete(old.key); break; }
+        }
+        if (previous && (previous.text !== text || previous.complete !== complete) && snippetObservers.get(id)?.size)
+          Promise.resolve().then(() => { for (const listener of snippetObservers.get(id) || []) listener(); });
+        return entry;
+      }
+      // Project only long fenced blocks into read-only reply fragments. Raw
+      // journal text and native copy actions remain intact; no workspace path
+      // or synthetic fragment becomes an approved server delivery receipt.
+      function codeCardMarkdown(text, identity) {
+        const lines = String(text).split('\n'), output = []; let index = 0;
+        for (let i = 0; i < lines.length; i++) {
+          const opening = /^( {0,3})(`{3,}|~{3,})([^\n]*)$/.exec(lines[i]);
+          if (!opening || (opening[2][0] === '`' && opening[3].includes('`'))) { output.push(lines[i]); continue; }
+          const start = i, marker = opening[2], language = opening[3].trim().split(/\s/)[0].toLowerCase();
+          const closes = line => { const match = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line); return match && match[1][0] === marker[0] && match[1].length >= marker.length; };
+          let end = start + 1; while (end < lines.length && !closes(lines[end])) end++;
+          const complete = end < lines.length;
+          // CommonMark removes up to the opening fence's indentation from
+          // each content line. Retaining it would break downloaded Python.
+          const indentation = new RegExp('^ {0,' + opening[1].length + '}');
+          const text = lines.slice(start + 1, end).map(line => line.replace(indentation, '')).join('\n') + (complete ? '\n' : '');
+          const ordinal = index++;
+          if (end - start - 1 < 12 && text.length < 800) output.push(...lines.slice(start, complete ? end + 1 : end));
+          else {
+            const entry = rememberSnippet(identity + ':' + ordinal, text, language, complete, ordinal);
+            const link = new URL('/#geneloop-code=' + encodeURIComponent(snippetPrefix + entry.id), window.location.href).href;
+            output.push('', '[' + entry.name + ' · ' + (end - start - 1) + ' 行' + (complete ? '' : ' · 生成中') + '](' + link + ')', '');
+          }
+          i = end;
+        }
+        return output.join('\n');
+      }
+      function openCodeLink(event) {
+        const link = event.target.closest?.('a'), raw = link?.getAttribute('href');
+        if (!raw) return false;
+        let url; try { url = new URL(raw, window.location.href); } catch { return false; }
+        if (url.origin !== new URL(window.location.href).origin || !url.hash.startsWith('#geneloop-code=')) return false;
+        let address; try { address = decodeURIComponent(url.hash.slice('#geneloop-code='.length)); } catch { return false; }
+        if (!snippetFromAddress(address)) return false;
+        event.preventDefault(); event.stopPropagation(); ctx.get('sidebarRight')?.openResource(address); return true;
+      }
+      const codeCardStyle = `.geneloop-product-turn a[href*="#geneloop-code="],.harless-paired a[href*="#geneloop-code="]{display:flex;align-items:center;gap:10px;box-sizing:border-box;max-width:420px;min-height:66px;padding:15px 18px;border:1px solid var(--dsw-alias-border-l2,#8884);border-radius:14px;background:var(--dsw-specific-input-major,transparent);color:var(--dsw-alias-label-primary,inherit);font:inherit;font-size:14px;text-decoration:none;overflow-wrap:anywhere}.geneloop-product-turn a[href*="#geneloop-code="]:before,.harless-paired a[href*="#geneloop-code="]:before{content:'</>';flex:none;font-family:monospace;font-size:17px;color:var(--dsw-alias-label-secondary,inherit)}.geneloop-product-turn a[href*="#geneloop-code="]:hover,.harless-paired a[href*="#geneloop-code="]:hover{background:var(--dsw-alias-interactive-bg-hover,#8882)}.geneloop-product-turn a[href*="#geneloop-code="]:focus-visible,.harless-paired a[href*="#geneloop-code="]:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:3px}.geneloop-code-preview{display:flex;flex-direction:column;min-height:0;height:100%;color:var(--dsw-alias-label-primary,inherit)}.geneloop-code-preview>header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--dsw-alias-border-l2,#8884)}.geneloop-code-preview>header>div{min-width:0;flex:1}.geneloop-code-preview strong,.geneloop-code-preview small{display:block;overflow-wrap:anywhere}.geneloop-code-preview small{margin-top:4px;color:var(--dsw-alias-label-secondary,inherit);font-size:12px}.geneloop-code-preview pre{flex:1;min-height:0;overflow:auto;margin:0;padding:20px;font:13px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:2}.geneloop-code-preview>p{padding:0 16px;color:var(--dsw-alias-label-secondary,inherit);font-size:12px}`;
+      function CodeSnippetPreview({ useTabInfo }) {
+        const { tab } = useTabInfo(), address = tab.contentId;
+        const [, redraw] = React.useState(0), [notice, setNotice] = React.useState('');
+        const entry = snippetFromAddress(address);
+        React.useEffect(() => {
+          const id = address.slice(snippetPrefix.length), listeners = snippetObservers.get(id) || new Set();
+          const update = () => redraw(value => value + 1); listeners.add(update); snippetObservers.set(id, listeners);
+          return () => { listeners.delete(update); if (!listeners.size) snippetObservers.delete(id); };
+        }, [address]);
+        if (!entry) return h('p', { role: 'status' }, '请返回对话，重新点击代码片段。');
+        const download = () => {
+          const blob = new Blob([entry.text], { type: 'text/plain;charset=utf-8' }), url = URL.createObjectURL(blob);
+          const link = document.createElement('a'); link.href = url; link.download = entry.name; link.hidden = true;
+          document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+          setNotice('已交给浏览器下载。');
+        };
+        return h('section', { className: 'geneloop-code-preview', 'aria-label': '代码预览：' + entry.name },
+          h('style', null, codeCardStyle),
+          h('header', null, h('div', null, h('strong', null, entry.name), h('small', null, '回复中的代码', entry.complete ? '' : ' · 生成中')),
+            h('button', { type: 'button', 'aria-label': '下载 ' + entry.name, onClick: download }, '下载')),
+          h('pre', null, h('code', null, entry.text)), notice && h('p', { role: 'status' }, notice));
+      }
       function DeliveryPreview({ useTabInfo, renderSlot }) {
         const { tab } = useTabInfo(), address = tab.contentId;
         const [state, setState] = React.useState({ phase: 'loading' }), [revision, setRevision] = React.useState(0);
@@ -578,6 +676,10 @@ window.__ModuleLoader__.load({
           children: { 'geneloop.delivery.document': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: (_standard, useTabInfo) => useTabInfo } } } },
         }, DeliveryPreview));
         ctx.slots.inject('sidebar.right.tab.document', () => mirrorPublicSlot('sidebar.right.tab.document', 'geneloop.delivery.document'));
+        const codeId = 'geneloop-code-preview';
+        ctx.effect(() => ctx.get('sidebarRightTabs').register({ id: codeId, kind: codeId, patterns: [snippetPrefix + '**'],
+          canOpen: address => Boolean(snippetFromAddress(address)), title: address => snippetFromAddress(address)?.name || '代码片段' }));
+        ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: codeId }, CodeSnippetPreview));
       }
       const artifactMeta = file => {
         const name = artifactName(file);
@@ -586,7 +688,7 @@ window.__ModuleLoader__.load({
         const size = bytes === undefined ? '' : primitives.fileSizeText ? primitives.fileSizeText(bytes) : bytes < 1024 ? bytes + 'B' : bytes < 1048576 ? Math.round(bytes / 1024) + 'KB' : (bytes / 1048576).toFixed(1) + 'MB';
         return [extension || '文件', size].filter(Boolean).join(' ');
       };
-      const artifactLinkStyle = `.harless-paired code[data-harless-artifact-inline],.geneloop-product-turn :not(pre)>code:has(>button){display:contents!important;background:transparent!important;border:0!important;padding:0!important;box-shadow:none!important;font:inherit!important;color:inherit!important}.harless-paired [data-harless-artifact-link],.geneloop-product-turn :not(pre)>code>button{display:inline-flex;vertical-align:baseline;align-items:baseline;gap:0;min-height:0;max-width:100%;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;color:var(--dsw-alias-link,#729cf7)!important;font:inherit!important;line-height:inherit;white-space:normal;overflow-wrap:anywhere;text-decoration:none;cursor:pointer}.harless-paired [data-harless-artifact-link] code{background:transparent!important;border:0!important;padding:0!important;font:inherit!important;color:inherit}.harless-paired [data-harless-artifact-link] svg,.geneloop-product-turn :not(pre)>code>button svg{display:none}.harless-paired [data-harless-artifact-link]:hover,.geneloop-product-turn :not(pre)>code>button:hover{text-decoration:underline;text-underline-offset:3px}.harless-paired [data-harless-artifact-link]:focus-visible,.geneloop-product-turn :not(pre)>code>button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:3px;border-radius:2px!important}`;
+      const artifactLinkStyle = `.harless-paired code[data-harless-artifact-inline],.geneloop-product-turn :not(pre)>code:has(>button){display:contents!important;background:transparent!important;border:0!important;padding:0!important;box-shadow:none!important;font:inherit!important;color:inherit!important}.harless-paired [data-harless-artifact-link],.geneloop-product-turn [data-harless-artifact-link],.geneloop-product-turn :not(pre)>code>button{display:inline-flex;vertical-align:baseline;align-items:baseline;gap:0;min-height:0;max-width:100%;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;color:var(--dsw-alias-link,#729cf7)!important;font:inherit!important;line-height:inherit;white-space:normal;overflow-wrap:anywhere;text-decoration:none;cursor:pointer}.harless-paired [data-harless-artifact-link] code{background:transparent!important;border:0!important;padding:0!important;font:inherit!important;color:inherit}.harless-paired [data-harless-artifact-link] svg,.geneloop-product-turn :not(pre)>code>button svg{display:none}.harless-paired [data-harless-artifact-link]:hover,.geneloop-product-turn :not(pre)>code>button:hover{text-decoration:underline;text-underline-offset:3px}.harless-paired [data-harless-artifact-link]:focus-visible,.geneloop-product-turn :not(pre)>code>button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:3px;border-radius:2px!important}`;
       // Public primitives are shared with native Chat; do not duplicate SVGs or
       // depend on private Chat components / generated CSS class names.
       const messageIcon = kind => h(primitives[({ copy: 'IconCopyOutline16', check: 'IconCheckOutline16',
@@ -668,6 +770,7 @@ window.__ModuleLoader__.load({
         const hydrated = loadedKey === key || comparisonSnapshots.has(key) || settled(initial);
         const serverSnapshot = React.useRef(initial);
         const [connection, setConnection] = React.useState(''), [downloads, setDownloads] = React.useState({});
+        const [, redrawDisclosure] = React.useState(0);
         const pageLoadRelease = React.useRef();
         React.useLayoutEffect(() => {
           const release = window.__geneLoopPageLoad?.hold(node.data.session_id);
@@ -875,6 +978,7 @@ window.__ModuleLoader__.load({
           const previousMessages = messages.slice(0, -1);
           const progressLabel = progressText(result);
           const captureLink = event => {
+            if (openCodeLink(event)) return;
             const link = event.target.closest?.('a'); if (!link) return;
             const raw = link.getAttribute('href') || '', file = artifactFor(files, raw) || files.find(file => raw === artifactPreviewLink(value, lane, file));
             if (file) { event.preventDefault(); event.stopPropagation(); try { openArtifact(value, lane, file); } catch (error) { setError(error.message); } }
@@ -893,13 +997,15 @@ window.__ModuleLoader__.load({
             !single && h('header', null, h('strong', null, title), h('span', { role: 'status' }, notStarted ? '任务未启动' : result.status === 'completed' && result.delivery_status === 'available' ? '已交付' : labels[result.status] || result.status)),
             h('style', null, liveStyle),
             single && !settled(result) && liveStatus(progressLabel),
-            (activity.length > 0 || previousMessages.length > 0) && h('details', { className: 'harless-activity' },
+            (activity.length > 0 || previousMessages.length > 0) && h('details', { className: 'harless-activity',
+              open: processExpansion.get('comparison:' + key + ':' + lane) === true,
+              onToggle: event => { rememberExpansion('comparison:' + key + ':' + lane, event.currentTarget.open); redrawDisclosure(value => value + 1); } },
               h('summary', null, '查看执行过程'),
               activity.length > 0 && h('ol', null, ...activity.map((entry, index) => h('li', { key: index, 'data-status': entry.status },
                 h('span', null, entry.label), h('small', null, ({ running: '进行中', completed: '完成', failed: '未完成' })[entry.status] || '')))),
               ...(!settled(result) ? [] : previousMessages).map(message => h('section', { key: message.id, className: 'harless-process-message',
                 onClickCapture: captureLink, ref: root => compactArtifactLabels(root, files) },
-                MarkdownText ? h(MarkdownText, { text: artifactMarkdown(message.text, files, value, lane), streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
+                MarkdownText ? h(MarkdownText, { text: codeCardMarkdown(artifactMarkdown(message.text, files, value, lane), key + ':' + lane + ':' + message.id), streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
             result.fallback_reason && h('p', { className: result.fallback_reason === 'rsi_requires_approved_sources' ? 'harless-paired-muted' : 'harless-paired-notice' },
               result.fallback_reason === 'rsi_requires_approved_sources'
                 ? '本轮未绑定可复用的资料，按标准流程回答。上传资料并通过校验后，才会尝试优化。'
@@ -908,9 +1014,10 @@ window.__ModuleLoader__.load({
             !settled(result) && previousMessages.length > 0 && h('div', { className: 'harless-stream-messages', onClickCapture: captureLink,
               ref: root => compactArtifactLabels(root, files) }, ...previousMessages.map(message => h('section', {
                 key: message.id, className: 'harless-process-message', 'data-message-id': message.id,
-              }, MarkdownText ? h(MarkdownText, { text: artifactMarkdown(message.text, files, value, lane), streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
+              }, MarkdownText ? h(MarkdownText, { text: codeCardMarkdown(artifactMarkdown(message.text, files, value, lane), key + ':' + lane + ':' + message.id), streaming: message.status === 'streaming', labels: markdownLabels, fileMentions: mentions }) : h('p', null, message.text)))),
             h('div', { className: 'harless-paired-answer', ref: root => compactArtifactLabels(root, files), onClickCapture: captureLink }, answer
-              ? h(BufferedMarkdown, { text: artifactMarkdown(answer, files, value, lane), streaming: !settled(result), identity: key + ':' + lane + ':' + (messages.at(-1)?.id || 'answer'), labels: markdownLabels, fileMentions: mentions })
+              ? h(BufferedMarkdown, { text: artifactMarkdown(answer, files, value, lane), project: text => codeCardMarkdown(text, key + ':' + lane + ':' + (messages.at(-1)?.id || 'answer')),
+                streaming: !settled(result), identity: key + ':' + lane + ':' + (messages.at(-1)?.id || 'answer'), labels: markdownLabels, fileMentions: mentions })
               : null),
             files.length > 0 && h('section', { className: 'harless-paired-deliveries', 'aria-label': title + '交付文件' },
               h('h4', null, '交付文件'), h('ul', { className: 'harless-paired-files' }, ...files.map(file => {
@@ -969,6 +1076,7 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'harless-paired', 'data-comparison-id': value.id },
           h('style', null, `.harless-paired{width:100%;min-width:0;container-type:inline-size;margin:18px 0;color:var(--dsw-alias-label-primary,inherit);font-family:var(--dsw-font-family,inherit);font-size:var(--dsh-content-font-size,14px)}.harless-paired-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.harless-paired-pane{min-width:0;container-type:inline-size;border:0;border-radius:0;padding:18px;background:transparent;box-shadow:none}.harless-paired-pane>header{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #8883;padding-bottom:12px}.harless-paired-pane>header>span,.harless-paired-pane small{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-pane>header>strong{font-size:15px}.harless-paired-answer{overflow-wrap:anywhere;line-height:1.65;margin:18px 0;min-width:0}.harless-paired-answer pre{max-width:100%;overflow-x:auto}.harless-paired-answer table{font-size:inherit}.harless-paired-notice{font-size:13px;line-height:1.6;border-left:3px solid #b99555;padding-left:10px}.harless-paired-pane>footer{display:grid;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid #8883}.harless-paired button{border:1px solid #8885;border-radius:8px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer;font:inherit}.harless-paired button:disabled{opacity:.5}.harless-paired-error{font-size:13px;line-height:1.6;color:var(--dsw-alias-state-error-primary,#d66)!important;margin-top:10px}.harless-paired-connection{font-size:13px;line-height:1.6;margin:12px 0;color:var(--dsw-alias-label-secondary,inherit)}.harless-paired-connection button{margin-left:8px}.harless-paired-deliveries h4{font-size:13px;font-weight:500;margin:0 0 10px}.harless-paired-files{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:10px}.harless-paired-files>li{flex:0 1 260px;min-width:0;max-width:100%}.harless-artifact-card{display:flex;align-items:center;gap:10px;box-sizing:border-box;width:100%;height:64px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l2,#8884);border-radius:16px;background:var(--dsw-specific-input-major,transparent);text-align:left}.harless-artifact-icon{display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px}.harless-artifact-icon>svg{width:28px;height:28px}.harless-artifact-body{display:flex;flex-direction:column;flex:1;min-width:0;gap:2px}.harless-paired-filename{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary,inherit);font-size:14px;font-weight:500;line-height:22px}.harless-artifact-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary,#888);font-size:12px;line-height:15px}.harless-artifact-download{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,inherit);text-decoration:none;cursor:pointer}.harless-artifact-download:hover{background:var(--dsw-alias-interactive-bg-hover,#8882);color:var(--dsw-alias-label-primary,inherit)}.harless-artifact-download:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.harless-artifact-download[aria-disabled=true]{cursor:progress;color:var(--dsw-alias-label-secondary,inherit)}.harless-artifact-spinner{box-sizing:border-box;width:14px;height:14px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:harless-artifact-spin .8s linear infinite}@keyframes harless-artifact-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.harless-artifact-spinner{animation:none;border-style:dotted}}.harless-paired-muted{color:var(--dsw-alias-label-secondary,inherit);font-size:13px}.harless-paired-files small{display:block;margin:5px 4px 0;overflow-wrap:anywhere}@container(max-width:650px){.harless-paired-grid{grid-template-columns:1fr}.harless-paired-pane{padding:16px}}`),
           h('style', null, artifactLinkStyle),
+          h('style', null, codeCardStyle),
           h('style', null, `.harless-single-pane{border:0;border-radius:0;padding:0;background:transparent}.harless-activity{font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary,inherit);margin:12px 0}.harless-activity summary{cursor:pointer}.harless-activity ol{padding-left:20px;margin:8px 0}.harless-activity li{padding:4px 0}.harless-activity li small{margin-left:12px}.harless-activity li[data-status=running]{color:var(--dsw-alias-state-business-primary,#729cf7)}`),
           h('style', null, `.harless-message-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:calc(28px + var(--dsh-content-font-delta,0px));margin-left:-6px;color:var(--dsw-alias-label-tertiary)}
 .harless-paired .harless-message-icon{display:inline-flex;align-items:center;justify-content:center;width:calc(28px + var(--dsh-content-font-delta,0px));height:calc(28px + var(--dsh-content-font-delta,0px));padding:6px;border:0;border-radius:28px;flex:none;color:var(--dsw-alias-label-tertiary)}
@@ -1458,6 +1566,7 @@ window.__ModuleLoader__.load({
       // A user message starts a displayed round, including legacy task messages
       // whose native turn location stayed on the preceding ordinary turn.
       const traceTime = value => typeof value === 'number' ? value : Date.parse(value);
+      const internalAttachmentContext = node => [node.source, node.data?.source].some(source => source?.kind === 'plugin' && source.plugin === 'geneloop-attachment-context');
       const traceText = node => (node.kind === 'user' ? displayUserContent(node.blocks || node.content || []) : (node.blocks || node.content || [])).map(part =>
         part.text || (part.type === 'file' ? '文件：' + (part.attachment?.name || part.attachment?.filename || '附件') : '')).filter(Boolean).join('\n') || node.message || node.text || '';
       function nativeTraceRows(nodes) {
@@ -1485,7 +1594,7 @@ window.__ModuleLoader__.load({
         return rows;
       }
       function trajectoryRounds(chat, inspection) {
-        const nodes = [...(inspection.eventNodes || [])].sort((a, b) => a.seq - b.seq);
+        const nodes = [...(inspection.eventNodes || [])].filter(node => !internalAttachmentContext(node)).sort((a, b) => a.seq - b.seq);
         const comparisons = (chat.order || []).map(key => chat.nodes.get(key)).filter(row => row?.kind === 'harless-comparison' && row.visibility !== 'hidden');
         const anchors = new Map(nodes.filter(node => node.kind === 'user').map(node => [node.seq, { seq: node.seq, user: node }]));
         for (const comparison of comparisons) {
@@ -1634,22 +1743,52 @@ window.__ModuleLoader__.load({
           text && h('pre', null, text),
           ...(block.subCalls || []).map(child => h(ToolEvidence, { key: child.callId, block: child })));
       }
-      function AssistantContent({ node, owner, process = false, live = false }) {
+      function AssistantContent({ node, owner, process = false, live = false, delivery }) {
         const original = ctx.slots.entries?.('conversation.chat.node').find(entry => entry.options.key === 'assistant-step' && entry.component !== ProductChatNode);
         const sourceBlocks = process ? node.data.blocks.filter(block => ['text', 'image', 'reasoning'].includes(block.kind)) : visibleBlocks(node);
-        const blocks = useBufferedBlocks(sourceBlocks, !process && live, owner.sessionId + ':' + node.key + ':' + process);
+        const buffered = useBufferedBlocks(sourceBlocks, !process && live, owner.sessionId + ':' + node.key + ':' + process);
+        const files = delivery?.lanes.baseline.artifacts || [];
+        const blocks = buffered.map((block, index) => typeof block.text === 'string' ? { ...block,
+          text: codeCardMarkdown(delivery ? artifactMarkdown(block.text, files, delivery, 'baseline') : block.text,
+            owner.sessionId + ':' + node.key + ':' + index) } : block);
+        const mentions = delivery ? { resolve: raw => { const file = artifactFor(files, raw); return file ? {
+          title: artifactName(file), label: '预览 ' + artifactName(file), open: () => openArtifact(delivery, 'baseline', file),
+        } : undefined; } } : undefined;
         // A registered public renderer preserves authorized file mentions,
         // images, Markdown and interruption presentation without private APIs.
-        if (original) return h(original.component, { ...owner, node: { ...node, data: { ...node.data, blocks } }, turnProcess: undefined });
+        if (original) return h(original.component, { ...owner, ...(mentions ? { fileMentions: () => mentions } : {}), node: { ...node, data: { ...node.data, blocks } }, turnProcess: undefined });
         return h('div', { 'data-streaming': node.data.status === 'running' }, ...blocks.map((block, i) =>
           block.kind === 'text' || block.kind === 'reasoning' ? MarkdownText
-            ? h(MarkdownText, { key: i, text: block.text, streaming: node.data.status === 'running', labels: markdownLabels })
+            ? h(MarkdownText, { key: i, text: block.text, streaming: node.data.status === 'running', labels: markdownLabels, fileMentions: mentions })
             : h('p', { key: i }, block.text)
             : block.kind === 'image' ? owner.renderMessageImages?.({ images: [{ attachment: block.attachment }], align: 'start' }) : null));
       }
       function ProductTurn({ owner, rows, answer, running }) {
-        const [open, setOpen] = React.useState(false);
         const id = React.useId();
+        const [delivery, setDelivery] = React.useState(null), [deliveryError, setDeliveryError] = React.useState('');
+        const [deliveryRetry, retryDelivery] = React.useState(0);
+        const session = owner.sessionId, turn = turnOf(answer || rows.at(-1));
+        const [open, setOpen] = useProcessExpansion('chat:' + session + ':' + turn);
+        React.useEffect(() => {
+          setDelivery(null); setDeliveryError('');
+          if (running || !Number.isInteger(turn)) return;
+          const abort = new AbortController();
+          withDeadline(abort.signal, 30000, async signal => {
+            let response;
+            do {
+              response = await fetch('/api/harless/deliveries?session_id=' + encodeURIComponent(session) + '&turn=' + turn,
+                { credentials: 'same-origin', cache: 'no-store', signal });
+              if (response.status === 202) await new Promise(resolve => setTimeout(resolve, 250));
+            } while (response.status === 202 && !signal.aborted);
+            signal.throwIfAborted();
+            if (response.status === 404) return;
+            if (!response.ok) throw apiError(response.status);
+            const value = await response.json();
+            if (value.session_id !== session || value.turn !== turn || value.presentation !== 'single' || !value.lanes?.baseline) throw apiError(502);
+            if (!signal.aborted) setDelivery(value);
+          }).catch(error => { if (!abort.signal.aborted) setDeliveryError(networkMessage(error)); });
+          return () => abort.abort();
+        }, [session, turn, running, deliveryRetry]);
         const evidence = rows.filter(row => row !== answer);
         const reasoning = (answer?.data.blocks || []).filter(block => block.kind === 'reasoning' && block.text);
         const tools = rows.filter(row => row.kind === 'tool-call');
@@ -1662,13 +1801,23 @@ window.__ModuleLoader__.load({
         const status = activeRoot ? workLabel(activeRoot.call?.name || activeRoot.name, documentSubject(activeRoot.call?.argsRaw || activeRoot.argsRaw))
           : latestBlock?.kind === 'reasoning' && answer?.data.status === 'running' ? '正在思考' : '正在回复';
         const label = count ? `${count} 次工具调用${messageCount ? ` · ${messageCount} 条过程消息` : ''}` : '查看处理过程';
-        return h('section', { className: 'geneloop-product-turn' },
+        const files = delivery?.lanes.baseline.artifacts || [];
+        const captureDelivery = event => {
+          if (openCodeLink(event)) return;
+          const link = event.target.closest?.('a'); if (!link || !delivery) return;
+          const target = link.getAttribute('href') || '';
+          const file = files.find(file => target === artifactPreviewLink(delivery, 'baseline', file));
+          if (file) { event.preventDefault(); event.stopPropagation(); openArtifact(delivery, 'baseline', file); }
+        };
+        return h('section', { className: 'geneloop-product-turn', onClickCapture: captureDelivery,
+          ref: root => compactArtifactLabels(root, files) },
           h('style', null, artifactLinkStyle),
+          h('style', null, codeCardStyle),
           h('style', null, liveStyle),
           h('style', null, `.geneloop-product-turn{min-width:0}.geneloop-process-toggle{display:flex;align-items:center;gap:8px;border:0;border-radius:8px;padding:7px 9px;margin:0 0 8px -9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer;text-align:left}.geneloop-process-toggle:hover{background:var(--dsw-alias-interactive-bg-hover)}.geneloop-process-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.geneloop-process-toggle svg{flex:none;transition:transform .15s}.geneloop-process-toggle[aria-expanded=true] svg{transform:rotate(90deg)}.geneloop-process-evidence{border-left:2px solid var(--dsw-alias-border-l2,#8885);padding-left:14px;margin:4px 0 18px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.geneloop-process-evidence>section{margin:12px 0}.geneloop-process-evidence pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.geneloop-process-label{font-weight:500}.geneloop-process-status{font-size:13px;color:var(--dsw-alias-label-secondary);margin:0 0 8px}@media(prefers-reduced-motion:reduce){.geneloop-process-toggle svg{transition:none}}`),
           running && liveStatus(status),
           hasProcess && h('button', { type: 'button', className: 'geneloop-process-toggle', 'aria-expanded': open, 'aria-controls': id,
-            onClick: () => setOpen(value => !value) },
+            onClick: () => setOpen(!open) },
             h('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, 'aria-hidden': true }, h('path', { d: 'm4 2 4 4-4 4' })), label),
           h('div', { id, className: 'geneloop-process-evidence', hidden: !open }, open && [
             ...evidence.map(row => row.kind === 'assistant-step'
@@ -1677,38 +1826,31 @@ window.__ModuleLoader__.load({
               : h('section', { key: row.key }, h('div', { className: 'geneloop-process-label' }, row.kind === 'model-retry' ? '请求重试' : '上下文'),
                 h('pre', null, row.kind === 'model-retry' ? '请求暂未完成，正在尝试恢复。' : contentText(row.data.content)))),
             ...reasoning.map((block, i) => h('section', { key: 'reasoning-' + i }, h('div', { className: 'geneloop-process-label' }, '思考过程'), h('pre', null, publicProcessText(block.text))))]),
-          answer && h(AssistantContent, { node: answer, owner, live: running && answer.data.status === 'running' }));
+          answer && h(AssistantContent, { node: answer, owner, delivery, live: running && answer.data.status === 'running' }),
+          delivery?.lanes.baseline.artifacts.length > 0 && h('div', { className: 'geneloop-chat-deliveries', 'aria-label': '交付文件' },
+            ...delivery.lanes.baseline.artifacts.map(file => h('div', { key: file.id },
+              h('button', { type: 'button', onClick: () => openArtifact(delivery, 'baseline', file) }, '预览 ' + artifactName(file)),
+              ' · ', h('a', { href: comparisonUrl(delivery, 'baseline', file), download: artifactName(file) }, '下载')))),
+          deliveryError && h('p', { role: 'alert' }, deliveryError, h('button', { type: 'button', onClick: () => retryDelivery(value => value + 1) }, '重试文件加载')));
       }
       function displayUserContent(content) {
-        if (!Array.isArray(content) || !content.some(part => part.type === 'file')) return content;
-        // Old queued messages can concatenate the prompt and extraction into
-        // one text block. Preserve the actual prompt and native file cards.
-        return content.flatMap(part => {
-          if (part.type !== 'text' || typeof part.text !== 'string') return [part];
-          const start = part.text.indexOf('用户附件的只读提取结果（');
-          const newline = part.text.indexOf('\n', start);
-          if (start < 0 || newline < 0) return [part];
-          try {
-            const value = JSON.parse(part.text.slice(newline + 1));
-            const generated = Array.isArray(value.files) && value.files.length && value.files.every(file =>
-              typeof file.name === 'string' && /^[a-f0-9]{64}$/.test(file.sha256) && typeof file.status === 'string');
-            if (!generated) return [part];
-            return start ? [{ ...part, text: part.text.slice(0, start) }] : [];
-          } catch { return [part]; }
-        });
+        // Only the server can match old parser suffixes to durable admission
+        // records. A person's pasted export JSON remains genuine user input,
+        // including when that same message also contains an attachment.
+        return content;
       }
       ctx.slots.inject('conversation.chat.node', () => {
         const originals = (ctx.slots.entries?.('conversation.chat.node') || []).filter(entry =>
           ['user', 'steering'].includes(entry.options.key) && (entry.options.priority ?? 0) >= 0);
         const cleanups = originals.map(original => ctx.slots.register({ name: 'conversation.chat.node', ...original.options, priority: -100, locale: original.locale,
-          inject: original.inject, ...(original.store ? { store: original.store } : {}) }, owner => h(original.component, {
+          inject: original.inject, ...(original.store ? { store: original.store } : {}) }, owner => internalAttachmentContext(owner.node) ? null : h(original.component, {
           ...owner, node: { ...owner.node, data: { ...owner.node.data, content: displayUserContent(owner.node.data.content) } } })));
         return () => cleanups.forEach(dispose => dispose?.());
       });
       function ProductChatNode(owner) {
         const { node } = owner;
         const snapshot = owner.useChat(value => value), turn = turnOf(node);
-        const rows = snapshot.order.map(key => snapshot.nodes.get(key)).filter(row => row && row.visibility !== 'hidden' && turnOf(row) === turn && processKinds.has(row.kind));
+        const rows = snapshot.order.map(key => snapshot.nodes.get(key)).filter(row => row && row.visibility !== 'hidden' && !internalAttachmentContext(row) && turnOf(row) === turn && processKinds.has(row.kind));
         const assistants = rows.filter(row => row.kind === 'assistant-step');
         const closed = (snapshot.timeline?.turns.get(turn)?.status ?? node.location?.turn?.status) === 'closed';
         // While generating, show the latest real text delta. After completion,

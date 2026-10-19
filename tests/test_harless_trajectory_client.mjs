@@ -56,14 +56,25 @@ function fixture({header=false}={}) {
 }
 const node=(id,scene='research-data-analysis')=>({key:id,kind:'harless-comparison',visibility:'visible',data:{id,scene,session_id:'a'}});
 
-test('trajectory user projection hides generated extraction but retains file name and original prompt',()=>{
+test('trajectory preserves server-admitted original text and files without guessing parser provenance',()=>{
   const f=fixture(),content=[{type:'text',text:'请总结'},{type:'file',attachment:{name:'paper.pdf'}},
     {type:'text',text:'用户附件的只读提取结果（资料）：\n'+JSON.stringify({files:[{name:'paper.pdf',sha256:'a'.repeat(64),status:'extracted',text:'raw evidence'}]})}];
   const before=JSON.stringify(content);
   f.setInspection({eventNodes:[{kind:'user',seq:1,content}]});
   const text=f.content(f.render());
-  assert.match(text,/请总结/);assert.match(text,/paper.pdf/);assert.doesNotMatch(text,/raw evidence|只读提取结果/);
+  assert.match(text,/请总结/);assert.match(text,/paper.pdf/);assert.match(text,/raw evidence|只读提取结果/);
   assert.equal(JSON.stringify(content),before);f.dispose();
+});
+
+test('internal attachment context never creates trajectory rounds or empty context records',()=>{
+  const f=fixture(),source={kind:'plugin',plugin:'geneloop-attachment-context',form:'catalog'};
+  f.setInspection({eventNodes:[{kind:'context',seq:1,source,content:[]},
+    {kind:'user',seq:2,content:[{type:'text',text:'你好'}]},
+    {kind:'user',seq:3,source:{...source,form:'recall'},content:[]},
+    {kind:'context',seq:4,source,content:[{type:'text',text:'private extraction'}]},
+    {kind:'assistant',seq:5,blocks:[{kind:'text',text:'你好！'}]}]});
+  const text=f.content(f.render());assert.match(text,/你好/);assert.doesNotMatch(text,/private extraction|上下文|第 2 轮/);
+  assert.equal(f.all(row=>row.props.className==='geneloop-trace-round').length,1);f.dispose();
 });
 
 test('trajectory shadows the existing tab through public slots and preserves native inject and authorized image rendering',()=>{

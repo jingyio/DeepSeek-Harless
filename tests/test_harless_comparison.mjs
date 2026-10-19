@@ -53,6 +53,52 @@ test('Concurrent send is idempotent; each user/chat and lane keeps a distinct mu
  }finally{f.close();}
 });
 
+test('legacy lane contexts rotate once and preserve originals, dialogue and existing observations without public leakage',async()=>{
+ const f=fixture();let resumed;
+ try{
+  const first=await f.send();await f.wait(first.comparison_id);f.service.dispose();
+  const path=join(f.root,'comparisons.json'),state=JSON.parse(readFileSync(path,'utf8'));
+  delete state.threads.a.context_version;writeFileSync(path,JSON.stringify(state));
+  const prepared=[];
+  resumed=createComparisonService(f.root,'account-a',{...f.host,prepare:async(turn,lane,id)=>{
+   prepared.push(structuredClone(turn));return f.host.prepare(turn,lane,id);
+  }},{pollMs:1});
+  const input={requestId:'cleaned-followup',content:[{type:'text',text:'你好'}]},evidence='Preserved exact page observation';
+  const next=await resumed.admit('a',input,{...context,prior_sources:[{name:'original.pdf',sha256:'a'.repeat(64)}],
+   prior_evidence_by_lane:{baseline:[evidence],motif:['Independent Motif observation']}});
+  for(let i=0;i<100&&(await resumed.view('a',next.comparison_id)).status!=='completed';i++)await new Promise(r=>setTimeout(r,3));
+  assert.equal(prepared.length,2);assert.deepEqual(prepared[0].input,input.content);
+  assert.match(prepared[0].prior_context.baseline,/a\/baseline/);
+  assert.deepEqual(prepared[0].prior_evidence.baseline,[evidence]);
+  assert.deepEqual(prepared[0].prior_sources,[{name:'original.pdf',sha256:'a'.repeat(64)}]);
+  assert.doesNotMatch(JSON.stringify(await resumed.view('a',next.comparison_id)),/Preserved exact page observation|original\.pdf/);
+  assert.equal(JSON.parse(readFileSync(path,'utf8')).threads.a.context_version,2);
+  const before=f.created.length;await resumed.admit('a',{requestId:'same-clean-lane',content:[{type:'text',text:'next'}]},context);
+  assert.equal(f.created.length,before,'ordinary followups keep the repaired lane');
+ }finally{resumed?.dispose();f.close();}
+});
+
+test('all historical execution sources remain discoverable after more than six rotations',async()=>{
+ let sequence=0;
+ const f=fixture({createLane:async(parent,_scene,lane)=>parent+'-'+lane+'-'+(++sequence)});
+ try{
+  const native=Array.from({length:20},(_,index)=>({user:'native-'+index,assistant:'native answer '+index}));
+  let latest;
+  for(let round=0;round<13;round++){
+   const sent=await f.send('a','long-'+round,'scene question '+round,{...context,scene:round%2?'paper':'ppt',prior_context:native});
+   latest=await f.wait(sent.comparison_id);
+  }
+  assert.equal(f.service.contextSessions('a').baseline.length,13);
+  assert.equal(f.service.contextSessions('a').motif.length,13);
+  assert.deepEqual(f.service.contextSessions('b'),{baseline:[],motif:[]});
+  const stored=JSON.parse(readFileSync(join(f.root,'comparisons.json'))).turns.at(-1);
+  const rows=JSON.parse(stored.prior_context.baseline);
+  assert.equal(rows.length,32);assert.equal(rows[0].user,'native-0');assert.equal(rows.at(-1).user,'scene question 11');
+  assert.equal((stored.prior_context.baseline.match(/native-0/g)??[]).length,1);
+  assert.equal(latest.status,'completed');
+ }finally{f.close();}
+});
+
 test('paired lanes start together while another turn waits for both and same-chat overlap stays rejected',async()=>{
  const f=fixture({submit:async id=>{f.submitted.push(id);f.tasks.get(id).status='running';}});
  try{

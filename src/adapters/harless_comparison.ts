@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, appendF
 import { join } from 'node:path';
 import { hasReportPlaceholders, REPORT_ANSWER_BINDING } from './harless_report_answer.ts';
 import type { WebReasoningEffort } from './harless_reasoning.ts';
+import {uniqueAttachmentImages} from './harless_attachment_context.ts';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const terminal = new Set(['completed', 'failed', 'cancelled']);
@@ -21,6 +22,8 @@ type Turn = { id: string; session_id: string; request_id: string; fingerprint: s
   reasoning_effort?: WebReasoningEffort;
   lanes: Record<LaneName, Lane>; scores: Partial<Record<LaneName, number>>; score_revision: number; input: any;
   presentation?: 'paired' | 'single'; prior_artifacts?: Partial<Record<LaneName,any[]>>; prior_sources?: any[];
+  prior_evidence?: Partial<Record<LaneName,string[]>>;
+  source_images?:any[];prior_images?:any[];
   published?: boolean; cancellation_requested?: boolean; source_files?:Record<string,any>; prior_context?: Partial<Record<LaneName,string>> };
 const turnLanes = (t: Pick<Turn,'presentation'>): readonly LaneName[] => t.presentation === 'single' ? ['baseline'] : lanes;
 const admissionMessages: Record<string, string> = {
@@ -53,7 +56,7 @@ export class ComparisonError extends Error {
 export type ComparisonHost = {
   owns(id: string): Promise<void>;
   createLane(parent: string, scene: string, lane: LaneName): Promise<string>;
-  prepare(turn: any, lane: LaneName, requestId: string): Promise<{ task_id: string }>;
+  prepare(turn: any, lane: LaneName, requestId: string, taskReady?: (taskId:string)=>void): Promise<{ task_id: string }>;
   cancelPreparing?(turn: any): Promise<void>;
   submit(taskId: string): Promise<void>;
   inspect(taskId: string, context?: { turn: any; lane: LaneName; recoverMissing?: boolean }): Promise<any>;
@@ -119,7 +122,7 @@ export function createComparisonService(output: string, principal: string, host:
     lanes: Object.fromEntries(turnLanes(t).map(name => {
       const lane = t.lanes[name], artifacts = (lane.artifacts ?? []).filter(row=>
         t.scene!=='research-data-analysis'||row.verification==='data-report-delivery-v1'||
-        row.verification==='code-output-v1'&&row.name.startsWith('outputs/code/'));
+        row.verification==='code-output-v1'&&(row.name.startsWith('outputs/code/')||row.name.startsWith('code/')));
       const {delivery_reconciled, ...publicLane} = lane;
       const notStarted = lane.status === 'failed' && !lane.task_id && !lane.answer && !lane.answer_display && !artifacts.length &&
         !lane.activity?.length && ['upstream_requests', 'model_requests', 'tool_calls', 'llm_decisions', 'verified_skips']
@@ -177,19 +180,22 @@ export function createComparisonService(output: string, principal: string, host:
       const runLane = async (name: LaneName) => {
         const lane = t.lanes[name];
         let unsubscribe: (()=>void)|undefined;
+        let preparing=!lane.task_id;
         if (disposed || terminal.has(lane.status)) return;
         try {
           while (host.ready?.(t, name) === false && !disposed && !terminal.has(lane.status)) await new Promise(resolve => setTimeout(resolve, pollMs));
           if (disposed || terminal.has(lane.status)) return;
-          if (!lane.task_id) await prepare(t, name);
-          if (disposed || terminal.has(lane.status)) return;
-          unsubscribe=host.subscribe?.(lane.task_id!,task=>{
+          const subscribe=(taskId:string)=>{if(unsubscribe)return;unsubscribe=host.subscribe?.(taskId,task=>{
             // Native chunk notifications carry the full current task view. A
             // terminal update is reconciled below with verified deliveries.
             if(disposed||terminal.has(task.status)||terminal.has(lane.status))return;
             applyTask(t,name,task);
             for(const subscriber of subscribers.get(t.id)??[])try{subscriber(view(t));}catch{}
-          });
+          });};
+          if (!lane.task_id) await prepare(t, name,subscribe);
+          preparing=false;
+          if (disposed || terminal.has(lane.status)) return;
+          subscribe(lane.task_id!);
           await host.submit(lane.task_id);
           do {
             await refresh(t, name);
@@ -202,7 +208,6 @@ export function createComparisonService(output: string, principal: string, host:
           appendFileSync(join(output, 'comparison-errors.jsonl'), JSON.stringify({
             id: t.id, lane: name, code: error?.code ?? error?.name ?? 'unknown',
             message: String(error?.message ?? error).slice(0, 1024) }) + '\n', { mode: 0o600 });
-          const preparing = !lane.task_id;
           Object.assign(lane, { status: t.cancellation_requested || disposed ? 'cancelled' : 'failed', failure_stage: preparing ? 'preparation' : 'execution',
             failure: preparing ? admissionFailure(error) ?? '任务未能启动，请稍后重试；如果仍有问题，请反馈给管理员。'
               : '这一路未完成，请重试；已生成的结果会保留。' });
@@ -225,17 +230,29 @@ export function createComparisonService(output: string, principal: string, host:
     // Persisted results remain readable even when a transient UI event fails.
     try { await host.publish(t.session_id, view(t)); } catch { /* GET recovers the saved state. */ }
   }
-  async function prepare(t: Turn, name: LaneName) {
+  async function prepare(t: Turn, name: LaneName, taskReady?:(taskId:string)=>void) {
     const lane = t.lanes[name];
     const req = 'compare-' + hash([t.id, name, lane.attempt]).slice(0, 48);
-    const result = await host.prepare(t, name, req);
-    lane.task_id = result.task_id;
+    const bind=(taskId:string)=>{
+      if(lane.task_id){if(lane.task_id!==taskId)throw Error('comparison_prepared_task_changed');return;}
+      lane.task_id=taskId;
+      taskReady?.(taskId);
+      save();
+      for(const subscriber of subscribers.get(t.id)??[])try{subscriber(view(t));}catch{}
+    };
+    const result = await host.prepare(t, name, req,bind);
+    bind(result.task_id);
     if (t.cancellation_requested || disposed) {
       lane.status = 'cancelled'; await host.cancel(result.task_id);
-    } else Object.assign(lane, { status: 'queued', failure: undefined, failure_stage: undefined });
+    } else Object.assign(lane, { status: lane.status==='preparing'?'queued':lane.status, failure: undefined, failure_stage: undefined });
   }
   return {
     hasSession: (id: string) => Boolean(state.threads[id]),
+    // Internal account-owned child identities only; the Host reads their
+    // already-observed evidence without exposing private Session APIs.
+    contextSessions: (id: string) => Object.fromEntries(lanes.map(name => [name, [...new Set(state.turns
+      .filter(turn => turn.session_id === id)
+      .map(turn => turn.lanes[turn.presentation === 'single' ? 'baseline' : name]?.session_id).filter(Boolean))]])),
     busy: (id: string) => state.turns.some(t => t.session_id === id && !terminal.has(t.status)),
     async subscribe(session: string, id: string, listener: (value: any) => void) {
       const t = await get(session, id); const listeners = subscribers.get(id) ?? new Set();
@@ -283,10 +300,11 @@ export function createComparisonService(output: string, principal: string, host:
       const changed = Boolean(thread && hash([thread.scene, thread.options, thread.presentation ?? 'paired']) !== hash([context.scene, context.options, presentation]));
       // A conversation is stable; immutable tool/budget/evidence scopes belong
       // to its private execution children. Rotate those children on transitions.
-      const rotate = !thread || newSources || changed;
+      const interrupted=history.at(-1)?.cancellation_requested||history.at(-1)?.status==='cancelled';
+      const rotate = !thread || thread.context_version !== 2 || newSources || changed || interrupted;
       const priorContext = rotate ? Object.fromEntries(selectedLanes.map(name => [name, JSON.stringify([
-        ...(context.prior_context_by_lane?.[name] ?? context.prior_context ?? []).slice(-12).map(({source_seq,...row}:any)=>row),
-        ...history.slice(-6).map(t => ({
+        ...(context.prior_context_by_lane?.[name] ?? context.prior_context ?? []).map(({source_seq,...row}:any)=>row),
+        ...history.map(t => ({
           scene: t.scene,
           user: t.input.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n'),
           assistant: t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer_display ?? t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer ?? '',
@@ -295,10 +313,10 @@ export function createComparisonService(output: string, principal: string, host:
       // Only internal, same-parent, same-lane immutable deliveries are handed
       // forward. The Host rechecks hashes and target scene formats before copy.
       const priorArtifacts = rotate ? Object.fromEntries(selectedLanes.map(name => [name,
-        [...(context.prior_artifacts ?? []), ...history.slice(-6).flatMap(t => (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.artifacts ?? [])
+        [...(context.prior_artifacts ?? []), ...history.flatMap(t => (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.artifacts ?? [])
           .filter(row => t.scene !== 'research-data-analysis' || row.verification === 'data-report-delivery-v1'||
-            row.verification==='code-output-v1'&&row.name.startsWith('outputs/code/'))
-          .map(row => ({ turn: t.id, lane: t.presentation === 'single' ? 'baseline' : name, row })))].slice(-32),
+            row.verification==='code-output-v1'&&(row.name.startsWith('outputs/code/')||row.name.startsWith('code/')))
+          .map(row => ({ turn: t.id, lane: t.presentation === 'single' ? 'baseline' : name, row })))],
       ])) : undefined;
       // Appending a receipt must retain all earlier originals, including native
       // Chat uploads before the first private lane. Freeze the union at admission
@@ -307,8 +325,12 @@ export function createComparisonService(output: string, principal: string, host:
         ...(context.prior_sources ?? []),
         ...history.flatMap(t => [...(t.prior_sources ?? []), ...Object.values(t.source_files ?? {})]),
       ].map(ref => [hash(ref), ref])).values()] : [];
+      const priorEvidence = rotate ? context.prior_evidence_by_lane : undefined;
+      const priorImages=rotate?uniqueAttachmentImages([
+        ...(context.prior_images??[]),...history.flatMap(turn=>[...(turn.prior_images??[]),...(turn.source_images??[])]),
+      ]):[];
       if (rotate) {
-        thread = { scene: context.scene, options: context.options, presentation, lanes: {} };
+        thread = { scene: context.scene, options: context.options, presentation, context_version:2, lanes: {} };
         for (const name of selectedLanes) thread.lanes[name] = await host.createLane(session, context.scene, name);
         state.threads[session] = thread; save();
       }
@@ -316,7 +338,7 @@ export function createComparisonService(output: string, principal: string, host:
         fingerprint, scene: context.scene, options: context.options, model: context.model, reasoning_effort: context.reasoning_effort ?? 'off', presentation,
         input_sha256: context.input_sha256, created_at: new Date().toISOString(), status: 'preparing',
         lanes: Object.fromEntries(selectedLanes.map(name => [name, { session_id: thread.lanes[name], status: 'preparing', attempt: 0 }])) as Record<LaneName,Lane>,
-        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files, prior_context: priorContext, prior_artifacts: priorArtifacts, prior_sources: priorSources };
+        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files,source_images:context.source_images,prior_images:priorImages, prior_context: priorContext, prior_evidence:priorEvidence, prior_artifacts: priorArtifacts, prior_sources: priorSources };
       state.turns.push(t); save();
       for (const name of turnLanes(t)) t.lanes[name].status = 'queued';
       summary(t); save();
@@ -335,7 +357,7 @@ export function createComparisonService(output: string, principal: string, host:
       if (terminal.has(t.status)) for (const name of turnLanes(t)) {
         const lane = t.lanes[name], key = `${t.id}/${name}/${lane.attempt}`;
         const needsDeliveryAudit=t.scene==='research-data-analysis'&&lane.artifacts?.some(row=>
-          row.verification!=='data-report-delivery-v1'&&!(row.verification==='code-output-v1'&&row.name.startsWith('outputs/code/')));
+          row.verification!=='data-report-delivery-v1'&&!(row.verification==='code-output-v1'&&(row.name.startsWith('outputs/code/')||row.name.startsWith('code/'))));
         // A running task can have an unresolved display before finished_at is
         // known. Re-audit that persisted result after a restart reaches a
         // terminal state; the per-attempt key below bounds this to one read.

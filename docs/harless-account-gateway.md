@@ -1,5 +1,7 @@
 # Harless 账号网关（Linux）
 
+正式网站现在通过 `npm run service -- <start|status|check|restart|rollback>` 管理 owner 和网关。先阅读[统一启动与发布流程](service-lifecycle.md)；下文的底层 Node/DSH 命令用于理解配置及隔离诊断，不再作为人工线上发布入口。服务计划指向已经生成并核验的同版本配置；预算服务、隧道和场景依赖继续沿用服务器既有配置。
+
 每个成员账号首次访问时按需启动一个独立后端进程树，同账号的多个工作区和对话复用该后端；管理员连接预先启动的 owner 后端。各账号共享服务器计算资源、模型服务及预算代理，按账号凭证、任务前缀和 Session 绑定校验归属。当前没有代码级空闲自动回收、总在线人数限制或 CPU/内存配额；退出登录只撤销登录会话。成员进程退出后，下次访问重新启动，持久化资料保留。最多 8 个同时启动是启动阶段保护，不是可保证的在线容量。
 
 同一轮 DeepSeek 场景对照允许 Baseline 与 Motif 同时执行，各侧独立 Session、工具范围和预算路由；仍按账号逐轮调度，不允许新任务抢用另一对照的并行槽。无 Session 请求头的旧 GLM 适配器继续串行，避免模糊的费用归属。
@@ -17,6 +19,16 @@
 网关关闭时结束已就绪与启动中的成员后端，并断开空闲 HTTP 和已升级的浏览器连接；WebSocket 上下游任一侧关闭时同时释放另一侧。正常升级使用 SIGTERM，保留账号/会话/文件目录。任务仍在运行时应等待完成再切换；此关闭操作不会自动续跑未完成的任务。
 
 通过 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json` 启动网关，它只监听 `127.0.0.1`。使用反向代理或 Cloudflare Tunnel 将 HTTPS 公网地址指向网关端口；在反向代理中转发 WebSocket，并限制只有网关可访问内部预算和控制端口。网关初次部署用 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json claim` 生成一次性所有者激活码；所有者登录后从账户页生成成员邀请码。不要在日志、PR 或聊天记录中公开激活码、邀请码、DSH token 或私有配置。临时 `trycloudflare.com` 隧道和手工 `tmux` 进程可能中断、重启或换地址；生产用途应由持久化服务管理器监控入口与后端。
+
+所有者后端每次启动都会生成新的内部 launch token，网关的 `ownerTokenFile` 必须同步；它不是账号密码或模型 API Key。统一服务入口在启动网关前自动同步并检查，失败则停止发布。下面是底层认证检查/故障诊断工具，不能以此重新拼装独立发布脚本。追加日志需要在启动进程前记录字节偏移并传入 `--log-offset`，或每次使用独立日志；不能从混合多次启动的日志猜测令牌。
+
+```sh
+python scripts/harless_owner_access.py --config .local/PRIVATE-GATEWAY-CONFIG.json \
+  --startup-log .local/PRIVATE-CURRENT-OWNER-STARTUP.log
+python scripts/harless_owner_access.py --config .local/PRIVATE-GATEWAY-CONFIG.json --check
+```
+
+该工具只向配置端口的 `127.0.0.1` 发送认证请求，要求 303、内部 cookie 和携带 cookie 的首页 200 全部成功后，才以私有权限原子更新令牌文件，不输出凭证、不调用模型。网关会在下次请求重新读取该文件，正常同步无需重启网关。只检查 TCP 监听、未认证的首页或公开登录页无法证明管理员工作区可用；部署验收应分别检查管理员与测试成员账号。成员的内部凭证在各自后端启动时采集，不读取 `ownerTokenFile`，因此所有者令牌陈旧不等于所有新用户不可用。
 
 升级代码时保留每个账号的 `DSH_HOME`、工作区及任务 `output` 目录，不把持久化数据放进随代码版本删除的检出目录。会话归属现在保存在对应 `DSH_HOME` 中的 `harless-web-ownership-*.json`，因此前端进程重启不会丢失续聊权限。首次升级自动导入当前 `output` 的旧归属记录；如果所有者以前已更换过 `output`，可以在其私有 policy 中设置 `ownership_legacy_outputs`（旧目录的绝对路径列表）。只会导入与当前 DSH Home 匹配的归属文件，不能据聊天标题或浏览器传入的 ID 认领历史。成员后端清除此迁移列表，只访问自身挂载目录。迁移归属不会恢复旧任务额度或移动文件；场景的工作区、生成 preset 和任务记录仍须保留。没有逐轮预算 broker 的入口继续拒绝重用已绑定任务。
 

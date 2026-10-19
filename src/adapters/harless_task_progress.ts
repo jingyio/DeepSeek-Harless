@@ -3,6 +3,7 @@ export type TaskActivity = { label: string; status: 'running' | 'completed' | 'f
 export type TaskMessage = { id: string; text: string; status: 'streaming' | 'completed' | 'interrupted'; attempt: number; started_at: string; finished_at?: string };
 export type TaskTrace = TaskActivity & { id: string; time: string; kind: 'assistant' | 'thinking' | 'tool' | 'motif' | 'request'; text?: string; optimized: boolean; verified_skip: boolean };
 export type TaskProgressSnapshot = { answer: string; progress: TaskActivity; activity: TaskActivity[]; messages: TaskMessage[]; trace: TaskTrace[] };
+export type AttachmentPreparation = { phase: 'extracting' | 'rendering' | 'visual'; filename?: string; completed?: number; total?: number };
 const toolLabels: [RegExp, string][] = [
   [/^web_search$/, '搜索网页'],
   [/^web_fetch$/, '读取网页'],
@@ -53,7 +54,7 @@ export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = 
   const messages: TaskMessage[] = Array.isArray(saved?.messages) ? structuredClone(saved.messages) : [];
   const trace: TaskTrace[] = Array.isArray(saved?.trace) ? structuredClone(saved.trace) : [];
   let attempt = Math.max(0,...messages.map(row=>row.attempt)), serial = trace.length;
-  let current: TaskMessage | undefined, requestRow: TaskTrace | undefined, thinking: TaskTrace | undefined, messageRow: TaskTrace | undefined;
+  let current: TaskMessage | undefined, requestRow: TaskTrace | undefined, thinking: TaskTrace | undefined, messageRow: TaskTrace | undefined, preparationRow: TaskTrace | undefined;
   const tools = new Map<string, { activity: TaskActivity; trace: TaskTrace }>();
   const seenMessages = new Set<string>();
   const setProgress = (label: string, status: TaskActivity['status'] = 'running') => { progress = { label, status }; };
@@ -76,8 +77,19 @@ export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = 
     if(thinking?.status==='running')thinking.status='completed';
   };
   return {
+    preparation(stage: AttachmentPreparation) {
+      const subject = taskDocumentSubject({ name: stage.filename });
+      const counts = Number.isSafeInteger(stage.total) && stage.total! > 0 && Number.isSafeInteger(stage.completed) && stage.completed! >= 0 && stage.completed! <= stage.total!
+        ? `（${stage.completed}/${stage.total} 页）` : '';
+      const label = stage.phase === 'visual' ? '正在读取页面图像' + counts : stage.phase === 'rendering' ? '正在准备文档页面' : '正在读取附件';
+      preparationRow ??= row('request', label);
+      preparationRow.label = label;
+      if (subject) preparationRow.subject = subject;
+      progress = { label, status: 'running', ...(subject ? { subject } : {}) };
+    },
     recovery() { row('request','正在修正演示文稿');setProgress('正在修正演示文稿'); },
     beginAttempt() {
+      if (preparationRow?.status === 'running') preparationRow.status = 'completed';
       settleAttempt('completed'); attempt++; currentText=new Map(); current=undefined; thinking=undefined;messageRow=undefined;
       requestRow=row('request','准备回复');setProgress('正在组织回复');
     },

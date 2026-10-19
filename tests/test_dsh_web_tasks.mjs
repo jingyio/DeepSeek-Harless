@@ -8,9 +8,11 @@ import { randomUUID, createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
+import { markAgentLoopRequest,createUserMessage } from '@deepseek-ai/dsh-llm';
+import { Session } from '@deepseek-ai/dsh-session';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import {comparisonArtifacts} from '../src/adapters/harless_comparison_artifacts.ts';
+import {attachmentEvidence,ATTACHMENT_CONTEXT_PLUGIN} from '../src/adapters/harless_attachment_context.ts';
 import { digest } from '../src/motif_core/online_skill_runtime.mjs';
 import {renderPrompt} from '@deepseek-ai/dsh-system-prompt';
 import { Context, Service } from '@deepseek-ai/cordis';
@@ -27,7 +29,7 @@ const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
-async function fixture({ broker = false, dshHome = false, visionReply, fixtureSchemas: schemaOverride, fixture_schemas, strictMountedTools = false, ...overrides } = {}) {
+async function fixture({ broker = false, dshHome = false, visionReply, nativeImageAdmission = false, realSessions=false, fixtureSchemas: schemaOverride, fixture_schemas, strictMountedTools = false, ...overrides } = {}) {
   const fixtureSchemas = schemaOverride ?? fixture_schemas ?? toolSchemas;
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
@@ -148,6 +150,11 @@ async function fixture({ broker = false, dshHome = false, visionReply, fixtureSc
             on(name,fn) { (agent.hooks??=new Map()).set(name,fn); },
           } };
           agent.steered=[];agent.steer=message=>agent.steered.push(message);
+          if(realSessions){
+            const session=Session.create(id,events),append=session.append.bind(session);
+            session.append=(type,data,...metadata)=>{const event=append(type,data,...metadata);events.push(event);emit('session/event',session,event);return event;};
+            agent.session=session;
+          }
           agents.set(id, agent); emit('agent/created', { agent });
         }
         return { sessionId: id, agentPreset: request.agentPreset };
@@ -156,8 +163,13 @@ async function fixture({ broker = false, dshHome = false, visionReply, fixtureSc
         assert.ok(signal instanceof AbortSignal);
         promptCalls.push(request);
         const agent = agents.get(request.sessionId);
+        if(realSessions){
+          agent.session.append('user/message',createUserMessage({content:nativeImageAdmission?await ctx.attachments.admitPromptContent(request.content):request.content,
+            source:{kind:'user',rpcId:request.requestId}}),{surfaceOp:'append'});
+          return {accepted:true};
+        }
         const event = { type: 'user/message', data: { id: `user-${promptCalls.length}`,
-          content: request.content, source: { kind: 'user', rpcId: request.requestId } } };
+          content: nativeImageAdmission ? await ctx.attachments.admitPromptContent(request.content) : request.content, source: { kind: 'user', rpcId: request.requestId } } };
         agent.events.push(event); emit('session/event', agent.session, event);
         return { accepted: true };
       },
@@ -537,6 +549,98 @@ test('model catalog crosses the real native HTTP bridge with browser authenticat
   assert.equal((await fetch(origin+'/api/harless/models',{headers:{cookie,origin:'https://foreign.invalid'}})).status,403);
   assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0);
  }finally{await native.fiber.dispose();await f.close();}
+});
+
+test('first PDF and subsequent scene turns cross native HTTP with the real Session surface contract',options,async()=>{
+ const f=await fixture({broker:true,realSessions:true,scenes:attachmentScenes(),capability_profile:'new-scene',
+  comparison_scenes:['paper-proofreading','research-data-analysis','ppt'],visionReply:async()=> 'The uploaded page contains a blue rectangle.'}),native=new Context();
+ try{
+  const server=new WebServer(native,{host:'127.0.0.1',port:0});await server[Service.init]();
+  native.provide('credentials',{async modifyRecord(_key,change){return change(undefined);}});
+  await mountNativeConnection(native);await new Promise(resolve=>setImmediate(resolve));
+  const origin='http://127.0.0.1:'+server.port;
+  server.register({kind:'exact',path:'/',handler:(request,response)=>{
+   if(native.connection.authorizeIndex(request,response)){response.writeHead(200);response.end('fixture');}
+  }});
+  f.ctx.connection=native.connection;
+  native.connection.fetch.register(f.routes.get('/api/harless/comparisons'));
+  // The carrier and Session journal are the installed Harness implementations.
+  // Only the model queue/remote dispatcher is fixture-owned; no provider runs.
+  native.connection.rpc.intercept('/api',endpoint=>['session/create','session/prompt'].includes(endpoint),async(endpoint,payload,signal)=>({
+   ok:true,value:await f.ctx.sessionController[endpoint.split('/')[1]](payload,signal),
+  }));
+  const exchange=await fetch(native.connection.authenticatedUrl(origin),{redirect:'manual'});
+  assert.equal(exchange.status,303);const cookie=exchange.headers.get('set-cookie').split(';',1)[0];
+  const call=async(endpoint,payload)=>{
+   const response=await fetch(origin+'/api/'+endpoint,{method:'POST',headers:{cookie,'Content-Type':'application/json'},
+    body:JSON.stringify({type:'client-request',rpcId:randomUUID(),method:endpoint,payload})});
+   assert.equal(response.status,200);const envelope=await response.json();assert.equal(envelope.result.ok,true,JSON.stringify(envelope));return envelope.result.value;
+  };
+  const {sessionId}=await call('session/create',{});
+  const bytes=execFileSync(process.env.SSS_PYTHON??'python3',['-c',
+   "import pymupdf as f,sys; d=f.open(); p=d.new_page(); p.insert_text((40,50),'Uploaded source: value 42'); p.draw_rect((40,80,200,160),fill=(0,0,1)); sys.stdout.buffer.write(d.tobytes())"]);
+  const file=await f.ctx.fileUploads.uploadStream({sessionId,name:'source.pdf',data:(async function*(){yield bytes;})()});
+  const settle=async id=>{
+   for(let attempt=0;attempt<250;attempt++){
+    for(const task of (await f.api()).value.tasks)if(task.status==='running'&&f.promptCalls.some(row=>row.requestId===task.request_id))await f.complete(task);
+    const response=await fetch(origin+'/api/harless/comparisons?session_id='+sessionId+'&id='+id,{headers:{cookie}});
+    assert.equal(response.status,200);const value=await response.json();
+    if(['completed','failed','cancelled'].includes(value.status)){assert.equal(value.status,'completed',JSON.stringify(value));return;}
+    await new Promise(resolve=>setTimeout(resolve,10));
+   }throw Error('native HTTP attachment turn did not settle');
+  };
+  for(const [index,text] of ['Read the blue figure','你好','/paper Recall the source','/data Recall the source','/ppt Recall the source'].entries()){
+   const content=[{type:'text',text},...(index===0?[{type:'file',receiptId:file.receiptId}]:[])];
+   const accepted=await call('session/prompt',{sessionId,requestId:'surface-turn-'+index,mode:'queue',content});
+   assert.ok(accepted.accepted&&accepted.comparison_id);await settle(accepted.comparison_id);
+  }
+  const children=[...f.agents.values()].filter(agent=>agent.session.id!==sessionId);
+  assert.ok(children.length>=4);
+  for(const agent of children){
+   assert.ok(agent.session instanceof Session);
+   const events=agent.session.snapshotEvents(),context=events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+   assert.ok(context);assert.equal(context.surfaceOp,'append');assert.ok(agent.session.surface.nodes.includes(context.seq));
+   assert.throws(()=>Session.create('surface-negative-control').append('user/message',context.data),/requires a surfaceOp marker/,'the installed Session rejects the former unmarked append');
+   assert.ok(events.some(event=>event.seq>context.seq&&event.data?.source?.kind==='user'),'internal context precedes the actual human turn');
+  }
+  const parent=f.agents.get(sessionId).session;assert.ok(parent instanceof Session);
+  assert.equal(parent.snapshotEvents().filter(event=>event.type==='user/message').length,5);
+  assert.equal((await f.api()).value.aggregate.upstream_requests,0);
+ }finally{await native.fiber.dispose();await f.close();}
+});
+
+test('blocked PDF preparation publishes its task and real read progress over native HTTP before model admission',options,async()=>{
+ let release,started;const gate=new Promise(resolve=>release=resolve),began=new Promise(resolve=>started=resolve);
+ const f=await fixture({broker:true,realSessions:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading'],
+  visionReply:async()=>{started();await gate;return 'The page contains a blue rectangle.';}}),native=new Context();
+ try{
+  const server=new WebServer(native,{host:'127.0.0.1',port:0});await server[Service.init]();
+  native.provide('credentials',{async modifyRecord(_key,change){return change(undefined);}});
+  await mountNativeConnection(native);await new Promise(resolve=>setImmediate(resolve));const origin='http://127.0.0.1:'+server.port;
+  server.register({kind:'exact',path:'/',handler:(request,response)=>{if(native.connection.authorizeIndex(request,response)){response.writeHead(200);response.end('fixture');}}});
+  f.ctx.connection=native.connection;native.connection.fetch.register(f.routes.get('/api/harless/comparisons'));
+  native.connection.rpc.intercept('/api',endpoint=>['session/create','session/prompt'].includes(endpoint),async(endpoint,payload,signal)=>({ok:true,value:await f.ctx.sessionController[endpoint.split('/')[1]](payload,signal)}));
+  const exchange=await fetch(native.connection.authenticatedUrl(origin),{redirect:'manual'}),cookie=exchange.headers.get('set-cookie').split(';',1)[0];
+  const call=async(endpoint,payload)=>{const response=await fetch(origin+'/api/'+endpoint,{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:randomUUID(),method:endpoint,payload})});
+   assert.equal(response.status,200);const value=await response.json();assert.equal(value.result.ok,true,JSON.stringify(value));return value.result.value;};
+  const {sessionId}=await call('session/create',{});
+  const bytes=execFileSync(process.env.SSS_PYTHON??'python3',['-c',"import pymupdf as f,sys; d=f.open(); p=d.new_page(); p.draw_rect((40,80,200,160),fill=(0,0,1)); sys.stdout.buffer.write(d.tobytes())"]);
+  const file=await f.ctx.fileUploads.uploadStream({sessionId,name:'blocked.pdf',data:(async function*(){yield bytes;})()});
+  const input={sessionId,requestId:'http-blocked-vision',mode:'queue',content:[{type:'text',text:'Read this figure'},{type:'file',receiptId:file.receiptId}]};
+  const sent=await call('session/prompt',input);assert.ok(sent.comparison_id);assert.equal(f.promptCalls.length,0);
+  await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('vision did not start')),10000);began.then(()=>{clearTimeout(timeout);resolve();});});
+  const read=async()=>{const response=await fetch(origin+'/api/harless/comparisons?session_id='+sessionId+'&id='+sent.comparison_id,{headers:{cookie}});assert.equal(response.status,200);return response.json();};
+  let live;for(let i=0;i<100;i++){live=await read();if(/正在读取页面图像/.test(live.lanes.baseline.progress?.label??''))break;await new Promise(resolve=>setTimeout(resolve,10));}
+  const task=(await f.api()).value.tasks[0];assert.equal(live.lanes.baseline.task_id,task.task_id);
+  assert.match(live.lanes.baseline.progress.label,/正在读取页面图像/);assert.deepEqual(live.lanes.baseline.messages,[],'preparation is not invented model thinking');
+  assert.equal(task.status,'running');assert.equal(f.promptCalls.length,0);
+  const cancelled=await fetch(origin+'/api/harless/comparisons',{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify({action:'cancel',session_id:sessionId,id:sent.comparison_id})});
+  assert.equal(cancelled.status,200);assert.equal((await cancelled.json()).lanes.baseline.task_id,task.task_id);
+  release();for(let i=0;i<50;i++){if((await f.api(undefined,'?task_id='+task.task_id)).value.status==='cancelled')break;await new Promise(resolve=>setTimeout(resolve,10));}
+  assert.equal((await read()).status,'cancelled');assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'cancelled');assert.equal(f.promptCalls.length,0);
+  assert.equal((await call('session/prompt',input)).comparison_id,sent.comparison_id,'retrying the same cancelled send is idempotent');
+  assert.equal((await f.api()).value.tasks.length,1);assert.equal(f.registrations.size,1);assert.equal(f.promptCalls.length,0);
+ }finally{release();await native.fiber.dispose();await f.close();}
 });
 
 test('cold native Pro selection binds the parent mounted preset independently of its planned scene',options,async()=>{
@@ -1560,22 +1664,30 @@ test('native Chat preserves frozen model requests and accepts replacement upload
   const one=await upload('source version one');
   const send=(requestId,receiptId)=>f.ctx.sessionController.prompt({sessionId,requestId,mode:'queue',content:[
    {type:'text',text:'Read the attached notes'},{type:'file',receiptId}]},new AbortController().signal);
-  await send('upload-first',one.receiptId);
-  const first=(await f.api()).value.tasks.find(row=>row.session_id===sessionId);
-  assert.equal(f.promptCalls[0].content.length,3,'evidence is logged so requests remain reconstructable; UI filters its generated block');
-  const before=JSON.stringify(f.agents.get(sessionId).events);
+  const initial=await send('upload-first',one.receiptId);
+  let first;
+  for(let i=0;i<200;i++){
+   first=(await f.api()).value.tasks.find(row=>f.promptCalls.some(call=>call.requestId===row.request_id));
+   if(first)break;await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.ok(first);
+  assert.equal(f.promptCalls[0].content.length,2,'native human delivery preserves only the actual user text and upload');
+  const before=JSON.stringify(f.agents.get(first.session_id).events);
   const model=f.modelRequest(first); let called=false;
   for(const message of model.messages){Object.freeze(message.content);Object.freeze(message);}
   Object.freeze(model.messages);Object.freeze(model);
   for await(const chunk of f.stream(model,async function*(){called=true;yield {type:'text-delta',index:0,text:'read'};})){}
-  assert.ok(called);assert.equal(model.messages[0].content.length,3,'model still receives verified attachment evidence');
+  assert.ok(called);assert.equal(model.messages.length,2,'model receives a separate evidence producer and the original human message');
+  assert.equal(model.messages[0].source.kind,'plugin');assert.equal(model.messages[0].source.plugin,ATTACHMENT_CONTEXT_PLUGIN);
   assert.match(model.messages[0].content.at(-1).text,/用户附件的只读提取结果/);
-  assert.equal(JSON.stringify(f.agents.get(sessionId).events),before,'stream middleware must not mutate Session history');
+  assert.deepEqual(model.messages[1].content,f.promptCalls[0].content);
+  assert.equal(JSON.stringify(f.agents.get(first.session_id).events),before,'stream middleware must not mutate Session history');
   await f.complete(first);
+  await settleAttachmentTurn(f,sessionId,initial.comparison_id);
   // Production logs own attachment references after the upload receipt is
   // consumed. The next turn must not rely on that retired one-shot receipt.
-  for(const event of f.agents.get(sessionId).events)if(event.type==='user/message')
-   event.data.content=event.data.content.map(part=>part.type==='file'?{type:'file',attachment:one.file}:part);
+  for(const event of f.agents.get(sessionId).events)if(event.type==='user/message'&&event.data.source?.kind==='user')
+   event.data={...event.data,content:event.data.content.map(part=>part.type==='file'?{type:'file',attachment:one.file}:part)};
   const resolve=f.ctx.fileUploads.resolve;
   f.ctx.fileUploads.resolve=(agent,receipt)=>receipt===one.receiptId?undefined:resolve(agent,receipt);
   const two=await upload('source version two');
@@ -1583,14 +1695,14 @@ test('native Chat preserves frozen model requests and accepts replacement upload
   assert.ok(accepted.comparison_id,'new source version is admitted in a fresh private lane');
   let child;
   for(let i=0;i<150;i++){
-   child=(await f.api()).value.tasks.find(row=>row.session_id!==sessionId && f.promptCalls.some(call=>call.requestId===row.request_id));
+   child=(await f.api()).value.tasks.find(row=>row.task_id!==first.task_id && f.promptCalls.some(call=>call.requestId===row.request_id));
    if(child)break;await new Promise(resolve=>setTimeout(resolve,10));
   }
   assert.ok(child);assert.equal(child.scene_inputs.length,2,'new versions retain the original file for comparison');
   assert.notEqual(child.scene_inputs[0].version_sha256,first.scene_inputs[0].version_sha256);
   assert.equal(child.scene_inputs[1].version_sha256,first.scene_inputs[0].version_sha256);
   assert.match(child.scene_inputs[1].name,/notes-previous-[a-f0-9]{8}\.txt$/);
-  assert.equal(readFileSync(join(f.directory,'sessions',sessionId,'work','inputs',first.scene_inputs[0].file),'utf8'),'source version one');
+  assert.equal(readFileSync(join(f.directory,'sessions',first.session_id,'work','inputs',first.scene_inputs[0].file),'utf8'),'source version one');
   await f.complete(child);
  } finally {await f.close();}
 });
@@ -1610,6 +1722,9 @@ test('first PDF Chat send is accepted before visual work and cancellation preven
    {type:'text',text:'Read the figure'},{type:'file',receiptId:uploaded.receiptId}]},new AbortController().signal);
   assert.ok(sent.accepted&&sent.comparison_id);assert.equal(f.promptCalls.length,0);
   await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('vision preparation did not start')),10000);began.then(()=>{clearTimeout(timeout);resolve();});});
+  const preparing=(await f.api()).value.tasks[0];
+  assert.match(preparing.progress.label,/正在读取页面图像/);
+  assert.equal(preparing.messages.length,0,'preparation progress does not invent a model thinking stream');
   const request=new Request('http://local/api/harless/comparisons',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({action:'cancel',session_id:sessionId,id:sent.comparison_id})});request.authorized=true;
   const response=await f.routes.get('/api/harless/comparisons').fetch(request);assert.equal(response.status,200);
@@ -1617,27 +1732,308 @@ test('first PDF Chat send is accepted before visual work and cancellation preven
   const tasks=(await f.api()).value.tasks;assert.equal(tasks.length,1);
   const final=(await f.api(undefined,'?task_id='+tasks[0].task_id)).value;
   assert.equal(final.status,'cancelled');assert.equal(f.promptCalls.length,0);
+  assert.ok(final.trace.every(row=>row.status!=='running'),'cancelled preparation cannot retain a running progress row');
   assert.ok(f.controlCalls.some(row=>row.path==='/tasks/cancel'));
  }finally{release();await f.close();}
 });
 
+test('cancellation during native admission reclaims late inbox and rotates without replaying cancelled child evidence',options,async()=>{
+ const f=await fixture({broker:true,nativeImageAdmission:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ let release,started;const gate=new Promise(resolve=>release=resolve),began=new Promise(resolve=>started=resolve);
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const file=await f.ctx.fileUploads.uploadStream({sessionId,name:'cancelled.txt',data:(async function*(){yield Buffer.from('CANCELLED_EXTRACTION_ONLY');})()});
+  const admit=f.ctx.attachments.admitPromptContent;
+  f.ctx.attachments.admitPromptContent=async parts=>{
+   if([...f.agents.values()].some(agent=>agent.events.some(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN))&&parts.some(part=>part.type==='text'&&part.text==='UNIQUE_CANCELLED_REQUEST')){started();await gate;}
+   return admit(parts);
+  };
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'cancel-native-admission',mode:'queue',content:[{type:'text',text:'UNIQUE_CANCELLED_REQUEST'},{type:'file',receiptId:file.receiptId}]},new AbortController().signal);
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('native admission gate not reached')),10000);began.then(()=>{clearTimeout(timer);resolve();});});
+  const task=(await f.api()).value.tasks[0],child=f.agents.get(task.session_id),cancelCalls=[];
+  child.cancel=(reason,options)=>cancelCalls.push({reason,options});
+  const request=new Request('http://local/api/harless/comparisons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel',session_id:sessionId,id:sent.comparison_id})});request.authorized=true;
+  assert.equal((await f.routes.get('/api/harless/comparisons').fetch(request)).status,200);
+  release();
+  for(let i=0;i<100&&!cancelCalls.length;i++)await new Promise(resolve=>setTimeout(resolve,10));
+  assert.deepEqual(cancelCalls,[{reason:{kind:'user'},options:{keepInbox:false}}]);
+  assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'cancelled');
+  assert.equal(child.events.filter(event=>event.data?.source?.rpcId===task.request_id).length,1,'immutable journal retains the late admission as cancellation evidence');
+  assert.equal(f.brokerRoutes.has(task.session_id),false,'late admission has no active model-budget route');
+  const next=await f.ctx.sessionController.prompt({sessionId,requestId:'after-native-cancel',mode:'queue',content:[{type:'text',text:'你好'}]},new AbortController().signal);
+  const done=await settleAttachmentTurn(f,sessionId,next.comparison_id);assert.equal(done.status,'completed');
+  const nextTask=(await f.api()).value.tasks.find(row=>row.task_id!==task.task_id);
+  assert.notEqual(nextTask.session_id,task.session_id,'interrupted child is never reused');
+  const context=f.agents.get(nextTask.session_id).events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+  const body=JSON.parse(context.data.content[0].text.split('\n').slice(1).join('\n'));
+  assert.equal(body.previous_attachment_evidence,undefined,'cancelled private extraction is not recalled');
+  assert.equal(body.current_upload_evidence,undefined,'greeting does not re-extract the retained source');
+  assert.equal((body.prior_conversation.match(/UNIQUE_CANCELLED_REQUEST/g)??[]).length,1,'only the actual public user question survives, never the late private duplicate');
+  assert.equal((await f.api()).value.aggregate.upstream_requests,0);
+ }finally{release();await f.close();}
+});
+
 // Deterministic routing diagnostics only: no provider calls or document making.
-async function settleAttachmentTurn(f, sessionId, id, onRunning=async()=>{}) {
- for(let i=0;i<250;i++){
-  for(const task of (await f.api()).value.tasks)if(task.status==='running'&&f.promptCalls.some(c=>c.requestId===task.request_id)){
+async function settleAttachmentTurn(f, sessionId, id, onRunning=async()=>{}, {timeoutMs}={}) {
+ const deadline=timeoutMs===undefined?undefined:performance.now()+timeoutMs;
+ let lastComparison,lastTasks=[];
+ for(let i=0;deadline===undefined?i<250:performance.now()<deadline;i++){
+  lastTasks=(await f.api()).value.tasks;
+  for(const task of lastTasks)if(task.status==='running'&&f.promptCalls.some(c=>c.requestId===task.request_id)){
    await onRunning(task);await f.complete(task);
   }
   const req=new Request('http://local/api/harless/comparisons?session_id='+sessionId+'&id='+id);req.authorized=true;
   const value=await(await f.routes.get('/api/harless/comparisons').fetch(req)).json();
+  lastComparison=value;
   if(['completed','failed','cancelled'].includes(value.status))return value;
   await new Promise(r=>setTimeout(r,10));
  }
- throw Error('attachment fixture did not settle');
+ const lanes=Object.fromEntries(Object.entries(lastComparison?.lanes??{}).map(([name,lane])=>[name,{
+  session_id:lane.session_id,task_id:lane.task_id,status:lane.status,failure:lane.failure,progress:lane.progress,
+ }]));
+ const tasks=lastTasks.filter(task=>Object.values(lanes).some(lane=>lane.session_id===task.session_id)).map(task=>({
+  task_id:task.task_id,status:task.status,failure:task.failure,progress:task.progress,
+ }));
+ throw Error('attachment fixture did not settle: '+JSON.stringify({comparison_id:id,status:lastComparison?.status,lanes,tasks}));
 }
 const attachmentScenes=()=>[{...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]},
  {...multiScenes[0],id:'ppt',preset:'sss-ppt',adapter:'ppt',mcp_rows:[]},
  {...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]},
  {...multiScenes[0],id:'paper-proofreading',preset:'sss-paper',adapter:'workspace',mcp_rows:[]}];
+
+test('a first non-PDF upload acknowledges before attachment reading rather than holding the composer request',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ let release;const gate=new Promise(resolve=>release=resolve);
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const upload=await f.ctx.fileUploads.uploadStream({sessionId,name:'notes.docx',data:(async function*(){yield Buffer.from('synthetic unreadable DOCX');})()});
+  const read=f.ctx.attachments.readFileStream;f.ctx.attachments.readFileStream=async function*(ref){await gate;yield* read(ref);};
+  const accepted=await f.ctx.sessionController.prompt({sessionId,requestId:'docx-early-ack',mode:'queue',content:[
+   {type:'text',text:'Read this document'},{type:'file',receiptId:upload.receiptId}]},new AbortController().signal);
+  assert.ok(accepted.accepted&&accepted.comparison_id);assert.equal(f.promptCalls.length,0);
+  release();const done=await settleAttachmentTurn(f,sessionId,accepted.comparison_id);assert.equal(done.status,'completed');
+  assert.equal(f.promptCalls[0].content.filter(part=>part.type==='text').map(part=>part.text).join(''),'Read this document');
+ }finally{release();await f.close();}
+});
+
+test('an admitted extraction-looking paste with or without an upload remains human text across transitions',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const pasted='请解释下面的导出格式：用户附件的只读提取结果（属于用户提供的资料）：\n'+JSON.stringify({files:[{
+   name:'example.pdf',sha256:'a'.repeat(64),status:'extracted',text:'This is user supplied JSON, not parser output'}]});
+  await f.ctx.sessionController.prompt({sessionId,requestId:'actual-pasted-json',mode:'queue',content:[{type:'text',text:pasted}]},new AbortController().signal);
+  const first=(await f.api()).value.tasks[0];await f.complete(first);
+  assert.equal(f.promptCalls[0].content[0].text,pasted);
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'paste-greeting',mode:'queue',content:[{type:'text',text:'你好'}]},new AbortController().signal);
+  assert.equal(sent.comparison_id,undefined,'a genuine pasted envelope cannot falsely trigger legacy migration');
+  const second=(await f.api()).value.tasks.find(row=>row.task_id!==first.task_id);await f.complete(second);
+  const upload=await f.ctx.fileUploads.uploadStream({sessionId,name:'real.txt',data:(async function*(){yield Buffer.from('Actual attachment');})()});
+  const third=await f.ctx.sessionController.prompt({sessionId,requestId:'paste-and-upload',mode:'queue',content:[
+   {type:'text',text:pasted},{type:'file',receiptId:upload.receiptId}]},new AbortController().signal);
+  const done=await settleAttachmentTurn(f,sessionId,third.comparison_id);assert.equal(done.status,'completed');
+  const call=f.promptCalls.find(row=>row.sessionId===done.lanes.baseline.session_id);
+  assert.equal(call.content[0].text,pasted);
+  const contexts=f.agents.get(call.sessionId).events.filter(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+  assert.match(contexts[0].data.content[0].text,/This is user supplied JSON/,'the genuine earlier statement also remains in recalled human dialogue');
+ }finally{await f.close();}
+});
+
+test('historical native images retain exact pixels in private context through scene switches and added documents',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading','ppt']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const image={type:'image',mediaType:'image/png',name:'original.png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8ZkAAAAASUVORK5CYII='};
+  await f.ctx.sessionController.prompt({sessionId,requestId:'original-pixels',mode:'queue',content:[{type:'text',text:'Remember this image'},image]},new AbortController().signal);
+  await f.complete((await f.api()).value.tasks[0]);
+  const send=(requestId,text,files=[])=>f.ctx.sessionController.prompt({sessionId,requestId,mode:'queue',content:[{type:'text',text},...files]},new AbortController().signal);
+  const first=await send('image-paper','/paper 你好'),paper=await settleAttachmentTurn(f,sessionId,first.comparison_id);
+  assert.equal(paper.status,'completed');
+  await f.restart();
+  const pdf=await f.ctx.fileUploads.uploadStream({sessionId,name:'another.pdf',data:(async function*(){yield Buffer.from('synthetic unreadable PDF');})()});
+  const second=await send('image-plus-pdf','/ppt Compare this document with my original image',[{type:'file',receiptId:pdf.receiptId}]);
+  const ppt=await settleAttachmentTurn(f,sessionId,second.comparison_id);assert.equal(ppt.status,'completed');
+  for(const result of [paper,ppt])for(const lane of Object.values(result.lanes)){
+   const task=(await f.api()).value.tasks.find(row=>row.task_id===lane.task_id),events=(await f.ctx.sessionController.inspect(lane.session_id)).events;
+   const context=events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+   assert.deepEqual(context.data.content.find(part=>part.type==='image'),image,'old image bytes are carried independently of any previous description');
+   const call=f.promptCalls.find(row=>row.requestId===task.request_id);
+   assert.equal(call.content.some(part=>part.type==='image'),false,'historical pixels are not a new human upload');
+  }
+ }finally{await f.close();}
+});
+
+test('an image uploaded as a file supplies actual pixels and retains them after a scene transition',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const data='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8ZkAAAAASUVORK5CYII=';
+  const upload=await f.ctx.fileUploads.uploadStream({sessionId,name:'photo.png',data:(async function*(){yield Buffer.from(data,'base64');})()});
+  const first=await f.ctx.sessionController.prompt({sessionId,requestId:'file-png',mode:'queue',content:[
+   {type:'text',text:'What is in this picture?'},{type:'file',receiptId:upload.receiptId}]},new AbortController().signal);
+  const initial=await settleAttachmentTurn(f,sessionId,first.comparison_id);assert.equal(initial.status,'completed');
+  const next=await f.ctx.sessionController.prompt({sessionId,requestId:'file-png-paper',mode:'queue',content:[{type:'text',text:'/paper Describe another detail of my picture'}]},new AbortController().signal);
+  const final=await settleAttachmentTurn(f,sessionId,next.comparison_id);assert.equal(final.status,'completed');
+  for(const turn of [initial,final])for(const lane of Object.values(turn.lanes)){
+   const events=(await f.ctx.sessionController.inspect(lane.session_id)).events;
+   const context=events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+   const pixels=context.data.content.find(part=>part.type==='image');assert.equal(pixels.data,data);
+   assert.equal(pixels.mediaType,'image/png');
+   assert.equal(context.data.content.filter(part=>part.type==='image').length,1);
+  }
+ }finally{await f.close();}
+});
+
+test('real attachment normalization counts repeated native images by their durable identities and keeps human wire input intact',options,async()=>{
+ const {LocalAttachmentStore}=await import('@deepseek-ai/dsh-attachment-local');
+ const f=await fixture({broker:true,nativeImageAdmission:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ try{
+  const store=new LocalAttachmentStore(new Context(),{dshHome:join(f.directory,'real-image-store'),normalizedImageMaxPixels:4,normalizedImageMaxDimension:2});
+  f.ctx.attachments.admitPromptContent=parts=>store.admitPromptContent(parts);
+  const encoded=JSON.parse(execFileSync(process.env.SSS_PYTHON??'python3',['-c',
+   "import io,json,base64; from PIL import Image; out=[]\nfor i in range(8):\n b=io.BytesIO(); Image.new('RGB',(16,16),(i*28,50,180)).save(b,format='PNG'); out.append(base64.b64encode(b.getvalue()).decode())\nprint(json.dumps(out))"],{encoding:'utf8'}));
+  const images=encoded.map((data,index)=>({type:'image',name:`source-${index}.png`,mediaType:'image/png',data}));
+  const {sessionId}=await f.ctx.sessionController.create({});
+  await f.ctx.sessionController.prompt({sessionId,requestId:'real-images-first',mode:'queue',content:[{type:'text',text:'Remember these eight pictures'},...images]},new AbortController().signal);
+  const initial=(await f.api()).value.tasks[0];await f.complete(initial);
+  const originalEvent=f.agents.get(sessionId).events.find(event=>event.type==='user/message'&&event.data.source?.kind==='user');
+  const refs=originalEvent.data.content.filter(part=>part.type==='image').map(part=>part.attachment);
+  assert.equal(new Set(refs.map(ref=>ref.attachmentId)).size,8);
+  for(let index=0;index<refs.length;index++){
+   assert.notEqual(refs[index].attachmentId,'sha256:'+createHash('sha256').update(Buffer.from(encoded[index],'base64')).digest('hex'),'the real store actually transforms these pixels');
+   assert.deepEqual(refs[index].originalDimensions,{width:16,height:16});
+   assert.ok((await store.readImage(refs[index])).data.length>0);
+  }
+  const second=await f.ctx.sessionController.prompt({sessionId,requestId:'real-images-repeat',mode:'queue',content:[
+   {type:'text',text:'/paper Reuse the same eight pictures'},...images]},new AbortController().signal);
+  // Eight native images exercise sixteen real store admissions across the two
+  // lanes. This checks eventual identity/pixel preservation, not UI latency.
+  const paired=await settleAttachmentTurn(f,sessionId,second.comparison_id,undefined,{timeoutMs:30000});assert.equal(paired.status,'completed',JSON.stringify(paired));
+  for(const lane of Object.values(paired.lanes)){
+   const task=(await f.api()).value.tasks.find(row=>row.task_id===lane.task_id),call=f.promptCalls.find(row=>row.requestId===task.request_id);
+   assert.deepEqual(call.content.filter(part=>part.type==='image'),images,'normalization metadata cannot rewrite the human delivery');
+   const context=f.agents.get(lane.session_id).events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+   assert.equal(context.data.content.some(part=>part.type==='image'),false,'the same pixels cannot be duplicated as historical context');
+  }
+  const third=await f.ctx.sessionController.prompt({sessionId,requestId:'real-images-hello',mode:'queue',content:[{type:'text',text:'你好'}]},new AbortController().signal);
+  const chat=await settleAttachmentTurn(f,sessionId,third.comparison_id,undefined,{timeoutMs:30000});assert.equal(chat.status,'completed');
+  const context=f.agents.get(chat.lanes.baseline.session_id).events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+  assert.deepEqual(context.data.content.filter(part=>part.type==='image').map(part=>part.attachment.attachmentId),refs.map(ref=>ref.attachmentId));
+ }finally{await f.close();}
+});
+
+test('more than twelve native and scene rounds retain early goals, latest corrections, observations and original pixels without nested recalls',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',
+  comparison_scenes:['paper-proofreading','ppt','research-data-analysis']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const image={type:'image',mediaType:'image/png',name:'earliest.png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8ZkAAAAASUVORK5CYII='};
+  const answer=(task,text)=>f.agents.get(task.session_id).session.append('assistant/message',{
+   turn:1,step:0,stream:[],message:{id:'answer-'+task.task_id,role:'assistant',source:{kind:'model',provider:'deepseek-official',model:'deepseek-flash'},content:[{type:'text',text}]},
+  });
+  // Explicit fixture answers assess context transport only, never model memory.
+  for(let round=0;round<14;round++){
+   const text=round===0?'EARLY_TARGET_UNIQUE: compare the original red cohort':round===12?'LATEST_NATIVE_SAMPLE_42: use 42 participants':'Native discussion '+round;
+   await f.ctx.sessionController.prompt({sessionId,requestId:'long-native-'+round,mode:'queue',content:[{type:'text',text},...(round===0?[image]:[])]},new AbortController().signal);
+   const task=(await f.api()).value.tasks.find(row=>row.request_id==='long-native-'+round);
+   answer(task,round===0?'EARLY_ASSISTANT_CONFIRMATION: original cohort retained':'Native answer '+round);await f.complete(task);
+  }
+  const notes=await f.ctx.fileUploads.uploadStream({sessionId,name:'evidence.txt',data:(async function*(){yield Buffer.from('EARLIEST_EVIDENCE_UNIQUE: source measurement is 17.');})()});
+  let final;
+  for(let round=0;round<16;round++){
+   if(round===9)await f.restart();
+   const prefix=['/paper ','/ppt ','/data ',''][round%4];
+   const text=round===12?'LATEST_SCENE_SAMPLE_97: correct the sample size to 97':'Scene follow-up '+round;
+   const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'long-scene-'+round,mode:'queue',content:[
+    {type:'text',text:prefix+text},...(round===0?[{type:'file',receiptId:notes.receiptId}]:[])]},new AbortController().signal);
+   final=await settleAttachmentTurn(f,sessionId,sent.comparison_id,async task=>answer(task,'Scene answer '+round));
+   assert.equal(final.status,'completed',JSON.stringify(final));
+  }
+  for(const lane of Object.values(final.lanes)){
+   const events=(await f.ctx.sessionController.inspect(lane.session_id)).events;
+   const context=events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+   const body=JSON.parse(context.data.content[0].text.split('\n').slice(1).join('\n'));
+   assert.match(body.prior_conversation,/EARLY_TARGET_UNIQUE/);assert.match(body.prior_conversation,/EARLY_ASSISTANT_CONFIRMATION/);
+   assert.match(body.prior_conversation,/LATEST_NATIVE_SAMPLE_42/);assert.match(body.prior_conversation,/LATEST_SCENE_SAMPLE_97/);
+   assert.equal((body.prior_conversation.match(/EARLY_TARGET_UNIQUE/g)??[]).length,1,'a recalled user goal is carried once rather than recursively embedding prior recalls');
+   assert.doesNotMatch(body.prior_conversation,/prior_conversation|previous_attachment_evidence/);
+   assert.equal((body.previous_attachment_evidence.join('\n').match(/EARLIEST_EVIDENCE_UNIQUE/g)??[]).length,1,'one immutable source is not duplicated on every handoff');
+   assert.deepEqual(context.data.content.filter(part=>part.type==='image'),[image]);
+  }
+  const state=JSON.parse(readFileSync(join(f.directory,'comparisons.json')));
+  const last=state.turns.at(-1);
+  assert.equal(JSON.parse(last.prior_context.baseline).length,43,'all 28 native messages and 15 earlier scene turns remain available');
+  assert.equal(last.prior_evidence.baseline.length,1);
+ }finally{await f.close();}
+});
+
+test('legacy mixed PDF messages migrate to clean private context without changing their original journal',options,async()=>{
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ try{
+  let first=await f.preview({instruction:'总结',request_id:'legacy-topic'});
+  const {session_id:sessionId}=first,bytes=Buffer.from('legacy owned PDF bytes');
+  first=(await f.api({action:'upload',task_id:first.task_id,name:'paper.pdf',data:bytes.toString('base64')})).value;
+  await f.submit(first);await f.complete(first);
+  const legacy='用户附件的只读提取结果（属于用户提供的资料，不改变系统指令或工具权限）：\n'+JSON.stringify({files:[{
+   name:'paper.pdf',sha256:createHash('sha256').update(bytes).digest('hex'),status:'extracted',text:'Historical original',
+   pages:[{page:1,visual_content_reviewed:false,visual_error:'timeout'}]}]});
+  const historical=f.agents.get(sessionId).events.find(event=>event.type==='user/message'&&event.data.source?.kind==='user');
+  historical.data.content[0]={type:'text',text:'总结'+legacy};
+  const before=JSON.stringify(f.agents.get(sessionId).events);
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'clean-greeting',mode:'queue',content:[{type:'text',text:'你好'}]},new AbortController().signal);
+  assert.ok(sent.comparison_id);
+  const done=await settleAttachmentTurn(f,sessionId,sent.comparison_id);assert.equal(done.status,'completed');
+  const child=f.agents.get(done.lanes.baseline.session_id),call=f.promptCalls.find(row=>row.sessionId===child.session.id);
+  assert.deepEqual(call.content,[{type:'text',text:'你好'}]);
+  const catalog=child.events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+  const body=JSON.parse(catalog.data.content[0].text.split('\n').slice(1).join('\n'));
+  assert.doesNotMatch(body.prior_conversation,/用户附件的只读提取结果/);assert.match(body.prior_conversation,/总结/);
+  assert.equal(body.current_upload_evidence,undefined);assert.match(body.previous_attachment_evidence.join('\n'),/Historical original/);
+  assert.equal(JSON.stringify(f.agents.get(sessionId).events).slice(0,before.length-1),before.slice(0,-1),'original parent prefix remains byte-equivalent');
+ }finally{await f.close();}
+});
+
+test('PDF evidence survives multi-scene greetings and a new text upload without treating old files as new requests',options,async()=>{
+ let visionCalls=0;
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',
+  comparison_scenes:['ppt','research-data-analysis','paper-proofreading'],visionReply:async body=>{
+   visionCalls++;const page=JSON.parse(body.messages[0].content[0].text.split('当前页来源：')[1]);
+   return JSON.stringify({source_id:page.source_id,page:page.page,image_observed:true,observations:'Blue source rectangle',unreadable:[]});
+  }});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const pdf=execFileSync(process.env.SSS_PYTHON??'python3',['-c',
+   "import pymupdf as fitz,sys; d=fitz.open(); p=d.new_page(); p.insert_text((40,50),'Attachment A: study findings'); p.draw_rect((40,80,220,180),fill=(0,0,1)); sys.stdout.buffer.write(d.tobytes())"]);
+  const one=await f.ctx.fileUploads.uploadStream({sessionId,name:'study.pdf',data:(async function*(){yield pdf;})()});
+  const send=(requestId,text,files=[])=>f.ctx.sessionController.prompt({sessionId,requestId,mode:'queue',content:[{type:'text',text},...files]},new AbortController().signal);
+  const first=await send('context-pdf-first','Summarize attachment A',[{type:'file',receiptId:one.receiptId}]);
+  const initial=await settleAttachmentTurn(f,sessionId,first.comparison_id);assert.equal(initial.status,'completed');
+  assert.equal(visionCalls,1);const observed=visionCalls;
+  for(const [index,text] of ['你好','/paper 你好','/ppt 你好','/data 你好','你好'].entries()){
+   if(index===2)await f.restart();
+   const sent=await send('context-hello-'+index,text),result=await settleAttachmentTurn(f,sessionId,sent.comparison_id);
+   assert.equal(result.status,'completed',JSON.stringify(result));assert.equal(visionCalls,observed,'a greeting cannot re-run historical PDF vision');
+   for(const lane of Object.values(result.lanes)){
+    const task=JSON.parse(readFileSync(join(f.directory,'tasks',lane.task_id,'task.json')));
+    const call=f.promptCalls.find(call=>call.sessionId===lane.session_id&&call.requestId===task.request_id);
+    assert.deepEqual(call.content,[{type:'text',text:'你好'}]);
+    const events=f.agents.get(lane.session_id).events;
+    const catalog=events.filter(event=>event.type==='user/message'&&event.data.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN).at(-1);
+    const body=JSON.parse(catalog.data.content[0].text.split('\n').slice(1).join('\n'));
+    assert.equal(body.sources.length,1);assert.equal(body.sources[0].origin,'earlier_conversation_source');
+    assert.equal(body.current_upload_evidence,undefined);
+    assert.match(attachmentEvidence(events).join('\n'),/Blue source rectangle/,'the existing visual observation remains available to follow-up questions');
+   }
+  }
+  const two=await f.ctx.fileUploads.uploadStream({sessionId,name:'notes.txt',data:(async function*(){yield Buffer.from('Attachment B: updated notes');})()});
+  const appended=await send('context-append','Read the new notes',[{type:'file',receiptId:two.receiptId}]);
+  const last=await settleAttachmentTurn(f,sessionId,appended.comparison_id);assert.equal(last.status,'completed');assert.equal(visionCalls,observed);
+  const child=f.agents.get(last.lanes.baseline.session_id),catalog=child.events.filter(e=>e.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN).at(-1);
+  const body=JSON.parse(catalog.data.content[0].text.split('\n').slice(1).join('\n'));
+  assert.deepEqual(body.sources.map(row=>[row.name,row.origin]),[['notes.txt','current_turn_upload'],['study.pdf','earlier_conversation_source']]);
+  assert.match(body.current_upload_evidence,/Attachment B/);assert.doesNotMatch(body.current_upload_evidence,/study\.pdf/);
+ }finally{await f.close();}
+});
 
 test('original attachments accumulate across new receipts, scene changes and restart without crossing conversations',options,async()=>{
  for(const [scene,shortcut] of [['new-scene',''],['ppt','/ppt '],['research-data-analysis','/data '],['paper-proofreading','/paper ']]){
@@ -1725,8 +2121,8 @@ test('changed historical attachment bytes fail before any subsequent model dispa
   const {sessionId}=await f.ctx.sessionController.create({});
   const bytes=Buffer.from('original A'),file=await f.ctx.fileUploads.uploadStream({sessionId,name:'a.txt',data:(async function*(){yield bytes;})()});
   file.file.sha256=createHash('sha256').update(bytes).digest('hex');
-  await f.ctx.sessionController.prompt({sessionId,requestId:'hash-a',mode:'queue',content:[{type:'text',text:'Inspect A'},{type:'file',receiptId:file.receiptId}]},new AbortController().signal);
-  await f.complete((await f.api()).value.tasks.find(t=>t.session_id===sessionId));
+  const initial=await f.ctx.sessionController.prompt({sessionId,requestId:'hash-a',mode:'queue',content:[{type:'text',text:'Inspect A'},{type:'file',receiptId:file.receiptId}]},new AbortController().signal);
+  await settleAttachmentTurn(f,sessionId,initial.comparison_id);
   const read=f.ctx.attachments.readFileStream;
   f.ctx.attachments.readFileStream=async function*(ref){if(ref.name==='a.txt')yield Buffer.from('modified A');else yield* read(ref);};
   const calls=f.promptCalls.length;
@@ -1744,8 +2140,8 @@ test('attachment inheritance reports capacity overflow instead of silently omitt
    const file=await f.ctx.fileUploads.uploadStream({sessionId,name:`source-${i}.txt`,data:(async function*(){yield Buffer.from('source '+i);})()});
    files.push({type:'file',receiptId:file.receiptId});
   }
-  await f.ctx.sessionController.prompt({sessionId,requestId:'capacity-a',mode:'queue',content:[{type:'text',text:'Read originals'},...files]},new AbortController().signal);
-  await f.complete((await f.api()).value.tasks.find(t=>t.session_id===sessionId));
+  const initial=await f.ctx.sessionController.prompt({sessionId,requestId:'capacity-a',mode:'queue',content:[{type:'text',text:'Read originals'},...files]},new AbortController().signal);
+  await settleAttachmentTurn(f,sessionId,initial.comparison_id);
   const extra=await f.ctx.fileUploads.uploadStream({sessionId,name:'extra.txt',data:(async function*(){yield Buffer.from('extra');})()});
   const calls=f.promptCalls.length;
   const next=await f.ctx.sessionController.prompt({sessionId,requestId:'capacity-b',mode:'queue',content:[{type:'text',text:'Compare all nine originals'},{type:'file',receiptId:extra.receiptId}]},new AbortController().signal);
@@ -2243,13 +2639,49 @@ test('native comparison images reach both lanes with exact file provenance and t
   assert.equal(f.promptCalls.length,2);
   for(const call of f.promptCalls){
    assert.deepEqual(call.content.find(part=>part.type==='image'),image);
-   const content=call.content.find(part=>part.type==='file');assert.ok(content);
-   const agent=f.agents.get(call.sessionId),ref=f.ctx.fileUploads.resolve(agent,content.receiptId);
-   const chunks=[];for await(const bytes of f.ctx.attachments.readFileStream(ref))chunks.push(bytes);
-   assert.equal(Buffer.concat(chunks).toString('base64'),data);
+   assert.equal(call.content.some(part=>part.type==='file'),false,'the prepared source copy is not a second user upload');
+   const task=(await f.api()).value.tasks.find(row=>row.session_id===call.sessionId);
+   const input=task.scene_inputs.find(row=>row.name==='source.png');assert.ok(input);
+   assert.equal(readFileSync(join(f.directory,'sessions',call.sessionId,'work','inputs',input.file)).toString('base64'),data);
   }
   const turn=JSON.parse(readFileSync(join(f.directory,'comparisons.json'))).turns.find(t=>t.id===admitted.comparison_id);
   assert.equal(turn.input[1].type,'image');
   for(const task of (await f.api()).value.tasks)await f.complete(task);
  }finally{await f.close()}
+});
+
+
+test('native command deliveries pin private bytes, survive restart, and reject another session or lane', options, async () => {
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  await f.ctx.sessionController.prompt({sessionId,requestId:'deliver-native',mode:'queue',content:[{type:'text',text:'Create an offline animation'}]},new AbortController().signal);
+  const task=(await f.api()).value.tasks.find(t=>t.session_id===sessionId), agent=f.agents.get(sessionId);
+  agent.session.append('turn/start',{turn:1});
+  const output=join(f.directory,'sessions',sessionId,'work/outputs/code');mkdirSync(output,{recursive:true});
+  const path=join(output,'pelican-bicycle.html'),bytes='<html>offline animation</html>';
+  writeFileSync(path,bytes,{mode:0o600});
+  const generatedAt=new Date(Date.parse(task.started_at)+1);utimesSync(path,generatedAt,generatedAt);
+  const pendingRequest=new Request('http://localhost/api/harless/deliveries?session_id='+sessionId+'&turn=1');pendingRequest.authorized=true;
+  assert.equal((await f.routes.get('/api/harless/deliveries').fetch(pendingRequest)).status,202);
+  agent.session.append('assistant/message',{turn:1,message:{content:[{type:'text',text:'完成：`/work/outputs/pelican-bicycle.html`'}]}});
+  await new Promise(r=>setTimeout(r,15));await f.complete(task);
+  const read=async(query,authorized=true)=>{const request=new Request('http://localhost/api/harless/deliveries?'+query);request.authorized=authorized;return f.routes.get('/api/harless/deliveries').fetch(request);};
+  const query='session_id='+sessionId+'&turn=1';
+  assert.equal((await read(query,false)).status,401);
+  let response=await read(query);assert.equal(response.status,200);const value=await response.json();
+  assert.equal(value.turn,1);assert.equal(value.lanes.baseline.artifacts.length,1);
+  const row=value.lanes.baseline.artifacts[0],fileQuery='session_id='+sessionId+'&id='+value.id+'&lane=baseline&file='+row.id;
+  response=await read(fileQuery);assert.equal(await response.text(),bytes);assert.match(response.headers.get('Content-Disposition'),/attachment/);
+  assert.equal((await read(fileQuery.replace('baseline','motif'))).status,404);
+  const other=await f.ctx.sessionController.create({});
+  assert.equal((await read(fileQuery.replace(sessionId,other.sessionId))).status,404);
+  assert.equal((await read('session_id='+sessionId+'&turn=2')).status,404);
+  writeFileSync(path,'later turn changed original');
+  const statePath=join(f.directory,'tasks',task.task_id,'task-state.json'),state=JSON.parse(readFileSync(statePath,'utf8'));delete state.native_turn;writeFileSync(statePath,JSON.stringify(state));
+  await f.restart();response=await read(fileQuery);assert.equal(await response.text(),bytes);
+  response=await read(query);assert.equal(response.status,200,'legacy turn recovers only from this task request anchor');
+  const saved=join(f.directory,'comparison-artifacts',value.id,'baseline/0',row.id);writeFileSync(saved,'tampered snapshot');
+  assert.equal((await read(fileQuery)).status,409);
+ } finally {await f.close();}
 });
