@@ -12,10 +12,9 @@ FORMAT='sss-management-seed-release-v1'
 CERT='sss-management-seed-attestation-v1'
 
 
-def validate_certificate(policy,certificate,raw_sha,project=None):
-    from .continuous_rsi import ROOT,source_map
-    from .mcp_learning import adapter
-    from .experience_library import policy_current
+def validate_historical_certificate(policy,certificate,raw_sha,project=None):
+    """Immutable public provenance only; never grants execution on current code."""
+    from .continuous_rsi import ROOT
     root=Path(project or ROOT).resolve();cert=read(certificate)
     name=cert.get('release','')
     if not re.fullmatch(r'file-v[1-9][0-9]*',name):raise ValueError('unregistered management seed release')
@@ -23,11 +22,10 @@ def validate_certificate(policy,certificate,raw_sha,project=None):
     if any(p.is_symlink() for p in (release,*release.parents)):raise ValueError('seed release symlink refused')
     manifest=read(release/'entry.json')
     if manifest.get('format')!=FORMAT or manifest.get('digest')!=digest({k:v for k,v in manifest.items() if k!='digest'}):raise ValueError('seed manifest changed')
-    runtime=source_map(adapter('management_v3').runtime_sources())
-    if manifest.get('runtime_source')!=runtime or not policy_current(policy,runtime):raise ValueError('seed runtime/catalog version changed')
     for name,h in manifest['files'].items():
         p=Path(name)
         if not re.fullmatch(r'(?:policies|certificates)/[a-f0-9]{64}\.json',name) or (release/p).is_symlink() or sha(release/p)!=h:raise ValueError('seed release object changed')
+    if policy.get('policy_digest') != digest({k:v for k,v in policy.items() if k!='policy_digest'}):raise ValueError('seed policy digest changed')
     item=next((r for r in manifest['entries'] if r['policy_digest']==policy['policy_digest']),None)
     if not item or item['payload_sha256']!=raw_sha or sha(certificate)!=manifest['files'][item['certificate']]:raise ValueError('seed policy/certificate not in trusted release')
     if (cert.get('format')!=CERT or cert.get('policy_digest')!=policy['policy_digest'] or cert.get('payload_sha256')!=raw_sha
@@ -38,6 +36,18 @@ def validate_certificate(policy,certificate,raw_sha,project=None):
         or len({r['task_fingerprint'] for r in witnesses})!=3 or set(policy['artifact']['source_task_fingerprints'])&{r['task_fingerprint'] for r in witnesses}
         or any(not r['accepted'] or not r['lifecycle_verified'] or r['repairs'] or r['deferred'] or not r['observed_usage_complete'] for r in witnesses)):
         raise ValueError('public seed lacks clean independent native and actual certification')
+    return cert
+
+
+def validate_certificate(policy,certificate,raw_sha,project=None):
+    from .continuous_rsi import ROOT,source_map
+    from .mcp_learning import adapter
+    from .experience_library import policy_current
+    cert=validate_historical_certificate(policy,certificate,raw_sha,project)
+    root=Path(project or ROOT).resolve()
+    manifest=read(root/'motif-libraries'/cert['release']/'entry.json')
+    runtime=source_map(adapter('management_v3').runtime_sources())
+    if manifest.get('runtime_source')!=runtime or not policy_current(policy,runtime):raise ValueError('seed runtime/catalog version changed')
     return cert
 
 

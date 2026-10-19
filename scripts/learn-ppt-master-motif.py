@@ -45,15 +45,16 @@ def code_paths():
         'src/adapters/geneloop_presentation.py','src/adapters/geneloop_presentation.ts','src/adapters/geneloop_presentation_render.py',
         'src/adapters/deepseek_cost_gate.py','src/adapters/web_task_budget.py','scripts/web_budget_broker.mjs',
         'scripts/serve-web-budget.py','config/pdf-ocr-assets.json')]
+    files += [ROOT/p for p in ('src/adapters/harless_ppt_learning.ts','scripts/learn-web-ppt-tasks.py')]
     return sorted(set(files+[Path(__file__).resolve()]))
 
 
-def main():
+def main(argv=None, *, private_publish_root=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--dataset',type=Path,required=True)
     p.add_argument('--out',type=Path,required=True)
     p.add_argument('--publish',type=Path)
-    a=p.parse_args();data=read(private(a.dataset));out=private(a.out)
+    a=p.parse_args(argv);data=read(private(a.dataset));out=private(a.out)
     if len(data.get('train',[]))!=2 or len(data.get('heldout',[]))!=1:
         raise ValueError('two independent train tasks and one heldout required')
     ledger=accounting.real_ledger(private(data['ledger']))
@@ -115,7 +116,12 @@ def main():
     write(out/'source-evidence.json',evidence);write(out/'learning-report.json',report)
     if a.publish:
         target=a.publish.resolve()
-        if not target.is_relative_to((ROOT/'motif-libraries').resolve()):raise ValueError('publish under motif-libraries only')
+        if private_publish_root is None:
+            if not target.is_relative_to((ROOT/'motif-libraries').resolve()):raise ValueError('publish under motif-libraries only')
+        else:
+            owner=private(private_publish_root)
+            if a.publish.is_symlink() or not target.is_relative_to(owner):
+                raise ValueError('private candidate escapes its owning learning store')
         target.mkdir(exist_ok=False)
         for name in ('library.json','online-manifest.json'):shutil.copyfile(manifest_path.parent/name,target/name)
         for name in ('source-evidence.json','learning-report.json'):shutil.copyfile(out/name,target/name)

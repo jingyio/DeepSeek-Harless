@@ -1775,16 +1775,20 @@ test('cancellation during native admission reclaims late inbox and rotates witho
 
 // Deterministic routing diagnostics only: no provider calls or document making.
 async function settleAttachmentTurn(f, sessionId, id, onRunning=async()=>{}) {
- for(let i=0;i<250;i++){
+ // Real attachment normalization can outlive 250 polling ticks on a busy
+ // integration host. Bound elapsed time and still require a terminal result.
+ const deadline=performance.now()+30000;let last;
+ while(performance.now()<deadline){
   for(const task of (await f.api()).value.tasks)if(task.status==='running'&&f.promptCalls.some(c=>c.requestId===task.request_id)){
    await onRunning(task);await f.complete(task);
   }
   const req=new Request('http://local/api/harless/comparisons?session_id='+sessionId+'&id='+id);req.authorized=true;
   const value=await(await f.routes.get('/api/harless/comparisons').fetch(req)).json();
+  last=value;
   if(['completed','failed','cancelled'].includes(value.status))return value;
   await new Promise(r=>setTimeout(r,10));
  }
- throw Error('attachment fixture did not settle');
+ throw Error('attachment fixture did not settle: '+JSON.stringify({comparison:last,tasks:(await f.api()).value.tasks.map(t=>({id:t.task_id,status:t.status,failure:t.failure}))}));
 }
 const attachmentScenes=()=>[{...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]},
  {...multiScenes[0],id:'ppt',preset:'sss-ppt',adapter:'ppt',mcp_rows:[]},

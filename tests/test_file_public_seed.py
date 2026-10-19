@@ -30,7 +30,7 @@ print(json.dumps({'state':cfg['state_root'],'entries':len(state['entries']),'pai
 
 
 def test_seed_release_contains_only_policies_and_sanitized_certification():
-    release=ROOT/'motif-libraries/file-v5';manifest=json.loads((release/'entry.json').read_text())
+    release=ROOT/'motif-libraries/file-v6';manifest=json.loads((release/'entry.json').read_text())
     assert manifest['raw_private_evidence_published'] is False
     for name in manifest['files']:
         raw=(release/name).read_text()
@@ -58,3 +58,28 @@ def test_incompatible_seed_is_retained_once_and_allows_ordinary_fallback(tmp_pat
     assert seed.install(cfg)['entries']==[]
     receipts=list((Path(cfg['state_root'])/'seed-rejections').glob('*.json'))
     assert len(receipts)==1 and json.loads(receipts[0].read_text())['activated'] is False
+
+
+def test_historical_seed_is_provenance_only_and_cannot_activate_on_new_code():
+    import pytest
+    from src.adapters.management_seed import validate_historical_certificate,validate_certificate
+    from src.motif_core.offline.experience_registry import read,sha
+    release=ROOT/'motif-libraries/file-v5';manifest=read(release/'entry.json')
+    for entry in manifest['entries']:
+        payload=release/entry['payload'];certificate=release/entry['certificate'];policy=read(payload)
+        assert validate_historical_certificate(policy,certificate,sha(payload))['release']=='file-v5'
+        with pytest.raises(ValueError,match='runtime/catalog version changed'):
+            validate_certificate(policy,certificate,sha(payload))
+
+
+def test_current_seed_keeps_every_previous_graph_shape_and_admits_current_code():
+    from src.adapters.management_seed import validate_certificate
+    from src.motif_core.offline.experience_registry import read,sha,digest
+    def shapes(version):
+        release=ROOT/'motif-libraries'/version;manifest=read(release/'entry.json')
+        return {digest(read(release/e['payload'])['artifact']['nodes']) for e in manifest['entries']}
+    assert shapes('file-v5') == shapes('file-v6')
+    release=ROOT/'motif-libraries/file-v6'
+    for entry in read(release/'entry.json')['entries']:
+        payload=release/entry['payload']
+        assert validate_certificate(read(payload),release/entry['certificate'],sha(payload))['release']=='file-v6'

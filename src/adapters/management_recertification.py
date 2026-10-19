@@ -119,7 +119,11 @@ def recertify(config_file, old_policy, old_certificate, template, job, *, worker
         raise ValueError('legacy collection/reentry IR requires a separate functional migration')
     if old['policy_digest'] != digest({k: v for k, v in old.items() if k != 'policy_digest'}):
         raise ValueError('historical policy digest changed')
-    check_motif_certificate(old, old_certificate, sha(old_policy))
+    if read(old_certificate).get('format')=='sss-management-seed-attestation-v1':
+        from .management_seed import validate_historical_certificate
+        validate_historical_certificate(old,old_certificate,sha(old_policy))
+    else:
+        check_motif_certificate(old, old_certificate, sha(old_policy))
     template_spec = read(template/'task.json')
     if template_spec.get('role') in ('holdout', 'evaluate', 'benchmark'):
         raise ValueError('final evaluation cannot be used for re-certification')
