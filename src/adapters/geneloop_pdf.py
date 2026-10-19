@@ -68,7 +68,10 @@ def read_pdf(data: bytes, *, visuals=False, page_number=None, force_visuals=Fals
                     method, text, warning = 'text_layer', native, 'pdf_page_ocr_failed_or_unavailable'
             # Include vector diagrams as well as embedded raster figures. A
             # scanned page also needs pixels; OCR does not interpret its plots.
-            visual = force_visuals or bool(images or page.get_drawings())
+            # Upload visual mode covers every page. Tables and diagrams may
+            # consist entirely of positioned text glyphs, with no image/drawing
+            # objects to trigger a structural heuristic.
+            visual = force_visuals or visuals or bool(images or page.get_drawings())
             row = {'page': index + 1, 'source_id': f'pdf:{digest}:page:{index+1}',
                    'text': text, 'text_method': method, 'ocr_performed': 'ocr' in method,
                    'ocr_needed': needs_ocr, 'visual_present': visual,
@@ -79,13 +82,18 @@ def read_pdf(data: bytes, *, visuals=False, page_number=None, force_visuals=Fals
             if row['ocr_performed']:
                 row['ocr_language'] = ocr_language
             if visuals and visual:
-                scale = min(200 / 72, 2400 / max(page.rect.width, page.rect.height))
-                pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-                raw = pix.tobytes('jpeg', jpg_quality=90)
-                row['image'] = {'media_type': 'image/jpeg', 'data': base64.b64encode(raw).decode('ascii'),
-                                'sha256': hashlib.sha256(raw).hexdigest(),
-                                'width': pix.width, 'height': pix.height,
-                                'scope': 'whole_page_including_figures_captions_and_body'}
+                try:
+                    scale = min(200 / 72, 2400 / max(page.rect.width, page.rect.height))
+                    pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+                    raw = pix.tobytes('jpeg', jpg_quality=90)
+                    row['image'] = {'media_type': 'image/jpeg', 'data': base64.b64encode(raw).decode('ascii'),
+                                    'sha256': hashlib.sha256(raw).hexdigest(),
+                                    'width': pix.width, 'height': pix.height,
+                                    'scope': 'whole_page_including_figures_captions_and_body'}
+                except Exception:
+                    # A broken image/resource on one page cannot erase the text
+                    # and valid visual evidence from every other page.
+                    row['visual_error_code'] = 'page_render_failed'
             pages.append(row)
         return {'pipeline_version': PIPELINE_VERSION, 'sha256': digest, 'page_count': len(pdf),
                 'pages': pages, 'text': '\n\f\n'.join(row['text'] for row in pages),

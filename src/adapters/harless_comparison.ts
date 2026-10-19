@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, appendF
 import { join } from 'node:path';
 import { hasReportPlaceholders, REPORT_ANSWER_BINDING } from './harless_report_answer.ts';
 import type { WebReasoningEffort } from './harless_reasoning.ts';
+import {uniqueAttachmentImages} from './harless_attachment_context.ts';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const terminal = new Set(['completed', 'failed', 'cancelled']);
@@ -21,6 +22,8 @@ type Turn = { id: string; session_id: string; request_id: string; fingerprint: s
   reasoning_effort?: WebReasoningEffort;
   lanes: Record<LaneName, Lane>; scores: Partial<Record<LaneName, number>>; score_revision: number; input: any;
   presentation?: 'paired' | 'single'; prior_artifacts?: Partial<Record<LaneName,any[]>>; prior_sources?: any[];
+  prior_evidence?: Partial<Record<LaneName,string[]>>;
+  source_images?:any[];prior_images?:any[];
   published?: boolean; cancellation_requested?: boolean; source_files?:Record<string,any>; prior_context?: Partial<Record<LaneName,string>> };
 const turnLanes = (t: Pick<Turn,'presentation'>): readonly LaneName[] => t.presentation === 'single' ? ['baseline'] : lanes;
 const admissionMessages: Record<string, string> = {
@@ -236,6 +239,11 @@ export function createComparisonService(output: string, principal: string, host:
   }
   return {
     hasSession: (id: string) => Boolean(state.threads[id]),
+    // Internal account-owned child identities only; the Host reads their
+    // already-observed evidence without exposing private Session APIs.
+    contextSessions: (id: string) => Object.fromEntries(lanes.map(name => [name, [...new Set(state.turns
+      .filter(turn => turn.session_id === id)
+      .map(turn => turn.lanes[turn.presentation === 'single' ? 'baseline' : name]?.session_id).filter(Boolean))]])),
     busy: (id: string) => state.turns.some(t => t.session_id === id && !terminal.has(t.status)),
     async subscribe(session: string, id: string, listener: (value: any) => void) {
       const t = await get(session, id); const listeners = subscribers.get(id) ?? new Set();
@@ -283,10 +291,10 @@ export function createComparisonService(output: string, principal: string, host:
       const changed = Boolean(thread && hash([thread.scene, thread.options, thread.presentation ?? 'paired']) !== hash([context.scene, context.options, presentation]));
       // A conversation is stable; immutable tool/budget/evidence scopes belong
       // to its private execution children. Rotate those children on transitions.
-      const rotate = !thread || newSources || changed;
+      const rotate = !thread || thread.context_version !== 2 || newSources || changed;
       const priorContext = rotate ? Object.fromEntries(selectedLanes.map(name => [name, JSON.stringify([
-        ...(context.prior_context_by_lane?.[name] ?? context.prior_context ?? []).slice(-12).map(({source_seq,...row}:any)=>row),
-        ...history.slice(-6).map(t => ({
+        ...(context.prior_context_by_lane?.[name] ?? context.prior_context ?? []).map(({source_seq,...row}:any)=>row),
+        ...history.map(t => ({
           scene: t.scene,
           user: t.input.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n'),
           assistant: t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer_display ?? t.lanes[t.presentation === 'single' ? 'baseline' : name]?.answer ?? '',
@@ -295,10 +303,10 @@ export function createComparisonService(output: string, principal: string, host:
       // Only internal, same-parent, same-lane immutable deliveries are handed
       // forward. The Host rechecks hashes and target scene formats before copy.
       const priorArtifacts = rotate ? Object.fromEntries(selectedLanes.map(name => [name,
-        [...(context.prior_artifacts ?? []), ...history.slice(-6).flatMap(t => (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.artifacts ?? [])
+        [...(context.prior_artifacts ?? []), ...history.flatMap(t => (t.lanes[t.presentation === 'single' ? 'baseline' : name]?.artifacts ?? [])
           .filter(row => t.scene !== 'research-data-analysis' || row.verification === 'data-report-delivery-v1'||
             row.verification==='code-output-v1'&&(row.name.startsWith('outputs/code/')||row.name.startsWith('code/')))
-          .map(row => ({ turn: t.id, lane: t.presentation === 'single' ? 'baseline' : name, row })))].slice(-32),
+          .map(row => ({ turn: t.id, lane: t.presentation === 'single' ? 'baseline' : name, row })))],
       ])) : undefined;
       // Appending a receipt must retain all earlier originals, including native
       // Chat uploads before the first private lane. Freeze the union at admission
@@ -307,8 +315,12 @@ export function createComparisonService(output: string, principal: string, host:
         ...(context.prior_sources ?? []),
         ...history.flatMap(t => [...(t.prior_sources ?? []), ...Object.values(t.source_files ?? {})]),
       ].map(ref => [hash(ref), ref])).values()] : [];
+      const priorEvidence = rotate ? context.prior_evidence_by_lane : undefined;
+      const priorImages=rotate?uniqueAttachmentImages([
+        ...(context.prior_images??[]),...history.flatMap(turn=>[...(turn.prior_images??[]),...(turn.source_images??[])]),
+      ]):[];
       if (rotate) {
-        thread = { scene: context.scene, options: context.options, presentation, lanes: {} };
+        thread = { scene: context.scene, options: context.options, presentation, context_version:2, lanes: {} };
         for (const name of selectedLanes) thread.lanes[name] = await host.createLane(session, context.scene, name);
         state.threads[session] = thread; save();
       }
@@ -316,7 +328,7 @@ export function createComparisonService(output: string, principal: string, host:
         fingerprint, scene: context.scene, options: context.options, model: context.model, reasoning_effort: context.reasoning_effort ?? 'off', presentation,
         input_sha256: context.input_sha256, created_at: new Date().toISOString(), status: 'preparing',
         lanes: Object.fromEntries(selectedLanes.map(name => [name, { session_id: thread.lanes[name], status: 'preparing', attempt: 0 }])) as Record<LaneName,Lane>,
-        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files, prior_context: priorContext, prior_artifacts: priorArtifacts, prior_sources: priorSources };
+        scores: {}, score_revision: 0, input: request.content, published: false, source_files:context.source_files,source_images:context.source_images,prior_images:priorImages, prior_context: priorContext, prior_evidence:priorEvidence, prior_artifacts: priorArtifacts, prior_sources: priorSources };
       state.turns.push(t); save();
       for (const name of turnLanes(t)) t.lanes[name].status = 'queued';
       summary(t); save();

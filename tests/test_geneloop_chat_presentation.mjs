@@ -14,9 +14,9 @@ const tool = (seq, done = true) => node('tool-call', seq, { root: { ...(done ? {
   : { name: 'mcp__dsh-workspace__list_files', argsRaw: '{}' }), callId: 'call-' + seq,
   content: [{ type: 'text', text: 'report.csv · @deepseek-ai/dsh-workspace · DSH' }], subCalls: [], isError: false } }, done);
 
-function fixture(initial, { compactAnswerStep, turnStatus, deliveryResponse } = {}) {
+function fixture(initial, { compactAnswerStep, turnStatus, deliveryResponse, nativeUsers = false } = {}) {
   let plugin, rows = initial, sessionId = 'session-a', tree, activePath = '', cursor = 0;
-  const states = new Map(), entries = [], effects = [];
+  const states = new Map(), entries = [], effects = [], tabs = [], downloads = [], listeners = new Map();
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) }),
     useState(value) { const key = activePath + ':' + cursor++; if (!states.has(key)) states.set(key, value);
@@ -28,12 +28,20 @@ function fixture(initial, { compactAnswerStep, turnStatus, deliveryResponse } = 
   const MarkdownText = props => React.createElement('native-markdown', props);
   const NativeAssistant = props => React.createElement('native-assistant', props);
   entries.push({ options: { key: 'assistant-step' }, component: NativeAssistant });
-  runInNewContext(source, { window: { location: { href:'http://localhost/' }, __ModuleLoader__: { load(value) { plugin = value; } } }, document: {},
-    AbortController, URL, setTimeout, clearTimeout, fetch: async (url,init) => { if (!deliveryResponse) throw Error('rendering must not request a model');assert.match(url,/^\/api\/harless\/deliveries\?/);assert.equal(init.credentials,'same-origin');return Response.json(deliveryResponse); } });
+  if (nativeUsers) entries.push({ options: { key: 'user' }, component: props => React.createElement('native-user', props) });
+  const document = { hidden: false, body: { appendChild() {} }, createElement: () => ({
+    click() { downloads.push({ href: this.href, name: this.download }); }, remove() {},
+  }) };
+  runInNewContext(source, { window: { location: { href:'http://localhost/' }, addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name),
+    __ModuleLoader__: { load(value) { plugin = value; } } },
+    document, Blob, AbortController, URL, setTimeout: (fn, delay) => delay === 60000 ? 0 : setTimeout(fn, delay), clearTimeout,
+    fetch: async (url,init) => { if (!deliveryResponse) throw Error('rendering must not request a model');assert.match(url,/^\/api\/harless\/deliveries\?/);assert.equal(init.credentials,'same-origin');return Response.json(deliveryResponse); } });
   plugin.factory(name => name === 'react' ? React : { MarkdownText }).apply({
-    get: name => ({ commandUi: { decorate: () => () => {} }, inputTriggers: { registerSource: () => () => {} }, sessions: {}, conversation: {}, sidebarRight: { openResource: address => states.set('opened',address) } })[name],
+    get: name => ({ commandUi: { decorate: () => () => {} }, inputTriggers: { registerSource: () => () => {} }, sessions: {}, conversation: {}, sidebarRight: { openResource: address => states.set('opened',address) },
+      sidebarRightTabs: { register: spec => { tabs.push(spec); return () => {}; } } })[name],
     effect: fn => { effects.push(fn); return fn(); }, uiConversation: { events: { register: () => () => {} } },
-    slots: { inject(_name, fn) { fn(); }, register(options, component) { entries.push({ options, component }); }, entries: () => entries },
+    slots: { inject(_name, fn) { fn(); }, register(options, component) { entries.push({ options, component }); },
+      entries: name => entries.filter(entry => entry.options.name === name || (name === 'conversation.chat.node' && !entry.options.name)) },
   });
   const materialize = (entry, path) => {
     if (!entry || typeof entry !== 'object') return entry;
@@ -65,7 +73,10 @@ function fixture(initial, { compactAnswerStep, turnStatus, deliveryResponse } = 
   const text = (entry = tree) => Array.isArray(entry) ? entry.map(text).join('') : typeof entry === 'string' ? entry
     : entry?.type === 'style' ? '' : entry?.type === 'native-assistant' ? entry.props.node.data.blocks.map(block => block.text || '').join('') : (entry?.children || []).map(text).join('');
   render();
-  return { all, text, render, entries, async flushDelivery(){ for(const effect of effects.splice(0))effect();for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));render(); }, opened:()=>states.get('opened'), setRows(value) { rows = value; }, setSession(value) { sessionId = value; },
+  return { all, text, render, entries, tabs, downloads, leave: () => listeners.get('pagehide')?.(),
+    preview(address = states.get('opened')) { const entry = entries.find(row => row.options.key === 'geneloop-code-preview');
+      return materialize(React.createElement(entry.component, { useTabInfo: () => ({ tab: { contentId: address, signal: new AbortController().signal } }) }), 'preview'); },
+    async flushDelivery(){ for(const effect of effects.splice(0))effect();for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));render(); }, opened:()=>states.get('opened'), setRows(value) { rows = value; }, setSession(value) { sessionId = value; },
     toggle() { all(entry => entry.type === 'button' && entry.props.className === 'geneloop-process-toggle')[0].props.onClick(); render(); } };
 }
 
@@ -167,4 +178,81 @@ test('ordinary Chat installs approved command file mentions, previews and indepe
  mentions.resolve('/work/outputs/pelican.html').open();assert.match(f.opened(),/^dsh-resource:\/\/geneloop-delivery\/session-a\/native-task-a\/baseline\/file-one\/pelican.html$/);
  const preview=f.all(row=>row.type==='button'&&row.children.includes('预览 pelican.html'))[0];assert.ok(preview);preview.props.onClick();
  const download=f.all(row=>row.type==='a'&&row.props.download==='pelican.html')[0];assert.match(download.props.href,/^\/api\/harless\/deliveries\?/);assert.match(download.props.href,/file=file-one/);
+});
+
+test('manual process expansion survives new assistant anchors, additional tools and terminal closure', () => {
+  const first = assistant(1, '开始', false), f = fixture([first, tool(2, false)]);
+  f.toggle(); assert.equal(f.all(row => row.props.className === 'geneloop-process-toggle')[0].props['aria-expanded'], true);
+  f.setRows([first, tool(2), assistant(3, '继续', false), tool(4, false)]); f.render();
+  assert.equal(f.all(row => row.props.className === 'geneloop-process-toggle')[0].props['aria-expanded'], true);
+  assert.match(f.text(), /开始|report.csv/);
+  f.setRows([first, tool(2), assistant(3, '继续'), tool(4), assistant(5, '完成')]); f.render();
+  assert.equal(f.all(row => row.props.className === 'geneloop-process-toggle')[0].props['aria-expanded'], true);
+  f.toggle(); f.setRows([first, tool(2), assistant(6, '更新后的最终结果')]); f.render();
+  assert.equal(f.all(row => row.props.className === 'geneloop-process-toggle')[0].props['aria-expanded'], false);
+  f.leave(); f.render(); assert.equal(f.all(row => row.props.className === 'geneloop-process-toggle')[0].props['aria-expanded'], false);
+});
+
+test('long reply code opens a native sidebar source file and downloads exact inert bytes', async () => {
+  const code = '<svg xmlns="http://www.w3.org/2000/svg">\n<script>throw new Error("must not run")</script>\n'
+    + Array.from({ length: 14 }, (_, i) => '<text>' + i + ' 🧬</text>').join('\n') + '\n</svg>\n';
+  const row = assistant(1, '图形代码：\n\n```svg\n' + code + '```\n\n说明仍保留。'), before = JSON.stringify(row);
+  const f = fixture([row]); const shown = f.all(entry => entry.type === 'native-assistant')[0].props.node.data.blocks[0].text;
+  assert.match(shown, /说明仍保留/); assert.doesNotMatch(shown, /<script>|<text>/); assert.match(shown, /代码片段-1.svg/);
+  const href = /\]\(([^)]+)\)/.exec(shown)[1]; let prevented = false;
+  f.all(entry => entry.props.className === 'geneloop-product-turn')[0].props.onClickCapture({
+    target: { closest: () => ({ getAttribute: () => href }) }, preventDefault() { prevented = true; }, stopPropagation() {},
+  });
+  assert.equal(prevented, true); assert.match(f.opened(), /^dsh-resource:\/\/geneloop-code\/snippet-\d+$/);
+  const tab = f.tabs.find(row => row.id === 'geneloop-code-preview'); assert.equal(tab.canOpen(f.opened()), true);
+  assert.equal(tab.canOpen('dsh-resource://geneloop-code/../../private'), false);
+  const preview = f.preview(); assert.equal(f.text(f.all(row => row.type === 'code', preview)[0]), code);
+  assert.equal(f.all(row => ['img', 'iframe', 'object', 'script'].includes(row.type) || row.props.dangerouslySetInnerHTML, preview).length, 0);
+  f.all(row => row.type === 'button' && row.props['aria-label'] === '下载 代码片段-1.svg', preview)[0].props.onClick();
+  assert.equal(f.downloads[0].name, '代码片段-1.svg');
+  const response = await fetch(f.downloads[0].href); assert.equal(await response.text(), code); URL.revokeObjectURL(f.downloads[0].href);
+  assert.equal(JSON.stringify(row), before, 'journal and original assistant text are untouched');
+  f.leave(); assert.equal(tab.canOpen(f.opened()), false, 'private snippets are discarded on page/account exit');
+});
+
+test('short code stays inline while long incomplete fences retain a stable updating preview', () => {
+  const short = '示例：\n```python\nprint(1)\n```'; const f = fixture([assistant(1, short)]);
+  assert.equal(f.all(row => row.type === 'native-assistant')[0].props.node.data.blocks[0].text, short);
+  const body = Array.from({ length: 14 }, (_, i) => 'print(' + i + ')').join('\n');
+  f.setRows([assistant(1, '~~~python\n' + body)]); f.render();
+  const shown = () => f.all(row => row.type === 'native-assistant')[0].props.node.data.blocks[0].text;
+  const first = /\]\(([^)]+)\)/.exec(shown())[1]; assert.match(shown(), /生成中/);
+  f.setRows([assistant(1, '~~~python\n' + body + '\nprint(99)\n~~~')]); f.render();
+  assert.equal(/\]\(([^)]+)\)/.exec(shown())[1], first); assert.doesNotMatch(shown(), /生成中/);
+});
+
+test('indented Markdown fences produce the same runnable source that the native code block displays', () => {
+  const body=Array.from({length:13},(_,i)=>'print('+i+')').join('\n')+'\n';
+  const f=fixture([assistant(1,'  ```python\n'+body.split('\n').slice(0,-1).map(line=>'  '+line).join('\n')+'\n  ```')]);
+  const shown=f.all(row=>row.type==='native-assistant')[0].props.node.data.blocks[0].text;
+  const href=/\]\(([^)]+)\)/.exec(shown)[1];
+  f.all(row=>row.props.className==='geneloop-product-turn')[0].props.onClickCapture({
+    target:{closest:()=>({getAttribute:()=>href})},preventDefault(){},stopPropagation(){},
+  });
+  assert.equal(f.text(f.all(row=>row.type==='code',f.preview())[0]),body);
+});
+
+test('internal attachment catalog is neither a visible input nor a process disclosure row', () => {
+  const context = node('context', 2, { content: [{ type: 'text', text: 'private extraction payload' }] });
+  context.source = { kind: 'plugin', plugin: 'geneloop-attachment-context', form: 'catalog' };
+  const internalUser = node('user', 3, { content: [{ type: 'text', text: 'private recall payload' }] }); internalUser.source = { ...context.source, form: 'recall' };
+  const f = fixture([context, internalUser, assistant(4, '你好！')], { nativeUsers: true });
+  assert.match(f.text(), /你好/); assert.doesNotMatch(f.text(), /private|上下文|处理过程/);
+  assert.equal(f.all(row => row.type === 'native-user').length, 0);
+  assert.equal(f.all(row => row.props.className === 'geneloop-process-toggle').length, 0);
+});
+
+test('an admitted literal extraction-envelope example stays intact even alongside an attachment', () => {
+  const text = '请解释这段导出JSON：用户附件的只读提取结果（测试）：\n' + JSON.stringify({files:[{
+    name:'sample.pdf',sha256:'a'.repeat(64),status:'extracted',text:'Keep this literal example',
+  }]});
+  const content = [{type:'text',text},{type:'file',attachment:{name:'notes.txt'}}];
+  const f = fixture([node('user',1,{content})],{nativeUsers:true});
+  const user = f.all(row => row.type === 'native-user')[0];
+  assert.deepEqual(user.props.node.data.content, content);
 });
