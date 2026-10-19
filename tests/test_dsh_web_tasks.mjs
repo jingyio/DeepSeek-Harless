@@ -8,7 +8,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
+import { markAgentLoopRequest,createUserMessage } from '@deepseek-ai/dsh-llm';
+import { Session } from '@deepseek-ai/dsh-session';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import {comparisonArtifacts} from '../src/adapters/harless_comparison_artifacts.ts';
 import {attachmentEvidence,ATTACHMENT_CONTEXT_PLUGIN} from '../src/adapters/harless_attachment_context.ts';
@@ -28,7 +29,7 @@ const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
-async function fixture({ broker = false, dshHome = false, visionReply, nativeImageAdmission = false, fixtureSchemas: schemaOverride, fixture_schemas, strictMountedTools = false, ...overrides } = {}) {
+async function fixture({ broker = false, dshHome = false, visionReply, nativeImageAdmission = false, realSessions=false, fixtureSchemas: schemaOverride, fixture_schemas, strictMountedTools = false, ...overrides } = {}) {
   const fixtureSchemas = schemaOverride ?? fixture_schemas ?? toolSchemas;
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
@@ -149,6 +150,11 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
             on(name,fn) { (agent.hooks??=new Map()).set(name,fn); },
           } };
           agent.steered=[];agent.steer=message=>agent.steered.push(message);
+          if(realSessions){
+            const session=Session.create(id,events),append=session.append.bind(session);
+            session.append=(type,data,...metadata)=>{const event=append(type,data,...metadata);events.push(event);emit('session/event',session,event);return event;};
+            agent.session=session;
+          }
           agents.set(id, agent); emit('agent/created', { agent });
         }
         return { sessionId: id, agentPreset: request.agentPreset };
@@ -157,6 +163,11 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
         assert.ok(signal instanceof AbortSignal);
         promptCalls.push(request);
         const agent = agents.get(request.sessionId);
+        if(realSessions){
+          agent.session.append('user/message',createUserMessage({content:nativeImageAdmission?await ctx.attachments.admitPromptContent(request.content):request.content,
+            source:{kind:'user',rpcId:request.requestId}}),{surfaceOp:'append'});
+          return {accepted:true};
+        }
         const event = { type: 'user/message', data: { id: `user-${promptCalls.length}`,
           content: nativeImageAdmission ? await ctx.attachments.admitPromptContent(request.content) : request.content, source: { kind: 'user', rpcId: request.requestId } } };
         agent.events.push(event); emit('session/event', agent.session, event);
@@ -538,6 +549,98 @@ test('model catalog crosses the real native HTTP bridge with browser authenticat
   assert.equal((await fetch(origin+'/api/harless/models',{headers:{cookie,origin:'https://foreign.invalid'}})).status,403);
   assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0);
  }finally{await native.fiber.dispose();await f.close();}
+});
+
+test('first PDF and subsequent scene turns cross native HTTP with the real Session surface contract',options,async()=>{
+ const f=await fixture({broker:true,realSessions:true,scenes:attachmentScenes(),capability_profile:'new-scene',
+  comparison_scenes:['paper-proofreading','research-data-analysis','ppt'],visionReply:async()=> 'The uploaded page contains a blue rectangle.'}),native=new Context();
+ try{
+  const server=new WebServer(native,{host:'127.0.0.1',port:0});await server[Service.init]();
+  native.provide('credentials',{async modifyRecord(_key,change){return change(undefined);}});
+  await mountNativeConnection(native);await new Promise(resolve=>setImmediate(resolve));
+  const origin='http://127.0.0.1:'+server.port;
+  server.register({kind:'exact',path:'/',handler:(request,response)=>{
+   if(native.connection.authorizeIndex(request,response)){response.writeHead(200);response.end('fixture');}
+  }});
+  f.ctx.connection=native.connection;
+  native.connection.fetch.register(f.routes.get('/api/harless/comparisons'));
+  // The carrier and Session journal are the installed Harness implementations.
+  // Only the model queue/remote dispatcher is fixture-owned; no provider runs.
+  native.connection.rpc.intercept('/api',endpoint=>['session/create','session/prompt'].includes(endpoint),async(endpoint,payload,signal)=>({
+   ok:true,value:await f.ctx.sessionController[endpoint.split('/')[1]](payload,signal),
+  }));
+  const exchange=await fetch(native.connection.authenticatedUrl(origin),{redirect:'manual'});
+  assert.equal(exchange.status,303);const cookie=exchange.headers.get('set-cookie').split(';',1)[0];
+  const call=async(endpoint,payload)=>{
+   const response=await fetch(origin+'/api/'+endpoint,{method:'POST',headers:{cookie,'Content-Type':'application/json'},
+    body:JSON.stringify({type:'client-request',rpcId:randomUUID(),method:endpoint,payload})});
+   assert.equal(response.status,200);const envelope=await response.json();assert.equal(envelope.result.ok,true,JSON.stringify(envelope));return envelope.result.value;
+  };
+  const {sessionId}=await call('session/create',{});
+  const bytes=execFileSync(process.env.SSS_PYTHON??'python3',['-c',
+   "import pymupdf as f,sys; d=f.open(); p=d.new_page(); p.insert_text((40,50),'Uploaded source: value 42'); p.draw_rect((40,80,200,160),fill=(0,0,1)); sys.stdout.buffer.write(d.tobytes())"]);
+  const file=await f.ctx.fileUploads.uploadStream({sessionId,name:'source.pdf',data:(async function*(){yield bytes;})()});
+  const settle=async id=>{
+   for(let attempt=0;attempt<250;attempt++){
+    for(const task of (await f.api()).value.tasks)if(task.status==='running'&&f.promptCalls.some(row=>row.requestId===task.request_id))await f.complete(task);
+    const response=await fetch(origin+'/api/harless/comparisons?session_id='+sessionId+'&id='+id,{headers:{cookie}});
+    assert.equal(response.status,200);const value=await response.json();
+    if(['completed','failed','cancelled'].includes(value.status)){assert.equal(value.status,'completed',JSON.stringify(value));return;}
+    await new Promise(resolve=>setTimeout(resolve,10));
+   }throw Error('native HTTP attachment turn did not settle');
+  };
+  for(const [index,text] of ['Read the blue figure','你好','/paper Recall the source','/data Recall the source','/ppt Recall the source'].entries()){
+   const content=[{type:'text',text},...(index===0?[{type:'file',receiptId:file.receiptId}]:[])];
+   const accepted=await call('session/prompt',{sessionId,requestId:'surface-turn-'+index,mode:'queue',content});
+   assert.ok(accepted.accepted&&accepted.comparison_id);await settle(accepted.comparison_id);
+  }
+  const children=[...f.agents.values()].filter(agent=>agent.session.id!==sessionId);
+  assert.ok(children.length>=4);
+  for(const agent of children){
+   assert.ok(agent.session instanceof Session);
+   const events=agent.session.snapshotEvents(),context=events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+   assert.ok(context);assert.equal(context.surfaceOp,'append');assert.ok(agent.session.surface.nodes.includes(context.seq));
+   assert.throws(()=>Session.create('surface-negative-control').append('user/message',context.data),/requires a surfaceOp marker/,'the installed Session rejects the former unmarked append');
+   assert.ok(events.some(event=>event.seq>context.seq&&event.data?.source?.kind==='user'),'internal context precedes the actual human turn');
+  }
+  const parent=f.agents.get(sessionId).session;assert.ok(parent instanceof Session);
+  assert.equal(parent.snapshotEvents().filter(event=>event.type==='user/message').length,5);
+  assert.equal((await f.api()).value.aggregate.upstream_requests,0);
+ }finally{await native.fiber.dispose();await f.close();}
+});
+
+test('blocked PDF preparation publishes its task and real read progress over native HTTP before model admission',options,async()=>{
+ let release,started;const gate=new Promise(resolve=>release=resolve),began=new Promise(resolve=>started=resolve);
+ const f=await fixture({broker:true,realSessions:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading'],
+  visionReply:async()=>{started();await gate;return 'The page contains a blue rectangle.';}}),native=new Context();
+ try{
+  const server=new WebServer(native,{host:'127.0.0.1',port:0});await server[Service.init]();
+  native.provide('credentials',{async modifyRecord(_key,change){return change(undefined);}});
+  await mountNativeConnection(native);await new Promise(resolve=>setImmediate(resolve));const origin='http://127.0.0.1:'+server.port;
+  server.register({kind:'exact',path:'/',handler:(request,response)=>{if(native.connection.authorizeIndex(request,response)){response.writeHead(200);response.end('fixture');}}});
+  f.ctx.connection=native.connection;native.connection.fetch.register(f.routes.get('/api/harless/comparisons'));
+  native.connection.rpc.intercept('/api',endpoint=>['session/create','session/prompt'].includes(endpoint),async(endpoint,payload,signal)=>({ok:true,value:await f.ctx.sessionController[endpoint.split('/')[1]](payload,signal)}));
+  const exchange=await fetch(native.connection.authenticatedUrl(origin),{redirect:'manual'}),cookie=exchange.headers.get('set-cookie').split(';',1)[0];
+  const call=async(endpoint,payload)=>{const response=await fetch(origin+'/api/'+endpoint,{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:randomUUID(),method:endpoint,payload})});
+   assert.equal(response.status,200);const value=await response.json();assert.equal(value.result.ok,true,JSON.stringify(value));return value.result.value;};
+  const {sessionId}=await call('session/create',{});
+  const bytes=execFileSync(process.env.SSS_PYTHON??'python3',['-c',"import pymupdf as f,sys; d=f.open(); p=d.new_page(); p.draw_rect((40,80,200,160),fill=(0,0,1)); sys.stdout.buffer.write(d.tobytes())"]);
+  const file=await f.ctx.fileUploads.uploadStream({sessionId,name:'blocked.pdf',data:(async function*(){yield bytes;})()});
+  const input={sessionId,requestId:'http-blocked-vision',mode:'queue',content:[{type:'text',text:'Read this figure'},{type:'file',receiptId:file.receiptId}]};
+  const sent=await call('session/prompt',input);assert.ok(sent.comparison_id);assert.equal(f.promptCalls.length,0);
+  await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('vision did not start')),10000);began.then(()=>{clearTimeout(timeout);resolve();});});
+  const read=async()=>{const response=await fetch(origin+'/api/harless/comparisons?session_id='+sessionId+'&id='+sent.comparison_id,{headers:{cookie}});assert.equal(response.status,200);return response.json();};
+  let live;for(let i=0;i<100;i++){live=await read();if(/正在读取页面图像/.test(live.lanes.baseline.progress?.label??''))break;await new Promise(resolve=>setTimeout(resolve,10));}
+  const task=(await f.api()).value.tasks[0];assert.equal(live.lanes.baseline.task_id,task.task_id);
+  assert.match(live.lanes.baseline.progress.label,/正在读取页面图像/);assert.deepEqual(live.lanes.baseline.messages,[],'preparation is not invented model thinking');
+  assert.equal(task.status,'running');assert.equal(f.promptCalls.length,0);
+  const cancelled=await fetch(origin+'/api/harless/comparisons',{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify({action:'cancel',session_id:sessionId,id:sent.comparison_id})});
+  assert.equal(cancelled.status,200);assert.equal((await cancelled.json()).lanes.baseline.task_id,task.task_id);
+  release();for(let i=0;i<50;i++){if((await f.api(undefined,'?task_id='+task.task_id)).value.status==='cancelled')break;await new Promise(resolve=>setTimeout(resolve,10));}
+  assert.equal((await read()).status,'cancelled');assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'cancelled');assert.equal(f.promptCalls.length,0);
+  assert.equal((await call('session/prompt',input)).comparison_id,sent.comparison_id,'retrying the same cancelled send is idempotent');
+  assert.equal((await f.api()).value.tasks.length,1);assert.equal(f.registrations.size,1);assert.equal(f.promptCalls.length,0);
+ }finally{release();await native.fiber.dispose();await f.close();}
 });
 
 test('cold native Pro selection binds the parent mounted preset independently of its planned scene',options,async()=>{

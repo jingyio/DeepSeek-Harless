@@ -137,6 +137,8 @@ def test_original_paper_shadow_release_stays_shadow_and_cannot_be_relabelled_as_
     ('ppt-master-v7','ppt-master-v8','ppt','delivery_compatibility'),
     ('paper-web-v13','paper-web-v14','paper-proofreading','attachment_context_compatibility'),
     ('ppt-master-v8','ppt-master-v9','ppt','attachment_context_compatibility'),
+    ('paper-web-v14','paper-web-v15','paper-proofreading','attachment_surface_compatibility'),
+    ('ppt-master-v9','ppt-master-v10','ppt','attachment_surface_compatibility'),
 ])
 def test_compatibility_reuses_validated_program_without_rewriting_previous_release(before,after,scene,record):
     original=ROOT/'motif-libraries'/before
@@ -149,7 +151,7 @@ def test_compatibility_reuses_validated_program_without_rewriting_previous_relea
     for name in ('library.json','source-evidence.json','task.json','tool-schemas.json','online-manifest.json'):
         assert (candidate/name).read_bytes()==(original/name).read_bytes()
     assert read(candidate/'online-manifest.json')==read(original/'online-manifest.json')
-    if record=='attachment_context_compatibility':
+    if record in ('attachment_context_compatibility','attachment_surface_compatibility'):
         # New certificate hashes must describe the LF bytes Git will commit,
         # including when this release is exported on Windows.
         for path in candidate.iterdir():
@@ -171,6 +173,7 @@ def test_compatibility_reuses_validated_program_without_rewriting_previous_relea
     'src/adapters/harless_public_output.ts',
     'src/adapters/harless_task_progress.ts',
     'scripts/reexport-attachment-context-compat.py',
+    'scripts/reexport-surface-context-compat.py',
 ])
 def test_attachment_compatibility_locks_each_new_context_and_evidence_boundary(tmp_path,name):
     root,bundle=copy_release(tmp_path)
