@@ -126,3 +126,32 @@ test('script successors require verified cache facts, including complete batch c
   const b=await dispatch(f);assert.equal(!!b,verified);if(b)assert.equal(b.arguments.handle,'fresh');
  }
 });
+test('notices offer schema-compatible nested arguments and do not promote unchanged failures or metadata',t=>{
+ const f=fixture(t),path=join(f.workspace,'code/current.json');
+ writeFileSync(path,JSON.stringify({metadata:{foo:'irrelevant'},arguments:{title:'current',sections:[]}}));
+ const notice=f.r.takeNotice();assert.ok(notice.includes('ready_calls'));assert.ok(notice.includes('/arguments'));assert.ok(!notice.includes('irrelevant'));
+ f.r.observe({name:tool.name,callId:'failed',arguments:{title:'current',sections:[]}},result({exported:false}));
+ writeFileSync(join(f.workspace,'code/copy.json'),JSON.stringify({title:'current',sections:[]}));
+ const after=f.r.takeNotice();assert.ok(after.includes('修订'));assert.ok(!after.includes('ready_calls'));
+ writeFileSync(join(f.workspace,'code/metadata.json'),JSON.stringify({tool_error:'pending'}));assert.equal(f.r.takeNotice(),'');
+});
+test('one selected learned diagnostic runs multiple native probes and returns bounded evidence',async t=>{
+ const f=fixture(t),contract={id:'probe_test',tool:tool.name,schema_sha256:digest(schema),failure:{exported:false,failed_checks:['layout']},success_fields:['exported'],axes:[{path:['sections']}],max_probes:12};
+ f.r=createReuseMediation({workspace:f.workspace,tools:f.tools,library:{contracts:[{tool:tool.name,schema_sha256:digest(schema)}],probe_contracts:[contract]},probeTools:[tool.name],audit:v=>f.audit.push(v)});
+ const original={title:'whole',sections:[{text:'safe1'},{text:'bad'},{text:'safe2'},{text:'safe3'}]},failure=contract.failure;
+ f.r.observe({name:tool.name,callId:'original',arguments:original},result(failure));
+ const id=values(f).find(v=>v.origin.kind==='arguments').id;
+ assert.ok(f.r.takeNotice().includes('diagnose'));
+ const command='geneloop-reuse '+JSON.stringify({diagnose:{contract:contract.id,base:{artifact:id}}});
+ const receipt=f.r.prepare(command);f.r.observe({name:'bash',arguments:{command}},result(receipt.control_receipt));
+ let calls=0,notice='';
+ for(let call;call=await dispatch(f);){f.r.guard(call);calls++;f.r.observe(call,result(call.arguments.sections.some(s=>s.text==='bad')?failure:{exported:true}));notice+=f.r.takeNotice();}
+ assert.equal(calls,3);assert.ok(notice.includes('bad'));assert.ok(notice.includes('不能作为完整报告交付'));assert.equal(original.sections.length,4);
+ assert.equal(f.audit.filter(x=>x.kind==='reuse_probe_completed').length,1);
+ assert.throws(()=>f.r.prepare(command),/current_failure/);
+});
+test('diagnosis without effect allowlist or with foreign failure is unavailable',t=>{
+ const f=fixture(t);f.r.observe({name:tool.name,callId:'bad',arguments:{title:'x',sections:[{},{}]}},result({exported:false,failed_checks:['layout']}));
+ const id=values(f).find(v=>v.origin.kind==='arguments').id;
+ assert.throws(()=>f.r.prepare('geneloop-reuse '+JSON.stringify({diagnose:{contract:'unseen',base:{artifact:id}}})),/current_failure/);
+});

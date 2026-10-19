@@ -66,3 +66,9 @@ def test_soft_validation_rejection_counts_without_a_native_exception(tmp_path):
     assert result['requests_after_structured_validation_failures']==1
     assert result['structured_validation_failures'][0]['code']=='shape'
     assert m.structured_validation_error({'content':[{'type':'text','text':json.dumps({'finalized':True,'validation_error':'old_metadata'})}]}) is None
+
+
+def test_no_dash_heredoc_and_artifact_selection_are_not_unclassified_shell():
+    for command,expected in [("cd /work && python3 << 'EOF'\nprint(1)\nEOF",'script_authoring_local'),('geneloop-reuse {"calls":[]}','artifact_reference_or_probe_selection')]:
+        assert m.category({'content':[{'type':'tool-call','name':'bash','arguments':{'command':command}}]})==expected
+    assert m.structured_validation_error({'content':[{'type':'text','text':'{"exported":false,"failed_checks":["all_text_preserved"]}'}]})=='checks:all_text_preserved'

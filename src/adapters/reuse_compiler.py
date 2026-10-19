@@ -11,6 +11,7 @@ from jsonschema import Draft202012Validator
 from .script_motif_compiler import digest, sha
 
 LOCKS = ['src/adapters/reuse_compiler.py', 'src/adapters/reuse_mediation.ts',
+         'src/adapters/probe_motif_compiler.py', 'src/adapters/probe_frontier.ts',
          'src/adapters/script_motif_web.ts', 'src/adapters/script_motif_runtime.ts',
          'src/adapters/script_execution_frontier.ts', 'scripts/compile-reuse-library.py']
 
@@ -76,7 +77,7 @@ def collect(task):
     return rows
 
 
-def compile_library(rows, root):
+def compile_library(rows, root, probe_rows=()):
     groups = defaultdict(list)
     for row in rows:
         groups[(row['tool'], digest(row['schema']))].append(row)
@@ -93,7 +94,8 @@ def compile_library(rows, root):
                           'edges': [e for e, tasks in edges.values() if len(tasks) >= 2],
                           'certification': {'scope': 'schema_validated_real_calls_not_semantic_or_effect_authorization',
                                             'witnesses': [{k: w[k] for k in ('task_id', 'call_id', 'events_sha256', 'arguments_sha256', 'result_sha256')} for w in witnesses]}})
-    body = {'version': 1, 'kind': 'native_reuse_contract_library', 'contracts': contracts,
+    from .probe_motif_compiler import compile_probes
+    body = {'version': 1, 'kind': 'native_reuse_contract_library', 'contracts': contracts, 'probe_contracts': [p for p in compile_probes(probe_rows) if any(c['tool']==p['tool'] and c['schema_sha256']==p['schema_sha256'] for c in contracts)],
             'code_locks': {p: sha((Path(root) / p).read_bytes()) for p in LOCKS},
             'compilation_model_requests': 0}
     return {**body, 'digest': digest(body)}

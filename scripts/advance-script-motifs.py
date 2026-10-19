@@ -9,6 +9,7 @@ import sys
 from uuid import uuid4
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from src.adapters.file_lock import exclusive_lock
+from src.adapters.probe_motif_compiler import collect as collect_probes
 from src.adapters.reuse_compiler import collect as collect_reuse, compile_library as compile_reuse
 
 def read(path):return json.loads(path.read_text())
@@ -40,7 +41,7 @@ def main():
         save(round_dir/'worker.json',{'exit_code':result.returncode,'stdout':result.stdout[-16000:],'stderr':result.stderr[-4000:]})
         if result.returncode:save(task/'script-learning-status.json',{'status':'failed','round':round_dir.name});return
         library=read(round_dir/'library.json')
-        reuse=compile_reuse([r for t in history['tasks'] for r in collect_reuse(Path(t))],ROOT)
+        reuse=compile_reuse([r for t in history['tasks'] for r in collect_reuse(Path(t))],ROOT,[r for t in history['tasks'] for r in collect_probes(Path(t))])
         save(round_dir/'reuse-library.json',reuse)
         published=bool(library['programs'] or reuse['contracts'])
         status={'status':'published' if published else 'no_qualified_programs','round':round_dir.name,'programs':len(library['programs']),'digest':library['digest'],

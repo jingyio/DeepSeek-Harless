@@ -945,3 +945,17 @@ TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`�
 `--reuse-checkpoint <本检出.local下JSON>` 与旧 `--recovery-checkpoint` 互斥，要求历史参数 `source_versions` 与本次批准上传完全一致。该入口复制真实失败调用作为当前可读数据，仅用于单独记录的历史恢复实验；不算新论文完整评测。
 
 自动学习 worker 生成脚本库与原生复用契约库，原子发布包含 `file`/`reuse_file` 的 owner 隔离指针；下任务开始时冻结。学习本身没有模型请求，但沙箱耗时、无合格库/超时等失败仍记录。效果与限制见 [统一复用实验](experiments/paper-unified-reuse-20261019-v1.md)。
+
+### 边界快照、诊断片段与隔离导出变体（2026-10-19）
+
+`learn-script-motifs.py`现在从`reuse-boundaries.jsonl`的调用前快照恢复新的私有重放目录，校验路径、字节摘要、大小与非符号链接。`reuse_snapshot.py`另可把真实原生参数/结果实体化为留出输入，明确标为`native_record_materialization_not_pre_call_file`，不能冒充历史文件快照。认证器重放原程序和切片，在不同真实输入上验证行为；拒绝和容量截断均保留。当前按程序长度优先取12项，只是有界目录策略，不是费用最优化。
+
+`probe_motif_compiler.py`从至少两项完成的真实任务，提取同一工具/schema/失败签名下实际发生的数组子集试验，包含成功子集见证。输出原生库的`probe_contracts`，保存字段路径、回执签名、来源摘要与最多24次的边界，不携带历史报告正文。它学习的是**曾用过的诊断操作**，不认证错误因果关系、单调性或唯一原因；相同论文恢复任务不算独立论文泛化。自动学习worker也编译此项。
+
+仅当私有sidecar显式设置`probeTools:["已授权的原生工具名"]`、当前观察到匹配失败、当前模型通过`geneloop-reuse '{"diagnose":{"contract":"probe_ID","base":{"artifact":"value_ID"}}}'`选择后，`probe_frontier.ts`才连续试验。每次仍经原生schema/权限/来源/用户意图/nonce守卫；不同失败、来源变化、无可用轴、schema不合法或次数上限均交回模型。两个半集成功只记为交互/不稳定，不能推断修复。成功子集均为诊断产物，不能代替完整报告；当前它们仍可能出现在实验下载列表，故该功能默认关闭，未准入产品。
+
+当前产物通知只提示schema兼容的整份参数和明确失败修订，不再枚举全部无关JSON。frontier语义候选按事件追加一次，避免每步改变系统前缀。语义选择仍由当前模型完成；没有加入新的Embedding模型或声称自动推断任务目标。
+
+`run-script-motif-experiment.py --report-evidence`是独立的导出实验变体，Baseline/Execute必须同设。`script-motif-web.py`仅在私有实验配置中将`paper_checks`入口换为`paper-evidence-server.py`，记录相关代码摘要与`production_certified:false`。`evidence_report.py`隔离加载原导出实现，补充缺失字形回退；原生校验失败时返回`argument_issues:[{pointer,value_sha256,check,block_id}]`，SHA256对应当前字符串UTF-8字节。Runtime只接受当前值哈希吻合的位置，已有定位时不再提示盲目子集诊断。失败位置不等于原因，也不允许跳过科研判断。
+
+此变体不改旧生产模块、工具参数schema或认证库，不受旧库证书覆盖；未指定标志时原生产导出路径不变。缺字回退优先使用已有Matplotlib字体，否则使用ReportLab自带Vera，不新增必装依赖，不改写原文字。真实结果、失败和因果归因限制见[执行接管实验](experiments/paper-evidence-slice-20261019-v1.md)。

@@ -7,6 +7,7 @@ import {join,relative,resolve,isAbsolute} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {validateJsonSchemaValue} from '@deepseek-ai/dsh-tools';
+import {createProbeFrontier,probeOutcome} from './probe_frontier.ts';
 import {digest,observation,syntheticToolStreamBatch} from '../motif_core/online_skill_runtime.mjs';
 
 const sha=(v:any)=>createHash('sha256').update(v).digest('hex');
@@ -16,9 +17,10 @@ const forbidden=new Set(['__proto__','prototype','constructor']);
 export function loadReuseLibrary(path:string){
  const library=JSON.parse(readFileSync(path,'utf8')),{digest:expected,...body}=library;
  const root=fileURLToPath(new URL('../../',import.meta.url));
- const locks=['src/adapters/reuse_compiler.py','src/adapters/reuse_mediation.ts','src/adapters/script_motif_web.ts','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','scripts/compile-reuse-library.py'];
+ const locks=['src/adapters/reuse_compiler.py','src/adapters/probe_motif_compiler.py','src/adapters/probe_frontier.ts','src/adapters/reuse_mediation.ts','src/adapters/script_motif_web.ts','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','scripts/compile-reuse-library.py'];
  if(library.kind!=='native_reuse_contract_library'||library.version!==1||expected!==digest(body)||!Array.isArray(library.contracts)||library.contracts.length>128||locks.some(p=>library.code_locks?.[p]!==sha(readFileSync(join(root,p)))))throw Error('invalid_reuse_library');
  for(const c of library.contracts)if(!c.tool?.startsWith('mcp__')||!/^[a-f0-9]{64}$/.test(c.schema_sha256)||new Set(c.certification?.witnesses?.map((w:any)=>w.task_id)).size<2)throw Error('uncertified_reuse_contract');
+ for(const c of library.probe_contracts??[])if(!library.contracts.some((t:any)=>t.tool===c.tool&&t.schema_sha256===c.schema_sha256)||!c.axes?.length||c.axes.length>32||c.axes.some((a:any)=>!Array.isArray(a.path)||a.path.length>16||a.path.some((k:any)=>typeof k!=='string'||forbidden.has(k))||new Set(a.witnesses?.map((w:any)=>w.task_id)).size<2||!a.witnesses.some((w:any)=>w.probe_succeeded))||!Number.isInteger(c.max_probes)||c.max_probes<1||c.max_probes>24||!c.success_fields?.length||c.success_fields.some((k:any)=>c.failure[k]!==false))throw Error('uncertified_probe_contract');
  return library;
 }
 function parts(path:any):string[]{
@@ -54,11 +56,14 @@ export function patchValue(value:any,patches:any[]){
  if(Buffer.byteLength(JSON.stringify(result))>256000)throw Error('reuse_value_too_large');return result;
 }
 
-export function createReuseMediation({workspace,library,scriptLibrary,audit,tools=[],mode='execute',maxCalls=12}:any){
+export function createReuseMediation({workspace,library,scriptLibrary,audit,tools=[],mode='execute',maxCalls=12,probeTools=[]}:any){
  const artifacts=new Map<string,any>(),latest=new Map<string,string>(),session=randomUUID();
  const contracts=new Map<string,any>(library.contracts.map((c:any)=>[c.tool,c]));
  const programs=new Map<string,any>((scriptLibrary?.programs??[]).map((p:any)=>[p.id,p]));
- const notified=new Set<string>();let repairNotice='';
+ const completedArguments=new Set<string>(),failedArguments=new Set<string>();
+ const notified=new Set<string>();let repairNotice='',diagnosticNotice='';
+ const probes=(library.probe_contracts??[]).filter((c:any)=>probeTools.includes(c.tool));
+ const diagnosed=new Set<string>();
  let offered=new Map<string,any>(tools.map((t:any)=>[t.name,t])),control:any=null,frame:any=null,pending:any=null,halted=false,envelope:string|undefined,repair:any=null;
  function readFixed(path:string){
   const rel=relative(workspace,path);if(rel.startsWith('..')||isAbsolute(rel)||realpathSync(path)!==resolve(path)||!lstatSync(path).isFile()||lstatSync(path).size>1000000)throw Error('reuse_file_not_fixed');return readFileSync(path);
@@ -102,10 +107,20 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
   if(value&&typeof value==='object')return {type:'object',keys:Object.keys(value).slice(0,24)};
   return {type:typeof value};
  }
+ function verifiedIssues(){
+  const row=repair&&artifacts.get(repair.id);if(!current(row))return [];
+  return (Array.isArray(repair.failure.argument_issues)?repair.failure.argument_issues:[]).slice(0,32).filter((issue:any)=>{
+   try{const value=project(row.value,issue.pointer);return typeof value==='string'&&sha(value)===issue.value_sha256;}catch{return false;}
+  });
+ }
+ function probeForRepair(){return !verifiedIssues().length&&repair&&current(artifacts.get(repair.id))?probes.find((p:any)=>p.tool===repair.tool&&probeOutcome(p,repair.failure)==='failure'&&!diagnosed.has(digest([p.id,artifacts.get(repair.id).value]))):null;}
+ function diagnosticText(){
+  const c=probeForRepair();return c?'\n该错误已有跨任务学到的子集诊断片段。如果当前需要定位失败范围，执行一次 bash：geneloop-reuse '+"'"+JSON.stringify({diagnose:{contract:c.id,base:{artifact:repair.id}}})+"'"+'。Runtime 最多连续试验'+c.max_probes+'次，根据真实回执自动缩小范围，再交回你判断修改；无需自行写拆分脚本或逐次调度。它只定位范围，成功子集不等于完整报告，不能作为交付。':'';
+ }
  function repairText(){
   return repair&&current(artifacts.get(repair.id))?'\n当前有一个明确的参数修订机会：工具 '+repair.tool+' 刚返回失败，Runtime 已保存该次完整参数为 '+repair.id+'。失败回执：'+JSON.stringify(repair.failure)+
-   '。若你决定修复这次操作，请只输出需要变化的字段，用 bash 调用 geneloop-reuse '+"'"+JSON.stringify({calls:[{tool:repair.tool,base:{artifact:repair.id},patches:[{op:'replace',path:'/需修改的字段',value:'修改内容'}]}]})+"'"+
-   '；Runtime 会保留未改内容并运行原工具验证。仍需判断错误原因与受影响的汇总；不能因复用旧文本而跳过事实修订。不确定或需换路线时正常使用其他工具。':'';
+   (verifiedIssues().length?'。校验器已提供与当前字段哈希一致的位置，无需重复分段定位；先判断渲染问题还是内容问题。':'')+'。若你决定修复这次操作，请只输出需要变化的字段，用 bash 调用 geneloop-reuse '+"'"+JSON.stringify({calls:[{tool:repair.tool,base:{artifact:repair.id},patches:[{op:'replace',path:'/需修改的字段',value:'修改内容'}]}]})+"'"+
+   '；Runtime 会保留未改内容并运行原工具验证。仍需判断错误原因与受影响的汇总；不能因复用旧文本而跳过事实修订。不确定或需换路线时正常使用其他工具。'+diagnosticText():'';
  }
  function describe(rows:any[]){return rows.map(r=>({id:r.id,origin:r.origin,shape:summaries(r.value),fields:r.value&&!Array.isArray(r.value)&&typeof r.value==='object'?Object.fromEntries(Object.entries(r.value).slice(0,12).map(([k,v])=>[k,summaries(v)])):undefined}));}
  function prompt(includeValues=true){
@@ -118,14 +133,33 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
    (programs.size?'同一 calls 也可包含 {script:"script_ID",paths:["/work/当前输入"]}；单输入脚本可用 {script:"script_ID",foreach:{artifact:"value_ID",pointer:"/文件数组"},root:"/work/当前目录"} 对当前完整清单批量执行。foreach 可用 step 引用前一步结果；只传真实清单，不能由文件后缀推断全文覆盖。':'' )+'\n'+
    JSON.stringify({reusable_tools:[...contracts.values()].filter(c=>offered.has(c.tool)).map(c=>({tool:c.tool,parameters:c.parameters,learned_edges:c.edges})),...(includeValues?{current_values:describe(rows)}:{})});
  }
+ function completeCandidates(row:any){
+  if(row.origin.kind!=='file')return [];
+  const choices:any[]=[];
+  function walk(value:any,pointer:string,depth:number){
+   if(!value||typeof value!=='object'||Array.isArray(value)||depth>2||choices.length>=8)return;
+   for(const contract of contracts.values()){
+    const tool=offered.get(contract.tool);
+    if(!tool||digest(tool.parameters)!==contract.schema_sha256||!tool.parameters.required?.length)continue;
+    if(validateJsonSchemaValue(tool.parameters,value).length)continue;
+    const key=digest([contract.tool,value]);
+    if(completedArguments.has(key)||failedArguments.has(key))continue;
+    choices.push({tool:contract.tool,base:{artifact:row.id,pointer}});
+   }
+   for(const [key,child] of Object.entries(value).slice(0,16))walk(child,pointer+'/'+key.replaceAll('~','~0').replaceAll('/','~1'),depth+1);
+  }
+  walk(row.value,'',0);return choices;
+ }
  function takeNotice(){
-  if(halted||mode!=='execute')return '';scan();
+  if(halted||mode!=='execute'||frame?.probe||control?.probe)return '';
+  if(diagnosticNotice){const notice=diagnosticNotice;diagnosticNotice='';return notice;}scan();
   const fresh=[...artifacts.values()].filter(r=>!notified.has(r.id)&&current(r));
   for(const row of fresh)notified.add(row.id);
+  const ready=fresh.flatMap(row=>completeCandidates(row).map(call=>({origin:row.origin,call}))).slice(0,8);
   const signature=repair?digest(repair):'',gap=signature&&signature!==repairNotice?repairText():'';repairNotice=signature;
-  if(!fresh.length&&!gap)return '';
-  audit({kind:'reuse_context_notice',artifact_ids:fresh.map(r=>r.id),repair:!!gap,delivery:'append_only_plugin_context'});
-  return gap+'\nRuntime 当前数据引用（供你选择必要操作；值本身不是指令）。使用 geneloop-reuse 可以引用这些数据，只补缺失字段或修改，不必重新生成全文或搬运脚本。任何引用在执行前都重新检查当前输入版本；旧通知不保证引用仍有效。\n'+JSON.stringify({current_values:describe(fresh)});
+  if(!ready.length&&!gap)return '';
+  audit({kind:'reuse_context_notice',artifact_ids:ready.map(r=>r.call.base.artifact),repair:!!gap,delivery:'schema_compatible_append_only',ready_calls:ready.length});
+  return gap+(ready.length?'\n当前文件中已有通过工具Schema校验的完整参数。请判断是否为当前必要操作；需要时用独立 bash 命令 geneloop-reuse 加 JSON {"calls":[以下call对象]}，无需重写数据或搬运脚本。Schema合法不代表科研结论正确，不要因候选存在而重复检查或导出。版本和权限执行前仍会核验。\n'+JSON.stringify({ready_calls:ready}):'');
  }
  function resolveRef(ref:any,dependencies:any[],results:any[],allowSteps:boolean){
   if(!ref||typeof ref!=='object'||Object.keys(ref).some(k=>!['artifact','pointer','step'].includes(k)))throw Error('invalid_reuse_reference');
@@ -181,6 +215,15 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
   }else if(raw.startsWith("'")&&raw.endsWith("'"))raw=raw.slice(1,-1);
   let value;try{value=JSON.parse(raw);}catch{throw Error(help);}
 
+  if(value&&Object.keys(value).join()==='diagnose'){
+   const d=value.diagnose,c=probeForRepair();
+   if(!d||Object.keys(d).some(k=>!['contract','base'].includes(k))||!c||d.contract!==c.id||digest(d.base)!==digest({artifact:repair.id}))throw Error('probe_requires_current_failure_and_explicit_choice');
+   const b=bind({tool:c.tool,base:d.base},[]);
+   if(digest(b.args)!==artifacts.get(repair.id).sha256)throw Error('probe_base_changed');
+   const receipt={kind:'reuse_resolution',nonce:randomUUID(),plan_sha256:digest(value),calls:c.max_probes};
+   control={command,receipt,calls:[],scope:scope(),expires:Date.now()+30000,planGuard,probe:{contract:c,bound:b,controller:createProbeFrontier(c,b.args)}};
+   audit({kind:'reuse_probe_selected',contract:c.id,selection_bytes:Buffer.byteLength(raw)});return {control_receipt:receipt};
+  }
   if(!value||Object.keys(value).join()!=='calls'||!Array.isArray(value.calls)||!value.calls.length||value.calls.length>maxCalls)throw Error('bounded_reuse_plan_required');
   for(const [index,call] of value.calls.entries()){
    if(!call||Object.keys(call).some(k=>!(call.script?['script','paths','foreach','root']:['tool','arguments','base','bindings','patches']).includes(k))||!(call.script?programs.has(call.script):contracts.has(call.tool))||!Array.isArray(call.bindings??[])||(call.bindings??[]).length>32)throw Error('invalid_reuse_call');
@@ -207,10 +250,23 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
    const receipts=text.split('\n').map((line:string)=>{try{return JSON.parse(line);}catch{return null;}}).filter((row:any)=>row?.kind==='reuse_resolution');
    const receipt=receipts.length===1?receipts[0]:null;const c=control;control=null;
    if(result.isError||Date.now()>c.expires||digest(receipt)!==digest(c.receipt)||scope()!==c.scope||c.planGuard&&!c.planGuard()){halt('reuse_resolution_unverified');return;}
-   frame={calls:c.calls,results:[],scope:c.scope,planGuard:c.planGuard};audit({kind:'reuse_plan_verified',calls:c.calls.length});return;
+   frame={calls:c.calls,results:[],scope:c.scope,planGuard:c.planGuard,probe:c.probe};
+   if(c.probe){diagnosed.add(digest([c.probe.contract.id,c.probe.bound.args]));repair=null;audit({kind:'reuse_probe_started',contract:c.probe.contract.id});}audit({kind:'reuse_plan_verified',calls:c.calls.length});return;
+  }
+  if(pending?.probe&&execution.callId===pending.callId){
+   const p=pending;pending=null;
+   if(scope()!==frame.scope||p.dependencies.some((r:any)=>!current(r)))throw Error('probe_source_changed');
+   frame.probe.controller.observe(result.isError?null:observation(result));
+   audit({kind:'reuse_probe_result',call_id:execution.callId,result:frame.probe.controller.report().history.at(-1)});
+   const probe=frame.probe;probe.nextArgs=probe.controller.next();
+   if(probe.nextArgs&&validateJsonSchemaValue(offered.get(probe.contract.tool)?.parameters??{},probe.nextArgs).length){probe.controller.stop('subset_schema_invalid');probe.nextArgs=null;}
+   if(!probe.nextArgs)finishProbe();return;
   }
   if(contracts.has(execution.name)&&execution.arguments&&typeof execution.arguments==='object'){
    const value=observation(result);
+   const argumentKey=digest([execution.name,execution.arguments]);
+   const rejected=result.isError||!value||value.validation_error||value.error||['exported','finalized','staged','ok','success'].some(k=>value[k]===false);
+   (rejected?failedArguments:completedArguments).add(argumentKey);
    try{
     const id=keep(execution.arguments,{kind:'arguments',tool:execution.name,call_id:execution.callId},()=>true,'arguments:'+execution.name+':'+digest(execution.arguments));
     if(value&&(value.validation_error||value.error||['exported','finalized','staged','ok','success'].some(k=>value[k]===false))){
@@ -235,10 +291,29 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
   const next=digest((options.messages??[]).filter((m:any)=>m.role==='user'&&m.source?.kind==='user').map((m:any)=>({id:m.id,content:m.content})));
   if(envelope!==undefined&&envelope!==next)halt('reuse_user_goal_changed');envelope=next;
  }
+ function finishProbe(){
+ const p=frame.probe,c=p.contract;
+     const report=p.controller.report(),{witness,...summary}=report;
+     const id=keep(witness,{kind:'diagnostic_witness',tool:c.tool},()=>p.bound.dependencies.every(current),'probe:'+c.id);
+     diagnosticNotice='\nRuntime 已完成有界子集诊断。以下仅为诊断证据：'+JSON.stringify({...summary,witness_artifact:id})+'。如需查看当前保留的失败见证（未证明最小），可用 geneloop-reuse 引用该 artifact；下面是有界内容摘要（截断不代表完整）：'+JSON.stringify(witness).slice(0,4000)+'。请依据原始完整报告修订相关内容并重新验证完整导出，不要交付子集。';
+     audit({...summary,kind:'reuse_probe_completed',contract:c.id,witness_artifact:id});frame=null;
+ }
  function ready(){
   if(halted||!frame||pending)return null;
   try{
    if(scope()!==frame.scope||frame.planGuard&&!frame.planGuard())throw Error('reuse_source_or_plan_changed');
+   if(frame.probe){
+    const p=frame.probe,c=p.contract,tool=offered.get(c.tool);
+    if(!tool||digest(tool.parameters)!==c.schema_sha256||p.bound.dependencies.some((r:any)=>!current(r)))throw Error('probe_contract_or_evidence_changed');
+    const args=p.nextArgs===undefined?p.controller.next():p.nextArgs;delete p.nextArgs;
+    if(args&&validateJsonSchemaValue(tool.parameters,args).length)p.controller.stop('subset_schema_invalid');
+    if(!args||validateJsonSchemaValue(tool.parameters,args).length){
+     finishProbe();return null;
+    }
+    const callId='sss-reuse-'+randomUUID();pending={...p.bound,args,callId,scope:frame.scope,planGuard:frame.planGuard,probe:true};
+    audit({kind:'reuse_probe_dispatched',contract:c.id,call_id:callId,arguments_sha256:digest(args)});
+    return syntheticToolStreamBatch([{callId,proposal:{tool:c.tool,arguments:args}}]);
+   }
    const call=frame.calls[frame.results.length],b=bind(call,frame.results),callId='sss-reuse-'+randomUUID();
    pending={...b,callId,bytes:Buffer.byteLength(JSON.stringify(b.args)),scope:frame.scope,planGuard:frame.planGuard};
    audit({kind:'reuse_native_dispatched',call_id:callId,tool:b.tool,argument_sha256:digest(b.args),arguments_bytes:pending.bytes,artifact_ids:b.dependencies.map((r:any)=>r.id)});
@@ -247,7 +322,7 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
  }
  function guard(execution:any){
   if(!execution.callId?.startsWith('sss-reuse-'))return;
-  if(!pending||execution.callId!==pending.callId||execution.name!==pending.tool||digest(execution.arguments)!==digest(pending.args)||scope()!==pending.scope||pending.planGuard&&!pending.planGuard()||pending.dependencies.some((r:any)=>!current(r)))throw Error('reuse_dispatch_guard_failed');
+  if(!pending||execution.callId!==pending.callId||execution.name!==pending.tool||digest(execution.arguments)!==digest(pending.args)||scope()!==pending.scope||pending.planGuard&&!pending.planGuard()||pending.contract&&digest(offered.get(pending.tool)?.parameters??null)!==pending.contract.schema_sha256||pending.dependencies.some((r:any)=>!current(r)))throw Error('reuse_dispatch_guard_failed');
  }
  return {prompt,staticPrompt:()=>prompt(false),takeNotice,prepare,observe(execution:any,result:any,facts:any[]=[]){try{observe(execution,result,facts);}catch(e:any){halt(e.message);}},update,ready,guard,halt};
 }

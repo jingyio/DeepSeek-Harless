@@ -8,6 +8,7 @@ import importlib.util
 import json
 import sys
 import argparse
+import hashlib
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -16,6 +17,21 @@ web=importlib.util.module_from_spec(spec);spec.loader.exec_module(web)
 # Experimental explicit output cap: keep the production CLI/certificate frozen.
 # Native State and prepare receive the same cap; no accounting/admission bypass.
 OUTPUT_CAP=None
+REPORT_EVIDENCE=False
+original_scenes=web.prepare_scene_registry
+def experiment_scenes(*args,**kwargs):
+    scenes=original_scenes(*args,**kwargs)
+    if REPORT_EVIDENCE:
+        locks={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in ['scripts/paper-evidence-server.py','src/adapters/evidence_report.py','src/adapters/session_report.py','benchmarks/research_report_agent_v2/document_engine.py']}
+        for scene in scenes:
+            if scene['id']!='paper-proofreading':continue
+            for row in scene['mcp_rows']:
+                if row['config']['serverName']=='paper_checks':
+                    row['config']['args'][0]=str(ROOT/'scripts/paper-evidence-server.py')
+            scene['experimental_report_evidence']={'code_hashes':locks,'production_certified':False}
+            scene['config_sha256']=hashlib.sha256(json.dumps({'prior':scene['config_sha256'],'report_evidence':locks},sort_keys=True).encode()).hexdigest()
+    return scenes
+web.prepare_scene_registry=experiment_scenes
 original_state=web.State
 def experiment_state(*args,**kwargs):
     if OUTPUT_CAP is not None:kwargs['output_cap']=OUTPUT_CAP
@@ -41,8 +57,10 @@ web.prepare=prepare
 if __name__=='__main__':
     parser=argparse.ArgumentParser(add_help=False)
     parser.add_argument('--script-max-output-tokens',type=int)
+    parser.add_argument('--report-evidence',action='store_true')
     custom,rest=parser.parse_known_args()
     OUTPUT_CAP=custom.script_max_output_tokens
+    REPORT_EVIDENCE=custom.report_evidence
     if OUTPUT_CAP is not None and not 100<=OUTPUT_CAP<=32768:parser.error('script output cap must be 100..32768')
     sys.argv=[sys.argv[0],*rest]
     web.main()

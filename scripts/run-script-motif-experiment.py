@@ -28,6 +28,7 @@ def main():
     started = time.monotonic()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--real-model', action='store_true', required=True)
+    parser.add_argument('--report-evidence',action='store_true',help='显式隔离导出变体，两组必须采用相同设置')
     parser.add_argument('--source', required=True, type=Path)
     parser.add_argument('--prompt', type=Path, default=ROOT / 'scenarios/paper-submission/reference-audit.prompt.md')
     parser.add_argument('--mode', choices=['baseline', 'cache', 'shadow', 'execute'], required=True)
@@ -93,6 +94,7 @@ def main():
         'checkpoint_sha256': hashlib.sha256(reuse_checkpoint or checkpoint).hexdigest() if reuse_checkpoint or checkpoint else None,
         'max_seconds': args.max_seconds,
         'reuse_boundary_evidence': True,
+        'report_evidence_variant': args.report_evidence,
     }
     (record / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
     files = subprocess.check_output(['git', 'ls-files', '-co', '--exclude-standard'], cwd=ROOT, text=True).splitlines()
@@ -106,6 +108,7 @@ def main():
                '--budget-usd', str(args.budget_usd), '--run-budget-usd', str(args.budget_usd),
                '--request-limit', '0', '--run-request-limit', '0',
                '--script-max-output-tokens', str(args.max_output_tokens)]
+    if args.report_evidence:command.append('--report-evidence')
     print(json.dumps({'record': str(record), **manifest}, ensure_ascii=False), flush=True)
     with (record / 'web.log').open('w') as log:
         child = subprocess.Popen(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)

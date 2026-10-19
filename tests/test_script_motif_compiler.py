@@ -32,3 +32,10 @@ def test_does_not_strip_unmodeled_shell_steps():
 def test_readonly_regex_script_does_not_require_json_ir():
     p=compile_script('import re\ns=open("references.bib").read()\nprint(len(re.findall(r"@article",s)))',{'references.bib':{'suffix':'.bib','format':'text'}})
     assert p['language']=='python'
+
+
+def test_real_heredoc_forms_keep_body_and_reject_shell_expansion_or_tail():
+    for prefix in ["python3 << 'EOF'","python3 - << 'EOF'",'python <<EOF']:
+        assert extract(prefix+'\nprint(1)\nEOF')==('/work','print(1)')
+    for command in ["python3 <<EOF\nprint('$HOME')\nEOF", "python3 << 'EOF\"\nprint(1)\nEOF", "python3 << 'EOF'\nprint(1)\nEOF\nrm data"]:
+        with pytest.raises(ValueError):extract(command)

@@ -28,7 +28,8 @@ def category(message):
             command=args.get('command','')
             if command.strip().startswith('geneloop-resolve '):label='semantic_slot_resolution'
             elif re.search(r'(?:^|&&\s*)geneloop-cache\s',command):label='cached_script_dispatch'
-            elif re.search(r"python3?\s+(?:-\s*<<|-c\s)|cat\s*>\s*\S+\.py\s*<<",command):
+            elif re.search(r'(?:^|&&\s*)geneloop-reuse\s',command):label='artifact_reference_or_probe_selection'
+            elif re.search(r"python3?\s+(?:(?:-\s*)?<<|-c\s)|cat\s*>\s*\S+\.py\s*<<",command):
                 label='script_authoring_network' if re.search(r'\burlopen\b|requests\.(?:get|post|request|Session)|httpx\.|curl\s|wget\s',command) else 'script_authoring_local'
             elif re.search(r'python3?\s+[^\s]+\.py\b',command):label='saved_script_dispatch'
             elif re.search(r'\b(curl|wget)\b',command):label='shell_network_dispatch'
@@ -55,6 +56,7 @@ def structured_validation_error(block):
         if not isinstance(value,dict):continue
         outcomes=[value[k] for k in ('staged','finalized','exported','done') if k in value]
         code=value.get('validation_error')
+        if not code and isinstance(value.get('failed_checks'),list) and value['failed_checks'] and all(isinstance(c,str) for c in value['failed_checks']):code='checks:'+','.join(sorted(value['failed_checks']))
         if isinstance(code,str) and code and any(v is False for v in outcomes) and not any(v is True for v in outcomes):return code
     return None
 

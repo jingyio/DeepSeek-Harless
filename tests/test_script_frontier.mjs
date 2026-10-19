@@ -63,3 +63,8 @@ test('verified current evidence avoids redoing completed work; stale facts do no
  acknowledge(f,f.command());assert.equal(f.frontier.ready().program.id,'b');
  f.frontier.finish('b',true);f.change();assert.equal(f.frontier.prompt(),'');
 });
+test('semantic gap is announced once and completion evidence is appended once',()=>{
+ const f=fixture();assert.ok(f.frontier.takeNotice().includes('有界语义选择'));assert.equal(f.frontier.takeNotice(),'');
+ acknowledge(f,f.command());f.frontier.finish('a',true);f.frontier.finish('b',true);
+ assert.ok(f.frontier.takeNotice().includes('已完成'));assert.equal(f.frontier.takeNotice(),'');
+});

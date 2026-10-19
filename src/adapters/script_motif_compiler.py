@@ -52,8 +52,12 @@ def extract(command, workspace=None):
     if saved:
         declared = (saved.group(1), saved.group(3))
         command = saved.group(4)
-    match = re.fullmatch(r"\s*python(?:3)?\s+-\s+<<['\"]?([A-Za-z_]\w*)['\"]?\n(.*?)\n\1\s*", command, re.S)
-    if match: return cwd, match.group(2)
+    match = re.fullmatch(r"\s*python(?:3)?\s+(?:-\s*)?<<\s*(?P<quote>['\"]?)(?P<delimiter>[A-Za-z_]\w*)(?P=quote)[ \t]*\n(?P<body>.*?)\n(?P=delimiter)[ \t]*\s*", command, re.S)
+    if match:
+        source=match.group('body')
+        if not match.group('quote') and re.search(r"[$`\\]",source):
+            raise ValueError('script_heredoc_expansion_requires_evidence')
+        return cwd, source
     parts = shlex.split(command)
     if len(parts) == 3 and parts[0] in ('python', 'python3') and parts[1] == '-c':
         return cwd, parts[2]
