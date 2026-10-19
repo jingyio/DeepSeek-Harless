@@ -291,7 +291,8 @@ export function createComparisonService(output: string, principal: string, host:
       const changed = Boolean(thread && hash([thread.scene, thread.options, thread.presentation ?? 'paired']) !== hash([context.scene, context.options, presentation]));
       // A conversation is stable; immutable tool/budget/evidence scopes belong
       // to its private execution children. Rotate those children on transitions.
-      const rotate = !thread || thread.context_version !== 2 || newSources || changed;
+      const interrupted=history.at(-1)?.cancellation_requested||history.at(-1)?.status==='cancelled';
+      const rotate = !thread || thread.context_version !== 2 || newSources || changed || interrupted;
       const priorContext = rotate ? Object.fromEntries(selectedLanes.map(name => [name, JSON.stringify([
         ...(context.prior_context_by_lane?.[name] ?? context.prior_context ?? []).map(({source_seq,...row}:any)=>row),
         ...history.map(t => ({

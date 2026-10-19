@@ -28,7 +28,7 @@ const options = { skip: !process.features?.typescript };
 const toolSchemas = [{ name: 'mcp__demo__read_note', description: 'Read a versioned note',
   parameters: { type: 'object', properties: { source_id: { type: 'string' } }, required: ['source_id'] } }];
 
-async function fixture({ broker = false, dshHome = false, visionReply, fixtureSchemas: schemaOverride, fixture_schemas, strictMountedTools = false, ...overrides } = {}) {
+async function fixture({ broker = false, dshHome = false, visionReply, nativeImageAdmission = false, fixtureSchemas: schemaOverride, fixture_schemas, strictMountedTools = false, ...overrides } = {}) {
   const fixtureSchemas = schemaOverride ?? fixture_schemas ?? toolSchemas;
   const directory = mkdtempSync(join(tmpdir(), 'sss-web-tasks-'));
   const registrations = new Map(), controlCalls = [];
@@ -158,7 +158,7 @@ async function fixture({ broker = false, dshHome = false, visionReply, fixtureSc
         promptCalls.push(request);
         const agent = agents.get(request.sessionId);
         const event = { type: 'user/message', data: { id: `user-${promptCalls.length}`,
-          content: request.content, source: { kind: 'user', rpcId: request.requestId } } };
+          content: nativeImageAdmission ? await ctx.attachments.admitPromptContent(request.content) : request.content, source: { kind: 'user', rpcId: request.requestId } } };
         agent.events.push(event); emit('session/event', agent.session, event);
         return { accepted: true };
       },
@@ -1634,6 +1634,42 @@ test('first PDF Chat send is accepted before visual work and cancellation preven
  }finally{release();await f.close();}
 });
 
+test('cancellation during native admission reclaims late inbox and rotates without replaying cancelled child evidence',options,async()=>{
+ const f=await fixture({broker:true,nativeImageAdmission:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ let release,started;const gate=new Promise(resolve=>release=resolve),began=new Promise(resolve=>started=resolve);
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const file=await f.ctx.fileUploads.uploadStream({sessionId,name:'cancelled.txt',data:(async function*(){yield Buffer.from('CANCELLED_EXTRACTION_ONLY');})()});
+  const admit=f.ctx.attachments.admitPromptContent;
+  f.ctx.attachments.admitPromptContent=async parts=>{
+   if([...f.agents.values()].some(agent=>agent.events.some(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN))&&parts.some(part=>part.type==='text'&&part.text==='UNIQUE_CANCELLED_REQUEST')){started();await gate;}
+   return admit(parts);
+  };
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'cancel-native-admission',mode:'queue',content:[{type:'text',text:'UNIQUE_CANCELLED_REQUEST'},{type:'file',receiptId:file.receiptId}]},new AbortController().signal);
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('native admission gate not reached')),10000);began.then(()=>{clearTimeout(timer);resolve();});});
+  const task=(await f.api()).value.tasks[0],child=f.agents.get(task.session_id),cancelCalls=[];
+  child.cancel=(reason,options)=>cancelCalls.push({reason,options});
+  const request=new Request('http://local/api/harless/comparisons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel',session_id:sessionId,id:sent.comparison_id})});request.authorized=true;
+  assert.equal((await f.routes.get('/api/harless/comparisons').fetch(request)).status,200);
+  release();
+  for(let i=0;i<100&&!cancelCalls.length;i++)await new Promise(resolve=>setTimeout(resolve,10));
+  assert.deepEqual(cancelCalls,[{reason:{kind:'user'},options:{keepInbox:false}}]);
+  assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'cancelled');
+  assert.equal(child.events.filter(event=>event.data?.source?.rpcId===task.request_id).length,1,'immutable journal retains the late admission as cancellation evidence');
+  assert.equal(f.brokerRoutes.has(task.session_id),false,'late admission has no active model-budget route');
+  const next=await f.ctx.sessionController.prompt({sessionId,requestId:'after-native-cancel',mode:'queue',content:[{type:'text',text:'你好'}]},new AbortController().signal);
+  const done=await settleAttachmentTurn(f,sessionId,next.comparison_id);assert.equal(done.status,'completed');
+  const nextTask=(await f.api()).value.tasks.find(row=>row.task_id!==task.task_id);
+  assert.notEqual(nextTask.session_id,task.session_id,'interrupted child is never reused');
+  const context=f.agents.get(nextTask.session_id).events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+  const body=JSON.parse(context.data.content[0].text.split('\n').slice(1).join('\n'));
+  assert.equal(body.previous_attachment_evidence,undefined,'cancelled private extraction is not recalled');
+  assert.equal(body.current_upload_evidence,undefined,'greeting does not re-extract the retained source');
+  assert.equal((body.prior_conversation.match(/UNIQUE_CANCELLED_REQUEST/g)??[]).length,1,'only the actual public user question survives, never the late private duplicate');
+  assert.equal((await f.api()).value.aggregate.upstream_requests,0);
+ }finally{release();await f.close();}
+});
+
 // Deterministic routing diagnostics only: no provider calls or document making.
 async function settleAttachmentTurn(f, sessionId, id, onRunning=async()=>{}) {
  for(let i=0;i<250;i++){
@@ -1732,6 +1768,42 @@ test('an image uploaded as a file supplies actual pixels and retains them after 
    assert.equal(pixels.mediaType,'image/png');
    assert.equal(context.data.content.filter(part=>part.type==='image').length,1);
   }
+ }finally{await f.close();}
+});
+
+test('real attachment normalization counts repeated native images by their durable identities and keeps human wire input intact',options,async()=>{
+ const {LocalAttachmentStore}=await import('@deepseek-ai/dsh-attachment-local');
+ const f=await fixture({broker:true,nativeImageAdmission:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ try{
+  const store=new LocalAttachmentStore(new Context(),{dshHome:join(f.directory,'real-image-store'),normalizedImageMaxPixels:4,normalizedImageMaxDimension:2});
+  f.ctx.attachments.admitPromptContent=parts=>store.admitPromptContent(parts);
+  const encoded=JSON.parse(execFileSync(process.env.SSS_PYTHON??'python3',['-c',
+   "import io,json,base64; from PIL import Image; out=[]\nfor i in range(8):\n b=io.BytesIO(); Image.new('RGB',(16,16),(i*28,50,180)).save(b,format='PNG'); out.append(base64.b64encode(b.getvalue()).decode())\nprint(json.dumps(out))"],{encoding:'utf8'}));
+  const images=encoded.map((data,index)=>({type:'image',name:`source-${index}.png`,mediaType:'image/png',data}));
+  const {sessionId}=await f.ctx.sessionController.create({});
+  await f.ctx.sessionController.prompt({sessionId,requestId:'real-images-first',mode:'queue',content:[{type:'text',text:'Remember these eight pictures'},...images]},new AbortController().signal);
+  const initial=(await f.api()).value.tasks[0];await f.complete(initial);
+  const originalEvent=f.agents.get(sessionId).events.find(event=>event.type==='user/message'&&event.data.source?.kind==='user');
+  const refs=originalEvent.data.content.filter(part=>part.type==='image').map(part=>part.attachment);
+  assert.equal(new Set(refs.map(ref=>ref.attachmentId)).size,8);
+  for(let index=0;index<refs.length;index++){
+   assert.notEqual(refs[index].attachmentId,'sha256:'+createHash('sha256').update(Buffer.from(encoded[index],'base64')).digest('hex'),'the real store actually transforms these pixels');
+   assert.deepEqual(refs[index].originalDimensions,{width:16,height:16});
+   assert.ok((await store.readImage(refs[index])).data.length>0);
+  }
+  const second=await f.ctx.sessionController.prompt({sessionId,requestId:'real-images-repeat',mode:'queue',content:[
+   {type:'text',text:'/paper Reuse the same eight pictures'},...images]},new AbortController().signal);
+  const paired=await settleAttachmentTurn(f,sessionId,second.comparison_id);assert.equal(paired.status,'completed',JSON.stringify(paired));
+  for(const lane of Object.values(paired.lanes)){
+   const task=(await f.api()).value.tasks.find(row=>row.task_id===lane.task_id),call=f.promptCalls.find(row=>row.requestId===task.request_id);
+   assert.deepEqual(call.content.filter(part=>part.type==='image'),images,'normalization metadata cannot rewrite the human delivery');
+   const context=f.agents.get(lane.session_id).events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+   assert.equal(context.data.content.some(part=>part.type==='image'),false,'the same pixels cannot be duplicated as historical context');
+  }
+  const third=await f.ctx.sessionController.prompt({sessionId,requestId:'real-images-hello',mode:'queue',content:[{type:'text',text:'你好'}]},new AbortController().signal);
+  const chat=await settleAttachmentTurn(f,sessionId,third.comparison_id);assert.equal(chat.status,'completed');
+  const context=f.agents.get(chat.lanes.baseline.session_id).events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
+  assert.deepEqual(context.data.content.filter(part=>part.type==='image').map(part=>part.attachment.attachmentId),refs.map(ref=>ref.attachmentId));
  }finally{await f.close();}
 });
 

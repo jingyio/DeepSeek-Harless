@@ -24,7 +24,7 @@ import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,
 import {createPptMasterRecovery} from './ppt_master_recovery.ts';
 import {createComparisonService} from './harless_comparison.ts';
 import { attachmentContextMessage, attachmentContextPolicy, attachmentEvidence, attachmentImages, attachmentImageKey,
-  uniqueAttachmentEvidence,uniqueAttachmentImages,humanContent } from './harless_attachment_context.ts';
+  uniqueAttachmentEvidence,uniqueAttachmentImages,humanContent,isAttachmentContext } from './harless_attachment_context.ts';
 import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
 import {dataInterceptor,paperShadowInterceptor,validateExistingData} from './harless_legacy_motif.ts';
 import {paperPdfDelivered,paperReferenceReportRequired} from './harless_paper_delivery.ts';
@@ -80,6 +80,7 @@ type Task = {
   inherited_context?: string;
   inherited_evidence?: string[];
   inherited_images?: any[];
+  native_image_sources?: any[];
   evidence_cache_directory?: string;
   source_task_id?: string;
   ppt_recovery?: ReturnType<typeof createPptRecovery>;
@@ -746,6 +747,21 @@ export function apply(ctx: any) {
     const task=tasks.get(requests.get(event.data.source.rpcId)??'');
     if(task?.request.session_id===sessionId)return task.request.content;
   }
+  function recalledChildEvents(sessionId:string,events:any[]):any[] {
+    return events.filter(event=>{
+      if(event.type!=='user/message')return true;
+      let id:string|undefined;
+      if(event.data?.source?.kind==='user')id=requests.get(event.data.source.rpcId);
+      else if(isAttachmentContext(event.data))for(const part of event.data.content??[])if(part.type==='text'){
+        try{id=JSON.parse(part.text.slice(part.text.indexOf('\n')+1)).task_id;}catch{}
+        if(id)break;
+      }
+      const task=id?tasks.get(id):undefined;
+      // Keep the journal for cancellation audit, but never replay a late
+      // cancelled private admission as another real upload or user turn.
+      return !(task?.request.session_id===sessionId&&task.status==='cancelled');
+    });
+  }
   const titles = createConversationTitles(config.output, principal, {
     inspect: id => controller.inspect(id),
     humanContentFor:(id,event)=>humanContent(event.data.content??[],originalContentFor(id,event)),
@@ -1042,7 +1058,7 @@ export function apply(ctx: any) {
     await setSelection(agent.session.id, { scene: scene.id }); return preset;
   });
   async function preview(input: unknown, existingSession?: string, entrypoint: Task['entrypoint'] = 'workbench', internal: {
-    inherited_receipts?: Set<string>; hidden_receipts?: Set<string>; inherited_context?: string; inherited_evidence?: string[]; inherited_images?:any[]; evidence_cache_directory?: string;
+    inherited_receipts?: Set<string>; hidden_receipts?: Set<string>; inherited_context?: string; inherited_evidence?: string[]; inherited_images?:any[]; native_image_sources?:any[]; evidence_cache_directory?: string;
   } = {}): Promise<Task> {
     const nonce = randomUUID().replaceAll('-', '');
     const taskId = config.budget_task_prefix ? config.budget_task_prefix + nonce.slice(8) : nonce;
@@ -1163,6 +1179,7 @@ export function apply(ctx: any) {
     const task: Task = { request, delivery:humanDelivery, confirmation_digest: '', status: 'awaiting_confirmation',
       context_input_files:contextInputFiles,inherited_context:internal.inherited_context,inherited_evidence:internal.inherited_evidence,
       inherited_images:internal.inherited_images,
+      native_image_sources:internal.native_image_sources,
       evidence_cache_directory:internal.evidence_cache_directory??join(dirname(workspace),'attachment-evidence'),
       scene, trace_start_index:snapshot.events.length, selection: Object.freeze({ ...selection }), tools, workspace, scene_options: options, scene_inputs: sceneInputs, source_pending: sourcePending, scope_sha256: scopeDigest(workspace, scene),
       manifest_sha256: fileSha(scene.manifest), binding_sha256: fileSha(scene.task),
@@ -1322,11 +1339,13 @@ export function apply(ctx: any) {
     requireIdle(comparison, task.model_option.provider);
     active.set(task.request.task_id, {comparison, provider: task.model_option.provider});
     task.status = 'running'; task.started_at = utc(); record(task);
+    task.input_abort=new AbortController();
+    const inputSignal=AbortSignal.any([signal,task.input_abort.signal]);
     try {
-      task.input_abort=new AbortController();
-      const inputSignal=AbortSignal.any([signal,task.input_abort.signal]);
       await control('/tasks/activate', { session_id: task.budget_session_id });
+      inputSignal.throwIfAborted();
       await broker('/bind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
+      inputSignal.throwIfAborted();
       const extractionInputs = task.scene_inputs.filter(row => task.context_input_files?.includes(row.file));
       const imageTypes:Record<string,string>={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif'};
       const nativeImageVersions=new Set(task.delivery.filter((part:any)=>part.type==='image').map((part:any)=>sha(Buffer.from(part.data,'base64'))));
@@ -1336,7 +1355,12 @@ export function apply(ctx: any) {
         if(sha(bytes)!==row.version_sha256)throw new TaskError('file_bytes_changed','附件内容已改变，请重新上传。',409);
         return {type:'image',name:row.name,mediaType:imageTypes[extname(row.file).toLowerCase()],data:bytes.toString('base64')};
       })):[];
-      const currentImages=new Set([...fileImages,...task.delivery.filter((part:any)=>part.type==='image')].map(attachmentImageKey));
+      // Count the official normalized identities on both sides. Wire bytes may
+      // normalize to another digest, and durable IDs include a sha256: prefix.
+      // The human delivery itself remains the original wire content.
+      const nativeImages=task.delivery.filter((part:any)=>part.type==='image');
+      const nativeImageSources=task.native_image_sources??(nativeImages.length?await ctx.attachments.admitPromptContent(nativeImages):[]);
+      const currentImages=new Set([...fileImages,...nativeImageSources].map(attachmentImageKey));
       const priorImages=uniqueAttachmentImages(task.inherited_images??[]).filter((part:any)=>!currentImages.has(attachmentImageKey(part)));
       if(currentImages.size+priorImages.length>8)throw new TaskError('scene_input_limit','历史与本轮图片合计超过8份，请在新对话选择所需图片。');
       const attachmentContext = await sceneAttachmentContext(task.workspace, extractionInputs,{
@@ -1354,9 +1378,22 @@ export function apply(ctx: any) {
       const contextMessage = attachmentContextMessage(task, attachmentContext, task.inherited_context, task.inherited_evidence,priorImages,fileImages);
       if (contextMessage) agents.get(task.request.session_id).session.append('user/message', contextMessage);
       await original.prompt({ requestId: task.request.request_id, sessionId: task.request.session_id,
-        mode: 'queue', content: task.delivery }, signal);
+        mode: 'queue', content: task.delivery }, inputSignal);
+      if(task.status!=='completed')inputSignal.throwIfAborted();
       return view(task, true);
-    } catch (error) { finish(task, 'failed', String(error)); throw error; }
+    } catch (error) {
+      if(inputSignal.aborted&&task.status!=='completed'){
+        finish(task,'cancelled','user_cancelled');
+        // Native prompt admission has awaits after its initial signal check.
+        // Reclaim any late enqueue; native controller cancellation keeps its
+        // inbox by default, so explicitly discard this interrupted child queue.
+        try{await original.cancel({sessionId:task.request.session_id});}catch{}
+        agents.get(task.request.session_id)?.cancel?.({kind:'user'},{keepInbox:false});
+        await task.closing;
+        await broker('/unbind',{session_id:task.request.session_id,budget_session_id:task.budget_session_id});
+      }else finish(task, 'failed', String(error));
+      throw error;
+    }
   }
   controller.prompt = (request: any, signal: AbortSignal) => serialize(async () => {
     await ensureOwned(request.sessionId);
@@ -1435,7 +1472,7 @@ export function apply(ctx: any) {
         const evidence = attachmentEvidence(parentSnapshot.events,event=>originalContentFor(request.sessionId,event));
         for (const childId of childIds as string[]) {
           await ensureOwned(childId);
-          const previousEvents=(await controller.inspect(childId)).events;
+          const previousEvents=recalledChildEvents(childId,(await controller.inspect(childId)).events);
           evidence.push(...attachmentEvidence(previousEvents,event=>originalContentFor(childId,event)));
           historicalImages.push(...attachmentImages(previousEvents));
         }
@@ -1630,6 +1667,7 @@ export function apply(ctx: any) {
             inherited_receipts:inheritedReceipts,hidden_receipts:hiddenReceipts,inherited_context:contextNotes.join('\n\n'),
             inherited_evidence:previous?undefined:turn.prior_evidence?.[lane],
             inherited_images:inheritedImages,
+            native_image_sources:turn.source_images,
             evidence_cache_directory:join(dirname(workspaceFor(turn.session_id)),'attachment-evidence'),
           });
         // Unavailable or invalid research libraries must be visible; never label a Baseline run as optimized.
