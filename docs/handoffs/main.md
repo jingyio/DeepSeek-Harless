@@ -1,9 +1,27 @@
+> 2026-10-19 文件管理独立集成 [PR #84](https://github.com/jingyio/GeneLoop/pull/84) 待用户审阅：`codex/geneloop-file-rsi` 已同步main `6df4c5c`，增加 `/file 文件管理`、自动执行/RSI、各账号长期经验及原生恢复/确认。Paper/PPT/Data原宿主和证书不改；本次不合并、不部署。当前状态和失败边界以 [文件交接](file-management.md) 为准；真实验收及USD0.609053074代理估费见 [实验记录](../experiments/geneloop-file-main-integration-20261019.md)。
+
+## 2026-10-20：PR84 / PR88 能力保留集成（PR93，待审）
+
+- 目标/范围：独立 `codex/integrate-file-ppt-rsi` 分支，完整接入 PR84、PR88 和推进中新增的 PR92；源码提交 `6603d7d` 已推送 [PR93](https://github.com/jingyio/GeneLoop/pull/93)，未合并、未部署，已完成集成验证，等待负责人审阅。
+- 已完成：保留主线附件索引、私有上下文、进度/取消及统一服务入口；加入 `/file` 和 PPT 后台学习/认证/后续晋级/负反馈。保留 main 已发布的全部库，Paper/PPT 当前集成版本为 v17/v12，原图/证据/schema 不变。File v6 的四类图已按当前源码重新认证，42 源码锁均匹配。
+- 已验证：PR92 后最终 Linux 全量1415 Python/1073 Node通过，各3跳过；另71 Python/112 Node定向通过。smoke/Motif/构建检查通过。提交 `3c36360` 的 Ubuntu/Windows 四项 CI 全通过；后续仅文档更新，最新 head 状态见[实验记录](../experiments/file-ppt-integration-20261019.md)，CI 尚未终态时不称可合并。
+- 真实结果：四图认证 71 请求；公开库消费者两项合计 11 请求，单文件 3 次 verified skip、三文件因原生交错回退且 skip=0，均严格交付通过。共 82 请求/代理估费 USD0.057137782，账单未知；不是业务质量或净收益结论，反例保留。
+- 配置/数据：`scripts/recertify-file-seeds.py` 默认预览；私有副本为原服务器项目 `.local/pr84-88-integration-20261019/{code,final-code}`，模型凭证仅沿用服务器既有环境，无原始日志或私人资料提交。
+- 权限/预算：新增测试封套 USD1，单项0.05/48步/3000输出/0修复，已有失败和旧费用保留，不清零；当前新增代理总额0.057137782。未扩大 execute 到其他工具、用户原件或外部应用。
+- 接手：以 PR93 最新 head/CI 审阅，建议 merge commit 保留两旧 PR 祖先关系；合入后核对 #84/#88 状态，避免再合旧版。正式发布另按 `npm run service` 并验收账号、持久挂载与浏览器；本次没有发布授权或生产修改。
+- 回退：完整恢复 main `31c7309` 代码/注册表/库组合；保留 File/PPT 私有历史、原证据及账本，不清理 `.local`。
+
+
 # DeepSeek Harless 主线当前交接
 
 - 2026-10-19（Codex）：附件/上下文与执行展示修复已发布运行代码 `d2291646`。当前原话与 plugin 资料分离、后续轮不重解析历史、完整上下文和图片随场景承接、准备进度提前绑定同一任务；执行展开状态与代码侧栏已真网页验证。paper16/ppt11是原库兼容认证，无新训练。真实四格式24轮/28侧全部严格通过；旧污染会话续聊2轮通过且日志原字节保留。Linux全量Python1114通过/2跳过、Node887通过/3跳过（仅测试完成窗口补丁，旧fixture超时保留），smoke/motif/continuation通过；最新GitHub Actions未取得终态，不称跨平台CI已通过。PPT更新仍16次冗余工具，未保证最短路径；短跨场景样本未测得两侧主请求重叠。发布/完整检查状态与失败费用见[验收记录](../experiments/attachment-context-streaming-20261019.md)；PR89–91已合并，最后证据消费修复跟踪PR92。私有结果在 `.local/attachment-integrity-20261019/`，六组代理估费合计$0.245796300（排除独立网页成员测试及其他流量），账单未知。继续沿用共享账本和不限额度配置。服务仍仅从私有环境的 GENELOOP_SERVICE_HOME/GENELOOP_SERVICE_CONFIG 走统一 npm service 入口；旧代码/计划/库和失败回执保留，勿覆盖或另起临时发布进程。
 
 
 - 2026-10-19（Codex）：正式网站启动/重启/检查/回退统一为 `npm run service -- ACTION`，AGENTS 和 README 固定开发者/AI 的入口，禁止临时发布脚本重复实现启动。私有计划保留持久数据/预算；入口内置认证同步、进程代际核验、互斥、活动任务拒绝与失败回退。流程见[服务生命周期](../service-lifecycle.md)，实际验证边界见[记录](../experiments/unified-service-lifecycle-20261019.md)及关联PR。
+
+- 2026-10-19（Codex，已推送/未部署）：在main `a1c0fa2` 开发并同步 `d422d77`，`d9f520a` 实现PPT轨迹→后台编译/认证→后续试用/晋级及负评停用，随 `571a55c` 推送 `feature/research-ppt-agent`，PR由用户创建。沿用官方ppt-master和两条来源准备结构，兼容库v9/v14保留旧证据。最终服务器Python924/Node855通过（199/3跳过），smoke/motif检查通过；真实读取17→15请求、2次skip只证局部收益。隔离库1/3合格Baseline，新候选尚未真实晋级；正式服务未切换。上线需真实模式/Python和账号policy开启PPT双路对照，见[PPT交接](research_ppt.md)及[接线记录](../experiments/ppt-user-learning-20261019.md)。
+
+- 2026-10-19（Codex）：独立分支 `codex/clickable-generated-files` 修复普通聊天命令产物只有裸文件名、沙箱路径不匹配与旧报告同名干扰；保留私有权限并接入认证快照/原生预览下载。`paper-web-v13`/`ppt-master-v8` 仅对原认证序列化库做兼容重导出，非新训练。完整检查和无模型smoke通过，尚未部署；验收/发布跟踪见[修复记录](../experiments/clickable-generated-files-20261019.md)及Web交接。
 
 - 2026-10-19（Codex）：独立分支 `codex/clickable-generated-files` 修复普通聊天命令产物只有裸文件名、沙箱路径不匹配与旧报告同名干扰；保留私有权限并接入认证快照/原生预览下载。`paper-web-v13`/`ppt-master-v8` 仅对原认证序列化库做兼容重导出，非新训练。完整检查和无模型smoke通过，现已随本次统一服务版本发布；验收/发布跟踪见[修复记录](../experiments/clickable-generated-files-20261019.md)及Web交接。
 

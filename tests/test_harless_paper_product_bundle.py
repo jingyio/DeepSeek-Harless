@@ -141,6 +141,8 @@ def test_original_paper_shadow_release_stays_shadow_and_cannot_be_relabelled_as_
     ('ppt-master-v9','ppt-master-v10','ppt','attachment_surface_compatibility'),
     ('paper-web-v15','paper-web-v16','paper-proofreading','attachment_evidence_consumption_compatibility'),
     ('ppt-master-v10','ppt-master-v11','ppt','attachment_evidence_consumption_compatibility'),
+    ('paper-web-v16','paper-web-v17','paper-proofreading','ppt_learning_compatibility'),
+    ('ppt-master-v11','ppt-master-v12','ppt','ppt_learning_compatibility'),
 ])
 def test_compatibility_reuses_validated_program_without_rewriting_previous_release(before,after,scene,record):
     original=ROOT/'motif-libraries'/before

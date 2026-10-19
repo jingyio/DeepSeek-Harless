@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "format": "sss-public-file-management-library-v1",
+  "publication_date": "2026-10-14",
+  "publication_base_commit": "dfe4fcc31b15ea4f7a44d1819241b7622b94aeb8",
+  "scope": "file-management learned Motif artifacts; learned fixed scripts are separate",
+  "origin_model": "deepseek-flash",
+  "origin_evidence": "historical real-model native tool trajectories; raw events and private task/source files are not distributed",
+  "artifact_bytes": "exact original certified JSON bytes; no regenerated signatures",
+  "default_activation": false,
+  "files": [
+    {
+      "path": "read-edge-v1/library.json",
+      "kind": "read_library",
+      "state": "historical",
+      "sha256": "bdbda1465589ebdbe1d145e97e1877a7dbdd40667d23aad4d90173237bf7679f",
+      "origin": {
+        "experiment_id": "fm-20261013-01c48298",
+        "artifact_path": "learned/library.json",
+        "protocol_sha256": "7a84251552b3f086e44072acf74d0869a8b6f8c6160307c99d0af8d5279272fd"
+      },
+      "aliases": [],
+      "library_digest": "1d48a77a16b6164cb22d1f972ae3225c2035539f469238a46dd1bded10f27b0b"
+    },
+    {
+      "path": "read-edge-v1/online-manifest.json",
+      "kind": "online_manifest",
+      "state": "historical",
+      "sha256": "07e214270f6df646fa903a4fe346b8222d04ad5870b707f21c20f7e240f683e1",
+      "origin": {
+        "experiment_id": "fm-20261013-01c48298",
+        "artifact_path": "learned/online-manifest.json",
+        "protocol_sha256": "7a84251552b3f086e44072acf74d0869a8b6f8c6160307c99d0af8d5279272fd"
+      },
+      "aliases": [],
+      "paired_library": "read-edge-v1/library.json",
+      "manifest_digest": "fb127150f2a4e8f787d226a770728ac9e096db19473ec8c093eb19d8603ba98b"
+    },
+    {
+      "path": "read-edge-v1/dereference-manifest.json",
+      "kind": "online_manifest",
+      "state": "historical",
+      "sha256": "a53e461cecc7659e711b1d8bb98adc2f036020f0213f0103a3801b51e12f0917",
+      "origin": {
+        "experiment_id": "fm-online-20261013-8b488f25",
+        "artifact_path": "online-manifest.json",
+        "protocol_sha256": "d04dff45af31e94c0ee9f9f83afaed747235921f6a2a525008120191de6f69fd"
+      },
+      "aliases": [],
+      "paired_library": "read-edge-v1/library.json",
+      "manifest_digest": "eb01554b6caa1d260ae1e85359a16fd0fe3b23983482dbe15d1684cd35ba8673"
+    },
+    {
+      "path": "collection-v1/policy.json",
+      "kind": "collection_policy",
+      "state": "historical",
+      "sha256": "70618f010536916d9502bfb33227d941550da5f0757a9f58277dc82c44cc223a",
+      "origin": {
+        "experiment_id": "fm-collection-20261013-264b9fc2",
+        "artifact_path": "learned/policy.json",
+        "protocol_sha256": "02fe9fb4aa6f75f9be042a81f045b859c857964bf0f43cc9b7e2867051914822"
+      },
+      "aliases": [
+        {
+          "experiment_id": "fm-batch-20261013-41304bfb",
+          "artifact_path": "learned/policy.json"
+        },
+        {
+          "experiment_id": "fm-rsi-cycle-20261013-7f6a246a",
+          "artifact_path": "L1/policy.json"
+        },
+        {
+          "experiment_id": "fm-report-quality-20261013-d3053cd5",
+          "artifact_path": "ancestor-L1/policy.json"
+        }
+      ],
+      "policy_digest": "3c6dd3ebb791bc75af5e8e6fc44b1790fe77af90821fca8e802918b5e09075a9",
+      "execution_version_sha256": "099f1a89d3bd6f3a653c8885702eeee3da4c8f909ac2746001f9d8ce4b301f5d"
+    },
+    {
+      "path": "authorized-plan-v1/policy.json",
+      "kind": "plan_policy",
+      "state": "historical",
+      "sha256": "0292b804e0b6580998ea6d5045e0e1bff515a2a44cff6fbff2aad7706ea4d76b",
+      "origin": {
+        "experiment_id": "fm-plan-20261013-b2a877a4",
+        "artifact_path": "learned/policy.json",
+        "protocol_sha256": "3a7f77ea64a8a75c4f147012abae980fe6d73dcdb4945db2ef7ca0ffbbfa21a3"
+      },
+      "aliases": [],
+      "policy_digest": "847b59b055b7390b5460a7df69d30c1f6b6be2d4cacee99f00b5f1650de5627f",
+      "execution_version_sha256": "ae4973ce68ddc2f9a4aa7152e4b3c12c42477f19960b0a1458a37ef5f8f4d51f"
+    },
+    {
+      "path": "collection-reentry-v2/policy.json",
+      "kind": "reentry_policy",
+      "state": "historical",
+      "sha256": "2d16def48df2f5e1fa9847faf57c42dddcf2491a03b9dcba95c35e67558add72",
+      "origin": {
+        "experiment_id": "fm-rsi-cycle-20261013-7f6a246a",
+        "artifact_path": "L2/policy.json",
+        "protocol_sha256": "b7bf75fcbcd00b4ba0fe68c5db408b6664aec4b5750fccb31b3df5583182d304"
+      },
+      "aliases": [
+        {
+          "experiment_id": "fm-report-quality-20261013-d3053cd5",
+          "artifact_path": "ancestor-L2/policy.json"
+        }
+      ],
+      "policy_digest": "054ae4be28cc812a8f0ae2b540241d88a3dcd7dd284dca9f5278b54af1f8b614",
+      "execution_version_sha256": "099f1a89d3bd6f3a653c8885702eeee3da4c8f909ac2746001f9d8ce4b301f5d"
+    },
+    {
+      "path": "report-quality-v1/L1/policy.json",
+      "kind": "collection_policy",
+      "state": "historical",
+      "sha256": "eda65ae8d79a79f64d74d8208eaeafa3e4f82e5b1f92c3a5776180214a8b7373",
+      "origin": {
+        "experiment_id": "fm-report-quality-20261013-d3053cd5",
+        "artifact_path": "L1/policy.json",
+        "protocol_sha256": "f752f231fa6e99671fb04252e7592722d24ea89872fed5eb8c912d7f5bcf6956"
+      },
+      "aliases": [],
+      "policy_digest": "c1beac460bb7a100f9a3e0bc5601f751c3b0c3169a4c9004c4002916c5dca1ad",
+      "execution_version_sha256": "9c9589ef5c2b4ec57a21303df6e39a6ea3d5a2d9582d89522881895e19f88b1c"
+    },
+    {
+      "path": "report-quality-v1/L2/policy.json",
+      "kind": "reentry_policy",
+      "state": "historical",
+      "sha256": "3c3f41a3fd74f29a48aa0ebc447137c0897f456e0b0f7dced03e1dfb61fdfc15",
+      "origin": {
+        "experiment_id": "fm-report-quality-20261013-d3053cd5",
+        "artifact_path": "L2/policy.json",
+        "protocol_sha256": "f752f231fa6e99671fb04252e7592722d24ea89872fed5eb8c912d7f5bcf6956"
+      },
+      "aliases": [
+        {
+          "experiment_id": "fm-acceptance-repair-20261013-2c88e7eb",
+          "artifact_path": "L2/policy.json"
+        },
+        {
+          "experiment_id": "fm-task-quality-v2-20261013-f3079826",
+          "artifact_path": "L2/policy.json"
+        }
+      ],
+      "policy_digest": "7bd3ac95725b9e3f69f36c884fa56121e0d00b1e5555d7675a0658cd359d971a",
+      "execution_version_sha256": "9c9589ef5c2b4ec57a21303df6e39a6ea3d5a2d9582d89522881895e19f88b1c"
+    },
+    {
+      "path": "workflow-v1/workflow14/edge-library.json",
+      "kind": "read_library",
+      "state": "latest_certified",
+      "sha256": "3845f95242b68f02084f144f493109b85a48714fcd44df50dfba43183df07ae9",
+      "origin": {
+        "experiment_id": "fm-workflow-learning-20261014-d93e4c44",
+        "artifact_path": "libraries/workflow14/edge-library.json",
+        "protocol_sha256": "6f22b80693e77299f38e7973ba1c23abfc0b078e48165eb2c925370a5f083e3f"
+      },
+      "aliases": [],
+      "library_digest": "8fc38a7b88e3f54bc0f14eae5c2b04da9f4f1f8389f97c4d75ea2295dc15ee2d"
+    },
+    {
+      "path": "workflow-v1/workflow14/online-manifest.json",
+      "kind": "online_manifest",
+      "state": "latest_certified",
+      "sha256": "314939a4d11ae4dd31536f575eda42ad971415c8a7de10dd49ddef1ec63eeab4",
+      "origin": {
+        "experiment_id": "fm-workflow-learning-20261014-d93e4c44",
+        "artifact_path": "libraries/workflow14/online-manifest.json",
+        "protocol_sha256": "6f22b80693e77299f38e7973ba1c23abfc0b078e48165eb2c925370a5f083e3f"
+      },
+      "aliases": [],
+      "paired_library": "workflow-v1/workflow14/edge-library.json",
+      "manifest_digest": "094a83a2a5361c20552c2ebe5d2f08edcd08c62de90d71478b72247d0bd89b58"
+    },
+    {
+      "path": "workflow-v1/workflow14/collection-policy.json",
+      "kind": "collection_policy",
+      "state": "latest_certified",
+      "sha256": "26edb011f176bf519edbece0571de5d05a1000675a34d98a9804ce6660f2ead0",
+      "origin": {
+        "experiment_id": "fm-workflow-learning-20261014-d93e4c44",
+        "artifact_path": "libraries/workflow14/collection-policy.json",
+        "protocol_sha256": "6f22b80693e77299f38e7973ba1c23abfc0b078e48165eb2c925370a5f083e3f"
+      },
+      "aliases": [],
+      "policy_digest": "308224035534ad98ccf8f218cc9dbcc7d8eb93b75ce98d893724c3e4e7670c9a",
+      "execution_version_sha256": "85390f919b625f94968b98e042f90f6983c14b11efbfcfd7a33af24926421832"
+    },
+    {
+      "path": "workflow-v1/recovery15/plan-policy.json",
+      "kind": "plan_policy",
+      "state": "latest_certified",
+      "sha256": "a27ffa78d2603dd36d1e7991f41ca314eb24c481449b48e1802a86e1dc80ff7c",
+      "origin": {
+        "experiment_id": "fm-workflow-learning-20261014-d93e4c44",
+        "artifact_path": "libraries/recovery15/plan-policy.json",
+        "protocol_sha256": "6f22b80693e77299f38e7973ba1c23abfc0b078e48165eb2c925370a5f083e3f"
+      },
+      "aliases": [],
+      "policy_digest": "3da073777a73fdb32149426fd36e467c72088e6fb3a0713990cff022e4f66304",
+      "execution_version_sha256": "ae4973ce68ddc2f9a4aa7152e4b3c12c42477f19960b0a1458a37ef5f8f4d51f"
+    },
+    {
+      "path": "workflow-v1/result.json",
+      "kind": "certification_summary",
+      "state": "evidence_summary",
+      "sha256": "9f863323787ef07721e8c81d2c2faa0bf1b5f6ee3e653c41210b583e79cb3d68",
+      "origin": {
+        "experiment_id": "fm-workflow-learning-20261014-d93e4c44",
+        "artifact_path": "libraries/result.json",
+        "protocol_sha256": "6f22b80693e77299f38e7973ba1c23abfc0b078e48165eb2c925370a5f083e3f"
+      },
+      "aliases": []
+    },
+    {
+      "path": "workflow-v1/library-lock.json",
+      "kind": "source_lock",
+      "state": "evidence_summary",
+      "sha256": "e4a3024af7d92bbff1cb8aac652b9d3874b5621ed2d1c6ccdb66df17cf205a17",
+      "origin": {
+        "experiment_id": "fm-workflow-learning-20261014-d93e4c44",
+        "artifact_path": "library-lock.json",
+        "protocol_sha256": "6f22b80693e77299f38e7973ba1c23abfc0b078e48165eb2c925370a5f083e3f"
+      },
+      "aliases": []
+    },
+    {
+      "path": "workflow-v1/candidate-lock.json",
+      "kind": "candidate_lock",
+      "state": "evidence_summary",
+      "sha256": "98e9b93b250f8393cf7f5b03cf4486740bd503d9dc8bbedf3ecea0213c911b74",
+      "origin": {
+        "experiment_id": "fm-workflow-learning-20261014-d93e4c44",
+        "artifact_path": "candidate-lock.json",
+        "protocol_sha256": "6f22b80693e77299f38e7973ba1c23abfc0b078e48165eb2c925370a5f083e3f"
+      },
+      "aliases": []
+    }
+  ],
+  "runtime_validators": {
+    "src/motif_core/online_skill_runtime.mjs": "cceff463594423c418585fb35784b542b125c9512dcf79067506caa56a986927",
+    "src/motif_core/collection_read_policy.ts": "87fff039cc317364c3ab85cd240e7d7bef321c76d87de103f1fdb480ba183a9d",
+    "src/motif_core/collection_reentry_policy.ts": "caaa25beb2a41714e14b7501673c8e579e391819d02d7e22cc7f2d5844364355",
+    "src/motif_core/authorized_plan_policy.ts": "7cda12b995586cdab57d176b214f139c3661f24f94bafa5f11d1c9052b2c6632"
+  },
+  "runtime_groups": {
+    "workflow14": {
+      "execution_version_sha256": "85390f919b625f94968b98e042f90f6983c14b11efbfcfd7a33af24926421832",
+      "dependencies": [
+        {
+          "path": "scenarios/file-management/common.py",
+          "sha256": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/file_tools.py",
+          "sha256": "c993ae7014bf538ff0a4cc0b0b832f6e44cb74132b385e1cd4600cc894cc94b9",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/collection_tools.py",
+          "sha256": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/report_tools.py",
+          "sha256": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/workflow_contract.py",
+          "sha256": "7c6cd5aafa4dcf53674a5d84334c424e9d06b963a8a12358eb2969543fd5e5d8",
+          "publication_base_state": "missing"
+        },
+        {
+          "path": "scenarios/file-management/workflow_tools.py",
+          "sha256": "020f6bfd0aa274bd3f11be5d2a593a1ad60196ca7596d2f71b45b5be9a17421d",
+          "publication_base_state": "missing"
+        }
+      ],
+      "automatic_activation": false
+    },
+    "recovery15": {
+      "execution_version_sha256": "c1b878a136634d34d8bf374a4818a62ac7c4feb419c9f066ee1d4ca11dce5406",
+      "dependencies": [
+        {
+          "path": "scenarios/file-management/common.py",
+          "sha256": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/file_tools.py",
+          "sha256": "c993ae7014bf538ff0a4cc0b0b832f6e44cb74132b385e1cd4600cc894cc94b9",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/collection_tools.py",
+          "sha256": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/report_tools.py",
+          "sha256": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/workflow_contract.py",
+          "sha256": "7c6cd5aafa4dcf53674a5d84334c424e9d06b963a8a12358eb2969543fd5e5d8",
+          "publication_base_state": "missing"
+        },
+        {
+          "path": "scenarios/file-management/workflow_tools.py",
+          "sha256": "020f6bfd0aa274bd3f11be5d2a593a1ad60196ca7596d2f71b45b5be9a17421d",
+          "publication_base_state": "missing"
+        },
+        {
+          "path": "scenarios/file-management/task_tools.py",
+          "sha256": "cdb56708f90be0e35d460dc02d38800a70ac3941547165985393e8b53290e266",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/task_contract.py",
+          "sha256": "9adcb4140d3410cc427d49b1b00b165c368ab90aca5f6649aed0de0d5552f450",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/plan_tools.py",
+          "sha256": "38d0fce5fe9d6763b9cd243ee0f05a965bb92ac5fb0cf7e34ff5b7aeb30c79ce",
+          "publication_base_state": "matching"
+        },
+        {
+          "path": "scenarios/file-management/recovery_tools.py",
+          "sha256": "6b02c145d7a6f31776bddc597cb58a1d28e48f982475dd558da5108715ff1c24",
+          "publication_base_state": "missing"
+        },
+        {
+          "path": "src/adapters/file_workflow_job.ts",
+          "sha256": "af033605856e07e2face32c8ed6e4156aaee81a6bf29aa16a467ef3bed129480",
+          "publication_base_state": "missing"
+        },
+        {
+          "path": "src/adapters/file_job_budget.py",
+          "sha256": "c29050bd7669886335fdcd0c0fb1fd505d018e31a748aaa51880e6bb8880d2a0",
+          "publication_base_state": "missing"
+        },
+        {
+          "path": "src/adapters/dsh_acceptance_guard.ts",
+          "sha256": "77eff861b9158f032e2a96fb9342c2acbbd1eeff598fab4edcdc15d8520446bf",
+          "publication_base_state": "different"
+        }
+      ],
+      "automatic_activation": false,
+      "plan_component_version_sha256": "ae4973ce68ddc2f9a4aa7152e4b3c12c42477f19960b0a1458a37ef5f8f4d51f"
+    }
+  },
+  "limitations": {
+    "independent_certification_reproducible_from_public_bundle": false,
+    "raw_training_trajectories_distributed": false,
+    "human_blind_review": false,
+    "autonomous_rsi": false,
+    "arbitrary_graphs_certified": false,
+    "autonomous_restore_certified": false
+  },
+  "publication_api_cost_usd": 0
+}

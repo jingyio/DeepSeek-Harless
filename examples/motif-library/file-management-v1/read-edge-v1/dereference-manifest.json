@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "source_library_digest": "1d48a77a16b6164cb22d1f972ae3225c2035539f469238a46dd1bded10f27b0b",
+  "artifacts": [
+    {
+      "motif_id": "edge_motif_ecb09d0df0e6",
+      "certified_digest": "c096d0da7cd479beff97d1e58112b721fa0e478ab1694ae598b6cd24aa5ec750",
+      "tools": [
+        "mcp__file_management__pin_file",
+        "mcp__file_management__read_file"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__file_management__pin_file",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__file_management__read_file",
+          "supporting_trace_ids": [
+            "022b950774124a02b733209ee56c9805",
+            "0637cd9da79a478f98b65d4af032b3c3",
+            "0859f2fadef348448cd623643e9898f7",
+            "2b693ab97fe3420ea7b99de88e08b97f",
+            "3749d9ce859741828785925c64420699",
+            "37860c1056a44c639ced2d73fa5c8d3e",
+            "3dee5747648e4b908aeb9a3bca81f81b",
+            "44b7f8ca5e734615a769b2c94ad25929",
+            "5a6b1ab57b614d94ba5a74b26a03dc45",
+            "5c57cae6577a475f9c90ddc5429763e6",
+            "65208965bbb84c878d6c4f93c9e544a7",
+            "7360d85aa5dc4cb185d07ea1049ec07e",
+            "a336272ca6734f49855f83d9080a94de",
+            "aa933d463aa147da8fc5c38aba1b3507",
+            "b1f8b4641c2b4f55a81addd6b8dd91ed",
+            "c2d99823031c489f81dfb2d8067c5e9f",
+            "d8311e0d1b0c4601870dc6e00d1ca171",
+            "fbfbbebb875f4ca29fd47bf4582336d7"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__file_management__read_file": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__file_management__read_file",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__file_management__pin_file",
+              "from_field": "source_id",
+              "to_param": "source_id"
+            }
+          ],
+          "program_digest": "ce216df70c7d322289f4b2618062a4526f98a4442b63775be6c7591b4eb8ccb8"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 18,
+      "validation_task_fingerprint": "a4b0163f7cf86e7d58e859123b02265c13bd92e6ddb2df1e362f23b0d99f63e3"
+    }
+  ],
+  "contracts": {
+    "mcp__file_management__hash_files": {
+      "required_params": [
+        "file_ids"
+      ],
+      "output_fields": [],
+      "default_params": {},
+      "description": "Hash selected files in one batch and group exact duplicates.",
+      "read_only": true
+    },
+    "mcp__file_management__pin_file": {
+      "required_params": [
+        "file_id"
+      ],
+      "output_fields": [
+        "source_id",
+        "file_id",
+        "source_version"
+      ],
+      "default_params": {},
+      "description": "Bind a selected current file and version to one new read handle.",
+      "read_only": true
+    },
+    "mcp__file_management__read_file": {
+      "required_params": [
+        "source_id"
+      ],
+      "output_fields": [
+        "source_id",
+        "file_id",
+        "source_version",
+        "status"
+      ],
+      "default_params": {},
+      "description": "Read a tool-issued file handle; return content or explicit parse diagnostics.",
+      "read_only": true,
+      "source_dereference": true
+    },
+    "mcp__file_management__read_task": {
+      "required_params": [],
+      "output_fields": [
+        "input_sha256"
+      ],
+      "default_params": {},
+      "description": "Read current objective, scope and limits; file contents remain untrusted data.",
+      "read_only": true
+    }
+  },
+  "slot_rules": {},
+  "version_fields": {
+    "mcp__file_management__read_file": "source_version",
+    "mcp__file_management__pin_file": "source_version"
+  },
+  "manifest_digest": "eb01554b6caa1d260ae1e85359a16fd0fe3b23983482dbe15d1684cd35ba8673"
+}

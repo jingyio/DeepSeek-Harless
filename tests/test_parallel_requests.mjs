@@ -1,0 +1,23 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';import {join} from 'node:path';import {createHash} from 'node:crypto';
+import {digest} from '../src/motif_core/online_skill_runtime.mjs';import {createOperationRuntime} from '../src/adapters/dsh_operation_motif.ts';
+import {createTemporalBarrier} from '../src/adapters/management_temporal.ts';
+const fixture=JSON.parse(execFileSync(process.env.SSS_PURE_CODE_PYTHON??'python3',['-c','import runpy,json;m=runpy.run_path("tests/test_parallel_requests.py");f=m["frames"]();c=m["discover_graphs"](f[:2])[0];p=m["certify_graph"](next(v["compiled"] for v in c if len(v["compiled"]["nodes"])==3),f[2]);print(json.dumps({"policy":p,"frame":f[2]}))'],{encoding:'utf8'}));
+const obs=v=>({value:{structuredContent:v}});
+function runtime(t){const f=structuredClone(fixture),home=mkdtempSync(join(process.cwd(),'.local/parallel-request-unit-'));t.after(()=>rmSync(home,{recursive:true,force:true}));const sha=p=>createHash('sha256').update(readFileSync(p)).digest('hex');
+ const policy=join(home,'policy.json');writeFileSync(policy,JSON.stringify(f.policy));const state={schema_version:1,format:'sss-experience-registry-v1',generation:0,entries:[{entry_id:f.policy.policy_digest,kind:'operation_graph',payload:'policy.json',sha256:sha(policy),runtime_source:{},state:'candidate',activated_generation:1}]};state.registry_digest=digest(state);const registry=join(home,'registry.json');writeFileSync(registry,JSON.stringify(state));const audit=[];
+ return {...f,audit,runtime:createOperationRuntime({registry_file:registry,registry_sha256:sha(registry),registry_root:home,role:'certify',adapter:'file_operations_v2',scope:f.frame.scope,catalog:f.frame.tools},v=>audit.push(v)),tools:Object.entries(f.frame.tools).map(([name,v])=>({name,parameters:v.schema}))};}
+function nativeMessage(f){return [{role:'assistant',source:{kind:'model'},content:f.frame.rows.slice(0,2).map(r=>({type:'tool-call',id:r.call_id,name:r.name,arguments:r.args}))}];}
+test('two native preparations have independent continuations even with reversed native execution',t=>{const f=runtime(t);for(const r of f.frame.rows.slice(0,2))f.runtime.observe({name:r.name,callId:r.call_id,arguments:r.args},obs(r.out));
+ // Adopt the second execution first; its receipt must not bind into request one.
+ const second=f.frame.rows[2];f.runtime.observe({name:second.name,callId:second.call_id,arguments:second.args},obs(second.out));
+ for(let i=0;i<8;i++){const call=f.runtime.propose(f.tools,nativeMessage(f))[0];if(!call)break;const r=f.frame.rows.find(r=>r.name===call.proposal.tool&&digest(r.args)===digest(call.proposal.arguments));assert.ok(r);f.runtime.observe({name:r.name,callId:call.callId,arguments:call.proposal.arguments},obs(r.out));}
+ assert.equal(f.runtime.halted,false);const completed=f.audit.filter(r=>r.kind==='operation_graph_complete');assert.equal(completed.length,2);assert.equal(new Set(completed.flatMap(r=>r.operation_call_ids)).size,6);assert.equal(f.audit.filter(r=>r.kind==='operation_model_request_bypassed_verified').length,3);
+});
+for(const damage of ['scope','hash','unknown_effect'])test('parallel request guard retains fallback '+damage,t=>{const f=runtime(t),r=f.frame.rows[0];f.runtime.observe({name:r.name,callId:r.call_id,arguments:r.args},obs(r.out));let peer=structuredClone(f.frame.rows[1]);
+ if(damage==='scope')peer.out._sss_scope={};if(damage==='hash')peer.out._sss_request_lane.request_sha256='invalid';if(damage==='unknown_effect')peer.name='mcp__unknown__effect';
+ f.runtime.observe({name:peer.name,callId:peer.call_id,arguments:peer.args},obs(peer.out));assert.equal(f.runtime.halted,true);assert.deepEqual(f.runtime.propose(f.tools,nativeMessage(f)),[]);
+});
+test('temporal barrier yields until original native prerequisites, without killing reuse',()=>{const scope={original:'scope'},audit=[],c=createTemporalBarrier({quality:{goal:{temporal:{format:'sss-management-temporal-v2',state:'frozen',release_after:[{tool:'prepare_tool_call',min_count:2}]}}}},scope,r=>audit.push(r));
+ const message={role:'assistant',source:{kind:'model'},content:[]};for(let i=0;i<2;i++){const id='real-'+i;message.content.push({type:'tool-call',id});assert.equal(c.ready([message]),false);c.observe({name:'mcp__file_management__prepare_tool_call',callId:id},obs({_sss_scope:scope}));}assert.equal(c.ready([message]),true);assert.equal(audit.filter(r=>r.kind==='operation_temporal_yield').length,1);assert.equal(audit.filter(r=>r.kind==='operation_temporal_released').length,1);
+});

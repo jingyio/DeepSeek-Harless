@@ -63,9 +63,9 @@ window.__ModuleLoader__.load({
     const endpoint = '/api/harless/settings';
     const observers = new Map(), lexiconObservers = new Map(), cache = new Map(), choosing = new Map(), revisions = new Map();
     const draftSelections = new Map();
-    const aliases = { ppt: 'ppt', 'paper-proofreading': 'paper', 'research-data-analysis': 'data', 'new-scene': 'chat' };
-    const shortcut = scene => scene.shortcut || aliases[scene.id] || scene.id;
-    const selectableScene = scene => !['new-scene', 'files', 'file-management'].includes(scene.id) && !['chat', 'files'].includes(shortcut(scene));
+    const aliases = { ppt: 'ppt', 'paper-proofreading': 'paper', 'research-data-analysis': 'data', files:'file', 'new-scene': 'chat' };
+    const shortcut = scene => scene.id === 'files' ? 'file' : scene.shortcut || aliases[scene.id] || scene.id;
+    const selectableScene = scene => !['new-scene'].includes(scene.id) && !['chat', 'files'].includes(shortcut(scene));
     const modeLabel = mode => ({ baseline: '标准执行', shadow: '观察候选', execute: '校验后复用' })[mode] || mode;
     const modeDetail = mode => ({ baseline: '按标准流程执行，不复用 Motif', shadow: '只记录候选，不跳过模型请求', execute: '允许在校验通过后复用已有 Motif' })[mode];
     const displayValue = (id, value) => value && draftSelections.has(id) ? { ...value,
@@ -83,13 +83,29 @@ window.__ModuleLoader__.load({
     }
     async function request(session, body, signal) {
       if (body) revisions.set(session.sessionId, (revisions.get(session.sessionId) || 0) + 1);
-      const response = await fetch(body ? endpoint : `${endpoint}?session_id=${encodeURIComponent(session.sessionId)}`, {
-        method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', signal,
-        ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+      const filePick = body?.action === 'select' && body.selection?.scene === 'files';
+      const nativeBody = filePick ? undefined : body;
+      const response = await fetch(nativeBody ? endpoint : `${endpoint}?session_id=${encodeURIComponent(session.sessionId)}`, {
+        method: nativeBody ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', signal,
+        ...(nativeBody ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(nativeBody) } : {}),
       });
       const value = await response.json();
       if (!response.ok || value.error) {
         const error = Error(value.error?.message || '无法加载场景设置'); error.code = value.error?.code; throw error;
+      }
+      // File management is an additive plugin; the three existing scenes keep
+      // their original host, libraries, settings and request semantics.
+      if (value.scenes?.some(scene => scene.id === 'files')) {
+        const changing = body?.action === 'select' && body.selection?.scene !== undefined;
+        const fileResponse = await fetch('/api/harless/file-scene' + (changing ? '' : '?session_id=' + encodeURIComponent(session.sessionId)), {
+          method: changing ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', signal,
+          ...(changing ? {headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'select',session_id:session.sessionId,selected:filePick})} : {}),
+        });
+        if (fileResponse.ok) {
+          const file = await fileResponse.json();
+          value.scenes = value.scenes.map(scene => scene.id === 'files' ? {...scene,...file.scene} : scene);
+          if (file.selected) Object.assign(value, {selection:{scene:'files',mode:'execute',rsi:true},scene_locked:false,paired_comparison:false,scene_option_fields:[],scene_options:{}});
+        } else if (filePick) throw Error('文件管理扩展尚未启用，请更新服务后重试。');
       }
       return value;
     }
@@ -287,7 +303,7 @@ window.__ModuleLoader__.load({
       }
       const networkMessage = error => error.status ? error.message : '网络连接暂时中断，已保留当前结果。';
       function comparisonUrl(value, lane, file) {
-        return (value.id?.startsWith('native-') ? '/api/harless/deliveries' : '/api/harless/comparisons') + '?session_id=' + encodeURIComponent(value.session_id) + '&id=' + encodeURIComponent(value.id)
+        return (value.id?.startsWith('file-') ? '/api/harless/file-scene' : value.id?.startsWith('native-') ? '/api/harless/deliveries' : '/api/harless/comparisons') + '?session_id=' + encodeURIComponent(value.session_id) + '&id=' + encodeURIComponent(value.id)
           + (lane ? '&lane=' + lane + '&file=' + encodeURIComponent(file.id) : '');
       }
       async function withDeadline(signal, milliseconds, operation) {
@@ -1778,6 +1794,7 @@ window.__ModuleLoader__.load({
             do {
               response = await fetch('/api/harless/deliveries?session_id=' + encodeURIComponent(session) + '&turn=' + turn,
                 { credentials: 'same-origin', cache: 'no-store', signal });
+              if (response.status === 404) response = await fetch('/api/harless/file-scene?session_id=' + encodeURIComponent(session) + '&turn=' + turn, {credentials:'same-origin',cache:'no-store',signal});
               if (response.status === 202) await new Promise(resolve => setTimeout(resolve, 250));
             } while (response.status === 202 && !signal.aborted);
             signal.throwIfAborted();
@@ -1827,6 +1844,10 @@ window.__ModuleLoader__.load({
                 h('pre', null, row.kind === 'model-retry' ? '请求暂未完成，正在尝试恢复。' : contentText(row.data.content)))),
             ...reasoning.map((block, i) => h('section', { key: 'reasoning-' + i }, h('div', { className: 'geneloop-process-label' }, '思考过程'), h('pre', null, publicProcessText(block.text))))]),
           answer && h(AssistantContent, { node: answer, owner, delivery, live: running && answer.data.status === 'running' }),
+          delivery?.id?.startsWith('file-') && delivery.status === 'interrupted' && !delivery.resumed && h('button', {type:'button',onClick:async()=>{
+            try { await comparisonRequest(delivery,{action:'resume',session_id:session,id:delivery.id}); setDelivery({...delivery,resumed:true}); }
+            catch(error){setDeliveryError(networkMessage(error));}
+          }}, '恢复原文件管理任务'),
           delivery?.lanes.baseline.artifacts.length > 0 && h('div', { className: 'geneloop-chat-deliveries', 'aria-label': '交付文件' },
             ...delivery.lanes.baseline.artifacts.map(file => h('div', { key: file.id },
               h('button', { type: 'button', onClick: () => openArtifact(delivery, 'baseline', file) }, '预览 ' + artifactName(file)),
@@ -2097,7 +2118,7 @@ window.__ModuleLoader__.load({
           return [...(!query && uploads.has(session.sessionId) ? [{ name: '添加照片或文件', value: 'upload', section: '添加', description: '从电脑上传' }] : []),
             ...value.scenes.filter(scene => selectableScene(scene) && shortcut(scene).startsWith(query)).map(scene => ({
             name: shortcut(scene), value: scene.id, section: '场景', description: scene.available === false
-              ? `暂不可用：${scene.unavailable_reason}` : ({ ppt: '演示文稿', 'paper-proofreading': '论文校对', 'research-data-analysis': '数据分析' })[scene.id] || scene.label,
+              ? `暂不可用：${scene.unavailable_reason}` : ({ ppt: '演示文稿', 'paper-proofreading': '论文校对', 'research-data-analysis': '数据分析',files:'文件管理' })[scene.id] || scene.label,
           }))];
         },
         onPick: pick => {
@@ -2158,8 +2179,8 @@ window.__ModuleLoader__.load({
               id: `option:${field.key}=${JSON.stringify(choice.value)}`, label: choice.label,
               detail: choice.detail || field.label, active: (value.scene_options?.[field.key] ?? field.default) === choice.value,
             }))) : []),
-            ...(!value.paired_comparison ? ['baseline', 'shadow', 'execute'].map(mode => ({ id: `mode:${mode}`, label: modeLabel(mode), detail: modeDetail(mode), active: value.selection.mode === mode })) : []),
-            ...(!value.paired_comparison ? [true, false].map(rsi => ({ id: `rsi:${rsi ? 'on' : 'off'}`, label: `Motif 复用：${rsi ? '允许' : '关闭'}`, detail: rsi ? '需选择校验后复用模式；标准执行不受此开关影响' : '本轮按标准流程执行', active: value.selection.rsi === rsi })) : []),
+            ...(!value.paired_comparison && value.selection.scene !== 'files' ? ['baseline', 'shadow', 'execute'].map(mode => ({ id: `mode:${mode}`, label: modeLabel(mode), detail: modeDetail(mode), active: value.selection.mode === mode })) : []),
+            ...(!value.paired_comparison && value.selection.scene !== 'files' ? [true, false].map(rsi => ({ id: `rsi:${rsi ? 'on' : 'off'}`, label: `Motif 复用：${rsi ? '允许' : '关闭'}`, detail: rsi ? '需选择校验后复用模式；标准执行不受此开关影响' : '本轮按标准流程执行', active: value.selection.rsi === rsi })) : []),
           ];
         },
         onSelect: async (option, session) => {

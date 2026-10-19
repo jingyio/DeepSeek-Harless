@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "format": "sss-operation-graph-v2",
+  "execution_version_sha256": "c7dfabba8e940e82db51b700d2aae5c238dea9b331d4727b215e13c5884ed0fa",
+  "artifact": {
+    "kind": "learned_mcp_operation_dag",
+    "status": "trace_validated_effectful",
+    "nodes": [
+      {
+        "tool": "mcp__file_management__execute_plan",
+        "bindings": {}
+      },
+      {
+        "tool": "mcp__file_management__inspect_plan_result",
+        "bindings": {
+          "receipt_id": {
+            "node": 0,
+            "path": "receipt_id"
+          }
+        }
+      }
+    ],
+    "tool_contracts": {
+      "mcp__file_management__execute_plan": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "authorized_write",
+          "auto_continue": true,
+          "exports": [
+            "receipt_id"
+          ],
+          "statuses": [
+            "executed_verified"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "plan_id": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plan_id"
+          ],
+          "title": "execute_planArguments"
+        },
+        "schema_sha256": "0150218bed7fc8df5be5bcb92cccb9269815477feb74eca7e9963b2915c33fc7"
+      },
+      "mcp__file_management__inspect_plan_result": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [
+            "primary_file_id",
+            "files[].file_id"
+          ],
+          "statuses": [
+            "verified_plan_results"
+          ],
+          "scope_requirements": {
+            "result_read_allowed": true
+          }
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "receipt_id": {
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "receipt_id"
+          ],
+          "title": "inspect_plan_resultArguments"
+        },
+        "schema_sha256": "20b129f454b43a473bfb93551cc25c5a5bb90dbc73c79f566380701dba75124b"
+      }
+    },
+    "max_nodes": 8,
+    "interleaving_contracts": {
+      "mcp__file_management__list_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": false,
+          "exports": [],
+          "safe_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "list_filesArguments"
+        },
+        "schema_sha256": "fbe3e382dd6c8e9281fe26492070587b61f9dd4de908bb735cd9697af616533d"
+      }
+    },
+    "execution_version": "c7dfabba8e940e82db51b700d2aae5c238dea9b331d4727b215e13c5884ed0fa",
+    "certification_contract": "sss-operation-certification-v2",
+    "source_task_fingerprints": [
+      "3ccc5c45446e8d8433445098f1a9aaaaf4eb068944b2ddcdaa3845e0d57a4839",
+      "2aecb59615393c5afa8793fe865d134bf2171e2b0fba98766f94222422abf2eb"
+    ],
+    "witnesses": [
+      {
+        "session_id": "sss-aa6ef1e68a9546afa93dccebb6225a3f",
+        "calls": [
+          "call_00_xLzmONJs1yw62nuZmbME7466",
+          "call_00_PR5JABQwaE0i6b7HPB1A5541"
+        ],
+        "native_new_nodes": [
+          1
+        ],
+        "inherited_policy": null,
+        "events_sha256": "92fe50941f2e52a1a098248dfbeb0dfd359e4ee55e3482ba96d60524bc2a1661"
+      },
+      {
+        "session_id": "sss-c44fbf2cc006428bb566cd6626e4287e",
+        "calls": [
+          "call_00_MzcmRcuJkFpIMJnRN5a84395",
+          "call_00_GuNF4jYxO8dZ13xO6IHi8125"
+        ],
+        "native_new_nodes": [
+          1
+        ],
+        "inherited_policy": null,
+        "events_sha256": "dd51a4cd68628d8faebd46655b1db1fff26ba693013d192ac3b0eac1f82da899"
+      }
+    ],
+    "validation_task_fingerprint": "81cd109bac22a956faf6058f664648a30e390c906639ca90c649a29d438227df",
+    "validation_witness": {
+      "nodes": [
+        {
+          "tool": "mcp__file_management__execute_plan",
+          "bindings": {}
+        },
+        {
+          "tool": "mcp__file_management__inspect_plan_result",
+          "bindings": {
+            "receipt_id": {
+              "node": 0,
+              "path": "receipt_id"
+            }
+          }
+        }
+      ],
+      "values": {
+        "1:receipt_id": "receipt-685b9ccfbcc3488b84bd2e071f7360e5"
+      },
+      "calls": [
+        "call_00_MoQasSvNpOMRysPEXXuk3524",
+        "call_00_1Hyo8TBVvJf8Qxgu74yi6761"
+      ],
+      "native_new_nodes": [
+        1
+      ],
+      "inherited_policy": null
+    },
+    "certified_digest": "c984b40d1b388008a0902fa1d63a8da74d26daaa83d26677f01ea54eebd46405"
+  },
+  "policy_digest": "f1fac27a5a4466625a7309c945f599fe04042f2b1606513887033112db60cdf0"
+}

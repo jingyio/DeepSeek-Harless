@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "sha256": {
+    "catalog.json": "b965afe79c9eb5628f0c9efc760dd0085236a01ed8de7f8820c9456d48152efc",
+    "policies/42b5a5fdbbce798080ab16843fa4b29d4402ca137660999d53e4958beadac769.json": "5bcf1dd72473e1469ac846860c93ec4fa46459cd03cae619d0add919afa18b5e"
+  }
+}
