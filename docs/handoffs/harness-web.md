@@ -1,5 +1,11 @@
 # DeepSeek Harless Web 当前交接
 
+## 2026-10-19：管理员内部令牌陈旧导致服务不可用
+
+- 公开登录页/进程正常，所有者内部认证失败。直接重启 DSH 后漏写 `ownerTokenFile`；旧令牌 401、新令牌 303。已备份并原子同步当前有效令牌，网关热读取恢复，未重启、未调用模型、未改账号/数据/账本。
+- `scripts/harless_owner_access.py` 提供认证后首页检查和原子同步；本次私有发布与回退脚本均接入并绑定启动日志偏移。6 项定向回归通过，生产 `--check` 返回认证后 200；已有成员刷新正常，新注册与管理员本人浏览器反馈未验。详见[故障记录](../experiments/owner-access-recovery-20261019.md)及[部署说明](../harless-account-gateway.md)。
+- 所有者与成员令牌独立；后续发布不能只检查 TCP/公开登录页。代码发布与PR状态以本次提交/PR为准；线上运行代码未因此切换。
+
 ## 2026-10-19：生成文件只有文件名、不能点击
 
 - 范围/分支：`codex/clickable-generated-files`，基于main `9f945a5` 的独立工作树，原本地工作区未改动。修复提交 `93e5309` 已推送，[PR #83](https://github.com/jingyio/GeneLoop/pull/83) 待审、未合并、未部署。
