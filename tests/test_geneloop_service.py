@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
@@ -115,6 +116,88 @@ class PlanTests(unittest.TestCase):
             'baseline': {'status': 'completed'}, 'motif': {'status': 'running'}}}]})
         with self.assertRaises(RuntimeError):
             service.assert_idle(self.plan)
+
+
+class StartupListenerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.config = self.root / 'gateway.json'
+        self.policy = self.root / 'policy.json'
+        service.save(self.config, {'ownerPort': 31331, 'port': 31332})
+        service.save(self.policy, {'output': str(self.root / 'tasks')})
+        spec = {'argv': [sys.executable, 'fixture.py'], 'cwd': str(self.root),
+                'env': {'SSS_WEB_POLICY': str(self.policy)}}
+        self.plan = {'state_dir': str(self.root / 'service'), 'gateway_config': str(self.config),
+                     'owner': spec, 'gateway': spec.copy()}
+        self.lifecycle = service.Lifecycle(self.plan)
+        self.child = mock.Mock(pid=12345)
+        self.child.poll.return_value = None
+        self.found = {'pid': self.child.pid, 'start_ticks': '42',
+                      'argv_sha256': 'fixture', 'cwd': str(self.root)}
+
+    def row(self, pid=None, port=31332):
+        return ('LISTEN 0 128 127.0.0.1:%s 0.0.0.0:*' % port +
+                (' users:(("fixture",pid=%s,fd=3))' % pid if pid else ''))
+
+    def test_launch_waits_for_missing_or_duplicate_attribution(self):
+        incomplete = self.row()
+        ready = self.row(self.child.pid)
+        for first in (incomplete, incomplete + '\n' + incomplete,
+                      ready + '\n' + incomplete):
+            with self.subTest(snapshot=first):
+                directory = self.root / ('launch-' + str(len(self.lifecycle.started)))
+                directory.mkdir()
+                with mock.patch.object(service.subprocess, 'Popen', return_value=self.child), \
+                        mock.patch.object(service.subprocess, 'check_output', side_effect=[first, ready]) as scan, \
+                        mock.patch.object(service, 'identity', return_value=self.found), \
+                        mock.patch.object(service.time, 'sleep') as sleep:
+                    self.assertEqual(self.lifecycle.launch('gateway', self.plan, directory), self.found)
+                self.assertEqual(scan.call_count, 2)
+                sleep.assert_called_once_with(.1)
+
+    def test_launch_immediately_refuses_any_explicit_foreign_pid(self):
+        foreign = self.row(54321)
+        ready = self.row(self.child.pid)
+        snapshots = (foreign, self.row() + '\n' + foreign, ready + '\n' + foreign,
+                     ready + ' users:(("foreign",pid=54321,fd=4))')
+        for first in snapshots:
+            with self.subTest(snapshot=first):
+                directory = self.root / ('foreign-' + str(len(self.lifecycle.started)))
+                directory.mkdir()
+                with mock.patch.object(service.subprocess, 'Popen', return_value=self.child), \
+                        mock.patch.object(service.subprocess, 'check_output', return_value=first) as scan, \
+                        mock.patch.object(service, 'identity') as identify, \
+                        mock.patch.object(service.time, 'sleep') as sleep:
+                    with self.assertRaisesRegex(RuntimeError, 'Unexpected listener during startup'):
+                        self.lifecycle.launch('gateway', self.plan, directory)
+                self.assertEqual(scan.call_count, 1)
+                identify.assert_not_called()
+                sleep.assert_not_called()
+
+    def test_persistent_unknown_times_out_without_publishing_and_cleans_only_child(self):
+        with mock.patch.object(self.lifecycle, 'inspect', return_value={'owner': None, 'gateway': None}), \
+                mock.patch.object(service.subprocess, 'Popen', return_value=self.child), \
+                mock.patch.object(service.subprocess, 'check_output', return_value=self.row(port=31331)), \
+                mock.patch.object(service.time, 'monotonic', side_effect=[0, 0, 61]), \
+                mock.patch.object(service.time, 'sleep'), \
+                mock.patch.object(self.lifecycle, 'health') as health, \
+                mock.patch.object(self.lifecycle, 'publish_state') as publish:
+            with self.assertRaisesRegex(RuntimeError, 'Service startup timed out'):
+                self.lifecycle.start()
+        self.child.terminate.assert_called_once_with()
+        self.child.wait.assert_called_once_with(timeout=45)
+        health.assert_not_called()
+        publish.assert_not_called()
+        self.assertIsNone(self.lifecycle.current())
+
+    def test_global_listener_still_refuses_incomplete_or_duplicate_rows(self):
+        for snapshot in (self.row(), self.row(self.child.pid) + '\n' + self.row()):
+            with self.subTest(snapshot=snapshot), \
+                    mock.patch.object(service.subprocess, 'check_output', return_value=snapshot):
+                with self.assertRaisesRegex(RuntimeError, 'Cannot identify the local listener safely'):
+                    service.listener(31332)
 
 
 @unittest.skipUnless(sys.platform == 'linux' and shutil.which('ss'), 'Linux process/listener integration')
