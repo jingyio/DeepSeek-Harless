@@ -830,6 +830,8 @@ PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿
 
 `dsh_web_tasks.ts` 在真实 PPT 任务结算与不可变对照成品保存后，调度 `harless_ppt_learning.ts` / `learn-web-ppt-tasks.py`。不新增 Agent/模型循环，不给编译 worker 模型密钥，不重新运行付费任务。普通聊天、文件交付和 `/ppt` 入口保持。Baseline 不继承私有候选，只有优化侧可在下一任务准入时选择候选；正在执行的任务不热换库。
 
+部署必须使用真实模式、可用的 `SSS_PYTHON`（或启动入口写入的 `learning_python`），并在当前账号的policy设置 `comparison_scenes: ["ppt", ...]`；成员部署对应网关 `memberPolicy`。现有主聊天双路执行自然产生训练和验证轨迹，用户不需另行触发学习命令。普通单路 `web:real` 不自动购买或补跑Baseline，证据不足会等待，不能把这种配置说成已经发生晋级。成员场景输出映射到账号独占 `/app/.local/web`，学习目录随既有任务目录持久保留。
+
 账号私有 `<output>/learning/ppt-<SHA256(user + NUL + run_scope)>/` 保存请求、状态、独立轮次、认证与晋级证据。三项合格独立 Baseline 产生 `probation`；两个来源/决定/问句均独立于训练的后续匹配对照必须具有当前候选库 SHA、真实 verified-skip 审计、实际 PPTX/PDF/PNG 成品、完整含失败重试账本及更低代理费用，才进入 `active`。无需表单或用户确认；没有对照或证据不足时保持候选状态，不后台偷偷购买验证任务。当前认证器只接受已有两条来源准备边，没有无限扩图或工具生成。
 
 自动晋级标为 `mechanical_cost_promoted`，科学内容/审美和未记录人工分钟仍未知；`quality_cost_promoted` 仅在两个对照均有明确完整人工评审时成立。现有 `action: feedback` 的踩会立即暂停私有候选并异步复核，费用增加、交付失败、来源/代码/证据字节改变或撤回均回原库。回退不删除失败证据，也不承诺后续任务必然省钱。`effective-config.json` 保存 `learning_version`、`learning_phase` 和实际库/认证 SHA。
