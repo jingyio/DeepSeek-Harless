@@ -164,7 +164,7 @@ export function loadScriptLibrary(path:string){
   }
   return library;
 }
-export const scriptCodeLocks=['src/adapters/script_motif_compiler.py','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs','scripts/run-certified-script.mjs','scripts/fetch-script-evidence.py'];
+export const scriptCodeLocks=['src/adapters/script_motif_compiler.py','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','src/adapters/script_negative_runtime.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs','scripts/run-certified-script.mjs','scripts/fetch-script-evidence.py'];
 export function createScriptInterceptor({library,workspace,session,goal,mode,endpoint,model,minSimilarity=.88,minMargin=.04,minGoalSimilarity=.6,negativeGoals=[],audit,similarity,demandBound=false,executionFrontier=false}:any){
   if(!['cache','shadow','execute'].includes(mode))throw Error('invalid_script_mode');
   if(!Number.isFinite(minSimilarity)||minSimilarity<.5||minSimilarity>1||!Number.isFinite(minMargin)||minMargin<.01||minMargin>1)throw Error('invalid_script_threshold');

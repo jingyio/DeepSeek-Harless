@@ -844,6 +844,26 @@ geneloop-resolve '{"request_id":"当前请求 ID","status":"selected","candidate
 
 在线输出上限 16 KB，CPU 上限 20 秒；Linux 复用 bubblewrap，内存地址空间上限 512 MB。macOS 必须显式 `SSS_LOCAL_SCRIPT_EXPERIMENT=1`，使用 sandbox-exec，未提供 Linux 等价的内存上限；仅在本地隔离实验验收，不代表生产 macOS 支持。命令 broker 模式拒绝；Windows 未支持。Python 是执行历史 Python 脚本所必需的运行时，不宣称已无 Python 依赖。
 
+## Negative Motif 实验接口
+
+Positive Script Motif 负责复用可执行结构；Negative Tool Motif 负责标记有轨迹证据的失败重试。两库可同时装载，不增加模型工具。负面规则只通过当前显式实验 sidecar 启用，默认仅提示：
+
+```json
+{"mode":"execute","negativeLibrary":"/private/negative/library.json","negativeMode":"prompt"}
+```
+
+将 `negativeMode` 设为 `enforce` 才会启用局部早停。需要正面片段时再提供原有 `library/catalog/executionFrontier`；不带正面库也能单独做负面消融。由于 Web adapter 依赖变更，旧正面库要按既有历史源重新认证，不能只更新旧代码锁。
+
+离线 `scripts/learn-negative-motifs.py` 接纳已结束的真实成功/失败/取消轨迹及显式工具实现文件，从 MCP 结构化 `validation_error` 学习工具与失败码、参数/结果回显的版本槽位，保留事件摘要和独立调用标识。相同调用复制不算重复证据；至少两次失败才发布提示候选。有同 schema 的非失败对照、区别于非失败结果的 false outcome 标志及共同版本槽位才生成 `warn_then_exact_version_block`；这仍不是失败因果或质量认证。只有不透明错误、HTTP 失败或一个失败时不会自动生成执行封禁。库包含 Python/TS 共享 digest、工具 schema 与实现/Runtime 代码锁；当前仍是独立离线编译入口，未接成生产自动学习服务。
+
+在线顺序：当前 MCP 再次出现已编译失败 → 提示 → 校验提示确实进入原生模型请求 → 若模型再次提交同工具、同完整参数，且对应本地 JSON 状态文件、原始来源、工具 schema 和当前目标均未变，原生 `tools.guard` 阻止工具主体。单靠历史频率不会封禁新任务；缺失/歧义版本绑定、只有提示模式、新反证/错误、参数或版本变化都会放行或使旧负面证据失效。原生 MCP canonical wrapper 复用已有 `observation` 解包；早停的拒绝不被当作新的失败训练来源。
+
+版本槽位来自轨迹，不硬编码 draft 字段名；当前只自动绑定 outputs 内唯一同 SHA256 的有界无符号链接 JSON 文件。没有该权威文件时仅提示，不猜测相关状态。最多 32 类规则，单次只维护最近一条当前失败。当前文件版本是完整哈希：改动无关 notes 也会释放拦截，尚未学习错误相关字段的最小依赖范围。
+
+早停只阻断局部重试，保留其他工具和模型改换路线/解释未完成任务的机会；它**不等于跳过一整个模型请求**，audit 的 `model_requests_skipped` 为 0。旧失败不会因早停变成合格完成。事件为 `negative_current_failure / negative_prompt_delivered / negative_retry_early_stopped`。本次结果与失败见 [Negative Motif 实验](experiments/paper-negative-motifs-20261019-v1.md)。
+
+实验 runner 可显式 `--recovery-checkpoint /private/draft.json --max-seconds 180`：仅复制同 worktree 私有历史草稿，要求上传来源哈希完全一致，只替换当前任务身份，并写可读取的 recovery-state 提示；超时走原生取消、保留费用。该入口是历史局部恢复诊断，不是独立完整任务或生产恢复产品。
+
 ## 配置与真实复现
 
 先按 README 安装固定依赖，配置真实 API、已审核的 `HARLESS_PAPER_RENDERER_ROOT` 与 `HARLESS_REPORT_FONT`；完整报告实验前确认渲染器可用。本地 embedding 为可选独立环境：`scripts/local_embedding_server.py`，当前固定 Qwen3-Embedding-0.6B 权重摘要；配置 `SSS_EMBED_MODEL_DIR/SSS_EMBED_DEVICE/SSS_EMBED_PORT`。完整长题面需显式 `SSS_EMBED_MAX_CHARS=16000`、`SSS_EMBED_MAX_TOKENS=8192`，超长输入拒绝，不静默截掉限制语句。服务内 256 项 LRU 缓存仅复用固定模型的文本向量，不缓存任务决策；超长输入仍拒绝。模型依赖未加入基础插件依赖。

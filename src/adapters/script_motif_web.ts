@@ -5,6 +5,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import * as native from './dsh_web_tasks.ts';
 import {createScriptInterceptor,loadScriptLibrary,registerScriptCache} from './script_motif_runtime.ts';
+import {createNegativeRuntime,loadNegativeLibrary} from './script_negative_runtime.ts';
 export const name=native.name;
 export const inject=native.inject;
 export function apply(ctx:any){
@@ -28,20 +29,24 @@ export function apply(ctx:any){
     if(pointer.user!==policy.user_id||!/^round-[a-f0-9]+\/library\.json$/.test(pointer.file))throw Error('foreign_script_library');
     settings.library=join(settings.learningStore,pointer.file);
    }
-   const library=loadScriptLibrary(settings.library);
+   const library=settings.library?loadScriptLibrary(settings.library):null;
    const task=JSON.parse(readFileSync(join(output,'task.json'),'utf8')),effective=JSON.parse(readFileSync(join(output,'effective-config.json'),'utf8'));
    if(effective.session_id!==session||effective.user_id!==policy.user_id)throw Error('script_owner_changed');
-   writeFileSync(join(output,'script-motif-config.json'),JSON.stringify({...settings,library_digest:library.digest}),{mode:0o600});
-   runtime=createScriptInterceptor({...settings,library,workspace:effective.workspace,session,
-    goal:task.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n'),audit});
-   if(settings.catalog)runtime.catalog=registerScriptCache({...settings,library,workspace:effective.workspace,session,audit,frontier:runtime.frontier});
+   const negative=settings.negativeLibrary?createNegativeRuntime({library:loadNegativeLibrary(settings.negativeLibrary),workspace:effective.workspace,mode:settings.negativeMode,audit}):null;
+   if(!library&&!negative)throw Error('motif_library_required');
+   writeFileSync(join(output,'script-motif-config.json'),JSON.stringify({...settings,library_digest:library?.digest}),{mode:0o600});
+   runtime=library?createScriptInterceptor({...settings,library,workspace:effective.workspace,session,
+    goal:task.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n'),audit}):{dispose(){},observe(){},frontierPrompt(){return '';},intercept(_id:any,_request:any,next:any){return next();}};
+   runtime.negative=negative;
+   if(library&&settings.catalog)runtime.catalog=registerScriptCache({...settings,library,workspace:effective.workspace,session,audit,frontier:runtime.frontier});
   }catch(error:any){audit({kind:'script_fallback',reason:error.message});runtime=null;}
   current.set(session,{id:state.task_id,runtime});return runtime;
  }
  ctx.on('agent/created',({agent}:any)=>{
-  agent.ctx.systemPrompt.variable('script_cache_catalog',()=>{const r=interceptor(agent.session.id);return (r?.catalog??'')+(r?.frontierPrompt()??'');});
+  agent.ctx.systemPrompt.variable('script_cache_catalog',()=>{const r=interceptor(agent.session.id);return (r?.catalog??'')+(r?.frontierPrompt()??'')+(r?.negative?.prompt()??'');});
   agent.ctx.systemPrompt.section({name:'script-cache-catalog',order:10220,text:'{{script_cache_catalog}}'});
-  agent.ctx.on('tools/result',(execution:any,result:any)=>current.get(agent.session.id)?.runtime?.observe(agent.session.id,execution,result));
+  agent.ctx.tools.guard((execution:any)=>interceptor(agent.session.id)?.negative?.guard(execution));
+  agent.ctx.on('tools/result',(execution:any,result:any)=>{const r=current.get(agent.session.id)?.runtime;r?.observe(agent.session.id,execution,result);r?.negative?.observe(execution,result);});
  },{global:true});
  const scheduled=new Set();
  ctx.on('agent/status',({agent,status}:any)=>{
@@ -62,6 +67,7 @@ export function apply(ctx:any){
  const wrapped=new Proxy(ctx,{get(target,key){
   if(key==='on')return (event:any,handler:any,...rest:any[])=>target.on(event,event==='llm/stream'
    ?(request:any,next:any)=>handler(request,()=>{const runtime=interceptor(request.sessionId);return (async function*(){
+     runtime?.negative?.beforeRequest(request);
      const stream=runtime?await runtime.intercept(request.sessionId,request,next):next();for await(const chunk of stream)yield chunk;
     })();})
    :handler,...rest);

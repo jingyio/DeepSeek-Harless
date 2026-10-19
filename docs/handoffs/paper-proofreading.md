@@ -1,20 +1,20 @@
 # 论文校对当前交接
 
 - 更新时间与交接人：2026-10-19，Codex。
-- 目标与本次范围：第三轮 Script Motif，从脚本缓存推进到当前语义确认后的连续结构执行。已真实运行原参考文献题面；没有证明稳定净降本。用户追加质疑 Baseline 漏检，核查确认三组报告路径/质量门不一致，不能按同等合格质量解释费用差。
-- 分支 / commit / 工作区：独立 worktree `codex/paper-script-frontier`，基线 `394389448eafc73f89087ca461d2116c5dd61e51`；本文件随实现本地提交，具体见 `git log -1`。未推送、未 PR、未合并、未部署；桌面原脏工作区及生产/旧认证库未改。
-- 已完成：新增 `src/adapters/script_execution_frontier.ts`，从真实前驱关系发现 2–8 节点的同输入无分支片段；当前目标下模型通过既有 Bash 选择 selected/unknown/ambiguous/unneeded，Runtime 自动绑定唯一文件、验证回执/输入版本、连续执行到结束或失败。当前只支持必要性选择，不是任意参数槽位或科研判断自动化。
-- 已完成：Runtime、Web adapter、认证入口接入；Python/TS 统一 `/work/outputs` 到当前 outputs/code 的虚拟路径绑定，修复真实任务无候选的原因。记录已完成当前 Evidence、取消变更目标、去重已验证节点。无工具表扩张，不调 embedding 阈值。
-- 已完成：费用分类新增 semantic_slot_resolution，细分报告阶段可见动作，未知 usage 不算零。GELU malformed unneeded 命令后撤回邀请的 fail-closed 小修复在真实实验结束后完成；仅局部测试，不冒充该版本完整任务效果。
-- 已验证：Node 22.22.3/Python 3.12.14/Harness 0.1.5-rc.3。完整 `npm test`：903 Python 通过/199 跳过、866 Node 通过/5 跳过；无模型 smoke 通过；末次状态机/真实沙箱局部 20 通过。第一次局部漏设 SSS_PYTHON 导致系统 xcrun 被沙箱拒绝，补环境后通过；失败日志保留，无守卫放宽。
-- 实验结论：[paper-script-frontier-20261019-v1](../experiments/paper-script-frontier-20261019-v1.md)。RMSNorm 同题 Baseline 101/$0.162408540/950.781 秒，Cache 144/$0.194030328/912.206 秒，Execute 286/$0.371369304/1113.774 秒。Execute 一次 106 输出 Token 的付费确认后连续 2 次 provider 跳过，并另有 1 次网络缓存成功；仍 PDF 交付失败。Cache 此次未使用缓存。GELU 候选已发现，但 malformed unneeded 未被接受，0 自动接管，后 HTTP 502。
-- 核心反例：总差 185 请求中，报告协议差 181（6→187），其余 95→99。Baseline 使用通用导出，没有结构化审计校验；PDF 引用计数 30/41 与源文实际 37/58 不符。Execute 27 次定稿全部拒绝（9 次状态/优先级，18 次重复来源），不是同等必要取证。全部三臂都没有合格质量证据。不得把“失败恢复更多”宣传为更认真，也不得把 Baseline 低费用宣传为同质量优势。
-- 配置与数据：原题 `scenarios/paper-submission/reference-audit.prompt.md` 未变；DeepSeek Flash/off、30 工具同顺序、native baseline/RSI off、32,768 输出限额、无压缩。私有 `.local/script-frontier-20261019-v1/` 的 runs/aggregate/breakdown/quality 与每 run 的 source-snapshot/effective-config/events/ledger 对应。RMS/GELU 都是上一轮未训练评测输入的重测，不是新独立样本。
-- 库与学习：实验 v2 库 7 算子，摘要 `8aa71d398879e2f154fbad622c4fcb90534499c3487b427adfd8a257c508fe87`；实验后 fail-closed 改动经真实重放另发 v3，摘要 `fd51a752303e66c1df36714a305ca264b8838b7b15c3694589fd6e7125f43080`，旧库不改。136 历史请求/$0.282083184 已在旧账，不重复加；本轮无新增学习 LLM 调用，离线/HTTP/人工成本未完整计量。
-- 未完成与阻塞：报告 stage 延迟校验、来源只追加、已写 citation_checks 不可覆盖、read 只能读定稿造成恢复陷阱；报告路径验收不统一。本轮未改报告服务。未实现一般多阶段参数流、语义缺口批量解析或稳定跨论文完整收益；未做独立人工盲评、新 Linux/Windows 验收。远程 V100 旧费用未核清。
-- 接手下一步：1）修复并局部回放通用报告协议：暂存前校验、幂等写入、草稿读取与明确修复入口；保留来源/CAS/定稿边界，不降低事实要求。2）三组统一最终内容/版本验收、允许同样有效的批量/确定性输出，报告工程优化单列，不能故意给 Baseline 增加调用。3）仅协议通过后做新论文配对重复对照和独立质量评审，计入学习/失败/恢复；效果稳定后由用户决定 PR。
-- 最短复现：隔离环境中设置 `TMPDIR=/private/tmp`、`SSS_LOCAL_SCRIPT_EXPERIMENT=1`、`SSS_PYTHON` 和既有 renderer/font；`node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-model --source /path/source.zip --mode execute --script-config /path/frontier.json --budget-usd 0 --max-output-tokens 32768`。配置 `catalog:true,executionFrontier:true`，最终代码用新 v3 库；旧实验必须用快照及旧冻结库。frontier 不需启动 embedding。Baseline 不带 sidecar，Cache 关闭 frontier。
-- 权限与预算：用户允许本地真实测试，费用/请求无上限、保留输出限额；本轮 696 请求/保守估费 $1.376831772，其中 usage 可见 $0.903972372，4 无 usage、1 pending 保留。连同前两轮，本地 2,793/$4.587678180；非提供商实付/账户总额，远程未知不算零。所有本轮任务已结束，不再追加付费完整重试；原件、外部应用、生产均未写。
-- 回退与风险：不用 sidecar 即恢复普通原生运行；代码可回到 `3943894`。不要删除 .local、失败账本或修改旧库锁。macOS 沙箱边界仍有平台限制。当前结果不足上线或提交 PR。
+- 目标与本次范围：接续第三轮执行片段，按用户要求增加 Negative Motif：先 prompt 引导，再局部早停。当前已实现实验编译/在线接线；仍未实现稳定净降本。
+- 分支 / commit / 工作区：独立 `codex/paper-negative-motifs`，基线 `44a1d36`；本记录随实现本地提交，具体见 git log -1。未推送、未 PR、未部署；原脏工作区、生产服务、旧认证库与原始论文不改。
+- 已完成：`script_negative_compiler.py` / `learn-negative-motifs.py` 从真实 MCP 失败和非失败对照学习工具、错误码、版本回显与 false outcome 标志；5 类规则，4 类具备严格同版本重试资格，批量超限仅提示。不是手写错误名 if 分支。负面学习仍为显式离线入口，未接成生产自动学习。
+- 已完成：`script_negative_runtime.ts` 复用 observation 解包 MCP canonical value，先在当前失败后提示；确认 notice 进入实际模型请求，且同参数/同 JSON 状态文件/原来源/目标/schema 未变时，用 tools.guard 阻止工具主体；其他路线仍可用。新反证、输入变化和不透明错误失效。拒绝不被当作新训练失败，不把工具早停记作完整模型请求跳过。
+- 已完成：Web adapter 允许正负库共同装载或单独负面消融；不扩 30 工具。正面认证代码锁补负面 Runtime 依赖，另行实际重认证；旧库锁不改。runner 增加显式同源私有 checkpoint 局部恢复与诊断超时取消，不能把恢复探针算完整任务。
+- 已验证：完整 906 Python/881 Node 通过，199/5 跳过；无模型 smoke 通过。探针后收紧 false outcome 资格，局部 25 Python/33 Node 通过。原生 ToolRuntime 两次重复调用被阻止、主体不运行，其他工具可执行。最终安全收紧未再跑付费完整任务。
+- 实验结论：[paper-negative-motifs-20261019-v1](../experiments/paper-negative-motifs-20261019-v1.md)。真实局部三臂在 3/3/4 请求后 HTTP 502 失败，未命中负面模式。初次协议探针 18 请求，暴露新模块漏解 MCP 包装，0 提示；修复后探针 14 请求，捕获真实 duplicate_source_ids、绑定当前草稿哈希，notice 进入下一模型请求各 1 次，但模型未原样重试，真实早停 0；后流失败。没有净降本/合格恢复结论。
+- 核心覆盖限制：原失败轨迹 35 次已知模式中，只有 3 次同完整参数原样重试，32 个不同绑定。全文件版本变化（包括无关 notes）会放行，未学习错误字段依赖范围；不能消除此前 181 次报告请求差。原报告草稿不可读/不可修复的接口问题仍未修复；负面早停不能掩盖未完成交付。
+- 配置与数据：DeepSeek Flash/off、30 工具同序、局部输出 8192、费用/请求不限，180 秒取消检查从 submit 返回计时。私有 `.local/script-negative-20261019-v1/` 含授权、配置、库、runs/aggregate/final-state、失败日志；各 run 原始轨迹在既有 `.local/web/runs/`。训练用一条真实失败轨迹与两条结构定稿成功对照，费用在旧账，不重复计。
+- 库：最终负面 library-005，5 类，digest `4b2c4796ca1713b8267e55a38ccc17e12e70d7453e033765143b5b13befe273f`；真实探针用此前 library-004。正面重认证（7 算子，digest 692b36f562a93597db334d5eacaea93344786e3911180cd4c98e46146bbf96b8）与 combined-final-config.json 私有保留，正负共同装载检查不等于真实共同执行验收。服务器/Windows 未做新验收。
+- 未完成与阻塞：服务商/流错误导致真实局部对照中断；没有真实模型再次提交同版本错误后的早停样本；最终代码仅局部回归。当前负面模式只有失败结果与原样重试，不覆盖 Bash/Python 的不透明错误，不支持一般多节点负面图、错误因果学习、自动修复或完整任务全局早停。不得把中断/局部工具拒绝当节省。
+- 接手下一步：1）修复可读/可修复且幂等的报告草稿接口和可信错误返回；学习相关字段依赖，保留反证/变更放行。2）服务稳定后在新任务、相同完整验收条件下比较 Prompt/Enforce 和普通工程基线，包含失败/学习成本。3）与正面执行片段联测合格交付，稳定后由用户决定 PR。
+- 最短复现：见接口 Negative Motif 实验接口与实验记录。learn-negative-motifs.py 传真实已结束 task、当前匹配的 implementation-file 和新的私有 output。sidecar `negativeLibrary` + `negativeMode:prompt/enforce`；需要正面片段再加载重新认证的 library 与原配置。局部恢复显式 recovery-checkpoint，来源哈希必须相同。
+- 权限与预算：本地真实测试按现有无限额授权；本轮新增 42 请求/保守估费 $0.126775512，usage 可见 $0.016726812，4 未知 usage、pending=0；提交前目录失败 3 次为 0 模型请求。连同前轮本地 2835/$4.714453692，旧 1 个 pending 仍保留，远程 V100 未核清，非账单实付。所有本轮任务已结束，未继续付费重试。
+- 回退与风险：不用负面配置恢复原有行为；回退到 44a1d36 恢复第三轮代码。旧结果用旧快照与库；不要更改旧锁、删除 .local 或重置账本。结果不足上线或 PR。
 
-前两轮：[Script Motif 初版](../experiments/paper-script-motif-20261018-v1.md)、[脚本 Evidence 改进](../experiments/paper-script-evidence-20261019-v1.md)。旧结论及费用保留，当前报告补充路径混杂证据。
+前轮：[连续执行](../experiments/paper-script-frontier-20261019-v1.md)、[脚本 Evidence](../experiments/paper-script-evidence-20261019-v1.md)、[初版](../experiments/paper-script-motif-20261018-v1.md)。

@@ -37,9 +37,14 @@ def main():
     parser.add_argument('--port', type=int, default=3230)
     parser.add_argument('--budget-usd', type=float, default=1.0, help='单任务/本次启动共用额度；0 仅用于已有无限额授权')
     parser.add_argument('--max-output-tokens', type=int, default=8000)
+    parser.add_argument('--recovery-checkpoint', type=Path,
+                        help='显式局部恢复诊断：只复制私有历史草稿，不算完整论文评测')
+    parser.add_argument('--max-seconds', type=float, help='诊断超时取消；保留全部费用，不算正常完成')
     args = parser.parse_args()
     if args.budget_usd < 0 or args.max_output_tokens < 1:
         parser.error('预算非负，输出上限必须为正数')
+    if args.max_seconds is not None and args.max_seconds <= 0:
+        parser.error('诊断超时必须为正数')
     if (args.mode == 'baseline') != (args.script_config is None):
         parser.error('baseline 不加载 Script Motif；cache/shadow/execute 必须提供 --script-config')
     env = dict(os.environ)
@@ -53,6 +58,12 @@ def main():
     if args.learning_store:
         env['SSS_SCRIPT_MOTIF_LEARNING_STORE'] = str(args.learning_store.resolve())
     source = args.source.resolve(strict=True)
+    checkpoint = None
+    if args.recovery_checkpoint:
+        checkpoint_path = args.recovery_checkpoint.resolve(strict=True)
+        if not checkpoint_path.is_relative_to(ROOT / '.local'):
+            parser.error('恢复诊断只接纳本 worktree 的私有历史草稿')
+        checkpoint = checkpoint_path.read_bytes()
     prompt = args.prompt.read_text()
     run_id = uuid4().hex
     record = ROOT / '.local/script-motif-experiments' / run_id
@@ -67,6 +78,9 @@ def main():
         'budget_policy': 'uncapped_user_authorized' if args.budget_usd == 0 else 'bounded',
         'request_limit': None, 'max_output_tokens': args.max_output_tokens,
         'reasoning_effort': 'off', 'platform': sys.platform,
+        'evaluation_scope': 'historical_local_recovery' if checkpoint else 'full_task',
+        'checkpoint_sha256': hashlib.sha256(checkpoint).hexdigest() if checkpoint else None,
+        'max_seconds': args.max_seconds,
     }
     (record / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
     files = subprocess.check_output(['git', 'ls-files', '-co', '--exclude-standard'], cwd=ROOT, text=True).splitlines()
@@ -102,12 +116,41 @@ def main():
             draft = web.api(opener, base, {'action': 'upload', 'task_id': draft['task_id'],
                 'name': source.name, 'data': base64.b64encode(source.read_bytes()).decode()})
             (record / 'task-id.txt').write_text(draft['task_id'])
+            if checkpoint:
+                effective = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())
+                workspace = Path(effective['workspace']).resolve(strict=True)
+                if not workspace.is_relative_to(output.resolve()):
+                    raise ValueError('recovery_workspace_outside_owned_run')
+                restored = json.loads(checkpoint)
+                current_sources = json.loads((workspace / 'approved-inputs.json').read_text())['files']
+                if restored['source_versions'] != current_sources:
+                    raise ValueError('recovery_source_version_mismatch')
+                restored['task_id'] = draft['task_id']
+                target = workspace / 'outputs' / 'paper-audits' / draft['task_id']
+                target.mkdir(parents=True, exist_ok=False, mode=0o700)
+                restored_raw = (json.dumps(restored, ensure_ascii=False, indent=2) + '\n').encode()
+                (target / 'draft.json').write_bytes(restored_raw)
+                (target / 'draft.json').chmod(0o600)
+                hint = {'evaluation_scope': 'historical_local_recovery_not_full_task',
+                        'draft_sha256': hashlib.sha256(restored_raw).hexdigest(),
+                        'reference_count': len(restored['report']['references']),
+                        'source_count': len(restored['report']['sources']),
+                        'original_checkpoint_sha256': hashlib.sha256(checkpoint).hexdigest(),
+                        'source_versions': current_sources}
+                (workspace / 'code').mkdir(exist_ok=True, mode=0o700)
+                (workspace / 'code' / 'recovery-state.json').write_text(json.dumps(hint, ensure_ascii=False))
+                (workspace / 'code' / 'recovery-state.json').chmod(0o600)
             web.submit(opener, base, draft)
+            submitted = time.monotonic()
+            cancelled = False
             while True:
                 result = web.api(opener, base, task_id=draft['task_id'])
                 (record / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2))
                 if result['status'] in ('completed', 'failed', 'cancelled', 'budget_exhausted') and not result.get('stats', {}).get('active'):
                     break
+                if args.max_seconds and not cancelled and time.monotonic() - submitted > args.max_seconds:
+                    web.api(opener, base, {'action': 'cancel', 'task_id': draft['task_id']})
+                    cancelled = True
                 time.sleep(3)
             task = output / 'tasks' / draft['task_id']
             if args.learning_store and result['status'] == 'completed':
