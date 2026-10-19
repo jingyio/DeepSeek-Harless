@@ -1774,17 +1774,27 @@ test('cancellation during native admission reclaims late inbox and rotates witho
 });
 
 // Deterministic routing diagnostics only: no provider calls or document making.
-async function settleAttachmentTurn(f, sessionId, id, onRunning=async()=>{}) {
- for(let i=0;i<250;i++){
-  for(const task of (await f.api()).value.tasks)if(task.status==='running'&&f.promptCalls.some(c=>c.requestId===task.request_id)){
+async function settleAttachmentTurn(f, sessionId, id, onRunning=async()=>{}, {timeoutMs}={}) {
+ const deadline=timeoutMs===undefined?undefined:performance.now()+timeoutMs;
+ let lastComparison,lastTasks=[];
+ for(let i=0;deadline===undefined?i<250:performance.now()<deadline;i++){
+  lastTasks=(await f.api()).value.tasks;
+  for(const task of lastTasks)if(task.status==='running'&&f.promptCalls.some(c=>c.requestId===task.request_id)){
    await onRunning(task);await f.complete(task);
   }
   const req=new Request('http://local/api/harless/comparisons?session_id='+sessionId+'&id='+id);req.authorized=true;
   const value=await(await f.routes.get('/api/harless/comparisons').fetch(req)).json();
+  lastComparison=value;
   if(['completed','failed','cancelled'].includes(value.status))return value;
   await new Promise(r=>setTimeout(r,10));
  }
- throw Error('attachment fixture did not settle');
+ const lanes=Object.fromEntries(Object.entries(lastComparison?.lanes??{}).map(([name,lane])=>[name,{
+  session_id:lane.session_id,task_id:lane.task_id,status:lane.status,failure:lane.failure,progress:lane.progress,
+ }]));
+ const tasks=lastTasks.filter(task=>Object.values(lanes).some(lane=>lane.session_id===task.session_id)).map(task=>({
+  task_id:task.task_id,status:task.status,failure:task.failure,progress:task.progress,
+ }));
+ throw Error('attachment fixture did not settle: '+JSON.stringify({comparison_id:id,status:lastComparison?.status,lanes,tasks}));
 }
 const attachmentScenes=()=>[{...multiScenes[0],id:'new-scene',adapter:'workspace',mcp_rows:[]},
  {...multiScenes[0],id:'ppt',preset:'sss-ppt',adapter:'ppt',mcp_rows:[]},
@@ -1896,7 +1906,9 @@ test('real attachment normalization counts repeated native images by their durab
   }
   const second=await f.ctx.sessionController.prompt({sessionId,requestId:'real-images-repeat',mode:'queue',content:[
    {type:'text',text:'/paper Reuse the same eight pictures'},...images]},new AbortController().signal);
-  const paired=await settleAttachmentTurn(f,sessionId,second.comparison_id);assert.equal(paired.status,'completed',JSON.stringify(paired));
+  // Eight native images exercise sixteen real store admissions across the two
+  // lanes. This checks eventual identity/pixel preservation, not UI latency.
+  const paired=await settleAttachmentTurn(f,sessionId,second.comparison_id,undefined,{timeoutMs:30000});assert.equal(paired.status,'completed',JSON.stringify(paired));
   for(const lane of Object.values(paired.lanes)){
    const task=(await f.api()).value.tasks.find(row=>row.task_id===lane.task_id),call=f.promptCalls.find(row=>row.requestId===task.request_id);
    assert.deepEqual(call.content.filter(part=>part.type==='image'),images,'normalization metadata cannot rewrite the human delivery');
@@ -1904,7 +1916,7 @@ test('real attachment normalization counts repeated native images by their durab
    assert.equal(context.data.content.some(part=>part.type==='image'),false,'the same pixels cannot be duplicated as historical context');
   }
   const third=await f.ctx.sessionController.prompt({sessionId,requestId:'real-images-hello',mode:'queue',content:[{type:'text',text:'你好'}]},new AbortController().signal);
-  const chat=await settleAttachmentTurn(f,sessionId,third.comparison_id);assert.equal(chat.status,'completed');
+  const chat=await settleAttachmentTurn(f,sessionId,third.comparison_id,undefined,{timeoutMs:30000});assert.equal(chat.status,'completed');
   const context=f.agents.get(chat.lanes.baseline.session_id).events.find(event=>event.data?.source?.plugin===ATTACHMENT_CONTEXT_PLUGIN);
   assert.deepEqual(context.data.content.filter(part=>part.type==='image').map(part=>part.attachment.attachmentId),refs.map(ref=>ref.attachmentId));
  }finally{await f.close();}
