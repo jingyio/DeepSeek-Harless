@@ -1376,7 +1376,7 @@ export function apply(ctx: any) {
         throw new TaskError('confirmation_changed', '附件内容已改变，请重新发送。', 409);
       configureMotif(task);
       const contextMessage = attachmentContextMessage(task, attachmentContext, task.inherited_context, task.inherited_evidence,priorImages,fileImages);
-      if (contextMessage) agents.get(task.request.session_id).session.append('user/message', contextMessage);
+      if (contextMessage) agents.get(task.request.session_id).session.append('user/message', contextMessage, {surfaceOp:'append'});
       await original.prompt({ requestId: task.request.request_id, sessionId: task.request.session_id,
         mode: 'queue', content: task.delivery }, inputSignal);
       if(task.status!=='completed')inputSignal.throwIfAborted();
@@ -1543,7 +1543,7 @@ export function apply(ctx: any) {
         await controller.rename({ sessionId: created.sessionId, title: lane === 'baseline' ? 'Baseline' : 'Motif' });
         return created.sessionId;
       },
-      async prepare(turn, lane, requestId) { return serialize(async () => {
+      async prepare(turn, lane, requestId,taskReady) { return serialize(async () => {
         requireIdle(turn.id, findModel(turn.model).provider); const child = turn.lanes[lane].session_id;
         if (turn.cancellation_requested) throw new TaskError('comparison_cancelled', '任务已取消。', 409);
         await ensureOwned(turn.session_id); await ensureOwned(child);
@@ -1674,6 +1674,7 @@ export function apply(ctx: any) {
         if (lane === 'motif' && reason && mode==='baseline') task.fallback_reason = reason;
         taskParents.set(task.request.task_id, { turn, lane });
         try {
+          taskReady?.(task.request.task_id);
           if (turn.cancellation_requested) { finish(task, 'cancelled', 'user_cancelled'); await task.closing; return {task_id:task.request.task_id}; }
           await submit(task, task.confirmation_digest, new AbortController().signal, turn.id);
         }

@@ -56,7 +56,7 @@ export class ComparisonError extends Error {
 export type ComparisonHost = {
   owns(id: string): Promise<void>;
   createLane(parent: string, scene: string, lane: LaneName): Promise<string>;
-  prepare(turn: any, lane: LaneName, requestId: string): Promise<{ task_id: string }>;
+  prepare(turn: any, lane: LaneName, requestId: string, taskReady?: (taskId:string)=>void): Promise<{ task_id: string }>;
   cancelPreparing?(turn: any): Promise<void>;
   submit(taskId: string): Promise<void>;
   inspect(taskId: string, context?: { turn: any; lane: LaneName; recoverMissing?: boolean }): Promise<any>;
@@ -180,19 +180,22 @@ export function createComparisonService(output: string, principal: string, host:
       const runLane = async (name: LaneName) => {
         const lane = t.lanes[name];
         let unsubscribe: (()=>void)|undefined;
+        let preparing=!lane.task_id;
         if (disposed || terminal.has(lane.status)) return;
         try {
           while (host.ready?.(t, name) === false && !disposed && !terminal.has(lane.status)) await new Promise(resolve => setTimeout(resolve, pollMs));
           if (disposed || terminal.has(lane.status)) return;
-          if (!lane.task_id) await prepare(t, name);
-          if (disposed || terminal.has(lane.status)) return;
-          unsubscribe=host.subscribe?.(lane.task_id!,task=>{
+          const subscribe=(taskId:string)=>{if(unsubscribe)return;unsubscribe=host.subscribe?.(taskId,task=>{
             // Native chunk notifications carry the full current task view. A
             // terminal update is reconciled below with verified deliveries.
             if(disposed||terminal.has(task.status)||terminal.has(lane.status))return;
             applyTask(t,name,task);
             for(const subscriber of subscribers.get(t.id)??[])try{subscriber(view(t));}catch{}
-          });
+          });};
+          if (!lane.task_id) await prepare(t, name,subscribe);
+          preparing=false;
+          if (disposed || terminal.has(lane.status)) return;
+          subscribe(lane.task_id!);
           await host.submit(lane.task_id);
           do {
             await refresh(t, name);
@@ -205,7 +208,6 @@ export function createComparisonService(output: string, principal: string, host:
           appendFileSync(join(output, 'comparison-errors.jsonl'), JSON.stringify({
             id: t.id, lane: name, code: error?.code ?? error?.name ?? 'unknown',
             message: String(error?.message ?? error).slice(0, 1024) }) + '\n', { mode: 0o600 });
-          const preparing = !lane.task_id;
           Object.assign(lane, { status: t.cancellation_requested || disposed ? 'cancelled' : 'failed', failure_stage: preparing ? 'preparation' : 'execution',
             failure: preparing ? admissionFailure(error) ?? '任务未能启动，请稍后重试；如果仍有问题，请反馈给管理员。'
               : '这一路未完成，请重试；已生成的结果会保留。' });
@@ -228,14 +230,21 @@ export function createComparisonService(output: string, principal: string, host:
     // Persisted results remain readable even when a transient UI event fails.
     try { await host.publish(t.session_id, view(t)); } catch { /* GET recovers the saved state. */ }
   }
-  async function prepare(t: Turn, name: LaneName) {
+  async function prepare(t: Turn, name: LaneName, taskReady?:(taskId:string)=>void) {
     const lane = t.lanes[name];
     const req = 'compare-' + hash([t.id, name, lane.attempt]).slice(0, 48);
-    const result = await host.prepare(t, name, req);
-    lane.task_id = result.task_id;
+    const bind=(taskId:string)=>{
+      if(lane.task_id){if(lane.task_id!==taskId)throw Error('comparison_prepared_task_changed');return;}
+      lane.task_id=taskId;
+      taskReady?.(taskId);
+      save();
+      for(const subscriber of subscribers.get(t.id)??[])try{subscriber(view(t));}catch{}
+    };
+    const result = await host.prepare(t, name, req,bind);
+    bind(result.task_id);
     if (t.cancellation_requested || disposed) {
       lane.status = 'cancelled'; await host.cancel(result.task_id);
-    } else Object.assign(lane, { status: 'queued', failure: undefined, failure_stage: undefined });
+    } else Object.assign(lane, { status: lane.status==='preparing'?'queued':lane.status, failure: undefined, failure_stage: undefined });
   }
   return {
     hasSession: (id: string) => Boolean(state.threads[id]),
