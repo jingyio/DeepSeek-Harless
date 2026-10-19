@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "groups": {
+    "workflow14": {
+      "execution_version_sha256": "85390f919b625f94968b98e042f90f6983c14b11efbfcfd7a33af24926421832",
+      "dependencies": {
+        "scenarios/file-management/common.py": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+        "scenarios/file-management/file_tools.py": "c993ae7014bf538ff0a4cc0b0b832f6e44cb74132b385e1cd4600cc894cc94b9",
+        "scenarios/file-management/collection_tools.py": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+        "scenarios/file-management/report_tools.py": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+        "scenarios/file-management/workflow_contract.py": "7c6cd5aafa4dcf53674a5d84334c424e9d06b963a8a12358eb2969543fd5e5d8",
+        "scenarios/file-management/workflow_tools.py": "020f6bfd0aa274bd3f11be5d2a593a1ad60196ca7596d2f71b45b5be9a17421d"
+      }
+    },
+    "recovery15": {
+      "execution_version_sha256": "c1b878a136634d34d8bf374a4818a62ac7c4feb419c9f066ee1d4ca11dce5406",
+      "plan_component_version_sha256": "ae4973ce68ddc2f9a4aa7152e4b3c12c42477f19960b0a1458a37ef5f8f4d51f",
+      "dependencies": {
+        "scenarios/file-management/common.py": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+        "scenarios/file-management/file_tools.py": "c993ae7014bf538ff0a4cc0b0b832f6e44cb74132b385e1cd4600cc894cc94b9",
+        "scenarios/file-management/collection_tools.py": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+        "scenarios/file-management/report_tools.py": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+        "scenarios/file-management/workflow_contract.py": "7c6cd5aafa4dcf53674a5d84334c424e9d06b963a8a12358eb2969543fd5e5d8",
+        "scenarios/file-management/workflow_tools.py": "020f6bfd0aa274bd3f11be5d2a593a1ad60196ca7596d2f71b45b5be9a17421d",
+        "scenarios/file-management/task_tools.py": "cdb56708f90be0e35d460dc02d38800a70ac3941547165985393e8b53290e266",
+        "scenarios/file-management/task_contract.py": "9adcb4140d3410cc427d49b1b00b165c368ab90aca5f6649aed0de0d5552f450",
+        "scenarios/file-management/plan_tools.py": "38d0fce5fe9d6763b9cd243ee0f05a965bb92ac5fb0cf7e34ff5b7aeb30c79ce",
+        "scenarios/file-management/recovery_tools.py": "6b02c145d7a6f31776bddc597cb58a1d28e48f982475dd558da5108715ff1c24",
+        "src/adapters/file_workflow_job.ts": "af033605856e07e2face32c8ed6e4156aaee81a6bf29aa16a467ef3bed129480",
+        "src/adapters/file_job_budget.py": "c29050bd7669886335fdcd0c0fb1fd505d018e31a748aaa51880e6bb8880d2a0",
+        "src/adapters/dsh_acceptance_guard.ts": "77eff861b9158f032e2a96fb9342c2acbbd1eeff598fab4edcdc15d8520446bf"
+      }
+    }
+  },
+  "candidate_lock_sha256": "98e9b93b250f8393cf7f5b03cf4486740bd503d9dc8bbedf3ecea0213c911b74",
+  "certification_source_sha256": "8c40579b272deaa2b1b8d2391fa93c79e638c42345c77704e7ab4b1c708ff7e0",
+  "artifacts": [
+    {
+      "kind": "read_edge",
+      "group": "workflow14",
+      "artifacts": 1,
+      "path": "workflow14/online-manifest.json",
+      "sha256": "314939a4d11ae4dd31536f575eda42ad971415c8a7de10dd49ddef1ec63eeab4"
+    },
+    {
+      "kind": "collection",
+      "group": "workflow14",
+      "artifacts": 1,
+      "path": "workflow14/collection-policy.json",
+      "policy_digest": "308224035534ad98ccf8f218cc9dbcc7d8eb93b75ce98d893724c3e4e7670c9a",
+      "sha256": "26edb011f176bf519edbece0571de5d05a1000675a34d98a9804ce6660f2ead0"
+    },
+    {
+      "kind": "plan",
+      "group": "recovery15",
+      "artifacts": 1,
+      "path": "recovery15/plan-policy.json",
+      "policy_digest": "3da073777a73fdb32149426fd36e467c72088e6fb3a0713990cff022e4f66304",
+      "sha256": "a27ffa78d2603dd36d1e7991f41ca314eb24c481449b48e1802a86e1dc80ff7c"
+    }
+  ],
+  "activation": "offline fixed-source certification only; default SDK/Web unchanged; durable plan CLI still disabled",
+  "recovery_branch_certified": false,
+  "holdout_runs": 0
+}

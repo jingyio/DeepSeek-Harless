@@ -21,7 +21,8 @@
     "web:controls:check": "node scripts/project.mjs python scripts/check-harless-controls.py",
     "build:continuation": "node scripts/build-continuation-policy.mjs",
     "web:literature": "node scripts/project.mjs python scenarios/literature-notes/run-web.py",
-    "code:check": "node scripts/project.mjs python scripts/check-code-mode.py"
+    "code:check": "node scripts/project.mjs python scripts/check-code-mode.py",
+    "management": "node scripts/project.mjs python scripts/management.py"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.5-rc.3",

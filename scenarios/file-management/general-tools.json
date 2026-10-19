@@ -1,0 +1,9 @@
+{
+  "format": "sss-general-tools-v1",
+  "providers": [
+    {"id":"workspace-runtime","description":"受控文本编辑、隔离代码执行和图像检查；产物写入独立任务输出目录。","transport":"stdio","command":"${PYTHON}","args":["${PROJECT_ROOT}/scenarios/general/runtime.py","${SESSION_WORKSPACE}"],"policy":"provider_guarded","cost":"local_no_model"},
+    {"id":"paper-checks","description":"已有论文阅读、LaTeX来源与引用诊断工具；只使用当前任务输入。","transport":"stdio","command":"${PYTHON}","args":["${PROJECT_ROOT}/scenarios/paper_proofreading/server.py","${SESSION_WORKSPACE}/inputs"],"policy":"read_only","cost":"local_no_model"},
+    {"id":"data-report","description":"已有数据分析、图表和报告流程；根据实际输入返回缺失项，不编造数据。","transport":"stdio","command":"${PYTHON}","args":["${PROJECT_ROOT}/scenarios/data_analysis/report_session.py"],"env":{"HARLESS_REPORT_WORKSPACE":"${SESSION_WORKSPACE}"},"policy":"provider_guarded","cost":"local_no_model"},
+    {"id":"presentations","description":"已有 PPT 制作、阅读与交付流程，沿用原生任务输入和输出权限。","transport":"stdio","command":"node","args":["${PROJECT_ROOT}/scenarios/research_ppt/dist/mcp-adapter.js","--web-session"],"env":{"SSS_PPT_JOB":"${SESSION_WORKSPACE}/job.json","SSS_PPT_DELIVERY_PYTHON":"${PYTHON}"},"policy":"provider_guarded","cost":"local_no_model","timeout_seconds":180}
+  ]
+}

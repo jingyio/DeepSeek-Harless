@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sss-mcp-learning-v1",
+  "title": "MCP Tool _meta.sss_learning",
+  "type": "object",
+  "required": ["format", "effect", "auto_continue", "exports"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "sss-mcp-learning-v1"},
+    "effect": {"enum": ["read", "stage", "authorized_write", "semantic"]},
+    "auto_continue": {"type": "boolean"},
+    "exports": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^\\w+(\\.\\w+)*$"}},
+    "statuses": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "scope_requirements": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean", "null"]}},
+    "safe_interleaving": {"type": "boolean"}
+  },
+  "allOf": [{
+    "if": {"properties": {"safe_interleaving": {"const": true}}, "required": ["safe_interleaving"]},
+    "then": {"properties": {"effect": {"const": "read"}, "exports": {"maxItems": 0}}}
+  }]
+}

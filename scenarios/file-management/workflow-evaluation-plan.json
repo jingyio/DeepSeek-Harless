@@ -1,0 +1,673 @@
+{
+  "schema_version": 1,
+  "artifact_type": "workflow_evaluation_design",
+  "revision": "20261014-r7-script-reuse",
+  "planning_only": true,
+  "execution_enabled": false,
+  "baseline_commit": "dfe4fcc31b15ea4f7a44d1819241b7622b94aeb8",
+  "catalog": "workflow-catalog.json",
+  "batch_ids": [
+    "FM01",
+    "FM05",
+    "FM13",
+    "FM17",
+    "FM21",
+    "FM38"
+  ],
+  "status": "HSM_first_screen_and_bounded_script_reuse_followup_completed",
+  "new_model_requests": 1287,
+  "new_estimated_cost_usd": 0.86427806,
+  "scope": {
+    "workspace": "testpdf/file-management-experiment copies only",
+    "provider": "existing DeepSeek configuration",
+    "series_total_cap_usd": 1000,
+    "push_enabled": false
+  },
+  "runtime_compatibility": {
+    "existing_task_kinds": [
+      "rename",
+      "convert",
+      "content_classify"
+    ],
+    "candidate_report_scene_tool_count": 14,
+    "separate_plan_scene_tool_count": 13,
+    "no_new_task_kind_implemented": true,
+    "new_workflow_verifier_implemented": true,
+    "current_archive_input_limit": 30,
+    "current_action_limit": 40,
+    "current_selection_limit": 32,
+    "current_batch_size": 8,
+    "current_plan_grant_action_limit": 6,
+    "delivered_text_limit_chars": 6000,
+    "pdf_physical_pages_read": 2,
+    "backup_restore_is_new_copy_from_backup": true,
+    "restore_plan_is_not_backup_restore": true,
+    "collection_after_effect_requires_current_snapshot": true,
+    "plan_grant_does_not_cover_generated_backup_sources": true,
+    "bounded_recovery_scene_tool_count": 15
+  },
+  "stages": [
+    {
+      "id": "G0",
+      "name": "设计与覆盖清单",
+      "status": "completed",
+      "requires_paid_calls": false
+    },
+    {
+      "id": "G1",
+      "name": "新题面/固定验收/免费实际MCP探针",
+      "status": "completed_free",
+      "requires_paid_calls": false
+    },
+    {
+      "id": "G2",
+      "name": "任务状态、计划权限与预算恢复整合",
+      "status": "bounded_rename_rollback_completed_free",
+      "requires_paid_calls": false,
+      "required_for": [
+        "FM38"
+      ]
+    },
+    {
+      "id": "G3",
+      "name": "普通Harness探索及轨迹统一汇集",
+      "status": "completed_real_14_attempts_12_machine_passed_2_failed_retained",
+      "requires_paid_calls": true
+    },
+    {
+      "id": "G4",
+      "name": "学习/兼容性检查/独立认证",
+      "status": "bounded_three_artifact_certification_and_opt_in_job_plan_composition_verified",
+      "requires_paid_calls": "only new certification runs"
+    },
+    {
+      "id": "G5",
+      "name": "冻结新留出三组对照及完整成本汇总",
+      "status": "54_new_holdout_runs_completed_H11_S12_M12_of12_positive_all18_version_stops_verified",
+      "requires_paid_calls": true
+    }
+  ],
+  "comparison_design": {
+    "arms": [
+      {
+        "id": "H",
+        "name": "ordinary Harness"
+      },
+      {
+        "id": "S",
+        "name": "ordinary batch script with identical semantic callback when needed"
+      },
+      {
+        "id": "M",
+        "name": "independently certified Motif or explicit ordinary-Harness fallback"
+      }
+    ],
+    "condition_families": [
+      "normal",
+      "edge_or_fault",
+      "state_or_version_change"
+    ],
+    "planned_condition_groups": 18,
+    "planned_arm_attempts": 54,
+    "repetitions_per_condition_arm": 1,
+    "sizing_is_proposal_not_run_schedule": true,
+    "fm38_negative_subprobes_extra_to_arm_attempts": true,
+    "unsupported_motif_coverage_must_be_marked_as_fallback": true,
+    "same_tool_capabilities_permissions_inputs_model_mode_budget_and_acceptance": true,
+    "fresh_workspace_for_each_arm": true,
+    "split_freeze_before_model_calls": true,
+    "runtime_and_holdout_nodes_excluded_from_learning": true,
+    "per_attempt_limits_proposed": {
+      "budget_usd": 5,
+      "max_steps": 96,
+      "max_output_tokens": 4000,
+      "max_acceptance_repairs": 2
+    },
+    "holdout_envelope_usd_proposed": 270,
+    "learning_certification_failure_repair_cost_also_counted_in_series": true,
+    "next_execution_starts_with_free_gates_only": true,
+    "negative_probe_pass_is_not_task_acceptance_success": true,
+    "task_acceptance_and_guard_probe_verdicts_reported_separately": true
+  },
+  "evidence_to_retain": [
+    "frozen source, schema, task, input and split hashes",
+    "ordinary raw trajectories and parameter provenance",
+    "preview, grant, plan and authorization versions",
+    "actual tool results, receipts, journals, before/after bytes",
+    "per-round acceptance and failed/partial/cancelled outcomes",
+    "HTTP request/token/cache/estimated fee ledger and repair counts",
+    "library digest and certification scope",
+    "semantic delivery review with unresolved gaps"
+  ],
+  "tasks": [
+    {
+      "workflow_id": "FM01",
+      "name": "下载目录整理",
+      "readiness": "free_verified_real_model_not_run",
+      "goal": "按显式项目规则分类并统一命名，对无法判定的材料保留原位并交付待审原因。",
+      "fixture_outline": {
+        "sources": [
+          "inbox/ 中五类文件、两个同名不同内容项、空文本和损坏文本容器",
+          "rules/project-routes.txt 显式项目规则",
+          "outside-scope/sentinel.txt 无关哨兵"
+        ],
+        "destination_prefixes": [
+          "organized/project-a/",
+          "organized/project-b/"
+        ],
+        "held_out_variation": "使用新项目词、路径、文件顺序和不同字节，不重复旧24条件"
+      },
+      "reading_scope": "读取给定规则及可判定的正文；图片只元数据，未读内容、空白、损坏或多义材料不得按内容强行分类。",
+      "allowed_effects": [
+        "move"
+      ],
+      "forbidden_effects": [
+        "overwrite",
+        "delete",
+        "conversion",
+        "write outside destination prefixes"
+      ],
+      "decision_boundary": "Model选择待读集合与去向；命名规则固定、冲突表和版本验证由程序检查。",
+      "acceptance_checks": [
+        "每个源文件恰好属于一个已处理项或原位待审项",
+        "目标命名表唯一且符合事先冻结规则",
+        "移动后字节与原件SHA一致，原路径只在移动成功后消失",
+        "规则文件、哨兵及未选文件不变",
+        "报告及派生去向清单与实际结果一致，图片/OCR和读取截断缺口明确"
+      ],
+      "conditions": [
+        {
+          "id": "FM01-N",
+          "kind": "normal",
+          "case": "给定规则可判定的两项目材料，跨五类文件；元数据图片按规则待审",
+          "expected_outcome": "confirmed files moved; pending files preserved"
+        },
+        {
+          "id": "FM01-E",
+          "kind": "edge",
+          "case": "同名不同内容、空白、损坏docx及两规则均命中",
+          "expected_outcome": "unique destinations; ambiguous/empty/unreadable preserved"
+        },
+        {
+          "id": "FM01-V",
+          "kind": "state_change",
+          "case": "预览后外部修改一个源件或先占用目标",
+          "expected_outcome": "stale plan rejected without unauthorized effects"
+        }
+      ],
+      "motif_hypotheses": [
+        "选定集合后的批量pin/read/collect",
+        "模型完成去向判断后的参数绑定；效果链另行认证"
+      ],
+      "script_control": "相同工具和模型语义回调，程序做批量读取、全局目标表和收据核验；不得给脚本预知分类答案。",
+      "required_new_work": [
+        "新题面与路径/字节/待审状态验收器",
+        "任务允许的源件/目标前缀检查；不能复用rename kind冒充分类加命名"
+      ]
+    },
+    {
+      "workflow_id": "FM05",
+      "name": "目录合并",
+      "readiness": "free_verified_real_model_not_run",
+      "goal": "将同一副本内两个目录合并到新的输出目录；相同字节的重复项共享一个输出，内容不同的同名项全部保留。",
+      "fixture_outline": {
+        "sources": [
+          "source-a/ 与 source-b/ 五类文件",
+          "至少一个同路径同字节和一个同路径不同字节冲突",
+          "outside-scope/sentinel.txt"
+        ],
+        "destination_prefixes": [
+          "merged/"
+        ],
+        "held_out_variation": "新相对路径、冲突位置与重复字节集合"
+      },
+      "reading_scope": "摘要与相对路径足以判定精确重复；仅在题面需要语义命名时读取内容，不增加无关必读要求。",
+      "allowed_effects": [
+        "copy"
+      ],
+      "forbidden_effects": [
+        "move",
+        "overwrite",
+        "delete",
+        "empty-directory migration",
+        "metadata restoration"
+      ],
+      "decision_boundary": "重复由实际SHA核验；不同字节同名项的目标名由显式命名规则或Model决定并经全局唯一表验证。",
+      "acceptance_checks": [
+        "两个源目录路径与字节完全不变",
+        "每个来源映射到内容一致的实际输出；完全重复项共用输出时清单保留全部来源",
+        "同名不同字节均有唯一目标，不覆盖",
+        "无多余或范围外输出；哨兵不变",
+        "本轮只管理普通文件，空目录/属性/链接范围不冒称完整迁移"
+      ],
+      "conditions": [
+        {
+          "id": "FM05-N",
+          "kind": "normal",
+          "case": "有普通文件及跨目录精确重复",
+          "expected_outcome": "one output per approved byte-equivalence group"
+        },
+        {
+          "id": "FM05-E",
+          "kind": "edge",
+          "case": "同名不同内容、不同名同内容及目标命名碰撞",
+          "expected_outcome": "all distinct content retained with unambiguous mapping"
+        },
+        {
+          "id": "FM05-V",
+          "kind": "state_change",
+          "case": "哈希后源文件改动，或目标预先存在",
+          "expected_outcome": "version/collision rejection; originals retained"
+        }
+      ],
+      "motif_hypotheses": [
+        "实际冲突集合的摘要/读取工作集",
+        "确定目标后的复制参数依赖；需新效果证据"
+      ],
+      "script_control": "固定冲突规则时允许纯脚本0模型；若需要语义目标名，三组共享同一语义回调和候选信息。",
+      "required_new_work": [
+        "重复等价组、来源映射、无覆盖和源件不变的验收器",
+        "新场景题面；不新增通用文件操作工具"
+      ]
+    },
+    {
+      "workflow_id": "FM13",
+      "name": "多版本比较",
+      "readiness": "free_verified_real_model_not_run",
+      "goal": "比较受限文本版本，按实际发布说明确认选用版本；证据不足待审，复制确认版本并保留历史。",
+      "fixture_outline": {
+        "sources": [
+          "versions/ 下不同命名的txt/md/docx版本",
+          "context/release-note.txt 含实际发布版本及理由",
+          "带final字样但未发布的干扰版本",
+          "outside-scope/sentinel.txt"
+        ],
+        "destination_prefixes": [
+          "selected/"
+        ],
+        "held_out_variation": "发布说明引用新的版本名/摘要，打乱词面final和版本号关系"
+      },
+      "reading_scope": "先读真实发布说明，再由Model选择相关版本集合；只能就已交付正文范围比较，不使用文件时间、未读附件或Office修订历史。",
+      "allowed_effects": [
+        "copy"
+      ],
+      "forbidden_effects": [
+        "overwrite history",
+        "delete historical versions",
+        "infer latest from filename alone"
+      ],
+      "decision_boundary": "Model解释版本关系和发布证据，程序验证引用的路径/摘要和选用字节；歧义不强行选最新。",
+      "acceptance_checks": [
+        "实际发布说明及比较所需版本已读，证据来自当前绑定句柄",
+        "报告区分已确认、未发布和待审",
+        "已确认版本复制到唯一新目标且SHA一致",
+        "所有历史版本、发布说明和哨兵不变",
+        "不要求截断范围之外的差异完整性，不把final名称当发布依据"
+      ],
+      "conditions": [
+        {
+          "id": "FM13-N",
+          "kind": "normal",
+          "case": "发布说明明确确认一个版本；Model读说明后再选版本",
+          "expected_outcome": "confirmed version copied with cited basis"
+        },
+        {
+          "id": "FM13-E",
+          "kind": "edge",
+          "case": "两个final、发布说明矛盾或被截断后缺少完整比较依据",
+          "expected_outcome": "ambiguous set preserved and reported; no unjustified copy"
+        },
+        {
+          "id": "FM13-V",
+          "kind": "state_change",
+          "case": "读后版本字节或发布说明变化",
+          "expected_outcome": "old source/plan rejected; freeze a new attempt for changed input"
+        }
+      ],
+      "motif_hypotheses": [
+        "真实发布说明后再次选择集合",
+        "每阶段pin/read/完整gather；未证明任意多阶段语义图"
+      ],
+      "script_control": "脚本批量读/汇总，版本判断仍用同模型回调；明确机器可判规则另计0模型子条件。",
+      "required_new_work": [
+        "发布依据、选择状态、历史保留与当前字节验收器",
+        "设计真实followup数据；当前notice扩展名阶段不能直接表达任意发布版本关系"
+      ]
+    },
+    {
+      "workflow_id": "FM17",
+      "name": "备份与恢复演练",
+      "readiness": "free_verified_real_model_not_run",
+      "goal": "给定普通文件范围，复制为字节备份，再从备份复制到独立空恢复目录验证；不改原件。",
+      "fixture_outline": {
+        "sources": [
+          "source/ 下五类普通文件，包括空文件及同名不同目录项",
+          "outside-scope/sentinel.txt"
+        ],
+        "destination_prefixes": [
+          "backup-set/",
+          "recovery-drill/"
+        ],
+        "held_out_variation": "新文件摘要、相对路径、大小和空文件位置"
+      },
+      "reading_scope": "固定备份范围使用路径、大小和实际SHA，无需正文读取；不虚构语义判定。",
+      "allowed_effects": [
+        "copy"
+      ],
+      "forbidden_effects": [
+        "replace original files",
+        "extract arbitrary backup archives",
+        "restore metadata",
+        "delete old backups"
+      ],
+      "decision_boundary": "首轮给定明确范围，脚本可以0模型；备份生成后应重新盘点和绑定当前备份身份再发起恢复复制。",
+      "acceptance_checks": [
+        "原件和哨兵不变",
+        "每个来源在备份和恢复目录各有对应普通文件，路径映射与SHA一致",
+        "恢复复制来自实际备份的当前身份，不是再次复制原件冒充恢复",
+        "空文件完整保留，成员没有遗漏或额外项",
+        "备份损坏/目标存在时停止并报告，不显示演练成功",
+        "不使用restore_plan冒充从备份读取；restore_plan只撤销自身操作日志"
+      ],
+      "conditions": [
+        {
+          "id": "FM17-N",
+          "kind": "normal",
+          "case": "固定范围全量字节备份后从真实备份恢复",
+          "expected_outcome": "source/backup/recovery hashes agree"
+        },
+        {
+          "id": "FM17-E",
+          "kind": "edge",
+          "case": "空文件、同名子目录文件及全空范围",
+          "expected_outcome": "exact coverage; empty scope completed without effects"
+        },
+        {
+          "id": "FM17-V",
+          "kind": "state_change",
+          "case": "备份完成后人为损坏备份字节或占用恢复目标",
+          "expected_outcome": "corruption/collision detected; no false successful restore"
+        }
+      ],
+      "motif_hypotheses": [
+        "固定清单复制和摘要汇总，先检验普通脚本是否足够",
+        "生成产物后的重新盘点/身份绑定属于新依赖，不能直接套初始输入图"
+      ],
+      "script_control": "首轮确定规则全部可纯脚本执行并计0模型费用；Motif不能强行插入模型以制造对照收益。",
+      "required_new_work": [
+        "两阶段复制来源/映射/字节验收器",
+        "新任务允许备份产物作为第二阶段源件；既有PlanScene grant只绑定原件，暂不用其证书替代本流程"
+      ]
+    },
+    {
+      "workflow_id": "FM21",
+      "name": "资料包交付",
+      "readiness": "free_verified_real_model_not_run",
+      "goal": "按给定交付范围选择材料并生成ZIP，另交付来源清单、产物摘要和缺口；仅本地准备，不外发。",
+      "fixture_outline": {
+        "sources": [
+          "materials/ 下五类文件、内部排除项、同名子目录项及缺失清单项",
+          "rules/delivery-scope.txt 给定材料范围",
+          "outside-scope/sentinel.txt"
+        ],
+        "destination_prefixes": [
+          "delivery/"
+        ],
+        "held_out_variation": "新交付项目词、排除项、真实文件路径和缺失成员"
+      },
+      "reading_scope": "Model依据实际规则和工具交付正文判断范围；图片不能做OCR内容判断，不可读材料保留待审理由。",
+      "allowed_effects": [
+        "archive"
+      ],
+      "forbidden_effects": [
+        "send to others",
+        "content redaction",
+        "overwrite archives",
+        "claim manifest embedded in zip without a tool"
+      ],
+      "decision_boundary": "Model选择交付集合并说明缺口，程序核对真实ZIP条目、字节和选定来源；普通脚本亦共享同一选择回调。",
+      "acceptance_checks": [
+        "ZIP实际成员路径与已确认集合完全一致，不含规则文件、哨兵或排除项",
+        "ZIP每项解压后的字节SHA与来源一致；CRC有效",
+        "真实产物摘要及收据一致；独立清单来自真实成员而非模型想象",
+        "缺失/不可判项列入缺口，不凭包存在就认完成",
+        "原件不变，同名不同子目录路径保留；最多30输入，不静默截断"
+      ],
+      "conditions": [
+        {
+          "id": "FM21-N",
+          "kind": "normal",
+          "case": "明确交付五类材料，ZIP加独立来源清单",
+          "expected_outcome": "exact selected membership and bytes"
+        },
+        {
+          "id": "FM21-E",
+          "kind": "edge",
+          "case": "同名子目录、内部排除项、必需材料缺失或不可读",
+          "expected_outcome": "safe package of confirmed set with explicit missing/pending items"
+        },
+        {
+          "id": "FM21-V",
+          "kind": "state_change",
+          "case": "预览后选中源变更，或已有同名ZIP目标",
+          "expected_outcome": "stale/collision rejection without overwrite"
+        }
+      ],
+      "motif_hypotheses": [
+        "模型选定集合后的读取和归档参数绑定",
+        "效果收据到实际ZIP核验；需重新确定依赖和验收"
+      ],
+      "script_control": "语义选择同模型，归档与实际成员核验使用普通程序；确定路径白名单子条件可0模型。",
+      "required_new_work": [
+        "真实ZIP成员/解压摘要/排除项/缺口验收器",
+        "固定验收程序从真实收据派生独立清单；不扩展submit_report未知字段"
+      ]
+    },
+    {
+      "workflow_id": "FM38",
+      "name": "中断和重启恢复",
+      "readiness": "bounded_rename_rollback_free_verified",
+      "goal": "将TaskScene验收、PlanScene持久化权限和任务账本整合，恢复后在原授权/版本/预算/修复次数内继续或回滚。",
+      "fixture_outline": {
+        "sources": [
+          "source/ 下不超过6个普通文件",
+          "任务、计划、授权、账本和持久化日志保存在.local",
+          "outside-scope/sentinel.txt"
+        ],
+        "destination_prefixes": [
+          "destination/",
+          "quarantine/"
+        ],
+        "held_out_variation": "新路径/摘要、不同动作位置及记录边界注入故障"
+      },
+      "reading_scope": "恢复判断使用固定程序检查的真实任务/日志状态；模型不得读私有账本绕过工具，恢复事实由受限接口交付。",
+      "allowed_effects": [
+        "copy",
+        "move",
+        "quarantine",
+        "undo own authorized plan"
+      ],
+      "forbidden_effects": [
+        "reset budget",
+        "reset repairs",
+        "repeat partial plan blindly",
+        "overwrite external changes",
+        "extend revoked scope",
+        "claim arbitrary power-loss recovery"
+      ],
+      "decision_boundary": "程序判断可恢复的记录状态和授权，Model选择允许的继续/回滚/停止路径；未知状态一律停。",
+      "acceptance_checks": [
+        "重启保持task/input/grant/plan/execution版本绑定；变更的授权或版本无法重用旧token",
+        "记录边界故障后的字节状态能解释；未知外部状态拒绝继续和覆盖",
+        "重复成功执行只返回原收据；部分失败不会盲重放",
+        "跨重启累计费用、已发请求、步骤与修复次数不重置；最多2次普通Harness修复",
+        "取消或权限变化后不发新写效果，已完成效果和待恢复状态如实交付",
+        "模型/工具/日志/验收/费用和恢复证据一致；成功以最终验收而非状态文字判断"
+      ],
+      "conditions": [
+        {
+          "id": "FM38-N",
+          "kind": "normal",
+          "case": "成功计划后重启并重复请求，确认不再执行写操作",
+          "expected_outcome": "original receipt returned; no duplicate effects or cost reset"
+        },
+        {
+          "id": "FM38-E",
+          "kind": "fault",
+          "case": "第一项完成后的记录边界停止进程，重启后按许可回滚/恢复",
+          "expected_outcome": "recorded partial state safely recovered within original limits"
+        },
+        {
+          "id": "FM38-V",
+          "kind": "state_change",
+          "case": "记录边界后外部文件字节变化，重启发现不属于已记录状态",
+          "expected_outcome": "bounded stop; no reset, escalation or external overwrite"
+        }
+      ],
+      "motif_hypotheses": [
+        "依实际journal状态交接的失败分支",
+        "新恢复见证与守卫认证；旧计划链不代表已认证组合图"
+      ],
+      "script_control": "相同持久化API、故障点和权限；脚本按明确状态机执行，模糊业务取舍才调用同模型。",
+      "required_new_work": [
+        "任务级账本/步骤/修复次数持久化",
+        "TaskScene、PlanScene、验收修复与取消状态整合",
+        "版本化接口、免费真实MCP重启验证、组合图独立认证"
+      ],
+      "extra_free_guard_probes": [
+        "重启后预算耗尽",
+        "重启后修复次数耗尽",
+        "任务取消",
+        "grant撤销或范围变化",
+        "任务输入版本变化",
+        "执行版本变化",
+        "未记录的外部文件变化"
+      ]
+    }
+  ],
+  "free_preparation": {
+    "experiment_id": "fm-workflow-free-20261013-de2f6604",
+    "template_roles": {
+      "probe": 18,
+      "explore": 12,
+      "certify": 6,
+      "holdout": 18
+    },
+    "mcp_checks_passed": 33,
+    "harness_mock_requests": 9,
+    "model_requests_real": 0,
+    "estimated_real_cost_usd": 0,
+    "paid_stages_started": false,
+    "record": "../../docs/experiments/file-management-workflow-free-20261013.md"
+  },
+  "exploration_result": {
+    "runs": 14,
+    "passed": 12,
+    "failed_retained": 2,
+    "accepted_conditions": 12,
+    "observed_graphs": 14,
+    "observed_tool_nodes": 343,
+    "certification_runs": 0,
+    "holdout_runs": 0,
+    "human_semantic_review": false,
+    "record": "docs/experiments/file-management-workflow-exploration-20261014.md"
+  },
+  "learning_result": {
+    "new_model_tasks": 10,
+    "passed": 10,
+    "requests": 135,
+    "estimated_usd": 0.071586688,
+    "certified_artifacts": 3,
+    "service_groups": 2,
+    "actual_free_mcp_ts_checks": 8,
+    "retained_free_helper_failures": 1,
+    "holdout_runs": 0,
+    "online_durable_plan_enabled": false,
+    "autonomous_restore_certified": false,
+    "human_semantic_review": false,
+    "record": "docs/experiments/file-management-workflow-learning-20261014.md"
+  },
+  "online_composition_result": {
+    "record": "docs/experiments/file-management-workflow-online-20261014.md",
+    "unique_control_conditions": 9,
+    "final_source_regressions": 1,
+    "real_runs": 10,
+    "conditions_passed": 10,
+    "delivery_passed": 7,
+    "failed_stops_retained": 3,
+    "requests": 71,
+    "estimated_usd": 0.040261063,
+    "verified_plan_continuations": 10,
+    "free_actual_sdk_mcp_checks": 6,
+    "original_limits_and_double_versions_verified": true,
+    "online_durable_plan_explicit_opt_in": true,
+    "default_sdk_web_enabled": false,
+    "automatic_restore_certified": false,
+    "holdout_runs": 0,
+    "human_semantic_review": false,
+    "series_attempts": 529,
+    "series_requests": 5005,
+    "series_estimated_usd": 4.071946564
+  },
+  "holdout_result": {
+    "record": "docs/experiments/file-management-workflow-holdout-20261014.md",
+    "experiment_id": "fm-workflow-holdout-20261014-427b924b",
+    "conditions": 18,
+    "runs": 54,
+    "positive_quality": {
+      "H": "11/12",
+      "S": "12/12",
+      "M": "12/12"
+    },
+    "version_stops_verified": 18,
+    "uncompleted_retained": 19,
+    "requests": 601,
+    "estimated_usd": 0.42546766,
+    "joint_qualified_conditions": 11,
+    "motif_full_model_cost_usd": 0.379796718,
+    "lowest_model_cost_arm": "S",
+    "holdout_used_for_learning": false,
+    "default_sdk_web_enabled": false,
+    "human_semantic_review": false,
+    "series_estimated_usd": 4.497414224
+  },
+  "script_reuse_followup": {
+    "record": "docs/experiments/file-management-script-reuse-20261014.md",
+    "workflows": [
+      "FM05",
+      "FM17"
+    ],
+    "ordinary_exploration_runs": 5,
+    "used_training_witnesses": 4,
+    "excluded_witnesses_cost_retained": 1,
+    "certification_runs": 8,
+    "independent_certification_conditions": 4,
+    "new_four_arm_holdout_runs": 24,
+    "arms": [
+      "H",
+      "S",
+      "M",
+      "L"
+    ],
+    "positive_conditions_passed": {
+      "H": 4,
+      "S": 4,
+      "M": 4,
+      "L": 4
+    },
+    "expected_version_stops": 8,
+    "retained_failed_deliveries": 8,
+    "requests": 274,
+    "estimated_usd": 0.203031636,
+    "L_setup_and_certification_usd": 0.100006092,
+    "L_execution_usd": 0,
+    "S_execution_usd": 0,
+    "incremental_API_advantage_over_prewritten_script_observed": false,
+    "full_API_advantage_observed_this_batch": false,
+    "holdout_used_for_learning": false,
+    "human_blind_review": false,
+    "default_web_enabled": false,
+    "new_public_task_kind": false,
+    "existing_library_unchanged": true
+  }
+}

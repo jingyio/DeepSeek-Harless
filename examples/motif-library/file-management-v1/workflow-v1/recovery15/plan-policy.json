@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "format": "sss-authorized-plan-v1",
+  "artifact": {
+    "kind": "authorized_copy_plan_chain",
+    "status": "trace_validated_effectful",
+    "tools": [
+      "mcp__file_management__preview_actions",
+      "mcp__file_management__authorize_plan",
+      "mcp__file_management__execute_plan"
+    ],
+    "training_witnesses": [
+      {
+        "trace_id": "cb29a35a772243418e5971ba7a772c5c",
+        "task_fingerprint": "8b2bd179c1a0b58f8fb990ae4ca3eb00c451a612203c9d20d10fed3b1a8ec181",
+        "tools": [
+          "mcp__file_management__preview_actions",
+          "mcp__file_management__authorize_plan",
+          "mcp__file_management__execute_plan"
+        ],
+        "execution_version_sha256": "ae4973ce68ddc2f9a4aa7152e4b3c12c42477f19960b0a1458a37ef5f8f4d51f",
+        "operation_count": 3,
+        "operations": [
+          "move"
+        ],
+        "references": [
+          {
+            "name": "mcp__file_management__preview_actions",
+            "call_id": "call_00_tEs1wBXICUDfzXf7rX7v6381",
+            "message_seq": 32,
+            "call_seq": 33,
+            "result_seq": 34,
+            "observation_sha256": "9885e8a54d48c761952903302f9a518878f95f626536b10fc5c275053853cb43"
+          },
+          {
+            "name": "mcp__file_management__authorize_plan",
+            "call_id": "call_00_2qZlMhhz2AgNbDJGS9Ij5463",
+            "message_seq": 37,
+            "call_seq": 38,
+            "result_seq": 39,
+            "observation_sha256": "07b46a7d9ac1423366d1321ad59440db5ce83d179babe0d6cbd6aa15f32cdf2a"
+          },
+          {
+            "name": "mcp__file_management__execute_plan",
+            "call_id": "call_00_0Unzgr7I753Pw7OIEBZh3504",
+            "message_seq": 42,
+            "call_seq": 43,
+            "result_seq": 44,
+            "observation_sha256": "7ebcdba2e19ad2213557a06ed49845fb0154de40549217cfe7e73133b950b037"
+          }
+        ],
+        "effects_sha256": "f1af3381c7c77db83707f95227b634f26c2bf346ece00d9a543951f339e26b70",
+        "grant_sha256": "40fcc614488ccf1adfa19a8e0fd66b6fba40f057144447f719a7e2dd8fa6d3c7",
+        "task_id": "explore-FM38-N",
+        "service_execution_version_sha256": "c1b878a136634d34d8bf374a4818a62ac7c4feb419c9f066ee1d4ca11dce5406"
+      },
+      {
+        "trace_id": "7efd2b83d4554f30be67ce539c84994f",
+        "task_fingerprint": "6a0aa68aa4a1d088f68e322fb5ea8b5590cc89c3f0dbd51cd6ad56c7ea8970be",
+        "tools": [
+          "mcp__file_management__preview_actions",
+          "mcp__file_management__authorize_plan",
+          "mcp__file_management__execute_plan"
+        ],
+        "execution_version_sha256": "ae4973ce68ddc2f9a4aa7152e4b3c12c42477f19960b0a1458a37ef5f8f4d51f",
+        "operation_count": 2,
+        "operations": [
+          "move"
+        ],
+        "references": [
+          {
+            "name": "mcp__file_management__preview_actions",
+            "call_id": "call_00_9lUz0LJ7j4zhhhrAntVA0855",
+            "message_seq": 25,
+            "call_seq": 26,
+            "result_seq": 27,
+            "observation_sha256": "f02623cff93d5f01f7f6d12c2f18c31163312bf0003f8421c3c159a27bb61f73"
+          },
+          {
+            "name": "mcp__file_management__authorize_plan",
+            "call_id": "call_00_hTHx4h4BuxRpOKiTj5QV1323",
+            "message_seq": 30,
+            "call_seq": 31,
+            "result_seq": 32,
+            "observation_sha256": "65834dab11c54d70b5efd19db77ccfb0af00b23c3e5fcffd99486873299fb2da"
+          },
+          {
+            "name": "mcp__file_management__execute_plan",
+            "call_id": "call_00_ydBNp8bi1HPzZMGDCAG03134",
+            "message_seq": 35,
+            "call_seq": 36,
+            "result_seq": 37,
+            "observation_sha256": "85873f0b69939eb673d5870d27cfe5e56ec229c02d33178235aa8f4dc35c5a60"
+          }
+        ],
+        "effects_sha256": "54b9a9901f162add912b9556c340459c691c4d5699a3f5c6650096f1942c69c8",
+        "grant_sha256": "c8cb556cae19259b611de751998114726510167280a0e9e4cb0f2e64f3449906",
+        "task_id": "explore-FM38-N-count2",
+        "service_execution_version_sha256": "c1b878a136634d34d8bf374a4818a62ac7c4feb419c9f066ee1d4ca11dce5406"
+      }
+    ],
+    "source_task_fingerprints": [
+      "8b2bd179c1a0b58f8fb990ae4ca3eb00c451a612203c9d20d10fed3b1a8ec181",
+      "6a0aa68aa4a1d088f68e322fb5ea8b5590cc89c3f0dbd51cd6ad56c7ea8970be"
+    ],
+    "source_trace_ids": [
+      "cb29a35a772243418e5971ba7a772c5c",
+      "7efd2b83d4554f30be67ce539c84994f"
+    ],
+    "tool_schema_sha256": {
+      "mcp__file_management__preview_actions": "19600ed59c4c95d9372dc9eee32f1080e84f01bcdfc1e5ad824539b63068f358",
+      "mcp__file_management__authorize_plan": "2a79d7df51cb48159ab2b7be80a26563ec5ca0df2d9c336d377e7cebcfc31abb",
+      "mcp__file_management__execute_plan": "ccfa7fd3e5098c8c3da579994453211b08135b02ec3427b453c2cd5c74662aec"
+    },
+    "graph": {
+      "preview_tool": "mcp__file_management__preview_actions",
+      "authorize_tool": "mcp__file_management__authorize_plan",
+      "execute_tool": "mcp__file_management__execute_plan",
+      "max_actions": 6,
+      "allowed_ops": [
+        "copy",
+        "move",
+        "quarantine"
+      ],
+      "stop": "after_verified_execution_or_semantic_recovery"
+    },
+    "transfer_evidence": [
+      {
+        "from": "mcp__file_management__preview_actions.plan_id",
+        "to": "mcp__file_management__authorize_plan.plan_id"
+      },
+      {
+        "from": "mcp__file_management__preview_actions.plan_id",
+        "to": "mcp__file_management__execute_plan.plan_id"
+      },
+      {
+        "from": "mcp__file_management__authorize_plan.authorization_id",
+        "to": "mcp__file_management__execute_plan.authorization_id"
+      }
+    ],
+    "validation_task_fingerprint": "e730826ec619607966f4553cc9d9ae4380e87cbb8718686b1b3482a9e44305ee",
+    "validation_witness": {
+      "trace_id": "de983cab4f144d24a1b8b89eda9363f2",
+      "task_fingerprint": "e730826ec619607966f4553cc9d9ae4380e87cbb8718686b1b3482a9e44305ee",
+      "tools": [
+        "mcp__file_management__preview_actions",
+        "mcp__file_management__authorize_plan",
+        "mcp__file_management__execute_plan"
+      ],
+      "execution_version_sha256": "ae4973ce68ddc2f9a4aa7152e4b3c12c42477f19960b0a1458a37ef5f8f4d51f",
+      "operation_count": 3,
+      "operations": [
+        "move"
+      ],
+      "references": [
+        {
+          "name": "mcp__file_management__preview_actions",
+          "call_id": "call_00_60DyGUG7mOTKMIR2gZpU4939",
+          "message_seq": 32,
+          "call_seq": 33,
+          "result_seq": 34,
+          "observation_sha256": "af58670e55b579224092f925eb2c2f32e9109e9c7146fc0dd285bfaf0b69ab10"
+        },
+        {
+          "name": "mcp__file_management__authorize_plan",
+          "call_id": "call_00_axUfQ7CMZXhgb4hJR3TK0451",
+          "message_seq": 37,
+          "call_seq": 38,
+          "result_seq": 39,
+          "observation_sha256": "6dc3f81a3248f895af2f41024a3eb20697fc4272790ac4a47651baf29e51cbb3"
+        },
+        {
+          "name": "mcp__file_management__execute_plan",
+          "call_id": "call_00_IoxWgxf9cqXRej4INKSr1169",
+          "message_seq": 42,
+          "call_seq": 43,
+          "result_seq": 44,
+          "observation_sha256": "2efc90a85a34927cf65cdeebeddebc4ccae3a727bd9615b867664a99b0f7bf72"
+        }
+      ],
+      "effects_sha256": "ee8ed2c35c658a9f4a1f49d00bf9cb488a7605a3994ecc9cf9d273149cc5998e",
+      "grant_sha256": "40fcc614488ccf1adfa19a8e0fd66b6fba40f057144447f719a7e2dd8fa6d3c7",
+      "task_id": "certify-FM38-N",
+      "service_execution_version_sha256": "c1b878a136634d34d8bf374a4818a62ac7c4feb419c9f066ee1d4ca11dce5406"
+    },
+    "certified_digest": "a9e78a49bb6010a4e04f2dd059d7cb854abd5850c350e9a76713d6f5a0d2f464"
+  },
+  "execution_version_sha256": "ae4973ce68ddc2f9a4aa7152e4b3c12c42477f19960b0a1458a37ef5f8f4d51f",
+  "policy_digest": "3da073777a73fdb32149426fd36e467c72088e6fb3a0713990cff022e4f66304"
+}
