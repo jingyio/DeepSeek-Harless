@@ -1,0 +1,52 @@
+{
+  "format": "sss-management-seed-attestation-v1",
+  "release": "file-v4",
+  "policy_digest": "221c2b0d7ead40068d74d334751500c3a3490d8ea9087157ae9fda3218a17e1e",
+  "payload_sha256": "f76ecbb72383e7d2a4bde215d6cf84b09bd1866a9fb5405f966588a2a7ba654a",
+  "quality": "sss-management-quality-v7",
+  "holdout_used": false,
+  "private_evidence_verified": true,
+  "grants_execution": false,
+  "original_certificate_sha256": "0008b6724cc99782438fcc6b7755fe673b7e3b2301d95b5f6ec63392e7d549c9",
+  "witnesses": [
+    {
+      "role": "native_certification",
+      "task_fingerprint": "2ff68633583afe520757f3675fe09a58fd3aba060a8ad7012b8ebc803cb57254",
+      "record_sha256": "ab4b95324d458f893e1fae2d988406faceec018cd8a90a55e08318b4b6f5c9af",
+      "accepted": true,
+      "lifecycle_verified": true,
+      "observed_usage_complete": true,
+      "repairs": 0,
+      "deferred": false,
+      "upstream_requests": 6,
+      "cost_usd": 0.009073824,
+      "verified_motif_batches": 0
+    },
+    {
+      "role": "candidate_certification",
+      "task_fingerprint": "5f0e5d1cc03127931c072a8b6ae1df402ffc086e24e92495df19fe932a80ff8f",
+      "record_sha256": "b39c7e4d0a2eb09998d01a3c1c849018a40967ff135aaa9c67801b287ef435c7",
+      "accepted": true,
+      "lifecycle_verified": true,
+      "observed_usage_complete": true,
+      "repairs": 0,
+      "deferred": false,
+      "upstream_requests": 5,
+      "cost_usd": 0.008676072,
+      "verified_motif_batches": 3
+    },
+    {
+      "role": "candidate_certification",
+      "task_fingerprint": "17a05d38749c9a7aa6581a85fd6ac84bc3f30e06d7fdb2cbcf23d5c2b3604778",
+      "record_sha256": "916d67c59b21382451dce7db226b1707d8c5a19e6900ec20f4a880c1aa2f35f7",
+      "accepted": true,
+      "lifecycle_verified": true,
+      "observed_usage_complete": true,
+      "repairs": 0,
+      "deferred": false,
+      "upstream_requests": 5,
+      "cost_usd": 0.009231912,
+      "verified_motif_batches": 3
+    }
+  ]
+}

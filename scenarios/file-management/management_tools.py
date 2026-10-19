@@ -40,8 +40,8 @@ def tree(root,ignored=()):
 
 def execution_version():
     paths=[HERE/n for n in ('management_tools.py','management_native.py','management_reading.py','management_contract.py','management_goals.py','management_temporal.py','management_provenance.py','file_tools.py','report_tools.py','collection_tools.py','common.py')]
-    paths += [ROOT/n for n in ('src/adapters/general_tools.py','src/adapters/general_tool_replay.py','scenarios/file-management/general-tools.json','scenarios/general/runtime.py','scenarios/general/runtime_code.ts')]
-    return digest({str(p.relative_to(ROOT)):sha(p) for p in paths})
+    paths += [ROOT/n for n in ('src/adapters/general_tools.py','src/adapters/general_tool_replay.py','src/adapters/geneloop_pdf.py','scenarios/file-management/general-tools.json','scenarios/general/runtime.py','scenarios/general/runtime_code.ts')]
+    return digest({p.relative_to(ROOT).as_posix():sha(p) for p in paths})
 
 def operator_contract(name):
     if name in READING_TOOLS:return reading_contract(name)

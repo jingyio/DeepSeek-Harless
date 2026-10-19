@@ -23,7 +23,7 @@ def test_daily_entry_defaults_to_real_and_keeps_original_caps(monkeypatch):
     for name,value in [('--scenario','new-scene'),('--budget-usd','5'),('--request-limit','96'),('--max-output-tokens','4000')]:assert calls[0][calls[0].index(name)+1]==value
     assert entry.main(['--mock'])==0 and '--real-model' not in calls[1]
     assert maintenance==[], 'web launch must not run an unrelated legacy learning profile'
-    assert calls[0][1].endswith('scripts/harness-web.py')
+    assert Path(calls[0][1])==ROOT/'scripts/harness-web.py'
 
 def test_damaged_zip_command_retains_failure_without_creating_import(tmp_path,monkeypatch):
     import json

@@ -40,7 +40,7 @@ Web 每个账号的长期目录在 `.local/web/file-management/accounts/<账号�
 
 PDF 的 `read_file` 仍是明确标为不完整的首页预览。完整阅读使用 `open_document(mode=text)` 后持续调用实际返回的 `read_document_chunk` 句柄，再用 `document_coverage` 检查缺页和缺字符；`search_document` 仅搜索已实际返回的内容。扫描件使用 `mode=ocr`，图片或 PDF 任意物理页可用 `view_document_page` 直接交给当前 DeepSeek 的原生图像链路。文字层覆盖、OCR 覆盖和视觉观察分别记录，不能相互冒充。
 
-PDF/OCR 需要本机提供 Poppler 的 `pdfinfo`、`pdftotext`、`pdftoppm` 及 Tesseract，默认 OCR 语言 `eng+chi_sim`。命令路径可用 `FM_PDFINFO`、`FM_PDFTOTEXT`、`FM_PDFTOPPM`、`FM_TESSERACT` 配置，`FM_OCR_LANGUAGES` 指定实际已安装语言；更改解析器或语言会使旧执行证明失效。基础 Python 库由 `npm run setup` 安装。通用编辑产生独立的新文件，精确匹配次数不符就拒绝；隔离代码复用已有 Docker 执行器，仅支持 TypeScript/JavaScript，需启动 Docker 和准备项目固定镜像。不会自动转为宿主代码执行。
+PDF/OCR 优先使用本机已有的 Poppler/Tesseract；缺少默认外部命令时复用 main 已有 PyMuPDF 进行全页文字提取、页面渲染和 OCR。OCR 使用已安装语言，默认 `eng+chi_sim`；部署时可沿用 `GENELOOP_PDF_OCR_ROOT` 的固定语言数据，安装方法见主 README。命令路径可用 `FM_PDFINFO`、`FM_PDFTOTEXT`、`FM_PDFTOPPM`、`FM_TESSERACT` 显式配置，错误的显式路径仍报错，`FM_OCR_LANGUAGES` 指定语言。实际后端、依赖、语言数据与覆盖记录绑定，变化使旧读取证明失效。基础 Python 库由 `npm run setup` 安装。通用编辑产生独立的新文件，精确匹配次数不符就拒绝；隔离代码复用已有 Docker 执行器，仅支持 TypeScript/JavaScript，需启动 Docker 和准备项目固定镜像。不会自动转为宿主代码执行。
 
 默认跨场景目录还包含已有数据报告、论文检查和 PPT 服务。数据依赖见 `scenarios/data_analysis/requirements-report.txt`；PPT 服务须在 `scenarios/research_ppt` 安装并构建，其相关 Python 功能还需 PyMuPDF、python-pptx、reportlab。工具发现会返回真实依赖错误；目录列出工具不等于所有业务产物已独立验收。新产物在任务的 `general/` 输出中保留原始工具收据。
 

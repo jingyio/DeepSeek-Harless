@@ -94,3 +94,19 @@ def test_real_image_ocr_is_separate_from_metadata(tmp_path,monkeypatch):
     assert '47291' in row['text'] and row['extraction']=='ocr'
     assert s.document_coverage(d['document_id'])['complete']
     assert s.submit_report('OCR read, visual semantics not claimed',list(s.files()),[])['semantic_quality_verified']
+
+
+def test_full_read_and_visual_pixels_without_external_poppler(document,monkeypatch):
+    import management_reading as reading
+    monkeypatch.setattr(reading.shutil,'which',lambda _:None)
+    s,spec,h,source=document
+    d=s.open_document(source);rows=finish(s,d['request_id'])
+    assert d['page_count']==4 and any(r['page']==4 and 'IMPORTANT TOKEN 4' in r['text'] for r in rows)
+    assert s.document_coverage(d['document_id'])['complete']
+    assert s.view_document_page(source,4).structured_content['page']==4
+
+
+def test_real_ocr_without_external_tesseract(tmp_path,monkeypatch):
+    import management_reading as reading
+    monkeypatch.setattr(reading.shutil,'which',lambda _:None)
+    test_real_image_ocr_is_separate_from_metadata(tmp_path,monkeypatch)

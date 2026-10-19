@@ -30,7 +30,7 @@ print(json.dumps({'state':cfg['state_root'],'entries':len(state['entries']),'pai
 
 
 def test_seed_release_contains_only_policies_and_sanitized_certification():
-    release=ROOT/'motif-libraries/file-v3';manifest=json.loads((release/'entry.json').read_text())
+    release=ROOT/'motif-libraries/file-v4';manifest=json.loads((release/'entry.json').read_text())
     assert manifest['raw_private_evidence_published'] is False
     for name in manifest['files']:
         raw=(release/name).read_text()
@@ -40,3 +40,21 @@ def test_seed_release_contains_only_policies_and_sanitized_certification():
         cert=json.loads((release/entry['certificate']).read_text())
         assert cert['grants_execution'] is False and cert['holdout_used'] is False
         assert all(w['accepted'] and not w['repairs'] and w['observed_usage_complete'] for w in cert['witnesses'])
+
+
+def test_incompatible_seed_is_retained_once_and_allows_ordinary_fallback(tmp_path,monkeypatch):
+    from src.adapters import management_seed as seed,continuous_rsi,experience_library
+    from src.motif_core.offline.experience_registry import ExperienceRegistry,durable
+    monkeypatch.setattr(continuous_rsi,'ROOT',tmp_path)
+    monkeypatch.setattr(experience_library,'sources',lambda:{'diagnostic':'current'})
+    release=tmp_path/'motif-libraries/file-v1';name='a'*64
+    durable(release/'policies'/f'{name}.json',{})
+    durable(release/'certificates'/f'{name}.json',{})
+    durable(release/'entry.json',{'runtime_source':{'diagnostic':'current'},'entries':[{'policy_digest':name,'payload':f'policies/{name}.json','certificate':f'certificates/{name}.json'}],'files':{f'policies/{name}.json':'test',f'certificates/{name}.json':'test'}})
+    def reject(*_):raise ValueError('diagnostic catalog mismatch')
+    monkeypatch.setattr(seed,'validate_certificate',reject)
+    cfg={'state_root':str(tmp_path/'account')};ExperienceRegistry(Path(cfg['state_root'])/'registry').publish(reason='free empty fixture')
+    assert seed.install(cfg)['entries']==[]
+    assert seed.install(cfg)['entries']==[]
+    receipts=list((Path(cfg['state_root'])/'seed-rejections').glob('*.json'))
+    assert len(receipts)==1 and json.loads(receipts[0].read_text())['activated'] is False

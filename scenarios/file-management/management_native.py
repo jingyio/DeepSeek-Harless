@@ -14,7 +14,7 @@ def serve():
         async def call(**kwargs):
             p=Path(os.environ['FM_WEB_WORKSPACE'])/'management-binding.json'
             if not p.is_file():raise ToolError('当前会话尚未提交工作区文件任务，可以先讨论需求。')
-            binding=json.loads(p.read_text());raw=Path(binding['task_file']).read_text()
+            binding=json.loads(p.read_text(encoding='utf-8'));raw=Path(binding['task_file']).read_text(encoding='utf-8')
             os.environ.update(FM_TASK_FILE=binding['task_file'],FM_OUTPUT=binding['delivery'],FM_JOB_FILE=binding['job_file'])
             if current['key']!=raw:current.update(key=raw,scene=ManagementScene(json.loads(raw),binding['delivery']))
             value=getattr(current['scene'],name)(**kwargs)

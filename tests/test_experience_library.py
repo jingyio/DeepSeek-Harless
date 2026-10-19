@@ -326,7 +326,7 @@ def test_newest_sealed_material_is_selected_and_completed_evidence_does_not_star
     for i, name in enumerate(('z-old', 'a-new'), 1):
         row = {'role': 'ordinary', 'adapter': 'management_v3', 'session_id': name,
                'origin': str(project/'.local/rsi/archive-first/runs/0'), 'task_fingerprint': digest(name)}
-        file = root/'records'/(name+'.json'); durable(file, row); __import__('os').utime(file, ns=(i, i)); rows.append(row)
+        file = root/'records'/(name+'.json'); durable(file, row); __import__('os').utime(file, ns=(i*1_000_000_000, i*1_000_000_000)); rows.append(row)
     drain(home, [rows[1], rows[0]])
     assert observed == [rows[1]['task_fingerprint']]
     drain(home, [rows[1], rows[0]])

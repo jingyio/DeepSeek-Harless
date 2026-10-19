@@ -23,15 +23,38 @@ def contract(name):
 def run(args,timeout=30):
     result=subprocess.run(args,capture_output=True,timeout=timeout,env={
         'PATH':os.environ.get('PATH','/usr/bin:/bin:/opt/homebrew/bin'),
+        **{k:os.environ[k] for k in ('SystemRoot','ComSpec','WINDIR','TEMP','TMP') if k in os.environ},
         'LANG':'en_US.UTF-8','LC_ALL':'en_US.UTF-8'})
     if result.returncode:raise ValueError('document parser failed: '+Path(str(args[0])).name)
     if len(result.stdout)>16*1024*1024:raise ValueError('one page exceeds parser response limit')
     return result.stdout.decode('utf-8',errors='strict')
 
+def executable(variable,default):
+    # An explicit operator override must fail visibly if broken; only the
+    # absence of a default CLI selects the already installed PyMuPDF backend.
+    return os.environ.get(variable) or shutil.which(default)
+
+def render_pdf(path,page,prefix,*,dpi=150,maximum=None):
+    tool=executable('FM_PDFTOPPM','pdftoppm')
+    if tool:
+        size=['-scale-to',str(maximum)] if maximum else ['-r',str(dpi)]
+        run([tool,'-f',str(page),'-l',str(page),'-singlefile',*size,'-png',str(path),str(prefix)])
+    else:
+        import pymupdf as fitz
+        with fitz.open(path) as pdf:
+            p=pdf[page-1];scale=maximum/max(p.rect.width,p.rect.height) if maximum else dpi/72
+            p.get_pixmap(matrix=fitz.Matrix(scale,scale),alpha=False).save(str(prefix)+'.png')
+
 def page_count(path):
     if path.suffix.lower()=='.pdf':
         import re
-        info=run([os.environ.get('FM_PDFINFO','pdfinfo'),str(path)])
+        tool=executable('FM_PDFINFO','pdfinfo')
+        if not tool:
+            import pymupdf as fitz
+            with fitz.open(path) as pdf:
+                if pdf.needs_pass or len(pdf)<1:raise ValueError('PDF page count unavailable')
+                return len(pdf)
+        info=run([tool,str(path)])
         match=re.search(r'^Pages:\s+(\d+)\s*$',info,re.M)
         if not match or int(match[1])<1:raise ValueError('PDF page count unavailable')
         return int(match[1])
@@ -47,13 +70,27 @@ def extract_page(path,page,mode,cache):
     """Text layer or explicitly selected OCR; never silent OCR or visual reasoning."""
     if mode=='text':
         if path.suffix.lower()!='.pdf':raise ValueError('images require mode=ocr')
-        return run([os.environ.get('FM_PDFTOTEXT','pdftotext'),'-f',str(page),'-l',str(page),'-layout',str(path),'-']).rstrip('\f'),'text_layer'
+        tool=executable('FM_PDFTOTEXT','pdftotext')
+        if tool:return run([tool,'-f',str(page),'-l',str(page),'-layout',str(path),'-']).rstrip('\f'),'text_layer'
+        import pymupdf as fitz
+        with fitz.open(path) as pdf:return pdf[page-1].get_text(sort=True),'text_layer'
     cache=Path(cache);cache.mkdir(parents=True,exist_ok=True);image=path
     if path.suffix.lower()=='.pdf':
         prefix=cache/f'page-{page}'
-        run([os.environ.get('FM_PDFTOPPM','pdftoppm'),'-f',str(page),'-l',str(page),'-singlefile','-r','150','-png',str(path),str(prefix)])
+        render_pdf(path,page,prefix)
         image=prefix.with_suffix('.png')
-    text=run([os.environ.get('FM_TESSERACT','tesseract'),str(image),'stdout','-l',os.environ.get('FM_OCR_LANGUAGES','eng+chi_sim')],90)
+    tool=executable('FM_TESSERACT','tesseract');languages=os.environ.get('FM_OCR_LANGUAGES','eng+chi_sim')
+    if tool:
+        from src.adapters.geneloop_pdf import tessdata_directory
+        data=tessdata_directory();options=['--tessdata-dir',data] if data else []
+        text=run([tool,str(image),'stdout','-l',languages,*options],90)
+    else:
+        import pymupdf as fitz
+        from src.adapters.geneloop_pdf import tessdata_directory
+        with fitz.open(image) as picture:
+            with fitz.open(stream=picture.convert_to_pdf(),filetype='pdf') as pdf:
+                p=pdf[0];tp=p.get_textpage_ocr(language=languages,dpi=150,full=True,tessdata=tessdata_directory())
+                text=p.get_text(textpage=tp,sort=True)
     return text,'ocr'
 
 def request_id(document_id,page,offset):return 'chunk-'+digest([document_id,page,offset])[:32]
@@ -65,7 +102,16 @@ def parser_identity(mode):
         if variable not in names:continue
         tool=shutil.which(os.environ.get(variable,default))
         tools[variable]={'path':tool,'sha256':sha(Path(tool)) if tool else None}
+    fallback=any(not v['path'] for v in tools.values())
+    languages={}
+    if mode=='ocr':
+        from src.adapters.geneloop_pdf import tessdata_directory
+        directory=tessdata_directory()
+        if directory:
+            for name in os.environ.get('FM_OCR_LANGUAGES','eng+chi_sim').split('+'):
+                p=Path(directory)/(name+'.traineddata');languages[name]=sha(p) if p.is_file() else None
     return digest({'format':VERSION,'tools':tools,'pillow':version('Pillow'),
+        'pymupdf':version('PyMuPDF') if fallback else None,'fallback_ocr_languages':languages,
         'ocr_languages':os.environ.get('FM_OCR_LANGUAGES','eng+chi_sim') if mode=='ocr' else None})
 
 class DocumentReading:
@@ -106,7 +152,7 @@ class DocumentReading:
         if sha(saved)!=h['sha256']:raise ToolError('visual source cache changed')
         rendered=cache/'pixels.png'
         if not rendered.exists():
-            if path.suffix.lower()=='.pdf':run([os.environ.get('FM_PDFTOPPM','pdftoppm'),'-f',str(page),'-l',str(page),'-singlefile','-scale-to','2400','-png',str(path),str(cache/'pixels')])
+            if path.suffix.lower()=='.pdf':render_pdf(path,page,cache/'pixels',maximum=2400)
             else:
                 with Image.open(path) as im:
                     im=im.convert('RGB');im.thumbnail((2400,2400));im.save(rendered,'PNG')

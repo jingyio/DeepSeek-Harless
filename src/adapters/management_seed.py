@@ -49,16 +49,26 @@ def install(cfg):
     additions=[]
     for release in releases:
         if not (release/'entry.json').is_file():continue
-        manifest=read(release/'entry.json')
-        if manifest.get('runtime_source')!=sources():continue
-        for item in manifest['entries']:
-            if any(not re.fullmatch(r'(?:policies|certificates)/[a-f0-9]{64}\.json',item.get(k,'')) or item[k] not in manifest['files'] for k in ['payload','certificate']):raise ValueError('seed path outside trusted manifest')
-            if item['policy_digest'] in known:continue
-            payload=release/item['payload'];certificate=release/item['certificate'];policy=read(payload)
-            validate_certificate(policy,certificate,sha(payload))
-            additions.append(registry.entry(item['kind'],payload,sources(),certificate))
-            known.add(item['policy_digest'])
-        break
+        try:
+            manifest=read(release/'entry.json')
+            if manifest.get('runtime_source')!=sources():continue
+            validated=[]
+            for item in manifest['entries']:
+                if any(not re.fullmatch(r'(?:policies|certificates)/[a-f0-9]{64}\.json',item.get(k,'')) or item[k] not in manifest['files'] for k in ['payload','certificate']):raise ValueError('seed path outside trusted manifest')
+                payload=release/item['payload'];certificate=release/item['certificate'];policy=read(payload)
+                validate_certificate(policy,certificate,sha(payload))
+                if item['policy_digest'] not in known:validated.append((item,payload,certificate))
+            for item,payload,certificate in validated:
+                additions.append(registry.entry(item['kind'],payload,sources(),certificate));known.add(item['policy_digest'])
+            break
+        except (ValueError,KeyError,TypeError,OSError) as error:
+            # An incompatible or damaged seed is never execution authority and
+            # must not prevent an ordinary task from running. Keep one receipt
+            # per release/target/failure; never silently rewrite its certificate.
+            failure={'release':release.name,'manifest_sha256':sha(release/'entry.json'),
+                     'runtime_source':sources(),'reason':str(error),'activated':False}
+            receipt=Path(cfg['state_root'])/'seed-rejections'/(digest(failure)+'.json')
+            if not receipt.exists():durable(receipt,failure,exclusive=True)
     if additions:return registry.publish(additions,expected=state['generation'],reason='trusted re-certified public seeds; account guards and future learning remain independent')
     return state
 
