@@ -1,20 +1,17 @@
 # 论文校对当前交接
 
 - 更新时间与交接人：2026-10-20，Codex。
-- 目标与本次范围：基于454e726完善失败字段/版本证据、当前报告局部修订、成功产物复用与结束交接；按用户要求沿用已有Baseline，不重复运行固定配置基线。当前目标必须来自显式恢复要求，不能由历史相似性推断。
-- 分支 / commit / 工作区：`codex/paper-recovery-evidence`；实现`c00efe6`，合入最新main `31c7309`的merge为`72a540f`，又合入main5e545b4（09b0629），仅README说明冲突并保留双方；最终记录见git log。独立worktree，原脏工作区未动。已推送并提交[PR #94](https://github.com/jingyio/GeneLoop/pull/94)，未合并、未部署。
-- 已完成：`evidence_report.py`返回当前参数、来源、配置/字体、授权与恢复目标摘要，失败字段pointer/摘要/预览及实际校验上下文；隔离导出服务最多32项进程内成功记录，每次复用重新核对真实receipt/文件。`reuse_mediation.ts`验证字段及交付证据，复用当前参数与patch后执行原生工具，成功后交回模型总结。未知、变更或失败仍回退语义处理，没有新增模型可见工具。
-- 已完成：真实试验暴露子集报告被当完整成功；新增显式`--preserve-recovery-structure`，runner把本轮完整恢复目标写入Bash不可写的`review-recovery-scope.json`。Runtime提前提供当前目标引用与有界结构摘要，服务拒绝删数组项/改对象结构的子集交付，允许叶子文字修订。该保守策略不证明语义完整性，需重设计结构时应另行明确范围。默认公开入口、生产导出器和旧认证库未改。
-- 已验证：005真实页数失败→17文字字段patch→六页通过，12请求/$0.017696256；37条逐条记录、整个核验来源章节与source_versions原样保留，16条规范引用正文未变，成功后未重复导出。补丁6056字节，选择6174字节，Runtime重绑定25957字节紧凑JSON；字节变化不是净token节省。已人工阅读改动、逐页查看六页，科研事实未独立盲评。
-- 已验证：002正常恢复4请求/$0.007532112、一次完整导出；第一轮main集成006为10请求/$0.011696760、一次完整导出且参数与原稿一致。006有4次复合shell/管道错误及多余读取，保留、不放宽守卫。无模型重放相同原生报告两次，只发布一个目录，第二次实际复用原文件；不冒充真实模型请求跳过。
-- 已验证：最终合入main5e545b4后`npm test` Python1296通过/213跳过、Node1143通过/5跳过；`npm run smoke`无模型通过。对字段篡改、版本/来源/授权变化、文件损坏、子集拒绝、patch保留、稳定提示前缀和语义交接均有针对性检查。macOS验证，Windows未验收；CI结果另报，不假称已通过。
-- 实验结论：[当前恢复真实闭环](../experiments/paper-recovery-evidence-20261020-v1.md)。7项全部为原论文局部恢复，无新增Baseline。001环境开关/字体遗漏失败，003前两节冒充完整不合格，004虽完成但73请求/94539输出且改写较多，均保留。最终支持当前有证据的局部恢复与停止，不证明独立论文泛化、长期RSI增长或稳定净降本。
-- 配置与数据：私有根`.local/paper-recovery-evidence-20261020-v1/`含authorization、aggregate、quality-005/006、真实原生重放、全部编译/测试/运行记录。最后实际`execute-final.json`指向`native-004`，2原生契约/1诊断契约；native-only、脚本库空，未调整embedding。模型deepseek-flash、reasoning off、单次32768、请求/费用无限，保留原固定字体和`SSS_LOCAL_SCRIPT_EXPERIMENT=1`。每run代码/有效配置快照不追改。
-- 最终主线验证：007为14请求/$0.022688220、一次成功、37行保持；走普通原生参数，0短协议派发，2工具错误保留，不能称patch再次命中。Runtime仍完成实际交付验证和总结交接。CLI/连接器无创建PR权限，使用Chrome已有登录创建PR94；不读取密钥。
-- 最短复现：新实验记录使用统一`node scripts/project.mjs python`给出显式付费恢复命令；需本机私有配置与HARLESS_REPORT_FONT固定字体。CLI含`--report-evidence --preserve-recovery-structure --reuse-checkpoint`；这是局部恢复，不与全任务混分母。代码锁变动要真正重编/认证，不改旧hash。
-- 未完成与限制：精确局部失败字段已做诊断验证；本轮005真实故障是全局页数限制，不能称定位唯一局部根因。成功缓存仅当前服务进程、不会跨重启加载旧磁盘结果；同结构文字仍可能改错，最终答复仍需语义判断。模型偶尔附加管道/写完整脚本及读不到发布目录的恢复开销尚存。未增加可泛化脚本认证覆盖，前轮新heldout发布0仍保留。
-- 接手下一步：1）在下一个真实变化任务复用本轮闭环，核对是否少写全文/少重复交付，保持现有Baseline。2）研究如何让模型正确使用已有短协议，减少复合shell与发布目录重读，保持版本/授权守卫。3）独立科研盲评后再讨论跨任务效果与稳定净降本，当前不扩场景或调embedding。
-- 权限与预算：本地真实API无限额持续授权，reset_history:false。本轮133请求/$0.248183124代理估费，usage完整、无新pending；累计本地4833/$8.112187092保守估费。旧pending2、V100/账单未核清保留；人工/开发时间未完整计量。全部付费任务已结束，无生产操作。
-- 回退与风险：关闭实验sidecar/`--report-evidence`即可回原路径；不覆盖原件、生产、公共配置或认证库。main合并仅3份文档冲突，保留双方信息，无代码冲突；未触碰拿不准的功能合并。PR只供审阅，不自动合并或发布。
+- 目标与范围：沿用已有Baseline，先审计真实费用，再改善当前恢复接管；复杂恢复增益未稳定，不扩场景、不调Embedding、不更换挖掘算法。用户最新授权验证后提交并合并PR，覆盖此前只审阅不合并；不包含部署。
+- 分支/提交：`codex/paper-recovery-evidence`，本轮实现`a0074e2`；基于aff4d86，已包含main5e545b4，原脏工作区未动。PR94已更新代码，最终CI/合并状态收尾记录。
+- 已完成：`reuse_mediation.ts`根据受保护的显式当前执行义务，核验task/grant/来源/参数/Schema后，在首次模型请求前执行一次；失败交回语义修订，成功核验文件并交回总结。runner新增`--resume-current-operation`，非默认、非历史相似性授权。拒绝复合shell时给静态计划的精确修正建议，不执行原命令。成功通知说明Bash目录边界、附实际字段差异；不能保证模型因果解释正确。
+- 跨平台修复：原PR94 Windows失败是测试LF/CRLF与边界路径问题；实际字节摘要不放宽，Python读UTF-8原字节并统一POSIX见证，LF/CRLF均测试。旧Linux证据不追改。
+- 已验证：本轮正常恢复003/005均1个真实模型请求（仅总结），1次Runtime原生执行，完整参数逐字段未变，0工具错误/成功后额外工具。页数恢复004为18请求，37条详细记录及来源未变；最终修改说明仍有不准确处。006为43请求，7次导出、三次同字段长度失败，最终报告改写逐条表/来源且总结有错误，不能算无损成功。
+- 测试：义务接管后的npm test Python1297/Node1149通过（213/5跳过）；增加差异交接后定向Node29通过；无模型smoke通过。最终GitHub Ubuntu/Windows结果收尾补录，未取得结果前不称跨平台通过。
+- 实验结论：[本轮Breakdown与全部六次真实运行](../experiments/paper-recovery-control-20261020-v2.md)。只支持显式当前操作的窄接管机制；001/002没有该义务，9/67请求，后者脚本及搜索额外成本全部保留。短协议、实际差异提示均不足以保证复杂修订稳定降本或总结正确。
+- 配置与数据：`.local/paper-recovery-control-20261020-v2/`含authorization、aggregate、逐运行quality/native/breakdown、全部测试日志；execute-final.json指向native-003。native-only的2原生契约/1诊断契约，无脚本库或embedding调用。完整代码和有效配置在各run快照，不改旧hash。
+- 最短复现：本轮实验记录引用前轮统一runner命令，增加`--resume-current-operation`；需execute、reuse-checkpoint、preserve-recovery-structure、SSS_LOCAL_SCRIPT_EXPERIMENT=1及已核验HARLESS_REPORT_FONT。当前操作义务来自显式选择，不能仅由相似轨迹设置；代码锁变化需重编库。
+- 权限与预算：本地DeepSeek Flash、reasoning off、输出32768、请求/费用不限，reset_history:false。本轮139请求/$0.200397576代理估费；本地累计4972/$8.312584668。无新pending；旧pending2、V100/账单待核保留，非账单实付。全部六项运行已结束，无生产修改。
+- 未完成/下一步：1）对同一长度约束连续失败，研究从当前可信约束生成有类型的修订缺口，避免改无关字段；不能将相关性当根因。2）真实核验复杂修订是否保留科研信息、最终总结是否与证据相符。3）局部增益稳定后再考虑独立论文、其他场景和高效挖掘。通用自然语言到当前义务尚未自动化，持续RSI增长未证实。
+- 回退：关闭实验sidecar、report-evidence及resume-current-operation回原路径；不碰生产/原件/公共认证库。代码合入与部署分开，不能直接重启正式服务。
 
-前轮：[边界证据](../experiments/paper-evidence-slice-20261019-v1.md)、[统一复用](../experiments/paper-unified-reuse-20261019-v1.md)、[读写实例](../experiments/paper-operation-breakdown-20261019-v1.md)。
+前轮：[恢复与成功复用](../experiments/paper-recovery-evidence-20261020-v1.md)、[边界证据](../experiments/paper-evidence-slice-20261019-v1.md)、[统一复用](../experiments/paper-unified-reuse-20261019-v1.md)。
