@@ -6,6 +6,8 @@
 
 服务器先加载已配置的私有环境，并设置私有启动计划路径：
 
+现有服务器的私有环境已设置 `GENELOOP_SERVICE_HOME` 和 `GENELOOP_SERVICE_CONFIG`。加载该环境后，可先执行 `cd "$GENELOOP_SERVICE_HOME"` 再运行下面的服务命令；其他包含本入口的 main 检出也可运行。入口检出与正在运行的应用代码检出可以不同，不要因此覆盖旧版本源码。
+
 ```sh
 export GENELOOP_SERVICE_CONFIG=/ABSOLUTE/PRIVATE/service.json
 npm run service -- status
