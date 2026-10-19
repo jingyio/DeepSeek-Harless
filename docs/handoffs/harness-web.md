@@ -2,7 +2,7 @@
 
 ## 2026-10-19：生成文件只有文件名、不能点击
 
-- 范围/分支：`codex/clickable-generated-files`，基于main `9f945a5` 的独立工作树，原本地工作区未改动。
+- 范围/分支：`codex/clickable-generated-files`，基于main `9f945a5` 的独立工作树，原本地工作区未改动。修复提交 `93e5309` 已推送，[PR #83](https://github.com/jingyio/GeneLoop/pull/83) 待审、未合并、未部署。
 - 已完成：普通Chat命令产物快照/API/原生文件mentions/预览下载；双栏沙箱路径匹配；本轮暂存成品明确引用准入和旧报告排除；私有权限保持。新兼容库v13/v8仅重验原认证序列化IR，未重挖原始轨迹；旧库保留。
 - 验证/结论：定向无模型回归已通过，最终全套/发布状态见[修复记录](../experiments/clickable-generated-files-20261019.md)。无真实API请求、新费用或收益结论；未部署线上。
 - 入口/下一步：按接口重建成员policy并随PR发布，检查普通Chat和对照的文件名/卡片/下载、历史刷新及账号拒绝。`/api/harless/deliveries` 只认当前会话/任务文件ID。旧文件已覆盖且缺少快照时无法恢复。
