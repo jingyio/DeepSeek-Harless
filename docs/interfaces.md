@@ -913,6 +913,8 @@ node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-mo
 
 三组使用同一模型、题面、工具和输出上限；默认题面为 `scenarios/paper-submission/reference-audit.prompt.md`，可显式 `--prompt`。记录在 `.local/script-motif-experiments/<run-id>/`，原生任务在 `.local/web/runs/<run-id>/tasks/`。生产/native mode 保持 `baseline/rsi=false` 以隔离旧 Motif；**实验 mode 以 sidecar 为准**。原生 UI 的 `verified_skips` 不包含此实验计数，应读取 `script-motif-audit.jsonl` 或 `summarize-script-motif-run.py --task <task-dir>`。该核算区分真实 provider 请求、认证跳过、Shadow 候选、PDF 文件存在与质量评审；不自动计算净节省。`analyze-script-motif-cost.py --task <task-dir> --output <新私有文件>` 按完整请求对齐账本和可见动作，单列搜索工具内部模型、代码生成、现成脚本调度和报告协议，不把类别费用直接视为可替代费用。 分析器另列 `structured_validation_failures`（带失败码、工具及调用标识）和 `requests_after_structured_validation_failures`，捕捉原生 `isError` 未标错但结果为 `staged/finalized/exported/done:false` 的结构拒绝；与原生异常分开，后续请求关联不等于失败的全部因果费用。`stage_current_bibliography_assessments` 与 audit 暂存均进入报告边界，阶段内可能包含补检，不能称为纯报告正文生成费用。
 
+`analyze-script-takeover.py --task <task-dir> --library <冻结正面库> [--negative-library <冻结负面库>] --output <新私有文件>` 在相同完整请求口径上增加历史价格分量核对、辅助模型范围、静态准入障碍、frontier 完成后费用和 Bash 文本非零退出诊断。它只读最终工作区，不执行源脚本；候选/AST 骨架和规则兼容均不是认证、在线接管或可兑现节省。多个工具仍只计同一个付费请求，未知用量与金额舍入单列。原 Runtime 精确状态重放的范围与 notice 假设见 [Breakdown](experiments/paper-takeover-breakdown-20261019-v1.md)。
+
 ## 自动学习生命周期
 
 `--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。worker 不调用模型、不接受有 Script sidecar 的任务作为来源，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
