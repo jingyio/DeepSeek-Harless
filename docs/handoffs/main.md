@@ -2,9 +2,9 @@
 
 ## 2026-10-20：PR84 / PR88 能力保留集成（PR93，待审）
 
-- 目标/范围：独立 `codex/integrate-file-ppt-rsi` 分支，完整接入 PR84、PR88 和推进中新增的 PR92；源码提交 `6603d7d` 已推送 [PR93](https://github.com/jingyio/GeneLoop/pull/93)，未合并、未部署，当前为草稿。
+- 目标/范围：独立 `codex/integrate-file-ppt-rsi` 分支，完整接入 PR84、PR88 和推进中新增的 PR92；源码提交 `6603d7d` 已推送 [PR93](https://github.com/jingyio/GeneLoop/pull/93)，未合并、未部署，已完成集成验证，等待负责人审阅。
 - 已完成：保留主线附件索引、私有上下文、进度/取消及统一服务入口；加入 `/file` 和 PPT 后台学习/认证/后续晋级/负反馈。保留 main 已发布的全部库，Paper/PPT 当前集成版本为 v17/v12，原图/证据/schema 不变。File v6 的四类图已按当前源码重新认证，42 源码锁均匹配。
-- 已验证：PR92 后最终 Linux 全量1415 Python/1073 Node通过，各3跳过；另71 Python/112 Node定向通过。smoke/Motif/构建检查通过。最新 head 的 Ubuntu/Windows CI 状态见[实验记录](../experiments/file-ppt-integration-20261019.md)，CI 尚未终态时不称可合并。
+- 已验证：PR92 后最终 Linux 全量1415 Python/1073 Node通过，各3跳过；另71 Python/112 Node定向通过。smoke/Motif/构建检查通过。提交 `3c36360` 的 Ubuntu/Windows 四项 CI 全通过；后续仅文档更新，最新 head 状态见[实验记录](../experiments/file-ppt-integration-20261019.md)，CI 尚未终态时不称可合并。
 - 真实结果：四图认证 71 请求；公开库消费者两项合计 11 请求，单文件 3 次 verified skip、三文件因原生交错回退且 skip=0，均严格交付通过。共 82 请求/代理估费 USD0.057137782，账单未知；不是业务质量或净收益结论，反例保留。
 - 配置/数据：`scripts/recertify-file-seeds.py` 默认预览；私有副本为原服务器项目 `.local/pr84-88-integration-20261019/{code,final-code}`，模型凭证仅沿用服务器既有环境，无原始日志或私人资料提交。
 - 权限/预算：新增测试封套 USD1，单项0.05/48步/3000输出/0修复，已有失败和旧费用保留，不清零；当前新增代理总额0.057137782。未扩大 execute 到其他工具、用户原件或外部应用。

@@ -60,4 +60,4 @@ npm run motif:check
 - 同一最终隔离副本的 `npm run smoke`、`npm run motif:check` 均通过；`npm test` 内的 continuation 构建产物核对通过，以上均无付费模型请求。
 - 三个最终库的全部源码锁均匹配。与 main PR92 对比，`harless_attachment_context.ts`、`harless_attachment_reading.ts`、服务生命周期及其原生图片回归文件保持不变；main 已发布的 v16/v11 和 PR84 的 v5 字节保留。
 - 私有元数据及正反消费者摘要已回传本地 worktree `.local/pr84-88-integration-results/`，包括 `effective-snapshot-reviewed.json`、`accounting-summary.json`、认证摘要与两份消费者摘要；原始任务/轨迹/费用账本留在服务器原私有目录，不上传凭证或 SDK 凭证存储。
-- 当前 GitHub Ubuntu/Windows 检查仍排队，PR93 保持草稿，不能把 Linux 通过说成最新跨平台 CI 已通过。未合并、未部署；合并前仍须核对最新 head 与主线。代码以后的文档交接提交不改变上述执行源码或证书。
+- 验证提交 `3c3636085236288b645170796bf9dffa57b32369` 的 push/PR 两组 Ubuntu/Windows 四项 CI 均通过：[push运行](https://github.com/jingyio/GeneLoop/actions/runs/39288942171)、[PR运行](https://github.com/jingyio/GeneLoop/actions/runs/39288950689)。本条仅补文档，执行源码/配置/库/测试与验证提交一致；之后的最新 head 检查仍以 PR93 为准。未合并、未部署；合并前须核对最新主线，不把离线 CI 扩大为 Windows/Linux 真实账号浏览器验收。
