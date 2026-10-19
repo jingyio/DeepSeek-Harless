@@ -98,10 +98,11 @@ test('composer badge reads its live editor even during native chip transitions a
   assert.equal(f.posts.length, 0);
 });
 
-test('slash suggestions hide Files and default Chat while keeping manual Chat compatible', async () => {
+test('slash suggestions offer file beside the three existing scenes while hiding default Chat', async () => {
   const f=fixture();f.values.get('alice').scenes.push({id:'files',label:'Files',available:true});
   const rows=await f.trigger.candidates({sessionId:'alice'},{query:'',position:'leading'});
-  assert.deepEqual(Array.from(rows,row=>row.name),['ppt','paper','data']);
+  assert.deepEqual(Array.from(rows,row=>row.name),['ppt','paper','data','file']);
+  assert.equal(rows.find(row=>row.name==='file').description,'文件管理');
   assert.equal(f.trigger.matchSpace({sessionId:'alice'},'/chat').insert.clipboardText,'/chat');
 });
 test('Typed and pasted scene commands update the badge immediately without mounting a backend', async () => {
@@ -595,4 +596,12 @@ test('A backend scene-switch failure retains the original draft and cannot creat
   assert.equal(f.inputs.size,2);assert.equal(f.opened.length,0);assert.equal(f.submissions.length,0);
   assert.equal(input.state.getSnapshot().draft,'/p 原草稿');assert.deepEqual(input.state.getSnapshot().attachmentIds,['original']);
   assert.equal(f.posts.some(row=>row.action==='new_session'),false);
+});
+
+
+test('file scene has automatic execution and RSI with no extra mode controls', async()=>{
+  const f=fixture(),session={sessionId:'alice'};f.values.get('alice').selection.scene='files';
+  f.inputs.get('alice').setDraft('/harless');
+  const rows=await f.decoration.ui.options(session,new AbortController().signal);
+  assert.equal(rows.some(row=>row.id.startsWith('mode:')||row.id.startsWith('rsi:')),false);
 });

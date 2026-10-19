@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "format": "sss-operation-graph-v2",
+  "execution_version_sha256": "3e3af746a4d05690b663229c6b35fb84427b5f2093e2e9597d2e0cdcd4a2f27b",
+  "artifact": {
+    "kind": "learned_mcp_operation_dag",
+    "status": "trace_validated_read_only",
+    "nodes": [
+      {
+        "tool": "mcp__file_management__pin_files",
+        "bindings": {}
+      },
+      {
+        "tool": "mcp__file_management__read_files",
+        "bindings": {
+          "source_ids": {
+            "node": 0,
+            "path": "source_ids"
+          }
+        }
+      }
+    ],
+    "tool_contracts": {
+      "mcp__file_management__pin_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [
+            "source_ids"
+          ],
+          "statuses": [
+            "pinned_batch"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "file_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "File Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "file_ids"
+          ],
+          "title": "pin_filesArguments"
+        },
+        "schema_sha256": "085ba4a25493a78dbb43948a8d36d5751cda1fa7aab55dd268730909cc30197f"
+      },
+      "mcp__file_management__read_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [],
+          "statuses": [
+            "read_batch_complete"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "source_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "Source Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "source_ids"
+          ],
+          "title": "read_filesArguments"
+        },
+        "schema_sha256": "5334cd754943e86c079782219efa181bd4ab2c7afbc0de0a450b56ca6954750b"
+      }
+    },
+    "max_nodes": 8,
+    "interleaving_contracts": {
+      "mcp__file_management__list_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": false,
+          "exports": [],
+          "safe_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "list_filesArguments"
+        },
+        "schema_sha256": "fbe3e382dd6c8e9281fe26492070587b61f9dd4de908bb735cd9697af616533d"
+      }
+    },
+    "execution_version": "3e3af746a4d05690b663229c6b35fb84427b5f2093e2e9597d2e0cdcd4a2f27b",
+    "certification_contract": "sss-operation-certification-v2",
+    "source_task_fingerprints": [
+      "83ee3d88d4fd8baebbfa9e5def8f97e819bef19d8e601206e7a88839a0e89fd7",
+      "b872de88a54b8b9f974178cbc2f0f55382c6649cfa25ce85216c3aa589b74106",
+      "782bffaf9eacf0337deb724216154b5f7f56459becdb6f13be060fc97ba1c49c"
+    ],
+    "witnesses": [
+      {
+        "session_id": "sss-217bbe584e1a41668e63487f50264294",
+        "calls": [
+          "call_00_J2mv8AtxxYcIj1WhJRd67905",
+          "call_00_lwEpibAD6MH85Ir5M8Dk8469"
+        ],
+        "native_new_nodes": [
+          1
+        ],
+        "inherited_policy": null,
+        "events_sha256": "3025fb5cefd8ed7e76154a04eb2e45634b99e67e1955d69b7cc98ec42b9efec6"
+      },
+      {
+        "session_id": "sss-cdf6720a6c344b9093bb402157fbd040",
+        "calls": [
+          "call_00_gXOthl3mad5Dez7azTLC1717",
+          "call_00_as9eZWPs4L4taUmy6VgS0287"
+        ],
+        "native_new_nodes": [
+          1
+        ],
+        "inherited_policy": null,
+        "events_sha256": "a377a092f85ca2b3b6aad4ca7c7a9a007fd4bfd7e0a6362f7d8b82648b9af52a"
+      },
+      {
+        "session_id": "sss-de8e75ffeb1341e3b136c38a1f382f6a",
+        "calls": [
+          "call_00_l8WYXx7JVgXikcVVzqEG6500",
+          "call_00_YQ0TBZVuJ6jIdsijFB3z2353"
+        ],
+        "native_new_nodes": [
+          1
+        ],
+        "inherited_policy": null,
+        "events_sha256": "7aae38ae6784d85f2457d06a4348b6ddae2aa6c4c94b258a305a77702fe348c3"
+      }
+    ],
+    "validation_task_fingerprint": "718e4ade8b658d87ce47a317098ba6cca6ad96ca54d6e3fae53d09da48ab073d",
+    "validation_witness": {
+      "nodes": [
+        {
+          "tool": "mcp__file_management__pin_files",
+          "bindings": {}
+        },
+        {
+          "tool": "mcp__file_management__read_files",
+          "bindings": {
+            "source_ids": {
+              "node": 0,
+              "path": "source_ids"
+            }
+          }
+        }
+      ],
+      "values": {
+        "1:source_ids": [
+          "source-ac2b0ec655291b360e7de23a13201f22",
+          "source-34e302111add0443402600311c6544e4",
+          "source-6704b612598ea180187e953523a39143",
+          "source-cf62505892792116be689d05b773d5e3",
+          "source-291e581c1a8815b4b717becd1e9ea8bb"
+        ]
+      },
+      "calls": [
+        "call_00_AhdH815mOItLgrk4yBzU1009",
+        "call_00_ThltD66HwRa1Awgb5KH81457"
+      ],
+      "native_new_nodes": [
+        1
+      ],
+      "inherited_policy": null
+    },
+    "certified_digest": "3dcbea060d02213d68db4caa33e32b07a5130ef1fde73078c1b6e03567f5376c"
+  },
+  "policy_digest": "42b5a5fdbbce798080ab16843fa4b29d4402ca137660999d53e4958beadac769"
+}

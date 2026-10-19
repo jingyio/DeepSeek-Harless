@@ -1,3 +1,5 @@
+> 2026-10-19 文件管理独立集成 [PR #84](https://github.com/jingyio/GeneLoop/pull/84) 待用户审阅：`codex/geneloop-file-rsi` 已同步main `6df4c5c`，增加 `/file 文件管理`、自动执行/RSI、各账号长期经验及原生恢复/确认。Paper/PPT/Data原宿主和证书不改；本次不合并、不部署。当前状态和失败边界以 [文件交接](file-management.md) 为准；真实验收及USD0.609053074代理估费见 [实验记录](../experiments/geneloop-file-main-integration-20261019.md)。
+
 # DeepSeek Harless 主线当前交接
 
 - 2026-10-19（Codex）：正式网站启动/重启/检查/回退统一为 `npm run service -- ACTION`，AGENTS 和 README 固定开发者/AI 的入口，禁止临时发布脚本重复实现启动。私有计划保留持久数据/预算；入口内置认证同步、进程代际核验、互斥、活动任务拒绝与失败回退。流程见[服务生命周期](../service-lifecycle.md)，实际验证边界见[记录](../experiments/unified-service-lifecycle-20261019.md)及关联PR。

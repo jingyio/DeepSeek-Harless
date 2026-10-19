@@ -833,3 +833,19 @@ PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿
 普通聊天复用安全 Markdown 文件 mentions 和右侧预览，附独立预览/下载入口；对照正文同时支持命令环境路径和唯一文件名，包括表格内行内代码。未知文件和歧义文件名不猜测绑定；HTML 继续只预览源码，不在应用同源环境执行脚本。600/700私有权限不改为全员可读。历史文件若已被后续轮次覆盖且没有快照，不冒充原交付。
 
 发布库兼容变更见 `scripts/reexport-delivery-compat.py`：对原已认证序列化库重新运行公共 exporter 与当前完整工具契约检查，要求输出在线程序语义完全一致；发布独立 `paper-web-v13`/`ppt-master-v8`，旧版本保留。该检查不回放私人原始轨迹，不是新挖掘、质量认证或降本证据。
+
+
+## 文件管理 `/file` 集成（2026-10-19）
+
+本节替代旧 Files 产品入口的默认只读与开关说明；旧实验和三个已有场景的接口不变。原生 `harless_web_client` 先安装 main 的任务适配器，再加文件专用扩展 `harless_file_scene.ts`。非文件请求原样交回 main controller，不修改 Paper/PPT/Data 的场景、工具或认证源码锁。`files` 内部 ID 不变，菜单使用 `/file 文件管理`，兼容 `/files`、`/management` 提交前缀。发送后仍按 main 行为恢复普通聊天草稿。
+
+- 文件任务自动执行并启用 RSI，不增加模式开关。真实 SDK 事件经 `file_event_projection.ts` 投影到拥有该任务的原生会话；不编造模型输出或工具结果。原始事件不改写。
+- 新的受认证 `/api/harless/file-scene` 仅服务本账号拥有的 session：GET 返回设置或任务状态，POST `select` 选择文件场景，POST `resume` 恢复原任务；GET `id/turn/lane/file` 使用原生交付卡片预览和下载。未完成202、不可见404、守卫冲突409，文件摘要、祖先符号链接与账号作用域实时检查。不接收任意主机路径或执行命令。
+- 上传继续使用 main 的原生 owning receipt，验证实际字节。账号库位于 `.local/web/file-management/accounts/<owner hash>/`，经验跨该账号工作区共享，副本按工作区摘要隔离。成员部署沿用现有私有持久挂载，不更改 gateway 或共享宿主核心。
+- `operation_runner.py` 使用现有 DeepSeek Harness SDK 与 TS Motif，Python 离线学习/独立认证。SDK 请求经 `management_platform_budget.py` 注册到原平台计费；原 FileJob 累积权限、步数、费用和修复次数，恢复不清零。当前文件任务5美元、96步/请求、4000输出token、2次验收修复/服务商重试，平台更严限额继续有效。
+- 覆盖、永久删除和工作区外操作经原生 approval 服务逐计划确认，证明绑定任务摘要、当前树、计划摘要及恢复方向。同一确认的中断重试不再次询问；已拒绝计划留存拒绝记录，不重复弹窗。低风险副本操作直接执行，MCP 仍核对状态、效果和恢复日志。
+- 公共 `file-v*` 种子只含当前重新认证的 IR 与脱敏摘要；原资料、轨迹、私有证书、费用及旧授权不发布。安装与在线执行均核验源码/目录版本，账号后续学习相互独立，未认证或失配时回普通 Harness。
+
+文件内容工具、质量v7、复杂控制流和历史迁移契约见 [使用说明](management-local.md) 与文件场景 `docs/changes/`；本次移植不将所有自然语言目标视为可自动严格验收，未完整解析的目标继续标记复核。
+
+文件场景通用 MCP 的注册目录、请求、回执和任务文本均显式 UTF-8。下游 Python MCP 强制 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`，补传 Windows 必需系统变量；凭证仍只通过既有已登记 provider 的显式环境引用绑定，不整包转发主机环境。实际 native MCP 的中文目标/产物往返与独立源版本认证保留在本轮实验记录。

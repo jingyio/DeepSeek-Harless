@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {Session,interruptedTurnClosers} from '@deepseek-ai/dsh-session';
+import {createAssistantMessage,createUserMessage,createToolResultMessage} from '@deepseek-ai/dsh-llm';
+const options={skip:!process.features?.typescript};
+test('file SDK display preserves native step, surface and call dependencies after parent history',options,async()=>{
+ const {fileEventProjection}=await import('../src/adapters/file_event_projection.ts');
+ const sdk=new Session('file-sdk'),parent=new Session('native-parent');
+ parent.append('turn/start',{turn:1});parent.append('turn/end',{turn:1,reason:{kind:'completed'}});
+ parent.append('turn/start',{turn:2});parent.append('user/message',createUserMessage({content:[{type:'text',text:'/file 盘点'}],source:{kind:'user',rpcId:'request'}}),{surfaceOp:'append'});
+ sdk.append('turn/start',{turn:1});sdk.append('step/start',{turn:1,step:1});
+ sdk.append('assistant/message',{turn:1,step:1,stream:[],message:createAssistantMessage({source:{provider:'deepseek-official',model:'deepseek-flash'},content:[{type:'tool-call',id:'call-1',name:'mcp__file_management__read_task',arguments:'{}'}]})},{surfaceOp:'append'});
+ const call=sdk.append('tool/call',{turn:1,step:1,callId:'call-1',name:'mcp__file_management__read_task',arguments:'{}'});
+ sdk.append('tool/result',{turn:1,step:1,message:{id:'result-1',role:'user',source:{kind:'tool',callId:'call-1'},content:[{type:'tool-result',toolCallId:'call-1',isError:false,content:[{type:'text',text:'{"diagnostic":true}'}]}]}},{surfaceOp:'append',sourceEventSeqs:[call.seq]});
+ sdk.append('step/end',{turn:1,step:1});sdk.append('turn/end',{turn:1,reason:{kind:'completed'}});
+ const original=JSON.stringify(sdk.snapshotEvents()),project=fileEventProjection(parent,2);
+ for(const event of sdk.snapshotEvents())project(event);
+ parent.append('turn/end',{turn:2,reason:{kind:'completed'}});
+ const events=parent.snapshotEvents(),result=events.find(e=>e.type==='tool/result'),projectedCall=events.find(e=>e.type==='tool/call');
+ assert.deepEqual(result.sourceEventSeqs,[projectedCall.seq]);assert.equal(result.surfaceOp,'append');
+ assert.equal(result.data.turn,2);assert.equal(result.data.step,projectedCall.data.step);
+ assert.deepEqual(new Session('restored-parent',events).snapshotEvents().slice(0,events.length),events);
+ assert.deepEqual(interruptedTurnClosers(events),[]);assert.equal(JSON.stringify(sdk.snapshotEvents()),original);
+});

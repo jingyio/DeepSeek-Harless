@@ -1,0 +1,7 @@
+{
+  "candidate_sha256": "db27f927659c78d0f358ac57255486697fb49e31bb89249a60aac3a9053c35a5",
+  "learning_result_sha256": "7f567042535519b409ff0f5c6b6f689eda1f57d00fb2ea47a4a9c3009580f0ce",
+  "protocol_sha256": "6f22b80693e77299f38e7973ba1c23abfc0b078e48165eb2c925370a5f083e3f",
+  "learning_source_sha256": "8c40579b272deaa2b1b8d2391fa93c79e638c42345c77704e7ab4b1c708ff7e0",
+  "certification_runs_when_frozen": 0
+}

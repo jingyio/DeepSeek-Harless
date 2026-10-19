@@ -1,0 +1,80 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "sss-file-workflow-v1",
+      "title": "Version",
+      "type": "string"
+    },
+    "workflow_id": {
+      "enum": [
+        "FM01",
+        "FM05",
+        "FM13",
+        "FM17",
+        "FM21",
+        "FM38"
+      ],
+      "title": "Workflow Id",
+      "type": "string"
+    },
+    "source_paths": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Source Paths",
+      "type": "array"
+    },
+    "destination_prefixes": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Destination Prefixes",
+      "type": "array"
+    },
+    "required_reads": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Required Reads",
+      "type": "array"
+    },
+    "allowed_reads": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Allowed Reads",
+      "type": "array"
+    },
+    "context_paths": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "title": "Context Paths",
+      "type": "array"
+    },
+    "recovery_goal": {
+      "default": "complete",
+      "enum": [
+        "complete",
+        "rollback"
+      ],
+      "title": "Recovery Goal",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "workflow_id",
+    "source_paths",
+    "destination_prefixes"
+  ],
+  "title": "WorkflowContract",
+  "type": "object"
+}
