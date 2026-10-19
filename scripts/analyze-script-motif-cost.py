@@ -25,7 +25,8 @@ def category(message):
     for name,args in calls:
         if name=='bash':
             command=args.get('command','')
-            if re.search(r'(?:^|&&\s*)geneloop-cache\s',command):label='cached_script_dispatch'
+            if command.strip().startswith('geneloop-resolve '):label='semantic_slot_resolution'
+            elif re.search(r'(?:^|&&\s*)geneloop-cache\s',command):label='cached_script_dispatch'
             elif re.search(r"python3?\s+(?:-\s*<<|-c\s)|cat\s*>\s*\S+\.py\s*<<",command):
                 label='script_authoring_network' if re.search(r'\burlopen\b|requests\.(?:get|post|request|Session)|httpx\.|curl\s|wget\s',command) else 'script_authoring_local'
             elif re.search(r'python3?\s+[^\s]+\.py\b',command):label='saved_script_dispatch'
@@ -60,7 +61,7 @@ def analyze(task):
                 if start['data']['name']=='web_search':intervals.append((start['time'],e['time']))
     totals=defaultdict(lambda:{'requests':0,'estimated_usd':0,**{k:0 for k in FIELDS}});assigned=set();records=[]
     for row in ledger:
-        if row.get('response_usage') is None:continue
+        if not row.get('response_usage'):continue
         stamp=row['request_utc_epoch']*1000
         possible=[(abs(e['time']-stamp),i,e) for i,e in enumerate(messages) if i not in assigned]
         match=min(possible,key=lambda p:p[0]) if possible else None
@@ -72,16 +73,20 @@ def analyze(task):
         for field in FIELDS:total[field]+=row['response_usage'].get(field,0) or 0
         prior=next((e for e in reversed(messages) if e['time']<stamp-500),None)
         recovery=any((prior['time'] if prior else 0)<t<stamp for t in errors)
-        records.append({'request_id':row.get('request_id'),'category':kind,'step':step,'estimated_usd':row.get('observed_peak_usd'),'after_tool_error':recovery,'elapsed_seconds':row.get('elapsed_seconds')})
+        records.append({'request_id':row.get('request_id'),'completed_epoch_ms':stamp,'completion_tokens':row['response_usage'].get('completion_tokens',0),'category':kind,'step':step,'estimated_usd':row.get('observed_peak_usd'),'after_tool_error':recovery,'elapsed_seconds':row.get('elapsed_seconds')})
     report_boundary=next((e['time'] for e in messages if report_start(e['data']['message'])),None)
-    report_rows=[row for row in ledger if report_boundary is not None and row.get('response_usage') is not None and row['request_utc_epoch']*1000>=report_boundary-500]
-    report_phase={'scope':'报告首次写作或暂存开始后的全部请求；可能含补检，不等于纯排版费用',
+    report_rows=[row for row in ledger if report_boundary is not None and row.get('response_usage') and row['request_utc_epoch']*1000>=report_boundary-500]
+    phase_categories=defaultdict(lambda:{'requests':0,'estimated_usd':0,'completion_tokens':0})
+    for record in records:
+        if report_boundary is not None and record['completed_epoch_ms']>=report_boundary-500:
+            subtotal=phase_categories[record['category']];subtotal['requests']+=1;subtotal['estimated_usd']+=record['estimated_usd'] or 0;subtotal['completion_tokens']+=record['completion_tokens']
+    report_phase={'categories':dict(phase_categories),'scope':'报告首次写作或暂存开始后的全部请求；可能含补检，不等于纯排版费用',
                   'requests':len(report_rows),'estimated_usd':sum((r.get('observed_peak_usd') or 0) for r in report_rows),
                   'output_tokens':sum(r['response_usage'].get('completion_tokens',0) for r in report_rows)}
     audit=read_rows(task/'script-motif-audit.jsonl');counts=Counter(r['kind'] for r in audit)
     return {'task_id':task.name,'scope':'完整请求的可见动作归因；含该请求的语义判断；不等于纯代码生成费用或反事实可节省费用',
       'alignment':'provider completion timestamp within 500 ms of assistant message; remaining web_search tool intervals',
-      'categories':dict(totals),'report_phase':report_phase,'requests_with_known_usage':len(records),'requests_after_tool_errors':sum(r['after_tool_error'] for r in records),
+      'categories':dict(totals),'report_phase':report_phase,'requests_with_known_usage':len(records),'requests_without_usage':sum(not r.get('response_usage') for r in ledger),'requests_after_tool_errors':sum(r['after_tool_error'] for r in records),
       'unassigned_assistant_messages':len(messages)-len(assigned),'exact_repeated_tool_arguments':sum(n-1 for n in repeats.values() if n>1),
       'script_events':dict(counts),'embedding_elapsed_ms':sum(r.get('elapsed_ms',0) for r in audit if r['kind']=='script_embedding'),'requests':records}
 

@@ -33,6 +33,6 @@ export function runCertifiedScript(job){
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{const payload=JSON.parse(Buffer.from(process.argv[2],'base64').toString('utf8'));
-  console.log(JSON.stringify(payload.jobs?{kind:'script_cache_batch_receipt',receipts:payload.jobs.map(runCertifiedScript),semantic_quality_accepted:false}:runCertifiedScript(payload)));}
+  console.log(JSON.stringify(payload.control_receipt??(payload.jobs?{kind:'script_cache_batch_receipt',receipts:payload.jobs.map(runCertifiedScript),semantic_quality_accepted:false}:runCertifiedScript(payload))));}
  catch(error){console.error(error.message);process.exitCode=1;}
 }

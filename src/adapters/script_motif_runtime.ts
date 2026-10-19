@@ -1,16 +1,23 @@
 /** Opt-in Script Motif protocol. Internal operators keep the native Bash schema. */
 import {createHash,randomUUID} from 'node:crypto';
-import {readFileSync,readdirSync,lstatSync,realpathSync} from 'node:fs';
+import {readFileSync,readdirSync,lstatSync,realpathSync,existsSync} from 'node:fs';
 import {join,relative,resolve,isAbsolute,extname} from 'node:path';
 import {digest,syntheticToolStreamBatch} from '../motif_core/online_skill_runtime.mjs';
 import {loopbackSimilarity} from './dsh_online_motif.mjs';
 import {fileURLToPath} from 'node:url';
+import {createScriptExecutionFrontier} from './script_execution_frontier.ts';
 
 const sha=(s:any)=>createHash('sha256').update(s).digest('hex');
 const grants=new Map<string,{session:string;versions:any[];body:any;expires:number}>();
 const consumed=new Set<string>();
 const caches=new Map<string,any>();
 const inside=(root:string,path:string)=>{const r=relative(root,path);return !r.startsWith('..')&&!isAbsolute(r);};
+export function scriptVirtualHost(workspace:string,path:string){
+ if(resolve(path)!==path||!inside('/work',resolve(path)))throw Error('script_input_not_fixed');
+ const part=relative('/work',resolve(path));
+ return resolve(workspace,part==='inputs'||part.startsWith('inputs/')?part:
+  part==='outputs'||part.startsWith('outputs/')?'outputs/code/'+part.slice('outputs'.length):'code/'+part);
+}
 export function fixedInput(root:string,path:string){
   if(!inside(root,path)||realpathSync(path)!==resolve(path)||!lstatSync(path).isFile()||lstatSync(path).size>16_000_000)throw Error('script_input_not_fixed');
   return readFileSync(path);
@@ -30,6 +37,11 @@ export function registerScriptCache(options:any){
   JSON.stringify(library.programs.map((p:any)=>({id:p.id,operation:p.interface??p.description,inputs:p.inputs,argv_contract:p.argv_contract,network_policy:p.network_policy})));
 }
 export function prepareCacheInvocation(session:string,command:string){
+ if(command.trim().startsWith('geneloop-resolve ')){
+  const frontier=caches.get(session)?.frontier;
+  if(!frontier)throw Error('semantic_frontier_not_admitted');
+  return frontier.prepare(command);
+ }
  if(!/\bgeneloop-cache\s/.test(command))return false;
  const entry=caches.get(session);if(!entry)throw Error('script_cache_not_admitted');
  let invocation=command.trim();
@@ -37,7 +49,7 @@ export function prepareCacheInvocation(session:string,command:string){
  if(prefix){
   let cwd=prefix[1];if(cwd.startsWith("'")||cwd.startsWith('"'))cwd=cwd.slice(1,-1);
   if(!cwd.startsWith('/work')||!inside('/work',resolve(cwd))||/[`$\\]/.test(cwd))throw Error('cache_cwd_must_be_current_workspace');
-  const part=relative('/work',resolve(cwd)),host=resolve(entry.workspace,(part==='inputs'||part.startsWith('inputs/'))?part:'code/'+part);
+  const host=scriptVirtualHost(entry.workspace,cwd);
   if(!inside(entry.workspace,host)||realpathSync(host)!==host||!lstatSync(host).isDirectory())throw Error('cache_cwd_not_fixed');
   invocation=prefix[2];
  }
@@ -54,7 +66,7 @@ export function prepareCacheInvocation(session:string,command:string){
   if(!Array.isArray(paths)||paths.length!==program.inputs.length)throw Error('explicit_script_paths_required');
   const bound=paths.map((p:string,i:number)=>{
    if(typeof p!=='string'||!p.startsWith('/work/')||p.includes('\n'))throw Error('invalid_script_path');
-   const part=p.slice('/work/'.length),host=resolve(entry.workspace,(part==='inputs'||part.startsWith('inputs/'))?part:'code/'+part),data=fixedInput(entry.workspace,host);
+   const host=scriptVirtualHost(entry.workspace,p),data=fixedInput(entry.workspace,host);
    if(!compatibleInput(program.inputs[i],host,data))throw Error('incompatible_script_input');
    return {root:entry.workspace,host,path:p,sha256:sha(data)};
   });
@@ -130,6 +142,7 @@ export function bindScript(program:any,workspace:string,predecessorBindings:any[
     }
   }
   visit(join(workspace,'inputs'),'/work/inputs');visit(join(workspace,'code'),'/work');
+  const outputs=join(workspace,'outputs/code');if(existsSync(outputs)&&realpathSync(outputs)===resolve(outputs))visit(outputs,'/work/outputs');
   if(files.length>128)throw Error('script_input_frontier_limit');
   const bound=program.inputs.map((c:any)=>{
     const matches=files.filter(f=>compatibleInput(c,f.path,f.data));
@@ -151,8 +164,8 @@ export function loadScriptLibrary(path:string){
   }
   return library;
 }
-export const scriptCodeLocks=['src/adapters/script_motif_compiler.py','src/adapters/script_motif_runtime.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs','scripts/run-certified-script.mjs','scripts/fetch-script-evidence.py'];
-export function createScriptInterceptor({library,workspace,session,goal,mode,endpoint,model,minSimilarity=.88,minMargin=.04,minGoalSimilarity=.6,negativeGoals=[],audit,similarity,demandBound=false}:any){
+export const scriptCodeLocks=['src/adapters/script_motif_compiler.py','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs','scripts/run-certified-script.mjs','scripts/fetch-script-evidence.py'];
+export function createScriptInterceptor({library,workspace,session,goal,mode,endpoint,model,minSimilarity=.88,minMargin=.04,minGoalSimilarity=.6,negativeGoals=[],audit,similarity,demandBound=false,executionFrontier=false}:any){
   if(!['cache','shadow','execute'].includes(mode))throw Error('invalid_script_mode');
   if(!Number.isFinite(minSimilarity)||minSimilarity<.5||minSimilarity>1||!Number.isFinite(minMargin)||minMargin<.01||minMargin>1)throw Error('invalid_script_threshold');
   if(!Number.isFinite(minGoalSimilarity)||minGoalSimilarity<.5||minGoalSimilarity>1||!Array.isArray(negativeGoals)||negativeGoals.length>9||negativeGoals.some((s:any)=>typeof s!=='string'||!s.trim()||s.length>16000))throw Error('invalid_script_goal_policy');
@@ -167,13 +180,29 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
     }
     return descriptions.map(d=>cache.get(key)![unique.indexOf(d)]);
   }
-  const used=new Set();let pending:any=null;let halted=false;let history:any[]=[];
+  const used=new Set();let pending:any=null;let halted=false;let history:any[]=[];let userEnvelope:string|undefined;
+  if(executionFrontier&&mode!=='execute')throw Error('frontier_requires_explicit_execute');
+  const frontier=executionFrontier?createScriptExecutionFrontier({library,goal,audit,
+    bind:(program:any)=>bindScript(program,workspace),verify:(b:any)=>{
+      try{return sha(fixedInput(workspace,b.host))===b.sha256;}catch{return false;}
+    }}):null;
+  function issue(winner:any,origin='matched'){
+    const nonce=randomUUID(),callId='sss-script-'+randomUUID();
+    const body=scriptCommand(winner.program,winner.bound.map((b:any)=>b.path),winner.bound.map((b:any)=>b.sha256),nonce);
+    const command='geneloop-script '+winner.program.id+' '+nonce;
+    used.add(winner.key);pending={...winner,nonce,callId,command,origin};grants.set(sha(command),{session,versions:winner.bound,body,expires:Date.now()+30000});
+    audit({kind:'script_bypass_attempt',program_id:winner.program.id,input_versions:winner.bound.map((b:any)=>b.sha256),score:winner.score,origin,fragment_id:winner.fragment_id});
+    return syntheticToolStreamBatch([{callId,proposal:{tool:'bash',arguments:{command,description:'复用已认证的只读脚本：'+JSON.stringify(winner.program.interface??winner.program.description)}}}]);
+  }
   return {
+    frontier,
+    frontierPrompt(){return frontier?.prompt()??'';},
     dispose(){if(pending){const key=sha(pending.command);grants.delete(key);consumed.delete(key);}caches.delete(session);pending=null;halted=true;},
     observe(id:string,execution:any,result:any){
       if(id!==session)return;
+      frontier?.observe(execution,result);
       const facts=observeScriptCache(session,execution,result);
-      for(const fact of facts)used.add(digest([fact.program.id,fact.bound.map((b:any)=>b.sha256)]));
+      for(const fact of facts){used.add(digest([fact.program.id,fact.bound.map((b:any)=>b.sha256)]));frontier?.recordEvidence(fact.program.id,fact.bound);}
       const anchor=facts.at(-1)?.program??(pending&&pending.callId===execution.callId?pending.program:null);
       history.push({tool:execution.name,program_id:anchor?.id,bound:facts.at(-1)?.bound??(pending&&pending.callId===execution.callId?pending.bound:[]),ok:result?.isError!==true,intent:anchor?.intent??(typeof execution.arguments?.description==='string'?execution.arguments.description.slice(0,240):execution.name)});history=history.slice(-6);
       if(!pending||execution.callId!==pending.callId)return;
@@ -188,11 +217,20 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
       }catch{}
       consumed.delete(sha(p.command));
       audit({kind:verified?'script_model_request_skipped_verified':'script_result_unverified',program_id:p.program.id,library_digest:library.digest});
+      if(p.origin==='frontier')frontier?.finish(p.program.id,verified);
       if(!verified)halted=true;
     },
     async intercept(id:string,options:any,next:any){
       if(id!==session||halted||pending||mode==='cache'||!options.tools?.some((t:any)=>t.name==='bash'))return next();
       if(options.messages?.some((m:any)=>m.source?.kind?.includes('repair')))return next();
+      if(frontier){
+        const envelope=digest((options.messages??[]).filter((m:any)=>m.role==='user'&&m.source?.kind==='user').map((m:any)=>({id:m.id,content:m.content})));
+        if(userEnvelope!==undefined&&userEnvelope!==envelope){frontier.halt('user_goal_changed');return next();}
+        userEnvelope=envelope;
+        const ready=frontier.ready();
+        if(ready)return issue(ready,'frontier');
+        return next();
+      }
       const candidates:any[]=[];
       for(const program of library.programs)try{
         // Scalar/network targets always require a current semantic choice.
@@ -218,14 +256,7 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
         audit({kind:'script_candidates_ranked',library_digest:library.digest,goal_sha256:sha(goal),candidates:ordered.map(c=>({id:c.program.id,score:c.score,goal_score:c.goal_score})),margin});
         if(!Number.isFinite(winner.score)||winner.score<minSimilarity||margin<minMargin)return next();
         if(mode==='shadow'){audit({kind:'script_shadow_candidate',program_id:winner.program.id,input_versions:winner.bound.map((b:any)=>b.sha256)});return next();}
-        const nonce=randomUUID(),callId='sss-script-'+randomUUID();
-        const body=scriptCommand(winner.program,winner.bound.map((b:any)=>b.path),winner.bound.map((b:any)=>b.sha256),nonce);
-        // Only an opaque invocation is visible to the LLM. The registered
-        // executor expands it once, so cached source does not bloat context.
-        const command='geneloop-script '+winner.program.id+' '+nonce;
-        used.add(winner.key);pending={...winner,nonce,callId,command};grants.set(sha(command),{session,versions:winner.bound,body,expires:Date.now()+30000});
-        audit({kind:'script_bypass_attempt',program_id:winner.program.id,input_versions:winner.bound.map((b:any)=>b.sha256),score:winner.score});
-        return syntheticToolStreamBatch([{callId,proposal:{tool:'bash',arguments:{command,description:'复用已认证的只读脚本：'+winner.program.description}}}]);
+        return issue(winner);
       }catch(error:any){audit({kind:'script_fallback',reason:error.name});return next();}
     },
   };

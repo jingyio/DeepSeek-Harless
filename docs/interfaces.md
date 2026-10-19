@@ -830,6 +830,16 @@ IR 为 `sandboxed_script_motif_library` v1：`programs[]` 保存 `id/version/lan
 
 `catalog:true` 通过公开 `systemPrompt.variable/section` 挂载稳定目录，普通 `mode:"cache"` 只允许模型选择，不接管 provider。已有 Bash 接受 `geneloop-cache '{"calls":[{"id":"script_...","paths":["/work/当前文件"],"argv":[]}]}'`；每批 1–8 个，参数只绑定当前工作区文件或最多 32 个有界标量。允许已验证的 `cd /work/... &&` 前缀；拒绝 head、管道和重定向并提示保留完整回执，不静默裁剪命令。批量回执全部验证后才发布 Evidence，部分失败不得成为结构前驱。缓存和完整 Motif 具有同样批量能力。目录不增加工具 schema，普通脚本缓存的选择开销仍计入模型请求。
 
+实验可显式设置 `mode:"execute",catalog:true,executionFrontier:true`。此时使用 `script_execution_frontier.ts`：从库中真实前驱关系发现无分支、同文件输入契约的 2–8 节点片段，绑定当前唯一输入；通过原系统提示接口暴露一次当前需求选择，模型仅用已有 Bash 返回：
+
+```sh
+geneloop-resolve '{"request_id":"当前请求 ID","status":"selected","candidate_id":"当前候选 ID"}'
+```
+
+允许 `unknown/ambiguous/unneeded`（不带 candidate_id），不会执行。严格校验字段、当前候选、一次性回执、输入版本及用户消息范围；不接受路径改写或代码字段。命令必须独立，追加 shell 操作或非法 JSON 会撤回本任务的候选邀请并回退，避免反复发送未解决的邀请。确认后 Runtime 在原生循环中逐节点执行并验收，直至完成或失败；失败回退语义处理，最终结论仍由模型生成。结构确定的路径/哈希不再由模型复述。当前参数缺口仅支持片段枚举选择，尚未实现一般文献身份判断或任意 argv 自动解析。每任务最多提出两个新版本请求；不调用额外子模型，不压缩原上下文，也不把 confirmation 请求算作跳过。此路径不依赖 embedding 排名，仍保留其他模式的原匹配能力。
+
+当前输入扫描包括 `inputs`、`code` 和 `/work/outputs` 对应的 `outputs/code`；Python 来源提取与 TS 绑定使用同一映射。路径必须规范、当前且无符号链接/越界，多候选仍回退。验证过且版本未变的缓存节点可以满足片段中的已完成节点；更改输入或当前用户目标会失效。这里是显式当前语义选择后的执行控制，不是凭历史轨迹推断任务必要性，也不等于完整任务进度图。真实证据及失败见[Frontier 实验](experiments/paper-script-frontier-20261019-v1.md)。
+
 `network_policy:"fixed_metadata_get_v1"` 的子进程仍禁网；`run-certified-script.mjs` 接收沙箱的 HTTP 需求，`fetch-script-evidence.py` 验证既有 arXiv/Crossref 固定元数据权限后抓取本次字节，附 URL/时间/哈希，再重放脚本。只读 GET、响应最多 2 MB、最多 12 次取证、单驱动 90 秒；失败交回模型。只支持这两类元数据，不是任意网络脚本。回执不是语义正确性证明，事实变化后必须重新取证。
 
 在线输出上限 16 KB，CPU 上限 20 秒；Linux 复用 bubblewrap，内存地址空间上限 512 MB。macOS 必须显式 `SSS_LOCAL_SCRIPT_EXPERIMENT=1`，使用 sandbox-exec，未提供 Linux 等价的内存上限；仅在本地隔离实验验收，不代表生产 macOS 支持。命令 broker 模式拒绝；Windows 未支持。Python 是执行历史 Python 脚本所必需的运行时，不宣称已无 Python 依赖。

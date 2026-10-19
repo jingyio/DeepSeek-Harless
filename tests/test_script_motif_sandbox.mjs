@@ -100,3 +100,55 @@ test('partial or malformed batch never publishes a verified continuation anchor'
  const facts=observeScriptCache(session,{name:'bash',arguments:{command}},{content:[{type:'text',text:JSON.stringify({kind:'script_cache_batch_receipt',receipts:[first,{...first,nonce:jobs[1].nonce,output_sha256:'changed'}]})}]});
  assert.deepEqual(facts,[]);assert.ok(!audit.some(r=>r.kind==='script_cache_verified'));assert.equal(audit.at(-1).kind,'script_cache_result_unverified');
 });
+
+test('typed current choice drives two real sandbox nodes with no intervening provider call',{skip:!enabled},async t=>{
+ const {root}=fixture(t),session='frontier-sandbox',rows=[];
+ const first={id:'frontier-read',inputs:[{suffix:'.txt',format:'text'}],template:"print(open('__MOTIF_INPUT_0__').read())",interface:{stdout_labels:['text']}};
+ const second={...first,id:'frontier-count',template:"print(len(open('__MOTIF_INPUT_0__').read()))",predecessor:{program_id:first.id}};
+ const library={programs:[first,second],digest:'diagnostic'};
+ const runtime=createScriptInterceptor({library,workspace:root,session,goal:'check this document',mode:'execute',executionFrontier:true,
+   similarity:async()=>{throw Error('not an embedding decision');},audit:r=>rows.push(r)});
+ registerScriptCache({library,workspace:root,session,audit:r=>rows.push(r),frontier:runtime.frontier});t.after(()=>runtime.dispose());
+ const gap=JSON.parse(runtime.frontierPrompt().split('\n').at(-1));
+ const command='geneloop-resolve '+JSON.stringify({request_id:gap.request_id,status:'selected',candidate_id:gap.candidates[0].id});
+ const receipt=prepareCacheInvocation(session,command).control_receipt;
+ runtime.observe(session,{name:'bash',arguments:{command}},{content:[{type:'text',text:JSON.stringify(receipt)}]});
+ for(let step=0;step<2;step++){
+  let call;for await(const chunk of await runtime.intercept(session,{tools:[{name:'bash'}]},()=>{throw Error('provider must not run between nodes');}))if(chunk.block?.type==='tool-call')call=chunk.block;
+  const args=JSON.parse(call.arguments),body=consumeScriptGrant(session,args.command);
+  runtime.observe(session,{callId:call.id,name:'bash',arguments:args},{content:[{type:'text',text:sandboxRun(root,body)}]});
+ }
+ assert.equal(rows.filter(r=>r.kind==='script_model_request_skipped_verified').length,2);
+ assert.equal(rows.filter(r=>r.kind==='script_frontier_completed').length,1);
+ assert.equal(await runtime.intercept(session,{tools:[{name:'bash'}]},()=> 'semantic conclusion still needed'),'semantic conclusion still needed');
+});
+
+import {bindScript,scriptVirtualHost} from '../src/adapters/script_motif_runtime.ts';
+test('current output scratch inputs bind through canonical virtual paths, preserving version guards',{skip:!enabled},t=>{
+ const {root}=fixture(t);mkdirSync(join(root,'outputs/code/unz'));writeFileSync(join(root,'outputs/code/unz/source.bib'),'current bibliography');
+ const program={id:'output-scope',inputs:[{suffix:'.bib',format:'text'}],template:"print(open('__MOTIF_INPUT_0__').read())"};
+ const bound=bindScript(program,root);assert.equal(bound[0].path,'/work/outputs/unz/source.bib');
+ assert.equal(scriptVirtualHost(root,bound[0].path),join(root,'outputs/code/unz/source.bib'));
+ const session='outputs-binding';registerScriptCache({session,workspace:root,library:{programs:[program]},audit:()=>{}});
+ const command='cd /work/outputs/unz && geneloop-cache '+JSON.stringify({calls:[{id:program.id,paths:[bound[0].path]}]});
+ const job=prepareCacheInvocation(session,command).jobs[0];assert.equal(runCertifiedScript(job).output,'current bibliography\n');
+ writeFileSync(join(root,'outputs/code/unz/source.bib'),'changed');assert.throws(()=>runCertifiedScript(job),/sandbox_failed/);
+ writeFileSync(join(root,'code/another.bib'),'different');assert.throws(()=>bindScript(program,root),/ambiguous/);
+});
+
+test('a changed current user envelope cancels a selected frontier before executing',{skip:!enabled},async t=>{
+ const {root}=fixture(t),session='goal-change',rows=[];
+ const a={id:'a',inputs:[{suffix:'.txt',format:'text'}],template:"print(open('__MOTIF_INPUT_0__').read())"};
+ const library={programs:[a,{...a,id:'b',predecessor:{program_id:'a'}}]};
+ const runtime=createScriptInterceptor({library,workspace:root,session,goal:'check document',mode:'execute',executionFrontier:true,similarity:async()=>[1],audit:r=>rows.push(r)});
+ registerScriptCache({library,workspace:root,session,audit:()=>{},frontier:runtime.frontier});t.after(()=>runtime.dispose());
+ const options={tools:[{name:'bash'}],messages:[{id:'u',role:'user',source:{kind:'user'},content:[{type:'text',text:'check document'}]}]};
+ assert.equal(await runtime.intercept(session,options,()=> 'model'),'model');
+ const gap=JSON.parse(runtime.frontierPrompt().split('\n').at(-1));
+ const command='geneloop-resolve '+JSON.stringify({request_id:gap.request_id,status:'selected',candidate_id:gap.candidates[0].id});
+ const receipt=prepareCacheInvocation(session,command).control_receipt;
+ runtime.observe(session,{name:'bash',arguments:{command}},{content:[{type:'text',text:JSON.stringify(receipt)}]});
+ const changed={...options,messages:[...options.messages,{id:'new',role:'user',source:{kind:'user'},content:[{type:'text',text:'translate only; no checks'}]}]};
+ assert.equal(await runtime.intercept(session,changed,()=> 'new semantic decision'),'new semantic decision');
+ assert.ok(rows.some(r=>r.reason==='user_goal_changed'));assert.ok(!rows.some(r=>r.kind==='script_bypass_attempt'));
+});

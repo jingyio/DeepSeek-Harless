@@ -1,9 +1,10 @@
 # DeepSeek Harless 主线当前交接
 
-## 2026-10-19：独立 Script Motif 实验，未发布
+## 2026-10-19：Script Motif 当前语义确认与连续执行，未发布
 
-- `codex/paper-script-motif` 基于 `9f945a5`，通过独立 launcher/wrapper 跑通真实 Python 脚本参数化、认证、语义匹配、直接执行及自动学习；生产 Web/shell、Registry、旧认证库与原用户工作区保持不变。用户要求稳定后才 PR，当前未推送、未 PR、未部署。
-- 原题真实对照未证明降本：最新 Execute 4 次验证跳过，但 173 请求/$0.260957028，高于 Baseline 88/$0.220640676，最终报告触及输出上限而不合格。完整失败/账本见 [实验](../experiments/paper-script-motif-20261018-v1.md)，接手动作见 [论文交接](paper-proofreading.md)。最终本地 Python 881/Node 850 通过；V100 SSH 失败，远程尝试费用尚待核清。
+- 独立分支 `codex/paper-script-frontier` 基于 `3943894`；当前文件参数自动绑定，模型一次确认必要性后 Runtime 连续执行认证两节点。实验后增加非法语义响应撤回邀请；不扩工具表、不调 embedding。未推送、未 PR、未部署，原工作区与生产库未改。
+- 真实 RMSNorm 对照 Baseline 101/$0.162408540，Cache 144/$0.194030328，Execute 286/$0.371369304。Execute 2 次真实跳过，但报告交付失败。用户质疑后追查：报告类别 6→187 请求，Baseline 通用导出绕过结构化字段校验且实际 PDF 计数错误，Execute 陷入 27 次定稿失败；**质量/路径不匹配，不支持同质量降本或把差额归为纯 Motif 开销**。
+- 完整 903 Python/866 Node 通过，之后守卫局部 20 通过，无模型 smoke 通过。本轮全部 696 请求/$1.376831772（含未知与预留），本地三轮累计 2,793/$4.587678180，均非账单实付；V100 旧费用未知。先修复报告草稿/验收协议，再做公平配对，不扩功能追命中率。完整记录见 [实验](../experiments/paper-script-frontier-20261019-v1.md) 与 [论文交接](paper-proofreading.md)。
 
 ## 2026-10-18：成员沙箱公开证书依赖补齐
 

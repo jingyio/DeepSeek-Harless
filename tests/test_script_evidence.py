@@ -40,3 +40,11 @@ def test_vector_cache_preserves_order_and_evicts_without_caching_decisions():
     assert seen==[['a','bb'],['ccc']]
     assert 'a' not in cache.entries
     assert cache.resolve(['a','ccc'],encode)==[[1],[3]]
+
+def test_saved_script_in_outputs_uses_the_same_virtual_mapping_as_runtime(tmp_path):
+    from src.adapters.script_motif_compiler import virtual_host
+    source_dir=tmp_path/'outputs/code/unz';source_dir.mkdir(parents=True)
+    (source_dir/'query.py').write_text('import sys\nprint(sys.argv[1:])')
+    assert virtual_host(tmp_path,'/work/outputs/unz/query.py')==source_dir/'query.py'
+    row=extract('cd /work/outputs/unz && python3 query.py current',tmp_path)
+    assert row[2]==['current']

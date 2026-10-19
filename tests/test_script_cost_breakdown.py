@@ -33,3 +33,14 @@ def test_wrapped_cache_attempt_is_counted_even_if_dispatch_failed():
 def test_report_source_urls_are_not_network_code_generation():
     message={'content':[{'type':'tool-call','name':'bash','arguments':{'command':"python3 - <<'PY'\nprint('https://example.org/source')\nPY"}}]}
     assert m.category(message)=='script_authoring_local'
+
+def test_typed_resolution_is_a_paid_decision_not_a_structural_skip():
+    msg={'content':[{'type':'tool-call','name':'bash','arguments':{'command':'geneloop-resolve '+json.dumps({'status':'unknown','request_id':'current'})}}]}
+    assert m.category(msg)=='semantic_slot_resolution'
+
+def test_unknown_usage_failure_is_not_a_zero_cost_success(tmp_path):
+    (tmp_path/'ledger.jsonl').write_text(json.dumps({'request_id':1,'request_utc_epoch':1,'response_usage':{},'observed_peak_usd':None}))
+    result=m.analyze(tmp_path)
+    assert result['requests_with_known_usage']==0
+    assert result['requests_without_usage']==1
+    assert not result['categories']

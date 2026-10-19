@@ -28,6 +28,17 @@ def sha(value):
 def digest(value):
     return sha(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',', ':')))
 
+def virtual_host(workspace, virtual):
+    if not virtual.startswith('/work/'):
+        raise ValueError('script_outside_workspace')
+    relative = virtual.removeprefix('/work/')
+    if relative.startswith('inputs/'):
+        return Path(workspace) / relative
+    if relative.startswith('outputs/'):
+        return Path(workspace) / 'outputs/code' / relative.removeprefix('outputs/')
+    return Path(workspace) / 'code' / relative
+
+
 def extract(command, workspace=None):
     """Accept a single interpreter invocation; never silently discard a pipeline."""
     cwd = '/work'
@@ -51,7 +62,7 @@ def extract(command, workspace=None):
             raise ValueError('script_pipeline_requires_separate_evidence')
         virtual = posixpath.normpath(posixpath.join(cwd,parts[1]))
         if not virtual.startswith('/work/'): raise ValueError('script_outside_workspace')
-        path = Path(workspace)/'code'/virtual.removeprefix('/work/')
+        path = virtual_host(workspace, virtual)
         if path.is_symlink() or not path.resolve().is_relative_to(Path(workspace).resolve()):
             raise ValueError('script_source_not_fixed')
         source = path.read_text()
@@ -157,7 +168,7 @@ def observe(command, description, workspace, stdout, task_id, call_id):
         virtual = posixpath.normpath(posixpath.join(cwd,name))
         if not virtual.startswith('/work/'): continue
         relative = virtual.removeprefix('/work/')
-        path = workspace / relative if relative.startswith('inputs/') else workspace / 'code' / relative
+        path = virtual_host(workspace, virtual)
         try:
             if not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(workspace): continue
         except OSError:continue
