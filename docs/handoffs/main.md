@@ -1,5 +1,7 @@
 # DeepSeek Harless 主线当前交接
 
+- 2026-10-19（Codex）：正式网站启动/重启/检查/回退统一为 `npm run service -- ACTION`，AGENTS 和 README 固定开发者/AI 的入口，禁止临时发布脚本重复实现启动。私有计划保留持久数据/预算；入口内置认证同步、进程代际核验、互斥、活动任务拒绝与失败回退。流程见[服务生命周期](../service-lifecycle.md)，实际验证边界见[记录](../experiments/unified-service-lifecycle-20261019.md)及关联PR。
+
 - 2026-10-19（Codex）：独立分支 `codex/clickable-generated-files` 修复普通聊天命令产物只有裸文件名、沙箱路径不匹配与旧报告同名干扰；保留私有权限并接入认证快照/原生预览下载。`paper-web-v13`/`ppt-master-v8` 仅对原认证序列化库做兼容重导出，非新训练。完整检查和无模型smoke通过，尚未部署；验收/发布跟踪见[修复记录](../experiments/clickable-generated-files-20261019.md)及Web交接。
 
 

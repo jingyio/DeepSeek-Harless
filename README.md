@@ -1,5 +1,7 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+**开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。本地开发仍用 `npm run web`。
+
 PPT/PPTX 输入现结合原生主题/母版/布局、字体颜色和对象位置声明，以及隔离渲染的逐页视觉观察。GeneLoop 可用上传 PPT 作为设计参考；沿用原生模板填新内容时使用 ppt-master 的 round-trip 编辑流程，原件保留。旧 PPT 可隔离转换为标准 PPTX；字体、媒体和复杂效果仍有保真边界。见[附件说明](docs/attachment-input-behavior.md#pptpptx-的视觉与风格输入)。兼容库更新为 `ppt-master-v6` / `paper-web-v11`，沿用原证据与结构，旧库保留。
 
 PDF 上传现已共用逐页文字读取、扫描页本地中英文 OCR、论文图片与矢量图的图文分析，适用于全部场景。图片分析使用 Flash，最终回复仍使用用户选择的模型；费用计入同一任务，原件、附件卡片和多轮继承保留。安装、覆盖与识别限制见[附件输入说明](docs/attachment-input-behavior.md)，真实五场景验收见[实验记录](docs/experiments/pdf-ocr-vision-20261018.md)。当前兼容库为 `ppt-master-v5` / `paper-web-v10`，原有结构和历史证据不变，旧库留存。

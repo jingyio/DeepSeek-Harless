@@ -13,6 +13,7 @@
     "ppt:feedback": "node scripts/project.mjs python -m scenarios.research_ppt.feedback_learning",
     "web": "node scripts/project.mjs web",
     "web:real": "node scripts/project.mjs web --real-model",
+    "service": "node scripts/project.mjs service",
     "web:check": "node scripts/project.mjs python scripts/check-harness-web.py",
     "web:tasks:check": "node scripts/project.mjs python scripts/check-web-tasks.py",
     "motif:check": "node scripts/project.mjs python scripts/motif-example.py check",

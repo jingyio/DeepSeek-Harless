@@ -1,5 +1,7 @@
 # Harless 账号网关（Linux）
 
+正式网站现在通过 `npm run service -- <start|status|check|restart|rollback>` 管理 owner 和网关。先阅读[统一启动与发布流程](service-lifecycle.md)；下文的底层 Node/DSH 命令用于理解配置及隔离诊断，不再作为人工线上发布入口。服务计划指向已经生成并核验的同版本配置；预算服务、隧道和场景依赖继续沿用服务器既有配置。
+
 每个成员账号首次访问时按需启动一个独立后端进程树，同账号的多个工作区和对话复用该后端；管理员连接预先启动的 owner 后端。各账号共享服务器计算资源、模型服务及预算代理，按账号凭证、任务前缀和 Session 绑定校验归属。当前没有代码级空闲自动回收、总在线人数限制或 CPU/内存配额；退出登录只撤销登录会话。成员进程退出后，下次访问重新启动，持久化资料保留。最多 8 个同时启动是启动阶段保护，不是可保证的在线容量。
 
 同一轮 DeepSeek 场景对照允许 Baseline 与 Motif 同时执行，各侧独立 Session、工具范围和预算路由；仍按账号逐轮调度，不允许新任务抢用另一对照的并行槽。无 Session 请求头的旧 GLM 适配器继续串行，避免模糊的费用归属。
@@ -18,7 +20,7 @@
 
 通过 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json` 启动网关，它只监听 `127.0.0.1`。使用反向代理或 Cloudflare Tunnel 将 HTTPS 公网地址指向网关端口；在反向代理中转发 WebSocket，并限制只有网关可访问内部预算和控制端口。网关初次部署用 `node scripts/harless_gateway.mjs .local/PRIVATE-GATEWAY-CONFIG.json claim` 生成一次性所有者激活码；所有者登录后从账户页生成成员邀请码。不要在日志、PR 或聊天记录中公开激活码、邀请码、DSH token 或私有配置。临时 `trycloudflare.com` 隧道和手工 `tmux` 进程可能中断、重启或换地址；生产用途应由持久化服务管理器监控入口与后端。
 
-所有者后端每次启动都会生成新的内部 launch token，网关的 `ownerTokenFile` 必须同步；它不是账号密码或模型 API Key。使用直接启动 DSH 的自定义发布/回退脚本时，必须在启动网关前执行以下检查，失败则停止发布。追加日志需要在启动进程前记录字节偏移并传入 `--log-offset`，或每次使用独立日志；不能从混合多次启动的日志猜测令牌。
+所有者后端每次启动都会生成新的内部 launch token，网关的 `ownerTokenFile` 必须同步；它不是账号密码或模型 API Key。统一服务入口在启动网关前自动同步并检查，失败则停止发布。下面是底层认证检查/故障诊断工具，不能以此重新拼装独立发布脚本。追加日志需要在启动进程前记录字节偏移并传入 `--log-offset`，或每次使用独立日志；不能从混合多次启动的日志猜测令牌。
 
 ```sh
 python scripts/harless_owner_access.py --config .local/PRIVATE-GATEWAY-CONFIG.json \
