@@ -18,8 +18,8 @@
 
 - `codex/paper-recovery-evidence`基于454e726，代码c00efe6，合入最新main31c7309（merge72a540f），仅3份文档冲突并保留双方内容。新增均为显式实验入口，生产Runtime/配置/公共库相对main无差异。
 - 真实005：当前页数失败后17文字字段patch，Runtime保留37条记录、整个来源章节及版本，完整六页通过并交回总结；12请求/$0.017696256。main集成006也一次完整成功，10请求，保留4次复合shell协议错误。成功后的当前文件复用与完整范围守卫已有局部和真实证据，不能宣称稳定净降本。
-- 6项局部恢复共119/$0.225494904，早期环境遗漏、子集误交付和73请求低效尝试全部保留；累计本地4819/$8.089498872保守估费，旧pending2/V100/账单待核。无新增Baseline，已停止付费任务。
-- main集成后npm test Python995/Node957通过（212/5跳过），smoke通过。用户已授权验证后提PR，保持未合并、不部署。[实验](../experiments/paper-recovery-evidence-20261020-v1.md)、[交接](paper-proofreading.md)。
+- 7项局部恢复共133/$0.248183124，早期环境遗漏、子集误交付和73请求低效尝试全部保留；累计本地4833/$8.112187092保守估费，旧pending2/V100/账单待核。无新增Baseline，已停止付费任务。
+- 最终同步main5e545b4（09b0629），仅README冲突且保留双方，npm test Python1296/Node1143通过（213/5跳过），smoke通过。007走普通原生参数仍完成一次导出，非patch命中。已推送[PR #94](https://github.com/jingyio/GeneLoop/pull/94)，未合并、不部署。[实验](../experiments/paper-recovery-evidence-20261020-v1.md)、[交接](paper-proofreading.md)。
 
 - 2026-10-19（Codex）：附件/上下文与执行展示修复已发布运行代码 `d2291646`。当前原话与 plugin 资料分离、后续轮不重解析历史、完整上下文和图片随场景承接、准备进度提前绑定同一任务；执行展开状态与代码侧栏已真网页验证。paper16/ppt11是原库兼容认证，无新训练。真实四格式24轮/28侧全部严格通过；旧污染会话续聊2轮通过且日志原字节保留。Linux全量Python1114通过/2跳过、Node887通过/3跳过（仅测试完成窗口补丁，旧fixture超时保留），smoke/motif/continuation通过；最新GitHub Actions未取得终态，不称跨平台CI已通过。PPT更新仍16次冗余工具，未保证最短路径；短跨场景样本未测得两侧主请求重叠。发布/完整检查状态与失败费用见[验收记录](../experiments/attachment-context-streaming-20261019.md)；PR89–91已合并，最后证据消费修复跟踪PR92。私有结果在 `.local/attachment-integrity-20261019/`，六组代理估费合计$0.245796300（排除独立网页成员测试及其他流量），账单未知。继续沿用共享账本和不限额度配置。服务仍仅从私有环境的 GENELOOP_SERVICE_HOME/GENELOOP_SERVICE_CONFIG 走统一 npm service 入口；旧代码/计划/库和失败回执保留，勿覆盖或另起临时发布进程。
 
