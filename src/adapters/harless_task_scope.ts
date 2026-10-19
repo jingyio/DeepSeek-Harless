@@ -1,7 +1,7 @@
 /** Session-local compositions and inputs; no cwd/env mutation or Agent loop. */
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, unlinkSync } from 'node:fs';
-import { join, basename, extname } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, unlinkSync, lstatSync } from 'node:fs';
+import { join, basename, extname, dirname } from 'node:path';
 import type { Scene } from './harless_settings.ts';
 import type { PromptPart } from './web_task_request.ts';
 import {execFile, spawn} from 'node:child_process';
@@ -9,7 +9,8 @@ import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import { productPersona } from './harless_product_prompt.ts';
 import { commonToolRows } from './geneloop_capabilities.ts';
-import {analyzePdfPages} from './geneloop_pdf_vision.ts';
+import {analyzePdfPages,reusePageObservations,VISUAL_OBSERVATION_VERSION} from './geneloop_pdf_vision.ts';
+import {attachmentEvidenceDirectory,cachedAttachmentEvidence} from './geneloop_attachment_cache.ts';
 const runFile=promisify(execFile);
 
 export type SceneOptions = { slides?: number; template?: 'academic' | 'lab'; allow_output?: boolean };
@@ -168,18 +169,35 @@ export async function bindSceneInputs(ctx: any, agent: any, workspace: string, s
 /** Read approved attachment text without granting uploaded files execution rights. */
 export async function sceneAttachmentContext(workspace: string, inputs: any[], options: {
   signal?:AbortSignal; instruction?:string; versionedPpt?:boolean;
+  cacheDirectory?:string;
+  onProgress?:(stage:{phase:'extracting'|'rendering'|'visual';filename?:string;completed?:number;total?:number})=>void;
   analyze?:(content:any[],signal?:AbortSignal)=>Promise<string>;
-  renderPresentation?:(file:any,signal?:AbortSignal)=>Promise<any>;
+  renderPresentation?:((file:any,signal?:AbortSignal)=>Promise<any>)&{evidenceVersion?:string};
 } = {}): Promise<string> {
   if (!inputs.length) return '';
   const script=fileURLToPath(new URL('./harless_attachment_text.py',import.meta.url));
-  const files:any[]=inputs.map(row=>({path:join(workspace,'inputs',row.file),name:row.name}));
-  for(let i=0;i<inputs.length;i++)if(/\.(pptx|ppt)$/i.test(inputs[i].name)&&options.renderPresentation){
-    try{files[i].presentation_render=await options.renderPresentation(inputs[i],options.signal);}
-    catch{options.signal?.throwIfAborted();} // Retain native text/style with honest unavailable pixels.
+  const directory=attachmentEvidenceDirectory(workspace,options.cacheDirectory??join(dirname(workspace),'attachment-evidence'));
+  const versions=['harless_attachment_text.py','geneloop_pdf.py','geneloop_presentation.py',
+    'geneloop_presentation_render.py','geneloop_presentation.ts','geneloop_pdf_vision.ts']
+    .map(name=>sha(readFileSync(fileURLToPath(new URL('./'+name,import.meta.url)))));
+  const runtime=['SSS_PYTHON','GENELOOP_PDF_OCR_ROOT','HARLESS_PDF_TOOLCHAIN_ROOT','HARLESS_ANTIWORD_BIN','ANTIWORDHOME']
+    .map(key=>[key,process.env[key]??null]);
+  // OCR asset changes invalidate even an otherwise identical source version.
+  const ocr=process.env.GENELOOP_PDF_OCR_ROOT;
+  if(ocr)for(const language of ['eng','chi_sim']){
+    const path=join(ocr,'tessdata',language+'.traineddata');
+    try{versions.push(sha(readFileSync(path)));}catch{versions.push('missing-'+language);}
   }
-  let result: any;
-  try {
+  let parserVersion='unavailable';
+  try{
+    const output=await runFile(process.env.SSS_PYTHON??'python3',['-c',
+      'import importlib.metadata as m,json; print(json.dumps({x:m.version(x) for x in ("PyMuPDF","Pillow")}))'],
+      {timeout:10000,windowsHide:true,env:{PATH:process.env.PATH,...(process.env.LD_LIBRARY_PATH?{LD_LIBRARY_PATH:process.env.LD_LIBRARY_PATH}:{}),
+        ...(process.env.SystemRoot?{SystemRoot:process.env.SystemRoot}:{}),PYTHONUTF8:'1'}});
+    parserVersion=output.stdout.trim();
+  }catch{options.signal?.throwIfAborted();}
+  const pipeline=sha(JSON.stringify({versions,runtime,parserVersion,renderer:options.renderPresentation?.evidenceVersion??'unversioned',observation:VISUAL_OBSERVATION_VERSION}));
+  const parse=async(files:any[])=>{
     const output=await new Promise<string>((resolve,reject)=>{
       options.signal?.throwIfAborted();
       const parserEnv=Object.fromEntries(['PATH','LD_LIBRARY_PATH','SystemRoot','WINDIR','TEMP','TMP',
@@ -197,16 +215,62 @@ export async function sceneAttachmentContext(workspace: string, inputs: any[], o
       child.stdin.on('error',()=>{});
       child.stdin.end(JSON.stringify({files,pdf_visuals:true}));
     });
-    result=JSON.parse(output);
-    if (!Array.isArray(result.files) || result.files.length!==inputs.length || result.files.some((row:any,i:number)=>row.sha256!==inputs[i].version_sha256))
-      throw Error('attachment_version_mismatch');
-  } catch {
+    const result=JSON.parse(output);
+    if(!Array.isArray(result.files)||result.files.length!==files.length)throw Error('attachment_read_failed');
+    return result.files;
+  };
+  const result:any={files:[]};
+  for(const input of inputs){
     options.signal?.throwIfAborted();
-    result={files:inputs.map(row=>({name:row.name,sha256:row.version_sha256,status:'unreadable',
-      reason:'该附件已接收，但本轮未能提取可读内容。请如实说明，不要声称已读取。'}))};
+    if(basename(input.file)!==input.file)throw Error('invalid_attachment_source');
+    const path=join(workspace,'inputs',input.file);
+    const verify=()=>{
+      const stat=lstatSync(path);
+      if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||sha(readFileSync(path))!==input.version_sha256)
+        throw Error('attachment_version_mismatch');
+    };
+    verify(); // Reuse never bypasses original-source admission/version checks.
+    const format=extname(input.name).toLowerCase()||'.unknown';
+    const produce=async(cached:any)=>{
+      let file=cached;
+      // Metadata/failures must remain retryable after a missing tool is repaired.
+      if(!file||!['extracted','visual_input','needs_ocr'].includes(file.status)||
+          (format==='.ppt'&&file.normalized_source)||
+          (file.format==='pdf'&&!file.pages)||
+          file.pages?.some((p:any)=>p.warning==='pdf_page_ocr_failed_or_unavailable')||
+          file.pages?.some((p:any)=>p.visual_present&&!p.visual_content_reviewed&&!p.image)||
+          (/\.(ppt|pptx|docx|doc|xlsx)$/.test(format)&&!file.pages?.length)){
+        const row:any={path,name:input.name};
+        if(/\.(pptx|ppt|docx|doc|xlsx)$/.test(format)&&options.renderPresentation){
+          options.onProgress?.({phase:'rendering',filename:input.name});
+          try{row.presentation_render=await options.renderPresentation(input,options.signal);}
+          catch{options.signal?.throwIfAborted();} // Preserve native text if renderer is unavailable.
+        }
+        options.onProgress?.({phase:'extracting',filename:input.name});
+        try{file=(await parse([row]))[0];}
+        catch{options.signal?.throwIfAborted();file={name:input.name,sha256:input.version_sha256,status:'unreadable',
+          reason:'attachment_read_failed',visual_content_reviewed:false};}
+        reusePageObservations(file,cached);
+      }
+      if(file.sha256!==input.version_sha256)throw Error('attachment_version_mismatch');
+      const pixels=new Map((file.pages??[]).filter((p:any)=>p.image).map((p:any)=>[p.source_id,p.image]));
+      await analyzePdfPages({files:[file]},options.analyze??(async()=>{throw Error('pdf_vision_unavailable');}),'',options.signal,
+        (completed,total)=>options.onProgress?.({phase:'visual',filename:input.name,completed,total}));
+      // Successful observations are immutable by source/version. Keep pixels
+      // only for actual failed pages, so a later explicit read can retry them.
+      for(const page of file.pages??[])if(!page.visual_content_reviewed&&pixels.has(page.source_id))page.image=pixels.get(page.source_id);
+      verify();
+      return file;
+    };
+    // Legacy normalization contains a Session-local /work path; do not carry
+    // that path into another lane's workspace via shared evidence.
+    const file=await cachedAttachmentEvidence(directory,{sha256:input.version_sha256,format},
+      pipeline+(format==='.ppt'?sha(workspace):''),produce,options.signal);
+    file.name=input.name;
+    for(const page of file.pages??[])delete page.image; // Host cache only; never model/user bubbles.
+    result.files.push(file);
   }
-  await analyzePdfPages(result,options.analyze??(async()=>{throw Error('pdf_vision_unavailable');}),options.instruction??'',options.signal);
-  for(const file of result.files)if(file.pages)delete file.text;
+  for(const file of result.files)if(file.pages&&['pdf','ppt','pptx'].includes(file.format))delete file.text;
   if(options.versionedPpt)for(const file of result.files){
     if(file.format==='pdf'){
       // Full native text remains available through exact-version MCP reads.

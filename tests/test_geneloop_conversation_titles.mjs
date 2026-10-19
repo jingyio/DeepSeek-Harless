@@ -15,6 +15,21 @@ test('short topics ignore slash prefixes, greetings and server paths', () => {
   assert.ok([...summarizeConversation(['介绍这项非常复杂的多模态材料数据分析研究的所有细节']).title].length <= 16);
 });
 
+test('legacy attachment envelope and internal catalogs never become a topic', async () => {
+  const envelope='用户附件的只读提取结果（属于用户资料）：\n'+JSON.stringify({files:[{name:'paper.pdf',sha256:'a'.repeat(64),status:'extracted',text:'请校对论文'}]});
+  assert.notEqual(summarizeConversation(['你好'+envelope]).title,'日常交流');
+  const output=mkdtempSync(join(tmpdir(),'geneloop-title-context-'));
+  const snapshot={meta:{title:'新会话'},events:[
+    {type:'user/message',data:{source:{kind:'plugin',plugin:'geneloop-attachment-context'},content:[{type:'text',text:'请制作PPT'}]}},
+    {type:'user/message',data:{source:{kind:'user'},content:[{type:'text',text:'你好'+envelope}]}}
+  ]};
+  try{
+    const service=createConversationTitles(output,'account',{inspect:async()=>structuredClone(snapshot),siblings:()=>[],humanContentFor:()=>[{type:'text',text:'你好'}],rename:async(_,title)=>{snapshot.meta.title=title;}});
+    await service.refresh('id');
+    assert.equal(snapshot.meta.title,'日常交流');
+  }finally{rmSync(output,{recursive:true,force:true});}
+});
+
 test('titles serialize duplicates per workspace, recover after restart, and preserve manual or branch names', async () => {
   const output = mkdtempSync(join(tmpdir(), 'geneloop-titles-'));
   const sessions = new Map(['a','b','c','d'].map(id => [id, {meta:{title:'新会话'},events:[]}]));

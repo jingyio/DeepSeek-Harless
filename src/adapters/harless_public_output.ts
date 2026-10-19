@@ -1,5 +1,6 @@
 /** Detached browser presentation. Never rewrite the journal, model context, or file bytes. */
 import { AssistantStreamAccumulator, expandAssistantStream } from '@deepseek-ai/dsh-llm';
+import { humanContent, isAttachmentContext } from './harless_attachment_context.ts';
 
 const hiddenPath = '〔内部路径已隐藏〕';
 const roots = ['home', 'root', 'opt', 'srv', 'usr', 'var', 'tmp', 'etc', 'mnt', 'private', 'Users', 'user', 'workspace', 'app'];
@@ -55,8 +56,13 @@ function textFields(value: any, key = ''): any {
   return value;
 }
 
-function messageView(message: any): any {
-  if (!message || message.source?.kind === 'user') return message;
+function messageView(message: any,expectedOriginal?:readonly any[]): any {
+  if (!message) return message;
+  if (isAttachmentContext(message)) return {...message,content:[]};
+  if (message.source?.kind === 'user') {
+    const content=humanContent(message.content??[],expectedOriginal);
+    return content.length===(message.content??[]).length&&content.every((part,index)=>part===message.content[index])?message:{...message,content};
+  }
   if (message.role === 'system') return { ...message, content: [{ type: 'text', text: '已应用本轮会话设置。' }],
     source: { kind: 'plugin', plugin: 'GeneLoop' } };
   return textFields(message);
@@ -96,8 +102,10 @@ export function createPublicStreamProjection() {
   return { chunk, compact };
 }
 
-export function publicSessionEvent(event: any): any {
-  if (event.type === 'user/message' && event.data?.source?.kind === 'user') return event;
+export function publicSessionEvent(event: any,expectedOriginal?:readonly any[]): any {
+  if (event.type === 'user/message' && (event.data?.source?.kind === 'user'||isAttachmentContext(event.data))) {
+    const data=messageView(event.data,expectedOriginal);return data===event.data?event:{...event,data};
+  }
   let data = event.data;
   if (data?.message) data = { ...textFields(data), message: messageView(data.message) };
   else if (data?.role || data?.content) data = messageView(data);
@@ -125,7 +133,7 @@ export function publicTaskView(value: any): any {
 }
 
 /** Public controller methods only. inspect() remains authoritative for execution/forking. */
-export function protectPublicSessionOutput(controller: any) {
+export function protectPublicSessionOutput(controller: any, originalFor?:(session:string,event:any)=>readonly any[]|undefined) {
   const undo: (() => void)[] = [];
   const wrap = (name: string, make: (original: any) => any) => {
     if (typeof controller[name] !== 'function') return;
@@ -135,18 +143,21 @@ export function protectPublicSessionOutput(controller: any) {
   };
   wrap('page', original => async (...args: any[]) => {
     const result = await original(...args);
-    return { ...result, records: result.records.map((record: any) => ({ ...record, event: publicSessionEvent(record.event) })) };
+    const id=typeof args[0]==='string'?args[0]:args[0]?.sessionId;
+    return { ...result, records: result.records.map((record: any) => ({ ...record, event: publicSessionEvent(record.event,originalFor?.(id,record.event)) })) };
   });
   wrap('follow', original => async function* (...args: any[]) {
     let stream = createPublicStreamProjection();
+    let id=typeof args[0]==='string'?args[0]:args[0]?.sessionId;
     for await (const value of original(...args)) {
       if (value.type === 'snapshot') {
         stream = createPublicStreamProjection();
         const active = value.assistantStream?.activeAttempt;
         const { cwd, ...header } = value.header;
-        yield { ...value, header, records: value.records.map((record: any) => ({ ...record, event: publicSessionEvent(record.event) })),
+        id??=header.id;
+        yield { ...value, header, records: value.records.map((record: any) => ({ ...record, event: publicSessionEvent(record.event,originalFor?.(id,record.event)) })),
           ...(active ? { assistantStream: { ...value.assistantStream, activeAttempt: { ...active, stream: stream.compact(active.stream) } } } : {}) };
-      } else if (value.type === 'event') yield { ...value, event: publicSessionEvent(value.event) };
+      } else if (value.type === 'event') yield { ...value, event: publicSessionEvent(value.event,originalFor?.(id,value.event)) };
       else if (value.type === 'assistant-stream') {
         if (value.frame.type === 'start') stream = createPublicStreamProjection();
         yield value.frame.type === 'chunk' ? { ...value, frame: { ...value.frame, chunk: stream.chunk(value.frame.chunk) } } : value;

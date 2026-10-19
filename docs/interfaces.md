@@ -1,5 +1,13 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 附件与多轮上下文（2026-10-19）
+
+浏览器输入只展示经过接收的用户原话和文件卡片。新附件的只读提取与页面观察以 `geneloop-attachment-context` plugin 来源进入原生会话，放在本轮真实用户消息之前；plugin 只是来源标记，执行权限仍由原有工具、来源、版本及账号守卫决定。它不代表用户又上传一次，也不成为新的人类轮次或标题材料。
+
+历史资料不在普通 follow-up 中重新解析。切换场景或更换来源时，完整既往交流、已有来源观察与已接收图片引用进入新的私有执行会话；原日志不改。旧版混入人类消息的提取后缀，只有与持久任务的原始接收内容逐项吻合才允许展示清理和隔离迁移；用户粘贴同形 JSON 默认保留。预处理状态独立发布实际的读取、渲染、页图像进度，不伪装成主模型已经开始思考。
+
+视觉观察按文件、页面及像素身份校验。成功页可由宿主私有缓存复用，缓存还绑定代码、依赖、OCR及Office/字体资源版本；失败页保留具体错误，不标成已读。普通文字追问使用已有观察，重新上传同原件可重试失败页。长代码卡片是浏览器内只读片段，不是已验证落盘交付；点击使用原生右侧栏，下载保留代码字节，预览不执行脚本。
+
 ## 正式网站服务生命周期（2026-10-19）
 
 `npm run service -- <start|status|check|restart|rollback>` 通过 `scripts/project.mjs` 调用 `scripts/geneloop_service.py`。Linux 私有计划 version=1 指定 owner/gateway 配方和持久路径，使用 `GENELOOP_SERVICE_CONFIG` 或 `--config`；不通过 HTTP 接收启动配置，不输出凭证。`start` 幂等，认证同步与健康检查强制执行；`restart`/`rollback` 校验现有进程身份、活动任务和持久路径，启动失败尝试上一份冻结计划。模型预算服务和累计账本不在其启停范围。准备场景配置/证书和维护窗口仍须按[统一流程](service-lifecycle.md)完成，内部检查不能代替公网与场景验证。
@@ -10,7 +18,7 @@
 
 `sceneAttachmentContext` 可注入 `renderPresentation(file, signal)`；Web 统一从当前任务的不可变 `scene_inputs` 取得原件，TypeScript 通过已有命令沙箱/broker 渲染，新增可选 `network:"none"` 只允许收紧网络，普通 Bash 行为保持。子进程不接收模型密钥，宏与链接更新关闭，新私有目录防止覆盖，取消和超时终止对应沙箱；渲染后再次核验原件及 PDF SHA。原件、衍生物仍受上传/资源边界约束。
 
-`presentation-input-v1` 提供 `pages[]`、原件 SHA 与 `pptx:<sha>:slide:<n>` 或 `ppt:<sha>:slide:<n>` 来源，及 `presentation_style`（画幅、实际关联的主题/母版/布局声明）、逐页 `style`、`rendered_pdf_sha256`。声明覆盖和视觉覆盖分开；每页都生成实际像素，沿用已激活任务的 Flash 辅助视觉路由，必须通过来源/页号/实际看到图片/非空 `style_observations` 的 JSON 校验才标记已识别。内联图像不进入主模型文字或用户气泡；已识别页保留渲染 SHA 和模型观察，失败页保留安全诊断码。未做跨问题或来源版本的语义缓存。
+`presentation-input-v1` 提供 `pages[]`、原件 SHA 与 `pptx:<sha>:slide:<n>` 或 `ppt:<sha>:slide:<n>` 来源，及 `presentation_style`（画幅、实际关联的主题/母版/布局声明）、逐页 `style`、`rendered_pdf_sha256`。声明覆盖和视觉覆盖分开；每页都生成实际像素，沿用已激活任务的 Flash 辅助视觉路由，必须通过来源/页号/实际看到图片/非空 `style_observations` 的 JSON 校验才标记已识别。内联图像不进入主模型文字或用户气泡；已识别页保留渲染 SHA 和模型观察，失败页保留安全诊断码。来源绑定的页面观察允许在后续问题中复用，但不缓存用户任务的语义判断，来源或依赖版本改变会失效。
 
 旧 PPT 返回 `normalized_source:{path,sha256,derived_from_sha256}`，新 PPTX 仅为隔离转换派生物。`ppt_master.read_source_page` 对固定版本 PPTX 返回指定页文字、原生样式声明与 `visual_checked:false`；工具 schema 不变，完整工具说明与能力边界仍以返回值和场景指令为准。PDF 转换 Motif 的适用类型仍为 PDF，没有把新视觉分析或模板制作认证成可跳过模型的结构。兼容重编版本 `ppt-master-v6` / `paper-web-v11` 保留旧证据、旧图与旧库。
 
@@ -20,7 +28,7 @@
 
 - `sceneAttachmentContext` 在已验证的本任务原件上运行公共 PDF 读取器；每页返回原件 SHA、页号、文字来源、OCR 状态和视觉覆盖。文字层直接读取，扫描页自动 OCR；PPT/Paper 的版本化逐页工具使用同一读取器。完整约定见[附件输入](attachment-input-behavior.md)。
 - `GENELOOP_PDF_OCR_ROOT/tessdata` 只保存固定摘要的 `eng`、`chi_sim`，由 `scripts/install-pdf-ocr.py` 安装。成员部署使用 `pdfOcrRoot` 验证后只读挂载；文件解析子进程不继承模型密钥。
-- 辅助图像分析固定 Flash Off，整页像素连同图注、当前/相邻正文及当前问题进入 `/v1/vision/<owning-session>/chat/completions`。账号网关检查该账号持有的会话，broker 映射到已激活 task，预算 gate 验证内联 JPEG、模型与无工具请求。只有此路由允许 Pro 任务使用辅助 Flash；正常模型请求仍必须与任务确认模型一致。
+- 辅助图像分析固定 Flash Off，整页像素连同图注、当前/相邻正文及独立于当前问题的来源观察指令进入 `/v1/vision/<owning-session>/chat/completions`。账号网关检查该账号持有的会话，broker 映射到已激活 task，预算 gate 验证内联 JPEG、模型与无工具请求。只有此路由允许 Pro 任务使用辅助 Flash；正常模型请求仍必须与任务确认模型一致。
 - 图片分析与最终回复同属原任务计费；账本回执保留实际 `model` 与 `kind=pdf_vision`。取消可中断准备过程；已发生的上游请求继续结算。视觉分析仅为来源绑定的模型观察，不可作为 Motif 可复用的科学判断或独立事实认证。
 
 ## 网页 Paper 默认 Execute（2026-10-17）

@@ -96,3 +96,19 @@ def test_ocr_fallback_failure_cannot_mislabel_partial_transcription_as_native(tm
     assert page['text']=='' and page['text_method']=='text_layer' and not page['ocr_performed']
     assert page['warning']=='pdf_page_ocr_failed_or_unavailable'
     source.close()
+
+
+def test_single_page_render_error_does_not_erase_other_pages(monkeypatch):
+    data = fixture_pdf()
+    original = fitz.Page.get_pixmap
+    def render(page, *args, **kwargs):
+        if page.number == 1:
+            raise RuntimeError('bad resource on one page')
+        return original(page, *args, **kwargs)
+    monkeypatch.setattr(fitz.Page, 'get_pixmap', render)
+    result = read_pdf(data, visuals=True)
+    assert len(result['pages']) == result['page_count'] == 3
+    assert result['pages'][1]['visual_error_code'] == 'page_render_failed'
+    assert 'image' not in result['pages'][1]
+    assert all('image' in result['pages'][index] for index in (0, 2))
+    assert result['pages'][0]['text'].startswith('NATIVE-TEXT')

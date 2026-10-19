@@ -1,14 +1,32 @@
-/** Render uploaded slides in the existing Session sandbox; no authoring/model loop. */
+/** Render uploaded Office files in the existing Session sandbox; no authoring. */
 import {spawn} from 'node:child_process';
 import {request} from 'node:http';
 import {createHash,randomUUID} from 'node:crypto';
-import {readFileSync,lstatSync} from 'node:fs';
+import {readFileSync,lstatSync,readdirSync,existsSync} from 'node:fs';
 import {basename,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {commandArgv,commandLayout} from './geneloop_shell.ts';
 
 const hash=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
 const helper=()=>readFileSync(fileURLToPath(new URL('./geneloop_presentation_render.py',import.meta.url)),'utf8');
+export function officeEvidenceVersion(resources:any={}) {
+  const versions:any[]=[resources];
+  for(const [key,leaves] of [['rendererRoot',['program/soffice.bin','program/versionrc','manifest.json','deployment.json']],
+      ['fontRoot',['fonts-static.conf','manifest.json','deployment.json']]] as const){
+    const root=resources[key];
+    if(!root)continue;
+    for(const leaf of leaves){const path=join(root,leaf);if(existsSync(path))versions.push([key,leaf,hash(stable(path))]);}
+    if(key==='fontRoot'){
+      const walk=(path:string)=>{for(const leaf of readdirSync(path).sort()){
+        const file=join(path,leaf),stat=lstatSync(file);
+        if(stat.isSymbolicLink())throw Error('invalid font resource');
+        if(stat.isDirectory())walk(file);
+        else if(/\.(?:ttf|otf|ttc|woff2?)$/i.test(leaf))versions.push([file,hash(readFileSync(file))]);
+      }};walk(root);
+    }
+  }
+  return hash(JSON.stringify(versions));
+}
 function stable(path:string) {
   const before=lstatSync(path);
   if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size>20*1024*1024)throw Error('invalid presentation file');
@@ -18,14 +36,14 @@ function stable(path:string) {
 }
 
 export function renderPresentation(workspace:string,session:string,resources:any={}) {
-  return async (file:any,signal?:AbortSignal)=>{
+  const renderer=async (file:any,signal?:AbortSignal)=>{
     signal?.throwIfAborted();
-    if(basename(file.file)!==file.file||!/\.(pptx|ppt)$/i.test(file.name))throw Error('invalid presentation source');
+    if(basename(file.file)!==file.file||!/\.(pptx|ppt|docx|doc|xlsx)$/i.test(file.name))throw Error('invalid Office source');
     const original=join(workspace,'inputs',file.file);
     if(hash(stable(original))!==file.version_sha256)throw Error('presentation version changed');
     const directory='input-visual-'+randomUUID();
     const payload=Buffer.from(JSON.stringify({file:file.file,sha256:file.version_sha256,directory,
-      suffix:file.name.toLowerCase().endsWith('.pptx')?'.pptx':'.ppt'})).toString('base64');
+      suffix:/\.(pptx|ppt|docx|doc|xlsx)$/i.exec(file.name)![0].toLowerCase()})).toString('base64');
     // Shell operands contain only base64 or server-owned executable paths.
     const code=Buffer.from(helper()).toString('base64');
     const python=process.env.SSS_PYTHON??'/usr/bin/python3';
@@ -76,4 +94,6 @@ export function renderPresentation(workspace:string,session:string,resources:any
     }
     return {path:pdf,sha256:result.pdf_sha256,normalized_source:result.normalized_source};
   };
+  return Object.defineProperty(renderer,'evidenceVersion',{get:()=>officeEvidenceVersion(resources)}) as
+    typeof renderer&{readonly evidenceVersion:string};
 }

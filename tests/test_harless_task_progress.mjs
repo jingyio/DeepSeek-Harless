@@ -2,6 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTaskProgress, taskToolLabel, taskDocumentSubject } from '../src/adapters/harless_task_progress.ts';
 
+test('attachment preparation has immediate truthful progress without pretending the model started', () => {
+  const p=createTaskProgress();
+  p.preparation({phase:'extracting',filename:'source.pdf'});
+  assert.equal(p.snapshot().progress.subject,'source.pdf');
+  p.preparation({phase:'visual',filename:'source.pdf',completed:2,total:3});
+  assert.equal(p.snapshot().progress.label,'正在读取页面图像（2/3 页）');
+  assert.equal(p.snapshot().trace.length,1);
+  assert.equal(p.snapshot().messages.length,0);
+  assert.equal(p.snapshot().trace.some(row=>row.kind==='thinking'),false);
+  p.beginAttempt();
+  assert.equal(p.snapshot().trace[0].status,'completed');
+  assert.equal(p.snapshot().progress.label,'正在组织回复');
+  const cancelled=createTaskProgress();
+  cancelled.preparation({phase:'rendering',filename:'/private/server/secret.pdf'});
+  cancelled.finish('cancelled');
+  assert.equal(cancelled.snapshot().trace[0].status,'cancelled');
+  assert.doesNotMatch(JSON.stringify(cancelled.snapshot()),/private|secret/);
+});
+
 test('cancelled native assistant messages remain interrupted in live and restored progress', () => {
   const progress = createTaskProgress(); progress.beginAttempt();
   progress.chunk({type:'text-delta',index:0,text:'partial'});
