@@ -12,13 +12,13 @@ import {digest} from '../src/motif_core/online_skill_runtime.mjs';
 import {createNegativeRuntime} from '../src/adapters/script_negative_runtime.ts';
 import {evaluateFieldGuard,validateFieldGuard} from '../src/adapters/negative_field_runtime.ts';
 const hash=v=>createHash('sha256').update(v).digest('hex');
-function fixture(t,mode='enforce',fieldGuard=null){
+function fixture(t,mode='enforce',fieldGuard=null,document=null){
  const workspace=realpathSync(mkdtempSync(join(tmpdir(),'negative-motif-')));
  t.after(()=>rmSync(workspace,{recursive:true,force:true}));
  mkdirSync(join(workspace,'inputs'));mkdirSync(join(workspace,'outputs'));
  writeFileSync(join(workspace,'inputs','source.txt'),'current');
  writeFileSync(join(workspace,'approved-inputs.json'),JSON.stringify({files:{'source.txt':hash('current')}}));
- const initial=fieldGuard?JSON.stringify({owner:'current',report:{records:[{tag:'a'},{tag:'a'}],notes:['first','second'],title:'sample'}}):'{"invalid":true}';
+ const initial=fieldGuard?JSON.stringify(document??{owner:'current',report:{records:[{tag:'a'},{tag:'a'}],notes:['first','second'],title:'sample'}}):'{"invalid":true}';
  const state=join(workspace,'outputs','draft.json');writeFileSync(state,initial);
  const version=hash(initial),tools=[{name:'mcp__docs__finalize',parameters:{type:'object'}}],events=[];
  const rule={id:'negative-diagnostic',tool:'mcp__docs__finalize',failure_code:'invalid_shape',tools_sha256:digest(tools),
@@ -56,6 +56,30 @@ test('field guard never crosses the wrapper owner context or masks a changed sem
  assert.equal(f.runtime.guard({...f.call,arguments:{...f.call.arguments,scope:'different'}}),undefined);
  const changed=JSON.stringify({owner:'other-task',report:{records:[{tag:'a'},{tag:'a'}]}});writeFileSync(f.state,changed);
  assert.equal(f.runtime.guard({...f.call,arguments:{version:hash(changed)}}),undefined);
+});
+test('multiple Python-learned error families agree with TS and gate changed-version retries',t=>{
+ const result=spawnSync(process.env.SSS_PYTHON??'python3',['-c',"import sys,json;sys.path.insert(0,'tests');from test_negative_fields import compiled_cases;print(json.dumps(compiled_cases()))"],{encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);const cases=JSON.parse(result.stdout);assert.equal(cases.length,7);
+ for(const c of cases){
+  const guard=validateFieldGuard(c.guard);
+  assert.equal(evaluateFieldGuard(guard,c.failed),true);assert.equal(evaluateFieldGuard(guard,c.valid),false);
+  const f=fixture(t,'enforce',guard,{owner:'current',...c.failed});f.fail();f.warn();
+  const changed=JSON.stringify({owner:'current',report:{...c.failed.report,irrelevant_note:'edited'}});writeFileSync(f.state,changed);
+  assert.match(f.runtime.guard({...f.call,arguments:{version:hash(changed)}}),/早停/);
+  const repaired=JSON.stringify({owner:'current',...c.valid});writeFileSync(f.state,repaired);
+  assert.equal(f.runtime.guard({...f.call,arguments:{version:hash(repaired)}}),undefined);
+  const absent={owner:'current',report:{}};assert.equal(evaluateFieldGuard(guard,absent),null);
+ }
+});
+test('v2 requires two-way cause evidence and rejects free variables and oversized IR',()=>{
+ const result=spawnSync(process.env.SSS_PYTHON??'python3',['-c',"import sys,json;sys.path.insert(0,'tests');from test_negative_fields import compiled_sample;print(json.dumps(compiled_sample()))"],{encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);const guard=JSON.parse(result.stdout);
+ const missing=structuredClone(guard);delete missing.certification.cause_interventions.reintroduction;
+ assert.throws(()=>validateFieldGuard(missing),/cause/);
+ assert.throws(()=>validateFieldGuard(guard,'another_error'),/inconsistent_cause_error/);
+ assert.throws(()=>validateFieldGuard({...guard,predicate:{op:'var',name:'v1'}}),/unsupported_field/);
+ assert.throws(()=>validateFieldGuard({...guard,predicate:{op:'array',values:Array.from({length:300},()=>({op:'const',value:true}))}}),/invalid_field_guard/);
+ assert.equal(evaluateFieldGuard(guard,{report:{records:Array(10001).fill({tag:'a'})}}),null);
 });
 test('prompt mode never denies an execution',t=>{
  const f=fixture(t,'prompt');f.fail();f.warn();assert.equal(f.runtime.guard(f.call),undefined);
@@ -105,4 +129,9 @@ for(const field of [false,true])test('native tool guard stops '+(field?'field-de
  assert.equal((await run(f.call.name,'repeat')).isError,true);assert.equal(calls,1);
  assert.equal((await run(f.call.name,'repeat-again')).isError,true);assert.equal(calls,1);
  assert.equal((await run('mcp__docs__repair','alternative')).isError,false);assert.equal(calls,2);
+});
+test('Python tuple type is preserved and cannot activate a false list gate',()=>{
+ const result=spawnSync(process.env.SSS_PYTHON??'python3',['-c',"import sys,json;sys.path.insert(0,'tests');from test_negative_fields import compiled_container_case;print(json.dumps(compiled_container_case()))"],{encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);const c=JSON.parse(result.stdout),guard=validateFieldGuard(c.guard);
+ assert.equal(evaluateFieldGuard(guard,c.failed),true);assert.equal(evaluateFieldGuard(guard,c.valid),false);
 });

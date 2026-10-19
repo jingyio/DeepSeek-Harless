@@ -29,7 +29,7 @@ export function loadNegativeLibrary(path:string){
    !Array.isArray(r.failure_flags)||r.failure_flags.length>8||r.failure_flags.some((p:any)=>!Array.isArray(p)||!p.length||p.length>8||p.some((k:any)=>typeof k!=='string'||['__proto__','constructor','prototype'].includes(k)))||
    r.retry_policy!=='prompt_only'&&(!r.failure_flags.length||!r.version_slots.length||!Array.isArray(r.certification.success_contrasts)||!r.certification.success_contrasts.length))throw Error('uncertified_negative_motif');
   if(r.retry_policy==='warn_then_field_guard'){
-   validateFieldGuard(r.field_guard);
+   validateFieldGuard(r.field_guard,r.failure_code);
    const file=r.field_guard.validator?.split(':')[0];
    if(r.version_slots.length!==1||library.implementation_locks[file]!==r.field_guard.validator_sha256)throw Error('unbound_field_validator');
   }

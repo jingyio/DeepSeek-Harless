@@ -866,11 +866,15 @@ Positive Script Motif 负责复用可执行结构；Negative Tool Motif 负责�
 {"profiles":[{"tool":"mcp__docs__finalize","validator":"path/in/repository.py:validate","states":["/private/.local/failed.json"],"contrasts":["/private/.local/success.json"]}]}
 ```
 
-编译器自动沿别名、静态键、列表映射及 `len/set` 比较追踪依赖，不注册论文错误名或字段名。仅支持无提前返回/可识别写入的校验器中、顶层直接抛错的必要条件；嵌套分支、动态代码、未知方法等不支持的情况保留旧策略。发布要求真实失败状态、实际校验成功的对照，以及至少两处依赖外编辑仍保持同一错误的局部干预。该入口依赖开发者确认函数只读、且确属工具必要条件；源码切片不等于从任意黑盒轨迹学得因果关系。`field-compilation.json` 保留未覆盖原因。
+编译器自动追踪数据和控制依赖：静态别名、键、字面量 schema、有限静态展开、动态列表循环、嵌套 if/else、布尔短路、枚举成员资格、集合关系、类型及数量比较。同一错误的多条支持路径合并，保留分支开关和跨集合字段；保留 tuple/list/range 的内部类型，生成器仅支持立即聚合，延迟消费回退；不注册论文错误名/字段规则。常量须来自源文件的字面量且匹配当前函数全局值，不接受运行时改写后的 schema。返回/捕获异常/break/continue、动态代码、未知方法、Python int/float 身份判断等仍回退；不是任意校验器解释器。
 
-IR 的 `root/item/const/get/map/len/set/compare` 由 TypeScript 有界解释，无任意代码求值。当前失败与 notice 实际投递后，Runtime 对同一权威文件重新解析：原来源/目标/schema、包装中的任务身份/来源版本、非版本参数均须不变，重试提交的版本必须是当前实际 SHA。失败谓词仍成立时，即使完整文件哈希变化也可阻止工具主体；真正修复、类型/字段缺失、状态歧义或范围变化均放行。当前只维护一条失败，不是全局停止或自动修复。版本 SHA 继续校验当前文件，不能用旧版本调用绕过合法版本检查。
+新编译字段 IR 为 `version:2`，额外绑定 `failure_code` 与双向 `cause_interventions`：在失败副本中，只改候选依赖，要求谓词 false 且原工具校验器不再报该错；在对照副本中引入问题，要求谓词 true 并复现原错。优先真实对照值，无法按行对齐时尝试通用数据扰动；用有界 delta debugging 缩小改动，不保证全局最小原因。成功对照仍必需，同轨迹的其他错误状态可以作局部中性对照。残余错误写入 `result_error/whole_validator_passed`，不能将消除一个错误视作完整修复。干预只在内存副本中，不自动修改用户草稿。
 
-早停只阻断局部重试，保留其他工具和模型改换路线/解释未完成任务的机会；它**不等于跳过一整个模型请求**，audit 的 `model_requests_skipped` 为 0。旧失败不会因早停变成合格完成。事件为 `negative_current_failure / negative_prompt_delivered / negative_retry_early_stopped`。历史结果见 [Negative Motif 实验](experiments/paper-negative-motifs-20261019-v1.md)，字段条件验证见 [字段依赖实验](experiments/paper-negative-fields-20261019-v1.md)。
+仍要求至少两处依赖外编辑保持原错误；缺少真实见证、成功对照、双向干预或超出 IR 限制均保留原策略。`field-compilation.json` 保留覆盖/拒绝；库内仅存字段、谓词、哈希及干预摘要。开发者仍须确认只读函数确为工具必要前置条件；这是源码辅助、经局部反事实验证的原因候选，不能称作通用黑盒因果学习或科研事实认证。
+
+IR 的根/字段读取、带作用域的映射与量词、布尔/类型/集合及比较运算由 TypeScript 有界解释，无任意代码求值。新库继续校验工具与 Runtime 锁，并核对字段错误码与双向证据；旧 version:1 仅在代码锁兼容时读取，不能修改旧锁来适配升级。节点最多 256、深度 32、数组最多 10000、执行最多 100000 步，超限回退。当前失败与 notice 实际投递后，Runtime 对同一权威文件重新解析：原来源/目标/schema、包装中的任务身份/来源版本、非版本参数均须不变，重试提交的版本必须是当前实际 SHA。失败谓词仍成立时，即使完整文件哈希变化也可阻止工具主体；真正修复、类型/字段缺失、状态歧义或范围变化均放行。当前只维护一条失败，不是全局停止或自动修复。版本 SHA 继续校验当前文件，不能用旧版本调用绕过合法版本检查。
+
+早停只阻断局部重试，保留其他工具和模型改换路线/解释未完成任务的机会；它**不等于跳过一整个模型请求**，audit 的 `model_requests_skipped` 为 0。旧失败不会因早停变成合格完成。事件为 `negative_current_failure / negative_prompt_delivered / negative_retry_early_stopped`。历史结果见 [Negative Motif 实验](experiments/paper-negative-motifs-20261019-v1.md)，初版字段条件见 [字段依赖实验](experiments/paper-negative-fields-20261019-v1.md)，多错误原因学习见 [原因学习实验](experiments/paper-negative-causes-20261019-v1.md)。
 
 实验 runner 可显式 `--recovery-checkpoint /private/draft.json --max-seconds 180`：仅复制同 worktree 私有历史草稿，要求上传来源哈希完全一致，只替换当前任务身份，并写可读取的 recovery-state 提示；超时走原生取消、保留费用。该入口是历史局部恢复诊断，不是独立完整任务或生产恢复产品。
 
