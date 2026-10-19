@@ -40,10 +40,13 @@ def main():
     parser.add_argument('--max-output-tokens', type=int, default=8000)
     parser.add_argument('--recovery-checkpoint', type=Path,
                         help='显式局部恢复诊断：只复制私有历史草稿，不算完整论文评测')
+    parser.add_argument('--preserve-recovery-structure',action='store_true',help='将当前恢复目标的完整结构写入受保护任务状态，允许叶子修订，拒绝子集交付')
     parser.add_argument('--reuse-checkpoint', type=Path,
                         help='真实历史原生调用与失败回执；复制为当前同来源任务的数据，单独统计局部恢复')
     parser.add_argument('--max-seconds', type=float, help='诊断超时取消；保留全部费用，不算正常完成')
     args = parser.parse_args()
+    if args.preserve_recovery_structure and not args.reuse_checkpoint:
+        parser.error('结构保留需要显式当前恢复目标 --reuse-checkpoint')
     if args.budget_usd < 0 or args.max_output_tokens < 1:
         parser.error('预算非负，输出上限必须为正数')
     if args.max_seconds is not None and args.max_seconds <= 0:
@@ -95,6 +98,9 @@ def main():
         'max_seconds': args.max_seconds,
         'reuse_boundary_evidence': True,
         'report_evidence_variant': args.report_evidence,
+        'preserve_recovery_structure': args.preserve_recovery_structure,
+        'local_script_sandbox_requested': env.get('SSS_LOCAL_SCRIPT_EXPERIMENT') == '1',
+        'report_font_sha256': hashlib.sha256(Path(env['HARLESS_REPORT_FONT']).read_bytes()).hexdigest() if env.get('HARLESS_REPORT_FONT') and Path(env['HARLESS_REPORT_FONT']).is_file() else None,
     }
     (record / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
     files = subprocess.check_output(['git', 'ls-files', '-co', '--exclude-standard'], cwd=ROOT, text=True).splitlines()
@@ -141,6 +147,13 @@ def main():
                 (workspace / 'code').mkdir(exist_ok=True, mode=0o700)
                 recovered = workspace / 'code' / 'recovery-state.json'
                 recovered.write_bytes(reuse_checkpoint); recovered.chmod(0o600)
+                if args.preserve_recovery_structure:
+                    scope = {'version':1,'kind':'current_review_recovery_scope','task_id':draft['task_id'],
+                             'source_versions':current_sources,'arguments':value['arguments'],
+                             'policy':'preserve_structure_allow_semantic_leaf_revisions',
+                             'origin':'explicit_current_recovery_requirement_not_inferred_from_history'}
+                    target=workspace/'review-recovery-scope.json'
+                    target.write_text(json.dumps(scope,ensure_ascii=False,sort_keys=True));target.chmod(0o400)
             if checkpoint:
                 effective = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())
                 workspace = Path(effective['workspace']).resolve(strict=True)

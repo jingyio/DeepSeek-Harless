@@ -1,7 +1,7 @@
 /** Protocol/state diagnostics; real task cost is measured separately. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,rmSync,realpathSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync,realpathSync,symlinkSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -154,4 +154,53 @@ test('diagnosis without effect allowlist or with foreign failure is unavailable'
  const f=fixture(t);f.r.observe({name:tool.name,callId:'bad',arguments:{title:'x',sections:[{},{}]}},result({exported:false,failed_checks:['layout']}));
  const id=values(f).find(v=>v.origin.kind==='arguments').id;
  assert.throws(()=>f.r.prepare('geneloop-reuse '+JSON.stringify({diagnose:{contract:'unseen',base:{artifact:id}}})),/current_failure/);
+});
+
+function liveEvidence(f,args){return {version:1,kind:'review_execution_evidence',arguments_sha256:digest(args),source_versions:JSON.parse(readFileSafe(join(f.workspace,'approved-inputs.json'))).files,config_sha256:'a'.repeat(64),grant_sha256:digest(null),task_id:null};}
+function readFileSafe(path){return readFileSync(path,'utf8');}
+function sourceArgs(f){return {title:'complete report',sections:[{heading:'results',paragraphs:Array.from({length:30},(_,i)=>'statement '+i)}],source_versions:JSON.parse(readFileSafe(join(f.workspace,'approved-inputs.json'))).files};}
+function evidenceRuntime(f){
+ const parameters={...schema,properties:{...schema.properties,source_versions:{type:'object'}}},exportTool={name:tool.name,parameters};
+ const probe={id:'probe_fields',tool:tool.name,schema_sha256:digest(parameters),failure:{exported:false,failed_checks:['all_text_preserved']},success_fields:['exported'],axes:[{path:['sections','*','paragraphs']}],max_probes:12};
+ f.r=createReuseMediation({workspace:f.workspace,tools:[exportTool],library:{contracts:[{tool:tool.name,schema_sha256:digest(parameters)}],probe_contracts:[probe]},probeTools:[tool.name],audit:v=>f.audit.push(v)});return probe;
+}
+test('verified current field evidence suppresses unrelated diagnosis and patch preserves all other fields',async t=>{
+ const f=fixture(t),probe=evidenceRuntime(f),args=sourceArgs(f),path='/sections/0/paragraphs/12';
+ const failure={exported:false,failed_checks:['all_text_preserved'],execution_evidence:liveEvidence(f,args),argument_issues:[{pointer:path,check:'all_text_preserved',value_sha256:createHash('sha256').update(args.sections[0].paragraphs[12]).digest('hex')}]};
+ f.r.observe({name:tool.name,callId:'current-failure',arguments:args},result(failure));
+ const notice=f.r.takeNotice();assert.ok(notice.includes('statement 12'));assert.ok(notice.includes('无需重复分段定位'));assert.ok(!notice.includes('"diagnose"'));
+ const id=values(f).find(v=>v.origin.kind==='arguments').id;
+ assert.throws(()=>f.r.prepare('geneloop-reuse '+JSON.stringify({diagnose:{contract:probe.id,base:{artifact:id}}})),/current_failure/);
+ accept(f,[{tool:tool.name,base:{artifact:id},patches:[{op:'replace',path,value:'necessary semantic correction'}]}]);
+ const call=await dispatch(f);assert.deepEqual(call.arguments.source_versions,args.source_versions);
+ assert.equal(call.arguments.sections[0].paragraphs.filter((p,i)=>p===args.sections[0].paragraphs[i]).length,29);
+ assert.ok(f.audit.some(a=>a.kind==='reuse_patch_bound'&&a.patch_paths.includes(path)));
+});
+test('stale argument, source, grant or field evidence cannot suppress diagnosis as a verified location',t=>{
+ for(const changed of ['argument','source','grant','field']){
+  const f=fixture(t);evidenceRuntime(f);const args=sourceArgs(f),e=liveEvidence(f,args);
+  const issue={pointer:'/sections/0/paragraphs/0',check:'all_text_preserved',value_sha256:createHash('sha256').update('statement 0').digest('hex')};
+  if(changed==='argument')e.arguments_sha256='0'.repeat(64);
+  if(changed==='source')e.source_versions={};if(changed==='grant')e.grant_sha256='0'.repeat(64);if(changed==='field')issue.value_sha256='0'.repeat(64);
+  f.r.observe({name:tool.name,callId:changed,arguments:args},result({exported:false,failed_checks:['all_text_preserved'],execution_evidence:e,argument_issues:[issue]}));
+  assert.ok(!f.r.takeNotice().includes('当前已校验的定位证据'));
+ }
+});
+test('only actual source-bound delivery files permit a completion handoff; tampering invalidates it',t=>{
+ const f=fixture(t);evidenceRuntime(f);const args=sourceArgs(f),dir=join(f.workspace,'outputs/documents/current');mkdirSync(dir,{recursive:true});
+ const name='outputs/documents/current/review.pdf',data=Buffer.from('diagnostic file bytes');writeFileSync(join(f.workspace,name),data);
+ const files=[{name,sha256:createHash('sha256').update(data).digest('hex'),bytes:data.length}];
+ const receipt={layout_passed:true,source_versions:args.source_versions,files};const raw=JSON.stringify(receipt),receipt_name='outputs/documents/current/delivery.json';writeFileSync(join(f.workspace,receipt_name),raw);
+ const response={exported:true,artifacts:files,execution_evidence:{...liveEvidence(f,args),delivery_passed:true,receipt_name,receipt_sha256:createHash('sha256').update(raw).digest('hex')}};
+ f.r.observe({name:tool.name,callId:'success',arguments:args},result(response));
+ assert.ok(f.r.takeNotice().includes('现在交回你生成最终回答'));assert.equal(f.audit.filter(a=>a.kind==='reuse_delivery_verified').length,1);
+ writeFileSync(join(f.workspace,name),'changed');f.r.observe({name:tool.name,callId:'stale',arguments:args},result(response));
+ assert.ok(!f.r.takeNotice().includes('交付成功'));assert.equal(f.audit.filter(a=>a.kind==='reuse_delivery_verified').length,1);
+});
+
+test('explicit protected recovery target is offered before action with bounded shape and no full text',t=>{
+ const f=fixture(t),args={title:'report',sections:[{heading:'h',paragraphs:['private contents','another paragraph']}]};
+ writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify({version:1,kind:'current_review_recovery_scope',policy:'preserve_structure_allow_semantic_leaf_revisions',arguments:args}));
+ const prefix=f.r.staticPrompt(),notice=f.r.takeNotice();
+ assert.ok(notice.includes('受保护的当前恢复目标'));assert.ok(notice.includes('/sections/0/paragraphs'));assert.ok(!notice.includes('private contents'));assert.equal(f.r.staticPrompt(),prefix);
 });

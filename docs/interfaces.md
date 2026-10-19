@@ -959,3 +959,11 @@ TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`�
 `run-script-motif-experiment.py --report-evidence`是独立的导出实验变体，Baseline/Execute必须同设。`script-motif-web.py`仅在私有实验配置中将`paper_checks`入口换为`paper-evidence-server.py`，记录相关代码摘要与`production_certified:false`。`evidence_report.py`隔离加载原导出实现，补充缺失字形回退；原生校验失败时返回`argument_issues:[{pointer,value_sha256,check,block_id}]`，SHA256对应当前字符串UTF-8字节。Runtime只接受当前值哈希吻合的位置，已有定位时不再提示盲目子集诊断。失败位置不等于原因，也不允许跳过科研判断。
 
 此变体不改旧生产模块、工具参数schema或认证库，不受旧库证书覆盖；未指定标志时原生产导出路径不变。缺字回退优先使用已有Matplotlib字体，否则使用ReportLab自带Vera，不新增必装依赖，不改写原文字。真实结果、失败和因果归因限制见[执行接管实验](experiments/paper-evidence-slice-20261019-v1.md)。
+
+### 当前错误恢复目标与成功产物复用（2026-10-20）
+
+隔离`--report-evidence`返回`execution_evidence` v1：完整参数摘要、当前source_versions、代码/依赖/字体配置摘要、task/output grant摘要、可选当前恢复目标摘要。失败字段包含pointer、check、value_sha256及受限预览；结构字段用`hash_kind:json`，字符串默认按UTF-8字节计算。Runtime同时核验当前参数、来源、授权与恢复目标，再展示字段证据；检查失败的范围不能作为根因证明。
+
+成功回执另包含delivery receipt相对路径/摘要和delivery_passed。Runtime读取实际receipt与产物，检查来源、任务、路径、大小及SHA256后交回最终总结。隔离服务对相同当前参数/来源/导出配置/授权的成功输出使用最多32项进程内缓存；每次命中重查真实文件，重启不从磁盘自动加载旧成功。`artifact_reused`只代表复用已验收文件，不代表跳过整个模型请求或科研判断。
+
+真实局部恢复runner可显式启用`--preserve-recovery-structure`，必须同时有`--reuse-checkpoint`。受保护的`review-recovery-scope.json`由当前任务入口写入不可供Bash修改的工作区根，绑定task/source与完整参数；这是当前用户范围的具体化，不由Runtime从历史相似性推断。默认拒绝数组长度/对象结构变化，允许叶子文字修订，需结构重设计时另行明确范围。Runtime在初次候选通知提供有界结构摘要和当前目标引用；仍由模型选择必要操作/patch。子集诊断不再被当成完整交付，结构通过也不保证同形状文字的科学正确性。环境快照新增沙箱开关、字体SHA和结构保留标志。验证与全部失败见[本轮记录](experiments/paper-recovery-evidence-20261020-v1.md)。
