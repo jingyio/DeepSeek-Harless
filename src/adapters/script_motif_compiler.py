@@ -69,7 +69,9 @@ def extract(command, workspace=None):
         path = virtual_host(workspace, virtual)
         if path.is_symlink() or not path.resolve().is_relative_to(Path(workspace).resolve()):
             raise ValueError('script_source_not_fixed')
-        source = path.read_text()
+        # Boundary witnesses hash actual UTF-8 bytes, including CRLF. Text-mode
+        # newline conversion would incorrectly reject an unchanged saved file.
+        source = path.read_bytes().decode('utf-8')
         if declared and (declared[0]!=parts[1] or source.strip()!=declared[1].strip()):
             raise ValueError('saved_source_changed')
         return cwd, source, parts[2:], sha(source)
@@ -177,7 +179,7 @@ def observe(command, description, workspace, stdout, task_id, call_id):
             if not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(workspace): continue
         except OSError:continue
         files[name] = file_contract(path)
-        witnesses[name] = {'relative': str(path.relative_to(workspace)), 'sha256': sha(path.read_bytes())}
+        witnesses[name] = {'relative': path.relative_to(workspace).as_posix(), 'sha256': sha(path.read_bytes())}
     compiled = compile_script(source, files,argv=argv)
     literals = sorted({n.value for n in ast.walk(ast.parse(source)) if isinstance(n,ast.Constant)
                        and isinstance(n.value,str) and 3<=len(n.value)<=200 and any(c.isalnum() for c in n.value)

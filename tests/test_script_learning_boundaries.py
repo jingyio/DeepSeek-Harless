@@ -1,18 +1,22 @@
 """Boundary evidence regression; synthetic diagnostics, no model calls."""
 import importlib.util
 import json
+import pytest
 from pathlib import Path
 from src.adapters.script_motif_compiler import sha, digest
 
 
-def test_real_boundary_collector_checks_saved_program_without_head_filter(tmp_path):
+@pytest.mark.parametrize('newline', ['\n', '\r\n'])
+def test_real_boundary_collector_checks_saved_program_without_head_filter(tmp_path, newline):
     spec = importlib.util.spec_from_file_location('script_learning', Path(__file__).parents[1] / 'scripts/learn-script-motifs.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     workspace = tmp_path / 'workspace'
     (workspace / 'code').mkdir(parents=True)
     program = "import json\nrows=json.load(open('rows.json'))\nprint(len(rows))\n"
-    (workspace / 'code/read.py').write_text(program)
+    program = program.replace('\n', newline)
+    # Native boundary hashes describe bytes, not platform newline conversion.
+    (workspace / 'code/read.py').write_bytes(program.encode())
     (workspace / 'code/rows.json').write_text('[1,2]')
     (tmp_path / 'effective-config.json').write_text(json.dumps({'workspace': str(workspace), 'provider_mode':'real','mode':'baseline'}))
     (tmp_path / 'task-state.json').write_text('{"status":"completed"}')

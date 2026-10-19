@@ -14,6 +14,26 @@ const sha=(v:any)=>createHash('sha256').update(v).digest('hex');
 const copy=(v:any)=>JSON.parse(JSON.stringify(v));
 const own=(o:any,k:string)=>o!==null&&typeof o==='object'&&Object.hasOwn(o,k);
 const forbidden=new Set(['__proto__','prototype','constructor']);
+// A compiler diagnostic, never a shell rewrite or an execution grant. Preserve
+// the model's static plan exactly, including semantic patches, for a NEW call.
+export function reuseSyntaxCorrection(command:string){
+ const match=/^(?:cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*)?geneloop-reuse\s+('?)(\{[\s\S]*)$/.exec(command.trim());
+ if(!match||command.length>256000)return null;
+ const raw=match[2];let depth=0,string=false,escaped=false;
+ for(let i=0;i<raw.length;i++){
+  const c=raw[i];
+  if(string){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')string=false;continue;}
+  if(c==='"'){string=true;continue;}if(c==='{'||c==='[')depth++;else if(c==='}'||c===']')depth--;
+  if(depth!==0)continue;
+  if(match[1]&&raw[i+1]!=="'")return null;
+  try{
+   const plan=JSON.parse(raw.slice(0,i+1));
+   if(!plan||Object.keys(plan).join()!=='calls'||!Array.isArray(plan.calls)||!plan.calls.length||plan.calls.length>12)return null;
+   return 'geneloop-reuse '+JSON.stringify(plan);
+  }catch{return null;}
+ }
+ return null;
+}
 export function loadReuseLibrary(path:string){
  const library=JSON.parse(readFileSync(path,'utf8')),{digest:expected,...body}=library;
  const root=fileURLToPath(new URL('../../',import.meta.url));
@@ -56,6 +76,17 @@ export function patchValue(value:any,patches:any[]){
  if(Buffer.byteLength(JSON.stringify(result))>256000)throw Error('reuse_value_too_large');return result;
 }
 
+export function reuseChangeSummary(before:any,after:any){
+ const paths:string[]=[];let changed=0;
+ function visit(a:any,b:any,path:string){
+  if(digest(a)===digest(b))return;
+  if(a&&b&&typeof a==='object'&&typeof b==='object'&&Array.isArray(a)===Array.isArray(b)&&digest(Object.keys(a).sort())===digest(Object.keys(b).sort())){
+   for(const key of Object.keys(a))visit(a[key],b[key],path+'/'+key.replaceAll('~','~0').replaceAll('/','~1'));
+  }else{changed++;if(paths.length<64)paths.push(path);}
+ }
+ visit(before,after,'');return {changed_fields:changed,changed_pointers:paths,truncated:changed>paths.length,scope:'exact_parameter_diff_not_semantic_quality'};
+}
+
 export function createReuseMediation({workspace,library,scriptLibrary,audit,tools=[],mode='execute',maxCalls=12,probeTools=[]}:any){
  const artifacts=new Map<string,any>(),latest=new Map<string,string>(),session=randomUUID();
  const contracts=new Map<string,any>(library.contracts.map((c:any)=>[c.tool,c]));
@@ -64,6 +95,7 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
  const notified=new Set<string>();let repairNotice='',diagnosticNotice='',completionNotice='';
  const probes=(library.probe_contracts??[]).filter((c:any)=>probeTools.includes(c.tool));
  const diagnosed=new Set<string>();
+ let initialObligationChecked=false,observedOperation=false;
  let offered=new Map<string,any>(tools.map((t:any)=>[t.name,t])),control:any=null,frame:any=null,pending:any=null,halted=false,envelope:string|undefined,repair:any=null;
  function readFixed(path:string,limit=1000000){
   const rel=relative(workspace,path);if(rel.startsWith('..')||isAbsolute(rel)||realpathSync(path)!==resolve(path)||!lstatSync(path).isFile()||lstatSync(path).size>limit)throw Error('reuse_file_not_fixed');return readFileSync(path);
@@ -142,7 +174,9 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
     if(typeof file.name!=='string'||!file.name.startsWith('outputs/documents/')||file.name.split('/').some((v:string)=>v==='..'||!v))return null;
     const data=readFixed(join(workspace,file.name),32000000);if(sha(data)!==file.sha256||data.length!==file.bytes)return null;
    }
-   return {arguments_sha256:e.arguments_sha256,config_sha256:e.config_sha256,source_versions:e.source_versions,receipt_sha256:e.receipt_sha256,artifacts:value.artifacts,reused:value.artifact_reused===true};
+   let changes:any=null;
+   if(e.recovery_scope_sha256){const goal=JSON.parse(readFixed(join(workspace,'review-recovery-scope.json')).toString());changes=reuseChangeSummary(goal.arguments,args);}
+   return {arguments_sha256:e.arguments_sha256,config_sha256:e.config_sha256,source_versions:e.source_versions,receipt_sha256:e.receipt_sha256,artifacts:value.artifacts,reused:value.artifact_reused===true,...(changes?{changes}:{} )};
   }catch{return null;}
  }
  function probeForRepair(){return !verifiedIssues().length&&repair&&current(artifacts.get(repair.id))?probes.find((p:any)=>p.tool===repair.tool&&probeOutcome(p,repair.failure)==='failure'&&!diagnosed.has(digest([p.id,artifacts.get(repair.id).value]))):null;}
@@ -197,7 +231,7 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
   function collectShapes(v:any,path='',depth=0){if(depth>6||shapes.length>=64)return;if(Array.isArray(v)){shapes.push({pointer:path,items:v.length});for(let i=0;i<Math.min(v.length,16);i++)if(v[i]&&typeof v[i]==='object')collectShapes(v[i],path+'/'+i,depth+1);}else if(v&&typeof v==='object')for(const [k,child] of Object.entries(v))collectShapes(child,path+'/'+k.replaceAll('~','~0').replaceAll('/','~1'),depth+1);}
   if(target)collectShapes(target.value);
   const goal=target?'\n受保护的当前恢复目标（来自本轮明确要求，非历史相似性推断）：'+JSON.stringify({base:{artifact:target.id},arguments_sha256:target.sha256,array_shape:shapes})+'。必须保留完整结构；需要修订时直接以此base提交局部patches，只生成必要的新文字，不要重建整份报告或先导出子集。可以一次提交多个叶子字段补丁；段落的科研判断仍由你完成。\n':'';
-  return goal+gap+(ready.length?'\n当前文件中已有通过工具Schema校验的完整参数。请判断是否为当前必要操作；需要时用独立 bash 命令 geneloop-reuse 加 JSON {"calls":[以下call对象]}，无需重写数据或搬运脚本。Schema合法不代表科研结论正确，不要因候选存在而重复检查或导出。版本和权限执行前仍会核验。\n'+JSON.stringify({ready_calls:ready}):'');
+  return goal+gap+(ready.length?'\n当前文件中已有通过工具Schema校验的完整参数。请判断是否为当前必要操作；需要时直接使用下面 command 字段作为 bash.command，不要添加重定向、管道或包装脚本。无需重写数据或搬运脚本。Schema合法不代表科研结论正确，不要因候选存在而重复检查或导出。版本和权限执行前仍会核验。\n'+JSON.stringify({ready_calls:ready.map(r=>({...r,command:'geneloop-reuse '+JSON.stringify({calls:[r.call]})}))}):'');
  }
  function resolveRef(ref:any,dependencies:any[],results:any[],allowSteps:boolean){
   if(!ref||typeof ref!=='object'||Object.keys(ref).some(k=>!['artifact','pointer','step'].includes(k)))throw Error('invalid_reuse_reference');
@@ -242,7 +276,8 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
   let invocation=command.trim();
   const prefix=/^cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*(geneloop-reuse\s+[\s\S]+)$/.exec(invocation);
   if(prefix)invocation=prefix[1];
-  const help='复用协议只接受静态 JSON 或 --plan /work/当前计划.json；不要使用 $(...)、管道或重定向。已有数据用 bindings 引用通知中的 value_ID，无需重新生成全文。';
+  const correction=reuseSyntaxCorrection(command);
+  const help='复用协议只接受静态 JSON 或 --plan /work/当前计划.json；不要使用 $(...)、管道或重定向。该次命令整体未执行，也未写入计划文件。已有数据用 bindings 引用通知中的 value_ID，无需重新生成全文。'+(correction?'\n'+JSON.stringify({error:'reuse_command_framing',executed:false,retry_command:correction,instruction:'保留了你原计划的全部字段；若仍符合当前意图，下次 bash.command 直接使用 retry_command 原文，不要再加任何 shell 操作。新调用仍须通过参数、版本及权限校验。'}):' 请在独立的一次 bash 调用中提交纯 geneloop-reuse JSON；如需写计划文件，写文件和运行计划必须分成两次调用。');
   if(!invocation.startsWith('geneloop-reuse '))throw Error(help);
   let raw=invocation.slice('geneloop-reuse '.length).trim(),planGuard:any=null;
   const plan=/^--plan\s+(\/work\/[a-zA-Z0-9_./-]+[.]json)$/.exec(raw);
@@ -280,6 +315,7 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
  }
  function halt(reason:string){control=null;frame=null;pending=null;halted=true;audit({kind:'reuse_halted',reason});}
  function observe(execution:any,result:any,scriptFacts:any[]=[]){
+  observedOperation=true;
   for(const fact of scriptFacts)try{
    const value=JSON.parse(fact.output);
    keep(value,{kind:'script_result',program:fact.program.id,call_id:execution.callId},()=>fact.bound.every((b:any)=>sha(readFixed(b.host))===b.sha256),'script:'+fact.program.id);
@@ -305,7 +341,7 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
    const value=observation(result);
    const delivery=deliveryEvidence(execution.arguments,value);
    if(delivery){
-    completionNotice='\nRuntime 已验证当前报告交付成功，以下为当前任务的文件与版本证据（不证明科研结论）：'+JSON.stringify(delivery)+'。现在交回你生成最终回答并说明必要限制。交付成功不证明已找到历史失败根因，缺少因果证据时应明确未知。内容、来源与导出配置未变时直接引用这些文件，无需重复导出、分段测试或为排除偶发再生成一份；新证据或新要求出现时重新核验。';
+    completionNotice='\nRuntime 已验证当前报告交付成功，以下为当前任务的文件与版本证据（不证明科研结论）：'+JSON.stringify(delivery)+'。changes 是相对于受保护完整目标的实际参数差异；最终修改说明应与这些位置一致，不要声称改过未变化的章节或表格。truncated=true 时未列完，不可据列表断言其余未变。这些 outputs/documents 文件由原生文档服务管理，Bash 工作区不挂载该目录，不能用 Bash 的 ls/find/open 再次读取；文件真实字节、大小、摘要和交付回执已由 Runtime 校验。现在交回你生成最终回答并说明必要限制。交付成功不证明已找到历史失败根因，缺少因果证据时应明确未知。内容、来源与导出配置未变时直接引用这些文件，无需重复导出、分段测试或为排除偶发再生成一份；新证据或新要求出现时重新核验。';
     audit({kind:'reuse_delivery_verified',tool:execution.name,call_id:execution.callId,...delivery,semantic_quality_accepted:false});
    }
    const argumentKey=digest([execution.name,execution.arguments]);
@@ -343,6 +379,26 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
      audit({...summary,kind:'reuse_probe_completed',contract:c.id,witness_artifact:id});frame=null;
  }
  function ready(){
+  if(!halted&&!frame&&!pending&&!control&&!initialObligationChecked&&envelope!==undefined&&mode==='execute'){
+   initialObligationChecked=true;
+   // Current task state is the authority, not a similar historic trajectory.
+   // A one-shot obligation never retries failures or generates semantic edits.
+   if(!observedOperation)try{
+    const scopePath=join(workspace,'review-recovery-scope.json'),raw=readFixed(scopePath),goal=JSON.parse(raw.toString());
+    const obligation=goal.execution_obligation;
+    if(obligation){
+     const grantPath=join(workspace,'paper-output-grant.json'),grantRaw=readFixed(grantPath),grant=JSON.parse(grantRaw.toString());
+     const approved=JSON.parse(readFixed(join(workspace,'approved-inputs.json')).toString()).files;
+     if(goal.kind!=='current_review_recovery_scope'||goal.version!==1||goal.origin!=='explicit_current_recovery_requirement_not_inferred_from_history'||goal.policy!=='preserve_structure_allow_semantic_leaf_revisions'||!goal.task_id||grant.task_id!==goal.task_id||grant.schema_version!==1||grant.allow_output!==true||digest(goal.source_versions)!==digest(approved)||digest(goal.arguments?.source_versions)!==digest(approved)||obligation.kind!=='resume_current_operation'||obligation.max_attempts!==1||obligation.arguments_sha256!==digest(goal.arguments))throw Error('current_obligation_not_authorized');
+     scan();const row=[...artifacts.values()].find(r=>r.origin.kind==='recovery_target'&&r.sha256===obligation.arguments_sha256&&current(r));
+     if(!row)throw Error('current_obligation_target_missing');
+     const call={tool:obligation.tool,base:{artifact:row.id}};bind(call,[]);
+     const version=sha(raw),grantVersion=sha(grantRaw);
+     frame={calls:[call],results:[],scope:scope(),planGuard:()=>sha(readFixed(scopePath))===version&&sha(readFixed(grantPath))===grantVersion};
+     audit({kind:'reuse_current_obligation_started',tool:obligation.tool,arguments_sha256:row.sha256,task_id:goal.task_id,max_attempts:1,origin:goal.origin});
+    }
+   }catch(e:any){audit({kind:'reuse_current_obligation_fallback',reason:e.message});}
+  }
   if(halted||!frame||pending)return null;
   try{
    if(scope()!==frame.scope||frame.planGuard&&!frame.planGuard())throw Error('reuse_source_or_plan_changed');

@@ -1030,3 +1030,14 @@ TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`�
 
 
 File 公开种子重认证入口为 `scripts/recertify-file-seeds.py`（默认免费预览，显式 `--call-model` 才运行）。历史公开证明只经 `validate_historical_certificate` 作为候选来源；在线仍使用 `validate_certificate` 核对当前源码/目录。当前 `file-v6` 保留四类 v5 图，经新原生见证及两次实际执行发布；旧证书不重签。复杂原生交错可能触发守卫并安全回普通 Harness，不能承诺任意任务都会跳过请求。
+
+
+### 显式恢复当前操作（实验入口，2026-10-20）
+
+`run-script-motif-experiment.py --resume-current-operation` 仅能与 `--mode execute --reuse-checkpoint ... --preserve-recovery-structure` 同用。该选项表示本轮明确选择恢复该原生操作，不能由相似轨迹自动设置。runner 在 Bash 不可写的 `review-recovery-scope.json` 中记录 `execution_obligation={kind:"resume_current_operation",tool,arguments_sha256,max_attempts:1}`。
+
+TypeScript Runtime 在首次模型请求前验证当前任务ID、输出授权、完整参数、来源版本、已认证工具及当前Schema，直接绑定执行一次。未开启时维持原有模型选择；任务/授权/来源/目标变化或资格不足时回退，失败后不自动重试或修改科研内容。成功仍须核验真实文件并交回模型总结；失败交回当前字段与检查证据。它是显式目标的执行接线，不是新挖出的Motif，也不表示所有后续语义恢复都能跳过。
+
+复用协议仍拒绝管道/重定向/组合写入。可识别静态JSON时，拒绝回执可提供保留原计划的 `retry_command`，只作下一次调用的语法修正建议；不会执行原命令、写计划文件或跳过新的守卫。交付通知包含当前参数相对受保护目标的实际差异 `changes`（最多64个pointer，注明截断），帮助最终说明与真实修改一致。文档服务的 `outputs/documents` 不在 Bash 挂载目录，成功文件由 Runtime 直接核验。
+
+边界快照与Python文件见证统一使用POSIX相对路径；保存脚本按UTF-8真实字节读取，保留CRLF再计算摘要，防止跨平台文本转换造成伪失效。旧Linux快照摘要不改写。费用、质量和失败见 [本轮记录](experiments/paper-recovery-control-20261020-v2.md)。

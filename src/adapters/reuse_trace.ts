@@ -1,6 +1,6 @@
 /** Bounded private file evidence at native tool boundaries, never a public log. */
 import {appendFileSync,mkdirSync,writeFileSync,readFileSync,readdirSync,lstatSync,realpathSync,existsSync} from 'node:fs';
-import {join,relative,resolve} from 'node:path';
+import {join,relative,resolve,sep} from 'node:path';
 import {createHash} from 'node:crypto';
 import {digest} from '../motif_core/online_skill_runtime.mjs';
 const sha=(x:any)=>createHash('sha256').update(x).digest('hex');
@@ -22,7 +22,7 @@ export function createReuseTrace(workspace:string,output:string){
     if(realpathSync(child)!==resolve(child)){complete=false;continue;}
     const data=readFileSync(child),hash=sha(data);bytes+=data.length;
     if(!existsSync(join(directory,hash)))writeFileSync(join(directory,hash),data,{mode:0o600,flag:'wx'});
-    files[relative(workspace,child)]={sha256:hash,bytes:data.length};
+    files[relative(workspace,child).split(sep).join('/')]={sha256:hash,bytes:data.length};
    }
   }
   visit(join(workspace,'inputs'));visit(join(workspace,'code'));visit(join(workspace,'outputs/code'));

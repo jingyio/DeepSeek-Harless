@@ -6,11 +6,38 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {digest} from '../src/motif_core/online_skill_runtime.mjs';
-import {createReuseMediation,patchValue,project} from '../src/adapters/reuse_mediation.ts';
+import {createReuseMediation,patchValue,project,reuseSyntaxCorrection,reuseChangeSummary} from '../src/adapters/reuse_mediation.ts';
 const schema={type:'object',properties:{title:{type:'string'},sections:{type:'array',items:{type:'object'}}},required:['title','sections'],additionalProperties:false};
 const tool={name:'mcp__test__export',parameters:schema};
 const nextTool={name:'mcp__test__read',parameters:{type:'object',properties:{handle:{type:'string'}},required:['handle'],additionalProperties:false}};
 const result=value=>({content:[{type:'text',text:JSON.stringify(value)}]});
+test('delivery change summary uses actual JSON differences, escaping pointers and bounding output',()=>{
+ const before={title:'same',sections:[{paragraphs:['keep','revise']}]},after={sections:[{paragraphs:['keep','corrected']}],title:'same'};
+ assert.deepEqual(reuseChangeSummary(before,after).changed_pointers,['/sections/0/paragraphs/1']);
+ assert.equal(reuseChangeSummary(before,before).changed_fields,0);
+ assert.deepEqual(reuseChangeSummary({'a/b':{'~':1}},{'a/b':{'~':2}}).changed_pointers,['/a~1b/~0']);
+ const summary=reuseChangeSummary(Array(100).fill('before'),Array(100).fill('after'));assert.equal(summary.changed_fields,100);assert.equal(summary.changed_pointers.length,64);assert.equal(summary.truncated,true);
+});
+test('syntax diagnostic preserves semantic patches but never executes the rejected shell command',async t=>{
+ const f=fixture(t),plan={calls:[{tool:tool.name,arguments:{title:'text with } and [ and quote "',sections:[]},patches:[{op:'replace',path:'/title',value:'semantic choice'}]}]};
+ const canonical='geneloop-reuse '+JSON.stringify(plan);
+ for(const command of [canonical+' 2>&1',"cd /work && geneloop-reuse '"+JSON.stringify(plan)+"' | tail -40"]){
+  assert.equal(reuseSyntaxCorrection(command),canonical);
+  assert.throws(()=>f.r.prepare(command),e=>e.message.includes('retry_command')&&e.message.includes('整体未执行'));
+  assert.equal(await dispatch(f),null);assert.ok(!f.audit.some(a=>a.kind==='reuse_plan_selected'));
+ }
+ const payload=f.r.prepare(canonical);f.r.observe({name:'bash',arguments:{command:canonical}},result(payload.control_receipt));
+ assert.equal((await dispatch(f)).arguments.title,'semantic choice');
+});
+test('syntax hints cannot infer a plan from scripts, shell substitution, truncated JSON or foreign cwd',()=>{
+ for(const command of ['cat > plan.json <<EOF\n{}\nEOF\ngeneloop-reuse --plan /work/plan.json','geneloop-reuse "$(cat plan.json)"','geneloop-reuse {"calls":[','cd /tmp && geneloop-reuse {"calls":[{}]}',"geneloop-reuse '{\"calls\":[{}]} broken"])
+  assert.equal(reuseSyntaxCorrection(command),null);
+});
+test('corrected framing does not bypass artifact validation',t=>{
+ const f=fixture(t),command='geneloop-reuse '+JSON.stringify({calls:[{tool:tool.name,base:{artifact:'stale'}}]})+' 2>&1';
+ assert.throws(()=>f.r.prepare(command),/retry_command/);
+ assert.throws(()=>f.r.prepare(reuseSyntaxCorrection(command)),/stale_reuse_artifact/);
+});
 function fixture(t){
  const workspace=realpathSync(mkdtempSync(join(tmpdir(),'reuse-')));for(const d of ['inputs','code','outputs'])mkdirSync(join(workspace,d));
  t.after(()=>rmSync(workspace,{recursive:true,force:true}));writeFileSync(join(workspace,'inputs/paper.tex'),'current');
@@ -203,4 +230,41 @@ test('explicit protected recovery target is offered before action with bounded s
  writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify({version:1,kind:'current_review_recovery_scope',policy:'preserve_structure_allow_semantic_leaf_revisions',arguments:args}));
  const prefix=f.r.staticPrompt(),notice=f.r.takeNotice();
  assert.ok(notice.includes('受保护的当前恢复目标'));assert.ok(notice.includes('/sections/0/paragraphs'));assert.ok(!notice.includes('private contents'));assert.equal(f.r.staticPrompt(),prefix);
+});
+
+function currentObligation(f){
+ evidenceRuntime(f);const args=sourceArgs(f),task_id='current-task';
+ const goal={kind:'current_review_recovery_scope',version:1,task_id,source_versions:args.source_versions,arguments:args,policy:'preserve_structure_allow_semantic_leaf_revisions',origin:'explicit_current_recovery_requirement_not_inferred_from_history',execution_obligation:{kind:'resume_current_operation',tool:tool.name,arguments_sha256:digest(args),max_attempts:1}};
+ const grant={schema_version:1,task_id,allow_output:true};
+ writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify(goal));writeFileSync(join(f.workspace,'paper-output-grant.json'),JSON.stringify(grant));
+ f.r.update({tools:[{name:tool.name,parameters:{...schema,properties:{...schema.properties,source_versions:{type:'object'}}}}],messages:[{role:'user',source:{kind:'user'},content:'resume the current report'}]});
+ return {goal,grant,args};
+}
+test('explicit current obligation executes once without model selection and returns failures to semantic repair',async t=>{
+ const f=fixture(t),{args}=currentObligation(f),call=await dispatch(f);assert.deepEqual(call.arguments,args);f.r.guard(call);
+ f.r.observe(call,result({exported:false,failed_checks:['layout']}));
+ assert.equal(await dispatch(f),null);assert.equal(await dispatch(f),null);
+ assert.ok(f.r.takeNotice().includes('参数修订机会'));
+ assert.equal(f.audit.filter(a=>a.kind==='reuse_current_obligation_started').length,1);
+ assert.ok(!f.audit.some(a=>a.kind==='reuse_plan_selected'));
+});
+test('missing obligation, foreign task, revoked grant, changed sources or hashes cannot trigger automatic execution',async t=>{
+ for(const changed of ['missing','task','grant','source','hash','schema','attempts','origin']){
+  const f=fixture(t),{goal,grant}=currentObligation(f);
+  if(changed==='missing')delete goal.execution_obligation;
+  if(changed==='task')grant.task_id='other';if(changed==='grant')grant.allow_output=false;
+  if(changed==='source')goal.source_versions={};if(changed==='hash')goal.execution_obligation.arguments_sha256='0'.repeat(64);
+  if(changed==='schema')goal.arguments.title=8;if(changed==='attempts')goal.execution_obligation.max_attempts=2;if(changed==='origin')goal.origin='historical_similar_task';
+  writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify(goal));writeFileSync(join(f.workspace,'paper-output-grant.json'),JSON.stringify(grant));
+  assert.equal(await dispatch(f),null,changed);
+ }
+});
+test('obligation rechecks grant and scope at dispatch and never resumes after user goal changes',async t=>{
+ for(const changed of ['grant','goal','user']){
+  const f=fixture(t),{goal,grant}=currentObligation(f),call=await dispatch(f);
+  if(changed==='grant'){grant.allow_output=false;writeFileSync(join(f.workspace,'paper-output-grant.json'),JSON.stringify(grant));}
+  if(changed==='goal'){goal.arguments.title='changed';writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify(goal));}
+  if(changed==='user')f.r.update({tools:f.tools,messages:[{role:'user',source:{kind:'user'},content:'stop'}]});
+  assert.throws(()=>f.r.guard(call),/guard_failed/);
+ }
 });
