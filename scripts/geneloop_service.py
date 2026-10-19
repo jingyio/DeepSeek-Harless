@@ -124,15 +124,30 @@ def command_matches(pid, spec):
             all(environment.get(k) == v for k, v in spec['env'].items()))
 
 
-def listener(port):
-    rows = [row for row in subprocess.check_output(['ss', '-lntp'], text=True).splitlines()
+def listener_rows(port):
+    return [row for row in subprocess.check_output(['ss', '-lntp'], text=True).splitlines()
             if re.search(r'127\.0\.0\.1:' + str(port) + r'\s', row)]
+
+
+def listener(port):
+    rows = listener_rows(port)
     if not rows:
         return None
     matches = [re.search(r'pid=(\d+)', row) for row in rows]
     if len(rows) != 1 or not matches[0]:
         raise RuntimeError('Cannot identify the local listener safely')
     return int(matches[0].group(1))
+
+
+def starting_listener(port, child_pid):
+    """Only a known child may wait for a complete ss process/socket snapshot."""
+    rows = listener_rows(port)
+    pids = {int(pid) for row in rows for pid in re.findall(r'pid=(\d+)', row)}
+    if pids - {child_pid}:
+        raise RuntimeError('Unexpected listener during startup; no foreign process will be stopped')
+    # ss gathers sockets and process ownership separately. Missing attribution or
+    # duplicate rows are not readiness; launch's existing deadline bounds retries.
+    return child_pid if len(rows) == 1 and pids == {child_pid} else None
 
 
 def assert_idle(plan):
@@ -279,7 +294,7 @@ class Lifecycle:
         while time.monotonic() < deadline:
             if child.poll() is not None:
                 raise RuntimeError('Service exited during startup; inspect private log')
-            if listener(port) == child.pid:
+            if starting_listener(port, child.pid) == child.pid:
                 if role == 'owner':
                     if 'dsh web: ' not in log_path.read_text(encoding='utf-8', errors='replace'):
                         time.sleep(.1)
