@@ -19,7 +19,7 @@
 - 本轮实现a0074e2，保留前轮局部修订、成功产物复用与完整范围守卫；新增显式当前操作义务，在模型请求前执行一次，再据实际结果交回语义修订/总结。全部为独立实验开关，不改变生产默认配置和公共库。
 - 真实正常恢复两次均1请求、一次完整执行、参数逐字段未变；页数恢复18/43请求，后者仍有同字段长度反复失败和不可靠总结。窄接管机制已验证，复杂恢复未稳定，不扩其他场景或挖掘算法。
 - 本轮六次139请求/$0.200397576；本地累计4972/$8.312584668代理估费，旧pending2/V100/账单待核，失败及额外成本保留。无新增Baseline、无生产部署。
-- 本地npm test Python1297/Node1149通过，末次差异交接定向Node29通过，smoke通过。修复Windows字节/路径问题，最终CI待收尾确认。用户最新授权验证后合并PR，覆盖旧“只审阅”，不代表发布。
+- 本地npm test Python1297/Node1149通过，末次差异交接定向Node29通过，smoke通过。修复Windows字节/路径及第二处heredoc夹具问题；实现及CI修复87a16ff的Ubuntu/Windows、Push/PR四项CI全部通过。用户最新授权通过后合并PR，覆盖旧“只审阅”；最终文档检查和merge commit见PR94，不代表发布。
 - 证据与接手：[本轮实验](../experiments/paper-recovery-control-20261020-v2.md)、[论文交接](paper-proofreading.md)、[PR94](https://github.com/jingyio/GeneLoop/pull/94)。
 
 - 2026-10-19（Codex）：附件/上下文与执行展示修复已发布运行代码 `d2291646`。当前原话与 plugin 资料分离、后续轮不重解析历史、完整上下文和图片随场景承接、准备进度提前绑定同一任务；执行展开状态与代码侧栏已真网页验证。paper16/ppt11是原库兼容认证，无新训练。真实四格式24轮/28侧全部严格通过；旧污染会话续聊2轮通过且日志原字节保留。Linux全量Python1114通过/2跳过、Node887通过/3跳过（仅测试完成窗口补丁，旧fixture超时保留），smoke/motif/continuation通过；最新GitHub Actions未取得终态，不称跨平台CI已通过。PPT更新仍16次冗余工具，未保证最短路径；短跨场景样本未测得两侧主请求重叠。发布/完整检查状态与失败费用见[验收记录](../experiments/attachment-context-streaming-20261019.md)；PR89–91已合并，最后证据消费修复跟踪PR92。私有结果在 `.local/attachment-integrity-20261019/`，六组代理估费合计$0.245796300（排除独立网页成员测试及其他流量），账单未知。继续沿用共享账本和不限额度配置。服务仍仅从私有环境的 GENELOOP_SERVICE_HOME/GENELOOP_SERVICE_CONFIG 走统一 npm service 入口；旧代码/计划/库和失败回执保留，勿覆盖或另起临时发布进程。

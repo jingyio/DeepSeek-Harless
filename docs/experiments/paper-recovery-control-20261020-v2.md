@@ -52,4 +52,4 @@ DeepSeek Flash（`deepseek-flash`），reasoning off，Execute、原生Harness�
 
 已定位PR94 Windows CI失败：测试写文件时LF变CRLF，预期却按LF字符串计算；边界协议另有Windows反斜杠和POSIX恢复器不一致。现在真实字节哈希保持严格，Python保存脚本以UTF-8字节读取，路径统一POSIX；LF/CRLF各有测试。未把字节差异当作“等价版本”。
 
-初次全量检查Python1296/Node1146通过；执行义务改动后全量Python1297/Node1149通过（分别213/5跳过）；实际差异交接后的针对性Node29项通过。无模型smoke通过。守卫覆盖缺义务、跨任务、撤权、源版本、参数摘要、Schema、目标/用户变化、一次失败后不自动再试、语法修正后重新验参。最终CI及PR合并状态待验收后更新；生产未部署。新增能力保持显式实验开关，合入代码不表示复杂语义恢复已合格或自动部署。
+初次全量检查Python1296/Node1146通过；执行义务改动后全量Python1297/Node1149通过（分别213/5跳过）；实际差异交接后的针对性Node29项通过。无模型smoke通过。守卫覆盖缺义务、跨任务、撤权、源版本、参数摘要、Schema、目标/用户变化、一次失败后不自动再试、语法修正后重新验参。实现及CI修复`87a16ff`的Ubuntu/Windows、Push/PR四项CI全部通过；PR工作流`39299513983`包含全量测试、smoke、motif:check。另修正第二处Windows旧夹具：声明LF heredoc却用write_text写出CRLF，改为保存声明的字节；新增“真实CRLF仍拒绝冒充LF”断言，定向Python29项通过。两轮Windows失败保留，未放宽字节校验。最终文档提交的检查和合并commit以[PR94](https://github.com/jingyio/GeneLoop/pull/94)为准，按用户最新授权通过后合入实验代码；生产未部署。新增能力保持显式实验开关，合入代码不表示复杂语义恢复已合格或自动部署。

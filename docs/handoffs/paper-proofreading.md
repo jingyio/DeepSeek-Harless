@@ -2,11 +2,11 @@
 
 - 更新时间与交接人：2026-10-20，Codex。
 - 目标与范围：沿用已有Baseline，先审计真实费用，再改善当前恢复接管；复杂恢复增益未稳定，不扩场景、不调Embedding、不更换挖掘算法。用户最新授权验证后提交并合并PR，覆盖此前只审阅不合并；不包含部署。
-- 分支/提交：`codex/paper-recovery-evidence`，本轮实现`a0074e2`；基于aff4d86，已包含main5e545b4，原脏工作区未动。PR94已更新代码，最终CI/合并状态收尾记录。
+- 分支/提交：`codex/paper-recovery-evidence`，本轮实现`a0074e2`；基于aff4d86，已包含main5e545b4，原脏工作区未动。PR94已推送；实现与CI修复87a16ff的四项CI全部通过。最终文档提交的检查及合并commit以PR94为权威记录，本轮已获通过后合并授权，不部署。
 - 已完成：`reuse_mediation.ts`根据受保护的显式当前执行义务，核验task/grant/来源/参数/Schema后，在首次模型请求前执行一次；失败交回语义修订，成功核验文件并交回总结。runner新增`--resume-current-operation`，非默认、非历史相似性授权。拒绝复合shell时给静态计划的精确修正建议，不执行原命令。成功通知说明Bash目录边界、附实际字段差异；不能保证模型因果解释正确。
 - 跨平台修复：原PR94 Windows失败是测试LF/CRLF与边界路径问题；实际字节摘要不放宽，Python读UTF-8原字节并统一POSIX见证，LF/CRLF均测试。旧Linux证据不追改。
 - 已验证：本轮正常恢复003/005均1个真实模型请求（仅总结），1次Runtime原生执行，完整参数逐字段未变，0工具错误/成功后额外工具。页数恢复004为18请求，37条详细记录及来源未变；最终修改说明仍有不准确处。006为43请求，7次导出、三次同字段长度失败，最终报告改写逐条表/来源且总结有错误，不能算无损成功。
-- 测试：义务接管后的npm test Python1297/Node1149通过（213/5跳过）；增加差异交接后定向Node29通过；无模型smoke通过。最终GitHub Ubuntu/Windows结果收尾补录，未取得结果前不称跨平台通过。
+- 测试：义务接管后的npm test Python1297/Node1149通过（213/5跳过）；增加差异交接后定向Node29通过；无模型smoke通过。实现及CI修复87a16ff的GitHub Ubuntu/Windows、Push/PR四项CI全部通过；PR工作流39299513983，包含全量测试、smoke、motif:check。第二处Windows旧heredoc夹具已修复，定向Python29项通过；两轮失败记录保留。
 - 实验结论：[本轮Breakdown与全部六次真实运行](../experiments/paper-recovery-control-20261020-v2.md)。只支持显式当前操作的窄接管机制；001/002没有该义务，9/67请求，后者脚本及搜索额外成本全部保留。短协议、实际差异提示均不足以保证复杂修订稳定降本或总结正确。
 - 配置与数据：`.local/paper-recovery-control-20261020-v2/`含authorization、aggregate、逐运行quality/native/breakdown、全部测试日志；execute-final.json指向native-003。native-only的2原生契约/1诊断契约，无脚本库或embedding调用。完整代码和有效配置在各run快照，不改旧hash。
 - 最短复现：本轮实验记录引用前轮统一runner命令，增加`--resume-current-operation`；需execute、reuse-checkpoint、preserve-recovery-structure、SSS_LOCAL_SCRIPT_EXPERIMENT=1及已核验HARLESS_REPORT_FONT。当前操作义务来自显式选择，不能仅由相似轨迹设置；代码锁变化需重编库。
