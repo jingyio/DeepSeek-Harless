@@ -1,5 +1,8 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+PR84/PR88 的共同集成在 [PR93](https://github.com/jingyio/GeneLoop/pull/93) 审阅，已保留 PR92 附件阅读能力；本分支使用 Paper v17、PPT v12 和重新认证的 File v6。验证与反例见[集成记录](docs/experiments/file-ppt-integration-20261019.md)，尚未合并或部署。
+
+
 **开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。本地开发仍用 `npm run web`。
 
 PPT 账户内结构学习现接入已启用PPT双路对照的真实聊天任务：后台从原始 Baseline 轨迹取两个独立训练任务和一个留出任务，经原编译器认证后，仅在后续任务试用；两个独立对照确实调用候选、交付检查通过且包含重试的费用下降，才自动保留。用户无需填写验收表，普通踩可停用候选。只学习已支持的来源固定→转换、转换→读取两条结构，不学习科研结论或任意生成代码；无明确人评时科研质量与人工时间仍未知。状态、证据和失败保留在账号私有目录；无合格候选回原库。当前兼容库为 `ppt-master-v9` / `paper-web-v14`，生成技能仍为 main 的官方 ppt-master。部署条件、实现和真实验证边界见[接线记录](docs/experiments/ppt-user-learning-20261019.md)。

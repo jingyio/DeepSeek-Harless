@@ -1,5 +1,13 @@
 # 科研 PPT 当前交接
 
+## 2026-10-20：与 File 及 PR92 共同集成（PR93，待审）
+
+- `codex/integrate-file-ppt-rsi` / 源码 `6603d7d` 已推送 [PR93](https://github.com/jingyio/GeneLoop/pull/93)，保留 PR88 原提交祖先关系，未合并/部署。
+- 保留 PR92 附件阅读索引、主线私有上下文/进度/取消，叠加 PPT 后台学习与否决机制；当前集成库为 `ppt-master-v12` / `paper-web-v17`，从 main 已发布 v11/v16 重新核验相同序列化 IR 与证据，新学习边界进入源码锁。旧发布目录不改。
+- PR92 之后 71 Python/112 Node 定向通过，包含独立认证、未来任务选库、晋级、重启、负反馈与完整性守卫；最终 Linux 全量1415 Python/1073 Node通过，各3跳过；CI 以[实验记录](../experiments/file-ppt-integration-20261019.md)为准。未重新购买完整 PPT 制作评测，不扩展原质量/收益主张。
+- 上线仍需原账户对照配置、可用 Python 和持久学习目录；原失败/费用/私有候选保留，失配不重签，回普通 Harness 后按新正常轨迹学习。合入后只通过统一 service 入口另行发布与真实账号验收。
+
+
 ## 2026-10-19：用户轨迹自动学习接线（已推送，未部署）
 
 - 目标与范围：以 main `a1c0fa2` 开发，提交前同步至 `d422d77`（执行代码与已测 `b939cd5` 相同，仅新文档）；开发分支 `codex/ppt-user-learning-20261019`，交付分支 `feature/research-ppt-agent`。接通 PPT 原任务→后台离线编译→独立认证→后续试用→机械/费用晋级及停用。当前仍使用 main 官方 ppt-master 6.6.0 风格，不恢复旧 V17 renderer。

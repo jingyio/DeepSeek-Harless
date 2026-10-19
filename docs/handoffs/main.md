@@ -1,5 +1,17 @@
 > 2026-10-19 文件管理独立集成 [PR #84](https://github.com/jingyio/GeneLoop/pull/84) 待用户审阅：`codex/geneloop-file-rsi` 已同步main `6df4c5c`，增加 `/file 文件管理`、自动执行/RSI、各账号长期经验及原生恢复/确认。Paper/PPT/Data原宿主和证书不改；本次不合并、不部署。当前状态和失败边界以 [文件交接](file-management.md) 为准；真实验收及USD0.609053074代理估费见 [实验记录](../experiments/geneloop-file-main-integration-20261019.md)。
 
+## 2026-10-20：PR84 / PR88 能力保留集成（PR93，待审）
+
+- 目标/范围：独立 `codex/integrate-file-ppt-rsi` 分支，完整接入 PR84、PR88 和推进中新增的 PR92；源码提交 `6603d7d` 已推送 [PR93](https://github.com/jingyio/GeneLoop/pull/93)，未合并、未部署，当前为草稿。
+- 已完成：保留主线附件索引、私有上下文、进度/取消及统一服务入口；加入 `/file` 和 PPT 后台学习/认证/后续晋级/负反馈。保留 main 已发布的全部库，Paper/PPT 当前集成版本为 v17/v12，原图/证据/schema 不变。File v6 的四类图已按当前源码重新认证，42 源码锁均匹配。
+- 已验证：PR92 后最终 Linux 全量1415 Python/1073 Node通过，各3跳过；另71 Python/112 Node定向通过。smoke/Motif/构建检查通过。最新 head 的 Ubuntu/Windows CI 状态见[实验记录](../experiments/file-ppt-integration-20261019.md)，CI 尚未终态时不称可合并。
+- 真实结果：四图认证 71 请求；公开库消费者两项合计 11 请求，单文件 3 次 verified skip、三文件因原生交错回退且 skip=0，均严格交付通过。共 82 请求/代理估费 USD0.057137782，账单未知；不是业务质量或净收益结论，反例保留。
+- 配置/数据：`scripts/recertify-file-seeds.py` 默认预览；私有副本为原服务器项目 `.local/pr84-88-integration-20261019/{code,final-code}`，模型凭证仅沿用服务器既有环境，无原始日志或私人资料提交。
+- 权限/预算：新增测试封套 USD1，单项0.05/48步/3000输出/0修复，已有失败和旧费用保留，不清零；当前新增代理总额0.057137782。未扩大 execute 到其他工具、用户原件或外部应用。
+- 接手：以 PR93 最新 head/CI 审阅，建议 merge commit 保留两旧 PR 祖先关系；合入后核对 #84/#88 状态，避免再合旧版。正式发布另按 `npm run service` 并验收账号、持久挂载与浏览器；本次没有发布授权或生产修改。
+- 回退：完整恢复 main `31c7309` 代码/注册表/库组合；保留 File/PPT 私有历史、原证据及账本，不清理 `.local`。
+
+
 # DeepSeek Harless 主线当前交接
 
 - 2026-10-19（Codex）：附件/上下文与执行展示修复已发布运行代码 `d2291646`。当前原话与 plugin 资料分离、后续轮不重解析历史、完整上下文和图片随场景承接、准备进度提前绑定同一任务；执行展开状态与代码侧栏已真网页验证。paper16/ppt11是原库兼容认证，无新训练。真实四格式24轮/28侧全部严格通过；旧污染会话续聊2轮通过且日志原字节保留。Linux全量Python1114通过/2跳过、Node887通过/3跳过（仅测试完成窗口补丁，旧fixture超时保留），smoke/motif/continuation通过；最新GitHub Actions未取得终态，不称跨平台CI已通过。PPT更新仍16次冗余工具，未保证最短路径；短跨场景样本未测得两侧主请求重叠。发布/完整检查状态与失败费用见[验收记录](../experiments/attachment-context-streaming-20261019.md)；PR89–91已合并，最后证据消费修复跟踪PR92。私有结果在 `.local/attachment-integrity-20261019/`，六组代理估费合计$0.245796300（排除独立网页成员测试及其他流量），账单未知。继续沿用共享账本和不限额度配置。服务仍仅从私有环境的 GENELOOP_SERVICE_HOME/GENELOOP_SERVICE_CONFIG 走统一 npm service 入口；旧代码/计划/库和失败回执保留，勿覆盖或另起临时发布进程。
