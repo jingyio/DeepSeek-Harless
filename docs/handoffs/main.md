@@ -1,5 +1,8 @@
 # DeepSeek Harless 主线当前交接
 
+- 2026-10-19（Codex）：独立分支 `codex/clickable-generated-files` 修复普通聊天命令产物只有裸文件名、沙箱路径不匹配与旧报告同名干扰；保留私有权限并接入认证快照/原生预览下载。`paper-web-v13`/`ppt-master-v8` 仅对原认证序列化库做兼容重导出，非新训练。完整检查和无模型smoke通过，尚未部署；验收/发布跟踪见[修复记录](../experiments/clickable-generated-files-20261019.md)及Web交接。
+
+
 ## 2026-10-18：成员沙箱公开证书依赖补齐
 
 - PR #81 合入并发布后，真实成员账号首次 PPT Chat 在1.875秒内接收、六页读取通过；第二轮切 Pro/PPT 时，优化侧被 `runtime_bundle_certification_invalid` 正确拒绝并回退。宿主文件摘要全匹配；实际成员命名空间仅缺 `/app/config/pdf-ocr-assets.json`，该公开清单已在 PDF 接入时进入证书，但产品挂载白名单未同步。

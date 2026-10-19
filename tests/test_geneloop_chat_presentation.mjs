@@ -14,7 +14,7 @@ const tool = (seq, done = true) => node('tool-call', seq, { root: { ...(done ? {
   : { name: 'mcp__dsh-workspace__list_files', argsRaw: '{}' }), callId: 'call-' + seq,
   content: [{ type: 'text', text: 'report.csv · @deepseek-ai/dsh-workspace · DSH' }], subCalls: [], isError: false } }, done);
 
-function fixture(initial, { compactAnswerStep, turnStatus } = {}) {
+function fixture(initial, { compactAnswerStep, turnStatus, deliveryResponse } = {}) {
   let plugin, rows = initial, sessionId = 'session-a', tree, activePath = '', cursor = 0;
   const states = new Map(), entries = [], effects = [];
   const React = {
@@ -22,15 +22,16 @@ function fixture(initial, { compactAnswerStep, turnStatus } = {}) {
     useState(value) { const key = activePath + ':' + cursor++; if (!states.has(key)) states.set(key, value);
       return [states.get(key), next => states.set(key, typeof next === 'function' ? next(states.get(key)) : next)]; },
     useId() { return 'process-' + activePath.replace(/\W/g, '-'); },
-    useEffect: () => {}, useRef: value => ({ current: value }),
+    useEffect(fn,deps) { if (!deliveryResponse) return; const key=activePath+':effect:'+cursor++;
+      if(JSON.stringify(states.get(key))!==JSON.stringify(deps)){states.set(key,deps);effects.push(fn);} }, useRef: value => ({ current: value }),
   };
   const MarkdownText = props => React.createElement('native-markdown', props);
   const NativeAssistant = props => React.createElement('native-assistant', props);
   entries.push({ options: { key: 'assistant-step' }, component: NativeAssistant });
-  runInNewContext(source, { window: { __ModuleLoader__: { load(value) { plugin = value; } } }, document: {},
-    AbortController, URL, setTimeout, clearTimeout, fetch: () => { throw Error('rendering must not request a model'); } });
+  runInNewContext(source, { window: { location: { href:'http://localhost/' }, __ModuleLoader__: { load(value) { plugin = value; } } }, document: {},
+    AbortController, URL, setTimeout, clearTimeout, fetch: async (url,init) => { if (!deliveryResponse) throw Error('rendering must not request a model');assert.match(url,/^\/api\/harless\/deliveries\?/);assert.equal(init.credentials,'same-origin');return Response.json(deliveryResponse); } });
   plugin.factory(name => name === 'react' ? React : { MarkdownText }).apply({
-    get: name => ({ commandUi: { decorate: () => () => {} }, inputTriggers: { registerSource: () => () => {} }, sessions: {}, conversation: {} })[name],
+    get: name => ({ commandUi: { decorate: () => () => {} }, inputTriggers: { registerSource: () => () => {} }, sessions: {}, conversation: {}, sidebarRight: { openResource: address => states.set('opened',address) } })[name],
     effect: fn => { effects.push(fn); return fn(); }, uiConversation: { events: { register: () => () => {} } },
     slots: { inject(_name, fn) { fn(); }, register(options, component) { entries.push({ options, component }); }, entries: () => entries },
   });
@@ -64,7 +65,7 @@ function fixture(initial, { compactAnswerStep, turnStatus } = {}) {
   const text = (entry = tree) => Array.isArray(entry) ? entry.map(text).join('') : typeof entry === 'string' ? entry
     : entry?.type === 'style' ? '' : entry?.type === 'native-assistant' ? entry.props.node.data.blocks.map(block => block.text || '').join('') : (entry?.children || []).map(text).join('');
   render();
-  return { all, text, render, entries, setRows(value) { rows = value; }, setSession(value) { sessionId = value; },
+  return { all, text, render, entries, async flushDelivery(){ for(const effect of effects.splice(0))effect();for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));render(); }, opened:()=>states.get('opened'), setRows(value) { rows = value; }, setSession(value) { sessionId = value; },
     toggle() { all(entry => entry.type === 'button' && entry.props.className === 'geneloop-process-toggle')[0].props.onClick(); render(); } };
 }
 
@@ -154,4 +155,16 @@ test('timeline closure is shared even while earlier node locations still describ
   const f = fixture([assistant(1, '旧回答', false), tool(2), assistant(3, '最后回答', false), assistant(4, '', false)], { turnStatus: 'closed' });
   assert.match(f.text(), /最后回答/); assert.equal(f.all(entry => entry.type === 'native-assistant').length, 1);
   assert.equal(f.all(entry => entry.props.role === 'status').length, 0);
+});
+
+
+test('ordinary Chat installs approved command file mentions, previews and independent downloads after completion',async()=>{
+ const deliveryResponse={session_id:'session-a',id:'native-task-a',turn:1,presentation:'single',lanes:{baseline:{artifacts:[{id:'file-one',name:'outputs/code/pelican.html',bytes:17}]}}};
+ const f=fixture([tool(2),assistant(3,'动画：`pelican.html`')],{deliveryResponse});
+ await f.flushDelivery();
+ const native=f.all(row=>row.type==='native-assistant')[0],mentions=native.props.fileMentions();
+ assert.equal(mentions.resolve('pelican.html').title,'pelican.html');assert.equal(mentions.resolve('/etc/passwd'),undefined);
+ mentions.resolve('/work/outputs/pelican.html').open();assert.match(f.opened(),/^dsh-resource:\/\/geneloop-delivery\/session-a\/native-task-a\/baseline\/file-one\/pelican.html$/);
+ const preview=f.all(row=>row.type==='button'&&row.children.includes('预览 pelican.html'))[0];assert.ok(preview);preview.props.onClick();
+ const download=f.all(row=>row.type==='a'&&row.props.download==='pelican.html')[0];assert.match(download.props.href,/^\/api\/harless\/deliveries\?/);assert.match(download.props.href,/file=file-one/);
 });

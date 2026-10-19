@@ -146,3 +146,26 @@ test('A delivered report includes only its hash-checked figure chain and repairs
   assert.deepEqual([...verifiedReportFiles(work,proof)],[pdf.path],'a referenced chart outside this Session is never published');
  }finally{const path=resolve(root);assert.ok(path.startsWith(resolve(tmpdir())+sep)&&path.includes('paired-report-chain-'));rmSync(path,{recursive:true,force:true});}
 });
+
+
+test('only fresh explicitly mentioned scratch outputs are delivered, with 0600 preserved',()=>{
+ const root=mkdtempSync(join(tmpdir(),'paired-scratch-output-'));try{
+  const work=join(root,'work'),scratch=join(work,'code');mkdirSync(scratch,{recursive:true});
+  for(const name of ['pelican.html','private.md','old.svg']){writeFileSync(join(scratch,name),name,{mode:0o600});utimesSync(join(scratch,name),new Date(3000),new Date(3000));}
+  utimesSync(join(scratch,'old.svg'),new Date(1000),new Date(1000));
+  const service=comparisonArtifacts(root),rows=captureComparisonDeliveries(service,{turn:'scratch',lane:'baseline',attempt:0,
+   workspace:work,adapter:'data-report',status:'completed',startedAt:new Date(2000).toISOString(),finishedAt:new Date(4000).toISOString(),answer:'完成：`/work/pelican.html`，旧图 `old.svg`'});
+  assert.equal(rows.length,1);assert.equal(rows[0].name,'code/pelican.html');assert.equal(rows[0].verification,'code-output-v1');
+  assert.equal(service.read('scratch','baseline',rows[0]).toString(),'pelican.html');
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+
+test('a persistent Chat workspace does not publish an earlier turn report with the same basename',()=>{
+ const root=mkdtempSync(join(tmpdir(),'paired-turn-files-'));try{
+  const work=join(root,'work');
+  for(const folder of ['earlier','current']){const directory=join(work,'outputs/documents',folder);mkdirSync(directory,{recursive:true});writeFileSync(join(directory,'paper-review.pdf'),folder);utimesSync(join(directory,'paper-review.pdf'),new Date(folder==='earlier'?1000:3000),new Date(folder==='earlier'?1000:3000));}
+  const rows=captureComparisonDeliveries(comparisonArtifacts(root),{turn:'current',lane:'baseline',attempt:0,workspace:work,adapter:'workspace',status:'completed',startedAt:new Date(2000).toISOString(),finishedAt:new Date(4000).toISOString()});
+  assert.equal(rows.length,1);assert.equal(rows[0].name,'outputs/documents/current/paper-review.pdf');
+ }finally{rmSync(root,{recursive:true,force:true});}
+});

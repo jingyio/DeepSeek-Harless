@@ -8,7 +8,7 @@ const valid = (id: string) => /^[a-zA-Z0-9-]{1,100}$/.test(id);
 export function comparisonArtifacts(output: string) {
   const root = join(output, 'comparison-artifacts'); mkdirSync(root, { recursive: true, mode: 0o700 });
   return {
-    snapshot(turn: string, lane: string, attempt: number, workspace: string, approvedFiles?:Set<string>, recoverEmpty = false, codeFiles = new Set<string>()) {
+    snapshot(turn: string, lane: string, attempt: number, workspace: string, approvedFiles?:Set<string>, recoverEmpty = false, codeFiles = new Set<string>(), timeWindow?: {start:number;end:number}) {
       if (!valid(turn) || !['baseline', 'motif'].includes(lane) || !Number.isInteger(attempt) || attempt < 0) throw Error('artifact_identity_invalid');
       const destination = join(root, turn, lane, String(attempt));
       const index = join(destination, 'index.json');
@@ -25,10 +25,12 @@ export function comparisonArtifacts(output: string) {
           verification:row.verification==='code-output-v1'?'code-output-v1':'data-report-delivery-v1'})) : [];
       let total = rows.reduce((sum,row)=>sum+row.bytes,0), nextIndex = previous?.length ?? 0;
       const copy = (path: string, name: string) => {
-        if (name.startsWith('outputs/code/') && !codeFiles.has(path)) return;
+        const commandFile = name.startsWith('outputs/code/') || name.startsWith('code/');
+        if (commandFile && !codeFiles.has(path)) return;
         if(approvedFiles&&!approvedFiles.has(path))return;
         if(rows.some(row=>row.name===name))return;
         const st = lstatSync(path);
+        if (timeWindow && (st.mtimeMs < timeWindow.start || st.mtimeMs >= timeWindow.end + 1)) return;
         if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1 || !within(workspace, path) ||
             rows.length >= 32 || st.size > 30 * 1024 * 1024 || total + st.size > 80 * 1024 * 1024) return;
         const bytes = readFileSync(path), digest = sha(bytes);
@@ -36,7 +38,7 @@ export function comparisonArtifacts(output: string) {
         while(existsSync(join(destination,id)))id=digest.slice(0,32)+'-'+nextIndex++;
         writeFileSync(join(destination, id), bytes, { mode: 0o600, flag: 'wx' });
         rows.push({ id, name, bytes: bytes.length, sha256: digest, attempt,
-          ...(name.startsWith('outputs/code/') ? {verification:'code-output-v1'} : approvedFiles?{verification:'data-report-delivery-v1'}:{}) }); total += bytes.length;
+          ...(commandFile ? {verification:'code-output-v1'} : approvedFiles?{verification:'data-report-delivery-v1'}:{}) }); total += bytes.length;
       };
       const scan = (directory: string, prefix: string, depth: number) => {
         if (!existsSync(directory) || depth > 5) return;
@@ -48,12 +50,12 @@ export function comparisonArtifacts(output: string) {
           if (st.isDirectory()) { scan(path, prefix + name + '/', depth + 1); continue; }
           if (!st.isFile() || st.nlink !== 1 || st.size > 30 * 1024 * 1024 || total + st.size > 80 * 1024 * 1024) continue;
           if (!/\.(?:pdf|pptx|png|jpg|svg|csv|tsv|html|md|tex|bib|txt)$/i.test(name) &&
-              !(prefix.startsWith('outputs/code/') && /\.(?:docx|xlsx|json|zip|py|js)$/i.test(name))) continue;
+              !((prefix.startsWith('outputs/code/') || prefix.startsWith('code/')) && /\.(?:docx|xlsx|json|zip|py|js)$/i.test(name))) continue;
           copy(path, prefix + name);
         }
       };
       // Scene adapters place only derived deliverables here. Literature task/cache/journal are excluded.
-      for (const directory of ['outputs', 'output', 'validation', 'literature/outputs', 'literature/deliverables', 'file-results']) scan(join(workspace, directory), directory + '/', 0);
+      for (const directory of ['outputs', 'output', 'validation', 'literature/outputs', 'literature/deliverables', 'file-results', 'code']) scan(join(workspace, directory), directory + '/', 0);
       if (existsSync(join(workspace, 'literature/delivery-receipt.json'))) for (const name of ['research-notes.md', 'evidence.json']) {
         const path = join(workspace, 'literature', name); if (existsSync(path)) copy(path, 'literature/' + name);
       }
@@ -156,7 +158,7 @@ export function verifiedReviewFiles(workspace:string, proof:Map<string,string>){
  * Incomplete drafts and other scenes still require normal task completion. */
 export function captureComparisonDeliveries(service: ReturnType<typeof comparisonArtifacts>, context: {
   turn: string; lane: string; attempt: number; workspace: string; adapter?: string; status: string;
-  eventsPath?: string; startedAt?: string; finishedAt?: string; recoverMissing?: boolean;
+  eventsPath?: string; startedAt?: string; finishedAt?: string; recoverMissing?: boolean; answer?: string;
 }) {
   // Retrospective recovery needs a scene-specific proof format. A directory
   // scan of a persistent Session could otherwise pick up a later turn's files.
@@ -166,14 +168,21 @@ export function captureComparisonDeliveries(service: ReturnType<typeof compariso
   let approved: Set<string> | undefined;
   const codeFiles = new Set<string>();
   const start = Date.parse(context.startedAt ?? ''), end = Date.parse(context.finishedAt ?? '');
-  const scanCode = (path:string, depth=0) => {
+  const mentioned = new Set<string>();
+  // Scratch contains implementation files too. Publish only primary outputs
+  // explicitly named in the task's closing prose, never every scratch file.
+  for (const match of (context.answer ?? '').matchAll(/`([^`\n]+)`|\]\(([^)\s]+)\)/g)) mentioned.add(match[1] ?? match[2]);
+  const scanCode = (path:string, depth=0, scratch=false) => {
     if (depth>5 || codeFiles.size>=32 || !existsSync(path)) return;
     const st=lstatSync(path);
     if (st.isSymbolicLink() || !within(context.workspace,path)) return;
-    if (st.isDirectory()) for (const name of readdirSync(path).slice(0,256)) { if(!name.startsWith('.'))scanCode(join(path,name),depth+1); }
-    else if(st.isFile() && st.nlink===1 && st.mtimeMs>=start && st.mtimeMs<=end)codeFiles.add(path);
+    if (st.isDirectory()) for (const name of readdirSync(path).slice(0,256)) { if(!name.startsWith('.'))scanCode(join(path,name),depth+1,scratch); }
+    else if(st.isFile() && st.nlink===1 && st.mtimeMs>=start && st.mtimeMs<end+1) {
+      const local = relative(join(context.workspace,'code'),path).split(sep).join('/');
+      if (!scratch || [local, '/work/'+local, 'sandbox:/work/'+local].some(name=>mentioned.has(name))) codeFiles.add(path);
+    }
   };
-  if(context.status==='completed'&&!context.recoverMissing&&Number.isFinite(start)&&Number.isFinite(end))scanCode(join(context.workspace,'outputs/code'));
+  if(context.status==='completed'&&!context.recoverMissing&&Number.isFinite(start)&&Number.isFinite(end)){scanCode(join(context.workspace,'outputs/code'));scanCode(join(context.workspace,'code'),0,true);}
   if (context.adapter === 'data-report') {
     // The Session can contain later successful turns. Only this failed task's
     // own bounded tool events may grant a recovered download.
@@ -183,7 +192,8 @@ export function captureComparisonDeliveries(service: ReturnType<typeof compariso
     for(const path of codeFiles)approved.add(path);
     if ((context.status !== 'completed'||context.recoverMissing)&&!approved.size)return [];
   }
-  return service.snapshot(context.turn, context.lane, context.attempt, context.workspace, approved, context.recoverMissing === true, codeFiles);
+  return service.snapshot(context.turn, context.lane, context.attempt, context.workspace, approved, context.recoverMissing === true, codeFiles,
+    context.adapter === 'workspace' && Number.isFinite(start) && Number.isFinite(end) ? {start,end} : undefined);
 }
 
 function taskReportDeliveries(context: { eventsPath?: string; startedAt?: string; finishedAt?: string }, reviewWorkspace?:string) {

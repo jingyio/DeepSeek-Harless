@@ -130,3 +130,21 @@ def test_original_paper_shadow_release_stays_shadow_and_cannot_be_relabelled_as_
     (bundle / 'entry.json').write_text(json.dumps(entry), encoding='utf-8')
     with pytest.raises(ValueError, match='invalid existing product library'):
         load_product_bundle(tmp_path, bundle, 'paper-proofreading')
+
+
+@pytest.mark.parametrize('before,after,scene', [
+    ('paper-web-v12','paper-web-v13','paper-proofreading'),
+    ('ppt-master-v7','ppt-master-v8','ppt'),
+])
+def test_delivery_compatibility_reuses_validated_program_without_rewriting_previous_release(before,after,scene):
+    original=ROOT/'motif-libraries'/before
+    candidate=ROOT/'motif-libraries'/after
+    report=read(candidate/'learning-report.json')['delivery_compatibility']
+    assert report['previous_certification_sha256']==sha(original/'certification.json')
+    assert report['method']=='reexport_certified_serialized_library'
+    assert report['model_requests']==0 and report['new_training_tasks']==0
+    assert report['raw_traces_replayed'] is False
+    for name in ('library.json','source-evidence.json','task.json','tool-schemas.json'):
+        assert (candidate/name).read_bytes()==(original/name).read_bytes()
+    assert read(candidate/'online-manifest.json')==read(original/'online-manifest.json')
+    assert load_product_bundle(ROOT,candidate,scene)['quality_cost_promoted'] is False

@@ -1,6 +1,6 @@
 /** Dynamic business tasks on the official Harness Web/Session lifecycle. */
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
+import { existsSync, appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
@@ -61,6 +61,7 @@ type Policy = {
 type ModelOption = WebModelOption;
 type Task = {
   request: NormalizedWebTask; delivery: PromptPart[]; confirmation_digest: string;
+  native_turn?: number;
   status: string; created_at: string; started_at?: string; finished_at?: string;
   failure: string | null; fallback_reason: string | null; answer: string;
   output: string; stats: Record<string, any>; interceptor?: any;
@@ -515,7 +516,7 @@ export function apply(ctx: any) {
     return { task_id: request.task_id, session_id: request.session_id, request_id: request.request_id,
       capability_profile: request.capability_profile, scene: task.scene.id, scene_sha256: task.scene.config_sha256,
       user_id: principal, selected_mode: task.selection.mode, rsi: task.selection.rsi, mode: request.mode, budget_usd: request.budget_usd,
-      entrypoint: task.entrypoint, source_task_id: task.source_task_id, status: task.status, failure: task.failure, fallback_reason: task.fallback_reason,
+      native_turn: task.native_turn, entrypoint: task.entrypoint, source_task_id: task.source_task_id, status: task.status, failure: task.failure, fallback_reason: task.fallback_reason,
       created_at: task.created_at, started_at: task.started_at, finished_at: task.finished_at,
       duration_ms:task.started_at?Math.max(0,Date.parse(task.finished_at??utc())-Date.parse(task.started_at)):0,
       input_summary: request.summary, prompt_sha256: request.prompt_sha256,
@@ -530,6 +531,13 @@ export function apply(ctx: any) {
       ...(live?{progress:live.progress,activity:live.activity,messages:live.messages,trace:live.trace}:{}),
       ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
         'ledger.jsonl', 'motif-audit.jsonl', ...(task.answer ? ['answer.md'] : [])] } : {}) };
+  }
+  function nativeDeliveries(task: Task) {
+    return captureComparisonDeliveries(comparisonArtifacts(config.output), {
+      turn: 'native-' + task.request.task_id, lane: 'baseline', attempt: 0,
+      workspace: task.workspace, adapter: task.scene.adapter, status: task.status, answer: task.answer,
+      eventsPath: join(task.output, 'events.jsonl'), startedAt: task.started_at, finishedAt: task.finished_at,
+    }).filter((row: any) => row.verification === 'code-output-v1');
   }
   function record(task: Task) { json(join(task.output, 'task-state.json'), view(task)); notifyTask(task); }
   for (const taskId of indexedTasks) {
@@ -551,7 +559,7 @@ export function apply(ctx: any) {
       (effective.allowed_tools&&digest(effective.allowed_tools)!==digest(configuredScene.allowed_tools)))legacyChatSessions.add(request.session_id);
     const restoredScene = sessionScene(request.session_id, configuredScene);
     const task: Task = { request, delivery: request.content, confirmation_digest: state.confirmation_digest,
-      status: state.status, created_at: state.created_at, started_at: state.started_at,
+      native_turn: state.native_turn, status: state.status, created_at: state.created_at, started_at: state.started_at,
       finished_at: state.finished_at, failure: state.failure, fallback_reason: state.fallback_reason,
       answer: '', output, trace_start_index:effective.trace_start_index, stats: state.stats, humans: new Map(), current_humans: new Set(),
       sources: state.sources, entrypoint: state.entrypoint, budget_session_id: route.budget_session_id,
@@ -569,6 +577,18 @@ export function apply(ctx: any) {
       reasoning_effort: webReasoningEffort(state.provider ?? defaultModel.provider, state.reasoning_effort ?? effective.reasoning_effort ?? 'off') };
     try { task.answer = readFileSync(join(output, 'answer.md'), 'utf8'); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    if (task.native_turn === undefined && task.scene.adapter === 'workspace') {
+      // Older tasks predate the explicit turn field. Recover it only after
+      // this task's exact request anchor, never from another turn's snapshot.
+      const path = join(output, 'events.jsonl');
+      if (existsSync(path) && lstatSync(path).size <= 32 * 1024 * 1024) {
+        try {
+          const events = readFileSync(path, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+          const anchor = events.findIndex(event => event.type === 'user/message' && event.data?.source?.rpcId === request.request_id);
+          if (anchor >= 0) task.native_turn = events.slice(anchor).find(event => Number.isSafeInteger(event.data?.turn) && event.data.turn > 0)?.data.turn;
+        } catch { /* Missing legacy proof never authorizes another turn. */ }
+      }
+    }
     let live=createTaskProgress({answer:task.answer,progress:state.progress,activity:state.activity,messages:state.messages,trace:state.trace});
     if(!Array.isArray(state.trace)){
       // Old tasks already saved native events. Anchor at this exact admitted
@@ -649,6 +669,10 @@ export function apply(ctx: any) {
   function finish(task: Task, status: string, failure: string | null = null) {
     if (terminal.has(task.status)) return;
     task.status = status; task.failure = failure; task.finished_at = utc();
+    // Pin command bytes before another turn can edit the persistent workspace.
+    if (task.scene.adapter === 'workspace' && status === 'completed' && !comparisons?.isLane(task.request.session_id)) {
+      try { nativeDeliveries(task); } catch { task.failure = 'delivery_snapshot_failed'; }
+    }
     task.input_abort?.abort(Error('task_finished'));
     progress.get(task.request.task_id)?.finish(status);
     record(task);
@@ -1560,7 +1584,7 @@ export function apply(ctx: any) {
             eventsPath: join(task.output, 'events.jsonl'), startedAt: task.started_at, finishedAt: task.finished_at}) : {}),
           deliveries: captureComparisonDeliveries(artifacts, { turn: meta.turn.id, lane: meta.lane,
             attempt: meta.turn.lanes[meta.lane].attempt, workspace: task.workspace,
-            adapter: task.scene.adapter, status: task.status, eventsPath: join(task.output, 'events.jsonl'),
+            adapter: task.scene.adapter, status: task.status, answer: task.answer, eventsPath: join(task.output, 'events.jsonl'),
             startedAt: task.started_at, finishedAt: task.finished_at, recoverMissing: context?.recoverMissing }) };
         return result;
       },
@@ -1746,6 +1770,7 @@ export function apply(ctx: any) {
   }, { global: true });
   ctx.on('session/event', (session: any, event: any) => {
     const task = forSession(session.id); if (!task || task.status !== 'running') return;
+    if (Number.isSafeInteger(event.data?.turn) && event.data.turn > 0) task.native_turn = event.data.turn;
     progress.get(task.request.task_id)?.event(event);
     appendFileSync(join(task.output, 'events.jsonl'), JSON.stringify(event) + '\n', { mode: 0o600 });
     // Controller has already validated and transformed receipt/image input here.
@@ -1801,6 +1826,37 @@ export function apply(ctx: any) {
       for await (const chunk of stream) { task.ppt_master_recovery?.observe(chunk);live.chunk(chunk); task.answer = live.snapshot().answer; notifyTask(task); yield chunk; }
     })();
   }, { global: true });
+  ctx.effect(() => ctx.connection.fetch.register({ path: '/api/harless/deliveries', methods: ['GET'], requestBody: 'buffered',
+    async fetch(request: Request) {
+      const rejected = ctx.connection.requestRejection(request); if (rejected) return new Response('Unauthorized', { status: rejected });
+      try {
+        const url = new URL(request.url), session = url.searchParams.get('session_id')!;
+        await ensureOwned(session);
+        if (comparisons?.isLane(session)) throw new TaskError('artifact_not_found', '请在原对话查看结果。', 404);
+        const id = url.searchParams.get('id'), turn = Number(url.searchParams.get('turn'));
+        const task = id ? get(id.replace(/^native-/, '')) : [...tasks.values()].find(task =>
+          task.request.session_id === session && task.native_turn === turn && task.scene.adapter === 'workspace');
+        if (!task || task.request.session_id !== session || task.scene.adapter !== 'workspace')
+          throw new TaskError('artifact_not_found', '找不到本轮交付文件。', 404);
+        if (!terminal.has(task.status)) return Response.json({ pending: true }, { status: 202, headers: {'Cache-Control':'no-store'} });
+        if (task.status !== 'completed') throw new TaskError('artifact_not_found', '本轮没有已完成的文件。', 404);
+        const rows = nativeDeliveries(task), file = url.searchParams.get('file');
+        if (file) {
+          const row = rows.find((row: any) => row.id === file);
+          if (url.searchParams.get('lane') !== 'baseline' || !row) throw new TaskError('artifact_not_found', '找不到本轮交付文件。', 404);
+          return new Response(comparisonArtifacts(config.output).read('native-' + task.request.task_id, 'baseline', row), { headers: {
+            'Content-Type': 'application/octet-stream', 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(basename(row.name)),
+            'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+        }
+        return browserJson({ id: 'native-' + task.request.task_id, session_id: session, turn: task.native_turn,
+          presentation: 'single', status: task.status, lanes: { baseline: { status: task.status, artifacts: rows } } },
+          { headers: { 'Cache-Control': 'no-store' } });
+      } catch (error) {
+        return Response.json({ error: { code: 'delivery_unavailable', message: '文件不可用，请刷新后重试。' } },
+          { status: error instanceof TaskError ? error.status : 409 });
+      }
+    },
+  }), 'harless-native-deliveries');
   const taskRoute = { methods: ['GET', 'POST'] as const, requestBody: 'buffered' as const,
     fetch: async (request: Request) => {
       try {

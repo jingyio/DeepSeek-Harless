@@ -2253,3 +2253,39 @@ test('native comparison images reach both lanes with exact file provenance and t
   for(const task of (await f.api()).value.tasks)await f.complete(task);
  }finally{await f.close()}
 });
+
+
+test('native command deliveries pin private bytes, survive restart, and reject another session or lane', options, async () => {
+ const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
+ try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  await f.ctx.sessionController.prompt({sessionId,requestId:'deliver-native',mode:'queue',content:[{type:'text',text:'Create an offline animation'}]},new AbortController().signal);
+  const task=(await f.api()).value.tasks.find(t=>t.session_id===sessionId), agent=f.agents.get(sessionId);
+  agent.session.append('turn/start',{turn:1});
+  const output=join(f.directory,'sessions',sessionId,'work/outputs/code');mkdirSync(output,{recursive:true});
+  const path=join(output,'pelican-bicycle.html'),bytes='<html>offline animation</html>';
+  writeFileSync(path,bytes,{mode:0o600});
+  const generatedAt=new Date(Date.parse(task.started_at)+1);utimesSync(path,generatedAt,generatedAt);
+  const pendingRequest=new Request('http://localhost/api/harless/deliveries?session_id='+sessionId+'&turn=1');pendingRequest.authorized=true;
+  assert.equal((await f.routes.get('/api/harless/deliveries').fetch(pendingRequest)).status,202);
+  agent.session.append('assistant/message',{turn:1,message:{content:[{type:'text',text:'完成：`/work/outputs/pelican-bicycle.html`'}]}});
+  await new Promise(r=>setTimeout(r,15));await f.complete(task);
+  const read=async(query,authorized=true)=>{const request=new Request('http://localhost/api/harless/deliveries?'+query);request.authorized=authorized;return f.routes.get('/api/harless/deliveries').fetch(request);};
+  const query='session_id='+sessionId+'&turn=1';
+  assert.equal((await read(query,false)).status,401);
+  let response=await read(query);assert.equal(response.status,200);const value=await response.json();
+  assert.equal(value.turn,1);assert.equal(value.lanes.baseline.artifacts.length,1);
+  const row=value.lanes.baseline.artifacts[0],fileQuery='session_id='+sessionId+'&id='+value.id+'&lane=baseline&file='+row.id;
+  response=await read(fileQuery);assert.equal(await response.text(),bytes);assert.match(response.headers.get('Content-Disposition'),/attachment/);
+  assert.equal((await read(fileQuery.replace('baseline','motif'))).status,404);
+  const other=await f.ctx.sessionController.create({});
+  assert.equal((await read(fileQuery.replace(sessionId,other.sessionId))).status,404);
+  assert.equal((await read('session_id='+sessionId+'&turn=2')).status,404);
+  writeFileSync(path,'later turn changed original');
+  const statePath=join(f.directory,'tasks',task.task_id,'task-state.json'),state=JSON.parse(readFileSync(statePath,'utf8'));delete state.native_turn;writeFileSync(statePath,JSON.stringify(state));
+  await f.restart();response=await read(fileQuery);assert.equal(await response.text(),bytes);
+  response=await read(query);assert.equal(response.status,200,'legacy turn recovers only from this task request anchor');
+  const saved=join(f.directory,'comparison-artifacts',value.id,'baseline/0',row.id);writeFileSync(saved,'tampered snapshot');
+  assert.equal((await read(fileQuery)).status,409);
+ } finally {await f.close();}
+});
