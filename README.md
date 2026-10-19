@@ -10,6 +10,8 @@ GeneLoop 网页的 Chat、`/ppt`、`/data`、`/paper` 和已登记 Files 场景�
 
 网页使用独立的 GeneLoop 视觉样式，统一明暗主题、侧栏、聊天、菜单、设置、账户页、双栏结果与轨迹。用户已选定 A 的清晰聊天排版与 C 的登录布局：登录页固定黑灰配色、原色螺旋动效和白底黑字按钮，工作区默认清晰风格；工作区的明暗及其他风格偏好不影响登录页。选择工作区方案时使用原生字号设置将阅读字号调整为 16px，之后仍可手动调整。减少动态偏好继续生效，单栏和双栏场景保持无框。样式范围、验证与仅回退代码的方法见 [视觉规范](docs/geneloop-visual-system.md)。已于北京时间 2026-10-17 20:56 随 `f8a04e4` 发布，保留同期回复缓冲修复；服务器旧源码差异的保留与整合见[核对记录](docs/experiments/geneloop-server-source-reconciliation-20261017.md)。
 
+普通 Chat 现可直接打开 Bash/Python 生成的 HTML、SVG、Markdown 等交付文件，正文文件名和独立预览/下载入口共用本轮快照。文件保留私有权限；仅当前账号、本会话、本轮已核验的文件可读取，后续修改不覆盖旧交付。HTML 预览显示源代码，可下载后在浏览器运行。修复和兼容库 `paper-web-v13` / `ppt-master-v8` 的验证边界见[文件点击修复记录](docs/experiments/clickable-generated-files-20261019.md)。
+
 交付文件卡片与已登记的正文文件链接点击后，在原生右侧标签页预览，独立下载图标才下载。支持 PDF、图片、Markdown、CSV/TSV、JSON 和文本；DOCX/PPTX/XLSX 提供内容预览，DOCX/PPTX 有同名配套 PDF 时优先预览排版。内容预览不保证原始图形、排版或公式；其他格式保留下载。读取沿用账号认证、文件大小与 SHA 校验，不向外部文档服务发送文件。当前实现与浏览器验收边界见[交付预览说明](docs/geneloop-visual-system.md#交付文件预览与三套候选风格2026-10-17)。
 
 网页 `/ppt` 现使用完整、版本固定的 **ppt-master 6.6.0**。Baseline / Motif 使用同一技能、模型、工具和普通环境优化，由 GeneLoop 自主选路线、制作、检查、修复和导出；旧制作 MCP 不再暴露。安装与部署见 [PPT 场景](scenarios/ppt_master/README.md)，真实采集、被拒绝候选和网页对照见 [实验记录](docs/experiments/ppt-master-motif-20261018.md)。

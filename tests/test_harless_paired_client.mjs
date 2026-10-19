@@ -1015,3 +1015,17 @@ test('approved relative Markdown links retain captions and open preview; example
   answer.props.onClickCapture({target:{closest:()=>({getAttribute:()=>href})},preventDefault(){prevented=true;},stopPropagation(){}});
   assert.equal(prevented,true);assert.equal(f.openedPreviews.length,1);assert.equal(f.downloaded.length,0);f.dispose();
 });
+
+
+test('sandbox output and scratch paths resolve only to approved files, including bare filenames in tables',async()=>{
+ const value=comparison();value.lanes.baseline.artifacts=[{...artifact,name:'outputs/code/pelican.html'}, {...artifact,id:'scratch',name:'code/bird.svg'}];
+ value.lanes.baseline.answer='| 文件 |\n|---|\n| `pelican.html` |\n| [动画](/work/outputs/pelican.html) |';
+ const f=fixture(undefined,value);await flush();f.render();const md=f.all(row=>f.isMarkdown(row))[0];
+ const mentions=md.props.fileMentions;
+ for(const path of ['pelican.html','/work/outputs/pelican.html','outputs/pelican.html','sandbox:/work/outputs/pelican.html'])assert.equal(mentions.resolve(path).title,'pelican.html');
+ assert.equal(mentions.resolve('/work/bird.svg').title,'bird.svg');assert.equal(mentions.resolve('missing.md'),undefined);
+ assert.match(md.props.text,/#geneloop-preview=/);
+ value.lanes.baseline.artifacts.push({...artifact,id:'duplicate',name:'outputs/other/pelican.html'});
+ f.dispose();const ambiguous=fixture(undefined,value);await flush();ambiguous.render();
+ assert.equal(ambiguous.all(row=>ambiguous.isMarkdown(row))[0].props.fileMentions.resolve('pelican.html'),undefined);ambiguous.dispose();
+});

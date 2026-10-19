@@ -272,7 +272,7 @@ window.__ModuleLoader__.load({
       }
       const networkMessage = error => error.status ? error.message : '网络连接暂时中断，已保留当前结果。';
       function comparisonUrl(value, lane, file) {
-        return '/api/harless/comparisons?session_id=' + encodeURIComponent(value.session_id) + '&id=' + encodeURIComponent(value.id)
+        return (value.id?.startsWith('native-') ? '/api/harless/deliveries' : '/api/harless/comparisons') + '?session_id=' + encodeURIComponent(value.session_id) + '&id=' + encodeURIComponent(value.id)
           + (lane ? '&lane=' + lane + '&file=' + encodeURIComponent(file.id) : '');
       }
       async function withDeadline(signal, milliseconds, operation) {
@@ -313,7 +313,9 @@ window.__ModuleLoader__.load({
         try { path = decodeURIComponent(path); } catch { return undefined; }
         path = path.replace(/^sandbox:/, '').replace(/^file:\/\//, '').replace(/\\/g, '/');
         // Match only immutable server-approved rows; ambiguous basenames stay inert.
-        const exact = files.filter(file => path === file.name || path.endsWith('/' + file.name));
+        const exact = files.filter(file => path === file.name || path.endsWith('/' + file.name) ||
+          (file.name.startsWith('outputs/code/') && [file.name.replace('outputs/code/', '/work/outputs/'), file.name.replace('outputs/code/', 'outputs/')].includes(path)) ||
+          (file.name.startsWith('code/') && path === file.name.replace('code/', '/work/')));
         if (exact.length === 1) return exact[0];
         if (!path.includes('/')) {
           const matches = files.filter(file => file.name.split('/').pop() === path);
@@ -586,7 +588,7 @@ window.__ModuleLoader__.load({
         const size = bytes === undefined ? '' : primitives.fileSizeText ? primitives.fileSizeText(bytes) : bytes < 1024 ? bytes + 'B' : bytes < 1048576 ? Math.round(bytes / 1024) + 'KB' : (bytes / 1048576).toFixed(1) + 'MB';
         return [extension || '文件', size].filter(Boolean).join(' ');
       };
-      const artifactLinkStyle = `.harless-paired code[data-harless-artifact-inline],.geneloop-product-turn :not(pre)>code:has(>button){display:contents!important;background:transparent!important;border:0!important;padding:0!important;box-shadow:none!important;font:inherit!important;color:inherit!important}.harless-paired [data-harless-artifact-link],.geneloop-product-turn :not(pre)>code>button{display:inline-flex;vertical-align:baseline;align-items:baseline;gap:0;min-height:0;max-width:100%;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;color:var(--dsw-alias-link,#729cf7)!important;font:inherit!important;line-height:inherit;white-space:normal;overflow-wrap:anywhere;text-decoration:none;cursor:pointer}.harless-paired [data-harless-artifact-link] code{background:transparent!important;border:0!important;padding:0!important;font:inherit!important;color:inherit}.harless-paired [data-harless-artifact-link] svg,.geneloop-product-turn :not(pre)>code>button svg{display:none}.harless-paired [data-harless-artifact-link]:hover,.geneloop-product-turn :not(pre)>code>button:hover{text-decoration:underline;text-underline-offset:3px}.harless-paired [data-harless-artifact-link]:focus-visible,.geneloop-product-turn :not(pre)>code>button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:3px;border-radius:2px!important}`;
+      const artifactLinkStyle = `.harless-paired code[data-harless-artifact-inline],.geneloop-product-turn :not(pre)>code:has(>button){display:contents!important;background:transparent!important;border:0!important;padding:0!important;box-shadow:none!important;font:inherit!important;color:inherit!important}.harless-paired [data-harless-artifact-link],.geneloop-product-turn [data-harless-artifact-link],.geneloop-product-turn :not(pre)>code>button{display:inline-flex;vertical-align:baseline;align-items:baseline;gap:0;min-height:0;max-width:100%;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;color:var(--dsw-alias-link,#729cf7)!important;font:inherit!important;line-height:inherit;white-space:normal;overflow-wrap:anywhere;text-decoration:none;cursor:pointer}.harless-paired [data-harless-artifact-link] code{background:transparent!important;border:0!important;padding:0!important;font:inherit!important;color:inherit}.harless-paired [data-harless-artifact-link] svg,.geneloop-product-turn :not(pre)>code>button svg{display:none}.harless-paired [data-harless-artifact-link]:hover,.geneloop-product-turn :not(pre)>code>button:hover{text-decoration:underline;text-underline-offset:3px}.harless-paired [data-harless-artifact-link]:focus-visible,.geneloop-product-turn :not(pre)>code>button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:3px;border-radius:2px!important}`;
       // Public primitives are shared with native Chat; do not duplicate SVGs or
       // depend on private Chat components / generated CSS class names.
       const messageIcon = kind => h(primitives[({ copy: 'IconCopyOutline16', check: 'IconCheckOutline16',
@@ -1634,22 +1636,50 @@ window.__ModuleLoader__.load({
           text && h('pre', null, text),
           ...(block.subCalls || []).map(child => h(ToolEvidence, { key: child.callId, block: child })));
       }
-      function AssistantContent({ node, owner, process = false, live = false }) {
+      function AssistantContent({ node, owner, process = false, live = false, delivery }) {
         const original = ctx.slots.entries?.('conversation.chat.node').find(entry => entry.options.key === 'assistant-step' && entry.component !== ProductChatNode);
         const sourceBlocks = process ? node.data.blocks.filter(block => ['text', 'image', 'reasoning'].includes(block.kind)) : visibleBlocks(node);
-        const blocks = useBufferedBlocks(sourceBlocks, !process && live, owner.sessionId + ':' + node.key + ':' + process);
+        const buffered = useBufferedBlocks(sourceBlocks, !process && live, owner.sessionId + ':' + node.key + ':' + process);
+        const files = delivery?.lanes.baseline.artifacts || [];
+        const blocks = delivery ? buffered.map(block => typeof block.text === 'string' ? { ...block, text: artifactMarkdown(block.text, files, delivery, 'baseline') } : block) : buffered;
+        const mentions = delivery ? { resolve: raw => { const file = artifactFor(files, raw); return file ? {
+          title: artifactName(file), label: '预览 ' + artifactName(file), open: () => openArtifact(delivery, 'baseline', file),
+        } : undefined; } } : undefined;
         // A registered public renderer preserves authorized file mentions,
         // images, Markdown and interruption presentation without private APIs.
-        if (original) return h(original.component, { ...owner, node: { ...node, data: { ...node.data, blocks } }, turnProcess: undefined });
+        if (original) return h(original.component, { ...owner, ...(mentions ? { fileMentions: () => mentions } : {}), node: { ...node, data: { ...node.data, blocks } }, turnProcess: undefined });
         return h('div', { 'data-streaming': node.data.status === 'running' }, ...blocks.map((block, i) =>
           block.kind === 'text' || block.kind === 'reasoning' ? MarkdownText
-            ? h(MarkdownText, { key: i, text: block.text, streaming: node.data.status === 'running', labels: markdownLabels })
+            ? h(MarkdownText, { key: i, text: block.text, streaming: node.data.status === 'running', labels: markdownLabels, fileMentions: mentions })
             : h('p', { key: i }, block.text)
             : block.kind === 'image' ? owner.renderMessageImages?.({ images: [{ attachment: block.attachment }], align: 'start' }) : null));
       }
       function ProductTurn({ owner, rows, answer, running }) {
         const [open, setOpen] = React.useState(false);
         const id = React.useId();
+        const [delivery, setDelivery] = React.useState(null), [deliveryError, setDeliveryError] = React.useState('');
+        const [deliveryRetry, retryDelivery] = React.useState(0);
+        const session = owner.sessionId, turn = turnOf(answer || rows.at(-1));
+        React.useEffect(() => {
+          setDelivery(null); setDeliveryError('');
+          if (running || !Number.isInteger(turn)) return;
+          const abort = new AbortController();
+          withDeadline(abort.signal, 30000, async signal => {
+            let response;
+            do {
+              response = await fetch('/api/harless/deliveries?session_id=' + encodeURIComponent(session) + '&turn=' + turn,
+                { credentials: 'same-origin', cache: 'no-store', signal });
+              if (response.status === 202) await new Promise(resolve => setTimeout(resolve, 250));
+            } while (response.status === 202 && !signal.aborted);
+            signal.throwIfAborted();
+            if (response.status === 404) return;
+            if (!response.ok) throw apiError(response.status);
+            const value = await response.json();
+            if (value.session_id !== session || value.turn !== turn || value.presentation !== 'single' || !value.lanes?.baseline) throw apiError(502);
+            if (!signal.aborted) setDelivery(value);
+          }).catch(error => { if (!abort.signal.aborted) setDeliveryError(networkMessage(error)); });
+          return () => abort.abort();
+        }, [session, turn, running, deliveryRetry]);
         const evidence = rows.filter(row => row !== answer);
         const reasoning = (answer?.data.blocks || []).filter(block => block.kind === 'reasoning' && block.text);
         const tools = rows.filter(row => row.kind === 'tool-call');
@@ -1662,7 +1692,15 @@ window.__ModuleLoader__.load({
         const status = activeRoot ? workLabel(activeRoot.call?.name || activeRoot.name, documentSubject(activeRoot.call?.argsRaw || activeRoot.argsRaw))
           : latestBlock?.kind === 'reasoning' && answer?.data.status === 'running' ? '正在思考' : '正在回复';
         const label = count ? `${count} 次工具调用${messageCount ? ` · ${messageCount} 条过程消息` : ''}` : '查看处理过程';
-        return h('section', { className: 'geneloop-product-turn' },
+        const files = delivery?.lanes.baseline.artifacts || [];
+        const captureDelivery = event => {
+          const link = event.target.closest?.('a'); if (!link || !delivery) return;
+          const target = link.getAttribute('href') || '';
+          const file = files.find(file => target === artifactPreviewLink(delivery, 'baseline', file));
+          if (file) { event.preventDefault(); event.stopPropagation(); openArtifact(delivery, 'baseline', file); }
+        };
+        return h('section', { className: 'geneloop-product-turn', onClickCapture: captureDelivery,
+          ref: root => compactArtifactLabels(root, files) },
           h('style', null, artifactLinkStyle),
           h('style', null, liveStyle),
           h('style', null, `.geneloop-product-turn{min-width:0}.geneloop-process-toggle{display:flex;align-items:center;gap:8px;border:0;border-radius:8px;padding:7px 9px;margin:0 0 8px -9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer;text-align:left}.geneloop-process-toggle:hover{background:var(--dsw-alias-interactive-bg-hover)}.geneloop-process-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.geneloop-process-toggle svg{flex:none;transition:transform .15s}.geneloop-process-toggle[aria-expanded=true] svg{transform:rotate(90deg)}.geneloop-process-evidence{border-left:2px solid var(--dsw-alias-border-l2,#8885);padding-left:14px;margin:4px 0 18px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.geneloop-process-evidence>section{margin:12px 0}.geneloop-process-evidence pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.geneloop-process-label{font-weight:500}.geneloop-process-status{font-size:13px;color:var(--dsw-alias-label-secondary);margin:0 0 8px}@media(prefers-reduced-motion:reduce){.geneloop-process-toggle svg{transition:none}}`),
@@ -1677,7 +1715,12 @@ window.__ModuleLoader__.load({
               : h('section', { key: row.key }, h('div', { className: 'geneloop-process-label' }, row.kind === 'model-retry' ? '请求重试' : '上下文'),
                 h('pre', null, row.kind === 'model-retry' ? '请求暂未完成，正在尝试恢复。' : contentText(row.data.content)))),
             ...reasoning.map((block, i) => h('section', { key: 'reasoning-' + i }, h('div', { className: 'geneloop-process-label' }, '思考过程'), h('pre', null, publicProcessText(block.text))))]),
-          answer && h(AssistantContent, { node: answer, owner, live: running && answer.data.status === 'running' }));
+          answer && h(AssistantContent, { node: answer, owner, delivery, live: running && answer.data.status === 'running' }),
+          delivery?.lanes.baseline.artifacts.length > 0 && h('div', { className: 'geneloop-chat-deliveries', 'aria-label': '交付文件' },
+            ...delivery.lanes.baseline.artifacts.map(file => h('div', { key: file.id },
+              h('button', { type: 'button', onClick: () => openArtifact(delivery, 'baseline', file) }, '预览 ' + artifactName(file)),
+              ' · ', h('a', { href: comparisonUrl(delivery, 'baseline', file), download: artifactName(file) }, '下载')))),
+          deliveryError && h('p', { role: 'alert' }, deliveryError, h('button', { type: 'button', onClick: () => retryDelivery(value => value + 1) }, '重试文件加载')));
       }
       function displayUserContent(content) {
         if (!Array.isArray(content) || !content.some(part => part.type === 'file')) return content;

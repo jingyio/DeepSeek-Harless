@@ -1,5 +1,13 @@
 # DeepSeek Harless Web 当前交接
 
+## 2026-10-19：生成文件只有文件名、不能点击
+
+- 范围/分支：`codex/clickable-generated-files`，基于main `9f945a5` 的独立工作树，原本地工作区未改动。
+- 已完成：普通Chat命令产物快照/API/原生文件mentions/预览下载；双栏沙箱路径匹配；本轮暂存成品明确引用准入和旧报告排除；私有权限保持。新兼容库v13/v8仅重验原认证序列化IR，未重挖原始轨迹；旧库保留。
+- 验证/结论：定向无模型回归已通过，最终全套/发布状态见[修复记录](../experiments/clickable-generated-files-20261019.md)。无真实API请求、新费用或收益结论；未部署线上。
+- 入口/下一步：按接口重建成员policy并随PR发布，检查普通Chat和对照的文件名/卡片/下载、历史刷新及账号拒绝。`/api/harless/deliveries` 只认当前会话/任务文件ID。旧文件已覆盖且缺少快照时无法恢复。
+- 回退/权限：回退PR与registry，不清理.local，不改600/700、不修改私人原件、不改变累计预算。
+
 ## 2026-10-18：Paper / Data benchmark 实际测试
 
 用户已测 PPT，本次正式网页 Pro/Off 各做一次成对任务。Paper 两侧通过参考评分；Data Baseline 数值与原脚本重跑通过，Motif 将非法数错计为 10（应为 8）、脚本未进入下载交付，未通过。63 次请求、代理估费 $0.31953671，只有 Paper 有一次验证跳过。发现 Paper 发送后草稿残留；本次仅记录和测试，没有修复运行代码。详见[单次对照记录](../experiments/paper-data-benchmark-20261018.md)，不能泛化为稳定降本。

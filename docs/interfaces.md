@@ -810,3 +810,14 @@ DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路�
 原生图片继续由公开 decoder 验证并同时保留像素和文件来源。论文最多 16 个附件（其中图片最多 8 个），其他场景总数仍为 8。停止钩子按任务实际流程选择 PPT 恢复、普通论文 `export_review_report` 恢复或已启动的引用报告验收；有效引用 PDF 不再要求重复生成普通报告。缺失/过期来源与预算守卫不变。LaTeX 静态诊断中的所有来源相对路径统一用 POSIX `/`，不改变磁盘路径权限判断。
 
 PR #42 整合后 PPT Registry 默认读取 `motif-libraries/ppt-web-v2-r6`：沿用 r5 原始两训练/一留出的已见证读取图，经既有离线编译器重编并绑定当前执行代码。r5 原库/证书不改；v1/v2 PPT、普通上传与论文专用 `approved_uploaded_reads_v1` 在同一 Shared RSI Runtime 中按各自参数和守卫准入。
+
+
+## 普通聊天生成文件入口（2026-10-19）
+
+`GET /api/harless/deliveries?session_id=...&turn=...` 返回该账号普通聊天本轮的 `presentation: single`、`id: native-<TASK_ID>` 和 `lanes.baseline.artifacts`。任务收尾期间返回 HTTP 202，客户端在有界超时内重读。后续可按同一 `session_id`、`id` 查询；加 `lane=baseline&file=<FILE_ID>` 下载私有快照，核验大小与 SHA，未认证401、错误会话/轮次/侧别/文件404、变更字节409。保持 `attachment`、`no-store` 与 `nosniff`，不接受任意磁盘路径。
+
+新任务结束即固定命令成品，保存 `native_turn`；旧任务仅从对应 request_id 后的任务事件恢复轮次。只收本轮修改的普通文件，拒绝符号/硬链接及越界文件，保留32项/单文件30 MiB/合计80 MiB限制。`/work/outputs/...` 对应宿主 `outputs/code/...`；暂存区 `/work/...` 对应 `code/...`，只有最终正文明确引用且在本轮生成的文件才准入。持久工作区旧报告不并入当前普通任务快照。
+
+普通聊天复用安全 Markdown 文件 mentions 和右侧预览，附独立预览/下载入口；对照正文同时支持命令环境路径和唯一文件名，包括表格内行内代码。未知文件和歧义文件名不猜测绑定；HTML 继续只预览源码，不在应用同源环境执行脚本。600/700私有权限不改为全员可读。历史文件若已被后续轮次覆盖且没有快照，不冒充原交付。
+
+发布库兼容变更见 `scripts/reexport-delivery-compat.py`：对原已认证序列化库重新运行公共 exporter 与当前完整工具契约检查，要求输出在线程序语义完全一致；发布独立 `paper-web-v13`/`ppt-master-v8`，旧版本保留。该检查不回放私人原始轨迹，不是新挖掘、质量认证或降本证据。
