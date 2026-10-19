@@ -5,7 +5,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {scriptArgv} from '../src/adapters/script_motif_shell.ts';
-import {bindScript,scriptCommand,programIdentity,scriptCodeLocks} from '../src/adapters/script_motif_runtime.ts';
+import {bindScript,scriptCommand,programIdentity,scriptCodeLocks,fixedInput,compatibleInput} from '../src/adapters/script_motif_runtime.ts';
 import {runCertifiedScript} from './run-certified-script.mjs';
 import {digest} from '../src/motif_core/online_skill_runtime.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -43,17 +43,24 @@ function certify(rows){
      outputs:results.map(r=>r.output_sha256)}});
     continue;
    }
-   const own=bindScript(p,task.workspace),other=bindScript(p,held.workspace);
+   // Source inputs come from the witnessed literal bindings, not a suffix
+   // search over the final workspace (which can contain other valid files).
+   const own=p.original_paths.map((name,i)=>{
+    const w=p.witness.files[name],host=resolve(task.workspace,w.relative),data=fixedInput(task.workspace,host);
+    if(sha(data)!==w.sha256||!compatibleInput(p.inputs[i],host,data))throw Error('source_binding_changed');
+    const virtual=w.relative.startsWith('inputs/')?'/work/'+w.relative:w.relative.startsWith('outputs/code/')?'/work/outputs/'+w.relative.slice(13):'/work/'+w.relative.slice(5);
+    return {host,path:virtual,data,sha256:w.sha256};
+   }),other=bindScript(p,held.workspace);
    const ownText=own.map(b=>b.data.toString('utf8')).join('\n'),heldText=other.map(b=>b.data.toString('utf8')).join('\n');
    // A literal copied from this task's data is not an input parameter. Retain
    // such programs as rejected evidence instead of silently caching old keys.
    if((p.literal_selectors??[]).some(s=>ownText.includes(s)&&!heldText.includes(s)))throw Error('task_specific_literal_requires_binding');
    if(digest(own.map(b=>b.sha256))===digest(other.map(b=>b.sha256)))throw Error('distinct_heldout_input_required');
    if(p.original_paths.some((name,i)=>p.witness.files[name].sha256!==own[i].sha256))throw Error('source_binding_changed');
-   const original=sandboxRun(task.workspace,"python3 - <<'SOURCE_EQUIVALENCE_BOUNDARY'\n"+p.source+'\nSOURCE_EQUIVALENCE_BOUNDARY',p.witness.cwd);
+   const original=sandboxRun(task.workspace,"python3 - <<'SOURCE_EQUIVALENCE_BOUNDARY'\n"+(p.expression_witness?.prefix_source??p.source)+'\nSOURCE_EQUIVALENCE_BOUNDARY',p.witness.cwd);
    // Bash adds execution metadata around stdout; require the complete actual
    // stdout as a contiguous exact block, never a hand-picked output field.
-   if(!original.trim()||!p.witness.stdout.includes(original.trim()))throw Error('historical_stdout_not_reproduced');
+   if(!original.trim()||!p.expression_witness&&!p.witness.stdout.includes(original.trim()))throw Error('historical_stdout_not_reproduced');
    const outputs=[];const cases=[];
    for(const [role,row,bound] of [['source',task,own],['heldout',held,other]]){
     const cmd=scriptCommand(p,bound.map(b=>b.path),bound.map(b=>b.sha256),'certification');
@@ -61,19 +68,28 @@ function certify(rows){
     if(Buffer.byteLength(first.output)>16000)throw Error('script_output_exceeds_context_budget');
     if(first.output!==second.output||sha(first.output)!==first.output_sha256)throw Error('nondeterministic_script');
     if(role==='source'&&first.output!==original)throw Error('parameterization_changed_behavior');
+    if(p.expression_witness){
+     const prefix=p.expression_witness.prefix_program,prefixBound=bindScript(prefix,row.workspace);
+     const reference=JSON.parse(sandboxRun(row.workspace,scriptCommand(prefix,prefixBound.map(b=>b.path),prefixBound.map(b=>b.sha256),'expression-reference')));
+     if(first.output!==reference.output)throw Error('dependency_slice_changed_behavior');
+    }
     outputs.push(first.output);cases.push({role,task_id:row.task_id,input_sha256:bound.map(b=>b.sha256),output_sha256:first.output_sha256});
    }
    if(outputs[0]===outputs[1])throw Error('input_dependency_not_demonstrated');
-   const {source,witness,original_paths,...program}=p;
+   const {source,witness,original_paths,expression_witness,...program}=p;
    const programSha=digest(programIdentity(p));
    programs.push({...program,certification:{passed:true,cases:cases.length,source_equivalent:true,program_sha256:programSha,
      witnesses:cases,source_task_id:task.task_id,source_call_id:witness.call_id,events_sha256:witness.events_sha256,
-     scope:'deterministic_source_equivalence_on_distinct_inputs_not_semantic_quality_proof'}});
+     ...(expression_witness?{expression:{target:expression_witness.target,lines:expression_witness.lines,source_sha256:expression_witness.original_source_sha256}}:{}),
+     scope:expression_witness?'source_prefix_and_dependency_slice_equivalence_on_distinct_inputs_not_historical_stdout_or_semantic_quality':'deterministic_source_equivalence_on_distinct_inputs_not_semantic_quality_proof'}});
   }catch(error){rejected.push({id:p.id,reason:error.message});}
  }
  const locks=Object.fromEntries(scriptCodeLocks.map(p=>[p,sha(readFileSync(join(root,p)))]));
- const body={version:1,kind:'sandboxed_script_motif_library',programs,code_locks:locks,compilation_model_requests:0,heldout_task_id:held.task_id};
- return {library:{...body,digest:digest(body)},report:{published:programs.length,rejected,scope:'real_trace_replay_certification'}};
+ programs.sort((a,b)=>Number(!!a.certification.expression)-Number(!!b.certification.expression));
+ const selected=programs.slice(0,12);
+ for(const p of programs.slice(12))rejected.push({id:p.id,reason:'bounded_library_capacity'});
+ const body={version:1,kind:'sandboxed_script_motif_library',programs:selected,code_locks:locks,compilation_model_requests:0,heldout_task_id:held.task_id};
+ return {library:{...body,digest:digest(body)},report:{published:selected.length,rejected,scope:'real_trace_replay_certification'}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const rows=JSON.parse(readFileSync(process.argv[2],'utf8'));const {library,report}=certify(rows);

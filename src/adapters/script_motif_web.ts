@@ -4,13 +4,27 @@ import {join} from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import * as native from './dsh_web_tasks.ts';
-import {createScriptInterceptor,loadScriptLibrary,registerScriptCache} from './script_motif_runtime.ts';
+import {createScriptInterceptor,loadScriptLibrary,registerScriptCache,registerReuseMediation} from './script_motif_runtime.ts';
 import {createNegativeRuntime,loadNegativeLibrary} from './script_negative_runtime.ts';
+import {createReuseMediation,loadReuseLibrary} from './reuse_mediation.ts';
+import {createReuseTrace} from './reuse_trace.ts';
+import {createUserMessage} from '@deepseek-ai/dsh-llm';
 export const name=native.name;
 export const inject=native.inject;
 export function apply(ctx:any){
  const policy=JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!,'utf8'));
  const current=new Map<string,any>();
+ const traces=new Map<string,any>();
+ function trace(session:string){
+  if(process.env.SSS_REUSE_TRACE!=='1')return null;
+  for(const id of readdirSync(join(policy.output,'tasks')))try{
+   const output=join(policy.output,'tasks',id),state=JSON.parse(readFileSync(join(output,'task-state.json'),'utf8'));
+   if(state.session_id!==session||state.status!=='running'||state.user_id!==policy.user_id)continue;
+   if(!traces.has(id)){const cfg=JSON.parse(readFileSync(join(output,'effective-config.json'),'utf8'));traces.set(id,createReuseTrace(cfg.workspace,output));}
+   return traces.get(id);
+  }catch{}
+  return null;
+ }
  function interceptor(session:string){
   if(!process.env.SSS_SCRIPT_MOTIF_CONFIG)return null;
   const active=readdirSync(join(policy.output,'tasks')).map(id=>{
@@ -28,29 +42,40 @@ export function apply(ctx:any){
     const pointer=JSON.parse(readFileSync(join(settings.learningStore,'latest.json'),'utf8'));
     if(pointer.user!==policy.user_id||!/^round-[a-f0-9]+\/library\.json$/.test(pointer.file))throw Error('foreign_script_library');
     settings.library=join(settings.learningStore,pointer.file);
+    if(pointer.reuse_file){
+     if(!/^round-[a-f0-9]+\/reuse-library\.json$/.test(pointer.reuse_file))throw Error('foreign_reuse_library');
+     settings.reuseLibrary=join(settings.learningStore,pointer.reuse_file);
+    }
    }
    const library=settings.library?loadScriptLibrary(settings.library):null;
    const task=JSON.parse(readFileSync(join(output,'task.json'),'utf8')),effective=JSON.parse(readFileSync(join(output,'effective-config.json'),'utf8'));
    if(effective.session_id!==session||effective.user_id!==policy.user_id)throw Error('script_owner_changed');
    const negative=settings.negativeLibrary?createNegativeRuntime({library:loadNegativeLibrary(settings.negativeLibrary),workspace:effective.workspace,mode:settings.negativeMode,audit}):null;
-   if(!library&&!negative)throw Error('motif_library_required');
+   const reuse=settings.reuseLibrary?createReuseMediation({library:loadReuseLibrary(settings.reuseLibrary),scriptLibrary:library,workspace:effective.workspace,tools:effective.tools,mode:settings.mode,audit}):null;
+   if(!library&&!negative&&!reuse)throw Error('motif_library_required');
    writeFileSync(join(output,'script-motif-config.json'),JSON.stringify({...settings,library_digest:library?.digest}),{mode:0o600});
    runtime=library?createScriptInterceptor({...settings,library,workspace:effective.workspace,session,
     goal:task.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n'),audit}):{dispose(){},observe(){},frontierPrompt(){return '';},intercept(_id:any,_request:any,next:any){return next();}};
    runtime.negative=negative;
+   runtime.reuse=reuse;registerReuseMediation(session,reuse);
    if(library&&settings.catalog)runtime.catalog=registerScriptCache({...settings,library,workspace:effective.workspace,session,audit,frontier:runtime.frontier});
   }catch(error:any){audit({kind:'script_fallback',reason:error.message});runtime=null;}
   current.set(session,{id:state.task_id,runtime});return runtime;
  }
  ctx.on('agent/created',({agent}:any)=>{
-  agent.ctx.systemPrompt.variable('script_cache_catalog',()=>{const r=interceptor(agent.session.id);return (r?.catalog??'')+(r?.frontierPrompt()??'')+(r?.negative?.prompt()??'');});
+  agent.ctx.systemPrompt.variable('script_cache_catalog',()=>{const r=interceptor(agent.session.id);return (r?.catalog??'')+(r?.frontierPrompt()??'')+(r?.reuse?.staticPrompt()??'')+(r?.negative?.prompt()??'');});
   agent.ctx.systemPrompt.section({name:'script-cache-catalog',order:10220,text:'{{script_cache_catalog}}'});
-  agent.ctx.tools.guard((execution:any)=>interceptor(agent.session.id)?.negative?.guard(execution));
-  agent.ctx.on('tools/result',(execution:any,result:any)=>{const r=current.get(agent.session.id)?.runtime;r?.observe(agent.session.id,execution,result);r?.negative?.observe(execution,result);});
+  agent.ctx.tools.guard((execution:any)=>{trace(agent.session.id)?.before(execution);const r=interceptor(agent.session.id);r?.reuse?.guard(execution);return r?.negative?.guard(execution);});
+  agent.ctx.on('tools/result',(execution:any,result:any)=>{
+   trace(agent.session.id)?.after(execution,result);const r=current.get(agent.session.id)?.runtime;
+   const facts=r?.observe(agent.session.id,execution,result);r?.reuse?.observe(execution,result,facts??[]);r?.negative?.observe(execution,result);
+   const notice=r?.reuse?.takeNotice();
+   if(notice)agent.inject(createUserMessage({source:{kind:'plugin',plugin:'script-motif-reuse',form:'notice',summary:'当前可复用数据与待修订参数'},content:[{type:'text',text:notice}]}));
+  });
  },{global:true});
  const scheduled=new Set();
  ctx.on('agent/status',({agent,status}:any)=>{
-  if(status==='idle')current.get(agent.session.id)?.runtime?.dispose();
+  if(status==='idle'){current.get(agent.session.id)?.runtime?.dispose();registerReuseMediation(agent.session.id,null);}
   if(status!=='idle'||!process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE)return;
   setTimeout(()=>{
    for(const id of readdirSync(join(policy.output,'tasks')))try{
@@ -68,7 +93,9 @@ export function apply(ctx:any){
   if(key==='on')return (event:any,handler:any,...rest:any[])=>target.on(event,event==='llm/stream'
    ?(request:any,next:any)=>handler(request,()=>{const runtime=interceptor(request.sessionId);return (async function*(){
      runtime?.negative?.beforeRequest(request);
-     const stream=runtime?await runtime.intercept(request.sessionId,request,next):next();for await(const chunk of stream)yield chunk;
+     runtime?.reuse?.update(request);
+     const reused=runtime?.reuse?.ready();
+     const stream=reused??(runtime?await runtime.intercept(request.sessionId,request,next):next());for await(const chunk of stream)yield chunk;
     })();})
    :handler,...rest);
   const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;

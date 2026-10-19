@@ -39,6 +39,8 @@ def main():
     parser.add_argument('--max-output-tokens', type=int, default=8000)
     parser.add_argument('--recovery-checkpoint', type=Path,
                         help='显式局部恢复诊断：只复制私有历史草稿，不算完整论文评测')
+    parser.add_argument('--reuse-checkpoint', type=Path,
+                        help='真实历史原生调用与失败回执；复制为当前同来源任务的数据，单独统计局部恢复')
     parser.add_argument('--max-seconds', type=float, help='诊断超时取消；保留全部费用，不算正常完成')
     args = parser.parse_args()
     if args.budget_usd < 0 or args.max_output_tokens < 1:
@@ -48,6 +50,7 @@ def main():
     if (args.mode == 'baseline') != (args.script_config is None):
         parser.error('baseline 不加载 Script Motif；cache/shadow/execute 必须提供 --script-config')
     env = dict(os.environ)
+    env['SSS_REUSE_TRACE'] = '1'
     env.pop('SSS_SCRIPT_MOTIF_CONFIG', None)
     env.pop('SSS_SCRIPT_MOTIF_LEARNING_STORE', None)
     if args.script_config:
@@ -59,6 +62,14 @@ def main():
         env['SSS_SCRIPT_MOTIF_LEARNING_STORE'] = str(args.learning_store.resolve())
     source = args.source.resolve(strict=True)
     checkpoint = None
+    reuse_checkpoint = None
+    if args.reuse_checkpoint:
+        if args.recovery_checkpoint:
+            parser.error('两种恢复入口不能合用')
+        path = args.reuse_checkpoint.resolve(strict=True)
+        if not path.is_relative_to(ROOT / '.local'):
+            parser.error('复用恢复仅接受本 worktree 私有轨迹')
+        reuse_checkpoint = path.read_bytes()
     if args.recovery_checkpoint:
         checkpoint_path = args.recovery_checkpoint.resolve(strict=True)
         if not checkpoint_path.is_relative_to(ROOT / '.local'):
@@ -78,9 +89,10 @@ def main():
         'budget_policy': 'uncapped_user_authorized' if args.budget_usd == 0 else 'bounded',
         'request_limit': None, 'max_output_tokens': args.max_output_tokens,
         'reasoning_effort': 'off', 'platform': sys.platform,
-        'evaluation_scope': 'historical_local_recovery' if checkpoint else 'full_task',
-        'checkpoint_sha256': hashlib.sha256(checkpoint).hexdigest() if checkpoint else None,
+        'evaluation_scope': 'historical_artifact_recovery' if reuse_checkpoint else 'historical_local_recovery' if checkpoint else 'full_task',
+        'checkpoint_sha256': hashlib.sha256(reuse_checkpoint or checkpoint).hexdigest() if reuse_checkpoint or checkpoint else None,
         'max_seconds': args.max_seconds,
+        'reuse_boundary_evidence': True,
     }
     (record / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
     files = subprocess.check_output(['git', 'ls-files', '-co', '--exclude-standard'], cwd=ROOT, text=True).splitlines()
@@ -116,6 +128,16 @@ def main():
             draft = web.api(opener, base, {'action': 'upload', 'task_id': draft['task_id'],
                 'name': source.name, 'data': base64.b64encode(source.read_bytes()).decode()})
             (record / 'task-id.txt').write_text(draft['task_id'])
+            if reuse_checkpoint:
+                effective = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())
+                workspace = Path(effective['workspace']).resolve(strict=True)
+                value = json.loads(reuse_checkpoint)
+                current_sources = json.loads((workspace / 'approved-inputs.json').read_text())['files']
+                if not workspace.is_relative_to(output.resolve()) or value.get('arguments', {}).get('source_versions') != current_sources:
+                    raise ValueError('reuse_recovery_source_version_mismatch')
+                (workspace / 'code').mkdir(exist_ok=True, mode=0o700)
+                recovered = workspace / 'code' / 'recovery-state.json'
+                recovered.write_bytes(reuse_checkpoint); recovered.chmod(0o600)
             if checkpoint:
                 effective = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())
                 workspace = Path(effective['workspace']).resolve(strict=True)

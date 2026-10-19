@@ -11,6 +11,8 @@ const sha=(s:any)=>createHash('sha256').update(s).digest('hex');
 const grants=new Map<string,{session:string;versions:any[];body:any;expires:number}>();
 const consumed=new Set<string>();
 const caches=new Map<string,any>();
+const reuseMediators=new Map<string,any>();
+export function registerReuseMediation(session:string,runtime:any){if(runtime)reuseMediators.set(session,runtime);else reuseMediators.delete(session);}
 const inside=(root:string,path:string)=>{const r=relative(root,path);return !r.startsWith('..')&&!isAbsolute(r);};
 export function scriptVirtualHost(workspace:string,path:string){
  if(resolve(path)!==path||!inside('/work',resolve(path)))throw Error('script_input_not_fixed');
@@ -37,6 +39,9 @@ export function registerScriptCache(options:any){
   JSON.stringify(library.programs.map((p:any)=>({id:p.id,operation:p.interface??p.description,inputs:p.inputs,argv_contract:p.argv_contract,network_policy:p.network_policy})));
 }
 export function prepareCacheInvocation(session:string,command:string){
+ if(/\bgeneloop-reuse\s/.test(command)){
+  const reuse=reuseMediators.get(session);if(!reuse)throw Error('reuse_mediation_not_admitted');return reuse.prepare(command);
+ }
  if(command.trim().startsWith('geneloop-resolve ')){
   const frontier=caches.get(session)?.frontier;
   if(!frontier)throw Error('semantic_frontier_not_admitted');
@@ -57,7 +62,7 @@ export function prepareCacheInvocation(session:string,command:string){
  let raw=invocation.slice('geneloop-cache '.length).trim();if(raw.startsWith("'")&&raw.endsWith("'"))raw=raw.slice(1,-1);
  let parsed;try{parsed=JSON.parse(raw);}catch{throw Error('缓存参数必须是有效 JSON；不要附加重定向、管道或其他 shell 操作。');}
  const {calls}=parsed;
- if(!Array.isArray(calls)||calls.length<1||calls.length>8)throw Error('bounded_script_batch_required');
+ if(!Array.isArray(calls)||calls.length<1||calls.length>16)throw Error('bounded_script_batch_required');
  const jobs=calls.map((call:any)=>{
   const program=entry.library.programs.find((p:any)=>p.id===call.id);if(!program)throw Error('unknown_cached_program');
   const argv=call.argv??[];
@@ -86,7 +91,7 @@ export function observeScriptCache(session:string,execution:any,result:any){
   for(const receipt of batch?.receipts??[]){
    const pending=entry.pending.get(receipt.nonce);entry.pending.delete(receipt.nonce);
    if(!pending||pending.count!==batch.receipts.length||execution.arguments?.command!==pending.command||Date.now()>pending.expires||result.isError===true||receipt.program_id!==pending.job.program.id||sha(receipt.output)!==receipt.output_sha256||digest(receipt.versions)!==digest(pending.job.versions)||pending.bound.some((b:any)=>sha(fixedInput(entry.workspace,b.host))!==b.sha256))throw Error('cache_receipt_invalid');
-   facts.push({program:pending.job.program,bound:pending.bound,argv:pending.job.argv,network_requests:receipt.network_evidence?.length??0});
+   facts.push({program:pending.job.program,bound:pending.bound,argv:pending.job.argv,output:receipt.output,network_requests:receipt.network_evidence?.length??0});
   }
  }catch{entry.audit({kind:'script_cache_result_unverified'});return [];}
  for(const fact of facts)entry.audit({kind:'script_cache_verified',program_id:fact.program.id,network_requests:fact.network_requests,semantic_quality_accepted:false});
@@ -164,7 +169,7 @@ export function loadScriptLibrary(path:string){
   }
   return library;
 }
-export const scriptCodeLocks=['src/adapters/script_motif_compiler.py','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','src/adapters/script_negative_runtime.ts','src/adapters/negative_field_runtime.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs','scripts/run-certified-script.mjs','scripts/fetch-script-evidence.py'];
+export const scriptCodeLocks=['src/adapters/script_motif_compiler.py','src/adapters/script_dataflow_compiler.py','src/adapters/reuse_mediation.ts','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','src/adapters/script_negative_runtime.ts','src/adapters/negative_field_runtime.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs','scripts/run-certified-script.mjs','scripts/fetch-script-evidence.py'];
 export function createScriptInterceptor({library,workspace,session,goal,mode,endpoint,model,minSimilarity=.88,minMargin=.04,minGoalSimilarity=.6,negativeGoals=[],audit,similarity,demandBound=false,executionFrontier=false}:any){
   if(!['cache','shadow','execute'].includes(mode))throw Error('invalid_script_mode');
   if(!Number.isFinite(minSimilarity)||minSimilarity<.5||minSimilarity>1||!Number.isFinite(minMargin)||minMargin<.01||minMargin>1)throw Error('invalid_script_threshold');
@@ -205,7 +210,7 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
       for(const fact of facts){used.add(digest([fact.program.id,fact.bound.map((b:any)=>b.sha256)]));frontier?.recordEvidence(fact.program.id,fact.bound);}
       const anchor=facts.at(-1)?.program??(pending&&pending.callId===execution.callId?pending.program:null);
       history.push({tool:execution.name,program_id:anchor?.id,bound:facts.at(-1)?.bound??(pending&&pending.callId===execution.callId?pending.bound:[]),ok:result?.isError!==true,intent:anchor?.intent??(typeof execution.arguments?.description==='string'?execution.arguments.description.slice(0,240):execution.name)});history=history.slice(-6);
-      if(!pending||execution.callId!==pending.callId)return;
+      if(!pending||execution.callId!==pending.callId)return facts;
       const p=pending;pending=null;grants.delete(sha(p.command));
       let verified=false;
       try{

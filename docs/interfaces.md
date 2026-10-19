@@ -917,6 +917,31 @@ node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-mo
 
 ## 自动学习生命周期
 
-`--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。worker 不调用模型、不接受有 Script sidecar 的任务作为来源，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
+`--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。worker 不调用模型，允许学习有 Script sidecar 的已完成任务中的原生调用，排除 `sss-script-` / `sss-reuse-` 合成调用，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
 
 下个任务的 sidecar 可以用 `learningStore` 替代 `library`，按 owner 加载 pointer，任务开始后冻结。不能用同一论文的重复任务声称独立科研决定。当前是最小实验生命周期，worker 崩溃监控、自动淘汰/覆盖合并、负收益降权与前端可视状态仍待完善。
+
+
+## 实验性统一复用协议（2026-10-19）
+
+`reuseLibrary` 是可选私有 sidecar 字段，指向 `compile-reuse-library.py` 从至少两个真实任务成功调用编译的原生工具契约。schema 摘要和代码锁必须一致；该认证仅证明结构化传参，不证明科研判断、当前必要性或写入授权。当前不进入公共产品默认配置。
+
+Python 离线 `script_dataflow_compiler.py` 在一次 Python 调用内部，寻找被后续语句消费的变量，按 AST 向后提取依赖片段；以原始前缀和独立输入沙箱重放验证。不支持的函数、别名、复杂控制流拒绝；读入的当次事实仍是参数，历史科研结论不得成为模板。整个脚本的认证与片段认证使用不同 scope。
+
+TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`，不增加 LLM 可见工具。模型明确选择当前操作、缺失语义字段或局部修改；Runtime 绑定文件/参数/结果引用，逐步派发原生工具并运行现有权限守卫。示例中的 ID 必须来自当前通知，不能自行构造：
+
+```json
+{"calls":[{"tool":"当前已认证工具名","arguments":{"title":"当前标题"},"bindings":[{"at":"/sections","from":{"artifact":"value_ID","pointer":""}}]}]}
+```
+
+单独执行 `geneloop-reuse '<JSON>'`，允许固定 `cd /work &&` 前缀。也可读取当前 `code` 中保存的 `geneloop-reuse --plan /work/plan.json`，计划文件在接收、续接和执行前验证字节版本。不执行命令替换、管道或重定向。`base:{artifact,pointer}` 复用整份参数，不能同时指定 `arguments`；`patches` 支持有界 JSON Pointer 的 add/replace/remove/test。后继通过 `bindings.from:{step:0,pointer:"/source_id"}` 消费前一步成功结果。最多12步；原生软失败、来源变化、schema变化或用户新要求停止执行/交回模型。
+
+同一计划可包含 `{script:"script_ID",paths:["/work/current.bib"]}`；单输入算子可通过 `foreach:{artifact,pointer:"/active_files"},root:"/work/current-source"` 绑定最多16个真实输入。必须有当前完整文件集合，不能由后缀相似推断全文已读。网络/argv算子仍用原缓存协议，未扩展通用写脚本权限。
+
+当前 JSON、原生参数及结果引用仅在本任务有效。文件与批准输入用 SHA 守卫，工具参数按当前 schema 验证；原参数局部修改不自动说明其科研结论仍正确。静态协议放系统前缀，新增引用和修订机会用 Harness 原生 plugin notice 追加。原始结果不改写、不隐藏失败。尚无自动从任意目标合成执行图；模型仍需选择结构计划，选中后的连续执行才可省去后继模型决策。
+
+实验 runner 设置 `SSS_REUSE_TRACE=1`，在工具边界记录受限文本文件版本及私有内容寻址副本（256文件、每文件1MB、每边界8MB、深度5），不是全文件系统快照。新采集器检查输入与脚本是否仍匹配执行前版本；旧轨迹明确标记最终工作区重放，不能冒充边界证据。当前尚未从快照自动恢复被后续覆盖的中间输入，这是高成本片段认证覆盖的限制。
+
+`--reuse-checkpoint <本检出.local下JSON>` 与旧 `--recovery-checkpoint` 互斥，要求历史参数 `source_versions` 与本次批准上传完全一致。该入口复制真实失败调用作为当前可读数据，仅用于单独记录的历史恢复实验；不算新论文完整评测。
+
+自动学习 worker 生成脚本库与原生复用契约库，原子发布包含 `file`/`reuse_file` 的 owner 隔离指针；下任务开始时冻结。学习本身没有模型请求，但沙箱耗时、无合格库/超时等失败仍记录。效果与限制见 [统一复用实验](experiments/paper-unified-reuse-20261019-v1.md)。

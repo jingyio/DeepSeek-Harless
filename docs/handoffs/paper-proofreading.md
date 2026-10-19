@@ -1,23 +1,19 @@
 # 论文校对当前交接
 
 - 更新时间与交接人：2026-10-19，Codex。
-- 目标与本次范围：用户指出前轮看不到具体读写与跨任务复用证据；本轮从原始轨迹逐项展开19个实际操作，核对读/写程序/写当前判断/导出区别，并做12次跨真实输入沙箱检查，没有新模型任务。
-- 分支 / commit / 工作区：`codex/paper-operation-breakdown` 基于 `0b9990f`；在线仍冻结 `8fa7f23`，本次分析提交见 git log。原脏工作区、生产、旧库、原件和历史运行目录未写入；未推送、PR 或部署。
-- 已完成：[实际操作记录](../experiments/paper-operation-breakdown-20261019-v1.md) 给出原代码/工具参数节选、request_id、单次完整费用、输出 token、真实结果和复用边界；19张完整原始调用卡片仅在 `.local/paper-operation-breakdown-20261019-v1/operation-cards.md`，含原 `.sh`/JSON 链接，不提交原轨迹或科研判断数据。
-- 已验证：同一真实只读引用提取脚本参数化后，原单文件论文37/37；另一真实多文件论文只读主文件0/34（反例保留）；按现有 active_files 清单对10文件运行同一算子并合并，34/34且无额外键。12次无网络沙箱调用，无新库发布或在线接管；不是端到端质量/降费验收。
-- 实验结论：高成本 B#88 $0.01254492 是生成约2.5万字符PDF代码并试导入，非读取；B#86 $0.00587786 在写37条当次判断数据；P#4 $0.00419482 却只是显示Bib，94.3%费用来自模型未命中输入。P#154→160有29/30段字节相同、字符相似度99.7%，仍整份重发。缓存当前内容与版本可避免重复传输，不能将科研结论跨论文复制。
-- 配置与数据：新私有 `.local/paper-operation-breakdown-20261019-v1/manifest.json` 保留原events/ledger、私有诊断程序摘要和结果；selected-operation-cards、extractor-reuse-result、bundle-check-result、report-reemission可复核。公开改动仅文档；前轮15项分析测试不重复，当前按原始调用/金额/依赖闭包与段落字节验证。
-- 前轮基础：`scripts/analyze-script-takeover.py`，复用已有费用/脚本/负面采集入口，分开 KV 命中、未命中、输出费用、辅助模型、脚本静态准入、完整请求障碍、shell 非零标记及后续请求。多个工具不重复计费，非法 JSON、未知 usage 和金额舍入保留，不推断反事实节省。
-- 前轮已验证：针对性 15 项测试通过；448/448 请求按原价格重建，与账本仅有八位小数舍入差。新副本重放 PaperOutput 暂存/定稿共 61 次，回执/SHA 一致；原 TS 库加载和 schema 摘要一致。未执行历史模型脚本，未重复全部回归或付费完整任务。
-- 实验结论：[paper-takeover-breakdown-20261019-v1](../experiments/paper-takeover-breakdown-20261019-v1.md)。Baseline 脚本生成类 71.4% 费用；Positive 报告协议 40.7%+脚本类 32.6%；正负面搜索内部模型 30.2%。脚本字符串含大量当次数据/解释，类别费用不是纯代码或全可缓存费用。
-- 实验结论：7 认证算子只组成一个 2 节点片段；4 个单节点不被提议，1 个网络/argv 算子只支持模型显式选择。两历史前驱被认证拒绝，且 frontier 要求相同输入契约。frontier 无 ready 就返回模型，不进入普通/embedding 匹配；两次接管后 Positive/正负面仍花约 98.8%/97.7% 费用。不是两次跳过上限导致。
-- 实验结论：Positive 的 17 个结构错误都兼容冻结负面规则，但该臂未启用负面；启用臂没有这些失败。精确状态重放在“假设提示送达”下有 10 个工具拦截机会，未送达为 0，均不是实际模型跳过。工具守卫在模型生成参数之后，相关 10 请求约 $0.009301 已付；另确认单 active failure 会被其他错误替换/成功清除，旧失败条件仍成立。
-- 实验结论：Bash 文本非零退出标记 11/7/5 个，均不算原生 isError；负面采集/observe 目前排除 Bash。这些是恢复诊断，文本标记不作原因认证。原三份报告仍不合格，不重评或修改成品。
-- 配置与数据：`.local/paper-takeover-breakdown-20261019-v1/` 的 manifest 保存输入/代码/私有重放脚本 SHA，`*-v3.json`、summary、runtime-replay-v2、negative-state-eviction 为最终依据；初始金额容差、恢复序列化与 Node 路径诊断失败保留。原任务/题面/模型/库见 `.local/paper-negative-real-20261019-v1/`，正负库仍为 `.local/negative-causes-20261019-v1/positive-library-002` 和 `library-004`，不在线学习或改锁。
-- 未完成与限制：没有新增合格净降本、成功自动恢复、真实硬早停或跨论文泛化。静态候选分析读取最终工作区，不冒充历史边界认证；重放 notice 是假设送达，不推断模型后续改变。搜索语义/科研解释、异构输入参数流、复杂 shell、写入算子均不能直接放宽守卫。
-- 接手下一步：1）将现有当前来源依赖清单/引用集合绑定成完整输入闭包，验证单文件算子的批量复用与模型请求前续接，不能以.tex后缀匹配当全文完成。2）围绕当前报告到工具参数的搬运与局部patch做最小认证：模型只改必要字段，保留29段未改内容及版本；科研判断不跨论文复制。3）再做真实配对费用/质量验收，Negative多错误记忆是局部后续项，不扩其他场景或先调embedding。
-- 最短复现：`node scripts/project.mjs python scripts/analyze-script-takeover.py --task <私有原任务> --library <冻结正面库> --negative-library <冻结负面库> --output <新私有文件>`；测试 `.venv-sss/bin/python -m pytest -q tests/test_script_takeover_breakdown.py tests/test_script_cost_breakdown.py`。重放入口与隔离副本说明见实验记录；不是生产/Windows 验收。
-- 权限与预算：本地真实 API 无限额授权保留，reset_history:false。本轮新增 0 请求/$0，本地累计仍 3283/$5.307766608 保守估费，旧 pending 1、V100 未核清费用和未核账单保留；无后台付费任务。开发/审阅时间未完整计量。
-- 回退与风险：本轮仅离线分析器、测试与文档，可按提交回退，不影响已认证 Runtime。后续运行时修复须重编/认证和真实效果验证，不能手改旧锁，不扩大私人原件/外部写入/投稿授权。稳定前不 PR。
+- 目标与本次范围：按用户要求实现读程序、中间处理/输出流程、当前任务产物三种复用的公共接入；最新重点是从非工具序列的脚本内部挖掘。已真实触发参数引用与原生工具执行，尚未达到稳定合格净降本，不发布生产。
+- 分支 / commit / 工作区：`codex/unified-motif-reuse`，基于`50e1fdf`；本轮实现提交见git log，独立worktree。原脏工作区未动；未推送、未PR、未部署。用户要求看到效果稳定后才PR。
+- 已完成：`script_dataflow_compiler.py`提取脚本内部AST依赖片段，整程序/片段分别认证；`reuse_compiler.py`编译真实原生工具schema与参数流；`reuse_mediation.ts`实现任务内引用、patch、完整文件集合批量与顺序计划，沿原生守卫执行；`reuse_trace.ts`采集受限私有边界证据。没有新增LLM可见工具，未放开任意写程序。
+- 已完成：真实失败修复——固定cd/计划文件协议、拒绝shell命令替换、唯一nonce回执解析兼容stderr警告；重复/伪造/失败回执继续拒绝。模型当前语义选择仍必要，尚无自动从任意任务生成执行图/新的embedding排序。
+- 已验证：最终`npm test` Python944通过/199跳过、Node902通过/5跳过；`npm run smoke`无模型通过。协议14项针对性测试、边界版本回归、编译输出与TS加载通过。测试需本地固定字体，macOS使用`TMPDIR=/private/tmp`；Windows未验收。
+- 已验证：冻结脚本库11算子（7完整+4切片）、4原生工具契约；高成本表格/写程序仍未充分认证。自动worker用3项历史真实任务发布9算子+1契约，2.948秒、学习模型请求0；两套库均可由当前TS校验加载，不把worker发布当后续任务收益。
+- 实验结论：[统一复用真实实验](../experiments/paper-unified-reuse-20261019-v1.md)。完整Baseline121/$0.159472008，Cache154/$0.194482224，Execute1 84/$0.220838136，Execute2 82/$0.141653964；新增产物协议在这些完整任务均0派发，报告质量问题保留，不能宣称同质量降本。
+- 实验结论：同一真实失败报告恢复Baseline32/$0.058915344，最后Execute78/$0.080207376；输出34265→17318但总费用+36.1%。3次新协议派发（2失败停止、1成功），每次341字节选择绑定约1.1–2.6万字节参数，证明局部传输能力；没有真实多步计划完成证据。其余两次失败迭代63/$0.068776764、86/$0.121879452均保留。
+- 配置与数据：公共题面仍`scenarios/paper-submission/reference-audit.prompt.md`，私有根`.local/unified-reuse-20261019-v1/`含authorization、aggregate、全部库/配置/日志、quality索引、RSI轮次及breakdown。最后付费配置`execute-004.json`对应`scripts-005`/`native-005`；收尾另修脚本批次回执续接并诊断验证，当前可加载`execute-005-next.json`对应重认证`scripts-006`/`native-006`，未追改付费结论；每run代码及有效配置快照、原始events/ledger留在原私有目录。模型deepseek-flash、reasoning off、单次32768输出，请求不限。本轮RMSNorm为重复任务，非独立论文泛化。
+- 未完成与限制：未证明合格完整任务净降本。复杂函数/别名/控制流、被覆盖中间输入的快照恢复、高成本拼表/通用输出写程序尚未闭环；报告反复诊断与notice上下文抵消输出收益；诊断PDF混入交付列表。没有独立盲评，科研结论不由本协议认证。
+- 接手下一步：1）用已采集边界快照重建兼容中间输入，认证真实高成本转换片段，避免只剩低价值Bib读取。2）学习最小失败字段与已有诊断证据，复用错误定位结果，减少逐字符导出试验；检查notice增量与不必要重读。3）冻结后做新的独立论文配对对照，分清脚本缓存、数据引用、完整请求替代和总质量/成本；不靠调低阈值或删必要判断。
+- 最短复现：接口文档“实验性统一复用协议”及实验记录有编译/真实runner命令；`--reuse-checkpoint`仅同来源局部恢复，不能与完整任务混分母。复用当前库无需再调用编译模型，但任何锁定代码修改需真正重编认证，不能改hash。
+- 权限与预算：本地真实API无限额授权、reset_history:false。本轮8项700请求/$1.046225268；本地累计3983/$6.353991876保守代理估费，旧pending1、V100未核清、账单未核对保留。开发/人工时间未完整计量。任务均完成，3246/3247/3248端口已关闭，无后台付费任务。
+- 回退与风险：回退本轮提交或不用私有sidecar即恢复原实验路径；未覆盖旧库、私人原件或生产配置，未写外部应用/投稿。最终有净降本及合格质量证据前保持实验开关与独立分支。
 
-前轮：[完整真实重测](../experiments/paper-negative-real-20261019-v1.md)、[原因学习](../experiments/paper-negative-causes-20261019-v1.md)、[字段依赖](../experiments/paper-negative-fields-20261019-v1.md)、[连续执行](../experiments/paper-script-frontier-20261019-v1.md)。
+前轮：[具体读写实例](../experiments/paper-operation-breakdown-20261019-v1.md)、[接管Breakdown](../experiments/paper-takeover-breakdown-20261019-v1.md)、[真实重测](../experiments/paper-negative-real-20261019-v1.md)。

@@ -246,3 +246,6 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 `/paper` 保留普通 PDF/Word/CSV/JSON/TXT 校对、来源表格摘要与 PDF/Markdown 交付，同一场景按需使用安全 LaTeX ZIP、参考文献取证、历史脚本与只读 Motif；不会为每种任务另建 Agent。当前为 24 个工具，普通报告无需私人排版包。服务器默认继续加载 `motif-libraries/paper`；管理员可配置 `HARLESS_PAPER_RUNTIME_BUNDLE` 覆盖默认库，配置错误会拒绝激活。历史参考文献排版另用 `HARLESS_PAPER_RENDERER_ROOT`。原 23 工具包须按当前完整 MCP Schema 和代码重编，不能直接复制旧认证文件。
 
 场景选择、RSI On/Off、三种模式、用户隔离和预算沿用 main。普通校对不强制输出参考文献报告；正文输入仍可先咨询或请求上传。机制验证与净降本结论分开，历史记录见 [RSI 闭环](docs/paper-rsi-loop.md)，整合部署步骤见 [论文交接](docs/handoffs/paper-proofreading.md)。
+
+
+实验分支新增脚本内部依赖片段挖掘、当前数据引用/局部修改以及原生工具连续执行，仍经原生 Evidence/版本/权限守卫。它们由私有 Script sidecar 显式启用，生产默认保持不变。当前真实完整任务尚未证明稳定合格净降本；配置、复现与边界见[统一复用接口](docs/interfaces.md#实验性统一复用协议2026-10-19)和[实验记录](docs/experiments/paper-unified-reuse-20261019-v1.md)。
