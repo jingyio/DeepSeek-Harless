@@ -73,6 +73,7 @@ test('upstream 429 retries with native Retry-After; permanent 4xx and true quota
   for(const [code,body,attempts,status] of [
     [429,{message:'Rate limited'},2,'failed'],[400,{message:'Invalid argument'},1,'failed'],
     [401,{message:'Bad credentials'},1,'failed'],[403,{message:'Permission denied'},1,'failed'],
+    [413,{code:'GENELOOP_MODEL_REQUEST_TOO_LARGE',type:'invalid_request_error',message:'HTTP transport capacity exceeded'},1,'failed'],
     [422,{message:'Invalid input'},1,'failed'],
     [429,{code:'GENELOOP_BUDGET_EXHAUSTED',type:'quota_exceeded',message:'approved research budget exhausted'},1,'budget_exhausted'],
   ]) {

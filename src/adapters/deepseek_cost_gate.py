@@ -23,6 +23,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+if __package__:
+    from .model_transport import MODEL_REQUEST_MAX_BYTES, MODEL_REQUEST_TOO_LARGE
+else:  # Preserve direct CLI execution from a different working directory.
+    from model_transport import MODEL_REQUEST_MAX_BYTES, MODEL_REQUEST_TOO_LARGE
+
 
 PEAK_USD_PER_MILLION = {
     "deepseek-flash": (0.30, 1.20),
@@ -361,11 +366,16 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
 
         def _reply(self, code: int, message: str, *, error_code: str | None = None) -> None:
             # Distinguish local quota denial from upstream rate limiting.
-            error = {"code": error_code, "type": "quota_exceeded", "message": message} if error_code else message
+            error = {"code": error_code, "type": "invalid_request_error" if code == 413 else "quota_exceeded", "message": message} if error_code else message
+            if code == 413 and error_code == MODEL_REQUEST_TOO_LARGE:
+                error['max_bytes'] = MODEL_REQUEST_MAX_BYTES
             raw = json.dumps({"error": error}).encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(raw)))
+            if code == 413:
+                self.send_header("Connection", "close")
+                self.close_connection = True
             self.end_headers()
             self.wfile.write(raw)
 
@@ -490,9 +500,10 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
             except ValueError:
                 self._reply(400, "invalid request length")
                 return
-            maximum = 64 * 1024 * 1024 if file_upload else 8 * 1024 * 1024
+            maximum = 64 * 1024 * 1024 if file_upload else MODEL_REQUEST_MAX_BYTES
             if not 0 < length <= maximum:
-                self._reply(413, "request body exceeds budget gate limit")
+                self._reply(413, "request body exceeds HTTP transport capacity",
+                            error_code=None if file_upload else MODEL_REQUEST_TOO_LARGE)
                 return
             body = self.rfile.read(length)
             if file_upload:
