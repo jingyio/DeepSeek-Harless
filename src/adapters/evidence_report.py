@@ -46,6 +46,25 @@ def _fallback_font(primary_font: str):
 
 engine=isolated('_evidence_document_engine','benchmarks/research_report_agent_v2/document_engine.py')
 engine._fallback_font=_fallback_font
+_benchmark_audit=engine.audit_document
+def natural_length_audit(pdf_path,manifest,requirements=None):
+    """Apply this caller's auto-length contract to the unchanged physical audit.
+
+    The benchmark's historical six-page default remains unchanged everywhere
+    else. Explicit max/exact requirements and every other hard check survive.
+    """
+    audit=_benchmark_audit(pdf_path,manifest,requirements)
+    req=requirements or (json.loads(Path(manifest).read_text(encoding='utf-8')) if isinstance(manifest,(str,Path)) else manifest)['requirements']
+    if req.get('page_mode')!='auto' or req.get('pages') is not None:return audit
+    audit['checks']['page_constraint_satisfied']=audit['page_count']>=1
+    audit['constraints_satisfied']=audit['checks']['page_constraint_satisfied']
+    audit['hard_errors']=[e for e in audit['hard_errors'] if e.get('check')!='page_constraint_satisfied']
+    if not audit['constraints_satisfied']:audit['hard_errors'].append({'check':'page_constraint_satisfied'})
+    audit['quality_passed']=all(audit['checks'].values()) and not audit['hard_errors']
+    audit['acceptance_status']=('accepted_with_warnings' if audit['warnings'] else 'accepted') if audit['quality_passed'] else 'rejected'
+    audit['acceptance_policy']={**audit['acceptance_policy'],'auto_page_limit':None,'page_policy_origin':'explicit_natural_length_report_contract'}
+    return audit
+engine.audit_document=natural_length_audit
 build_document=engine.build_document
 base=isolated('_evidence_session_report','src/adapters/session_report.py')
 render_result=ContextVar('current_evidence_render',default=None)
@@ -83,7 +102,7 @@ def rendering_config():
         'font_setting':os.environ.get('HARLESS_REPORT_FONT'),
         'font_hashes':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths if p and Path(p).is_file()},
         'dependencies':{p:version(p) for p in ['reportlab','PyMuPDF']},
-        'style':'brief','page_mode':'auto','engine_version':engine.ENGINE_VERSION}
+        'style':'brief','page_mode':'auto','auto_page_limit':None,'engine_version':engine.ENGINE_VERSION}
 
 def _project(value,pointer):
     for key in pointer.split('/')[1:]:

@@ -870,7 +870,11 @@ Positive Script Motif 负责复用可执行结构；Negative Tool Motif 负责�
 
 将 `negativeMode` 设为 `enforce` 才会启用局部早停。需要正面片段时再提供原有 `library/catalog/executionFrontier`；不带正面库也能单独做负面消融。由于 Web adapter 依赖变更，旧正面库要按既有历史源重新认证，不能只更新旧代码锁。
 
-离线 `scripts/learn-negative-motifs.py` 接纳已结束的真实成功/失败/取消轨迹及显式工具实现文件，从 MCP 结构化 `validation_error` 学习工具与失败码、参数/结果回显的版本槽位，保留事件摘要和独立调用标识。相同调用复制不算重复证据；至少两次失败才发布提示候选。有同 schema 的非失败对照、区别于非失败结果的 false outcome 标志及共同版本槽位才生成 `warn_then_exact_version_block`；这仍不是失败因果或质量认证。只有不透明错误、HTTP 失败或一个失败时不会自动生成执行封禁。库包含 Python/TS 共享 digest、工具 schema 与实现/Runtime 代码锁；当前仍是独立离线编译入口，未接成生产自动学习服务。
+离线 `scripts/learn-negative-motifs.py` 接纳已结束的真实成功/失败/取消轨迹及显式工具实现文件，从 MCP 结构化 `validation_error` 或多项 `failed_checks` 学习工具与失败码、参数/结果回显的版本槽位，保留事件摘要和独立调用标识。Python/TS 共享判定语义：只有明确成功标志且无冲突/错误才构成成功对照，缺少失败码不视为成功。相同调用复制不算重复证据；至少两次失败才发布提示候选。有同 schema 的成功对照、区别于成功结果的 false outcome 标志及共同版本槽位才生成 `warn_then_exact_version_block`；这仍不是失败因果或质量认证。`failed_checks` 默认仅提示，不能把来源 SHA 误当作可修订草稿的状态锚点。不透明错误、HTTP 失败或单次失败不会自动生成执行封禁。库包含 Python/TS 共享 digest、工具 schema 与实现/Runtime 代码锁；当前仍是独立离线编译入口，未接成生产自动学习服务。
+
+新增显式 `--constraint-validator src/adapters/evidence_report.py:structure_issues`：仅支持已审阅、已锁定的纯形状校验原语。编译器核对真实当前目标/失败回执、实际成功对照、修复与重引入双向干预、无关字段干预；满足条件才发布 `warn_then_current_constraint` 与 `argument_guard.kind=current_scope_shape`。Runtime 从受保护的 `review-recovery-scope.json` 读取当前完整目标，核验 task/grant/source/schema/实际回执后，重新计算候选参数的必要条件。历史长度/文本不进入规则；未知或不支持的形状退回模型。页数等缺乏认证条件的规则保持 prompt-only，不能把观测当成根因。
+
+负面提示通过 `script-motif-negative` 追加消息发送，`beforeRequest` 只在实际调用上游时确认提示已交付；生成提示或合成 Runtime 步骤不授权早停。经当前目标条件认证的重试可以在参数内容变化后仍被拒绝；用户要求、scope、授权、来源或 schema 变化使旧条件失效。
 
 在线顺序：当前 MCP 再次出现已编译失败 → 提示 → 校验提示确实进入原生模型请求 → 若模型再次提交同工具、同完整参数，且对应本地 JSON 状态文件、原始来源、工具 schema 和当前目标均未变，原生 `tools.guard` 阻止工具主体。单靠历史频率不会封禁新任务；缺失/歧义版本绑定、只有提示模式、新反证/错误、参数或版本变化都会放行或使旧负面证据失效。原生 MCP canonical wrapper 复用已有 `observation` 解包；早停的拒绝不被当作新的失败训练来源。
 
@@ -951,6 +955,14 @@ TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`�
 ```
 
 单独执行 `geneloop-reuse '<JSON>'`，允许固定 `cd /work &&` 前缀。也可读取当前 `code` 中保存的 `geneloop-reuse --plan /work/plan.json`，计划文件在接收、续接和执行前验证字节版本。不执行命令替换、管道或重定向。`base:{artifact,pointer}` 复用整份参数，不能同时指定 `arguments`；`patches` 支持有界 JSON Pointer 的 add/replace/remove/test。后继通过 `bindings.from:{step:0,pointer:"/source_id"}` 消费前一步成功结果。最多12步；原生软失败、来源变化、schema变化或用户新要求停止执行/交回模型。
+
+`patches` 还可写 `{op:"replace",path:"/目标",from:{artifact:"当前值ID",pointer:"/来源"}}` 复制当前字段，不得同时填 `value`，此处不接受 `step`。Runtime 同时验证 base 和来源 artifact 的当前依赖。已匹配的当前结构条件可提供完整字段恢复候选，但仅供模型选择；恢复会覆盖该字段内已改内容，需要保留的语义修订仍须另给必要 patch。候选不是授权，也不保证模型会选择。
+
+`geneloop-reuse '{"inspect":{"artifact":"当前值ID","pointer":"/字段"}}'`只读当前引用，返回`reuse_inspection`数据回执，不创建执行计划。值超过16000字节时`complete:false`，不返回被静默截断的值，须缩小pointer；外部/过时引用、危险指针和step引用拒绝。
+
+独立sidecar的`repairChoices:true`默认关闭，只在execute及已匹配、认证的当前结构失败上发起一次类型化交接。模型获得完整失败/批准字段（合计超过24KB则回退），仅选择`geneloop-reuse '{"repair_choice":{"request_id":"当前ID","status":"restore"}}'`，也可unknown/ambiguous/unneeded。restore通过一次性回执和当前来源、grant、scope、schema后，复用缓存字段修订计划；未知不执行。其他工具选择被拒一次后释放该交接，同一状态不循环强迫选择。不增加工具schema，也不由Runtime决定语义修订。审计`reuse_repair_choice_offered/verified/fallback`与局部早停、完整请求skip分别统计。
+
+交付审计仍保留相对批准目标的`changes`；最终模型通知改为`current_run_changes`，其`basis_sha256/final_sha256`绑定本轮受保护起点及最终参数。较早目标的差异不等于本轮操作；字段缺失时不能断言实际修改。该差异是参数事实，不能独立认证自然语言解释或科研结论。
 
 同一计划可包含 `{script:"script_ID",paths:["/work/current.bib"]}`；单输入算子可通过 `foreach:{artifact,pointer:"/active_files"},root:"/work/current-source"` 绑定最多16个真实输入。必须有当前完整文件集合，不能由后缀相似推断全文已读。网络/argv算子仍用原缓存协议，未扩展通用写脚本权限。
 
@@ -1035,6 +1047,8 @@ File 公开种子重认证入口为 `scripts/recertify-file-seeds.py`（默认�
 ### 显式恢复当前操作（实验入口，2026-10-20）
 
 `run-script-motif-experiment.py --resume-current-operation` 仅能与 `--mode execute --reuse-checkpoint ... --preserve-recovery-structure` 同用。该选项表示本轮明确选择恢复该原生操作，不能由相似轨迹自动设置。runner 在 Bash 不可写的 `review-recovery-scope.json` 中记录 `execution_obligation={kind:"resume_current_operation",tool,arguments_sha256,max_attempts:1}`。
+
+若失败候选已裁剪结构，另传 `--recovery-goal-scope <原始受保护scope>`：原始字节 SHA 必须等于失败回执的 `execution_evidence.recovery_scope_sha256`，当前来源必须一致。完整目标保留在 `arguments`，实际失败候选在 `resume_arguments`，义务使用 `arguments_pointer:"/resume_arguments"`；不允许任意指针。初始执行仍是一次实际失败候选，而不是默默替换为完整目标；失败后交回模型选择修订。
 
 TypeScript Runtime 在首次模型请求前验证当前任务ID、输出授权、完整参数、来源版本、已认证工具及当前Schema，直接绑定执行一次。未开启时维持原有模型选择；任务/授权/来源/目标变化或资格不足时回退，失败后不自动重试或修改科研内容。成功仍须核验真实文件并交回模型总结；失败交回当前字段与检查证据。它是显式目标的执行接线，不是新挖出的Motif，也不表示所有后续语义恢复都能跳过。
 

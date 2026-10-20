@@ -9,12 +9,15 @@ import re
 from collections import defaultdict
 from pathlib import Path
 from src.adapters.script_motif_compiler import digest, sha
+from src.adapters.negative_outcome import negative_outcome
 
 RUNTIME_FILES = ('src/adapters/script_negative_compiler.py',
                  'src/adapters/negative_field_compiler.py',
                  'src/adapters/negative_field_runtime.ts',
                  'src/adapters/script_negative_runtime.ts',
                  'src/adapters/script_motif_web.ts')
+RUNTIME_FILES += ('src/adapters/negative_outcome.py','src/adapters/negative_outcome.ts',
+                  'src/adapters/negative_constraint_compiler.py','src/adapters/negative_constraint_runtime.ts')
 
 
 def leaves(value, path=()):
@@ -54,12 +57,12 @@ def collect_negative(task):
             try: value = json.loads(texts[0])
             except ValueError: continue
             if not isinstance(value, dict): continue
-            code = value.get('validation_error')
-            if code is not None and (not isinstance(code, str) or not re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_:-]{0,127}', code)):
-                continue
+            outcome = negative_outcome(value)
             anchors = [(p, v) for p, v in leaves(args) if isinstance(v, str) and re.fullmatch('[a-f0-9]{64}', v)]
             echoed = [(p, q) for p, v in anchors for q, w in leaves(value) if v == w]
-            rows.append({'tool': tool, 'code': code, 'argument_shape': sorted(args),
+            for failure in outcome['failures'] or [{'code':None,'source':None}]:
+                rows.append({'tool': tool, 'code': failure['code'], 'failure_source':failure['source'],
+                         'outcome':outcome['status'], 'argument_shape': sorted(args),
                          'false_paths': [p for p, v in leaves(value) if v is False],
                          'anchors': echoed, 'binding_sha256': digest(args),
                          'call_id': call_id, 'task_id': task.name,
@@ -71,11 +74,11 @@ def compile_negative(rows, implementation_locks, runtime_locks):
     groups = defaultdict(list)
     for row in rows:
         if row['code']:
-            groups[(row['tool'], row['code'], row['tools_sha256'])].append(row)
+            groups[(row['tool'], row['code'], row['tools_sha256'],row.get('failure_source','validation_error'))].append(row)
     rules = []
-    for (tool, code, schema), failures in sorted(groups.items()):
+    for (tool, code, schema, source), failures in sorted(groups.items()):
         if len({(r['task_id'], r['call_id']) for r in failures}) < 2: continue
-        contrasts = [r for r in rows if r['tool'] == tool and r['tools_sha256'] == schema and not r['code']]
+        contrasts = [r for r in rows if r['tool'] == tool and r['tools_sha256'] == schema and not r['code'] and r.get('outcome','success')=='success']
         common = set(map(lambda a: json.dumps(a, sort_keys=True), failures[0]['anchors']))
         for row in failures[1:]: common &= {json.dumps(a, sort_keys=True) for a in row['anchors']}
         anchors = [json.loads(a) for a in sorted(common)]
@@ -86,10 +89,10 @@ def compile_negative(rows, implementation_locks, runtime_locks):
         # not a failure outcome. Learn the contrast instead of listing tools.
         flags -= {json.dumps(p) for row in contrasts for p in row.get('false_paths', [])}
         failure_flags = [json.loads(p) for p in sorted(flags)][:8]
-        rule = {'tool': tool, 'failure_code': code, 'tools_sha256': schema,
+        rule = {'tool': tool, 'failure_code': code, 'failure_source':source,'tools_sha256': schema,
                 'failure_flags': failure_flags,
                 'version_slots': [{'argument_path': a, 'result_path': b} for a, b in anchors],
-                'retry_policy': 'warn_then_exact_version_block' if anchors and contrasts and failure_flags else 'prompt_only',
+                'retry_policy': 'warn_then_exact_version_block' if source=='validation_error' and anchors and contrasts and failure_flags else 'prompt_only',
                 'certification': {'scope': 'trace_failure_recurrence_and_successful_contrast_not_causal_or_quality_proof',
                     'failures': [{k: r[k] for k in ('task_id', 'call_id', 'events_sha256')} for r in failures],
                     'success_contrasts': [{k: r[k] for k in ('task_id', 'call_id', 'events_sha256')} for r in contrasts]}}

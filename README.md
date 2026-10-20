@@ -267,3 +267,7 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 
 
 论文恢复实验新增显式`--resume-current-operation`：当前任务已选择的完整操作，经任务/来源/授权/Schema核验后由Runtime先执行一次，失败交回修订、成功交回总结。两次真实正常恢复均只需1个模型总结请求；复杂页数恢复仍有18/43请求和不可靠解释，尚未证明稳定净降本。全部仍为显式实验入口，非生产默认；失败与累计费用见[新实验记录](docs/experiments/paper-recovery-control-20261020-v2.md)。
+
+Negative Motif 恢复实验已接纳 `failed_checks`，支持把已审阅结构校验器与当前完整目标编译认证为重试条件；真实恢复实际发送13次提示、6次局部早停。页数原因仍未知，字段引用候选尚未被真实模型选用，复杂修订未稳定降本；三次全部结果、超时和待结算费用见[接入实验](docs/experiments/paper-negative-recovery-20261020-v1.md)。配置仍须显式启用，不修改生产库。
+
+后续[成因与修复实验](docs/experiments/paper-recovery-page-policy-20261020-v1.md)定位到基准引擎的6页上限与论文自然页长要求冲突，修正在隔离导出器中完成；旧基准和生产库保留。新增`inspect`读取当前字段及显式`repairChoices:true`：模型选择恢复或unknown，Runtime复制认证字段并重验。两种真实历史结构恢复及差异交接复核均为2请求；开放修复的29请求反例与全部学习/复测费用保留。最终说明现以本轮起点差异为准，仍不代表完整论文质量或一般净降本已验证。 [PR95](https://github.com/jingyio/GeneLoop/pull/95)供审阅，未合并或部署。
