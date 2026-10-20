@@ -343,7 +343,6 @@ export function createGateway(config) {
     if (closing) throw Error('网关正在重启，请稍后重试');
     if (backends.has(user.id)) return backends.get(user.id);
     if (pending.has(user.id)) return pending.get(user.id);
-    if (pending.size >= 8) throw Error('当前启动人数较多，请稍后重试');
     const promise = (async () => {
       const port = await allocatePort();
       const userDir = join(config.membersDir, user.id);

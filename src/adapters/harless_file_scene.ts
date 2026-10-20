@@ -11,6 +11,7 @@ import {digest} from '../motif_core/online_skill_runtime.mjs';
 import {managementFileContent} from './file_task_scope.ts';
 import {fileEventProjection} from './file_event_projection.ts';
 import {interruptedTurnClosers} from '@deepseek-ai/dsh-session';
+import {publicConversationContext} from './dsh_web_tasks.ts';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const hash=(data:Uint8Array|string)=>createHash('sha256').update(data).digest('hex');
@@ -162,7 +163,8 @@ export function installFileScene(ctx:any,launch:typeof spawn=spawn){
   // Existing task requests (including recovery) retain their original scope.
   const copyScope='session-'+digest({workspace_id:workspaceId,session_id:request.sessionId});
   const task={id,workspace_id:workspaceId,session:request.sessionId,request_id:request.requestId,request_digest:digest(request),turn:1+Math.max(0,...snapshot.events.filter((e:any)=>e.type==='turn/start').map((e:any)=>e.data.turn)),status:'admitted',next_step:0,model:model.model};
-  const priorContext=snapshot.events.filter((e:any)=>['user/message','assistant/message'].includes(e.type)).slice(-6).map((e:any)=>({role:e.type.startsWith('user')?'user':'assistant',text:(e.data.content??e.data.message?.content??[]).filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n')}));
+  const priorContext=await publicConversationContext(ctx,request.sessionId)??snapshot.events.filter((e:any)=>['user/message','assistant/message'].includes(e.type)).slice(-6).map((e:any)=>({role:e.type.startsWith('user')?'user':'assistant',text:(e.data.content??e.data.message?.content??[]).filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n')}));
+  checkAdmission();
   const input={task_id:id,directory,objective,prior_context:priorContext,workspace_id:copyScope,owner,sources,model:model.model,provider_mode:policy.provider_mode,budget_usd:policy.budget_usd??null};
   const admitted=await ctx.attachments.admitPromptContent(content);checkAdmission();
   const binding=ctx.fileUploads.bindPrompt(agent,receipts,request.requestId);
