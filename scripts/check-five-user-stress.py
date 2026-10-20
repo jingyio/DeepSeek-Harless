@@ -245,6 +245,16 @@ def peak(intervals):
     return maximum
 
 
+def upstream_interval(receipt):
+    # Both cost gates stamp request_utc_epoch when the upstream call returns.
+    # elapsed_seconds measures that call, so the receipt describes [end-dt,end).
+    end, elapsed = receipt.get("request_utc_epoch"), receipt.get("elapsed_seconds")
+    if (type(end) not in (int, float) or type(elapsed) not in (int, float)
+            or not math.isfinite(end) or not math.isfinite(elapsed) or elapsed <= 0):
+        return None
+    return end - elapsed, end
+
+
 def expected_data():
     # Independent, standard-library recomputation, never supplied to GeneLoop.
     x = list(range(1, 13))
@@ -754,12 +764,13 @@ P4. These synthetic counts do not establish causal effects or generalization.
         complete = complete and len(receipt_ids) == len(set(receipt_ids)) and None not in receipt_ids
         unmatched = [row["id"] for row in self.result["attempts"] if row.get("sent_at") and not any(task["record_id"] == row["id"] for task in selected.values())]
         complete = complete and not unmatched
-        upstream_intervals = [(row.get("request_utc_epoch"), row.get("request_utc_epoch", 0) + row.get("elapsed_seconds", 0))
-                              for row in run_receipts if isinstance(row.get("request_utc_epoch"), (float, int)) and isinstance(row.get("elapsed_seconds"), (float, int))]
+        upstream_intervals = [interval for row in run_receipts if (interval := upstream_interval(row)) is not None]
         result = {"tasks": list(selected.values()), "ledger_available": bool(ledger and ledger.exists()),
                   "accounting_complete": complete, "actual_paid_usd": None,
                   "estimated_cost_usd": math.fsum(task["receipt_cost_usd"] for task in selected.values()) if complete else None,
                   "upstream_requests": len(run_receipts), "max_overlapping_upstream_requests": peak(upstream_intervals),
+                  "upstream_interval_basis": "[request_utc_epoch - elapsed_seconds, request_utc_epoch); epoch is response completion time",
+                  "upstream_requests_without_intervals": len(run_receipts) - len(upstream_intervals),
                   "unmatched_sent_attempts": unmatched,
                   "token_usage": {key: sum(row.get("response_usage", {}).get(key, 0) or 0 for row in run_receipts)
                                   for key in ("prompt_tokens", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens", "completion_tokens", "total_tokens")},
