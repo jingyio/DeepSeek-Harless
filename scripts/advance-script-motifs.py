@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post-task learning worker. No model calls, no writes to production libraries."""
+"""Private post-task compiler, with optional metered description-only learning."""
 import argparse
 import hashlib
 import json
@@ -11,6 +11,7 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from src.adapters.file_lock import exclusive_lock
 from src.adapters.probe_motif_compiler import collect as collect_probes
 from src.adapters.reuse_compiler import collect as collect_reuse, compile_library as compile_reuse
+from src.adapters.script_description_learning import learn_descriptions
 
 def read(path):return json.loads(path.read_text())
 def save(path,value):
@@ -43,11 +44,17 @@ def main():
         save(round_dir/'worker.json',{'exit_code':result.returncode,'stdout':result.stdout[-16000:],'stderr':result.stderr[-4000:]})
         if result.returncode:save(task/'script-learning-status.json',{'status':'failed','round':round_dir.name});return
         library=read(round_dir/'library.json')
+        if (store/'description-learning.json').exists():
+            save(round_dir/'description-base-library.json',library)
+        library,description_learning=learn_descriptions(library,store,round_dir)
+        save(round_dir/'library.json',library)
         reuse=compile_reuse([r for t in history['tasks'] for r in collect_reuse(Path(t))],ROOT,[r for t in history['tasks'] for r in collect_probes(Path(t))])
         save(round_dir/'reuse-library.json',reuse)
         published=bool(library['programs'] or reuse['contracts'])
         status={'status':'published' if published else 'no_qualified_programs','round':round_dir.name,'programs':len(library['programs']),'digest':library['digest'],
-                'reuse_contracts':len(reuse['contracts']),'reuse_digest':reuse['digest'],'compilation_model_requests':0,'elapsed_seconds':__import__('time').monotonic()-started,
+                'reuse_contracts':len(reuse['contracts']),'reuse_digest':reuse['digest'],
+                'compilation_model_requests':description_learning['model_requests'],'description_learning':description_learning,
+                'elapsed_seconds':__import__('time').monotonic()-started,
                 'triggered_by_task':task.name,'parent_digest':parent.get('digest') if parent else None,
                 'heldout_task_id':library['heldout_task_id'],'training_task_ids':[Path(t).name for t in history['tasks'][1:]]}
         save(round_dir/'lineage.json',{**status,'evidence':[{'task_id':Path(t).name,'events_sha256':hashlib.sha256((Path(t)/'events.jsonl').read_bytes()).hexdigest()} for t in history['tasks']]})

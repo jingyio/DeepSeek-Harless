@@ -88,7 +88,8 @@ export function apply(ctx:any){
     const worker=fileURLToPath(new URL('../../scripts/advance-script-motifs.py',import.meta.url));
     mkdirSync(process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE!,{recursive:true,mode:0o700});
     const child=spawn(policy.learning_python,[worker,'--task',output,'--store',process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE!,'--user',policy.user_id],
-     {env:{PATH:process.env.PATH,SSS_PYTHON:policy.learning_python,SSS_LOCAL_SCRIPT_EXPERIMENT:process.env.SSS_LOCAL_SCRIPT_EXPERIMENT,PYTHONUTF8:'1'},stdio:'ignore'});
+     {env:{PATH:process.env.PATH,SSS_PYTHON:policy.learning_python,SSS_LOCAL_SCRIPT_EXPERIMENT:process.env.SSS_LOCAL_SCRIPT_EXPERIMENT,PYTHONUTF8:'1',
+       ...(existsSync(join(process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE!,'description-learning.json'))&&process.env.DEEPSEEK_API_KEY?{DEEPSEEK_API_KEY:process.env.DEEPSEEK_API_KEY}:{})},stdio:'ignore'});
     const failed=(reason:string)=>{if(!existsSync(join(output,'script-learning-status.json')))writeFileSync(join(output,'script-learning-status.json'),JSON.stringify({status:'failed',reason}),{mode:0o600});};
     child.on('error',()=>failed('learning_worker_spawn_failed'));
     child.on('exit',(code,signal)=>{if(code!==0||signal)failed('learning_worker_exited_without_result');});

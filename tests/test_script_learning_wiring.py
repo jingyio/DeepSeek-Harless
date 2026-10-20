@@ -28,7 +28,7 @@ def test_mismatched_or_public_stores_are_rejected():
         m.learning_config({},m.ROOT/'public-store')
 
 
-@pytest.mark.parametrize('outcome',['published','empty','failed'])
+@pytest.mark.parametrize('outcome',['published','empty','failed','description_updated'])
 def test_worker_publication_retains_parent_and_failure_does_not_replace_pointer(tmp_path,monkeypatch,outcome):
     path=Path(__file__).parents[1]/'scripts/advance-script-motifs.py'
     spec=importlib.util.spec_from_file_location('advance_script_learning_test',path)
@@ -47,17 +47,24 @@ def test_worker_publication_retains_parent_and_failure_does_not_replace_pointer(
     monkeypatch.setattr(worker,'compile_reuse',lambda *args:{'contracts':[],'digest':'reuse'})
     def compile(command,**kwargs):
         output=Path(command[command.index('--output')+1]);output.mkdir()
-        (output/'library.json').write_text(json.dumps({'programs':[{'id':'new'}] if outcome=='published' else [],'digest':'new','heldout_task_id':'held'}))
+        (output/'library.json').write_text(json.dumps({'programs':[{'id':'new'}] if outcome in ['published','description_updated'] else [],'digest':'new','heldout_task_id':'held'}))
         return SimpleNamespace(returncode=1 if outcome=='failed' else 0,stdout='',stderr='')
     monkeypatch.setattr(worker.subprocess,'run',compile)
+    if outcome=='description_updated':
+        (store/'description-learning.json').write_text('{}')
+        def update(library,store,output):
+            return {**library,'digest':'description-version'}, {'status':'updated','model_requests':2}
+        monkeypatch.setattr(worker,'learn_descriptions',update)
     monkeypatch.setattr(sys,'argv',['advance','--task',str(task),'--store',str(store),'--user','owner'])
     worker.main()
     status=json.loads((task/'script-learning-status.json').read_text())
     pointer=json.loads((store/'latest.json').read_text())
-    if outcome=='published':
-        assert pointer['digest']=='new' and pointer['parent_digest']=='parent'
+    if outcome in ['published','description_updated']:
+        assert pointer['digest']==('description-version' if outcome=='description_updated' else 'new') and pointer['parent_digest']=='parent'
         assert status['training_task_ids']==['task'] and status['heldout_task_id']=='held'
-        assert status['compilation_model_requests']==0
+        assert status['compilation_model_requests']==(2 if outcome=='description_updated' else 0)
+        if outcome=='description_updated':
+            assert json.loads((store/status['round']/'description-base-library.json').read_text())['digest']=='new'
         lineage=json.loads((store/status['round']/'lineage.json').read_text())
         assert lineage['evidence'][1]['task_id']=='task'
     else:

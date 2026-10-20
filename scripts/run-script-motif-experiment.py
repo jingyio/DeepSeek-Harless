@@ -271,12 +271,15 @@ def main():
                 time.sleep(3)
             task = output / 'tasks' / draft['task_id']
             if args.learning_store and result['status'] == 'completed':
-                for _ in range(1700):
+                # Optional proposal+review has two separately metered 90s calls.
+                # Keep the existing model-free wait unchanged when disabled.
+                learning_wait = 540 if (args.learning_store/'description-learning.json').exists() else 340
+                for _ in range(learning_wait*5):
                     if (task / 'script-learning-status.json').exists():
                         break
                     time.sleep(.2)
                 if not (task / 'script-learning-status.json').exists():
-                    (record / 'learning-wait-timeout.json').write_text(json.dumps({'status':'unsettled','timeout_seconds':340}))
+                    (record / 'learning-wait-timeout.json').write_text(json.dumps({'status':'unsettled','timeout_seconds':learning_wait}))
             summary = load('script_experiment_accounting', 'summarize-script-motif-run.py').summarize(task)
             summary['experiment_wall_ms_until_summary'] = round((time.monotonic() - started) * 1000)
             summary['wall_scope'] = 'includes_startup_upload_and_learning_wait; excludes_installation_and_shutdown'
