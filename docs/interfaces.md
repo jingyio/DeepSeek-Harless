@@ -795,7 +795,7 @@ PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历
 
 比较快照新增持久递增的 `snapshot_epoch`：每次服务启动先递增并同步落盘，客户端按 epoch、`snapshot_revision`、`score_revision` 的顺序比较。运行中的快照写盘可合并到 250ms，真实 SSE 增量仍立即广播；终态与评分同步落盘。旧记录缺少 epoch 时按 0 兼容，较旧实例的迟到响应不能覆盖新实例状态。
 
-DeepSeek 同一对照的两侧并行，保留各侧 Session→turn 的预算路由及请求授权检查；不同轮次和普通任务仍遵守现有调度。缺少明确 Session 路由的模型适配器继续串行。重连和历史读取不启动模型，完整终态快照不再反复访问预算服务，旧记录保留必要的交付恢复。
+DeepSeek 保留各侧 Session→turn 的预算路由及请求授权检查；不同账号、同账号不同对话、普通聊天与不同场景对照均可并行，没有应用层任务并行数量上限。同一公开对话的新请求仍互斥，重复 requestId 不重跑。场景调度使用 Host.concurrent 启动独立轮次，Host.parallel 控制同轮两侧；短准入锁不等待模型完成。缺少明确 Session 路由的旧模型适配器继续互斥；Host.prepare 在锁内失去就绪条件时返回 deferred，调度重试而不是把竞争误报为失败。已知准入拒绝通过原生 RemoteError 保留 session_busy/comparison_busy/request_id_conflict 等代码，公网仅输出安全提示；私有 prompt-admission-errors.jsonl 只存时间、Session/request/task 标识和错误代码。重连和历史读取不启动模型，完整终态快照不再反复访问预算服务，旧记录保留必要的交付恢复。
 
 `rate` 和 `feedback` 使用短临界区，校验输出 SHA 和版本，持久化后返回，不等待原生页面通知。2026-10-16 按用户要求移除网页 1–5 分控件及客户端评分保存队列；不再从网页发送 `action:"rate"`。后端研究评分协议与历史数据继续兼容，回复赞踩仍走独立 `feedback`。401/403、退出页面或插件停止时清空账号内存缓存；一般操作失败显示错误并读取服务器确认。
 

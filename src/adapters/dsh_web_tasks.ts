@@ -22,7 +22,7 @@ import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
 import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,closedPaperDocumentFirstPage,closedPptSourceFirstPage,closedPptConvertedSource,structuralOnlySimilarity} from './harless_rsi_binding.ts';
 import {createPptMasterRecovery} from './ppt_master_recovery.ts';
-import {createComparisonService} from './harless_comparison.ts';
+import {createComparisonService,ComparisonError} from './harless_comparison.ts';
 import { attachmentContextMessage, attachmentContextPolicy, attachmentEvidence, attachmentImages, attachmentImageKey,
   uniqueAttachmentEvidence,uniqueAttachmentImages,humanContent,isAttachmentContext } from './harless_attachment_context.ts';
 import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
@@ -666,11 +666,11 @@ export function apply(ctx: any) {
   }
   function canStart(comparison?: string, provider?: string) {
     if (!active.size) return true;
-    // Only the two isolated lanes of this exact comparison may share a slot.
-    // DeepSeek forwards the session header through the turn-budget broker;
-    // legacy headerless adapters must retain unambiguous single-task routing.
-    return Boolean(brokerMode && comparison && provider === 'deepseek-official' && active.size < 2 &&
-      [...active.values()].every(row => row.comparison === comparison && row.provider === provider));
+    // The broker binds every native Session to its own immutable turn budget.
+    // Header-routed conversations and comparisons have no account-wide cap.
+    // Headerless legacy adapters still cannot safely identify concurrent calls.
+    return Boolean(brokerMode && provider === 'deepseek-official' &&
+      [...active.values()].every(row => row.provider === provider));
   }
   function requireIdle(comparison?: string, provider?: string) {
     if (!canStart(comparison, provider)) throw new TaskError('task_busy', 'Another task is running; wait or cancel it', 409);
@@ -1395,7 +1395,7 @@ export function apply(ctx: any) {
       throw error;
     }
   }
-  controller.prompt = (request: any, signal: AbortSignal) => serialize(async () => {
+  const admitPrompt = (request: any, signal: AbortSignal) => serialize(async () => {
     await ensureOwned(request.sessionId);
     if (comparisons?.isLane(request.sessionId)) throw new TaskError('comparison_child', '请回到原对照会话继续发送，左右两侧会分别保留历史。', 409);
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
@@ -1433,6 +1433,12 @@ export function apply(ctx: any) {
       await setSelection(request.sessionId, { scene: chatScene.id });
     }
     const selected = admitted ? {...selections.get(request.sessionId)!,scene:admitted.scene} : selections.get(request.sessionId)!;
+    // Older rejected native sends left an unsubmitted draft behind. It owns
+    // no running Agent; a fresh request can retire it without touching a run.
+    const abandoned=forSession(request.sessionId);
+    if(abandoned?.status==='awaiting_confirmation'&&abandoned.entrypoint==='native_chat'&&abandoned.request.request_id!==request.requestId){
+      finish(abandoned,'cancelled','superseded_unsubmitted_request');await abandoned.closing;
+    }
     const previousScene = forSession(request.sessionId)?.scene.id;
     const sourceSnapshot=await controller.inspect(request.sessionId);
     const contaminatedHistory=sourceSnapshot.events.some((event:any)=>event.type==='user/message'&&event.data?.source?.kind==='user'&&
@@ -1519,6 +1525,18 @@ export function apply(ctx: any) {
     resetNextMessageScene(request.sessionId);
     return { accepted: true };
   });
+  controller.prompt = async (request:any,signal:AbortSignal) => {
+    try{return await admitPrompt(request,signal);}
+    catch(error:any){
+      // Metadata only: never copy user content, attachment text or credentials.
+      try{appendFileSync(join(config.output,'prompt-admission-errors.jsonl'),JSON.stringify({at:utc(),
+        session_id:request.sessionId,request_id:request.requestId,code:error?.code??error?.name??'unknown',
+        active_task_ids:[...active.keys()]})+'\n',{mode:0o600});}catch{}
+      if(error instanceof TaskError||error instanceof ComparisonError)
+        throw new RemoteError(error.code as any,error.message,{} as any);
+      throw error;
+    }
+  };
   controller.cancel = async (request: any) => {
     if (!ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
     const task = forSession(request.sessionId);
@@ -1529,6 +1547,7 @@ export function apply(ctx: any) {
     comparisons = createComparisonService(config.output, principal, {
       owns: ensureOwned,
       parallel: turn => findModel(turn.model).provider === 'deepseek-official',
+      concurrent: turn => brokerMode && findModel(turn.model).provider === 'deepseek-official',
       ready: turn => canStart(turn.id, findModel(turn.model).provider),
       async cancelPreparing(turn) {
         for(const [id,meta] of taskParents)if(meta.turn.id===turn.id){
@@ -1544,7 +1563,10 @@ export function apply(ctx: any) {
         return created.sessionId;
       },
       async prepare(turn, lane, requestId,taskReady) { return serialize(async () => {
-        requireIdle(turn.id, findModel(turn.model).provider); const child = turn.lanes[lane].session_id;
+        // Readiness outside the admission lock is only a hint. A legacy task
+        // may have claimed its headerless route meanwhile; retry, don't fail.
+        if(!canStart(turn.id,findModel(turn.model).provider))return {deferred:true as const};
+        const child = turn.lanes[lane].session_id;
         if (turn.cancellation_requested) throw new TaskError('comparison_cancelled', '任务已取消。', 409);
         await ensureOwned(turn.session_id); await ensureOwned(child);
         if (comparisons!.parentFor(child) !== turn.session_id) throw new TaskError('comparison_scope_mismatch', '对话执行范围不匹配。', 403);

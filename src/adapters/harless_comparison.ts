@@ -56,7 +56,7 @@ export class ComparisonError extends Error {
 export type ComparisonHost = {
   owns(id: string): Promise<void>;
   createLane(parent: string, scene: string, lane: LaneName): Promise<string>;
-  prepare(turn: any, lane: LaneName, requestId: string, taskReady?: (taskId:string)=>void): Promise<{ task_id: string }>;
+  prepare(turn: any, lane: LaneName, requestId: string, taskReady?: (taskId:string)=>void): Promise<{ task_id: string } | {deferred:true}>;
   cancelPreparing?(turn: any): Promise<void>;
   submit(taskId: string): Promise<void>;
   inspect(taskId: string, context?: { turn: any; lane: LaneName; recoverMissing?: boolean }): Promise<any>;
@@ -64,6 +64,7 @@ export type ComparisonHost = {
   cancel(taskId: string): Promise<void>;
   publish(parent: string, turn: any, request?: any): Promise<void>;
   parallel?(turn: any): boolean;
+  concurrent?(turn: any): boolean;
   ready?(turn: any, lane: LaneName): boolean;
 };
 
@@ -183,8 +184,6 @@ export function createComparisonService(output: string, principal: string, host:
         let preparing=!lane.task_id;
         if (disposed || terminal.has(lane.status)) return;
         try {
-          while (host.ready?.(t, name) === false && !disposed && !terminal.has(lane.status)) await new Promise(resolve => setTimeout(resolve, pollMs));
-          if (disposed || terminal.has(lane.status)) return;
           const subscribe=(taskId:string)=>{if(unsubscribe)return;unsubscribe=host.subscribe?.(taskId,task=>{
             // Native chunk notifications carry the full current task view. A
             // terminal update is reconciled below with verified deliveries.
@@ -192,7 +191,11 @@ export function createComparisonService(output: string, principal: string, host:
             applyTask(t,name,task);
             for(const subscriber of subscribers.get(t.id)??[])try{subscriber(view(t));}catch{}
           });};
-          if (!lane.task_id) await prepare(t, name,subscribe);
+          while(!lane.task_id){
+            while(host.ready?.(t,name)===false&&!disposed&&!terminal.has(lane.status))await new Promise(resolve=>setTimeout(resolve,pollMs));
+            if(disposed||terminal.has(lane.status))return;
+            if(!await prepare(t,name,subscribe))await new Promise(resolve=>setTimeout(resolve,pollMs));
+          }
           preparing=false;
           if (disposed || terminal.has(lane.status)) return;
           subscribe(lane.task_id!);
@@ -224,7 +227,10 @@ export function createComparisonService(output: string, principal: string, host:
     try { while (pending.length && !disposed) await run(pending.shift()!); }
     finally { running = false; }
   }
-  const enqueue = (t: Turn) => { pending.push(t); void drain().catch(() => {}); };
+  const enqueue = (t: Turn) => {
+    if(host.concurrent?.(t))void run(t).catch(()=>{});
+    else{pending.push(t);void drain().catch(()=>{});}
+  };
   async function publish(t: Turn) {
     for (const subscriber of subscribers.get(t.id) ?? []) { try { subscriber(view(t)); } catch { /* A disconnected reader cannot interrupt execution. */ } }
     // Persisted results remain readable even when a transient UI event fails.
@@ -241,10 +247,15 @@ export function createComparisonService(output: string, principal: string, host:
       for(const subscriber of subscribers.get(t.id)??[])try{subscriber(view(t));}catch{}
     };
     const result = await host.prepare(t, name, req,bind);
+    if('deferred' in result){
+      if(lane.task_id)throw Error('comparison_deferred_after_task_binding');
+      return false;
+    }
     bind(result.task_id);
     if (t.cancellation_requested || disposed) {
       lane.status = 'cancelled'; await host.cancel(result.task_id);
     } else Object.assign(lane, { status: lane.status==='preparing'?'queued':lane.status, failure: undefined, failure_stage: undefined });
+    return true;
   }
   return {
     hasSession: (id: string) => Boolean(state.threads[id]),

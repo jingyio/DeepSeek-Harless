@@ -18,6 +18,7 @@ import {renderPrompt} from '@deepseek-ai/dsh-system-prompt';
 import { Context, Service } from '@deepseek-ai/cordis';
 import { apply as mountNativeConnection } from '@deepseek-ai/dsh-client-connection';
 import { WebServer } from '@deepseek-ai/dsh-host-webserver';
+import { TypertGatewayService } from '@deepseek-ai/dsh-api-gateway';
 
 test('Scene instructions preserve report value tokens without treating them as Harness variables',()=>{
  const text='Bind {{estimate}} and {{ci_low}} to verified report results.';
@@ -773,7 +774,7 @@ test('Per-model supported reasoning strengths filter catalog and reject unsuppor
  }finally{await f.close();}
 });
 
-test('Submit requires the current confirmation and never reruns a retry; only one task is active', options, async () => {
+test('legacy unbrokered submit requires confirmation and retains unambiguous single-task routing', options, async () => {
   const f = await fixture();
   try {
     const first = await f.preview('可执行任务一'), second = await f.preview({ instruction: '可执行任务二', mode: 'shadow' });
@@ -1801,6 +1802,127 @@ const attachmentScenes=()=>[{...multiScenes[0],id:'new-scene',adapter:'workspace
  {...multiScenes[0],id:'research-data-analysis',preset:'sss-data',adapter:'workspace',mcp_rows:[]},
  {...multiScenes[0],id:'paper-proofreading',preset:'sss-paper',adapter:'workspace',mcp_rows:[]}];
 
+// Use the installed RPC carrier: directly calling the controller would hide
+// the gateway/internal envelope produced for an ordinary thrown TaskError.
+async function concurrentChatRpcFixture(){
+ const f=await fixture({broker:true,realSessions:true,scenes:attachmentScenes(),capability_profile:'new-scene',
+  comparison_scenes:['paper-proofreading','ppt','research-data-analysis']}),native=new Context();
+ const server=new WebServer(native,{host:'127.0.0.1',port:0});await server[Service.init]();
+ native.provide('credentials',{async modifyRecord(_key,change){return change(undefined);}});
+ await mountNativeConnection(native);await new Promise(resolve=>setImmediate(resolve));
+ const origin='http://127.0.0.1:'+server.port;
+ server.register({kind:'exact',path:'/',handler:(request,response)=>{
+  if(native.connection.authorizeIndex(request,response)){response.writeHead(200);response.end('fixture');}
+ }});
+ // Keep the installed Gateway's real failure projection; only the business
+ // receiver is the deterministic fixture instead of a paid model session.
+ const gateway=Object.create(TypertGatewayService.prototype);
+ gateway.invoke=request=>f.ctx.sessionController[request.method](request.args.request,request.signal);
+ native.connection.rpc.intercept('/api',endpoint=>['session/create','session/prompt'].includes(endpoint),
+  (endpoint,payload,signal)=>gateway.dispatchRpc(endpoint,{args:{request:payload}},signal));
+ const exchange=await fetch(native.connection.authenticatedUrl(origin),{redirect:'manual'});
+ const cookie=exchange.headers.get('set-cookie').split(';',1)[0];
+ const call=async(method,payload)=>{
+  const response=await fetch(origin+'/api/'+method,{method:'POST',headers:{cookie,'Content-Type':'application/json'},
+   body:JSON.stringify({type:'client-request',rpcId:randomUUID(),method,payload})});
+  assert.equal(response.status,200);return (await response.json()).result;
+ };
+ const send=(sessionId,requestId,text)=>call('session/prompt',{sessionId,requestId,mode:'queue',content:[{type:'text',text}]});
+ return {f,call,send,async close(){await native.fiber.dispose();await f.close();}};
+}
+
+test('concurrent native HTTP chats run together without gateway/internal and keep retries and cancellation isolated',options,async()=>{
+ const r=await concurrentChatRpcFixture(),{f}=r;
+ try{
+  const a=(await r.call('session/create',{})).value.sessionId,b=(await r.call('session/create',{})).value.sessionId;
+  assert.equal((await r.send(a,'concurrent-a','Read only task A')).ok,true);
+  const first=(await f.api()).value.tasks.find(t=>t.session_id===a);
+  assert.equal(first.status,'running');
+  const next=await r.send(b,'concurrent-b','Read only task B');
+  assert.equal(next.ok,true,JSON.stringify(next));
+  assert.equal(f.promptCalls.length,2,'another conversation starts before the first one finishes');
+  assert.deepEqual(await r.send(b,'concurrent-b','Read only task B'),next,'retry cannot duplicate the running message');
+  assert.equal((await r.send(a,'concurrent-a','Read only task A')).ok,true,'retry of the active native task remains idempotent');
+  assert.equal(f.promptCalls.length,2);
+  const same=await r.send(a,'another-a','Cannot steer the running task');
+  assert.equal(same.ok,false);assert.equal(same.error.code,'session_busy');
+  const second=(await f.api()).value.tasks.find(t=>t.session_id===b);
+  assert.equal(second.status,'running');
+  assert.notEqual(f.brokerRoutes.get(second.session_id),f.brokerRoutes.get(first.session_id));
+  await f.ctx.sessionController.cancel({sessionId:b});
+  assert.equal((await f.api()).value.tasks.find(t=>t.task_id===first.task_id).status,'running');
+  await f.complete(first);
+  assert.equal(f.agents.get(b).events.filter(e=>e.type==='user/message'&&e.data.source?.kind==='user').length,1);
+  assert.equal(f.registrations.size,2,'each actual task has its own budget');
+ }finally{await r.close();}
+});
+
+test('six independent native conversations have no account cap and keep model envelopes isolated',options,async()=>{
+ const r=await concurrentChatRpcFixture(),{f}=r;
+ try{
+  const ids=[];for(let i=0;i<6;i++)ids.push((await r.call('session/create',{})).value.sessionId);
+  const results=await Promise.all(ids.map((id,i)=>r.send(id,'six-'+i,'Only answer conversation '+i)));
+  assert.ok(results.every(row=>row.ok),JSON.stringify(results));
+  const tasks=(await f.api()).value.tasks;
+  assert.equal(tasks.filter(t=>t.status==='running').length,6);
+  assert.equal(new Set(ids.map(id=>f.brokerRoutes.get(id))).size,6);
+  for(const task of tasks){
+   const next=async function*(){yield{type:'text-delta',index:0,text:'answer '+ids.indexOf(task.session_id)};};
+   for await(const _ of f.stream(f.modelRequest(task),next)){}
+  }
+  for(const task of tasks)await f.complete(task);
+  assert.equal(f.brokerRoutes.size,0);assert.equal(f.promptCalls.length,6);
+ }finally{await r.close();}
+});
+
+test('a previously rejected native draft cannot block a fresh request after the legacy task finishes',options,async()=>{
+ const f=await fixture({broker:true,models:[
+  {provider:'deepseek-official',model:'deepseek-flash',label:'Flash',available:true},
+  {provider:'harless-glm',model:'glm-4.6',label:'Legacy',available:true},
+ ]});
+ const signal=new AbortController().signal;
+ const send=(sessionId,requestId)=>f.ctx.sessionController.prompt({sessionId,requestId,mode:'queue',content:[{type:'text',text:requestId}]},signal);
+ try{
+  const a=(await f.ctx.sessionController.create({})).sessionId,b=(await f.ctx.sessionController.create({})).sessionId;
+  await f.ctx.sessionController.selectModel({sessionId:a,provider:'harless-glm',model:'glm-4.6'},signal);
+  await send(a,'legacy-first');
+  await assert.rejects(send(b,'old-rejected'),error=>error.code==='task_busy'&&error.isDSHRemoteError===true);
+  const rows=(await f.api()).value.tasks,old=rows.find(t=>t.session_id===b);
+  assert.equal(old.status,'awaiting_confirmation');
+  await f.complete(rows.find(t=>t.session_id===a));await send(b,'fresh-after-rejection');
+  const after=(await f.api()).value.tasks;
+  assert.equal(after.find(t=>t.task_id===old.task_id).status,'cancelled');
+  const fresh=after.find(t=>t.request_id==='fresh-after-rejection');assert.equal(fresh.status,'running');
+  await f.complete(fresh);
+ }finally{await f.close();}
+});
+
+test('a scene and ordinary chat run concurrently even when admitted at the same time',options,async()=>{
+ const r=await concurrentChatRpcFixture(),{f}=r;
+ try{
+  const a=(await r.call('session/create',{})).value.sessionId,b=(await r.call('session/create',{})).value.sessionId;
+  // Both handlers join the same admission lock. The scene scheduler observes
+  // readiness before its prepare callback, queued behind the ordinary send.
+  const send=(sessionId,requestId,text)=>f.ctx.sessionController.prompt({sessionId,requestId,mode:'queue',content:[{type:'text',text}]},new AbortController().signal);
+  const [scene,chat]=await Promise.all([send(a,'race-scene','/paper Read only scene A'),send(b,'race-chat','Read only chat B')]);
+  assert.equal(scene.accepted,true);assert.equal(chat.accepted,true);
+  await new Promise(resolve=>setTimeout(resolve,30));
+  const task=(await f.api()).value.tasks.find(t=>t.session_id===b);assert.equal(task.status,'running');
+  const peek=new Request('http://local/api/harless/comparisons?session_id='+a+'&id='+scene.comparison_id);peek.authorized=true;
+  let running;
+  for(let i=0;i<100;i++){
+   const query=new Request(peek.url);query.authorized=true;
+   running=await(await f.routes.get('/api/harless/comparisons').fetch(query)).json();
+   if(Object.values(running.lanes).every(lane=>lane.task_id&&lane.status==='running'))break;
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.ok(Object.values(running.lanes).every(lane=>lane.task_id&&lane.status==='running'),JSON.stringify(running));
+  await f.complete(task);
+  const done=await settleAttachmentTurn(f,a,scene.comparison_id);
+  assert.equal(done.status,'completed',JSON.stringify(done));assert.equal(f.registrations.size,3);
+ }finally{await r.close();}
+});
+
 test('a first non-PDF upload acknowledges before attachment reading rather than holding the composer request',options,async()=>{
  const f=await fixture({broker:true,scenes:attachmentScenes(),capability_profile:'new-scene',comparison_scenes:['paper-proofreading']});
  let release;const gate=new Promise(resolve=>release=resolve);
@@ -2503,14 +2625,15 @@ for(const scene of ['research-data-analysis','paper-proofreading','ppt']) for(co
   const next=async function*(){yield {type:'text-delta',index:0,text:'independent live result'};};
   for(const task of rows)for await(const chunk of f.stream(f.modelRequest(task,{tools:f.agents.get(task.session_id).ctx.tools.schemas()}),next)){}
   assert.throws(()=>f.stream(f.modelRequest(rows[0],{sessionId:rows[1].session_id}),next),/envelope/,'one lane cannot spend through the other lane request');
-  const unrelated=await f.preview('an unrelated task');assert.equal((await f.submit(unrelated)).value.error.code,'task_busy');
+  const unrelated=await f.preview('an unrelated task');assert.equal((await f.submit(unrelated)).status,200);
+  assert.equal(f.brokerRoutes.size,3,'independent conversations have no two-task account cap');
   await f.complete(rows[0]);assert.equal(f.brokerRoutes.has(rows[0].session_id),false);assert.equal(f.brokerRoutes.get(rows[1].session_id),routes[1]);
   for await(const chunk of f.stream(f.modelRequest(rows[1],{tools:f.agents.get(rows[1].session_id).ctx.tools.schemas()}),next)){}
-  assert.equal((await f.submit(unrelated)).value.error.code,'task_busy','finishing one side does not release the other side budget slot');
+  assert.equal((await f.submit(unrelated)).status,200,'exact retry does not restart the independent task');
   await f.complete(rows[1]);
   let done;for(let i=0;i<100;i++){done=await compare();if(done.status==='completed')break;await new Promise(r=>setTimeout(r,10));}
-  assert.equal(done.status,'completed');assert.equal(f.brokerRoutes.size,0);
-  assert.equal((await f.submit(unrelated)).status,200);await f.complete(unrelated);
+  assert.equal(done.status,'completed');assert.equal(f.brokerRoutes.size,1);
+  assert.equal((await f.submit(unrelated)).status,200);await f.complete(unrelated);assert.equal(f.brokerRoutes.size,0);
   const prompts=f.promptCalls.length;await f.restart();const reads=f.controlCalls.length;
   assert.equal((await compare()).status,'completed');assert.equal(f.controlCalls.length,reads,'complete restored snapshots do not wait for budget statistics');
   assert.equal(f.promptCalls.length,prompts,'reload never resubmits either lane');
