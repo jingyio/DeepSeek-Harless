@@ -196,9 +196,6 @@ def file_worker_running(pid, home, namespace_home=None, proc_root=Path('/proc'))
                         raise RuntimeError('Unknown File worker PID namespace; restart refused')
                     if int(match.group(1).split()[-1]) != pid:
                         continue
-                    mounted = process / 'root' / Path(namespace_home).relative_to('/')
-                    if not mounted.samefile(home):
-                        continue
                 argv = [os.fsdecode(value) for value in (process / 'cmdline').read_bytes().split(b'\0') if value]
                 if not argv:
                     raise RuntimeError('Unknown File background worker process; restart refused')
@@ -211,8 +208,16 @@ def file_worker_running(pid, home, namespace_home=None, proc_root=Path('/proc'))
                     raise RuntimeError('Unknown File background worker configuration; restart refused')
                 config = Path(argv[position])
                 account = Path(namespace_home) if namespace_home is not None else home
-                if config.is_absolute() and config.is_relative_to(account / 'rsi'):
-                    return True
+                if not config.is_absolute() or not config.is_relative_to(account / 'rsi'):
+                    continue
+                # A namespace-local PID can also name an unrelated host process.
+                # Inspect its mount only after the command and account match;
+                # inaccessible facts for an actual candidate still fail closed.
+                if namespace_home is not None:
+                    mounted = process / 'root' / Path(namespace_home).relative_to('/')
+                    if not mounted.samefile(home):
+                        continue
+                return True
             except (FileNotFoundError, ProcessLookupError):
                 continue
     except (OSError, ValueError, TypeError) as error:

@@ -347,6 +347,33 @@ class FileWorkerIdentityTests(unittest.TestCase):
         self.assertFalse(service.file_worker_running(100, self.home, proc_root=self.proc))
 
     @unittest.skipUnless(os.name == 'posix', 'Hosted PID-namespace inspection is Linux-only')
+    def test_unrelated_namespace_pid_never_inspects_inaccessible_mount(self):
+        namespace_home = Path('/app/.local/web/file-management/accounts/scope')
+        process = self.process(1043, 1043, namespace_home / 'rsi' / 'config.json', command='systemd-udevd')
+        with mock.patch.object(Path, 'samefile', side_effect=PermissionError('Unrelated root process')) as same, \
+                mock.patch.object(service.os, 'kill', side_effect=AssertionError('Must not signal any process')):
+            self.assertFalse(service.file_worker_running(1043, self.home, namespace_home, self.proc))
+            # Even a worker for a different account is not a mount candidate.
+            (process / 'cmdline').write_bytes(b'python\0rsi-worker.py\0--config\0/app/.local/web/file-management/accounts/other/rsi/config.json\0')
+            self.assertFalse(service.file_worker_running(1043, self.home, namespace_home, self.proc))
+        same.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'posix', 'Hosted PID-namespace inspection is Linux-only')
+    def test_namespace_candidate_unknown_command_or_config_still_refuses(self):
+        namespace_home = Path('/app/.local/web/file-management/accounts/scope')
+        process = self.process(54321, 42, namespace_home / 'rsi' / 'config.json')
+        with mock.patch.object(Path, 'samefile', side_effect=AssertionError('Identity must be established first')) as same:
+            for command in (b'', b'python\0rsi-worker.py\0', b'python\0rsi-worker.py\0--config\0'):
+                with self.subTest(command=command):
+                    (process / 'cmdline').write_bytes(command)
+                    with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                        service.file_worker_running(42, self.home, namespace_home, self.proc)
+            with mock.patch.object(Path, 'read_bytes', side_effect=PermissionError('Inaccessible candidate command')):
+                with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                    service.file_worker_running(42, self.home, namespace_home, self.proc)
+        same.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'posix', 'Hosted PID-namespace inspection is Linux-only')
     def test_member_pid_uses_namespace_id_and_bind_inode_not_host_pid(self):
         namespace_home = Path('/app/.local/web/file-management/accounts/scope')
         self.process(54321, 42, namespace_home / 'rsi' / 'config.json')
