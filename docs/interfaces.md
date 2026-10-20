@@ -997,6 +997,19 @@ TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`�
 真实局部恢复runner可显式启用`--preserve-recovery-structure`，必须同时有`--reuse-checkpoint`。受保护的`review-recovery-scope.json`由当前任务入口写入不可供Bash修改的工作区根，绑定task/source与完整参数；这是当前用户范围的具体化，不由Runtime从历史相似性推断。默认拒绝数组长度/对象结构变化，允许叶子文字修订，需结构重设计时另行明确范围。Runtime在初次候选通知提供有界结构摘要和当前目标引用；仍由模型选择必要操作/patch。子集诊断不再被当成完整交付，结构通过也不保证同形状文字的科学正确性。环境快照新增沙箱开关、字体SHA和结构保留标志。验证与全部失败见[本轮记录](experiments/paper-recovery-evidence-20261020-v1.md)。
 
 
+### 正常报告操作的自动状态接入（2026-10-20，独立实验）
+
+sidecar新增`captureCurrentReport:true`（默认关闭），同时需要`reuseLibrary`及隔离`--report-evidence`。Runtime在实际选择、Schema/契约匹配且当前grant/source有效的报告调用前，写入Bash不可修改的`report-state-policy.json`；报告服务捕获实际参数为当前恢复起点，不依赖runner预置scope。其origin为`observed_current_export_operation_not_semantic_approval`，`coverage_status:not_verified`、`semantic_quality_accepted:false`；不产生自动重试义务，不认证科研判断或源文献覆盖。
+
+原导出输入限制保持不变，违规时返回`report_input_contract`、精确pointer、值摘要及实际界限。格式错误的初稿先采用`preserve_text_during_input_contract_repair`：可重组，但必须保留原段落及重复次数；删除内容返回`recovery_content_preserved`，不能通过摘要规避失败。合法且保留原文的重组转为结构保护起点，并保留前scope摘要和不可重置的`initial_arguments/initial_arguments_sha256`；`current_run_changes`仍以最初实际稿为基准，不因格式恢复成功被重置为0。正常有效初稿直接采用现有结构/叶子修订策略。
+
+启用`repairChoices:true`时，已验证的数组数量错误可提供一次有类型分组选择：`geneloop-reuse '{"repair_choice":{"request_id":"当前ID","status":"regroup","groups":[[0],[1,2]]}}'`。索引须按原顺序覆盖当前全部章节恰好一次，分组数量受当前实际回执约束。Runtime拼接原标题和原段落后经原工具重验；unknown/ambiguous/unneeded不执行。此为当前工具契约的结构交接适配器，不是新挖出的Motif或科研修改规则。`reuse_group_choice_offered/verified`单独记账，不等于完整模型请求skip。
+
+通用引用支持`from:{concat:[{artifact:"当前ID",pointer:"/数组A"},{artifact:"当前ID",pointer:"/数组B"}]}`。仅拼接当前数组，最多32个引用、4096项和256KB；拒绝嵌套concat、非数组、过期/越界引用，保留各依赖守卫，不求值代码。JSON状态仍受1MB读取限制；已批准输入按SessionFiles的20MiB上限校验，避免大PDF静默导致参数采集失败。采集失败新增`reuse_capture_fallback`审计。
+
+本机制只覆盖已登记的原生报告操作，不能从任意Bash程序推断完整草稿或语义目标；新增Negative库仍须重新编译认证，不能替换旧hash绕过实现锁。真实恢复、失败与完整任务记录见[自动状态接入实验](experiments/paper-live-state-20261020-v1.md)。
+
+
 
 ## 普通聊天生成文件入口（2026-10-19）
 

@@ -89,7 +89,11 @@ export function createNegativeRuntime({library,workspace,mode='prompt',audit=()=
   try{
    const read=(name:string)=>{const path=join(workspace,name);if(realpathSync(path)!==path||!lstatSync(path).isFile()||lstatSync(path).size>1_000_000)throw Error('current_goal_not_fixed');return readFileSync(path);};
    const raw=read('review-recovery-scope.json'),goal=JSON.parse(raw.toString()),grantRaw=read('paper-output-grant.json'),grant=JSON.parse(grantRaw.toString()),approved=JSON.parse(read('approved-inputs.json').toString()).files;
-   if(goal.kind!=='current_review_recovery_scope'||goal.version!==1||goal.policy!=='preserve_structure_allow_semantic_leaf_revisions'||goal.origin!=='explicit_current_recovery_requirement_not_inferred_from_history'||!goal.task_id||grant.schema_version!==1||grant.task_id!==goal.task_id||grant.allow_output!==true||digest(goal.source_versions)!==digest(approved)||digest(goal.arguments?.source_versions)!==digest(approved))return null;
+   if(goal.kind!=='current_review_recovery_scope'||goal.version!==1||goal.policy!=='preserve_structure_allow_semantic_leaf_revisions'||!['explicit_current_recovery_requirement_not_inferred_from_history','observed_current_export_operation_not_semantic_approval'].includes(goal.origin)||!goal.task_id||grant.schema_version!==1||grant.task_id!==goal.task_id||grant.allow_output!==true||digest(goal.source_versions)!==digest(approved)||digest(goal.arguments?.source_versions)!==digest(approved))return null;
+   if(goal.origin==='observed_current_export_operation_not_semantic_approval'){
+    const policyRaw=read('report-state-policy.json'),policy=JSON.parse(policyRaw.toString());
+    if(policy.kind!=='capture_current_report_policy'||policy.version!==1||policy.task_id!==goal.task_id||digest(policy.source_versions)!==digest(approved)||goal.capture?.arguments_sha256!==digest(goal.arguments)||goal.capture?.policy_sha256!==sha(policyRaw)||goal.capture?.tool!==policy.tool||goal.capture?.schema_sha256!==policy.schema_sha256||goal.capture?.user_envelope_sha256!==policy.user_envelope_sha256)return null;
+   }
    return {goal,grant,hash:sha(raw),context:digest([sha(raw),sha(grantRaw),approved])};
   }catch{return null;}
  }

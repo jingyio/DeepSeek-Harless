@@ -358,3 +358,80 @@ test('obligation rechecks grant and scope at dispatch and never resumes after us
   assert.throws(()=>f.r.guard(call),/guard_failed/);
  }
 });
+
+// Real PDF intake permits sources larger than JSON evidence; keep the limits distinct.
+test('multi-megabyte current inputs still permit parameter capture and exact semantic patches',async t=>{
+ const f=fixture(t),data=Buffer.alloc(2015536,65);writeFileSync(join(f.workspace,'inputs/paper.tex'),data);
+ writeFileSync(join(f.workspace,'approved-inputs.json'),JSON.stringify({files:{'paper.tex':createHash('sha256').update(data).digest('hex')}}));
+ const args={title:'current',sections:[{paragraphs:['keep','repair this']}]};
+ f.r.observe({name:tool.name,callId:'large-input-failure',arguments:args},result({exported:false,failed_checks:['layout']}));
+ const base=values(f).find(v=>v.origin.kind==='arguments');assert.ok(base,'actual tool parameters must be captured for an admitted PDF');
+ accept(f,[{tool:tool.name,base:{artifact:base.id},patches:[{op:'replace',path:'/sections/0/paragraphs/1',value:'repaired'}]}]);
+ const call=await dispatch(f);assert.equal(call.arguments.sections[0].paragraphs[0],'keep');assert.equal(call.arguments.sections[0].paragraphs[1],'repaired');
+ writeFileSync(join(f.workspace,'inputs/paper.tex'),Buffer.alloc(data.length,66));assert.throws(()=>f.r.guard(call),/guard_failed|source_changed/);
+});
+
+test('normal selected report enables service-owned capture without fabricating an approved goal',t=>{
+ const f=fixture(t);evidenceRuntime(f,{captureCurrentReport:true});const args=sourceArgs(f);
+ writeFileSync(join(f.workspace,'paper-output-grant.json'),JSON.stringify({schema_version:1,task_id:'new-task',allow_output:true}));
+ const options={tools:[{name:tool.name,parameters:{...schema,properties:{...schema.properties,source_versions:{type:'object'}}}}],messages:[{role:'user',source:{kind:'user'},content:'Check this current report'}]};
+ f.r.update(options);f.r.guard({name:tool.name,callId:'real-selected-operation',arguments:args});
+ const policy=JSON.parse(readFileSync(join(f.workspace,'report-state-policy.json'),'utf8'));
+ assert.equal(policy.kind,'capture_current_report_policy');assert.equal(policy.task_id,'new-task');
+ assert.equal(policy.tool,tool.name);assert.equal(policy.arguments,undefined);assert.equal(policy.execution_obligation,undefined);
+ assert.ok(f.audit.some(e=>e.kind==='reuse_current_draft_capture_enabled'));
+ const old=readFileSync(join(f.workspace,'report-state-policy.json'),'utf8');
+ f.r.guard({name:tool.name,callId:'next',arguments:{...args,title:'changed'}});
+ assert.equal(readFileSync(join(f.workspace,'report-state-policy.json'),'utf8'),old);
+});
+
+test('array references concatenate original values without code, preserve multiplicity and bind every dependency',async t=>{
+ const f=fixture(t),v={title:'current',sections:[{paragraphs:['first','repeat']},{paragraphs:['second','repeat']}]};
+ writeFileSync(join(f.workspace,'code/data.json'),JSON.stringify(v));const id=values(f).find(x=>x.origin.kind==='file').id;
+ const concat={concat:[{artifact:id,pointer:'/sections/0/paragraphs'},{artifact:id,pointer:'/sections/1/paragraphs'}]};
+ accept(f,[{tool:tool.name,base:{artifact:id},patches:[{op:'replace',path:'/sections/0/paragraphs',from:concat},{op:'remove',path:'/sections/1'}]}]);
+ const call=await dispatch(f);assert.deepEqual(call.arguments.sections,[{paragraphs:['first','repeat','second','repeat']}]);
+ writeFileSync(join(f.workspace,'code/data.json'),'{}');assert.throws(()=>f.r.guard(call),/guard_failed/);
+ const g=fixture(t);writeFileSync(join(g.workspace,'code/data.json'),JSON.stringify(v));const gid=values(g)[0].id;
+ for(const from of [{concat:[{artifact:gid,pointer:'/title'},{artifact:gid,pointer:'/sections'}]},{concat:[{concat:[{artifact:gid},{artifact:gid}]},{artifact:gid}]}])
+  assert.throws(()=>accept(g,[{tool:tool.name,base:{artifact:gid},patches:[{op:'replace',path:'/sections',from}]}]));
+});
+
+function groupingFixture(t){
+ const f=fixture(t);evidenceRuntime(f,{repairChoices:true,captureCurrentReport:true});
+ const args=sourceArgs(f);args.sections=[{heading:'Findings',paragraphs:['first','repeated']},{heading:'Sources',paragraphs:['second','repeated']},{heading:'Limits',paragraphs:['third']}];
+ const grant={schema_version:1,task_id:'current',allow_output:true};writeFileSync(join(f.workspace,'paper-output-grant.json'),JSON.stringify(grant));
+ const goal={version:1,kind:'current_review_recovery_scope',task_id:'current',source_versions:args.source_versions,arguments:args,policy:'preserve_text_during_input_contract_repair',origin:'observed_current_export_operation_not_semantic_approval'};
+ writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify(goal));
+ const e={...liveEvidence(f,args),task_id:'current',grant_sha256:digest(grant),recovery_scope_sha256:createHash('sha256').update(readFileSync(join(f.workspace,'review-recovery-scope.json'))).digest('hex')};
+ f.r.observe({name:tool.name,callId:'current',arguments:args},result({exported:false,failed_checks:['report_input_contract'],execution_evidence:e,argument_issues:[{pointer:'/sections',check:'report_input_contract',hash_kind:'json',value_sha256:digest(args.sections),requirement:'array_length',min_items:1,max_items:2}]}));
+ f.r.setNegativeConstraint(null);const offered=f.audit.find(v=>v.kind==='reuse_group_choice_offered');assert.ok(offered);
+ return {...f,args,id:offered.request_id};
+}
+test('typed group selection reuses every paragraph and heading without requiring model-generated patches',async t=>{
+ const f=groupingFixture(t),notice=f.r.takeNotice();assert.ok(notice.includes('min_groups'));assert.ok(notice.includes('Findings'));assert.ok(!notice.includes('repeated'));
+ const command='geneloop-reuse '+JSON.stringify({repair_choice:{request_id:f.id,status:'regroup',groups:[[0,1],[2]]}});
+ const receipt=f.r.prepare(command);assert.equal(await dispatch(f),null);f.r.observe({name:'bash',arguments:{command}},result(receipt.control_receipt));
+ const call=await dispatch(f);assert.deepEqual(call.arguments.sections,[{heading:'Findings / Sources',paragraphs:['first','repeated','second','repeated']},f.args.sections[2]]);
+ assert.ok(f.audit.some(v=>v.kind==='reuse_group_choice_verified'));assert.equal(f.args.sections.length,3);
+});
+test('group choice refuses omissions, reordering, duplicates, stale source and forged selection',async t=>{
+ for(const groups of [[[0],[1]],[[0,2],[1]],[[0,1],[1,2]],[[0],[1],[2]]]){
+  const f=groupingFixture(t);assert.throws(()=>f.r.prepare('geneloop-reuse '+JSON.stringify({repair_choice:{request_id:f.id,status:'regroup',groups}})));
+  assert.equal(await dispatch(f),null);
+ }
+ const f=groupingFixture(t);writeFileSync(join(f.workspace,'inputs/paper.tex'),'changed');
+ assert.throws(()=>f.r.prepare('geneloop-reuse '+JSON.stringify({repair_choice:{request_id:f.id,status:'regroup',groups:[[0],[1,2]]}})));
+});
+
+test('automatic regrouping reports changes against the original failed draft rather than resetting the task start',t=>{
+ const f=fixture(t);evidenceRuntime(f);const args=sourceArgs(f),initial=structuredClone(args);initial.sections.push({heading:'another group',paragraphs:['kept']});
+ const grant={schema_version:1,task_id:'current',allow_output:true};writeFileSync(join(f.workspace,'paper-output-grant.json'),JSON.stringify(grant));
+ const goal={version:1,kind:'current_review_recovery_scope',task_id:'current',source_versions:args.source_versions,arguments:args,initial_arguments:initial,initial_arguments_sha256:digest(initial),policy:'preserve_structure_allow_semantic_leaf_revisions',origin:'observed_current_export_operation_not_semantic_approval',capture:{arguments_sha256:digest(args)}};
+ writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify(goal));
+ const dir=join(f.workspace,'outputs/documents/current');mkdirSync(dir,{recursive:true});const name='outputs/documents/current/report.pdf',data=Buffer.from('current delivered bytes');writeFileSync(join(f.workspace,name),data);
+ const files=[{name,bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')}],receipt_name='outputs/documents/current/delivery.json',raw=JSON.stringify({layout_passed:true,task_id:'current',source_versions:args.source_versions,files});writeFileSync(join(f.workspace,receipt_name),raw);
+ const e={...liveEvidence(f,args),task_id:'current',grant_sha256:digest(grant),recovery_scope_sha256:createHash('sha256').update(readFileSync(join(f.workspace,'review-recovery-scope.json'))).digest('hex'),delivery_passed:true,receipt_name,receipt_sha256:createHash('sha256').update(raw).digest('hex')};
+ f.r.observe({name:tool.name,callId:'success',arguments:args},result({exported:true,artifacts:files,execution_evidence:e}));
+ const record=f.audit.find(v=>v.kind==='reuse_delivery_verified');assert.equal(record.current_run_changes.basis_sha256,digest(initial));assert.deepEqual(record.current_run_changes.changed_pointers,['/sections']);assert.equal(record.current_run_changes.changed_fields,1);
+});

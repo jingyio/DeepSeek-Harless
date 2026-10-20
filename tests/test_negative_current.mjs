@@ -72,3 +72,16 @@ test('native tool runtime stops invalid prospective arguments after a real warni
  assert.equal((await run('mcp__test__other','other',{})).isError,false);assert.equal(calls,2);
  assert.equal((await run(f.call.name,'fixed',f.goal.arguments)).isError,false);assert.equal(calls,3);
 });
+
+test('an automatically captured current draft needs its service policy binding and never grants semantic approval',t=>{
+ for(const altered of [false,true]){
+  const f=fixture(t),policy={version:1,kind:'capture_current_report_policy',task_id:f.goal.task_id,source_versions:f.goal.source_versions,tool:f.rule.tool,schema_sha256:'a'.repeat(64),user_envelope_sha256:'b'.repeat(64)};
+  f.write('report-state-policy.json',policy);
+  f.goal.origin='observed_current_export_operation_not_semantic_approval';
+  f.goal.capture={arguments_sha256:digest(f.goal.arguments),policy_sha256:hash(readFileSync(join(f.root,'report-state-policy.json'))),tool:policy.tool,schema_sha256:policy.schema_sha256,user_envelope_sha256:policy.user_envelope_sha256};
+  f.write('review-recovery-scope.json',f.goal);
+  f.failure.execution_evidence.recovery_scope_sha256=hash(readFileSync(join(f.root,'review-recovery-scope.json')));
+  if(altered)f.write('report-state-policy.json',{...policy,task_id:'foreign'});
+  f.fail();f.warn();assert.equal(!!f.r.guard(f.call),!altered);
+ }
+});

@@ -51,7 +51,7 @@ export function apply(ctx:any){
    const task=JSON.parse(readFileSync(join(output,'task.json'),'utf8')),effective=JSON.parse(readFileSync(join(output,'effective-config.json'),'utf8'));
    if(effective.session_id!==session||effective.user_id!==policy.user_id)throw Error('script_owner_changed');
    const negative=settings.negativeLibrary?createNegativeRuntime({library:loadNegativeLibrary(settings.negativeLibrary),workspace:effective.workspace,mode:settings.negativeMode,audit}):null;
-   const reuse=settings.reuseLibrary?createReuseMediation({library:loadReuseLibrary(settings.reuseLibrary),scriptLibrary:library,workspace:effective.workspace,tools:effective.tools,mode:settings.mode,probeTools:settings.probeTools??[],repairChoices:settings.repairChoices===true,audit}):null;
+   const reuse=settings.reuseLibrary?createReuseMediation({library:loadReuseLibrary(settings.reuseLibrary),scriptLibrary:library,workspace:effective.workspace,tools:effective.tools,mode:settings.mode,probeTools:settings.probeTools??[],repairChoices:settings.repairChoices===true,captureCurrentReport:settings.captureCurrentReport===true,audit}):null;
    if(!library&&!negative&&!reuse)throw Error('motif_library_required');
    writeFileSync(join(output,'script-motif-config.json'),JSON.stringify({...settings,library_digest:library?.digest}),{mode:0o600});
    runtime=library?createScriptInterceptor({...settings,library,workspace:effective.workspace,session,
