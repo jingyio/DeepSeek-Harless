@@ -22,6 +22,11 @@ SPEC.loader.exec_module(stress)
     ((10, 12), (5, 1), 1),
     # Endpoints alone do not overlap: [9,10), [10,12).
     ((10, 12), (1, 2), 1),
+    # These millisecond endpoints touch. Binary float subtraction would
+    # start the second call at 1760988850.0019999 and invent overlap.
+    ((1760988850.002, 1760988850.004), (.001, .002), 1),
+    # A genuine millisecond overlap at the same large epoch remains visible.
+    ((1760988850.002, 1760988850.004), (.001, .003), 2),
 ])
 def test_accounting_uses_completion_timestamps_for_actual_request_overlap(tmp_path, ends, durations, expected):
     output = tmp_path / "member-output"

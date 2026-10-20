@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 from datetime import datetime, timezone
+from decimal import Decimal
 import hashlib
 import io
 import json
@@ -252,7 +253,9 @@ def upstream_interval(receipt):
     if (type(end) not in (int, float) or type(elapsed) not in (int, float)
             or not math.isfinite(end) or not math.isfinite(elapsed) or elapsed <= 0):
         return None
-    return end - elapsed, end
+    # Receipts round both values to milliseconds. Decimal subtraction keeps
+    # touching recorded endpoints equal even at a large UTC epoch.
+    return float(Decimal(str(end)) - Decimal(str(elapsed))), end
 
 
 def expected_data():
