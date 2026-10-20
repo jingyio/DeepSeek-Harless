@@ -6,12 +6,14 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import re
 from uuid import uuid4
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from src.adapters.file_lock import exclusive_lock
 from src.adapters.probe_motif_compiler import collect as collect_probes
 from src.adapters.reuse_compiler import collect as collect_reuse, compile_library as compile_reuse
-from src.adapters.script_description_learning import learn_descriptions
+from src.adapters.script_description_learning import learn_descriptions, retain_previous_descriptions
+from src.adapters.script_motif_compiler import digest
 
 def read(path):return json.loads(path.read_text())
 def save(path,value):
@@ -47,6 +49,16 @@ def main():
         if (store/'description-learning.json').exists():
             save(round_dir/'description-base-library.json',library)
         library,description_learning=learn_descriptions(library,store,round_dir)
+        if (store/'description-learning.json').exists() and parent:
+            name=parent.get('file','')
+            if not isinstance(name,str) or not re.fullmatch(r'round-[a-f0-9]+/library\.json',name):raise ValueError('invalid_description_parent_path')
+            previous_path=store/name
+            if previous_path.resolve()!=previous_path:raise ValueError('description_parent_symlink')
+            previous=read(previous_path)
+            if previous.get('digest')!=parent.get('digest') or digest({k:v for k,v in previous.items() if k!='digest'})!=parent.get('digest'):raise ValueError('description_parent_digest_changed')
+            metadata=previous_path.parent/'description-learning.json'
+            library,description_learning=retain_previous_descriptions(library,description_learning,previous,read(metadata) if metadata.exists() else {})
+            save(round_dir/'description-learning.json',description_learning)
         save(round_dir/'library.json',library)
         reuse=compile_reuse([r for t in history['tasks'] for r in collect_reuse(Path(t))],ROOT,[r for t in history['tasks'] for r in collect_probes(Path(t))])
         save(round_dir/'reuse-library.json',reuse)

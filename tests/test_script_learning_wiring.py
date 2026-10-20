@@ -52,15 +52,21 @@ def test_worker_publication_retains_parent_and_failure_does_not_replace_pointer(
     monkeypatch.setattr(worker.subprocess,'run',compile)
     if outcome=='description_updated':
         (store/'description-learning.json').write_text('{}')
+        previous={'programs':[]};previous['digest']=worker.digest(previous)
+        (store/'round-aaa').mkdir()
+        (store/'round-aaa/library.json').write_text(json.dumps(previous))
+        parent['digest']=previous['digest']
+        (store/'latest.json').write_text(json.dumps(parent))
         def update(library,store,output):
             return {**library,'digest':'description-version'}, {'status':'updated','model_requests':2}
         monkeypatch.setattr(worker,'learn_descriptions',update)
+        monkeypatch.setattr(worker,'retain_previous_descriptions',lambda library,status,*args:(library,status))
     monkeypatch.setattr(sys,'argv',['advance','--task',str(task),'--store',str(store),'--user','owner'])
     worker.main()
     status=json.loads((task/'script-learning-status.json').read_text())
     pointer=json.loads((store/'latest.json').read_text())
     if outcome in ['published','description_updated']:
-        assert pointer['digest']==('description-version' if outcome=='description_updated' else 'new') and pointer['parent_digest']=='parent'
+        assert pointer['digest']==('description-version' if outcome=='description_updated' else 'new') and pointer['parent_digest']==parent['digest']
         assert status['training_task_ids']==['task'] and status['heldout_task_id']=='held'
         assert status['compilation_model_requests']==(2 if outcome=='description_updated' else 0)
         if outcome=='description_updated':

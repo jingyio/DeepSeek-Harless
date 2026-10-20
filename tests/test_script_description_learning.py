@@ -179,3 +179,27 @@ def test_over_budget_target_is_not_allowed_to_discard_independent_valid_descript
     assert result['programs'][0]['description'] != library['programs'][0]['description']
     assert result['programs'][1] == library['programs'][1]
     assert len(calls[1][1]['proposal']['updates']) == 1
+
+
+def test_rejected_or_costlier_update_retains_previous_reviewed_description(tmp_path):
+    _, _, base = fixture(tmp_path); p = base['programs'][0]
+    previous = learner.revised_library(base, {p['id']: 'Count @article markers in .bib text; regex heuristic only.'})
+    previous_status = {'updated_program_ids': [p['id']]}
+    for current_status in [{'status': 'failed_preserved_base', 'model_requests': 1},
+                           {'status': 'updated', 'updated_program_ids': [p['id']], 'model_requests': 2}]:
+        result, status = learner.retain_previous_descriptions(base, current_status, previous, previous_status)
+        assert result == previous and status['retained_program_ids'] == [p['id']]
+        assert status['model_requests'] == current_status['model_requests']
+        # The retention receipt itself carries the evidence to the next round.
+        next_result, _ = learner.retain_previous_descriptions(base, {}, result, status)
+        assert next_result == previous
+
+
+def test_previous_description_cannot_cross_changed_input_contract_or_unreviewed_metadata(tmp_path):
+    _, _, base = fixture(tmp_path); p = base['programs'][0]
+    previous = learner.revised_library(base, {p['id']: 'Count @article markers in .bib text; regex heuristic only.'})
+    for old_status in [{}, {'updated_program_ids': [p['id']]}]:
+        current = deepcopy(base)
+        if old_status: current['programs'][0]['inputs'][0]['suffix'] = '.txt'
+        result, status = learner.retain_previous_descriptions(current, {}, previous, old_status)
+        assert result['programs'] == current['programs'] and not status['retained_program_ids']
