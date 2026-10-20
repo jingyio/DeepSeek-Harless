@@ -268,10 +268,11 @@ def main(argv=None, *, private_publish_root=None, reuse_task_files=False):
     if len(current) != 24 or sorted(row['name'] for row in current) != sorted(allowed):
         raise ValueError('必须提供当前 Paper 完整24工具的实际捕获')
     common = read(ROOT / 'config/geneloop-capabilities.json')['tools']
-    if (not isinstance(common, list) or len(common) != 6
-            or set(common) != {'web_search', 'web_fetch', 'bash', 'job_list', 'job_output', 'job_kill'}
+    if (not isinstance(common, list) or len(common) != len(set(common))
+            or any(not isinstance(name, str) or not re.fullmatch(r'[a-z][a-z0-9_]*', name) for name in common)
+            or not {'web_search', 'web_fetch', 'bash', 'job_list', 'job_output', 'job_kill'} <= set(common)
             or set(common) & {row['name'] for row in current}):
-        raise ValueError('原生公共6工具必须独立允许，不能混入24工具证书或扩展所学只读边')
+        raise ValueError('原生公共工具必须独立允许，不能混入24工具证书或扩展所学只读边')
     page = next(row['parameters'] for row in current if row['name'] == PAIR[1])
     if page.get('properties', {}).get('page', {}).get('default') != 1 or 'page' in page.get('required', []):
         raise ValueError('实际读取工具的可省略第一页默认值变化')
@@ -336,7 +337,7 @@ def main(argv=None, *, private_publish_root=None, reuse_task_files=False):
               'compilation_model_requests': 0, 'compilation_seconds': time.monotonic() - started,
               'model_weights_trained': False, 'compilation_executes_scene_tools': False,
               'common_native_tools': common, 'common_native_tools_in_certified_mcp_schema': False,
-              'common_capabilities_compatibility_scope': 'Current native network, command and job policy/adapters/wiring are code-locked; their six tools remain separately admitted and are not learned, replayed or executed by this offline compiler. The complete 24-tool MCP descriptions and parameters remain exact-match guards.',
+              'common_capabilities_compatibility_scope': 'Current public native tools and their adapters/wiring are code-locked and separately admitted; they are not learned, replayed or executed by this offline compiler. The complete 24-tool MCP descriptions and parameters remain exact-match guards.',
               'trace_collection_requests': requests, 'trace_collection_proxy_usd': cost,
               'excluded_collection': excluded, 'learning_total_requests': requests + sum(item['requests'] for item in excluded),
               'learning_total_proxy_usd': sum(total_costs) if all(value is not None for value in total_costs) else None,

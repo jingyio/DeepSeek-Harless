@@ -12,6 +12,7 @@ import {managementFileContent} from './file_task_scope.ts';
 import {fileEventProjection} from './file_event_projection.ts';
 import {interruptedTurnClosers} from '@deepseek-ai/dsh-session';
 import {publicConversationContext} from './dsh_web_tasks.ts';
+import {registerIndependentFileMode} from './geneloop_runtime_routes.ts';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const hash=(data:Uint8Array|string)=>createHash('sha256').update(data).digest('hex');
@@ -44,6 +45,7 @@ export function installFileScene(ctx:any,launch:typeof spawn=spawn){
  const agents=new Map<string,any>(),children=new Map<string,any>(),aborters=new Map<string,AbortController>();
  const admissions=new Map<string,{request_digest:string,promise:Promise<any>,cancelled:boolean}>();
  const selected=new Set<string>(),models=new Map<string,any>();
+ ctx.effect(()=>registerIndependentFileMode(ctx,id=>selected.has(id)),'file-scene-native-mode-boundary');
  const stateFile=join(home,'selection.json');
  if(existsSync(stateFile)){const saved=JSON.parse(readFileSync(stateFile,'utf8'));for(const id of saved.sessions??[])selected.add(id);for(const [id,m] of Object.entries(saved.models??{}))models.set(id,m);}
  const persist=()=>save(stateFile,{sessions:[...selected],models:Object.fromEntries(models)});

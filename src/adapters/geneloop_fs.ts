@@ -82,7 +82,7 @@ export default class GeneLoopFileSystem extends FileSystem {
   private locks=new Map<string,Promise<unknown>>();
   private configured?:GeneLoopFsConfig;
   constructor(ctx:any,config?:GeneLoopFsConfig){
-    super(ctx);this.configured=config;
+    super(ctx);this.configured=typeof config?.output==='string'?config:undefined;
     // Reuse upstream UTF-8, binary, byte-range and version semantics against pinned file descriptors.
     this.native=new LocalFileSystem(ctx.isolate('fs'),{cwd:'/',diffBasisMaxBytes:10*1024*1024});
   }

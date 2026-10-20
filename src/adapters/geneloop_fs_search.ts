@@ -32,7 +32,7 @@ export function nativeSearchArgs(argv:readonly string[]):{args:string[];path:str
 
 export default class GeneLoopSubprocessRuntime extends LocalSubprocessRuntime {
   private configured?:GeneLoopFsConfig;
-  constructor(ctx:any,config?:GeneLoopFsConfig){super(ctx);this.configured=config;}
+  constructor(ctx:any,config?:GeneLoopFsConfig){super(ctx);this.configured=typeof config?.output==='string'?config:undefined;}
   spawn(spec:SubprocessSpawnSpec){
     // Other trusted plugin subprocesses retain their existing provider behavior.
     // There is no new model-visible generic subprocess tool.

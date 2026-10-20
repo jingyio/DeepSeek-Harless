@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "scene": "paper-proofreading",
+  "runtime_kind": "paper_document_read_v1",
+  "mode": "execute",
+  "new_training": true,
+  "files": {
+    "learning-report.json": "47064000214b8ead553be704242012459630285de4118e55d356b1ec13f1c10a",
+    "online-manifest.json": "7b5e9274b712501a59369403e5707b771a32bd7ffa75bf512844206bb85ad0d1",
+    "library.json": "61ff932d7143fa3784ef122d1dfbe598bf65319c8d86989ff6e534eff5d1ec41",
+    "task.json": "d527101604be85ea4c50ee3a8c018d8643c44749e986d1caf15a521f9ff72c65",
+    "tool-schemas.json": "0ba797b7a3ed5155d92e4fda235ba4b251162cc0e7f014bb778ea956d29da0b0",
+    "source-evidence.json": "76ddb181021106915fea64ee02117c78db8fb3ef9d6324cb35a488fc9f459629",
+    "certification.json": "ca7cb0a5baca94b139d2a6d520b8700f6eb2bd4d56aae0c244570b4abfded829"
+  },
+  "scientific_quality_reviewed": false,
+  "quality_cost_promoted": false
+}

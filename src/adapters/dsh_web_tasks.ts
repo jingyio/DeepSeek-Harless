@@ -48,6 +48,12 @@ import {WEB_RETRY_POLICY,taskFailureStatus} from './geneloop_retry.ts';
 import {createContextAdmission,GeneLoopContextEngine,assertContextUserEnvelope,routeNativeCompact} from './geneloop_context.ts';
 import {installInteractionBridge} from './geneloop_interactions.ts';
 import {installTaskDelegation,TaskDelegationAdapter,resolveExecutionAgent} from './geneloop_delegation.ts';
+import {PlanModeController} from '@deepseek-ai/dsh-plan-mode';
+import {createPlanAdmission,PLAN_GUIDANCE} from './geneloop_plan.ts';
+import {GoalService} from '@deepseek-ai/dsh-goal';
+import {apply as nativeGoalDriver} from '@deepseek-ai/dsh-goal-round-driver';
+import {createGoalAdmission,GOAL_GUIDANCE} from './geneloop_goal.ts';
+import {guardNativeModeCommand,protectGoalRpc} from './geneloop_runtime_routes.ts';
 
 export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController','tokenMeter','subagents'];
@@ -259,6 +265,7 @@ export function apply(ctx: any) {
     const disposers = [...bindProductPrompt(agent), agent.ctx.tools.restrict({ allow: allowedTools }),
       agent.ctx.tools.guard((call: any) => allowed.has(call.name) ? commonToolDenial(call) : 'Tool is outside the configured capability profile')];
     disposers.push(agent.ctx.systemPrompt.section({name:'geneloop:attachment-context-policy',order:10220,text:attachmentContextPolicy}));
+    disposers.push(agent.ctx.systemPrompt.section({name:'geneloop:goal-policy',order:10225,text:GOAL_GUIDANCE}));
     if (instructions) {
       // Report value tokens such as {{estimate}} are literal instructions, not
       // Harness prompt variables. Substitution values are not interpolated again.
@@ -544,6 +551,48 @@ export function apply(ctx: any) {
     isActive:task=>task.status==='running'&&active.has(task.request.task_id),ensureOwned,control,broker,
     audit:(row,task)=>task?audit(task,row):appendFileSync(join(config.output,'context-maintenance.jsonl'),JSON.stringify(row)+'\n',{mode:0o600})});
   new GeneLoopContextEngine(ctx,contextAdmission,{auto:true,maxTokens:WEB_DEEPSEEK_OUTPUT_CAPACITY});
+  new PlanModeController(ctx,{section:PLAN_GUIDANCE});
+  async function currentTargets(parent:any,allowBusy=false){
+    const id=parent.session.id;await ensureOwned(id);
+    if(!allowBusy&&comparisons?.busy(id))throw new TaskError('context_busy','请先等待本轮回复完成。',409);
+    const lanes=comparisons?.currentExecutionSessions(id)??[];
+    if(!lanes.length)return [parent];
+    const targets=[];
+    for(const row of lanes){
+      if(comparisons?.parentFor(row.session_id)!==id)throw new TaskError('context_scope','对话上下文归属无效',403);
+      await ensureOwned(row.session_id);
+      if(!agents.has(row.session_id))await original.selectModel(modelSelection(row.session_id,modelSelections.get(row.session_id)??defaultModel));
+      const target=agents.get(row.session_id);if(!target)throw Error('Execution context unavailable');targets.push(target);
+    }
+    return targets;
+  }
+  const plan=createPlanAdmission(ctx,{ensureOwned,taskForSession:forSession,
+    isActive:task=>task.status==='running'&&active.has(task.request.task_id),currentTargets:parent=>currentTargets(parent,true),
+    ownsLane:(id,agent)=>agent.session.id===id||comparisons?.parentFor(agent.session.id)===id,
+    submit:async input=>{
+      const parent=agents.get(input.parentSessionId),previous=ctx.planMode.get(parent);
+      ctx.planMode.set(parent,true);
+      try{await controller.prompt({sessionId:input.parentSessionId,requestId:randomUUID(),mode:'queue',content:input.content},input.signal);return {kind:'success',text:'计划请求已提交。'};}
+      catch(error){ctx.planMode.set(parent,previous.pending??previous.active);throw error;}
+    },audit:(row,task)=>task?audit(task,row):appendFileSync(join(config.output,'context-maintenance.jsonl'),JSON.stringify(row)+'\n',{mode:0o600})});
+  const goalService=new GoalService(ctx);
+  // The upstream remote creation bypasses this application's Task admission.
+  // Keep native state/driver internals; human creation uses the scoped command.
+  goalService.remoteExportCreate=()=>{throw new TaskError('goal_requires_task','请用 /goal --rounds <正整数> <目标> 开始目标任务。',409);};
+  nativeGoalDriver(ctx);
+  ctx.inject(['typertGateway'],(scoped:any)=>scoped.effect(()=>protectGoalRpc(scoped),'geneloop-goal-rpc-admission'));
+  const goalRequests=new Map<string,any>();
+  const goals=createGoalAdmission(ctx,{ensureOwned,taskForSession:forSession,
+    isActive:task=>task.status==='running'&&active.has(task.request.task_id),currentTargets:parent=>currentTargets(parent,true),
+    ownsLane:(id,agent)=>agent.session.id===id||comparisons?.parentFor(agent.session.id)===id,
+    submit:async input=>{
+      if(!comparisons?.busy(input.parentSessionId)&&(!forSession(input.parentSessionId)||terminal.has(forSession(input.parentSessionId)!.status)))
+        for(const [id,prior]of goalRequests)if(prior.parentSessionId===input.parentSessionId)goalRequests.delete(id);
+      const requestId=randomUUID();goalRequests.set(requestId,input);
+      try{await controller.prompt({sessionId:input.parentSessionId,requestId,mode:'queue',content:input.content},input.signal);
+        return {kind:'success',text:'目标请求已提交；仅使用明确选择的有限轮次。'};
+      }catch(error){goalRequests.delete(requestId);throw error;}
+    },audit:(row,task)=>task?audit(task,row):appendFileSync(join(config.output,'context-maintenance.jsonl'),JSON.stringify(row)+'\n',{mode:0o600})});
   installInteractionBridge(ctx,{owns:ensureOwned,resolve:agent=>{
     if(!agent||agents.get(agent.session.id)!==agent)return;
     const task=forSession(agent.session.id);
@@ -710,6 +759,7 @@ export function apply(ctx: any) {
   }
   function finish(task: Task, status: string, failure: string | null = null) {
     if (terminal.has(task.status)) return;
+    goals.disarmTask(task);
     task.status = status; task.failure = failure; task.finished_at = utc();
     // Pin command bytes before another turn can edit the persistent workspace.
     if (task.scene.adapter === 'workspace' && status === 'completed' && !comparisons?.isLane(task.request.session_id)) {
@@ -884,7 +934,7 @@ export function apply(ctx: any) {
     }
     const registration = await control('/tasks/stats?session_id=' + encodeURIComponent(id), undefined, true);
     if (registration !== null && !brokerMode) throw new TaskError('session_already_bound', 'This session already has a task；请在工作区菜单中归档此空会话，然后新建会话。', 409);
-    ownedSessions.add(id); saveOwnership();
+    ownedSessions.add(id); saveOwnership();ensurePublicCommands(agents.get(id));
     await repairBlankTitle(id, snapshot);
     if (!selections.has(id)) selections.set(id, { ...defaults,
       scene: scenes.find(scene => scene.preset === snapshot.meta.agentPreset)!.id });
@@ -933,7 +983,7 @@ export function apply(ctx: any) {
       // Native title fallback is the storage directory basename (a UUID).
       // Give new chats a durable user-facing name without renaming old chats.
       if (!priorPreset && original.rename) await original.rename({ sessionId: created.sessionId, title: '新会话' });
-      ownedSessions.add(created.sessionId); saveOwnership();
+      ownedSessions.add(created.sessionId); saveOwnership();ensurePublicCommands(agents.get(created.sessionId));
       if (!selections.has(created.sessionId)) {
         selections.set(created.sessionId, chosen.id === chatScene?.id ? initialSelection(chosen.id, 'baseline') : { ...defaults, scene: chosen.id });
         saveSettings();
@@ -1416,6 +1466,12 @@ export function apply(ctx: any) {
       inputSignal.throwIfAborted();
       await broker('/bind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       inputSignal.throwIfAborted();
+      const execution=agents.get(task.request.session_id),parentId=comparisons?.parentFor(task.request.session_id);
+      if(execution)plan.inherit(parentId?agents.get(parentId):execution,task,execution);
+      const goalRequest=goalRequests.get(taskParents.get(task.request.task_id)?.turn.request_id??task.request.request_id);
+      if(goalRequest){
+        if(goalRequest.resumeTargets&&!goalRequest.resumeTargets.includes(execution))throw new TaskError('goal_context_changed','目标恢复需要原执行上下文，请勿在恢复前切换场景或上传新资料。',409);
+      }
       const extractionInputs = task.scene_inputs.filter(row => task.context_input_files?.includes(row.file));
       const imageTypes:Record<string,string>={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif'};
       const nativeImageVersions=new Set(task.delivery.filter((part:any)=>part.type==='image').map((part:any)=>sha(Buffer.from(part.data,'base64'))));
@@ -1447,6 +1503,20 @@ export function apply(ctx: any) {
       configureMotif(task);
       const contextMessage = attachmentContextMessage(task, attachmentContext, task.inherited_context, task.inherited_evidence,priorImages,fileImages);
       if (contextMessage) agents.get(task.request.session_id).session.append('user/message', contextMessage, {surfaceOp:'append'});
+      if(goalRequest){
+        // Normalize through the same public attachment store used by the native
+        // controller, before its accepted pre-step can start the goal driver.
+        const normalized=await ctx.attachments.admitPromptContent(task.delivery.map((part:any)=>{
+          if(part.type!=='file')return part;
+          const attachment=ctx.fileUploads.resolve(execution,part.receiptId);
+          if(!attachment)throw new TaskError('attachment_not_found','目标附件尚未绑定到当前会话',409);
+          return {type:'file',attachment};
+        }));
+        goals.bind(goalRequest.intent,task,execution,normalized);
+        goalRequest.bound??=new Set();goalRequest.bound.add(task.request.task_id);
+        const meta=taskParents.get(task.request.task_id),expected=meta?.turn.presentation==='paired'?2:1;
+        if(goalRequest.bound.size>=expected)goalRequests.delete(meta?.turn.request_id??task.request.request_id);
+      }
       await original.prompt({ requestId: task.request.request_id, sessionId: task.request.session_id,
         mode: 'queue', content: task.delivery }, inputSignal);
       if(task.status!=='completed')inputSignal.throwIfAborted();
@@ -1911,28 +1981,43 @@ export function apply(ctx: any) {
     resolveUserId: () => principal, prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
   }, modelOptions,delegation);
   ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], deepseekAdapter), 'sss-web-task-provider');
-  ctx.on('agent/created', ({ agent }: any) => {
-    agents.set(agent.session.id, agent);
-    if(ownedSessions.has(agent.session.id)&&!comparisons?.isLane(agent.session.id)){
+  const publicCommandAgents=new WeakSet<object>();
+  function ensurePublicCommands(agent:any){
+    if(agent&&ownedSessions.has(agent.session.id)&&!privateLanes.isPrivate(agent.session.id)&&!comparisons?.isLane(agent.session.id)&&!publicCommandAgents.has(agent)){
+      publicCommandAgents.add(agent);
+      agent.ctx.inject(['commands'],(scoped:any)=>scoped.commands.register({name:'plan',description:'先制定计划并等待确认',input:{hint:'[off|message]',attachments:true},handler:guardNativeModeCommand(ctx,plan.command)}));
+      agent.ctx.inject(['commands'],(scoped:any)=>scoped.commands.register({name:'goal',description:'显式选择有限目标轮次',input:{hint:'--rounds <正整数> <目标>',attachments:true},handler:guardNativeModeCommand(ctx,goals.command)}));
       const native=ctx.commands.find(agent,'compact');
       if(native)agent.ctx.plugin({name:'geneloop-public-compact',inject:['commands'],apply(scoped:any){
-        scoped.commands.register({...native,handler:(invocation:any)=>routeNativeCompact(invocation,native,ctx.commands,async parent=>{
+        scoped.commands.register({...native,handler:guardNativeModeCommand(ctx,(invocation:any)=>routeNativeCompact(invocation,native,ctx.commands,async parent=>{
           const id=parent.session.id;await ensureOwned(id);
           if(comparisons?.busy(id))throw new TaskError('context_busy','请先等待本轮回复完成。',409);
+          const retired=async(session:string)=>{
+            const prior=forSession(session);if(!prior)return;
+            if(!terminal.has(prior.status))throw new TaskError('context_busy','请先等待本轮回复完成。',409);
+            await prior.closing;
+            if(active.has(prior.request.task_id))throw new TaskError('context_meter_busy','上一轮计量尚未结清，请稍后重试。',409);
+          };
+          await retired(id);
           const lanes=comparisons?.currentExecutionSessions(id)??[];
           if(!lanes.length)return [{agent:parent,label:'当前对话'}];
           const targets=[];
           for(const row of lanes){
             if(comparisons?.parentFor(row.session_id)!==id)throw new TaskError('context_scope','对话上下文归属无效',403);
             await ensureOwned(row.session_id);
+            await retired(row.session_id);
             if(!agents.has(row.session_id))await original.selectModel(modelSelection(row.session_id,modelSelections.get(row.session_id)??defaultModel));
             const target=agents.get(row.session_id);if(!target)throw Error('Execution context unavailable');
             targets.push({agent:target,label:row.lane==='baseline'?'Baseline':'Motif'});
           }
           return targets;
-        },contextAdmission)});
+        },contextAdmission))});
       }});
     }
+  }
+  ctx.on('agent/created', ({ agent }: any) => {
+    agents.set(agent.session.id, agent);
+    ensurePublicCommands(agent);
     if (ownedSessions.has(agent.session.id)) {
       workspaceFor(agent.session.id);
       const task = forSession(agent.session.id);
@@ -2046,10 +2131,17 @@ export function apply(ctx: any) {
   ctx.on('agent/status', ({ agent, status }: any) => {
     const task = forSession(agent.session.id);
     if (task?.status === 'running' && status === 'idle') {
+      if(goals.keepTask(task,agent))return;
       const delivered = paperPdfDelivered(task);
       finish(task, delivered ? 'completed' : 'failed', delivered ? null : 'paper_pdf_not_delivered');
     }
   }, { global: true });
+  ctx.on('goal/changed',({agent}:any)=>{
+    const task=agent&&forSession(agent.session.id);
+    if(task?.status==='running'&&agent.status==='idle'&&!goals.keepTask(task,agent)){
+      const delivered=paperPdfDelivered(task);finish(task,delivered?'completed':'failed',delivered?null:'paper_pdf_not_delivered');
+    }
+  },{global:true});
   ctx.on('llm/stream', (request: any, next: any) => {
     if(request.purpose==='compaction'){contextAdmission.assertAuthorized(request);return next();}
     const child=delegation.authorizeRequest(request);
@@ -2060,8 +2152,8 @@ export function apply(ctx: any) {
         request.reasoningEffort !== task.reasoning_effort ||
         request.maxTokens !== (config.max_output_tokens ?? (task.model_option.provider==='deepseek-official'?WEB_DEEPSEEK_OUTPUT_CAPACITY:undefined)) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
-    if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
-    assertContextUserEnvelope(request,agents.get(request.sessionId).session,task.humans,task.current_humans);
+    const goalRound=goals.authorizeRequest(request,task,agents.get(request.sessionId));
+    if(!goalRound)assertContextUserEnvelope(request,agents.get(request.sessionId).session,task.humans,task.current_humans);
     // DSH omits the tools field entirely when the agent has no capabilities.
     // Treat that wire representation as the same empty schema bound at creation.
     const requestedTools = request.tools ?? [];

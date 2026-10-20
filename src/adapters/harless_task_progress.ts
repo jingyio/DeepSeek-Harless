@@ -58,7 +58,7 @@ export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = 
   const activities: TaskActivity[] = Array.isArray(saved?.activity) ? saved.activity.slice(-40).map(restored).filter((row): row is TaskActivity => Boolean(row)) : [];
   const messages: TaskMessage[] = Array.isArray(saved?.messages) ? structuredClone(saved.messages) : [];
   const trace: TaskTrace[] = Array.isArray(saved?.trace) ? structuredClone(saved.trace) : [];
-  let todos=projectNativeTodos(null,{type:'todo/write',data:{todos:saved?.todos}});
+  let todos=projectNativeTodos(null,{type:'todo/write',data:{todos:saved?.todos}})?.map(item=>({...item,content:publicText(item.content)}))??null;
   let attempt = Math.max(0,...messages.map(row=>row.attempt)), serial = trace.length;
   let current: TaskMessage | undefined, requestRow: TaskTrace | undefined, thinking: TaskTrace | undefined, messageRow: TaskTrace | undefined, preparationRow: TaskTrace | undefined;
   const tools = new Map<string, { activity: TaskActivity; trace: TaskTrace }>();
@@ -130,6 +130,12 @@ export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = 
         for(const entry of [requestRow,thinking])if(entry?.status==='running')entry.status='failed';
         current=undefined;messageRow=undefined;thinking=undefined;currentText=new Map();
         answer=messages.at(-1)?.text??'';
+      }else if(event?.type==='compaction/start'){
+        row('request','正在整理上下文','running',time);setProgress('正在整理上下文');
+      }else if(event?.type==='compaction/end'){
+        const pending=[...trace].reverse().find(entry=>entry.label==='正在整理上下文'&&entry.status==='running');
+        if(pending)pending.status=event.data?.error?'failed':'completed';
+        setProgress(event.data?.error?'上下文整理未完成，保留原始记录':'上下文已整理，继续处理请求',event.data?.error?'failed':'running');
       }else if(event?.type==='llm/retry'){
         row('request','连接暂时中断，正在等待重试','running',time);setProgress('连接暂时中断，正在等待重试');
       }else if(event?.type==='llm/retry-started'){

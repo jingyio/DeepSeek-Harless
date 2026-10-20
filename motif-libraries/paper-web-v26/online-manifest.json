@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "source_library_digest": "0d8ea2f703b635f808e00b50cc64d429d901049aa752cadc5726498559d63f9c",
+  "artifacts": [
+    {
+      "motif_id": "edge_motif_8f37c5d30132",
+      "certified_digest": "2683e6525ff5c1fbdad660f53ce031b6b5bdd286e6b80b92ee4b68f0ddb4b0aa",
+      "tools": [
+        "mcp__paper_checks__pin_document",
+        "mcp__paper_checks__read_pinned_document"
+      ],
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__paper_checks__pin_document",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__paper_checks__read_pinned_document",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "local_programs": {
+        "mcp__paper_checks__read_pinned_document": {
+          "language": "sss-local-ops-v1",
+          "target_tool": "mcp__paper_checks__read_pinned_document",
+          "steps": [
+            {
+              "op": "copy_verified_field",
+              "from_tool": "mcp__paper_checks__pin_document",
+              "from_field": "source_id",
+              "to_param": "source_id"
+            }
+          ],
+          "program_digest": "a9ba93046b43b86248dd59a98b9cea9f1ee10faad6dd9be15bd1a5af4b5efb22"
+        }
+      },
+      "code_nodes": [],
+      "code_dag": null,
+      "supporting_task_count": 2,
+      "validation_task_fingerprint": "paper-current-doc-table-v1"
+    }
+  ],
+  "contracts": {
+    "mcp__paper_checks__pin_document": {
+      "required_params": [
+        "name",
+        "sha256"
+      ],
+      "output_fields": [
+        "source_id",
+        "name",
+        "version_sha256",
+        "bytes"
+      ],
+      "default_params": {},
+      "description": "Pin any listed upload (PDF, Word, CSV, JSON, TXT etc.) to its exact version. No host paths.",
+      "read_only": true,
+      "observed_anchor": true
+    },
+    "mcp__paper_checks__read_pinned_document": {
+      "required_params": [
+        "source_id"
+      ],
+      "output_fields": [
+        "source_id",
+        "version_sha256"
+      ],
+      "default_params": {
+        "page": 1
+      },
+      "description": "Read one PDF page, a bounded source-text page, or the extracted logical page of Word/table uploads. Follow page_count; no visual review.",
+      "read_only": true
+    }
+  },
+  "slot_rules": {},
+  "version_fields": {
+    "mcp__paper_checks__pin_document": "version_sha256",
+    "mcp__paper_checks__read_pinned_document": "version_sha256"
+  },
+  "manifest_digest": "18a69646917830c3d1206e9bdaa758125939e755f9aa6332ffb3b39b7fa05c83"
+}

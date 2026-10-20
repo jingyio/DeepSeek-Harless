@@ -1,4 +1,7 @@
-# Used only by the bounded semantic mediator. No model-facing tools are loaded.
+# Base for the bounded mediator and trusted File scenario patches. Native file
+# tools stay disabled; web durable File explicitly enables session-only todos
+# and native failed-request recovery in file_scenario.py. Native compaction-basic
+# remains active and uses the same provider/gate as the owning SDK request.
 # Keep the credential provider and DeepSeek adapter from the standard SDK profile.
 - id: tool-bash
   disabled: true

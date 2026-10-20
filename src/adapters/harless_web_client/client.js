@@ -206,7 +206,7 @@ window.__ModuleLoader__.load({
           ...questions.map(row=>h('form',{key:row.id,onSubmit:async event=>{
             event.preventDefault();setSaving(true);setError('');
             try{const response=await fetch('/api/harless/questions',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:session,id:row.id,
-              answers:row.questions.map(q=>({id:q.id,selected:answers[row.id]?.[q.id]?.selected??[],custom:answers[row.id]?.[q.id]?.custom??''}))})});
+              answers:row.questions.map(q=>({id:q.id,selected:answers[row.id]?.[q.id]?.selected??[],...(answers[row.id]?.[q.id]?.custom?.trim()?{custom:answers[row.id][q.id].custom}:{})}))})});
               const value=await response.json();if(!response.ok)throw Error(value.error?.message??'回答未发送');setQuestions(old=>old.filter(q=>q.id!==row.id));
             }catch(error){setError(error.message);}finally{setSaving(false);}
           }},...row.questions.map(q=>h('fieldset',{key:q.id,disabled:saving},h('legend',null,q.question),

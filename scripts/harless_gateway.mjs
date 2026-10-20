@@ -5,10 +5,11 @@ import { randomBytes, createHash, createHmac, timingSafeEqual, scrypt as scryptC
 import { promisify } from 'node:util';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, chmodSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { memberSceneDeployment } from './harless_member_scenes.mjs';
 import { productPersona } from '../src/adapters/harless_product_prompt.ts';
 import {startCommandBroker} from '../src/adapters/geneloop_command_broker.ts';
+import {composeNativeHost} from '../src/adapters/geneloop_native_host.mjs';
 import { createPublicRemoteBridge, forwardPublicRpc, isNativeRpcResponse, REMOTE_MUX_PATH } from './harless_public_transport.mjs';
 
 const scrypt = promisify(scryptCallback);
@@ -125,16 +126,10 @@ export function createGateway(config) {
   // Reject a stale host patch before anybody can register into a backend that
   // cannot start. The patch must be generated from the same source checkout.
   const memberPatchTemplate = config.memberPatch ? (() => {
-    const sourceUri = pathToFileURL(config.sourceDir).href.replace(/\/?$/, '/');
     const patch = config.memberPatch.filter(row => !row.insert ||
       !row.insert.some(item => String(item.name ?? '').includes('dsh_paper_revision_web')))
       .map(row => structuredClone(row));
-    for (const row of patch) if (row.insert) row.insert = row.insert.map(item => {
-      const name = String(item.name);
-      if (name.startsWith('file:') && !name.startsWith(sourceUri)) throw Error('Plugin is outside source directory');
-      return { ...item, name: name.startsWith(sourceUri) ? 'file:///app/src/' + name.slice(sourceUri.length) : name };
-    });
-    return patch;
+    return composeNativeHost(patch,config.sourceDir,{member:true});
   })() : null;
   const taskPrefix = user => sha(user.id).slice(0, 8);
   const delegate = (user, purpose) => createHmac('sha256', config.adminToken ?? 'test-only')

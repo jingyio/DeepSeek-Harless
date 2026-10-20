@@ -35,6 +35,18 @@ test('mounts match Bash and reject foreign session identifiers and linked ancest
 test('native filesystem fails closed on unsupported execution platforms',{skip:process.platform==='linux'},async()=>{
  const f=fixture();try{await assert.rejects(f.fs.resolve('/work/a'),e=>e.code==='FS_SANDBOX_DENIED');}finally{f.clean();}
 });
+test('empty loader config resolves the private policy rather than an unconfined default',async()=>{
+ const f=fixture(),ctx=new Context(),old=process.env.SSS_WEB_POLICY;
+ try{
+  process.env.SSS_WEB_POLICY=join(f.root,'policy.json');writeFileSync(process.env.SSS_WEB_POLICY,JSON.stringify({output:f.root}));
+  ctx.provide('agents',{currentInitiator:()=>({session:{id:session,header:{cwd:'/work'}}})});
+  const fs=new GeneLoopFileSystem(ctx,{});
+  if(process.platform==='linux'){
+   writeFileSync(f.host('/work/inputs/loader.txt'),'loader-policy');
+   assert.equal(await fs.readText(await fs.resolve('/work/inputs/loader.txt')),'loader-policy');
+  }else await assert.rejects(fs.resolve('/work/inputs/loader.txt'),e=>e.code==='FS_SANDBOX_DENIED');
+ }finally{old===undefined?delete process.env.SSS_WEB_POLICY:process.env.SSS_WEB_POLICY=old;f.clean();}
+});
 test('Linux filesystem reads inputs, writes output/code/temp, and preserves native stale/edit semantics',linux,async()=>{
  const f=fixture();try{
   writeFileSync(f.host('/work/inputs/source.txt'),'ORIGINAL\r\n');

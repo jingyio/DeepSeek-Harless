@@ -133,6 +133,15 @@ def prepare_scenario(path: Path, *, case: str = '', session_workspace: str | Non
     if web_deployment:
         from .harless_product_prompt import product_system_prompt
         base += '\n- ' + json.dumps({'id': 'system-prompt', 'config': product_system_prompt()}, ensure_ascii=False) + '\n'
+        if acceptance and acceptance.get('durable_job'):
+            # This host-authored addition cannot be requested in a scenario's
+            # MCP allowlist. Todos only update the session, never managed files.
+            allowed = [*allowed, 'todo_write']
+            base += '\n- id: tool-todo\n  disabled: false\n  config:\n    allowParallelInProgress: true\n'
+            # Retry only a failed model request. The native loop keeps completed
+            # tool results; every HTTP attempt still passes the original gate.
+            base += '\n- id: llm-retry\n  disabled: false\n'
+            base += '\n- id: llm-deepseek\n  config:\n    retryPolicy:\n      mode: normal\n      maxRetries: 5\n      retryableCodes: [EMPTY_RESPONSE, RATE_LIMIT, SERVER, TIMEOUT, TRANSPORT]\n      backoff:\n        initialDelayMs: 500\n        maxDelayMs: 30000\n        jitterRatio: 0.2\n'
     # JSON is valid YAML; environment tags contain quoted JS expressions.
     rendered = base + '\n- ' + json.dumps(insert, ensure_ascii=False, indent=2).replace('\n', '\n  ') + '\n'
     for token, expression in references.items():

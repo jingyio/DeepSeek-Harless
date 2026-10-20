@@ -2,6 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import {getEventListeners} from 'node:events';
+import {snapshotJsonValue} from '@deepseek-ai/dsh-util-values';
 import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
 import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels,WEB_DEEPSEEK_OUTPUT_CAPACITY } from '../src/adapters/harless_reasoning.ts';
 
@@ -87,4 +89,31 @@ test('Unsupported provider effort combinations fail without claiming a fake togg
   assert.equal(webReasoningEffort('harless-glm','off'),undefined);
   for(const provider of ['harless-glm','unknown'])assert.throws(()=>webReasoningEffort(provider,'high'),/reasoning/);
   for(const value of ['on','minimal','medium','xhigh','ultra',null,1])assert.throws(()=>webReasoningEffort('deepseek-official',value),/reasoning/);
+});
+
+test('both transport paths abort promptly without letting Node fetch mutate the native journal cause', {timeout:5000},async()=>{
+ const waiting=[],closed=[];
+ const server=createServer(async(req,res)=>{
+  for await(const _ of req){};
+  const index=closed.length;let close;closed.push(new Promise(resolve=>close=resolve));res.on('close',close);
+  res.writeHead(200,{'Content-Type':'text/event-stream'});res.write(': transport is waiting\n\n');waiting.shift()?.(index);
+ });
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));server.unref();
+ try{
+  const options=resolveAdapterOptions({baseURL:`http://127.0.0.1:${server.address().port}`,reasoningEffort:'off'});
+  const adapter=new WebDeepSeekAdapter({options:()=>options,resolveApiKey:async()=>'synthetic-only',resolveUserId:()=>'cancel-test',prepareExtensions:async()=>({fields:{},accept:async()=>{}})});
+  const prepared=await adapter.prepareCall('deepseek-official','deepseek-flash');
+  for(const stream of [q=>prepared.stream(q),q=>adapter.stream(q)]){
+   const abort=new AbortController(),cause={kind:'user'},before=Object.getOwnPropertyDescriptors(cause);
+   const started=new Promise(resolve=>waiting.push(resolve));
+   const run=(async()=>{for await(const _ of stream({provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off',signal:abort.signal,
+    messages:[{id:'cancel-user',role:'user',content:[{type:'text',text:'Synthetic hanging request'}]}]})){};})();
+   const rejected=assert.rejects(run,/aborted|cancel/i),index=await started;
+   assert.equal(getEventListeners(abort.signal,'abort').length,1);abort.abort(cause);
+   await rejected;await closed[index];
+   assert.deepEqual(Object.getOwnPropertyDescriptors(cause),before,'no hidden stack getter is added to AgentCancelCause');
+   assert.deepEqual(snapshotJsonValue({turn:1,reason:{kind:'aborted',reason:cause}}),{turn:1,reason:{kind:'aborted',reason:{kind:'user'}}});
+   assert.equal(getEventListeners(abort.signal,'abort').length,0,'transport cancellation listener is retired');
+  }
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });

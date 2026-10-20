@@ -70,12 +70,27 @@ export class WebDeepSeekAdapter extends DeepSeekAdapter {
   override async prepareCall(...args: Parameters<DeepSeekAdapter['prepareCall']>) {
     const prepared = await super.prepareCall(...args);
     return { ...prepared, model: productModes(prepared.model, this.configuredModels),
-      stream:(request:Parameters<DeepSeekAdapter['stream']>[0])=>prepared.stream(this.withOutputCapacity(request)) };
+      stream:(request:Parameters<DeepSeekAdapter['stream']>[0])=>this.transportStream(this.withOutputCapacity(request),prepared.stream) };
   }
   private withOutputCapacity(request:Parameters<DeepSeekAdapter['stream']>[0]) {
     const connection=this.connectionOptions();
     return request.maxTokens!==undefined?request:{...request,maxTokens:
       connection.models.find(row=>row.id===request.model)?.maxTokens??connection.maxTokens??WEB_DEEPSEEK_OUTPUT_CAPACITY};
   }
-  override stream(request:Parameters<DeepSeekAdapter['stream']>[0]) {return super.stream(this.withOutputCapacity(request));}
+  private async *transportStream(request:Parameters<DeepSeekAdapter['stream']>[0],
+    stream:(request:Parameters<DeepSeekAdapter['stream']>[0])=>ReturnType<DeepSeekAdapter['stream']>) {
+    if(!request.signal){yield* stream(request);return;}
+    // Node fetch captures a stack on an object passed as AbortSignal.reason.
+    // The native agent's cause is an immutable JSON journal value; exposing
+    // that same object makes turn/end fail lossless-JSON validation on cancel.
+    // Forward cancellation synchronously with a fresh transport-only reason.
+    const transport=new AbortController(),abort=()=>transport.abort(new DOMException('Request cancelled','AbortError'));
+    request.signal.addEventListener('abort',abort,{once:true});
+    if(request.signal.aborted)abort();
+    try{yield* stream({...request,signal:transport.signal});}
+    finally{request.signal.removeEventListener('abort',abort);}
+  }
+  override stream(request:Parameters<DeepSeekAdapter['stream']>[0]) {
+    return this.transportStream(this.withOutputCapacity(request),q=>super.stream(q));
+  }
 }

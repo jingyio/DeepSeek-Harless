@@ -54,7 +54,8 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert rows['ppt']['instructions_sha256']==hashlib.sha256(rows['ppt']['instructions'].encode()).hexdigest()
     assert all('design_skill_sha256' not in rows[key] for key in ['paper-proofreading','research-data-analysis','new-scene'])
     assert 'scenarios/ppt_master/server.py' in json.dumps(rows['ppt']['mcp_rows']).replace('\\\\','/')
-    common = ['web_search', 'web_fetch', 'bash', 'job_list', 'job_output', 'job_kill']
+    common = json.loads((ROOT/'config/geneloop-capabilities.json').read_text(encoding='utf-8'))['tools']
+    assert {'read_image','read','write','edit','glob','grep','ask_user_question','todo_write','skill','present','subagent'} <= set(common)
     assert rows['new-scene']['allowed_tools'] == ['mcp__workspace__list_files', 'mcp__workspace__read_file', *common]
     for scene in rows.values():
         if not scene.get('adapter'): continue

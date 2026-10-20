@@ -47,7 +47,7 @@ export function createInteractionBridge(resolve:(agent:any)=>Owner|undefined){
        a.selected.some((s:any)=>typeof s!=='string'||!(q.options??[]).some((o:any)=>o.label===s))||
        (!q.multiSelect&&a.selected.length>1)||(a.custom!==undefined&&typeof a.custom!=='string')||
        (!a.selected.length&&!a.custom?.trim()))throw failure('答案格式无效',400);
-    ids.add(a.id);normalized.push({id:a.id,selected:[...a.selected],...(a.custom===undefined?{}:{custom:a.custom})});
+    ids.add(a.id);normalized.push({id:a.id,selected:[...a.selected],...(!a.custom?.trim()?{}:{custom:a.custom})});
    }
    row.cleanup();row.settle({answers:normalized});
    return {answered:true};

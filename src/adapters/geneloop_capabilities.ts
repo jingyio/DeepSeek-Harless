@@ -17,6 +17,7 @@ export const commonToolRows = () => [
   { id: 'geneloop-tool-skill', name: '@deepseek-ai/dsh-tool-skill' },
   { id: 'geneloop-tool-present', name: '@deepseek-ai/dsh-tool-present' },
   { id: 'geneloop-tool-subagent',name:'@deepseek-ai/dsh-tool-subagent',config:{provider:'geneloop-task',modelSelectionSettings:false,enableRunInBackground:false,backgroundMode:'one-shot'} },
+  { id:'geneloop-tool-goal',name:'@deepseek-ai/dsh-tool-goal',config:{} },
 ];
 export function sceneCertifiedTools(scene: { common_tools?: string[] }, tools: any[]) {
   const common = new Set(scene.common_tools ?? []);

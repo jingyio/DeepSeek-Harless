@@ -1107,3 +1107,12 @@ TypeScript Runtime 在首次模型请求前验证当前任务ID、输出授权�
 - 局部任务用--evaluation-scope local_retrieval_validation；--no-output将当前scene_options.allow_output=false，不授予报告导出，不改变公共默认，也不把少交付必需报告计作收益。
 
 这不是新增已认证Motif库或跨论文RSI成果。四次真实局部复用命中均为0，费用/路径变化和质量失败分别记录。见[实验](experiments/paper-retrieval-evidence-20261020-v1.md)。
+# 原生能力接入（2026-10-21 候选）
+
+公共能力词表以 `config/geneloop-capabilities.json` 为准，专业MCP认证子集保持独立。文件和命令共享本会话逻辑`/work`；原件位于只读`/work/inputs`，通用交付位于`/work/outputs`。`read_image`返回真实图片附件，文字路径与Bash输出不等同像素观察。
+
+结构化提问通过原生`ask_user_question`发起，网页接口`GET/POST /api/harless/questions`以所属公开对话、真实任务与lane绑定，取消立即退役；答案只有用户提交才生效。`todo_write`沿原生事件投影，`present`复用现有SHA快照交付。Skill仅发布管理员锁校验的批准包，不扫描其他账号或宿主工作目录。
+
+`/compact`处理当前真实上下文，`/plan [off|内容]`选择原生计划协作；目标仅通过`/goal --rounds <正整数> <目标>`显式开始。目标控制及子Agent继承原任务计量，原生Goal mutation RPC不直接开放；没有新增平台费用/请求/输出额度。独立File SDK模式与原任务恢复沿其自身入口，主聊天模式命令不会假成功。
+
+候选配置使用`node scripts/prepare-native-host.mjs --plan ABS --root ABS`预览，核对后`--apply`仅更新隔离候选host组合；正式启停仍统一`npm run service -- ...`。部署和验证状态以[本轮记录](experiments/dsh-native-capabilities-20261021.md)为准，源码存在不等于生产已发布。

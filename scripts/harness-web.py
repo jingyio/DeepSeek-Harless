@@ -205,15 +205,13 @@ def prepare(args, output, endpoint):
         {'insert': [{'id': 'sss-web-policy', 'name': (ROOT / 'src/adapters/dsh_web_policy.ts' if args.frozen else
             ROOT / 'src/adapters/harless_web_client/index.mjs').as_uri()}]}]
     if not args.frozen:
-        patch.extend([
-            {'id':'fs-sandbox', 'name': (ROOT / 'src/adapters/geneloop_fs.ts').as_uri()},
-            {'id':'subprocess', 'name': (ROOT / 'src/adapters/geneloop_fs_search.ts').as_uri()},
-            {'id':'command-compact','disabled':False},
-        ])
         patch.append({'insert': [
             {'id': 'geneloop-shell', 'name': (ROOT / 'src/adapters/geneloop_shell.ts').as_uri()},
-            {'id': 'geneloop-native-work', 'name': (ROOT / 'src/adapters/geneloop_native_work.ts').as_uri()},
             {'id': 'geneloop-web-search', 'name': (ROOT / 'src/adapters/geneloop_web_search.ts').as_uri()}]})
+        composed = subprocess.run(['node', str(ROOT / 'src/adapters/geneloop_native_host.mjs'),
+            '--source-dir', str(ROOT / 'src')], input=json.dumps(patch), text=True,
+            capture_output=True, check=True)
+        patch = json.loads(composed.stdout)
     save(output / 'host.patch.yml', patch)
     (output / 'prompt.md').write_text(prepared['prompt'], encoding='utf-8'); (output / 'prompt.md').chmod(0o600)
     snapshot = {**public, 'host': '127.0.0.1', 'port': args.port,
