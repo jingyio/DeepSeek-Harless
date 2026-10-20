@@ -11,6 +11,8 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.parse
+import urllib.request
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,10 +148,28 @@ def main():
             opener.open((output / 'access-url.txt').read_text().strip()).close()
             session = scenes.settings(opener, base, {'action': 'new_session', 'selection': {
                 'scene': 'paper-proofreading', 'mode': 'baseline', 'rsi': False}})['session_id']
-            draft = web.api(opener, base, {'action': 'preview', 'session_id': session,
-                'request': {'instruction': prompt, 'scene_options': {'allow_output': True}}})
-            draft = web.api(opener, base, {'action': 'upload', 'task_id': draft['task_id'],
-                'name': source.name, 'data': base64.b64encode(source.read_bytes()).decode()})
+            if source.stat().st_size > 256 * 1024:
+                # Reuse Harness authenticated streamed intake rather than the
+                # legacy diagnostic JSON upload's 256 KiB envelope. Preserve
+                # the original file bytes and normal session receipt binding.
+                upload_url = base + '/api/session/uploadFileBinary?' + urllib.parse.urlencode({
+                    'sessionId': session, 'name': source.name})
+                request = urllib.request.Request(upload_url, data=source.read_bytes(),
+                    headers={'Origin': base, 'Content-Type': 'application/octet-stream'})
+                with opener.open(request, timeout=120) as response:
+                    uploaded = json.load(response)
+                if not uploaded.get('ok'):
+                    raise RuntimeError({'native_upload_failed': uploaded.get('error')})
+                (record / 'upload-receipt.json').write_text(json.dumps(uploaded, ensure_ascii=False, indent=2))
+                draft = web.api(opener, base, {'action': 'preview', 'session_id': session,
+                    'request': {'content': [{'type': 'text', 'text': prompt},
+                        {'type': 'file', 'receiptId': uploaded['value']['receiptId']}],
+                        'scene_options': {'allow_output': True}}})
+            else:
+                draft = web.api(opener, base, {'action': 'preview', 'session_id': session,
+                    'request': {'instruction': prompt, 'scene_options': {'allow_output': True}}})
+                draft = web.api(opener, base, {'action': 'upload', 'task_id': draft['task_id'],
+                    'name': source.name, 'data': base64.b64encode(source.read_bytes()).decode()})
             (record / 'task-id.txt').write_text(draft['task_id'])
             if reuse_checkpoint:
                 effective = json.loads((output / 'tasks' / draft['task_id'] / 'effective-config.json').read_text())

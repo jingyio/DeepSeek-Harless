@@ -870,6 +870,8 @@ geneloop-resolve '{"request_id":"当前请求 ID","status":"selected","candidate
 
 ## Negative Motif 实验接口
 
+`learn-negative-motifs.py --recertify-current-constraints --constraint-validator <受信当前文件:函数>` 提供显式跨工具实现的条件再认证。默认编译仍要求旧源码快照与当前实现相同；再认证只保留当前纯校验器通过真实失败/成功对照、修复/重新引入及无关编辑认证的规则，其他规则丢弃，无合格规则则拒绝。新库保存旧事件、源码快照和实现摘要，并锁定当前校验器与Runtime；旧成功不认证新工具的执行、渲染或科研质量。此入口不支持field-profile，不迁移prompt-only或未知原因的早停权限，不替换旧库哈希。当前实际失败、实际提示投递及在线证据守卫继续必需。
+
 Positive Script Motif 负责复用可执行结构；Negative Tool Motif 负责标记有轨迹证据的失败重试。两库可同时装载，不增加模型工具。负面规则只通过当前显式实验 sidecar 启用，默认仅提示：
 
 ```json
@@ -1003,6 +1005,19 @@ TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`�
 成功回执另包含delivery receipt相对路径/摘要和delivery_passed。Runtime读取实际receipt与产物，检查来源、任务、路径、大小及SHA256后交回最终总结。隔离服务对相同当前参数/来源/导出配置/授权的成功输出使用最多32项进程内缓存；每次命中重查真实文件，重启不从磁盘自动加载旧成功。`artifact_reused`只代表复用已验收文件，不代表跳过整个模型请求或科研判断。
 
 真实局部恢复runner可显式启用`--preserve-recovery-structure`，必须同时有`--reuse-checkpoint`。受保护的`review-recovery-scope.json`由当前任务入口写入不可供Bash修改的工作区根，绑定task/source与完整参数；这是当前用户范围的具体化，不由Runtime从历史相似性推断。默认拒绝数组长度/对象结构变化，允许叶子文字修订，需结构重设计时另行明确范围。Runtime在初次候选通知提供有界结构摘要和当前目标引用；仍由模型选择必要操作/patch。子集诊断不再被当成完整交付，结构通过也不保证同形状文字的科学正确性。环境快照新增沙箱开关、字体SHA和结构保留标志。验证与全部失败见[本轮记录](experiments/paper-recovery-evidence-20261020-v1.md)。
+
+
+### 正常报告操作的自动状态接入（2026-10-20，独立实验）
+
+sidecar新增`captureCurrentReport:true`（默认关闭），同时需要`reuseLibrary`及隔离`--report-evidence`。Runtime在实际选择、Schema/契约匹配且当前grant/source有效的报告调用前，写入Bash不可修改的`report-state-policy.json`；报告服务捕获实际参数为当前恢复起点，不依赖runner预置scope。其origin为`observed_current_export_operation_not_semantic_approval`，`coverage_status:not_verified`、`semantic_quality_accepted:false`；不产生自动重试义务，不认证科研判断或源文献覆盖。
+
+原导出输入限制保持不变，违规时返回`report_input_contract`、精确pointer、值摘要及实际界限。格式错误的初稿先采用`preserve_text_during_input_contract_repair`：可重组，但必须保留原段落及重复次数；删除内容返回`recovery_content_preserved`，不能通过摘要规避失败。合法且保留原文的重组转为结构保护起点，并保留前scope摘要和不可重置的`initial_arguments/initial_arguments_sha256`；`current_run_changes`仍以最初实际稿为基准，不因格式恢复成功被重置为0。正常有效初稿直接采用现有结构/叶子修订策略。
+
+启用`repairChoices:true`时，已验证的数组数量错误可提供一次有类型分组选择：`geneloop-reuse '{"repair_choice":{"request_id":"当前ID","status":"regroup","groups":[[0],[1,2]]}}'`。索引须按原顺序覆盖当前全部章节恰好一次，分组数量受当前实际回执约束。Runtime拼接原标题和原段落后经原工具重验；unknown/ambiguous/unneeded不执行。此为当前工具契约的结构交接适配器，不是新挖出的Motif或科研修改规则。`reuse_group_choice_offered/verified`单独记账，不等于完整模型请求skip。
+
+通用引用支持`from:{concat:[{artifact:"当前ID",pointer:"/数组A"},{artifact:"当前ID",pointer:"/数组B"}]}`。仅拼接当前数组，最多32个引用、4096项和256KB；拒绝嵌套concat、非数组、过期/越界引用，保留各依赖守卫，不求值代码。JSON状态仍受1MB读取限制；已批准输入按SessionFiles的20MiB上限校验，避免大PDF静默导致参数采集失败。采集失败新增`reuse_capture_fallback`审计。
+
+本机制只覆盖已登记的原生报告操作，不能从任意Bash程序推断完整草稿或语义目标；新增Negative库仍须重新编译认证，不能替换旧hash绕过实现锁。自动目标的Negative守卫同时核对当前用户消息摘要、当前工具与Schema，用户范围变化后旧目标不能因新回执重新激活。成功交接依据实际文件回执与`current_run_changes`给出本轮修改，不重述旧稿统计；这是提示约束，仍未保证任意自由总结无误。真实恢复、失败与完整任务记录见[自动状态接入实验](experiments/paper-live-state-20261020-v1.md)和[负面库集成验收](experiments/paper-negative-live-integration-20261020-v1.md)。
 
 
 

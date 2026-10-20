@@ -94,3 +94,107 @@ def test_natural_length_contract_removes_only_the_benchmark_page_cap(tmp_path):
     assert not explicit['checks']['page_constraint_satisfied']
     assert module.rendering_config()['auto_page_limit'] is None
     assert explicit['quality_passed'] is False
+
+
+def test_input_contract_failures_return_exact_fields_without_losing_report(tmp_path):
+    root,versions,args=setup(tmp_path)
+    args['sections']=[{'heading':f'Part {i}','paragraphs':[f'Unique evidence {i}']} for i in range(13)]
+    failure=module.SessionReport(SessionFiles(root),'paper-review').export(**args)
+    assert failure['exported'] is False and failure['failed_checks']==['report_input_contract']
+    issue=failure['argument_issues'][0]
+    assert issue['pointer']=='/sections' and issue['max_items']==12
+    assert issue['value_sha256']==module.digest(args['sections'])
+    assert not (tmp_path/'outputs').exists()
+
+
+def test_live_capture_binds_actual_valid_operation_and_rejects_later_subset(tmp_path):
+    root,versions,args=setup(tmp_path)
+    args['sections']=[{'heading':'Complete records','paragraphs':['Record one','Record two']}]
+    policy={'version':1,'kind':'capture_current_report_policy','task_id':'current',
+        'source_versions':versions,'tool':'mcp__paper_checks__export_review_report',
+        'schema_sha256':'a'*64,'user_envelope_sha256':'b'*64}
+    (tmp_path/'report-state-policy.json').write_text(json.dumps(policy))
+    report=module.SessionReport(SessionFiles(root),'paper-review')
+    report.capture_current(args,report.context(args))
+    path=tmp_path/'review-recovery-scope.json';raw=path.read_bytes();goal=json.loads(raw)
+    assert goal['arguments']==args and goal['coverage_status']=='not_verified'
+    assert goal['semantic_quality_accepted'] is False
+    assert goal['origin']=='observed_current_export_operation_not_semantic_approval'
+    assert not goal.get('execution_obligation')
+    subset={**args,'sections':[{'heading':'Summary','paragraphs':['Record one']} ]}
+    failure=report.export(**subset)
+    assert failure['failed_checks']==['recovery_structure_preserved']
+    assert path.read_bytes()==raw
+    assert module.structure_issues(goal['arguments'],{**args,'title':'Necessary correction'})==[]
+
+
+def test_live_capture_requires_current_task_and_never_replaces_prior_scope(tmp_path):
+    root,versions,args=setup(tmp_path)
+    policy={'version':1,'kind':'capture_current_report_policy','task_id':'foreign','source_versions':versions}
+    (tmp_path/'report-state-policy.json').write_text(json.dumps(policy))
+    report=module.SessionReport(SessionFiles(root),'paper-review')
+    with pytest.raises(ValueError,match='not_authorized'):report.capture_current(args,report.context(args))
+    assert not (tmp_path/'review-recovery-scope.json').exists()
+
+
+def test_automatic_input_recovery_rejects_lost_text_then_accepts_lossless_regrouping(tmp_path):
+    root,versions,args=setup(tmp_path)
+    args['sections']=[{'heading':f'Part {i}','paragraphs':[f'Original unique record {i}']} for i in range(13)]
+    policy={'version':1,'kind':'capture_current_report_policy','task_id':'current','source_versions':versions,'tool':'mcp__paper_checks__export_review_report','schema_sha256':'a'*64,'user_envelope_sha256':'b'*64}
+    (tmp_path/'report-state-policy.json').write_text(json.dumps(policy))
+    report=module.SessionReport(SessionFiles(root),'paper-review');first=report.export(**args)
+    assert first['failed_checks']==['report_input_contract']
+    scope=json.loads((tmp_path/'review-recovery-scope.json').read_text());assert scope['arguments']==args
+    lossy={**args,'sections':args['sections'][:12]}
+    failure=report.export(**lossy)
+    assert failure['failed_checks']==['recovery_content_preserved']
+    assert failure['argument_issues'][0]['missing_paragraphs']==1
+    import copy
+    corrected=copy.deepcopy(lossy);corrected['sections'][-1]['paragraphs']+=args['sections'][-1]['paragraphs']
+    assert report.preserved_input_text(corrected,report.context(corrected)) is None
+    final=json.loads((tmp_path/'review-recovery-scope.json').read_text())
+    assert final['arguments']==corrected and final['policy']=='preserve_structure_allow_semantic_leaf_revisions'
+    assert final['semantic_quality_accepted'] is False
+    assert final['initial_arguments']==args and final['initial_arguments_sha256']==module.digest(args)
+
+
+@pytest.mark.parametrize('windows',[True] if module.sys.platform=='win32' else [False,True])
+def test_scope_publication_keeps_readonly_and_replaces_without_deleting_current_file(tmp_path,monkeypatch,windows):
+    import stat
+    target=tmp_path/'review-recovery-scope.json';old=b'previous protected scope';target.write_bytes(old);target.chmod(0o400)
+    replace=module.os.replace;calls=[]
+    def checked(source,destination):
+        assert destination.read_bytes()==old  # No unlink-before-replace window.
+        if windows:
+            assert destination.stat().st_mode&stat.S_IWRITE
+            assert source.stat().st_mode&stat.S_IWRITE
+        calls.append(1);return replace(source,destination)
+    monkeypatch.setattr(module.os,'replace',checked)
+    # Windows' native branch is already checked by the integration test above;
+    # POSIX can exercise both contracts without changing os.name/sys.platform.
+    module._replace_recovery_scope(tmp_path,b'current protected scope',hashlib.sha256(old).hexdigest(),windows=windows)
+    assert calls==[1] and target.read_bytes()==b'current protected scope'
+    assert not target.stat().st_mode&stat.S_IWRITE
+    assert not list(tmp_path.glob('report-scope-*.tmp'))
+
+
+def test_failed_windows_scope_replacement_preserves_old_version_protection_and_cleans_temporary(tmp_path,monkeypatch):
+    import stat
+    target=tmp_path/'review-recovery-scope.json';old=b'unchanged scope';target.write_bytes(old);target.chmod(0o400)
+    def refuse(*args):raise PermissionError('simulated replacement refused')
+    monkeypatch.setattr(module.os,'replace',refuse)
+    with pytest.raises(PermissionError,match='simulated replacement refused'):
+        module._replace_recovery_scope(tmp_path,b'new scope',hashlib.sha256(old).hexdigest(),windows=True)
+    assert target.read_bytes()==old and not target.stat().st_mode&stat.S_IWRITE
+    assert not list(tmp_path.glob('report-scope-*.tmp'))
+
+
+def test_windows_scope_replacement_rejects_stale_evidence_before_changing_target(tmp_path,monkeypatch):
+    import stat
+    target=tmp_path/'review-recovery-scope.json';target.write_bytes(b'newer current version');target.chmod(0o400)
+    def forbidden(*args):pytest.fail('stale scope must not be replaced')
+    monkeypatch.setattr(module.os,'replace',forbidden)
+    with pytest.raises(ValueError,match='current_recovery_scope_changed'):
+        module._replace_recovery_scope(tmp_path,b'stale candidate','0'*64,windows=True)
+    assert target.read_bytes()==b'newer current version' and not target.stat().st_mode&stat.S_IWRITE
+    assert not list(tmp_path.glob('report-scope-*.tmp'))

@@ -9,6 +9,7 @@ import hashlib
 import re
 import json
 import os
+import sys
 from collections import OrderedDict
 from importlib.metadata import version
 from contextvars import ContextVar
@@ -86,6 +87,34 @@ def fixed_bytes(root, relative, limit=32*1024*1024):
         raise ValueError('export_evidence_file_not_fixed')
     return path.read_bytes()
 
+def _replace_recovery_scope(work, raw, expected_sha256, *, windows=sys.platform=='win32'):
+    """Publish only over the verified current scope, preserving its protection.
+
+    Windows denies replacing a read-only destination (and deleting a read-only
+    temporary). Only the trusted service can access these scope files; Bash's
+    mount excludes them. Clear that attribute just for the checked replacement,
+    then restore it on both success and failure. No delete-before-rename gap.
+    """
+    name='review-recovery-scope.json';target=work/name
+    temporary=work/('report-scope-'+os.urandom(12).hex()+'.tmp')
+    writable=False
+    try:
+        with temporary.open('xb') as stream:
+            os.chmod(stream.name,0o600 if windows else 0o400);stream.write(raw)
+        if hashlib.sha256(fixed_bytes(work,name)).hexdigest()!=expected_sha256:
+            raise ValueError('current_recovery_scope_changed')
+        if windows:
+            os.chmod(target,0o600);writable=True
+            if hashlib.sha256(fixed_bytes(work,name)).hexdigest()!=expected_sha256:
+                raise ValueError('current_recovery_scope_changed')
+        os.replace(temporary,target)
+    finally:
+        try:
+            if writable:os.chmod(target,0o400)
+        finally:
+            if temporary.exists():
+                os.chmod(temporary,0o600);temporary.unlink()
+
 def rendering_config():
     # Hash the actual configured fonts and implementation, not only a preset ID.
     import reportlab
@@ -123,6 +152,88 @@ def structure_issues(expected,actual,path=''):
     return []
 
 class SessionReport(base.SessionReport):
+    def input_issues(self,args):
+        """Expose the existing report input contract instead of MCP's opaque error.
+
+        These bounds mirror SessionReport.export; no constraint is relaxed and
+        this is neither a scientific validator nor a learned error cause.
+        """
+        issues=[]
+        if not isinstance(args['title'],str) or not 1<=len(args['title'].strip())<=160:
+            issues.append({'pointer':'/title','requirement':'nonempty_string','max_characters':160})
+        sections=args['sections']
+        if not isinstance(sections,list) or not 1<=len(sections)<=12:
+            issues.append({'pointer':'/sections','requirement':'array_length','min_items':1,'max_items':12})
+        if isinstance(sections,list):
+            for i,s in enumerate(sections):
+                if not isinstance(s,dict) or set(s)!={'heading','paragraphs'}:
+                    issues.append({'pointer':f'/sections/{i}','requirement':'exact_fields','fields':['heading','paragraphs']});continue
+                if not isinstance(s['heading'],str) or not s['heading'].strip():
+                    issues.append({'pointer':f'/sections/{i}/heading','requirement':'nonempty_string'})
+                if not isinstance(s['paragraphs'],list) or not s['paragraphs'] or any(not isinstance(p,str) or not p.strip() for p in s['paragraphs']):
+                    issues.append({'pointer':f'/sections/{i}/paragraphs','requirement':'nonempty_array_of_nonempty_strings'})
+        return issues[:32]
+
+    def capture_current(self,args,context,issues=()):
+        policy_path=self.work/'report-state-policy.json'
+        if not policy_path.exists():return
+        policy_raw=fixed_bytes(self.work,'report-state-policy.json',256*1024)
+        policy=json.loads(policy_raw)
+        if policy.get('kind')!='capture_current_report_policy' or policy.get('version')!=1 or not context['task_id'] or policy.get('task_id')!=context['task_id'] or policy.get('source_versions')!=context['source_versions'] or args['source_versions']!=context['source_versions']:
+            raise ValueError('current_report_capture_not_authorized')
+        scope={'version':1,'kind':'current_review_recovery_scope','task_id':context['task_id'],
+               'source_versions':context['source_versions'],'arguments':args,
+               'policy':'preserve_text_during_input_contract_repair' if issues else 'preserve_structure_allow_semantic_leaf_revisions',
+               'origin':'observed_current_export_operation_not_semantic_approval',
+               'capture':{'tool':policy['tool'],'schema_sha256':policy['schema_sha256'],
+                          'arguments_sha256':digest(args),'policy_sha256':hashlib.sha256(policy_raw).hexdigest(),
+                          'user_envelope_sha256':policy['user_envelope_sha256']},
+               'coverage_status':'not_verified','semantic_quality_accepted':False}
+        if issues:scope['input_contract_issues']=issues
+        raw=json.dumps(scope,ensure_ascii=False,sort_keys=True).encode()
+        if len(raw)>256000:raise ValueError('current_report_capture_too_large')
+        try:
+            with (self.work/'review-recovery-scope.json').open('xb') as stream:
+                os.chmod(stream.name,0o400);stream.write(raw)
+        except FileExistsError:
+            pass  # Never replace an existing protected task/recovery scope.
+
+    def preserved_input_text(self,args,context):
+        if context['recovery_scope_sha256'] is None:return None
+        scope=json.loads(fixed_bytes(self.work,'review-recovery-scope.json'))
+        if scope.get('policy')!='preserve_text_during_input_contract_repair':return None
+        if scope.get('origin')!='observed_current_export_operation_not_semantic_approval' or scope.get('task_id')!=context['task_id'] or scope.get('source_versions')!=context['source_versions'] or scope.get('capture',{}).get('arguments_sha256')!=digest(scope.get('arguments')):
+            raise ValueError('current_recovery_scope_invalid')
+        from collections import Counter
+        # Input-contract recovery is structural only. Scientific rewriting stays
+        # outside this path; require all earlier text, including multiplicity.
+        def paragraphs(sections):
+            for section in sections:
+                if not isinstance(section,dict):continue
+                values=section.get('paragraphs',[])
+                if isinstance(values,str):values=[values]
+                if isinstance(values,list):
+                    yield from (p for p in values if isinstance(p,str) and p.strip())
+        texts=Counter(paragraphs(scope['arguments']['sections']))
+        current='\n'.join(p for s in args['sections'] for p in s['paragraphs'])
+        missing=[{'original_sha256':hashlib.sha256(p.encode()).hexdigest(),'characters':len(p),'required_occurrences':count} for p,count in texts.items() if current.count(p)<count]
+        if missing:
+            return {'exported':False,'failed_checks':['recovery_content_preserved'],
+                    'execution_evidence':{'version':1,'kind':'review_execution_evidence',**context},
+                    'argument_issues':[{'pointer':'/sections','check':'recovery_content_preserved','hash_kind':'json','value_sha256':digest(args['sections']),'missing_paragraphs':len(missing)}],
+                    'content_issues':missing[:32],
+                    'next_step':'The input-format repair removed existing report text. Preserve every original paragraph: regroup by concatenating captured paragraph arrays and only then remove the old grouping. Do not delete references, sources or conclusions. This is not a scientific judgment.'}
+        # A valid regrouping becomes the next recovery boundary, without
+        # certifying the draft's scientific facts or source completeness.
+        scope.setdefault('initial_arguments',scope['arguments'])
+        scope.setdefault('initial_arguments_sha256',digest(scope['initial_arguments']))
+        scope.update(arguments=args,policy='preserve_structure_allow_semantic_leaf_revisions',previous_scope_sha256=context['recovery_scope_sha256'])
+        scope['capture']['arguments_sha256']=digest(args)
+        scope.pop('input_contract_issues',None)
+        raw=json.dumps(scope,ensure_ascii=False,sort_keys=True).encode()
+        _replace_recovery_scope(self.work,raw,context['recovery_scope_sha256'])
+        return None
+
     def context(self,args):
         sources={r['name']:r['sha256'] for r in self.files.list_files()['files']}
         grant_path=self.work/'paper-output-grant.json'
@@ -153,6 +264,18 @@ class SessionReport(base.SessionReport):
 
     def export(self,title,sections,source_versions):
         args={'title':title,'sections':sections,'source_versions':source_versions}
+        context=self.context(args)
+        issues=self.input_issues(args)
+        if context['source_versions']==source_versions:
+            self.capture_current(args,context,issues)
+            context=self.context(args)
+        if issues:
+            return {'exported':False,'failed_checks':['report_input_contract'],
+                    'execution_evidence':{'version':1,'kind':'review_execution_evidence',**context},
+                    'argument_issues':[dict(i,check='report_input_contract',hash_kind='json',value_sha256=digest(_project(args,i['pointer']))) for i in issues],
+                    'next_step':'Repair only these input-contract fields using the captured current arguments. When regrouping sections, preserve every substantive paragraph using artifact references; do not rewrite the report or replace it with a summary. This check does not establish scientific correctness.'}
+        preservation_failure=self.preserved_input_text(args,context)
+        if preservation_failure:return preservation_failure
         context=self.context(args)
         if context['recovery_scope_sha256'] is not None:
             scope=json.loads(fixed_bytes(self.work,'review-recovery-scope.json'))

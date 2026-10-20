@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.adapters.script_negative_compiler import collect_negative, compile_negative, RUNTIME_FILES, sha, digest
 from src.adapters.negative_field_compiler import certify_field_guard, UnsupportedGuard
-from src.adapters.negative_constraint_compiler import constraint_observations, certify_current_constraint
+from src.adapters.negative_constraint_compiler import constraint_observations, certify_current_constraint, recertify_current_constraints
 
 
 def main():
@@ -19,7 +19,11 @@ def main():
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--field-profile', type=Path, help='显式受信、只读校验器与私有状态/对照；不执行模型提供的代码')
     p.add_argument('--constraint-validator',help='经审阅的纯当前目标结构校验器：相对文件:函数；只在真实回执与双向认证一致时编译')
+    p.add_argument('--recertify-current-constraints', action='store_true',
+                   help='显式跨实现重新认证：只保留当前纯校验器双向认证通过的条件规则；不迁移旧工具执行认证或prompt-only规则')
     a = p.parse_args()
+    if a.recertify_current_constraints and (not a.constraint_validator or a.field_profile):
+        p.error('重新认证仅支持显式--constraint-validator，不支持field-profile')
     locks = {}
     for name in a.implementation_file:
         path = ROOT / name
@@ -27,14 +31,19 @@ def main():
             raise ValueError('relative_implementation_file_required')
         locks[name] = sha(path.read_bytes())
     rows = []
+    historical_sources = []
     for task in a.task:
         task = task.resolve(strict=True)
         if not task.is_relative_to(ROOT / '.local'): raise ValueError('private_trace_required')
         run = task.parent.parent.name
-        snapshot = json.loads((ROOT / '.local/script-motif-experiments' / run / 'source-snapshot.json').read_text())
-        if any(snapshot.get(k) != v for k, v in locks.items()):
+        snapshot_raw = (ROOT / '.local/script-motif-experiments' / run / 'source-snapshot.json').read_bytes()
+        snapshot = json.loads(snapshot_raw)
+        historical_locks = {k: snapshot[k] for k in locks}
+        if not a.recertify_current_constraints and historical_locks != locks:
             raise ValueError('historical_tool_implementation_changed')
         rows.extend(collect_negative(task))
+        historical_sources.append({'task_id': task.name, 'events_sha256': sha((task / 'events.jsonl').read_bytes()),
+                                   'source_snapshot_sha256': sha(snapshot_raw), 'implementation_locks': historical_locks})
     library = compile_negative(rows, locks, {k: sha((ROOT / k).read_bytes()) for k in RUNTIME_FILES})
     field_report = []
     if a.field_profile:
@@ -71,7 +80,9 @@ def main():
         spec=importlib.util.spec_from_file_location('negative_current_constraint',ROOT/name)
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);validator=getattr(module,function_name)
         observations=[r for task in a.task for r in constraint_observations(task)]
-        for rule in library['rules']:
+        if a.recertify_current_constraints:
+            library = recertify_current_constraints(library, observations, validator, a.constraint_validator, historical_sources)
+        for rule in ([] if a.recertify_current_constraints else library['rules']):
             if rule.get('failure_source')!='failed_checks':continue
             try:
                 guard=certify_current_constraint(rule,observations,validator)
