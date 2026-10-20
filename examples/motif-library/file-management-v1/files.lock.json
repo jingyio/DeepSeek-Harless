@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "sha256": {
+    "README.md": "0ce0d5e16631e3c2d4de8076c077697356854647d9bc1920ed09384e7ec86158",
+    "authorized-plan-v1/policy.json": "0292b804e0b6580998ea6d5045e0e1bff515a2a44cff6fbff2aad7706ea4d76b",
+    "catalog.json": "f10c3a221aeb27f6846f35c4a6d2dcae07ba5a4da092cca92b29684fd0fda262",
+    "collection-reentry-v2/policy.json": "2d16def48df2f5e1fa9847faf57c42dddcf2491a03b9dcba95c35e67558add72",
+    "collection-v1/policy.json": "70618f010536916d9502bfb33227d941550da5f0757a9f58277dc82c44cc223a",
+    "read-edge-v1/dereference-manifest.json": "a53e461cecc7659e711b1d8bb98adc2f036020f0213f0103a3801b51e12f0917",
+    "read-edge-v1/library.json": "bdbda1465589ebdbe1d145e97e1877a7dbdd40667d23aad4d90173237bf7679f",
+    "read-edge-v1/online-manifest.json": "07e214270f6df646fa903a4fe346b8222d04ad5870b707f21c20f7e240f683e1",
+    "report-quality-v1/L1/policy.json": "eda65ae8d79a79f64d74d8208eaeafa3e4f82e5b1f92c3a5776180214a8b7373",
+    "report-quality-v1/L2/policy.json": "3c3f41a3fd74f29a48aa0ebc447137c0897f456e0b0f7dced03e1dfb61fdfc15",
+    "workflow-v1/candidate-lock.json": "98e9b93b250f8393cf7f5b03cf4486740bd503d9dc8bbedf3ecea0213c911b74",
+    "workflow-v1/library-lock.json": "e4a3024af7d92bbff1cb8aac652b9d3874b5621ed2d1c6ccdb66df17cf205a17",
+    "workflow-v1/recovery15/plan-policy.json": "a27ffa78d2603dd36d1e7991f41ca314eb24c481449b48e1802a86e1dc80ff7c",
+    "workflow-v1/result.json": "9f863323787ef07721e8c81d2c2faa0bf1b5f6ee3e653c41210b583e79cb3d68",
+    "workflow-v1/workflow14/collection-policy.json": "26edb011f176bf519edbece0571de5d05a1000675a34d98a9804ce6660f2ead0",
+    "workflow-v1/workflow14/edge-library.json": "3845f95242b68f02084f144f493109b85a48714fcd44df50dfba43183df07ae9",
+    "workflow-v1/workflow14/online-manifest.json": "314939a4d11ae4dd31536f575eda42ad971415c8a7de10dd49ddef1ec63eeab4"
+  }
+}

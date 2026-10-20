@@ -1,14 +1,18 @@
 # 论文校对当前交接
 
-- 更新时间与交接人：2026-10-17，Codex。
-- 目标与本次范围：复用已有 `/paper`、原生任务轨迹、Python 编译器及 Shared RSI Runtime，自动连接“任务完成→编译认证→私有版本→下一任务”。不增加 Agent 循环、认证管理或第二套轨迹存储。
-- 分支 / commit / 工作区：`codex/web-paper-auto-learning`，基于 main `547be11`；实现 `17b852a` 已推送，[PR #61](https://github.com/jingyio/DeepSeek-Harless/pull/61) 待审、未合并，GitHub Ubuntu/Windows CI 运行中。用户桌面协作者分支未改，生产服务未动。
-- 已完成：`dsh_web_tasks.ts` 完成通知/冻结版本，`harless_paper_learning.ts` 后台协调与版本准入，`learn-web-paper-tasks.py` 重用已有编译器；`web_task_budget.py` 只投影当前路由的结算回执，不重置累计用量。任务事件起点排除历史对话；不可变 round、固定留出、去重和失败状态按现有隔离目录保存。其他场景自动学习不在范围。
-- 已完成：保留 main 四档思考、六项通用能力、24 个论文工具、三模式与 RSI Off。Paper v3 / PPT r10 免费重编原证据兼容当前锁；原 v2/r9、历史 Paper Shadow 库和所有私人材料保留。修复已有“不生成 PDF”否定识别与 Prompt 冲突、后台写日志关闭异常。
-- 已验证：最终 V100 全量 `npm test` Python 1,032/Node 797 通过，Node 3 跳过。两个真实成员 bubblewrap、10 草稿跨用户拒绝及各自私有学习编译/加载通过（合成事件、零模型）。`smoke`、`motif:check`、`web:controls:check`、`web:scenes:check` 均通过，后者含 30 种选择组合与 28 项有效冻结预览。
-- 实验结论：[自动学习验收](../experiments/web-paper-auto-learning-20261017-v1.md)。真实论文原书目四份摘录，三次 Baseline 后自动发布，后续 Execute 冻结 round-0001、1 次验证跳过、0 工具错误。首轮两个导出错误完整保留；两轮共 55 请求/$0.051121236 代理估费。质量未独立审阅，不能宣称完整论文或持续降本通过。
-- 配置与数据：Registry `config/harless-scenes.json`；静态 `HARLESS_PAPER_RUNTIME_BUNDLE`、历史排版 `HARLESS_PAPER_RENDERER_ROOT` 沿用。实际候选在 V100 `.local/integration/web-paper-auto-learning-20261017`，原题/结果 `.local/auto-paper-real-20261017{,-v2}`；材料、密钥、原始事件不入 Git。私有版本位于本账号当前运行 `output/learning/<user+scope hash>/round-NNNN`。
-- 未完成与阻塞：仅支持固定来源后默认第一页读取，重复问题/源任务不计独立证据，至少两训练/一留出；生成新版本不代表覆盖增长或降本。换新运行目录不迁移旧私有版本，其他场景没有自动学习；前端新增状态面板未做。正式共享预算服务需同步回执接口，本次没有重启。
-- 接手下一步：1）审阅 PR 与双平台 CI；2）如批准部署，同步代码/回执接口和 owner/member 配置，保护原账本与用户文件；3）小流量真实业务记录新任务/覆盖/费用及失败，不扩大到任意脚本执行。
-- 权限与预算：沿用真实论文实验持续无限额授权，仍逐请求记账；不扩大外部写、私人原件或投稿权限。新 PR 目前无生产部署/合并动作。
-- 回退与风险：回退本分支代码和 Registry 至 `547be11`；保留所有私有 round、任务、费用及失败证据。原库旧代码锁会随代码变化拒绝，不能只改哈希假认证；按现有真实证据重新编译或回退匹配代码。
+- 更新时间与交接人：2026-10-20，Codex。
+- 目标与范围：解释有提示/早停仍昂贵的成因，修复不当分页约束、缺少字段读取与修复控制交接、总结比较基准。只改独立实验，不扩其他场景。
+- 分支/提交：`codex/paper-negative-recovery`，基于 main `4b7a215`，前轮 `79f165a`，实现92bf8e2已推送，[PR95](https://github.com/jingyio/GeneLoop/pull/95)已创建供审阅；本次仅补交接状态，最新文档提交以Git历史为准。未合并、未部署；原脏工作区及生产默认库未动。
+- 已完成：`evidence_report.py`在隔离引擎中执行自然页长契约，保留显式max/exact及其他硬检查，共享基准引擎原样。`reuse_mediation.ts`新增只读inspect、有类型repair_choice与本轮起点diff；`script_motif_web.ts`显式repairChoices开关和工具守卫拒绝传递。
+- 执行边界：只有认证结构规则、当前失败回执、完整目标/来源/grant/schema绑定齐备，才提供完整字段证据并请求restore或unknown。模型选择后经nonce回执再执行缓存复制；未知/证据大/非法选择有界回退。保留其他当前字段，不由Runtime创造语义目标或科研结论；无新增模型工具。
+- 已验证：定向Node60通过；最终npm test Python1301/Node1163通过，213/5跳过；无模型smoke（18题/83来源）与motif:check通过。先前16个库锁失败已通过撤回共享引擎修改解决，46项相关检查通过；一次HTTP超时单测复核及后续全量通过。新增协议局部失败/路径笔误全部保留，PR95的Ubuntu/Windows CI已触发，终态尚未确认，以PR检查为准。
+- 真实证据：同一7页PDF只有旧6页限制失败，其他10项通过；自然页长全部通过，最终隔离实现的7页渲染与已逐页检查图片逐像素一致。page普通27请求/$0.039288828，Runtime1/$0.006181584，后者参数未改但总结曾混淆历史修订，不能认定全任务质量合格。
+- 结构恢复：开放路径7/18请求，负面提示路径5/29请求，后者仍改写逐条表。类型化006/007/008均2请求，分别约$0.010407288/$0.011252520/$0.010232388。三次均精确等于当前失败参数加所选批准字段，其余字段/逐条表不变、成功后无工具调用。008最终说明正确列出本轮3个实际字段；006/007旧总结错误保留。均为同论文历史恢复，不是独立新论文/科研盲评或普遍稳定净降本。
+- 实验记录：[本轮成因、全部费用和失败](../experiments/paper-recovery-page-policy-20261020-v1.md)。首次确认真正从长脚本生成转为一次有限选择后连续执行；传统verified-skips仍0，不能把局部早停或每个合成原生步数直接算请求节省。
+- 配置与数据：`.local/paper-recovery-page-policy-20261020-v1/`含授权、逐运行配置/日志/native/quality/breakdown/aggregate、choice-verification及replay-final/visual-equivalence。最终execute-final.json指向native-final、negative-choices；repairChoices:true。旧库实现锁失效后用新真实002/003重新认证，一条结构规则/3失败见证，无模型编译、无embedding。
+- 最短复现：沿用实验统一runner，实际source/prompt/checkpoint/原scope，execute+report-evidence+preserve-recovery-structure+resume-current-operation，显式私有sidecar及已核验字体。代码锁变化须重编新库，不能修改旧见证/hash。任务当前目标仍来自显式恢复状态，不是历史相似性推断。
+- 权限与预算：本地DeepSeek Flash、reasoning off、输出32768，请求/费用不限、reset_history:false。本轮9完成运行93请求/$0.169047900代理估费，另1次preview400未进入模型阶段；累计5178/$8.870557344，旧pending3、V100/账单待核，无新增pending。学习轨迹25请求/$0.041581476已计入。所有真实任务已结束；无需部署或重启正式服务。
+- 接手下一步：1）用独立恢复留出验证restore/unknown/ambiguous、新证据和语义冲突，继续核对实际费用、字段保留及最终说明。2）对报告历史处理说明和科研判断进行质量验收，不能用字段不变或导出通过代替。3）审阅PR95及CI，完整质量与收益稳定后再评估合入/生产兼容认证，之后才考虑全论文自动目标数据流与其他场景；不绕过现有公共库锁。
+- 回退与风险：关闭repairChoices回开放修复，禁用实验sidecar/report-evidence回原路径；保留全部原始日志/账本/旧库，不改变私人原件、生产服务或外部应用。
+
+前轮：[失败接入](../experiments/paper-negative-recovery-20261020-v1.md)、[显式当前操作接管](../experiments/paper-recovery-control-20261020-v2.md)。

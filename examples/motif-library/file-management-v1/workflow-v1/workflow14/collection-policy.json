@@ -1,0 +1,813 @@
+{
+  "schema_version": 1,
+  "format": "sss-collection-read-v1",
+  "artifact": {
+    "schema_version": 1,
+    "kind": "selected_collection_read_graph",
+    "status": "trace_validated_read_only",
+    "motif_id": "collection_5dde13a0a9fc06d9",
+    "tools": [
+      "mcp__file_management__select_files",
+      "mcp__file_management__pin_file",
+      "mcp__file_management__read_file",
+      "mcp__file_management__collect_reads"
+    ],
+    "transfer_evidence": [
+      {
+        "from_tool": "mcp__file_management__select_files",
+        "from_field": "files[].file_id",
+        "to_tool": "mcp__file_management__pin_file",
+        "to_param": "file_id",
+        "mapping": "foreach_all_selected"
+      },
+      {
+        "from_tool": "mcp__file_management__pin_file",
+        "from_field": "source_id",
+        "to_tool": "mcp__file_management__read_file",
+        "to_param": "source_id",
+        "mapping": "same_iteration"
+      },
+      {
+        "from_tool": "mcp__file_management__read_file",
+        "from_field": "source_id",
+        "to_tool": "mcp__file_management__collect_reads",
+        "to_param": "source_ids",
+        "mapping": "gather_complete"
+      },
+      {
+        "from_tool": "mcp__file_management__select_files",
+        "from_field": "collection_id",
+        "to_tool": "mcp__file_management__collect_reads",
+        "to_param": "collection_id",
+        "mapping": "same_collection"
+      }
+    ],
+    "source_trace_ids": [
+      "9911f7ef3c5143488d2053252a41b1f8",
+      "80ee45e29b804298ad26c79bd79580ac"
+    ],
+    "source_task_fingerprints": [
+      "fa245010ed6a167841275b381e8ad5a5179d8121453dd807d318e40c6a7e6808",
+      "48c2bf27ea44a2b4206291dc2118e151d5bad93f187e4b5fc52dea9ba146bc15"
+    ],
+    "contract_signature": "ea95b46159a99c805a6c01a3b28e1dc8e1528e4436e7b982e5f5ecdb3a23914b",
+    "tool_schema_sha256": {
+      "mcp__file_management__select_files": "362b46412ac7564a67f3374e25268bb8d7b0b1bf71800d384dc6171a9abcafd2",
+      "mcp__file_management__pin_file": "bd178fe0ebd7f0a44468f958d22c40aae962e8aece96ebbf3e8c672dce3d0c5b",
+      "mcp__file_management__read_file": "8c07448035da8a86b7b8f8ff988c79dff50e27a305a936bda6a26998d3a81fe4",
+      "mcp__file_management__collect_reads": "ea70cf58eb85efd1f20f79281a23686cbc27ea67406e741c19bd593132f076d5"
+    },
+    "graph": {
+      "source_tool": "mcp__file_management__select_files",
+      "pin_tool": "mcp__file_management__pin_file",
+      "read_tool": "mcp__file_management__read_file",
+      "gather_tool": "mcp__file_management__collect_reads",
+      "selection": "actual_model_selected_members",
+      "array_field": "files",
+      "identity_field": "file_id",
+      "pin_param": "file_id",
+      "read_param": "source_id",
+      "gather_param": "source_ids",
+      "max_targets": 32,
+      "max_batch": 8,
+      "stop": "semantic_handoff_after_complete_gather"
+    },
+    "training_witnesses": [
+      {
+        "kind": "model_selected_collection_witness",
+        "trace_id": "9911f7ef3c5143488d2053252a41b1f8",
+        "task_fingerprint": "fa245010ed6a167841275b381e8ad5a5179d8121453dd807d318e40c6a7e6808",
+        "target_count": 7,
+        "input_version": "0e0b0ba21f73f6a7fc7b01057f9a5d69a58616f4e691e1566e6718c949b97609",
+        "selected_ids_sha256": "a7110ad62eb9e190b0e3076fc81e8b0ff265383090cdc8b9dd039786d0fa317e",
+        "references": [
+          {
+            "call_id": "call_00_N87WI7z5i3H4oCR997V55676",
+            "tool": "mcp__file_management__select_files",
+            "message_seq": 33,
+            "call_seq": 34,
+            "result_seq": 35,
+            "observation_sha256": "2113a162d31ee8f161686079e68fd15910c61b7b691066b9c993a48d39990d4f",
+            "role": "source"
+          },
+          {
+            "call_id": "call_00_VonJn58ckfMF5ULFLSI02900",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 38,
+            "call_seq": 39,
+            "result_seq": 40,
+            "observation_sha256": "c1f67c388ec596060367b22f03eeaf1476517886d490cf9a4286a01fc7b32b48",
+            "role": "pin",
+            "source_array_index": 0,
+            "file_id": "file:local:a46a184d94d8b7b6dd2d7ed1",
+            "source_call_id": "call_00_N87WI7z5i3H4oCR997V55676"
+          },
+          {
+            "call_id": "call_01_n6TnhgA6WUzjTJ0DYlBW4600",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 38,
+            "call_seq": 41,
+            "result_seq": 42,
+            "observation_sha256": "cc74ad2f76f24194f8634f0aed3b26b2f8e93b2c59467d1146fe727f7fd29e27",
+            "role": "pin",
+            "source_array_index": 1,
+            "file_id": "file:local:4189c8b7a51735f22b952b5d",
+            "source_call_id": "call_00_N87WI7z5i3H4oCR997V55676"
+          },
+          {
+            "call_id": "call_02_cOq2SEjtKUYH90apfp1r3488",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 38,
+            "call_seq": 43,
+            "result_seq": 44,
+            "observation_sha256": "b642d9d3d67daf2093a2036011d22e553fe7fd488f289821b65b7db56593f728",
+            "role": "pin",
+            "source_array_index": 2,
+            "file_id": "file:local:d4d51fd6ecb5143895b301f5",
+            "source_call_id": "call_00_N87WI7z5i3H4oCR997V55676"
+          },
+          {
+            "call_id": "call_03_HI1Qv2rXZYMvavP7gm336424",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 38,
+            "call_seq": 45,
+            "result_seq": 46,
+            "observation_sha256": "596563c7ddfa4c674c400d91b070ecf22a7f192a951bb3c3ccf4f68656e36d0d",
+            "role": "pin",
+            "source_array_index": 3,
+            "file_id": "file:local:2b387da38ba3155561113cbe",
+            "source_call_id": "call_00_N87WI7z5i3H4oCR997V55676"
+          },
+          {
+            "call_id": "call_04_oGgbBmTLNV5nCCCJ4n4C5673",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 38,
+            "call_seq": 47,
+            "result_seq": 48,
+            "observation_sha256": "97b7d458a97c36bf3164d3d5ca217914cf7fc196a578418b8d441a15989d5d16",
+            "role": "pin",
+            "source_array_index": 4,
+            "file_id": "file:local:42db10bcf1d0274280407575",
+            "source_call_id": "call_00_N87WI7z5i3H4oCR997V55676"
+          },
+          {
+            "call_id": "call_05_Y9XXhkNzHxq47DgxP0Hq8019",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 38,
+            "call_seq": 49,
+            "result_seq": 50,
+            "observation_sha256": "1e1a058702157ce1c3bdb219eb727f7225ee98328e34a3782b860ad6f5d90399",
+            "role": "pin",
+            "source_array_index": 5,
+            "file_id": "file:local:240c3ee525dcdade523fef57",
+            "source_call_id": "call_00_N87WI7z5i3H4oCR997V55676"
+          },
+          {
+            "call_id": "call_06_IbLNw2b3nrMVTzvBGid00884",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 38,
+            "call_seq": 51,
+            "result_seq": 52,
+            "observation_sha256": "92c385b4b8c633bedea5d3ee62f28b1399bbecba2bd5ad2dcfb93ba8de72a853",
+            "role": "pin",
+            "source_array_index": 6,
+            "file_id": "file:local:9c788269e70596e21561cd80",
+            "source_call_id": "call_00_N87WI7z5i3H4oCR997V55676"
+          },
+          {
+            "call_id": "call_00_JzgNoO3l7svNXqfyWc5Y5902",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 55,
+            "call_seq": 56,
+            "result_seq": 57,
+            "observation_sha256": "099a4fabcedb52a4ba64b6ede00fc13de4916a2c3afa387bfe4bbcb232dfb386",
+            "role": "read",
+            "file_id": "file:local:a46a184d94d8b7b6dd2d7ed1",
+            "pin_call_id": "call_00_VonJn58ckfMF5ULFLSI02900",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_01_TftXBVjjhqeD1D0tTOcx8979",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 55,
+            "call_seq": 58,
+            "result_seq": 59,
+            "observation_sha256": "4ff95355d8e76a0cec13a6ae058380521ddab1a96d8817b523b0dead57aeb6ef",
+            "role": "read",
+            "file_id": "file:local:4189c8b7a51735f22b952b5d",
+            "pin_call_id": "call_01_n6TnhgA6WUzjTJ0DYlBW4600",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_02_VXCY45Xrf66XAI5HUjjx5183",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 55,
+            "call_seq": 60,
+            "result_seq": 61,
+            "observation_sha256": "247bc0e9384542ce4f61290d9d7085634c52056790b464e157842dd10ad4704c",
+            "role": "read",
+            "file_id": "file:local:d4d51fd6ecb5143895b301f5",
+            "pin_call_id": "call_02_cOq2SEjtKUYH90apfp1r3488",
+            "status": "metadata_only"
+          },
+          {
+            "call_id": "call_03_ycJBWnbmJmcIdoTJSX8X3330",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 55,
+            "call_seq": 62,
+            "result_seq": 63,
+            "observation_sha256": "18691d3be64a47ca1cfeb0bb481800472158711cebc108487f4483b434f5ec94",
+            "role": "read",
+            "file_id": "file:local:2b387da38ba3155561113cbe",
+            "pin_call_id": "call_03_HI1Qv2rXZYMvavP7gm336424",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_04_o8NPYiprtCayqtevzsc18841",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 55,
+            "call_seq": 64,
+            "result_seq": 65,
+            "observation_sha256": "92ae5ebcd06e7b623b740079b6a38f9c837b943047094057dd8c587020f797fe",
+            "role": "read",
+            "file_id": "file:local:42db10bcf1d0274280407575",
+            "pin_call_id": "call_04_oGgbBmTLNV5nCCCJ4n4C5673",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_05_rzQfR0RCp6Im5ARef0Se9167",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 55,
+            "call_seq": 66,
+            "result_seq": 67,
+            "observation_sha256": "ea6357ea1d2f96174367cc705346d088ce9b7922493ad01ecac4c9cc31e63042",
+            "role": "read",
+            "file_id": "file:local:240c3ee525dcdade523fef57",
+            "pin_call_id": "call_05_Y9XXhkNzHxq47DgxP0Hq8019",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_06_ID6PY9e7wjnCXMXpS4199411",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 55,
+            "call_seq": 68,
+            "result_seq": 69,
+            "observation_sha256": "8980838c5d5b5ef3a66d343f348243290be68bbcfadb96279ffb3f0fef06c043",
+            "role": "read",
+            "file_id": "file:local:9c788269e70596e21561cd80",
+            "pin_call_id": "call_06_IbLNw2b3nrMVTzvBGid00884",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_00_r7t1oOYaU6T5YEHyXqHj1972",
+            "tool": "mcp__file_management__collect_reads",
+            "message_seq": 72,
+            "call_seq": 73,
+            "result_seq": 74,
+            "observation_sha256": "8e9eeb51d907c6455561d7bd82bccbbe534fd2cd8fe7325b35996740e5b52bb6",
+            "role": "gather"
+          }
+        ],
+        "selection_sha256": "2113a162d31ee8f161686079e68fd15910c61b7b691066b9c993a48d39990d4f",
+        "coverage_sha256": "359f3610842c47da70eb3c0a874696325866c8c4ceb71293fd785c4eaeecc236",
+        "execution_version_sha256": "85390f919b625f94968b98e042f90f6983c14b11efbfcfd7a33af24926421832",
+        "tools": [
+          "mcp__file_management__select_files",
+          "mcp__file_management__pin_file",
+          "mcp__file_management__read_file",
+          "mcp__file_management__collect_reads"
+        ],
+        "family": "FM01",
+        "episode_boundary": {
+          "first_seq": 33,
+          "last_seq": 74,
+          "original_events_sha256": "4d1af99482d4f6aa62773c5b0a65c1bf83f1c1e5b9232fe3da2552702bfd891b"
+        }
+      },
+      {
+        "kind": "model_selected_collection_witness",
+        "trace_id": "80ee45e29b804298ad26c79bd79580ac",
+        "task_fingerprint": "48c2bf27ea44a2b4206291dc2118e151d5bad93f187e4b5fc52dea9ba146bc15",
+        "target_count": 11,
+        "input_version": "ae109501117a108d361c00a0b86bf626e77d2870571895866f09bf05404fd73a",
+        "selected_ids_sha256": "7f521837ef5203f9c84ff8b0dafc307c7bda10754b3a761bb184ead5fa898c05",
+        "references": [
+          {
+            "call_id": "call_00_XdA72IklEtKqyZjceq2s3204",
+            "tool": "mcp__file_management__select_files",
+            "message_seq": 35,
+            "call_seq": 36,
+            "result_seq": 37,
+            "observation_sha256": "b3fc2b04cc488d31ea0d96495bccc1b45f6519230622d4079341487313732bd6",
+            "role": "source"
+          },
+          {
+            "call_id": "call_00_5vTMZKh1KNQ1Jwj2kYBE6942",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 41,
+            "result_seq": 42,
+            "observation_sha256": "82eebc950fd5786de1190f00a94c1123f632209047440e293ce99fe9cf6b6400",
+            "role": "pin",
+            "source_array_index": 0,
+            "file_id": "file:local:a46a184d94d8b7b6dd2d7ed1",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_01_Y005s4Y0edNx0KSbkVqB7681",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 43,
+            "result_seq": 44,
+            "observation_sha256": "d9ccbd872de73afcd00ad4a2b53d23a1e77210af59294b91c54f0a12166ce066",
+            "role": "pin",
+            "source_array_index": 1,
+            "file_id": "file:local:4189c8b7a51735f22b952b5d",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_02_6Aan8SH2It4J1TQFS4do9802",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 45,
+            "result_seq": 46,
+            "observation_sha256": "15f010d3a2dc6262d5f3c334de9377591b4e4f287c26d0b89710d724558ed362",
+            "role": "pin",
+            "source_array_index": 2,
+            "file_id": "file:local:d4d51fd6ecb5143895b301f5",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_03_OihSHBaj9OLjzz3yIhMS1603",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 47,
+            "result_seq": 48,
+            "observation_sha256": "27df197b106ddf1658a2439405de1fa2c2bde529fd9ae0f5f2e4e3530dbb33e2",
+            "role": "pin",
+            "source_array_index": 3,
+            "file_id": "file:local:2b387da38ba3155561113cbe",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_04_1OOlnnWqmQezdf4ppPZR7253",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 49,
+            "result_seq": 50,
+            "observation_sha256": "121837d23cf290ccf7e89a35835417bd9663364be7c09db92c3eb6994975c801",
+            "role": "pin",
+            "source_array_index": 4,
+            "file_id": "file:local:7c8ea1ee489b8e0d28a2ae80",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_05_GvI439276oPaLjl7zh4P8567",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 51,
+            "result_seq": 52,
+            "observation_sha256": "f7b588626ac0022ca8a670603b868637fc5dc6b151b550e7d48fe2209424a6f4",
+            "role": "pin",
+            "source_array_index": 5,
+            "file_id": "file:local:d4323bfb814b04036a4bace3",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_06_v3HIxcj0tyRaiAlIprzg0696",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 53,
+            "result_seq": 54,
+            "observation_sha256": "7ba3978e3f17f187c4c1ca39be36aeb331d883807007005ca8343a35a935a12f",
+            "role": "pin",
+            "source_array_index": 6,
+            "file_id": "file:local:9c788269e70596e21561cd80",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_07_jF5L2cNxBN06X82rb2U06379",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 55,
+            "result_seq": 56,
+            "observation_sha256": "abe68ab3a803c844526ce9169f48f6b5c80e1cdd25af1f9dd3d241200585ab96",
+            "role": "pin",
+            "source_array_index": 7,
+            "file_id": "file:local:ed90299d55b195efae45edc4",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_08_fbEhLfBJaGvQypeDT1nP0672",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 57,
+            "result_seq": 58,
+            "observation_sha256": "dfabd1e6bbdda96d84dd42430a5d8081eb3144dee56bdb7c0abda6db69313a5b",
+            "role": "pin",
+            "source_array_index": 8,
+            "file_id": "file:local:df754806a62ae96cc68555fb",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_09_n14pbwgxX5EQzccARvn44314",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 59,
+            "result_seq": 60,
+            "observation_sha256": "2f9e2a8d160ee62fd66cc7f614dfa8307c920ccf50141f14df668c6fcbe38469",
+            "role": "pin",
+            "source_array_index": 9,
+            "file_id": "file:local:aebe93ddcdc3e800916fbac3",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_10_7hZbQ0uvsEeTiMXYKS9P2311",
+            "tool": "mcp__file_management__pin_file",
+            "message_seq": 40,
+            "call_seq": 61,
+            "result_seq": 62,
+            "observation_sha256": "6e17d7ff3aefbef6050e4e30f6db14445228deb53c96ac3a0a304ae388e5b869",
+            "role": "pin",
+            "source_array_index": 10,
+            "file_id": "file:local:7318eccb50035b751c7d942e",
+            "source_call_id": "call_00_XdA72IklEtKqyZjceq2s3204"
+          },
+          {
+            "call_id": "call_00_uvmmco4mjOyTYAOd5fRw1550",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 66,
+            "result_seq": 67,
+            "observation_sha256": "aac3fb8d76e9d9313364d35cfa6d26d3f81215d44588bd7259b46dc69d5ed9f4",
+            "role": "read",
+            "file_id": "file:local:a46a184d94d8b7b6dd2d7ed1",
+            "pin_call_id": "call_00_5vTMZKh1KNQ1Jwj2kYBE6942",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_01_OIKVvpcSns1Ov3GitpoK4568",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 68,
+            "result_seq": 69,
+            "observation_sha256": "11366b5b9230c935275833927878347d7be8ef1703d8d92c286ad44a69f7036d",
+            "role": "read",
+            "file_id": "file:local:4189c8b7a51735f22b952b5d",
+            "pin_call_id": "call_01_Y005s4Y0edNx0KSbkVqB7681",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_02_x1rFLQX5XyuIxqDNi36S6657",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 70,
+            "result_seq": 71,
+            "observation_sha256": "8b21663ede4f34342330bdd9c9c360081013b8e977ba6816417969f35d868cbd",
+            "role": "read",
+            "file_id": "file:local:d4d51fd6ecb5143895b301f5",
+            "pin_call_id": "call_02_6Aan8SH2It4J1TQFS4do9802",
+            "status": "metadata_only"
+          },
+          {
+            "call_id": "call_03_kn6lhzzibdDKT44GUJVH2152",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 72,
+            "result_seq": 73,
+            "observation_sha256": "8699448b10a7b623535569f66b11e701f62eb39fc0475f99d08a71f127d713ed",
+            "role": "read",
+            "file_id": "file:local:2b387da38ba3155561113cbe",
+            "pin_call_id": "call_03_OihSHBaj9OLjzz3yIhMS1603",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_04_2OElnNabMF8AHHYui5bw3258",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 74,
+            "result_seq": 75,
+            "observation_sha256": "8061f70b50f5bcb6efb631c32d64e7a283f0b907e7a042fde378f146b8a51b2d",
+            "role": "read",
+            "file_id": "file:local:7c8ea1ee489b8e0d28a2ae80",
+            "pin_call_id": "call_04_1OOlnnWqmQezdf4ppPZR7253",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_05_yn9jwrTy82rFD0emaEFk8490",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 76,
+            "result_seq": 77,
+            "observation_sha256": "0b7bc3ea78f13d7b938258844a9e70a8a5abf6e2daddd6891913893103204529",
+            "role": "read",
+            "file_id": "file:local:d4323bfb814b04036a4bace3",
+            "pin_call_id": "call_05_GvI439276oPaLjl7zh4P8567",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_06_mDl4pjvG2tBBa4tgh7d42280",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 78,
+            "result_seq": 79,
+            "observation_sha256": "641d663e16d1711fbd4690c694584bcd2c8bcfc07c1e1649176e34a755c8d327",
+            "role": "read",
+            "file_id": "file:local:9c788269e70596e21561cd80",
+            "pin_call_id": "call_06_v3HIxcj0tyRaiAlIprzg0696",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_07_RPp14IJXTCz909shfNLQ4350",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 80,
+            "result_seq": 81,
+            "observation_sha256": "6ab961968a14aea019a06b25ff7dfb27467f97eae9b44ea559a596130f8b36a2",
+            "role": "read",
+            "file_id": "file:local:ed90299d55b195efae45edc4",
+            "pin_call_id": "call_07_jF5L2cNxBN06X82rb2U06379",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_08_5qRwhN8sttlZkBHYNZDq4168",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 82,
+            "result_seq": 83,
+            "observation_sha256": "a75441d5f6e84ef105958a9157143a075eb70cb0effad8c21b2b44fd3764f8ed",
+            "role": "read",
+            "file_id": "file:local:df754806a62ae96cc68555fb",
+            "pin_call_id": "call_08_fbEhLfBJaGvQypeDT1nP0672",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_09_lPqfghBjzdAMZTTZOQra4280",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 84,
+            "result_seq": 85,
+            "observation_sha256": "d54294770d5ed4b50caa5e3ed2af2aa2c7d9a82aaf7eba5195034d6916572340",
+            "role": "read",
+            "file_id": "file:local:aebe93ddcdc3e800916fbac3",
+            "pin_call_id": "call_09_n14pbwgxX5EQzccARvn44314",
+            "status": "readable"
+          },
+          {
+            "call_id": "call_10_bA5WwBDYGbL24i2cZS517926",
+            "tool": "mcp__file_management__read_file",
+            "message_seq": 65,
+            "call_seq": 86,
+            "result_seq": 87,
+            "observation_sha256": "7a2bda07d14eb4f2b21229a19ac76dc5e49b3052f274743eea36e9e08d6b050c",
+            "role": "read",
+            "file_id": "file:local:7318eccb50035b751c7d942e",
+            "pin_call_id": "call_10_7hZbQ0uvsEeTiMXYKS9P2311",
+            "status": "unreadable"
+          },
+          {
+            "call_id": "call_00_AmZAsEhDMnfpyR4lv79x6155",
+            "tool": "mcp__file_management__collect_reads",
+            "message_seq": 90,
+            "call_seq": 91,
+            "result_seq": 92,
+            "observation_sha256": "0960bfdf0ea534528b158ccaa163224d3b4619926594122cd0a7b30de69c11b0",
+            "role": "gather"
+          }
+        ],
+        "selection_sha256": "b3fc2b04cc488d31ea0d96495bccc1b45f6519230622d4079341487313732bd6",
+        "coverage_sha256": "2f22c2c46fdb3c344e2d6fe7d5e6a6e56acc385a9e94e8c5e1adba1b09f20abd",
+        "execution_version_sha256": "85390f919b625f94968b98e042f90f6983c14b11efbfcfd7a33af24926421832",
+        "tools": [
+          "mcp__file_management__select_files",
+          "mcp__file_management__pin_file",
+          "mcp__file_management__read_file",
+          "mcp__file_management__collect_reads"
+        ],
+        "family": "FM01",
+        "episode_boundary": {
+          "first_seq": 35,
+          "last_seq": 92,
+          "original_events_sha256": "25aff0333fd99508c8b5df9704337be029ce8cdc03fed15cd47a5625c5cc5345"
+        }
+      }
+    ],
+    "validation_trace_id": "fe8d9d7bf21c4736a5adc5e002aedab5",
+    "validation_task_fingerprint": "9e68ac1d48d51abf1556f64c8127a39b6c959ef18eb83b485f5c84f65e04e30b",
+    "validation_witness": {
+      "kind": "model_selected_collection_witness",
+      "trace_id": "fe8d9d7bf21c4736a5adc5e002aedab5",
+      "task_fingerprint": "9e68ac1d48d51abf1556f64c8127a39b6c959ef18eb83b485f5c84f65e04e30b",
+      "target_count": 7,
+      "input_version": "74f638df66c728fca930db7974c6ecec9f224ec894f2f76ecb2f2b897c12ab23",
+      "selected_ids_sha256": "12d47222366a86423c8022d180a0132b4b4cfc7f9727577aa27e8477018cffc4",
+      "references": [
+        {
+          "call_id": "call_00_OmWhPcp0DSh2RkWjeksp2536",
+          "tool": "mcp__file_management__select_files",
+          "message_seq": 35,
+          "call_seq": 36,
+          "result_seq": 37,
+          "observation_sha256": "41e56ee61dc7bcd98b082399ae5831e3b6d06c74b570f22c6ad7ec6d97e10bd4",
+          "role": "source"
+        },
+        {
+          "call_id": "call_00_s2gtRi0f3FCVJEdAKHpd9681",
+          "tool": "mcp__file_management__pin_file",
+          "message_seq": 40,
+          "call_seq": 41,
+          "result_seq": 42,
+          "observation_sha256": "c105f53381d45e73ce2fdc37f6dcb62b765533d86c652f7de7130db7ad492ef0",
+          "role": "pin",
+          "source_array_index": 0,
+          "file_id": "file:local:873dcdbcd766c32721a6f501",
+          "source_call_id": "call_00_OmWhPcp0DSh2RkWjeksp2536"
+        },
+        {
+          "call_id": "call_01_F5BQ1GmgiTIxMnjbswW43193",
+          "tool": "mcp__file_management__pin_file",
+          "message_seq": 40,
+          "call_seq": 43,
+          "result_seq": 44,
+          "observation_sha256": "907c6e5e51c1316a2e324f43b50c4110d9aa5bf57c6c22a33d8c611b3e675420",
+          "role": "pin",
+          "source_array_index": 1,
+          "file_id": "file:local:258bb3d9e3de2df097cbb460",
+          "source_call_id": "call_00_OmWhPcp0DSh2RkWjeksp2536"
+        },
+        {
+          "call_id": "call_02_jPG840s4NTzz0NsoBWxB6795",
+          "tool": "mcp__file_management__pin_file",
+          "message_seq": 40,
+          "call_seq": 45,
+          "result_seq": 46,
+          "observation_sha256": "06a7357d1a6e8a2c6c3f68c5b67500ba3433d2dca4eab697d2ebd16215873f02",
+          "role": "pin",
+          "source_array_index": 2,
+          "file_id": "file:local:fee108db80f8fa5c5081ba63",
+          "source_call_id": "call_00_OmWhPcp0DSh2RkWjeksp2536"
+        },
+        {
+          "call_id": "call_03_LihKEnvgzhtimhC1f4ws5350",
+          "tool": "mcp__file_management__pin_file",
+          "message_seq": 40,
+          "call_seq": 47,
+          "result_seq": 48,
+          "observation_sha256": "15613b5d882637f86fde32907785d0396d30515dd027cf7ae44f024b333991a6",
+          "role": "pin",
+          "source_array_index": 3,
+          "file_id": "file:local:ef5b1d3651da87bd4a0c22f4",
+          "source_call_id": "call_00_OmWhPcp0DSh2RkWjeksp2536"
+        },
+        {
+          "call_id": "call_04_IAZCz349Qkf2SgYu1psx4673",
+          "tool": "mcp__file_management__pin_file",
+          "message_seq": 40,
+          "call_seq": 49,
+          "result_seq": 50,
+          "observation_sha256": "6d66e43c2b28f534fa6ce93d8b319bb47d2c05aaa33b7b38d3d25ec256f7373b",
+          "role": "pin",
+          "source_array_index": 4,
+          "file_id": "file:local:bf68165ed10d6d962dba11b1",
+          "source_call_id": "call_00_OmWhPcp0DSh2RkWjeksp2536"
+        },
+        {
+          "call_id": "call_05_OsC3vTJZxPYUMnl7qtM14185",
+          "tool": "mcp__file_management__pin_file",
+          "message_seq": 40,
+          "call_seq": 51,
+          "result_seq": 52,
+          "observation_sha256": "4650c1b0af1fcbc05bd2146eb12cc45e47ef1ad148f48a995db42302afe6112c",
+          "role": "pin",
+          "source_array_index": 5,
+          "file_id": "file:local:6ffa28d5876efa5999bd6417",
+          "source_call_id": "call_00_OmWhPcp0DSh2RkWjeksp2536"
+        },
+        {
+          "call_id": "call_06_LQ61awbmBcGf1roATdZI7544",
+          "tool": "mcp__file_management__pin_file",
+          "message_seq": 40,
+          "call_seq": 53,
+          "result_seq": 54,
+          "observation_sha256": "3d64fa1ad20f33ab03ae9c74eb6e161698c4577b96e790f9aa19fa94451d3f7e",
+          "role": "pin",
+          "source_array_index": 6,
+          "file_id": "file:local:cb80a20ad0486261393eb51c",
+          "source_call_id": "call_00_OmWhPcp0DSh2RkWjeksp2536"
+        },
+        {
+          "call_id": "call_00_UFDYu92TqnkZxd7sB5kl3197",
+          "tool": "mcp__file_management__read_file",
+          "message_seq": 57,
+          "call_seq": 58,
+          "result_seq": 59,
+          "observation_sha256": "877614330b1a18b605fd390054ecbcf24eadb37f885c0e832c52f3f8ad4e5aab",
+          "role": "read",
+          "file_id": "file:local:873dcdbcd766c32721a6f501",
+          "pin_call_id": "call_00_s2gtRi0f3FCVJEdAKHpd9681",
+          "status": "readable"
+        },
+        {
+          "call_id": "call_01_iAdRLZUEv2ZlTEdO2yFL8513",
+          "tool": "mcp__file_management__read_file",
+          "message_seq": 57,
+          "call_seq": 60,
+          "result_seq": 61,
+          "observation_sha256": "652572fe50a8edd1aa57a3bb3feb6574618872c50f837461da3c99d4da2f502f",
+          "role": "read",
+          "file_id": "file:local:258bb3d9e3de2df097cbb460",
+          "pin_call_id": "call_01_F5BQ1GmgiTIxMnjbswW43193",
+          "status": "readable"
+        },
+        {
+          "call_id": "call_02_TYbymoXUWYB6R0DxbSbg1768",
+          "tool": "mcp__file_management__read_file",
+          "message_seq": 57,
+          "call_seq": 62,
+          "result_seq": 63,
+          "observation_sha256": "62559516fc510b776cd0d795d640bc02a2e6a8fea73e7a5e391d5cb09c9d28f1",
+          "role": "read",
+          "file_id": "file:local:fee108db80f8fa5c5081ba63",
+          "pin_call_id": "call_02_jPG840s4NTzz0NsoBWxB6795",
+          "status": "metadata_only"
+        },
+        {
+          "call_id": "call_03_ISnPeVbY2aTufwB4gQDm7145",
+          "tool": "mcp__file_management__read_file",
+          "message_seq": 57,
+          "call_seq": 64,
+          "result_seq": 65,
+          "observation_sha256": "0c465a321da9d5f95e1fa080c763ef80cf338c098421acbd72576ff329f7c40e",
+          "role": "read",
+          "file_id": "file:local:ef5b1d3651da87bd4a0c22f4",
+          "pin_call_id": "call_03_LihKEnvgzhtimhC1f4ws5350",
+          "status": "readable"
+        },
+        {
+          "call_id": "call_04_tgitnit61ttuzQEfCRGx6545",
+          "tool": "mcp__file_management__read_file",
+          "message_seq": 57,
+          "call_seq": 66,
+          "result_seq": 67,
+          "observation_sha256": "db4e98de911c64bb717964bdb2611c30b4e13810fc9b086b023cd8cd0fd67f78",
+          "role": "read",
+          "file_id": "file:local:bf68165ed10d6d962dba11b1",
+          "pin_call_id": "call_04_IAZCz349Qkf2SgYu1psx4673",
+          "status": "readable"
+        },
+        {
+          "call_id": "call_05_FmWQVUsrzt2uJvWdGYdg7304",
+          "tool": "mcp__file_management__read_file",
+          "message_seq": 57,
+          "call_seq": 68,
+          "result_seq": 69,
+          "observation_sha256": "8600f68836dd10084a88cb000af3d955b153657b90b33697ebe13274b367df94",
+          "role": "read",
+          "file_id": "file:local:6ffa28d5876efa5999bd6417",
+          "pin_call_id": "call_05_OsC3vTJZxPYUMnl7qtM14185",
+          "status": "readable"
+        },
+        {
+          "call_id": "call_06_OTHXQlhbQvQAlBEQIB8P7215",
+          "tool": "mcp__file_management__read_file",
+          "message_seq": 57,
+          "call_seq": 70,
+          "result_seq": 71,
+          "observation_sha256": "a6ac3215d9104cd542f6016d6ca95288d3c3bb1a36216e807499666fff0c2084",
+          "role": "read",
+          "file_id": "file:local:cb80a20ad0486261393eb51c",
+          "pin_call_id": "call_06_LQ61awbmBcGf1roATdZI7544",
+          "status": "readable"
+        },
+        {
+          "call_id": "call_00_jvAQRa2HFUN0rgRPoWEt9056",
+          "tool": "mcp__file_management__collect_reads",
+          "message_seq": 74,
+          "call_seq": 75,
+          "result_seq": 76,
+          "observation_sha256": "fcdaa04522d716d471eaef9f9b8973d3ee13459a9dc039dc4864d4c54530df6f",
+          "role": "gather"
+        }
+      ],
+      "selection_sha256": "41e56ee61dc7bcd98b082399ae5831e3b6d06c74b570f22c6ad7ec6d97e10bd4",
+      "coverage_sha256": "0a230ff9e4c1de52eed93d037a44be105e427e9904bd2effb586f62316f1bb02",
+      "execution_version_sha256": "85390f919b625f94968b98e042f90f6983c14b11efbfcfd7a33af24926421832",
+      "tools": [
+        "mcp__file_management__select_files",
+        "mcp__file_management__pin_file",
+        "mcp__file_management__read_file",
+        "mcp__file_management__collect_reads"
+      ],
+      "family": "FM21",
+      "episode_boundary": {
+        "first_seq": 35,
+        "last_seq": 76,
+        "original_events_sha256": "62c7ef2e1d2a786c0fb1c5407ed8813fff8ef8bbc06bd01bc5a03113b08dee61"
+      }
+    },
+    "certified_digest": "df74f23590cc9f98da9fce13dcf83c6790779ea7790f1c49d6e530964541c4fc"
+  },
+  "source_library_digest": "0980414654429b165ecab973b15a590374990b0b8b72afb76072640ede66d894",
+  "execution_version_sha256": "85390f919b625f94968b98e042f90f6983c14b11efbfcfd7a33af24926421832",
+  "policy_digest": "308224035534ad98ccf8f218cc9dbcc7d8eb93b75ce98d893724c3e4e7670c9a"
+}

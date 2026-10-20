@@ -1,6 +1,15 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+PR84/PR88 的共同集成在 [PR93](https://github.com/jingyio/GeneLoop/pull/93) 审阅，已保留 PR92 附件阅读能力；本分支使用 Paper v17、PPT v12 和重新认证的 File v6。验证与反例见[集成记录](docs/experiments/file-ppt-integration-20261019.md)，尚未合并或部署。
+
+
 **开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。本地开发仍用 `npm run web`。
+
+PPT 账户内结构学习现接入已启用PPT双路对照的真实聊天任务：后台从原始 Baseline 轨迹取两个独立训练任务和一个留出任务，经原编译器认证后，仅在后续任务试用；两个独立对照确实调用候选、交付检查通过且包含重试的费用下降，才自动保留。用户无需填写验收表，普通踩可停用候选。只学习已支持的来源固定→转换、转换→读取两条结构，不学习科研结论或任意生成代码；无明确人评时科研质量与人工时间仍未知。状态、证据和失败保留在账号私有目录；无合格候选回原库。当前兼容库为 `ppt-master-v9` / `paper-web-v14`，生成技能仍为 main 的官方 ppt-master。部署条件、实现和真实验证边界见[接线记录](docs/experiments/ppt-user-learning-20261019.md)。
+
+独立 Script Motif 实验现支持当前语义选择、文件参数自动绑定与认证片段连续执行；复用原生 Bash，不增加模型工具表。真实任务已发生两节点自动接管，但三轮仍**未证明稳定净降本或合格交付**。最新对照发现不同报告路径及大量失败恢复，不能将费用差归为纯 Motif 开销。配置见 [接口](docs/interfaces.md#script-motif-实验接口)，结果和全部失败见 [实验记录](docs/experiments/paper-script-frontier-20261019-v1.md)。早期实验保留独立记录，本轮恢复验证与 PR 状态见文末。 新增从真实失败轨迹编译 Negative Motif 的实验入口，支持从已审阅校验器自动编译字段失败条件，按“当前失败提示 → 重算条件 → 仍失败则局部早停”执行；无关字段和版本变化不再自动放行。现支持循环/分支内多种错误的数据与控制依赖、双向原因干预，真实历史的重复 ID 和枚举错误已认证；其他类型仅有局部诊断，见 [原因学习记录](docs/experiments/paper-negative-causes-20261019-v1.md)。随后已完成原论文真实三组重测与历史恢复：完整任务均未合格，负面机制仅在恢复中实际提示一次、未触发硬早停，尚未证明合格净降本；详见 [真实重测](docs/experiments/paper-negative-real-20261019-v1.md)。 后续对448次真实请求的 [费用与接管障碍 Breakdown](docs/experiments/paper-takeover-breakdown-20261019-v1.md) 确认当前仅一个两节点片段、后续普通匹配未进入，报告语义数据与搜索内部模型也未被接管；本次重放不作为新增省费成绩。
+
+论文 Breakdown 的 [具体读写实例](docs/experiments/paper-operation-breakdown-20261019-v1.md) 现展示实际命令、工具参数、费用和复用边界。同一读取算子在另一真实多文件论文中，单主文件覆盖失败，绑定10个来源文件后覆盖一致；这仅为局部无模型检查，不是新端到端降费成绩。
 
 PPT/PPTX 输入现结合原生主题/母版/布局、字体颜色和对象位置声明，以及隔离渲染的逐页视觉观察。GeneLoop 可用上传 PPT 作为设计参考；沿用原生模板填新内容时使用 ppt-master 的 round-trip 编辑流程，原件保留。旧 PPT 可隔离转换为标准 PPTX；字体、媒体和复杂效果仍有保真边界。见[附件说明](docs/attachment-input-behavior.md#pptpptx-的视觉与风格输入)。兼容库更新为 `ppt-master-v6` / `paper-web-v11`，沿用原证据与结构，旧库保留。
 
@@ -22,7 +31,9 @@ GeneLoop 网页的 Chat、`/ppt`、`/data`、`/paper` 和已登记 Files 场景�
 
 多轮附件会合并旧原件与新附件，切到 `/paper` 可继承同一对话的 DOCX；同名版本、排队气泡显示和视觉/OCR 边界见[附件说明](docs/attachment-input-behavior.md)。
 
-每轮输入默认 Chat，默认不显示场景、Origin 或 RSI 标签；本轮需要数据、PPT 或论文场景时重新输入 `/data`、`/ppt` 或 `/paper`。输入栏标签直接订阅当前草稿，手写、粘贴和候选选中都会立即更新，删除后隐藏。斜杠菜单不再列出 Files / Chat；加号菜单提供带图标的场景和“添加照片或文件”，沿用原生附件上传。菜单可直接替换已有场景标签，保留正文和附件。成功发送后下一轮自动恢复 Chat，已有任务、历史和交付保持；旧 Files 工作台对话也可在同一对话中继续 Chat。切换模型使用目标模型默认的 Off，原模型内调整思考强度仍按明确选择执行。
+文件管理入口为 **`/file 文件管理`**，与另外三个场景共用输入框、工作区、上传和交付预览/下载。任务副本内自动允许复制、移动、重命名和创建目录；覆盖、永久删除及工作区外访问单独确认。文件管理自动开启执行与持续 RSI，不增加开关；各账号使用独立的长期经验库，只安装脱敏且重新认证的公共种子。工具、读取覆盖、恢复与认证边界见[文件管理说明](docs/management-local.md)。
+
+每轮输入默认 Chat，默认不显示场景、Origin 或 RSI 标签；本轮需要数据、PPT、论文或文件管理场景时重新输入 `/data`、`/ppt`、`/paper` 或 `/file`。输入栏标签直接订阅当前草稿，手写、粘贴和候选选中都会立即更新，删除后隐藏。斜杠菜单列出 `/file 文件管理`，不列出默认 Chat；加号菜单提供带图标的场景和“添加照片或文件”，沿用原生附件上传。菜单可直接替换已有场景标签，保留正文和附件。成功发送后下一轮自动恢复 Chat，已有任务、历史和交付保持；旧 Files 工作台对话也可在同一对话中继续 Chat。切换模型使用目标模型默认的 Off，原模型内调整思考强度仍按明确选择执行。
 
 Chat 与场景对照共用实时状态文案：正在回复、思考、阅读文档、搜索资料或执行工具/命令；阅读状态可展示安全的文件名，不公开服务器路径或原始参数。运行期间底部显示 `GeneLooping…`，结束即消失。工作区行仅保留最右侧操作菜单，新聊天仍使用顶部“新会话”。
 
@@ -246,3 +257,17 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 `/paper` 保留普通 PDF/Word/CSV/JSON/TXT 校对、来源表格摘要与 PDF/Markdown 交付，同一场景按需使用安全 LaTeX ZIP、参考文献取证、历史脚本与只读 Motif；不会为每种任务另建 Agent。当前为 24 个工具，普通报告无需私人排版包。服务器默认继续加载 `motif-libraries/paper`；管理员可配置 `HARLESS_PAPER_RUNTIME_BUNDLE` 覆盖默认库，配置错误会拒绝激活。历史参考文献排版另用 `HARLESS_PAPER_RENDERER_ROOT`。原 23 工具包须按当前完整 MCP Schema 和代码重编，不能直接复制旧认证文件。
 
 场景选择、RSI On/Off、三种模式、用户隔离和预算沿用 main。普通校对不强制输出参考文献报告；正文输入仍可先咨询或请求上传。机制验证与净降本结论分开，历史记录见 [RSI 闭环](docs/paper-rsi-loop.md)，整合部署步骤见 [论文交接](docs/handoffs/paper-proofreading.md)。
+
+
+实验分支新增脚本内部依赖片段挖掘、当前数据引用/局部修改以及原生工具连续执行，仍经原生 Evidence/版本/权限守卫。它们由私有 Script sidecar 显式启用，生产默认保持不变。当前真实完整任务尚未证明稳定合格净降本；配置、复现与边界见[统一复用接口](docs/interfaces.md#实验性统一复用协议2026-10-19)和[实验记录](docs/experiments/paper-unified-reuse-20261019-v1.md)。
+
+论文 Script Motif 的边界快照重放、有界诊断片段和当前产物引用仍为显式实验功能；`--report-evidence`可给两组对照同时启用隔离的缺字修复与失败字段证据，不修改生产导出模块或旧认证库。连续接管次数不能直接折算净费用，当前仍未验证独立论文上的稳定合格降本。入口、默认关闭的副作用权限和复现见[接口说明](docs/interfaces.md#边界快照诊断片段与隔离导出变体2026-10-19)与[本轮记录](docs/experiments/paper-evidence-slice-20261019-v1.md)。
+
+论文实验的当前恢复目标、版本化失败字段与成功产物复用已接通：`--report-evidence --preserve-recovery-structure`可在显式局部恢复中拒绝子集交付、复用完整参数做叶子补丁，并核验当前成功文件后交回总结；公开默认不启用。真实页数失败任务已完成17字段补丁及六页交付，37条记录与来源保持；早期错误交付、低效尝试与费用均保留，未主张稳定净降本。见[实验记录](docs/experiments/paper-recovery-evidence-20261020-v1.md)。
+
+
+论文恢复实验新增显式`--resume-current-operation`：当前任务已选择的完整操作，经任务/来源/授权/Schema核验后由Runtime先执行一次，失败交回修订、成功交回总结。两次真实正常恢复均只需1个模型总结请求；复杂页数恢复仍有18/43请求和不可靠解释，尚未证明稳定净降本。全部仍为显式实验入口，非生产默认；失败与累计费用见[新实验记录](docs/experiments/paper-recovery-control-20261020-v2.md)。
+
+Negative Motif 恢复实验已接纳 `failed_checks`，支持把已审阅结构校验器与当前完整目标编译认证为重试条件；真实恢复实际发送13次提示、6次局部早停。页数原因仍未知，字段引用候选尚未被真实模型选用，复杂修订未稳定降本；三次全部结果、超时和待结算费用见[接入实验](docs/experiments/paper-negative-recovery-20261020-v1.md)。配置仍须显式启用，不修改生产库。
+
+后续[成因与修复实验](docs/experiments/paper-recovery-page-policy-20261020-v1.md)定位到基准引擎的6页上限与论文自然页长要求冲突，修正在隔离导出器中完成；旧基准和生产库保留。新增`inspect`读取当前字段及显式`repairChoices:true`：模型选择恢复或unknown，Runtime复制认证字段并重验。两种真实历史结构恢复及差异交接复核均为2请求；开放修复的29请求反例与全部学习/复测费用保留。最终说明现以本轮起点差异为准，仍不代表完整论文质量或一般净降本已验证。 [PR95](https://github.com/jingyio/GeneLoop/pull/95)供审阅，未合并或部署。

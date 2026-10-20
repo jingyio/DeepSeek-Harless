@@ -12,7 +12,7 @@ def load_product_bundle(root: Path, directory: Path, scene: str, *, private_root
     base = directory.resolve(strict=True)
     if private_root is not None:
         private = private_root.resolve(strict=True)
-        if (scene != 'paper-proofreading' or private_root.is_symlink()
+        if (scene not in ('paper-proofreading','ppt') or private_root.is_symlink()
                 or not private.is_relative_to((root / '.local').resolve())
                 or not base.is_relative_to(private) or directory.is_symlink()):
             raise ValueError('private learning release escapes its owning store')
@@ -26,8 +26,8 @@ def load_product_bundle(root: Path, directory: Path, scene: str, *, private_root
     learned_ppt=scene=='ppt' and entry.get('runtime_kind')=='ppt_read_v2'
     learned_paper=scene=='paper-proofreading' and entry.get('runtime_kind')=='paper_document_read_v1'
     learned_master=scene=='ppt' and entry.get('runtime_kind') in ('ppt_master_v1','ppt_master_v2')
-    if private_root is not None and not learned_paper:
-        raise ValueError('private learning only admits the existing paper document protocol')
+    if private_root is not None and not (learned_paper or (learned_master and entry['runtime_kind']=='ppt_master_v2')):
+        raise ValueError('private learning only admits existing certified document protocols')
     learned=learned_ppt or learned_paper or learned_master
     if entry.get('schema_version') != 1 or entry.get('scene') != scene or (not learned and entry.get('runtime_kind') != expected.get(scene)) or entry.get('new_training') is not learned:
         raise ValueError('invalid existing product library')

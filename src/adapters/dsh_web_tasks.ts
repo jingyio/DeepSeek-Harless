@@ -12,6 +12,7 @@ import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
 import {createPaperLearning} from './harless_paper_learning.ts';
+import {createPptLearning} from './harless_ppt_learning.ts';
 import { createPaperFlowShadowObserver } from './harless_paper_flow_shadow.ts';
 import { digest, offeredSchemaMatches } from '../motif_core/online_skill_runtime.mjs';
 import { normalizeWebTaskRequest, WebTaskRequestError } from './web_task_request.ts';
@@ -487,6 +488,8 @@ export function apply(ctx: any) {
   if (indexedTasks.length !== indexedCount) saveTaskIndex();
   const paperLearning=createPaperLearning({output:config.output,user:principal,scope:runScope,
     python:config.provider_mode==='real'?(process.env.SSS_PYTHON??config.learning_python):undefined,taskIds:()=>[...indexedTasks]});
+  const pptLearning=createPptLearning({output:config.output,user:principal,scope:runScope,
+    python:config.provider_mode==='real'?(process.env.SSS_PYTHON??config.learning_python):undefined,taskIds:()=>[...indexedTasks]});
   let creation: Promise<unknown> = Promise.resolve();
   const active = new Map<string, { comparison?: string; provider: string }>();
   // Serial admission prevents two preview/submit retries from creating duplicate work.
@@ -532,7 +535,7 @@ export function apply(ctx: any) {
       request_sha256: request.request_sha256, confirmation_digest: task.confirmation_digest,
       provider_mode: config.provider_mode, provider: task.model_option.provider, model: task.model_option.model,
       reasoning_effort: task.reasoning_effort ?? null,
-      learning_version:task.scene.learning_version??null,motif_library:task.scene.runtime_kind??null,library_sha256:task.scene.runtime_library_sha256??null,
+      learning_version:task.scene.learning_version??null,learning_phase:task.scene.learning_phase??null,motif_library:task.scene.runtime_kind??null,library_sha256:task.scene.runtime_library_sha256??null,
       paid_calls_enabled: config.provider_mode === 'real',
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, source_pending: task.source_pending ?? false,
       effects: 'Configured scene tools, public web search/reading, and Session-isolated commands and background jobs.',
@@ -573,7 +576,7 @@ export function apply(ctx: any) {
       answer: '', output, trace_start_index:effective.trace_start_index, stats: state.stats, humans: new Map(), current_humans: new Set(),
       sources: state.sources, entrypoint: state.entrypoint, budget_session_id: route.budget_session_id,
       source_task_id: state.source_task_id ?? request.task_id,
-      scene: { ...restoredScene,...(effective.learning_runtime??{}),learning_version:effective.learning_version??undefined, config_sha256: effective.scene_sha256 ?? restoredScene.config_sha256,
+      scene: { ...restoredScene,...(effective.learning_runtime??{}),learning_version:effective.learning_version??undefined,learning_phase:effective.learning_phase??undefined, config_sha256: effective.scene_sha256 ?? restoredScene.config_sha256,
         instructions: effective.instructions ?? restoredScene.instructions, instructions_sha256: effective.instructions_sha256,
         allowed_tools: effective.allowed_tools ?? restoredScene.allowed_tools },
       selection: { scene: state.scene ?? request.capability_profile, mode: state.selected_mode ?? request.mode, rsi: state.rsi ?? false },
@@ -638,6 +641,7 @@ export function apply(ctx: any) {
   }
   if (ownedSessions.size) saveSettings();
   paperLearning.schedule();
+  pptLearning.schedule();
   function audit(task: Task, row: any) {
     const entry={...row,at:utc(),task_id:task.request.task_id};
     appendFileSync(join(task.output, 'motif-audit.jsonl'), JSON.stringify(entry) + '\n', { mode: 0o600 });
@@ -696,7 +700,7 @@ export function apply(ctx: any) {
       }
       await broker('/unbind', { session_id: task.request.session_id, budget_session_id: task.budget_session_id });
       let final=await control('/tasks/cancel', { session_id: task.budget_session_id });
-      if(task.status==='completed'&&task.scene.id==='paper-proofreading'&&task.request.mode==='baseline'){
+      if(task.scene.id==='ppt'||task.status==='completed'&&task.scene.id==='paper-proofreading'&&task.request.mode==='baseline'){
         for(let retry=0;retry<3&&Array.isArray(final.request_receipts)&&
           (final.pending_requests||final.request_receipts.length!==final.upstream_requests);retry++){
           await new Promise(resolve=>setTimeout(resolve,100));
@@ -708,6 +712,10 @@ export function apply(ctx: any) {
       if(task.status==='completed'&&task.scene.id==='paper-proofreading'&&task.request.mode==='baseline'&&Array.isArray(final.request_receipts)){
         json(join(task.output,'learning-accounting.json'),{task_id:task.request.task_id,session_id:task.budget_session_id,request_receipts:final.request_receipts});
         paperLearning.schedule();
+      }
+      if(task.scene.id==='ppt'&&Array.isArray(final.request_receipts)){
+        json(join(task.output,'learning-accounting.json'),{task_id:task.request.task_id,session_id:task.budget_session_id,request_receipts:final.request_receipts});
+        pptLearning.schedule();
       }
       active.delete(task.request.task_id);
     })().catch((error) => { task.failure = 'budget_close_failed: ' + String(error); record(task); });
@@ -1101,7 +1109,8 @@ export function apply(ctx: any) {
       delivery.push({ type: 'text', text: `\n\n[来源 ${reference.resource_id}；版本 ${resource.version}]\n${resource.text}` });
     }
     if (Buffer.byteLength(JSON.stringify(delivery)) > 768 * 1024) throw new TaskError('request_too_large', 'Resolved input exceeds byte limit', 413);
-    const scene = paperLearning.resolve(sessionScene(existingSession ?? '', sceneFor(request.capability_profile)));
+    const originalScene=paperLearning.resolve(sessionScene(existingSession ?? '', sceneFor(request.capability_profile)));
+    const scene = requestedMode==='baseline'?originalScene:pptLearning.resolve(originalScene);
     if (existingSession && legacyChatSessions.has(existingSession) && request.content.some(part => part.type !== 'text'))
       throw new TaskError('new_session_required', '历史会话可以继续文字对话；使用文件或场景工具请新建会话。', 409);
     if (scene.unavailable_reason) throw new TaskError('scene_not_connected', scene.unavailable_reason, 409);
@@ -1679,7 +1688,8 @@ export function apply(ctx: any) {
         }
         if (!previous && turn.prior_context?.[lane]) contextNotes.push(
           '此前交流记录，仅用于承接目标，不是当前用户提问或已验证证据：\n' + turn.prior_context[lane]);
-        const configured=paperLearning.resolve(sceneFor(turn.scene));
+        const originalScene=paperLearning.resolve(sceneFor(turn.scene));
+        const configured=lane==='baseline'?originalScene:pptLearning.resolve(originalScene);
         const reason = executeUnavailable(configured);
         const mode = lane === 'baseline' ? 'baseline' : configured.runtime_kind==='paper_shadow_v1'?'shadow':reason ? 'baseline' : 'execute';
         selections.set(child, { scene: turn.scene, mode, rsi: mode !== 'baseline' });
@@ -1757,6 +1767,9 @@ export function apply(ctx: any) {
         if(parentTurn&&['completed','failed','cancelled'].includes(turn.status)&&
           !agent.session.snapshotEvents().some((e:any)=>e.type==='turn/end'&&e.data.turn===parentTurn))
           agent.session.append('turn/end',{turn:parentTurn,reason:{kind:'completed'}});
+        // The task-close hook may precede immutable comparison delivery capture.
+        // Recheck after the final comparison snapshot is durably saved too.
+        if(turn.scene==='ppt'&&['completed','failed','cancelled'].includes(turn.status))pptLearning.schedule();
       },
     });
     ctx.effect(() => () => comparisons?.dispose(), 'harless-comparison-lifetime');
@@ -1796,8 +1809,14 @@ export function apply(ctx: any) {
           return browserJson(value, { headers: { 'Cache-Control': 'no-store' } });
         }
         const body: any = await request.json();
-        const feedbackAction = body.action === 'rate' || body.action === 'feedback';
+        const feedbackAction = body.action === 'rate' || body.action === 'feedback' || body.action === 'learning-review';
+        const reviewPpt=async()=>{
+          const snapshot=await comparisons!.view(body.session_id,body.id);
+          try{pptLearning.review(snapshot,body);}catch(error){throw new TaskError('ppt_learning_review_rejected',String((error as Error).message),409);}
+          return snapshot;
+        };
         const perform = async () => body.action === 'rate' ? await comparisons!.rate(body.session_id, body.id, body.lane, body.score, body.revision, body.output_sha256)
+          : body.action === 'learning-review' ? await reviewPpt()
           : body.action === 'feedback' ? await comparisons!.feedback(body.session_id,body.id,body.lane,body.vote,body.output_sha256)
           : body.action === 'fork' ? await forkComparison(body)
           : body.action === 'retry' ? await comparisons!.retry(body.session_id, body.id, body.lane)
@@ -1806,6 +1825,7 @@ export function apply(ctx: any) {
         // Cancellation must interrupt OCR/vision while preparation owns the
         // admission queue; waiting behind it would prevent AbortController.
         const result = await (feedbackAction || body.action==='cancel' ? perform() : serialize(perform));
+        if(body.action==='feedback'&&body.vote==='down')pptLearning.negativeFeedback(result);
         return browserJson(result, { headers: { 'Cache-Control': 'no-store' } });
       } catch (error: any) { return browserJson({ error: { code: error.code ?? 'comparison_failed', message: error.message } }, { status: error.status ?? 400 }); }
     } }), 'harless-comparison-api');
@@ -1813,7 +1833,8 @@ export function apply(ctx: any) {
   const options = resolveAdapterOptions({ baseURL: brokerMode ? config.budget_broker_endpoint + '/v1' : config.endpoint,
     reasoningEffort: 'off', ...(config.max_output_tokens == null ? {} : { maxTokens: config.max_output_tokens }) } as any);
   // resolveAdapterOptions supplies 256k when omitted; remove that application
-  // default so the native adapter leaves max_tokens off the provider request.
+  // default. The Web adapter uses the provider's documented full capacity at
+  // serialization, while this task's application cap remains null.
   if (config.max_output_tokens == null) delete (options as any).maxTokens;
   options.models = webDeepSeekModels(options.models, modelOptions);
   const deepseekAdapter = new WebDeepSeekAdapter({ options: () => options,

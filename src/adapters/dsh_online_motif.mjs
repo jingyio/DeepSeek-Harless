@@ -12,6 +12,38 @@ import { digest, observation, parseStructuredTask, proposeReadyBatch,
 export const name = 'sss-online-motif';
 export const inject = ['llm', 'agents'];
 
+/** Bridge legacy MCP envelopes and DSH's canonical, execution-local JsonValue.
+ * A Native projection alone is not authoritative: require the successful value
+ * and its complete JSON presentation to agree before learning parameter edges.
+ */
+export function observeHarnessToolResult(result, toolName = '') {
+  if (result?.isError || result?.value?.isError || result?.error !== undefined) return null;
+  if (result?.isError === false && Object.hasOwn(result, 'value') &&
+      (!result.value || typeof result.value !== 'object' || Array.isArray(result.value))) return null;
+  const legacy = observation(result, toolName);
+  if (legacy !== null) {
+    // MCP's canonical value is the envelope, while its Native text projection
+    // renders the envelope's content. Compare the decoded payloads, not envelope
+    // bytes. Advertised structuredContent remains the original authority.
+    if (result?.isError === false && Array.isArray(result?.value?.content) &&
+        !result.value.structuredContent && Array.isArray(result.content)) {
+      const projected = observation({ content: result.content }, toolName);
+      return projected !== null && digest(projected) === digest(legacy) ? legacy : null;
+    }
+    return legacy;
+  }
+  if (!(result?.isError === false && Object.hasOwn(result, 'value') &&
+      Array.isArray(result.content))) return observation(result, toolName);
+  const value = result?.value;
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      result.content.length !== 1 || result.content[0]?.type !== 'text') return null;
+  try {
+    const projected = JSON.parse(result.content[0].text);
+    return projected && typeof projected === 'object' && !Array.isArray(projected) &&
+      digest(projected) === digest(value) ? value : null;
+  } catch { return null; }
+}
+
 function outputField(output, path) {
   return path?.split('.').reduce((value, key) =>
     value && typeof value === 'object' ? value[key] : undefined, output);
@@ -93,7 +125,7 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
   function observe(sessionId, exec, result) {
     if (sessionId !== parsedTask.session_id) return;
     const current = state(sessionId);
-    const output = observation(result, exec.name);
+    const output = observeHarnessToolResult(result, exec.name);
     const version = outputField(output, manifest.version_fields[exec.name]);
     const pending = current.pending.get(exec.callId);
     // Shadow's ordinary model call has no synthetic call ID. Reuse only the
@@ -115,7 +147,13 @@ export function createOnlineInterceptor({ manifest, task, similarity, mode = 'sh
       (!!manifest.version_fields[exec.name] &&
        !versionWithinTask(parsedTask, manifest, exec.name, version, expected));
     if (barrier) audit({ kind: 'motif_deferred', session_id: sessionId, tool: exec.name,
-      reason: !ok ? 'tool_result_failed' : manifest.contracts[exec.name]?.read_only !== true ? 'tool_not_certified_read_only' : 'source_version_mismatch' });
+      reason: !ok ? 'tool_result_failed' : manifest.contracts[exec.name]?.read_only !== true ? 'tool_not_certified_read_only' : 'source_version_mismatch',
+      ...(!ok ? { observation_shape: {
+        result_keys: Object.keys(result ?? {}).sort(), value_kind: typeof result?.value,
+        value_keys: result?.value && typeof result.value === 'object' ? Object.keys(result.value).sort() : [],
+        value_content_kinds: result?.value?.content?.map?.(block => block?.type ?? null),
+        content_kinds: result?.content?.map?.(block => block?.type ?? null),
+      } } : {}) });
     current.history.push({ name: exec.name, callId: exec.callId, ok,
       barrier, arguments: exec.arguments, output, sourceVersion: version,
       inputVersion: parsedTask.input_version });

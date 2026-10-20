@@ -2,6 +2,11 @@
 import { DeepSeekAdapter } from '@deepseek-ai/dsh-llm-deepseek';
 import type { LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm';
 
+// Provider-native maximum, verified 2026-10-20 against the official API.
+// Omitting max_tokens instead selects only 8K in Off mode, not this capacity.
+// https://api-docs.deepseek.com/api/create-chat-completion/
+export const WEB_DEEPSEEK_OUTPUT_CAPACITY = 393216;
+
 export const WEB_REASONING_EFFORTS = ['off', 'low', 'high', 'max'] as const;
 export type WebReasoningEffort = typeof WEB_REASONING_EFFORTS[number];
 export const WEB_REASONING_LABELS: Record<WebReasoningEffort, string> = {off:'Off', low:'Low', high:'High', max:'Max'};
@@ -55,14 +60,22 @@ function productModes(model: LlmResolvedModelInfo, configured: readonly WebModel
 /** Keep provider serialization in the installed adapter; customize discovery only. */
 export class WebDeepSeekAdapter extends DeepSeekAdapter {
   private configuredModels: readonly WebModelOption[];
+  private connectionOptions: ConstructorParameters<typeof DeepSeekAdapter>[0]['options'];
   constructor(config: ConstructorParameters<typeof DeepSeekAdapter>[0], models: readonly WebModelOption[] = []) {
-    super(config); this.configuredModels = models;
+    super(config); this.configuredModels = models; this.connectionOptions=config.options;
   }
   override async resolveModel(...args: Parameters<DeepSeekAdapter['resolveModel']>) {
     return productModes(await super.resolveModel(...args), this.configuredModels);
   }
   override async prepareCall(...args: Parameters<DeepSeekAdapter['prepareCall']>) {
     const prepared = await super.prepareCall(...args);
-    return { ...prepared, model: productModes(prepared.model, this.configuredModels) };
+    return { ...prepared, model: productModes(prepared.model, this.configuredModels),
+      stream:(request:Parameters<DeepSeekAdapter['stream']>[0])=>prepared.stream(this.withOutputCapacity(request)) };
   }
+  private withOutputCapacity(request:Parameters<DeepSeekAdapter['stream']>[0]) {
+    const connection=this.connectionOptions();
+    return request.maxTokens!==undefined?request:{...request,maxTokens:
+      connection.models.find(row=>row.id===request.model)?.maxTokens??connection.maxTokens??WEB_DEEPSEEK_OUTPUT_CAPACITY};
+  }
+  override stream(request:Parameters<DeepSeekAdapter['stream']>[0]) {return super.stream(this.withOutputCapacity(request));}
 }

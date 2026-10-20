@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "format": "sss-operation-graph-v2",
+  "execution_version_sha256": "56b0d2d3d632141deef4992bb19bbda1d6a06da5018b7d6f0cbb3ae5101417a8",
+  "artifact": {
+    "kind": "learned_mcp_operation_dag",
+    "status": "trace_validated_read_only",
+    "nodes": [
+      {
+        "tool": "mcp__file_management__pin_file",
+        "bindings": {}
+      },
+      {
+        "tool": "mcp__file_management__read_file",
+        "bindings": {
+          "source_id": {
+            "node": 0,
+            "path": "source_id"
+          }
+        }
+      }
+    ],
+    "tool_contracts": {
+      "mcp__file_management__pin_file": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [
+            "source_id"
+          ],
+          "flow_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "file_id": {
+              "description": "Actual file_id from list_files or inspect_plan_result; pinning returns a different source_id for reading.",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "file_id"
+          ],
+          "title": "pin_fileArguments"
+        },
+        "schema_sha256": "e7e08abda151f3847b6ec1d0ebc269750eafcba4bf0f92b709a70a7c26957cd2"
+      },
+      "mcp__file_management__read_file": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [],
+          "statuses": [
+            "readable",
+            "metadata_only",
+            "unreadable",
+            "unsupported"
+          ],
+          "flow_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "source_id": {
+              "description": "Use the exact source_id returned by a completed pin_file or pin_files call. A file_id is not a source_id.",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "source_id"
+          ],
+          "title": "read_fileArguments"
+        },
+        "schema_sha256": "9b2ea5b4fc9e72afd1865830a1e52a2bb6dcbba31ca9604c14fc4c845ddd1530"
+      }
+    },
+    "max_nodes": 8,
+    "execution_version": "56b0d2d3d632141deef4992bb19bbda1d6a06da5018b7d6f0cbb3ae5101417a8",
+    "certification_contract": "sss-operation-certification-v2",
+    "interleaving_contracts": {
+      "mcp__file_management__list_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": false,
+          "exports": [],
+          "safe_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "list_filesArguments"
+        },
+        "schema_sha256": "fbe3e382dd6c8e9281fe26492070587b61f9dd4de908bb735cd9697af616533d"
+      }
+    },
+    "request_lane_contracts": {},
+    "source_task_fingerprints": [
+      "02eae8896283f258a95d41237b496e2f1d7ecc8d21d1bd4d836fb170ffcda8a9",
+      "045f8f6ee2654b04989399bff929614b428a4500e150a5eb27390b69ed762182",
+      "046fcb04a6d17082661b56893988d50cc460eeb485dbb2c4cde6ffff3a2002c4",
+      "1a3a3ed9cfd87f95559b229162a1db58c87807653a3aa72545b43dc2af8fefdd",
+      "1e3712f5566294715cd2ffdb626f3fbc167dd9462a8d6bcf28fae350f3234e61",
+      "1e495ce26101c5063626af0f424bb110bacb3b00c52815bd3f9a3cc298498773",
+      "1ef3a4cbc6b201d487d5de2ad46e0a99e1e15ad4e906ffebed9870f1348817e9",
+      "2112674a65db592151413615cf08062c0e6798f9bea2ca6747ce414ccbbe0c4c",
+      "48c2bf27ea44a2b4206291dc2118e151d5bad93f187e4b5fc52dea9ba146bc15",
+      "48c989f0e07c90542dc9c99e75d03399bd6f41a879bf1f1ab426513ded1cfd4f",
+      "4925cff023383996b5672273af7ed0a40aad3b542a9ba35def196bd99e61094c",
+      "67d401ba766eab55d691b40f05cd013261d2956239ecefbc89803a8f3fecb1c4",
+      "69ac48bd84586d25f43442bfc915ff9dc087c05d6bcee273b7f8c2c339125da8",
+      "6aaf8d1ee3f82f8298afa44f48a3c25f90c5ef521a7fc27841eaa98f4010052b",
+      "6f5b60c3a5cd2af6354f2e3e254c3040c48c1380dadf7ddd187a630f2f819b48",
+      "845691ea17ed284a8bc359d85ea4b08053d9b222c9665762bf58b0ac1a2bca53",
+      "8878a2975c1325ef15bff595655b5e4c4103cd1408282063f87a494a4d033926",
+      "8be7ca0442bcaaf0dd6fa34db8ddc72ab622d1657fbfe16a10948278647ce14c",
+      "8fdf6c56b59b57dbbca99923edb1ce4e97e635d9cdd692405e69dfb4b7f2fca4",
+      "97057e41020cb7429b88ea328c16b4b9ce83f95db13821ff11543d2cec21cf9c",
+      "97192a9f64abdb15fb71a9ff71cfa3d7f9ac0c84bca4790880924f6e6179d3f3",
+      "9ce826fd341bc4de6f1924d2d291eea795d8fd59d4ce79a3b1dca712ba836568",
+      "b97b138fd04814dc08c982c13d1d44c1e0b66274391a568bfd439aa51dd335af",
+      "ce6a1e38870ba8360ccd111b921e337edfd360a4b712258d7a56d2463c1c14cf",
+      "d27c65e06648e5a9a6a52507d148b0b9e8261ab267753a3026848a14208ab156",
+      "f2f7c60f27192ae41bfef9ccd466fc1c508cea0882d5da85d1f06b6402b3e7c9",
+      "fa245010ed6a167841275b381e8ad5a5179d8121453dd807d318e40c6a7e6808",
+      "fee3f27ac73d252da6befc2cb03ea91af82813a33e1826607f15e6c4d46fc19d"
+    ],
+    "witnesses": [],
+    "recertification_provenance": {
+      "old_policy_digest": "547c9f8f3c9b92bea7648abf02ff2d479430940b9004469940bc7c3a785e183c",
+      "old_payload_sha256": "1ec41c0a72f8a3b0ae45cf4e875bce862cea1511b74f0b5d6c3a177f41bf9a56",
+      "old_certificate_sha256": "307be4916241b6023ea44a157f378c1312077c238dcde6e1f1949865161a2199",
+      "candidate_lock_sha256": "8d0c622f836370cf63c15244f7a61ac08b7f5bf1794f765dad772654c2b1279c",
+      "recertifier_sha256": "d0f8e2003d2ee57ee67077360409a7140fe1223ef35c91fcd5e2f3d8415bdded",
+      "native_prefix": {
+        "format": "sss-native-connected-prefix-v1",
+        "calls": [
+          "call_00_kuMOTDSFDE3qhJjna6967793",
+          "call_00_K3ZJctBZtB45L0bLcmC92816"
+        ],
+        "view_end_result_seq": 25,
+        "full_events_sha256": "2a920770bcedc760ef88ec72679bd6c9d458182dd950cd0bcfea25d2858d93a2",
+        "full_native_witness_calls": [
+          "call_00_kuMOTDSFDE3qhJjna6967793",
+          "call_00_K3ZJctBZtB45L0bLcmC92816"
+        ],
+        "raw_events_unchanged": true
+      }
+    },
+    "validation_task_fingerprint": "42c905a787afa9cfb4eff5dd4e76dfabd6a636f96bab47934c887156f21ae853",
+    "validation_witness": {
+      "nodes": [
+        {
+          "tool": "mcp__file_management__pin_file",
+          "bindings": {}
+        },
+        {
+          "tool": "mcp__file_management__read_file",
+          "bindings": {
+            "source_id": {
+              "node": 0,
+              "path": "source_id"
+            }
+          }
+        }
+      ],
+      "values": {
+        "1:source_id": "source-7a2673535cb1da7c5effa4e7ae4763c9"
+      },
+      "calls": [
+        "call_00_kuMOTDSFDE3qhJjna6967793",
+        "call_00_K3ZJctBZtB45L0bLcmC92816"
+      ],
+      "native_new_nodes": [
+        1
+      ],
+      "inherited_policy": null
+    },
+    "certified_digest": "5ff6d719d9a4f032ca8200311617270dea94f5b13375e3eaa0b3869c43223c49"
+  },
+  "policy_digest": "05a1c3ad8a5dbc05df5ed55c280088b26603522ae5a67667d3b9c705924c62ab"
+}

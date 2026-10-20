@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SSS unified experience registry v1",
+  "type": "object",
+  "required": ["schema_version", "format", "generation", "parent_digest", "registry_digest", "entries", "reason", "automatic_selection_uses_profile_id"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "format": {"const": "sss-experience-registry-v1"},
+    "generation": {"type": "integer", "minimum": 0},
+    "parent_digest": {"anyOf": [{"$ref": "#/$defs/sha"}, {"type": "null"}]},
+    "registry_digest": {"$ref": "#/$defs/sha"},
+    "reason": {"type": "string"},
+    "automatic_selection_uses_profile_id": {"const": false},
+    "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relative": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//).+$"},
+    "entry": {
+      "type": "object",
+      "required": ["entry_id", "artifact_digest", "kind", "payload", "sha256", "runtime_source", "state", "activated_generation"],
+      "properties": {
+        "entry_id": {"$ref": "#/$defs/sha"},
+        "artifact_digest": {"$ref": "#/$defs/sha"},
+        "kind": {"enum": ["script_v1", "script_v2", "read_library", "collection", "reentry", "plan", "operation_graph"]},
+        "payload": {"$ref": "#/$defs/relative"},
+        "sha256": {"$ref": "#/$defs/sha"},
+        "runtime_source": {"type": "object", "additionalProperties": {"$ref": "#/$defs/sha"}},
+        "state": {"enum": ["active", "candidate", "disabled"]},
+        "activated_generation": {"type": "integer", "minimum": 1},
+        "disabled_reason": {"type": "string"},
+        "certificate": {
+          "type": "object", "required": ["file", "sha256"], "additionalProperties": false,
+          "properties": {"file": {"$ref": "#/$defs/relative"}, "sha256": {"$ref": "#/$defs/sha"}}
+        }
+      },
+      "allOf": [{"if": {"properties": {"kind": {"enum": ["script_v1", "script_v2", "operation_graph"]}, "state": {"const": "active"}}}, "then": {"required": ["certificate"]}}],
+      "additionalProperties": false
+    }
+  }
+}

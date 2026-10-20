@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
-import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels } from '../src/adapters/harless_reasoning.ts';
+import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels,WEB_DEEPSEEK_OUTPUT_CAPACITY } from '../src/adapters/harless_reasoning.ts';
 
 test('Native model discovery offers every supported strength while the installed adapter sends its native wire values',async()=>{
   const requests=[];
@@ -46,7 +46,10 @@ test('Native model discovery offers every supported strength while the installed
     for await(const chunk of pro.stream({provider:'deepseek-official',model:'deepseek-v4-pro',reasoningEffort:'off',
       messages:[{id:'pro-user',role:'user',content:[{type:'text',text:'Contract check'}]}]})){}
     assert.equal(requests[4].model,'deepseek-v4-pro');assert.deepEqual(requests[4].thinking,{type:'disabled'});
-    for(const request of requests) {assert.equal(request.stream,true);assert.ok(!('max_tokens' in request));}
+    for(const request of requests) {assert.equal(request.stream,true);assert.equal(request.max_tokens,WEB_DEEPSEEK_OUTPUT_CAPACITY);}
+    for await(const _ of prepared.stream({provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off',maxTokens:700,
+      messages:[{id:'finite-user',role:'user',content:[{type:'text',text:'Explicit finite diagnostic'}]}]})){}
+    assert.equal(requests.at(-1).max_tokens,700,'an explicit diagnostic cap is not silently increased');
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
 
