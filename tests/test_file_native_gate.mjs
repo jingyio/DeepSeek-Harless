@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {resolveAdapterOptions} from '@deepseek-ai/dsh-llm-deepseek';
 import {ManagementRoutedAdapter,startManagementGate} from '../src/adapters/management_model_gate.ts';
+import {WEB_DEEPSEEK_OUTPUT_CAPACITY} from '../src/adapters/harless_reasoning.ts';
 
 test('Only admitted file tasks use the local gate; other scene serialization stays native',async()=>{
  const rows=[];
@@ -27,6 +28,7 @@ test('Only admitted file tasks use the local gate; other scene serialization sta
   }
   assert.deepEqual(rows.map(r=>r.path),['/platform/chat/completions','/file-gate/chat/completions']);
   assert.deepEqual(rows[0].body,rows[1].body);
+  assert.equal(rows[0].body.max_tokens,WEB_DEEPSEEK_OUTPUT_CAPACITY,'file and non-file routes both avoid the provider 8K default');
  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
 

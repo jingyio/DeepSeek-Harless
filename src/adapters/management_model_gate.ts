@@ -3,16 +3,15 @@ import {spawn} from 'node:child_process';
 import {mkdirSync,writeFileSync,renameSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DeepSeekAdapter} from '@deepseek-ai/dsh-llm-deepseek';
 import {WebDeepSeekAdapter} from './harless_reasoning.ts';
 
 export class ManagementRoutedAdapter extends WebDeepSeekAdapter {
   private base: any; private route: (session: string)=>string|undefined;
-  private delegates=new Map<string,DeepSeekAdapter>();
+  private delegates=new Map<string,WebDeepSeekAdapter>();
   constructor(config:any,models:any[],route:(session:string)=>string|undefined){super(config,models);this.base=config;this.route=route;}
   private select(request:any){
     const endpoint=this.route(request.sessionId);if(!endpoint)return;
-    if(!this.delegates.has(endpoint))this.delegates.set(endpoint,new DeepSeekAdapter({...this.base,options:()=>({...this.base.options(),baseURL:endpoint})}));
+    if(!this.delegates.has(endpoint))this.delegates.set(endpoint,new WebDeepSeekAdapter({...this.base,options:()=>({...this.base.options(),baseURL:endpoint})}));
     return this.delegates.get(endpoint);
   }
   override async prepareCall(...args:Parameters<WebDeepSeekAdapter['prepareCall']>){
