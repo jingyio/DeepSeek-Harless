@@ -582,7 +582,6 @@ export function apply(ctx: any) {
   // Keep native state/driver internals; human creation uses the scoped command.
   goalService.remoteExportCreate=()=>{throw new TaskError('goal_requires_task','请用 /goal --rounds <正整数> <目标> 开始目标任务。',409);};
   nativeGoalDriver(ctx);
-  ctx.inject(['typertGateway'],(scoped:any)=>scoped.effect(()=>protectGoalRpc(scoped),'geneloop-goal-rpc-admission'));
   const goalRequests=new Map<string,any>();
   const goals=createGoalAdmission(ctx,{ensureOwned,taskForSession:forSession,
     isActive:task=>task.status==='running'&&active.has(task.request.task_id),currentTargets:parent=>currentTargets(parent,true),
@@ -804,6 +803,17 @@ export function apply(ctx: any) {
   }
   const controller = ctx.sessionController;
   const privateLanes = registerPrivateLanes(ctx, config.output, principal, id => comparisons?.isLane(id) ?? false);
+  ctx.inject(['typertGateway'],(scoped:any)=>scoped.effect(()=>protectGoalRpc(scoped,async session=>{
+    const denied=()=>new RemoteError('gateway/forbidden','命令仅可用于当前账号的公开对话。');
+    const privateTarget=()=>typeof session!=='string'||
+      !/^(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})$/.test(session)||
+      privateLanes.isPrivate(session)||delegation.isChild(session)||!ownedSessions.has(session);
+    if(privateTarget())throw denied();
+    try{await ensureOwned(session as string);}catch{throw denied();}
+    // Ownership recovery may await storage; recheck the private identity before
+    // native argument lookup or command/run can have any side effect.
+    if(privateTarget()||!ownedSessions.has(session as string))throw denied();
+  }),'geneloop-goal-rpc-admission'));
   const privateCreations = new WeakSet<object>();
   const inspectForTrash = controller.inspect.bind(controller);
   const archiveForTrash = ctx.workspaceController.archiveSession.bind(ctx.workspaceController);

@@ -98,7 +98,9 @@ def test_paper_default_library_and_generic_export_survive_without_private_deploy
     assert 'mcp__paper_checks__collect_current_local_citation_evidence' in row['allowed_tools']
     scene_tools = json.loads((ROOT/row['scenario']).read_text(encoding='utf-8'))['allowed_tools']
     common = json.loads((ROOT/'config/geneloop-capabilities.json').read_text(encoding='utf-8'))['tools']
-    assert len(scene_tools) == 24 and all(name.startswith('mcp__paper_checks__') for name in scene_tools)
+    assert len(scene_tools) == 24
+    assert sum(name.startswith('mcp__paper_checks__') for name in scene_tools) == 20
+    assert sum(name.startswith('mcp__paper_trace_rsi__') for name in scene_tools) == 4
     assert row['allowed_tools'] == [*scene_tools, *common]
     assert '每项发现只给一条保留原始事实的最小建议' in row['instructions']
 

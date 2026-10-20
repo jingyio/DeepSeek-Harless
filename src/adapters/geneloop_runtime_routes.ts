@@ -17,7 +17,7 @@ export function guardNativeModeCommand(ctx:any,handler:(invocation:any)=>any){
  * Both physical carriers dispatch through this public Gateway method. Blocking
  * mutations here prevents the upstream UI/RPC from rearming an unmetered task.
  */
-export function protectGoalRpc(ctx:any){
+export function protectGoalRpc(ctx:any,authorizeCommandTarget?:(session:unknown)=>void|Promise<void>){
  const gateway=ctx.get('typertGateway');if(!gateway)return ()=>{};
  const restores:(()=>void)[]=[];
  for(const method of ['invoke','stream']){
@@ -25,6 +25,13 @@ export function protectGoalRpc(ctx:any){
   const replacement=async function(request:any){
    if(request.namespace==='goals'&&request.method!=='get')throw new RemoteError('gateway/forbidden',
     '请使用当前对话的 /goal 命令；目标创建与恢复须经过任务准入和计量。');
+   if(request.namespace==='commands'&&['list','execute'].includes(request.method)){
+    // Browser-supplied agentId is not permission to invoke a private lane's
+    // global native commands. The host closure owns the live/persisted scope;
+    // trusted internal commands.execute never passes through this carrier.
+    if(!authorizeCommandTarget)throw new RemoteError('gateway/forbidden','命令仅可用于当前账号的公开对话。');
+    await authorizeCommandTarget(request.args?.agentId);
+   }
    return original.call(gateway,request);
   };
   gateway[method]=replacement;restores.push(()=>{if(gateway[method]===replacement)gateway[method]=original;});

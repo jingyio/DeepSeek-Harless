@@ -4,6 +4,7 @@ This exercises Cordis dependency isolation, rather than calling apply(rootCtx).
 Only a loopback diagnostic meter is provided; any completion request is a failure.
 """
 import http.cookiejar
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -72,6 +73,20 @@ def test_full_native_host_boots_and_exposes_scoped_controls_without_model_work()
                               'adapter': 'workspace', 'allowed_tools': common,
                               'common_tools': common, 'mcp_rows': []}]}
         (output / 'policy.json').write_text(json.dumps(policy), encoding='utf-8')
+        # Persisted owned private and merely reserved identities must never be
+        # exposed as public command targets, including on a cold host load.
+        hidden = {key: 'session-' + str(uuid4()) for key in ('private', 'reserved', 'unknown')}
+        hidden.update(raw=str(uuid4()), retired_raw=str(uuid4()))
+        principal = 'local-operator'
+        home = output / 'home'
+        home.mkdir()
+        ownership_scope = hashlib.sha256(json.dumps({'home': str(home), 'principal': principal},
+                           sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        ownership = home / ('harless-web-ownership-' + ownership_scope + '.json')
+        ownership.write_text(json.dumps({'scope': ownership_scope, 'sessions': [hidden['private'], hidden['reserved']],
+                             'bound': [], 'chat_only_sessions': []}), encoding='utf-8')
+        (output / 'private-lane-sessions.json').write_text(json.dumps({'version': 1, 'principal': principal,
+            'sessions': {hidden['private']: 'session-' + str(uuid4()), hidden['reserved']: 'session-' + str(uuid4())}}), encoding='utf-8')
         patch = [{'id': name, 'disabled': True} for name in
                  ('llm-deepseek', 'llm-pi-ai', 'session-title-llm', 'session-log-deepseek',
                   'bash-sandbox', 'pwsh-sandbox', 'web-search-deepseek')]
@@ -93,9 +108,25 @@ def test_full_native_host_boots_and_exposes_scoped_controls_without_model_work()
         diagnostic = output / 'native-ready.mjs'
         diagnostic.write_text("""
 import {scopeOf} from '@deepseek-ai/dsh-scope';
+import {createHash} from 'node:crypto';
 export const name='native-boot-readiness';
-export const inject=['connection','agents','compaction','planMode','goals','subagents','sessions','tools','fs','skills','userQuestions'];
+export const inject=['connection','agents','agentPresets','commands','compaction','planMode','goals','subagents','sessions','tools','fs','skills','userQuestions'];
 export function apply(ctx){
+ const handles=[];ctx.effect(()=>async()=>{for(const handle of handles.reverse())await handle.dispose();},'native-diagnostic-handles');
+ ctx.effect(()=>ctx.connection.fetch.register({path:'/api/diagnostic/command-targets',methods:['POST'],requestBody:'buffered',async fetch(request){
+  const rejected=ctx.connection.requestRejection(request);if(rejected)return new Response('Unauthorized',{status:rejected});
+  try{
+  const {ids,parent}=await request.json(),owner=ctx.agents.get(parent);
+  for(const key of ['private','unknown','raw','retired_raw']){
+   const child=key==='raw'||key==='retired_raw';
+   const handle=await ctx.agents.create({sessionId:ids[key],agentOptions:{provider:'deepseek-official',model:'deepseek-flash'},
+    ...(child?{parentAgent:owner}:{}),meta:{agentPreset:'sss-task',...(child?{parentSession:parent,origin:'subagent'}:{})},
+    setup:async agentCtx=>{await ctx.agentPresets.mount(agentCtx,'sss-task');}});
+   if(key==='retired_raw')await handle.dispose();else handles.push(handle);
+  }
+  return Response.json({created:true});
+  }catch(error){return Response.json({diagnostic_error:String(error),stack:error.stack},{status:500});}
+ }}),'native-command-targets');
  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/diagnostic/native-ready',methods:['GET'],requestBody:'buffered',async fetch(request){
   const rejected=ctx.connection.requestRejection(request);if(rejected)return new Response('Unauthorized',{status:rejected});
   const id=new URL(request.url).searchParams.get('session_id'),agent=id?ctx.agents.get(id):undefined;
@@ -103,7 +134,9 @@ export function apply(ctx){
    plan:typeof ctx.planMode.get==='function',goal:typeof ctx.goals.get==='function',
    persistence:typeof ctx.sessions.flush==='function',questions:typeof ctx.userQuestions.ask==='function',
    spawn:!!ctx.subagents.getProvider('spawn'),delegation:!!ctx.subagents.getProvider('geneloop-task'),
-   tools:ctx.tools.schemas(agent?scopeOf(agent.ctx):undefined).map(t=>t.name)});
+   tools:ctx.tools.schemas(agent?scopeOf(agent.ctx):undefined).map(t=>t.name),
+   ...(agent?{events_sha256:createHash('sha256').update(JSON.stringify(agent.session.snapshotEvents())).digest('hex'),
+     plan_state:ctx.planMode.get(agent),user_messages:agent.session.snapshotEvents().filter(e=>e.type==='user/message').length}:{} )});
  }}),'native-boot-readiness');
 }
 """, encoding='utf-8')
@@ -122,10 +155,15 @@ export function apply(ctx){
             base = f'http://127.0.0.1:{port}'
 
             def request(path, body=None):
-                with client.open(urllib.request.Request(base + path,
-                       data=None if body is None else json.dumps(body).encode(),
-                       headers={'Origin': base, 'Content-Type': 'application/json'}), timeout=10) as response:
-                    return json.load(response)
+                try:
+                    with client.open(urllib.request.Request(base + path,
+                           data=None if body is None else json.dumps(body).encode(),
+                           headers={'Origin': base, 'Content-Type': 'application/json'}), timeout=10) as response:
+                        return json.load(response)
+                except urllib.error.HTTPError as error:
+                    if error.code == 500:
+                        raise AssertionError(error.read().decode()) from error
+                    raise
 
             deadline = time.monotonic() + 45
             signed_in = False
@@ -167,6 +205,52 @@ export function apply(ctx){
             assert invalid['result']['kind'] == 'error'
             assert rpc('goals/get', {'agentId': session}) is None
             assert request('/api/harless/questions?session_id=' + session) == {'questions': []}
+            assert request('/api/harless/tasks')['tasks'] == []
+            assert request('/api/diagnostic/command-targets', {'ids': hidden, 'parent': session}) == {'created': True}
+            footprints = {key: request('/api/diagnostic/native-ready?session_id=' + hidden[key])
+                          for key in ('private', 'unknown', 'raw')}
+            ownership_before = ownership.read_bytes()
+            denied = []
+            for target in hidden.values():
+                for method, args in (
+                    ('list', {'agentId': target}),
+                    ('execute', {'agentId': target, 'line': '/plan PRIVATE_PLAN_BYPASS', 'submittedAttachments': []}),
+                    ('execute', {'agentId': target, 'line': '/compact', 'submittedAttachments': []}),
+                    ('execute', {'agentId': target, 'line': '/arbitrary-control', 'submittedAttachments': []}),
+                ):
+                    frame = {'type': 'client-request', 'rpcId': str(uuid4()), 'method': 'commands/' + method,
+                             'payload': {'args': args}}
+                    result = request('/api/commands/' + method, frame)['result']
+                    assert not result['ok'] and result['error']['code'] == 'gateway/forbidden', result
+                    denied.append({'endpoint': 'commands/' + method, 'args': args})
+            # Use the installed browser's actual WS MUX carrier, and pass the
+            # temporary fixture cookie through stdin rather than argv/logs.
+            cookie = '; '.join(cookie.name + '=' + cookie.value for handler in client.handlers
+                               if isinstance(handler, urllib.request.HTTPCookieProcessor)
+                               for cookie in handler.cookiejar)
+            ws_test = r'''
+import WebSocket from 'ws';import {readFileSync} from 'node:fs';import {randomUUID} from 'node:crypto';
+const input=JSON.parse(readFileSync(0,'utf8')),ws=new WebSocket(input.origin.replace('http:','ws:')+'/api/remote.mux',
+ {headers:{cookie:input.cookie,Origin:input.origin}});
+await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
+try{for(const entry of input.denied){const id=randomUUID();
+ const response=await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('Command boundary WS timeout')),10000);
+  const listener=raw=>{const value=JSON.parse(raw.toString());if(value.streamId!==id)return;
+   clearTimeout(timeout);ws.off('message',listener);resolve(value);};ws.on('message',listener);
+  ws.send(JSON.stringify({type:'open',streamId:id,endpoint:entry.endpoint,payload:{args:entry.args}}));});
+ if(response.type!=='error'||response.error?.code!=='gateway/forbidden')throw Error('Private command WS boundary was bypassed');
+ }console.log(JSON.stringify({denied:input.denied.length}));}finally{ws.close();}
+'''
+            ws_result = subprocess.run([node, '--input-type=module', '-e', ws_test],
+                        input=json.dumps({'origin': base, 'cookie': cookie, 'denied': denied}),
+                        text=True, capture_output=True, encoding='utf-8', cwd=ROOT, timeout=25)
+            assert ws_result.returncode == 0, ws_result.stderr
+            assert json.loads(ws_result.stdout) == {'denied': len(denied)}
+            for key, before in footprints.items():
+                after = request('/api/diagnostic/native-ready?session_id=' + hidden[key])
+                for field in ('events_sha256', 'plan_state', 'user_messages'):
+                    assert after[field] == before[field], (key, field)
+            assert ownership.read_bytes() == ownership_before, 'Denied commands may not adopt an unknown child or change ownership'
             assert request('/api/harless/tasks')['tasks'] == []
             assert model_requests == [], 'Native control-only boot must never call a model'
     finally:
