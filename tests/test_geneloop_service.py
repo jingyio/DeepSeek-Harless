@@ -346,6 +346,73 @@ class FileWorkerIdentityTests(unittest.TestCase):
         (process / 'cmdline').write_bytes(b'python\0rsi-worker.py\0--config\0/other-account/rsi/config.json\0')
         self.assertFalse(service.file_worker_running(100, self.home, proc_root=self.proc))
 
+    def kernel_process(self, host_pid, namespace_pid, *, flags=0x208040, name='scsi_eh_5', kthread=None):
+        process = self.process(host_pid, namespace_pid, self.home / 'rsi/config.json')
+        status = f'Name:\t{name}\nState:\tS (sleeping)\nUid:\t0\t0\t0\t0\nNSpid:\t{host_pid}\t{namespace_pid}\n'
+        if kthread is not None:
+            status += f'Kthread:\t{kthread}\n'
+        (process / 'status').write_text(status, encoding='utf-8')
+        (process / 'cmdline').write_bytes(b'')
+        # pid (comm) state ppid pgrp session tty_nr tpgid flags ...
+        (process / 'stat').write_text(f'{host_pid} ({name}) S 2 0 0 0 -1 {flags} 0 0\n', encoding='utf-8')
+        return process
+
+    @unittest.skipUnless(sys.platform == 'linux', 'PF_KTHREAD is a Linux kernel-owned process flag')
+    def test_namespace_pid_collision_skips_only_proven_kernel_threads(self):
+        namespace_home = Path('/app/.local/web/file-management/accounts/scope')
+        # The real older-kernel failure has no status.Kthread field.
+        self.kernel_process(656, 656)
+        with mock.patch.object(Path, 'samefile', side_effect=AssertionError('Kernel thread has no account mount')) as same, \
+                mock.patch.object(service.os, 'kill', side_effect=AssertionError('Must not signal any process')):
+            self.assertFalse(service.file_worker_running(656, self.home, namespace_home, self.proc))
+            self.assertFalse(service.file_worker_running(656, self.home, proc_root=self.proc))
+        same.assert_not_called()
+
+    @unittest.skipUnless(sys.platform == 'linux', 'PF_KTHREAD is a Linux kernel-owned process flag')
+    def test_trusted_status_kernel_flag_works_without_older_stat_fallback(self):
+        process = self.kernel_process(656, 656, kthread=1)
+        (process / 'stat').unlink()
+        self.assertFalse(service.file_worker_running(656, self.home, proc_root=self.proc))
+
+    @unittest.skipUnless(sys.platform == 'linux', 'PF_KTHREAD is a Linux kernel-owned process flag')
+    def test_empty_userspace_or_unknown_process_remains_a_restart_blocker(self):
+        process = self.kernel_process(656, 656, flags=0x8040, name='[scsi_eh_5]')
+        # A root UID, bracketed kernel-looking name and empty cmdline prove nothing.
+        with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+            service.file_worker_running(656, self.home, proc_root=self.proc)
+        (process / 'stat').unlink()
+        with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+            service.file_worker_running(656, self.home, proc_root=self.proc)
+        (process / 'stat').write_text('656 (scsi_eh_5) broken 2097152', encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+            service.file_worker_running(656, self.home, proc_root=self.proc)
+        original = Path.read_text
+        def inaccessible(path, *args, **kwargs):
+            if path == process / 'stat':
+                raise PermissionError('Unknown empty-cmdline process stat')
+            return original(path, *args, **kwargs)
+        with mock.patch.object(Path, 'read_text', inaccessible):
+            with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                service.file_worker_running(656, self.home, proc_root=self.proc)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'PF_KTHREAD is a Linux kernel-owned process flag')
+    def test_stat_comm_parentheses_do_not_move_the_flags_field(self):
+        process = self.kernel_process(656, 656, flags=0x8040, name='worker ) 2097152 ( S')
+        with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+            service.file_worker_running(656, self.home, proc_root=self.proc)
+        (process / 'stat').write_text('999 (scsi_eh_5) S 2 0 0 0 -1 2097152 0\n', encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+            service.file_worker_running(656, self.home, proc_root=self.proc)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'PF_KTHREAD is a Linux kernel-owned process flag')
+    def test_skipping_a_kernel_collision_still_detects_the_actual_namespaced_worker(self):
+        namespace_home = Path('/app/.local/web/file-management/accounts/scope')
+        self.kernel_process(42, 42)
+        self.process(54321, 42, namespace_home / 'rsi/config.json')
+        with mock.patch.object(Path, 'samefile', return_value=True) as same:
+            self.assertTrue(service.file_worker_running(42, self.home, namespace_home, self.proc))
+        same.assert_called_once_with(self.home)
+
     @unittest.skipUnless(os.name == 'posix', 'Hosted PID-namespace inspection is Linux-only')
     def test_unrelated_namespace_pid_never_inspects_inaccessible_mount(self):
         namespace_home = Path('/app/.local/web/file-management/accounts/scope')

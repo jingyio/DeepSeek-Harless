@@ -172,6 +172,29 @@ def starting_listener(port, child_pid):
     return child_pid if len(rows) == 1 and pids == {child_pid} else None
 
 
+def linux_kernel_thread(process, status):
+    """Prove an empty Linux cmdline is a kernel task, never infer from its name.
+
+    Older kernels omit status.Kthread. /proc/pid/stat field 9 exposes the
+    kernel-owned PF_KTHREAD flag; comm may contain spaces and parentheses.
+    Missing facts remain unknown rather than permission to restart.
+    """
+    if sys.platform != 'linux':
+        return False
+    if re.search(r'^Kthread:\s+1\s*$', status, re.M):
+        return True
+    try:
+        raw = (process / 'stat').read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return False
+    opening, closing = raw.find('('), raw.rfind(')')
+    fields = raw[closing + 1:].split()
+    if (opening <= 0 or closing <= opening or raw[:opening].strip() != process.name or
+            len(fields) < 7 or len(fields[0]) != 1 or not fields[6].isdecimal()):
+        raise ValueError('Invalid File worker process stat')
+    return bool(int(fields[6]) & 0x00200000)
+
+
 def file_worker_running(pid, home, namespace_home=None, proc_root=Path('/proc')):
     """Read-only identity check; member lock PIDs belong to their bwrap namespace.
 
@@ -198,6 +221,8 @@ def file_worker_running(pid, home, namespace_home=None, proc_root=Path('/proc'))
                         continue
                 argv = [os.fsdecode(value) for value in (process / 'cmdline').read_bytes().split(b'\0') if value]
                 if not argv:
+                    if linux_kernel_thread(process, status):
+                        continue  # An unrelated kernel thread can share this namespace-local PID.
                     raise RuntimeError('Unknown File background worker process; restart refused')
                 if not any(Path(value).name == 'rsi-worker.py' for value in argv):
                     continue  # The recorded PID has been reused by another program.
