@@ -50,6 +50,9 @@ test('Native model discovery offers every supported strength while the installed
     for await(const _ of prepared.stream({provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off',maxTokens:700,
       messages:[{id:'finite-user',role:'user',content:[{type:'text',text:'Explicit finite diagnostic'}]}]})){}
     assert.equal(requests.at(-1).max_tokens,700,'an explicit diagnostic cap is not silently increased');
+    for await(const _ of adapter.stream({provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off',
+      messages:[{id:'direct-user',role:'user',content:[{type:'text',text:'Direct stream contract'}]}]})){}
+    assert.equal(requests.at(-1).max_tokens,WEB_DEEPSEEK_OUTPUT_CAPACITY);
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
 
