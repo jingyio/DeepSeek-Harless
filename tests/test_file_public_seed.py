@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 from uuid import uuid4
+import pytest
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -29,8 +30,9 @@ print(json.dumps({'state':cfg['state_root'],'entries':len(state['entries']),'pai
     assert all(row['paid_calls']==0 for row in results)
 
 
-def test_seed_release_contains_only_policies_and_sanitized_certification():
-    release=ROOT/'motif-libraries/file-v7';manifest=json.loads((release/'entry.json').read_text())
+@pytest.mark.parametrize('version', ['file-v7', 'file-v8'])
+def test_seed_release_contains_only_policies_and_sanitized_certification(version):
+    release=ROOT/'motif-libraries'/version;manifest=json.loads((release/'entry.json').read_text())
     assert manifest['raw_private_evidence_published'] is False
     for name in manifest['files']:
         raw=(release/name).read_text()
@@ -60,14 +62,15 @@ def test_incompatible_seed_is_retained_once_and_allows_ordinary_fallback(tmp_pat
     assert len(receipts)==1 and json.loads(receipts[0].read_text())['activated'] is False
 
 
-def test_historical_seed_is_provenance_only_and_cannot_activate_on_new_code():
+@pytest.mark.parametrize('version', ['file-v5', 'file-v7'])
+def test_historical_seed_is_provenance_only_and_cannot_activate_on_new_code(version):
     import pytest
     from src.adapters.management_seed import validate_historical_certificate,validate_certificate
     from src.motif_core.offline.experience_registry import read,sha
-    release=ROOT/'motif-libraries/file-v5';manifest=read(release/'entry.json')
+    release=ROOT/'motif-libraries'/version;manifest=read(release/'entry.json')
     for entry in manifest['entries']:
         payload=release/entry['payload'];certificate=release/entry['certificate'];policy=read(payload)
-        assert validate_historical_certificate(policy,certificate,sha(payload))['release']=='file-v5'
+        assert validate_historical_certificate(policy,certificate,sha(payload))['release']==version
         with pytest.raises(ValueError,match='runtime/catalog version changed'):
             validate_certificate(policy,certificate,sha(payload))
 
@@ -80,7 +83,8 @@ def test_current_seed_keeps_every_previous_graph_shape_and_admits_current_code()
         return {digest(read(release/e['payload'])['artifact']['nodes']) for e in manifest['entries']}
     assert shapes('file-v5') == shapes('file-v6')
     assert shapes('file-v6') == shapes('file-v7')
-    release=ROOT/'motif-libraries/file-v7'
+    assert shapes('file-v7') == shapes('file-v8')
+    release=ROOT/'motif-libraries/file-v8'
     for entry in read(release/'entry.json')['entries']:
         payload=release/entry['payload']
-        assert validate_certificate(read(payload),release/entry['certificate'],sha(payload))['release']=='file-v7'
+        assert validate_certificate(read(payload),release/entry['certificate'],sha(payload))['release']=='file-v8'
