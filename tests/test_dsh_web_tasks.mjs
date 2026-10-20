@@ -129,7 +129,10 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
     sessionController: {
       async list() { return { items: [...storedHeaders].map(([sessionId, meta]) => ({ sessionId, title: meta.title })) }; },
       async search() { return this.list(); },
-      async page({sessionId}) { return this.inspect(sessionId); },
+      async page({address,sessionId}) {
+        const snapshot=await this.inspect(address?.sessionId??sessionId);
+        return {records:snapshot.events.map(event=>({type:'event',event})),hasMore:false};
+      },
       async create(request) {
         assert.ok(request.cwd === undefined || request.workspaceId === undefined, 'native create rejects workspaceId together with cwd');
         const id = request.sessionId ?? `mock-session-${agents.size + 1}`;
@@ -145,7 +148,10 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
                 if(strictMountedTools){const unknown=value.allow.filter(name=>!agent.mountedTools.includes(name));if(unknown.length)throw Error('tools.restrict() unknown global tools: '+unknown.join(', '));}
                 agent.allow = value; return () => {}; },
               guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
-              schemas() { return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
+              schemas() {
+                if(!agent.allow)return structuredClone(fixtureSchemas.filter(row=>!strictMountedTools||agent.mountedTools.includes(row.name)));
+                return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name)));
+              } },
             systemPrompt: { suppressRuntimeContext() { return () => {}; }, variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
               section(row) { agent.instruction = row.text==='{{harless_scene_literal}}'?agent.variables.get('harless_scene_literal')():row.text; return () => {}; } },
             on(name,fn) { (agent.hooks??=new Map()).set(name,fn); },
@@ -666,6 +672,41 @@ test('cold native Pro selection binds the parent mounted preset independently of
    assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0);
   }finally{await f.close();}
  }
+});
+
+test('cold comparison-only parent closes obsolete tools while its next prompt gets a fresh current scope',options,async()=>{
+ const oldTool='mcp__workspace__list_files',newTools=JSON.parse(readFileSync(new URL('../config/geneloop-capabilities.json',import.meta.url),'utf8')).tools;
+ const oldScene={id:'new-scene',label:'Chat',preset:'sss-chat',adapter:'workspace',allowed_tools:[oldTool],config_sha256:'a'.repeat(64),
+  mcp_rows:[{id:'fixture-chat',name:'fixture-mcp',config:{fixture_tools:[oldTool],workspace:'__HARLESS_SESSION_WORKSPACE__'}}]};
+ const dataScene={...oldScene,id:'research-data-analysis',label:'Data',preset:'sss-data'};
+ const fixtureSchemas=[oldTool,...newTools].map(name=>({...toolSchemas[0],name}));
+ const f=await fixture({broker:true,dshHome:true,strictMountedTools:true,fixtureSchemas,scenes:[oldScene,dataScene],capability_profile:'new-scene',comparison_scenes:['research-data-analysis']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});const parent=f.agents.get(sessionId),preset=parent.preset;
+  parent.session.append('turn/start',{turn:1});
+  parent.session.append('user/message',{id:'old-comparison-user',role:'user',source:{kind:'user',rpcId:'old-comparison'},
+   content:[{type:'text',text:'read prior teaching input'}],harless_comparison:{id:'old-comparison',turn:1}},{surfaceOp:'append'});
+  parent.session.append('turn/end',{turn:1,reason:{kind:'completed'}});
+  const presetPath=join(f.directory,'presets',preset,'agent.cordis.yml'),before=readFileSync(presetPath,'utf8');
+  const upgraded=structuredClone(oldScene);upgraded.common_tools=[...newTools];upgraded.allowed_tools.push(...newTools);upgraded.mcp_rows[0].config.fixture_tools.push(...newTools);
+  writeFileSync(f.policyPath,JSON.stringify({...f.policy,scenes:[upgraded,dataScene]}));await f.restart();
+  await f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off'},new AbortController().signal);
+  const restored=f.agents.get(sessionId);
+  assert.deepEqual(restored.mountedTools,[oldTool]);assert.deepEqual(restored.allow.allow,[]);
+  assert.equal(readFileSync(presetPath,'utf8'),before,'history restore cannot edit its old preset or add current tools');
+  assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.conversation_only,true);
+  const page=await f.ctx.sessionController.page({address:{kind:'session',sessionId},throughSeq:2},new AbortController().signal);
+  assert.equal(page.records.find(row=>row.event.type==='user/message').event.data.id,'old-comparison-user');
+  assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0,'reading history cannot run a model');
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'new-current-prompt',mode:'queue',content:[{type:'text',text:'hello'}]},new AbortController().signal);
+  assert.ok(sent.comparison_id);
+  let tasks=[];for(let i=0;i<200;i++){tasks=(await f.api()).value.tasks;if(tasks.length&&f.promptCalls.length)break;await new Promise(resolve=>setTimeout(resolve,10));}
+  assert.ok(tasks.length>0,'legacy continuation must prepare a fresh task');
+  const child=f.agents.get(tasks[0].session_id);assert.notEqual(child.session.id,sessionId);
+  assert.deepEqual(child.mountedTools,upgraded.allowed_tools);assert.deepEqual(child.allow.allow,upgraded.allowed_tools);
+  assert.deepEqual(restored.allow.allow,[],'new task tools never broaden the historical parent');
+  assert.equal((await settleAttachmentTurn(f,sessionId,sent.comparison_id)).status,'completed');
+ }finally{await f.close();}
 });
 
 test('Selected model and empty session survive a Web process restart', options, async () => {
@@ -2688,6 +2729,23 @@ test('paired native steps reach SSE, scoped trace, feedback and a single-lane br
   assert.equal(privateFailures.length,1);assert.match(privateFailures[0].message,/tools\.restrict/);
   await reader.cancel();reader=undefined;
  }finally{await reader?.cancel();await f.close();}
+});
+
+test('cold native history opens old comparison messages without ordinary task admission records', options, async () => {
+ const f=await fixture();try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const agent=f.agents.get(sessionId);
+  agent.session.append('turn/start',{turn:1});
+  const message=agent.session.append('user/message',createUserMessage({source:{kind:'user',rpcId:'legacy-comparison'},
+    content:[{type:'text',text:'请核对教学资料。'}],harless_comparison:{id:'legacy-comparison',turn:1}}),{surfaceOp:'append'});
+  agent.session.append('turn/end',{turn:1,reason:'stop'});
+  await f.restart();
+  const page=await f.ctx.sessionController.page({address:{kind:'session',sessionId},throughSeq:2,maxMessages:50},new AbortController().signal);
+  assert.equal(page.hasMore,false);
+  assert.equal(page.records.find(row=>row.event.type==='user/message').event.data.id,message.data.id);
+  assert.equal(page.records.find(row=>row.event.type==='user/message').event.data.content[0].text,'请核对教学资料。');
+  assert.equal(f.promptCalls.length,0,'opening old history must not run a model or create another task');
+ }finally{await f.close();}
 });
 
 test('cold blank archive restoration preserves authoritative native title events instead of resetting a manual name', options, async () => {

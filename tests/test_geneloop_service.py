@@ -1,5 +1,6 @@
 """Lifecycle protocol diagnostics; local fixture servers never call a model."""
 import importlib.util
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -93,6 +94,76 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(digest, service.plan_digest(frozen))
         self.assertNotEqual(digest, service.plan_digest(self.plan))
 
+    def test_start_prepared_recovery_only_after_both_managed_processes_exit(self):
+        lifecycle=service.Lifecycle(self.plan)
+        old=json.loads(json.dumps(self.plan))
+        old['owner']['env']['RECOVERY_VARIANT']='old'
+        record={'plan':old,'digest':service.plan_digest(old),'rollback_plan':str(self.plan_file)}
+        with mock.patch.object(lifecycle,'lock',return_value=nullcontext()), \
+                mock.patch.object(lifecycle,'current',return_value=record), \
+                mock.patch.object(lifecycle,'inspect',return_value={'owner':None,'gateway':None}), \
+                mock.patch.object(service,'assert_idle') as idle, \
+                mock.patch.object(lifecycle,'start',return_value={'already_running':False}) as start:
+            result=lifecycle.run('start')
+        idle.assert_called_once_with(old)
+        start.assert_called_once_with(self.plan)
+        self.assertTrue(result['recovered_stopped_deployment'])
+
+    def test_prepared_recovery_refuses_a_surviving_process(self):
+        lifecycle=service.Lifecycle(self.plan)
+        old=json.loads(json.dumps(self.plan));old['owner']['env']['RECOVERY_VARIANT']='old'
+        record={'plan':old,'digest':service.plan_digest(old),'rollback_plan':str(self.plan_file)}
+        with mock.patch.object(lifecycle,'lock',return_value=nullcontext()), \
+                mock.patch.object(lifecycle,'current',return_value=record), \
+                mock.patch.object(lifecycle,'inspect',return_value={'owner':{'pid':1},'gateway':None}), \
+                mock.patch.object(lifecycle,'start') as start:
+            with self.assertRaisesRegex(RuntimeError,'different release'):
+                lifecycle.run('start')
+        start.assert_not_called()
+
+    def test_prepared_recovery_keeps_active_task_guard(self):
+        lifecycle=service.Lifecycle(self.plan)
+        old=json.loads(json.dumps(self.plan));old['owner']['env']['RECOVERY_VARIANT']='old'
+        record={'plan':old,'digest':service.plan_digest(old),'rollback_plan':str(self.plan_file)}
+        with mock.patch.object(lifecycle,'lock',return_value=nullcontext()), \
+                mock.patch.object(lifecycle,'current',return_value=record), \
+                mock.patch.object(lifecycle,'inspect',return_value={'owner':None,'gateway':None}), \
+                mock.patch.object(service,'assert_idle',side_effect=RuntimeError('Active task')), \
+                mock.patch.object(lifecycle,'start') as start:
+            with self.assertRaisesRegex(RuntimeError,'Active task'):
+                lifecycle.run('start')
+        start.assert_not_called()
+
+    def test_polling_plan_does_not_allocate_native_watches(self):
+        self.plan['owner']['env']['CHOKIDAR_USEPOLLING']='1'
+        with mock.patch.object(service.ctypes,'CDLL') as library:
+            service.assert_watch_capacity(self.plan)
+        library.assert_not_called()
+
+    def test_exhausted_native_watch_is_closed_and_refuses_before_stop(self):
+        self.plan['owner']['env']['CHOKIDAR_USEPOLLING']='0'
+        library=mock.Mock()
+        library.inotify_init1.return_value=41
+        library.inotify_add_watch.return_value=-1
+        with mock.patch.object(service.sys,'platform','linux'), \
+                mock.patch.object(service.ctypes,'CDLL',return_value=library), \
+                mock.patch.object(service.os,'O_CLOEXEC',524288,create=True), \
+                mock.patch.object(service.os,'close') as close:
+            with self.assertRaisesRegex(RuntimeError,'capacity exhausted'):
+                service.assert_watch_capacity(self.plan)
+        close.assert_called_once_with(41)
+        lifecycle=service.Lifecycle(self.plan)
+        record={'plan':self.plan,'digest':service.plan_digest(self.plan),
+                'processes':{'owner':{'pid':1},'gateway':{'pid':2}}}
+        with mock.patch.object(lifecycle,'current',return_value=record), \
+                mock.patch.object(lifecycle,'inspect'),mock.patch.object(service,'same_data'), \
+                mock.patch.object(service,'assert_idle'), \
+                mock.patch.object(service,'assert_watch_capacity',side_effect=RuntimeError('capacity exhausted')), \
+                mock.patch.object(lifecycle,'stop_record') as stop:
+            with self.assertRaisesRegex(RuntimeError,'capacity exhausted'):
+                lifecycle.restart()
+        stop.assert_not_called()
+
     def test_persistent_data_migration_is_rejected(self):
         second = json.loads(json.dumps(self.plan))
         other = self.root / 'different-config.json'
@@ -116,6 +187,204 @@ class PlanTests(unittest.TestCase):
             'baseline': {'status': 'completed'}, 'motif': {'status': 'running'}}}]})
         with self.assertRaises(RuntimeError):
             service.assert_idle(self.plan)
+
+    def file_state(self, base, name='task'):
+        path = base / 'file-management' / 'accounts' / 'diagnostic-scope' / 'tasks' / name / 'state.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def bind_gateway_source(self, root):
+        source = root / 'src'
+        source.mkdir(parents=True)
+        entry = root / 'scripts' / 'harless_gateway.mjs'
+        entry.parent.mkdir()
+        entry.write_text('// Source identity fixture; never executed.\n', encoding='utf-8')
+        service.save(self.config, {**service.read(self.config), 'sourceDir': str(source)})
+        self.plan['gateway']['cwd'] = str(root)
+        self.plan['gateway']['argv'] = [sys.executable, str(entry), str(self.config)]
+
+    def test_member_sdk_file_active_and_unknown_states_refuse_restart(self):
+        path = self.file_state(self.members / 'one' / 'tasks')
+        for status in ('running', 'queued', 'preparing', 'awaiting_confirmation', 'unexpected', None, []):
+            with self.subTest(status=status):
+                service.save(path, {'status': status})
+                with self.assertRaisesRegex(RuntimeError, 'Active or unknown File task'):
+                    service.assert_idle(self.plan)
+
+    def test_file_terminal_states_allow_restart_and_do_not_modify_records(self):
+        for status in ('completed', 'failed', 'cancelled', 'interrupted'):
+            for output in (self.output, self.members / 'one' / 'tasks', self.members / 'two' / 'tasks'):
+                path = self.file_state(output, status)
+                service.save(path, {'status': status, 'retained': 'original'})
+        before = {path: path.read_bytes() for path in self.root.rglob('state.json')}
+        service.assert_idle(self.plan)
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+
+    def test_owner_sdk_file_uses_running_gateway_source_not_output(self):
+        running = self.root / 'running-checkout'
+        self.bind_gateway_source(running)
+        path = self.file_state(running / '.local' / 'web')
+        service.save(path, {'status': 'running'})
+        with self.assertRaisesRegex(RuntimeError, 'Active or unknown File task'):
+            service.assert_idle(self.plan)
+        service.save(path, {'status': 'interrupted'})
+        service.assert_idle(self.plan)
+
+    def test_mismatched_owner_file_source_cannot_hide_active_old_tasks(self):
+        running = self.root / 'running-checkout'
+        self.bind_gateway_source(running)
+        path = self.file_state(running / '.local' / 'web')
+        service.save(path, {'status': 'running'})
+        other = self.root / 'candidate-checkout' / 'src'
+        other.mkdir(parents=True)
+        service.save(self.config, {**service.read(self.config), 'sourceDir': str(other)})
+        with self.assertRaisesRegex(RuntimeError, 'Owner File source root differs'):
+            service.assert_idle(self.plan)
+
+    def test_invalid_owner_file_source_is_not_silently_skipped(self):
+        for source in ('relative/src', str(self.root / 'missing' / 'src'), str(self.output)):
+            with self.subTest(source=source):
+                service.save(self.config, {**service.read(self.config), 'sourceDir': source})
+                with self.assertRaisesRegex(RuntimeError, 'Unknown owner File source root'):
+                    service.assert_idle(self.plan)
+
+    def test_corrupt_or_nonobject_file_state_refuses_restart(self):
+        path = self.file_state(self.members / 'one' / 'tasks')
+        for raw in ('{', '[]', 'null', '"completed"'):
+            with self.subTest(raw=raw):
+                path.write_text(raw, encoding='utf-8')
+                with self.assertRaisesRegex(RuntimeError, 'Unknown File task state'):
+                    service.assert_idle(self.plan)
+
+    def test_restart_refuses_active_file_before_stopping_any_process(self):
+        path = self.file_state(self.members / 'one' / 'tasks')
+        service.save(path, {'status': 'running'})
+        lifecycle = service.Lifecycle(self.plan)
+        record = {'plan': self.plan, 'digest': 'same-intent', 'processes': {'owner': {'pid': 1}, 'gateway': {'pid': 2}}}
+        with mock.patch.object(lifecycle, 'current', return_value=record), \
+                mock.patch.object(service, 'plan_digest', return_value='same-intent'), \
+                mock.patch.object(lifecycle, 'inspect'), \
+                mock.patch.object(lifecycle, 'stop_record') as stop, \
+                mock.patch.object(lifecycle, 'start') as start:
+            with self.assertRaisesRegex(RuntimeError, 'Active or unknown File task'):
+                lifecycle.restart()
+        stop.assert_not_called()
+        start.assert_not_called()
+
+    def test_completed_file_spawn_receipt_blocks_restart_before_learning_lock_is_written(self):
+        path = self.file_state(self.output)
+        service.save(path, {'status': 'completed', 'metrics': {'continuous_rsi': {'worker': {'pid': 12345}}}})
+        before = path.read_bytes()
+        with mock.patch.object(service, 'file_worker_running', return_value=True) as probe:
+            with self.assertRaisesRegex(RuntimeError, 'Active File background learning'):
+                service.assert_idle(self.plan)
+        probe.assert_called_once_with(12345, path.parents[2], None)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_member_learning_lock_uses_the_member_namespace_scope_and_retains_dead_lock(self):
+        home = self.members / 'one' / 'tasks' / 'file-management' / 'accounts' / 'scope'
+        lock = home / 'rsi' / 'daily' / 'worker.lock'
+        lock.parent.mkdir(parents=True)
+        service.save(lock, {'pid': 42, 'created': 1})
+        policy = self.members / 'one' / 'config' / 'policy.json'
+        policy.parent.mkdir()
+        namespace_output = self.root / 'sandbox-output'
+        service.save(policy, {'output': str(namespace_output)})
+        before = lock.read_bytes()
+        with mock.patch.object(service, 'file_worker_running', return_value=True) as probe:
+            with self.assertRaisesRegex(RuntimeError, 'Active File background learning'):
+                service.assert_idle(self.plan)
+        probe.assert_called_once_with(42, home, namespace_output / 'file-management' / 'accounts' / 'scope')
+        with mock.patch.object(service, 'file_worker_running', return_value=False):
+            service.assert_idle(self.plan)
+        self.assertEqual(lock.read_bytes(), before, 'A dead worker check never steals or removes its lock')
+
+    def test_unknown_learning_receipts_and_locks_refuse_restart(self):
+        path = self.file_state(self.output)
+        for metrics in ('bad', {'continuous_rsi': []}, {'continuous_rsi': {'worker': []}}, {'continuous_rsi': {'worker': {'pid': True}}}):
+            with self.subTest(metrics=metrics):
+                service.save(path, {'status': 'completed', 'metrics': metrics})
+                with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                    service.assert_idle(self.plan)
+        service.save(path, {'status': 'completed'})
+        lock = path.parents[2] / 'rsi' / 'daily' / 'worker.lock'
+        lock.parent.mkdir(parents=True)
+        for raw in ('{', '[]', '{}', '{"pid":0}', '{"pid":"42"}'):
+            with self.subTest(raw=raw):
+                lock.write_text(raw, encoding='utf-8')
+                with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                    service.assert_idle(self.plan)
+
+
+class FileWorkerIdentityTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.proc = self.root / 'proc'
+        self.proc.mkdir()
+        self.home = self.root / 'account'
+        self.home.mkdir()
+
+    def process(self, host_pid, namespace_pid, config, command='rsi-worker.py'):
+        process = self.proc / str(host_pid)
+        process.mkdir()
+        (process / 'status').write_text(f'State:\tS (sleeping)\nNSpid:\t{host_pid}\t{namespace_pid}\n', encoding='utf-8')
+        argv = [sys.executable, command, '--config', str(config), '--drain']
+        (process / 'cmdline').write_bytes(b'\0'.join(os.fsencode(value) for value in argv) + b'\0')
+        return process
+
+    def test_dead_and_reused_host_pids_do_not_false_positive_or_signal(self):
+        with mock.patch.object(service.os, 'kill', side_effect=AssertionError('Must not signal any process')):
+            self.assertFalse(service.file_worker_running(100, self.home, proc_root=self.proc))
+            self.process(100, 100, self.home / 'rsi' / 'config.json', command='other.py')
+            self.assertFalse(service.file_worker_running(100, self.home, proc_root=self.proc))
+
+    def test_live_host_worker_requires_its_own_account_config(self):
+        process = self.process(100, 100, self.home / 'rsi' / 'config.json')
+        self.assertTrue(service.file_worker_running(100, self.home, proc_root=self.proc))
+        (process / 'cmdline').write_bytes(b'python\0rsi-worker.py\0--config\0/other-account/rsi/config.json\0')
+        self.assertFalse(service.file_worker_running(100, self.home, proc_root=self.proc))
+
+    @unittest.skipUnless(os.name == 'posix', 'Hosted PID-namespace inspection is Linux-only')
+    def test_unrelated_namespace_pid_never_inspects_inaccessible_mount(self):
+        namespace_home = Path('/app/.local/web/file-management/accounts/scope')
+        process = self.process(1043, 1043, namespace_home / 'rsi' / 'config.json', command='systemd-udevd')
+        with mock.patch.object(Path, 'samefile', side_effect=PermissionError('Unrelated root process')) as same, \
+                mock.patch.object(service.os, 'kill', side_effect=AssertionError('Must not signal any process')):
+            self.assertFalse(service.file_worker_running(1043, self.home, namespace_home, self.proc))
+            # Even a worker for a different account is not a mount candidate.
+            (process / 'cmdline').write_bytes(b'python\0rsi-worker.py\0--config\0/app/.local/web/file-management/accounts/other/rsi/config.json\0')
+            self.assertFalse(service.file_worker_running(1043, self.home, namespace_home, self.proc))
+        same.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'posix', 'Hosted PID-namespace inspection is Linux-only')
+    def test_namespace_candidate_unknown_command_or_config_still_refuses(self):
+        namespace_home = Path('/app/.local/web/file-management/accounts/scope')
+        process = self.process(54321, 42, namespace_home / 'rsi' / 'config.json')
+        with mock.patch.object(Path, 'samefile', side_effect=AssertionError('Identity must be established first')) as same:
+            for command in (b'', b'python\0rsi-worker.py\0', b'python\0rsi-worker.py\0--config\0'):
+                with self.subTest(command=command):
+                    (process / 'cmdline').write_bytes(command)
+                    with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                        service.file_worker_running(42, self.home, namespace_home, self.proc)
+            with mock.patch.object(Path, 'read_bytes', side_effect=PermissionError('Inaccessible candidate command')):
+                with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                    service.file_worker_running(42, self.home, namespace_home, self.proc)
+        same.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'posix', 'Hosted PID-namespace inspection is Linux-only')
+    def test_member_pid_uses_namespace_id_and_bind_inode_not_host_pid(self):
+        namespace_home = Path('/app/.local/web/file-management/accounts/scope')
+        self.process(54321, 42, namespace_home / 'rsi' / 'config.json')
+        with mock.patch.object(Path, 'samefile', return_value=True) as same:
+            self.assertTrue(service.file_worker_running(42, self.home, namespace_home, self.proc))
+        same.assert_called_once_with(self.home)
+        with mock.patch.object(Path, 'samefile', return_value=False):
+            self.assertFalse(service.file_worker_running(42, self.home, namespace_home, self.proc))
+        with mock.patch.object(Path, 'samefile', side_effect=PermissionError('Synthetic inaccessible namespace')):
+            with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                service.file_worker_running(42, self.home, namespace_home, self.proc)
 
 
 class StartupListenerTests(unittest.TestCase):

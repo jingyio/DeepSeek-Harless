@@ -3,13 +3,79 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import net from 'node:net';
 import { once } from 'node:events';
+import { spawn } from 'node:child_process';
 import { createHash, createHmac } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createGateway, createOwnerClaim, createInvites } from '../scripts/harless_gateway.mjs';
+import { createGateway, createOwnerClaim, createInvites, memberWatcherEnvironment } from '../scripts/harless_gateway.mjs';
 import { memberSceneDeployment } from '../scripts/harless_member_scenes.mjs';
 import WebSocket, { WebSocketServer } from 'ws';
+
+test('member watcher environment defaults to polling and forwards no unrelated authority', () => {
+  assert.deepEqual(memberWatcherEnvironment({}), {CHOKIDAR_USEPOLLING:'1',CHOKIDAR_INTERVAL:'1000'});
+  assert.deepEqual(memberWatcherEnvironment({CHOKIDAR_USEPOLLING:'TRUE',CHOKIDAR_INTERVAL:'0250',
+    API_KEY:'private-parent-value',NODE_OPTIONS:'--inspect',CHOKIDAR_IGNORED:'**'}),
+  {CHOKIDAR_USEPOLLING:'1',CHOKIDAR_INTERVAL:'250'});
+  for (const polling of ['0','false','FALSE'])
+    assert.deepEqual(memberWatcherEnvironment({CHOKIDAR_USEPOLLING:polling}),
+      {CHOKIDAR_USEPOLLING:'0',CHOKIDAR_INTERVAL:'1000'});
+  for (const polling of ['', 'yes', '2', 'true\n', true])
+    assert.throws(()=>memberWatcherEnvironment({CHOKIDAR_USEPOLLING:polling}),/CHOKIDAR_USEPOLLING/);
+  for (const interval of ['', '0', '-1', '1.5', '1e3', '1000ms', '2147483648', '9007199254740993', 1000])
+    assert.throws(()=>memberWatcherEnvironment({CHOKIDAR_INTERVAL:interval}),/CHOKIDAR_INTERVAL/);
+});
+
+test('member polling receives actual file changes without allocating fs.watch handles', async t => {
+  const directory=mkdtempSync(join(tmpdir(),'harless-member-poll-')),file=join(directory,'ownership.json');
+  t.after(()=>rmSync(directory,{recursive:true,force:true}));
+  writeFileSync(file,'original');
+  const source=`
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import {once} from 'node:events';
+let nativeWatches=0;
+fs.watch=()=>{nativeWatches++;throw Object.assign(new Error('diagnostic inotify exhausted'),{code:'ENOSPC'});};
+const {watch}=await import('chokidar');
+const watcher=watch(process.argv[1],{ignoreInitial:true});
+const report=value=>new Promise((resolve,reject)=>process.send(value,error=>error?reject(error):resolve()));
+try {
+  await once(watcher,'ready',{signal:AbortSignal.timeout(30000)});
+  const changed=once(watcher,'change',{signal:AbortSignal.timeout(30000)});
+  await report({phase:'ready'});
+  await changed;
+  assert.equal(nativeWatches,0);
+  await report({phase:'changed',nativeWatches});
+  console.log('polling-change-without-native-watch');
+} finally {await watcher.close();process.disconnect();}
+`;
+  const child=spawn(process.execPath,['--input-type=module','-e',source,file],{
+    cwd:new URL('../',import.meta.url),
+    env:{...process.env,...memberWatcherEnvironment({CHOKIDAR_USEPOLLING:'true',CHOKIDAR_INTERVAL:'20'})},
+    stdio:['ignore','pipe','pipe','ipc']});
+  t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill();});
+  let stdout='',stderr='';child.stdout.on('data',chunk=>stdout+=chunk);child.stderr.on('data',chunk=>stderr+=chunk);
+  let phase='starting',timer,mutations,timedOut=false,mutationCount=0,observed=false;
+  const deadline=ms=>{clearTimeout(timer);timer=setTimeout(()=>{timedOut=true;child.kill();},ms);timer.unref();};
+  deadline(30000);
+  child.on('message',message=>{
+    if(message?.phase==='ready'&&phase==='starting'){
+      phase='observing';deadline(30000);
+      // ready does not promise that fs.watchFile's first stat sample has
+      // finished. Keep making real, distinct versions until a poll sees one.
+      const mutate=()=>writeFileSync(file,'changed ownership record '+(++mutationCount)+' '.repeat(mutationCount));
+      mutate();mutations=setInterval(mutate,100);
+    }else if(message?.phase==='changed'&&phase==='observing'){
+      observed=message.nativeWatches===0;phase='closing';clearInterval(mutations);deadline(10000);
+    }
+  });
+  let code,signal;
+  try{[code,signal]=await once(child,'close');}
+  finally{clearTimeout(timer);clearInterval(mutations);}
+  assert.equal(code,0,JSON.stringify({phase,signal,timedOut,mutationCount,stdout,stderr}));
+  assert.ok(observed&&mutationCount>0,'child must observe a real changed file with zero native watch allocations');
+  assert.match(stdout,/polling-change-without-native-watch/);
+});
 
 test('Scene deployment mounts code read-only and keeps user data and credentials out', t => {
   const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-scene-deploy-')));

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "scene": "ppt",
+  "runtime_kind": "ppt_master_v2",
+  "mode": "execute",
+  "new_training": true,
+  "files": {
+    "learning-report.json": "aa923a410b18b7973e16a12d09c09370f64f26403a582921840413224cba5aca",
+    "online-manifest.json": "093dd70cd6ef8c349ae3e620637a6efbecb20887805d261d1da0016cd92b9c62",
+    "library.json": "94273935f2d94e9217c1d79679bad44cf8de889a07483391505d5174071131c7",
+    "task.json": "7cf5b20765a0fd634053c0382476595eeaff15029b84d18b2d3ae8a669cddb4f",
+    "tool-schemas.json": "2f3fe69c8124c84933e8b3cef33087f4e05842e239603fe1ab1df1ce403b13d8",
+    "source-evidence.json": "87d64e6fff3b57926271b650b13d877d1c4e68c3cc426d1a520e5e698b890dd8",
+    "certification.json": "2739e82b1ff69d9bc6a1c0a15a3adc6115bcd6f5531553f3aa12fe4f361fb468"
+  },
+  "quality_cost_promoted": false
+}

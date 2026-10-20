@@ -11,6 +11,7 @@ import {digest} from '../motif_core/online_skill_runtime.mjs';
 import {managementFileContent} from './file_task_scope.ts';
 import {fileEventProjection} from './file_event_projection.ts';
 import {interruptedTurnClosers} from '@deepseek-ai/dsh-session';
+import {publicConversationContext} from './dsh_web_tasks.ts';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const hash=(data:Uint8Array|string)=>createHash('sha256').update(data).digest('hex');
@@ -33,11 +34,15 @@ export function installFileScene(ctx:any,launch:typeof spawn=spawn){
  const deployed=policy.scenes?.find((row:any)=>row.id==='files');
  if(!deployed||deployed.unavailable_reason||!deployed.allowed_tools?.length)return;
  const owner=policy.budget_task_prefix?'member-'+policy.budget_task_prefix:policy.user_id??'local-operator';
- const home=resolve(root,'.local/web/file-management/accounts',hash(owner));
+ // Members' output is the host-persisted per-account bind mount. Owners keep
+ // the established home so existing tasks and recovery records stay readable.
+ const home=policy.budget_task_prefix?resolve(policy.output,'file-management/accounts',hash(owner)):
+  resolve(root,'.local/web/file-management/accounts',hash(owner));
  mkdirSync(join(home,'tasks'),{recursive:true,mode:0o700});
  const controller=ctx.sessionController;
  const original={prompt:controller.prompt.bind(controller),cancel:controller.cancel.bind(controller),selectModel:controller.selectModel.bind(controller)};
  const agents=new Map<string,any>(),children=new Map<string,any>(),aborters=new Map<string,AbortController>();
+ const admissions=new Map<string,{request_digest:string,promise:Promise<any>,cancelled:boolean}>();
  const selected=new Set<string>(),models=new Map<string,any>();
  const stateFile=join(home,'selection.json');
  if(existsSync(stateFile)){const saved=JSON.parse(readFileSync(stateFile,'utf8'));for(const id of saved.sessions??[])selected.add(id);for(const [id,m] of Object.entries(saved.models??{}))models.set(id,m);}
@@ -115,13 +120,16 @@ export function installFileScene(ctx:any,launch:typeof spawn=spawn){
  ctx.on('agent/created',({agent}:any)=>{agents.set(agent.session.id,agent);queueMicrotask(()=>{for(const task of tasks.values())if(task.session===agent.session.id&&terminal.has(task.status)&&!agent.session.snapshotEvents().some((e:any)=>e.type==='turn/end'&&e.data.turn===task.turn))end(task,task.status==='completed'?undefined:'原文件管理任务已中断，文件效果、原预算和恢复记录已保留。');});});
  controller.selectModel=async(request:any,signal:any)=>{const result=await original.selectModel(request,signal);models.set(request.sessionId,{provider:request.provider,model:request.model,reasoning_effort:request.reasoningEffort??'off'});persist();return result;};
  controller.prompt=async(request:any,signal:any)=>{
+  const pending=admissions.get(request.sessionId);
+  if(pending){await owned(request.sessionId);if(pending.request_digest===digest(request))return pending.promise;throw Error('请等待当前文件管理任务完成或取消。');}
   const first=request.content?.find((p:any)=>p.type==='text'),match=first&&fileShortcut(first.text);
-  const other=first&&/^\s*\/(?:paper|ppt|data|chat)(?=\s|$|[^\x00-\x7f])/i.test(first.text);
-  if(other){selected.delete(request.sessionId);persist();}
   if(children.has(request.sessionId)){const prior=[...tasks.values()].find(t=>t.session===request.sessionId&&t.request_id===request.requestId);if(prior&&prior.request_digest===digest(request)){await owned(request.sessionId);return {sessionId:request.sessionId,requestId:request.requestId};}throw Error('请等待当前文件管理任务完成或取消。');}
-  if(!match&&!selected.has(request.sessionId))return original.prompt(request,signal);
+  if(!match){if(selected.delete(request.sessionId))persist();return original.prompt(request,signal);}
   if(typeof request.requestId!=='string'||!request.requestId||request.mode!=='queue'||!Array.isArray(request.content))throw Error('invalid_file_prompt');
+  const checkAdmission=()=>{if(signal?.aborted||admissions.get(request.sessionId)?.cancelled)throw Error('file_admission_cancelled');};
+  const admit=async()=>{
   const snapshot=await owned(request.sessionId);
+  checkAdmission();
   const prior=[...tasks.values()].find(t=>t.session===request.sessionId&&t.request_id===request.requestId);
   if(prior){if(prior.request_digest!==digest(request))throw Error('file_request_changed');return {sessionId:request.sessionId,requestId:request.requestId};}
   if([...tasks.values()].some(t=>t.session===request.sessionId&&t.status==='interrupted'))throw Error('请先恢复原文件管理任务。');
@@ -131,6 +139,7 @@ export function installFileScene(ctx:any,launch:typeof spawn=spawn){
   const model=models.get(request.sessionId)??fallback;
   if(model.provider!=='deepseek-official'||model.reasoning_effort&&model.reasoning_effort!=='off')throw Error('当前文件管理入口使用 DeepSeek / Off；请选择此模式后发送。');
   await original.selectModel({sessionId:request.sessionId,provider:model.provider,model:model.model,reasoningEffort:'off'},signal);
+  checkAdmission();
   const agent=agents.get(request.sessionId);if(!agent)throw Error('native_session_unavailable');
   const id=randomUUID().replaceAll('-',''),directory=join(home,'tasks',id);mkdirSync(join(directory,'inputs'),{recursive:true,mode:0o700});
   const sources:any[]=[],content:any[]=[],receipts:string[]=[];
@@ -149,16 +158,26 @@ export function installFileScene(ctx:any,launch:typeof spawn=spawn){
   const objective=match?text.slice(match[0].length).trim():text;
   const group=ctx.workspaceRegistry?.list().find((w:any)=>w.sessionIds.includes(request.sessionId));
   const workspaceId=group?.id??request.sessionId;
-  if([...tasks.values()].some(t=>t.workspace_id===workspaceId&&!['completed','failed','cancelled'].includes(t.status)))throw Error('同一工作区有文件管理任务正在运行或等待恢复。');
+  // The worker mutates its registered copy directly. A stable per-session
+  // scope preserves multi-turn files without sharing effects between chats.
+  // Existing task requests (including recovery) retain their original scope.
+  const copyScope='session-'+digest({workspace_id:workspaceId,session_id:request.sessionId});
   const task={id,workspace_id:workspaceId,session:request.sessionId,request_id:request.requestId,request_digest:digest(request),turn:1+Math.max(0,...snapshot.events.filter((e:any)=>e.type==='turn/start').map((e:any)=>e.data.turn)),status:'admitted',next_step:0,model:model.model};
-  const priorContext=snapshot.events.filter((e:any)=>['user/message','assistant/message'].includes(e.type)).slice(-6).map((e:any)=>({role:e.type.startsWith('user')?'user':'assistant',text:(e.data.content??e.data.message?.content??[]).filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n')}));
-  const input={task_id:id,directory,objective,prior_context:priorContext,workspace_id:workspaceId,owner,sources,model:model.model,provider_mode:policy.provider_mode,budget_usd:policy.budget_usd??null};
-  save(join(directory,'request.json'),input);tasks.set(id,task);store(task);
-  const admitted=await ctx.attachments.admitPromptContent(content),binding=ctx.fileUploads.bindPrompt(agent,receipts,request.requestId);
-  try{agent.session.append('turn/start',{turn:task.turn});agent.session.append('user/message',createUserMessage({content:admitted,source:{kind:'user',rpcId:request.requestId}}),{surfaceOp:'append'});binding.commit();}finally{binding[Symbol.dispose]();}
-  selected.add(request.sessionId);persist();await start(task);return {sessionId:request.sessionId,requestId:request.requestId};
+  const priorContext=await publicConversationContext(ctx,request.sessionId)??snapshot.events.filter((e:any)=>['user/message','assistant/message'].includes(e.type)).slice(-6).map((e:any)=>({role:e.type.startsWith('user')?'user':'assistant',text:(e.data.content??e.data.message?.content??[]).filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n')}));
+  checkAdmission();
+  const input={task_id:id,directory,objective,prior_context:priorContext,workspace_id:copyScope,owner,sources,model:model.model,provider_mode:policy.provider_mode,budget_usd:policy.budget_usd??null};
+  const admitted=await ctx.attachments.admitPromptContent(content);checkAdmission();
+  const binding=ctx.fileUploads.bindPrompt(agent,receipts,request.requestId);
+  try{save(join(directory,'request.json'),input);tasks.set(id,task);store(task);agent.session.append('turn/start',{turn:task.turn});agent.session.append('user/message',createUserMessage({content:admitted,source:{kind:'user',rpcId:request.requestId}}),{surfaceOp:'append'});binding.commit();}finally{binding[Symbol.dispose]();}
+  selected.delete(request.sessionId);persist();checkAdmission();await start(task);return {sessionId:request.sessionId,requestId:request.requestId};
+  };
+  // Reserve synchronously before any ownership/model/upload await. Retries
+  // await the same admission; distinct sessions have no shared execution gate.
+  const admission={request_digest:digest(request),promise:Promise.resolve().then(admit),cancelled:false};
+  admissions.set(request.sessionId,admission);
+  try{return await admission.promise;}finally{if(admissions.get(request.sessionId)===admission)admissions.delete(request.sessionId);}
  };
- controller.cancel=async(request:any)=>{await owned(request.sessionId);if(children.has(request.sessionId)){aborters.get(request.sessionId)?.abort();children.get(request.sessionId).kill();return {sessionId:request.sessionId};}return original.cancel(request);};
+ controller.cancel=async(request:any)=>{await owned(request.sessionId);const pending=admissions.get(request.sessionId);if(pending)pending.cancelled=true;if(children.has(request.sessionId)){aborters.get(request.sessionId)?.abort();children.get(request.sessionId).kill();return {sessionId:request.sessionId};}if(pending)return {sessionId:request.sessionId};return original.cancel(request);};
  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/harless/file-scene',methods:['GET','POST'],requestBody:'buffered',async fetch(request:Request){
   const rejected=ctx.connection.requestRejection(request);if(rejected)return new Response('Unauthorized',{status:rejected});
   try{

@@ -2,6 +2,13 @@
 
 - 2026-10-20（Codex）：[PR98](https://github.com/jingyio/GeneLoop/pull/98) 恢复场景双栏 1–5 分，账户两入口支持默认5/每批1–20个邀请码、逐个/全部复制与原生粘贴。原邀请码本无TTL，未使用永久有效，每码注册一次；页面关闭只丢失明文显示。源码756a181已统一发布，保留原账号、评分、库和累计账本。本地/服务器定向127项、服务器smoke/Motif及Ubuntu/Windows完整CI通过；正式网页已有Paper/PPT/Data记录均显示评分，Data两侧4/5分保存并刷新保留（仅接口诊断，不是质量打分）。普通Chat/新版独立File不加旧数值接口。本轮新增模型请求0；历史测试会话仍有加载失败/慢提示，未宣称本轮修复加载链路。见[实验记录](../experiments/invites-ratings-20261020.md)和[接口](../interfaces.md#邀请与场景数值评分2026-10-20-恢复)。合并状态以PR98为准；回退用统一service rollback。
 
+## 2026-10-20：PR99 / PR100 合并验收
+
+- 用户明确授权修复并分别合并两条PR。[PR100](https://github.com/jingyio/GeneLoop/pull/100)已合并，merge commit为1055a4f；Ubuntu/Windows的push及PR四项CI全部通过。RSI机制闭环已验证，质量问题不阻塞本轮机制验收；不宣称完整论文报告合格或稳定净降本。
+- [PR99](https://github.com/jingyio/GeneLoop/pull/99)上一轮失败来自文件轮询诊断竞态：初次变化可能早于轮询基线，8秒超时后退出码为null。已有d29c806加入父子进程就绪握手、不同版本持续写入和分阶段超时，仍要求实际变化被观察且fs.watch分配为零，未删除断言或掩盖失败。最新账本诊断还修正响应完成时间及毫秒端点的并发区间统计。
+- 独立目录组合检查：全量Python1370通过/228跳过，Node1220通过/7跳过，smoke及motif:check通过；该全量基于744ad5b与PR100的组合。随后账本修改通过相关Python35项/28跳过，网关20项及原竞态单项重复5次通过，均未调用模型。PR99同步main后，由其最新CI检查最终组合，不沿用旧提交的绿灯。
+- 合并必须核对最新head与全部检查，用expected head保护，保留两条独立PR的提交关系；最终merge commit见各PR。没有新增完整论文、Baseline或五用户付费实验，没有修改生产服务、认证数据或累计账本。源码合并不代表生产部署，原运行版本与历史部署状态按上文记录保留。
+
 ## 2026-10-20：PR84 / PR88 能力保留集成（PR93，待审）
 
 - 目标/范围：独立 `codex/integrate-file-ppt-rsi` 分支，完整接入 PR84、PR88 和推进中新增的 PR92；源码提交 `6603d7d` 已推送 [PR93](https://github.com/jingyio/GeneLoop/pull/93)，未合并、未部署，已完成集成验证，等待负责人审阅。

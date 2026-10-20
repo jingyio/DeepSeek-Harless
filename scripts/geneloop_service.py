@@ -5,6 +5,7 @@ modify live files in place. This tool owns process identity, auth, receipts and
 rollback. It never starts/stops the shared model budget or changes user data.
 """
 import argparse
+import ctypes
 from contextlib import contextmanager
 import hashlib
 import json
@@ -23,6 +24,7 @@ from harless_owner_access import sync_owner_access, verify_access
 
 
 TERMINAL = {'completed', 'failed', 'cancelled', 'budget_exhausted', 'awaiting_confirmation'}
+FILE_TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
 
 
 def read(path):
@@ -49,6 +51,26 @@ def private_file(path):
     if os.name == 'posix' and path.stat().st_mode & 0o077:
         raise RuntimeError('Private launch/configuration files require mode 600')
     return path
+
+
+def assert_watch_capacity(plan):
+    """Probe before stopping a healthy owner when native watchers are enabled."""
+    if sys.platform != 'linux' or plan['owner']['env'].get('CHOKIDAR_USEPOLLING','').lower() in {'1','true'}:
+        return
+    libc=ctypes.CDLL(None,use_errno=True)
+    libc.inotify_init1.argtypes=[ctypes.c_int]
+    libc.inotify_init1.restype=ctypes.c_int
+    libc.inotify_add_watch.argtypes=[ctypes.c_int,ctypes.c_char_p,ctypes.c_uint32]
+    libc.inotify_add_watch.restype=ctypes.c_int
+    descriptor=libc.inotify_init1(os.O_CLOEXEC)
+    if descriptor < 0:
+        raise RuntimeError('Native file watcher unavailable; prepare a polling launch plan before publishing')
+    try:
+        path=os.fsencode(plan['owner']['env']['SSS_WEB_POLICY'])
+        if libc.inotify_add_watch(descriptor,path,2|4) < 0:
+            raise RuntimeError('Native file watcher capacity exhausted; prepare a polling launch plan before publishing')
+    finally:
+        os.close(descriptor)
 
 
 def load_plan(path):
@@ -150,12 +172,137 @@ def starting_listener(port, child_pid):
     return child_pid if len(rows) == 1 and pids == {child_pid} else None
 
 
+def file_worker_running(pid, home, namespace_home=None, proc_root=Path('/proc')):
+    """Read-only identity check; member lock PIDs belong to their bwrap namespace.
+
+    A reused PID running another command is not the old learner. Inaccessible
+    process facts are unknown, never permission to interrupt or remove a lock.
+    """
+    if type(pid) is not int or pid <= 0:
+        raise RuntimeError('Unknown File background worker identity; restart refused')
+    home = Path(home)
+    try:
+        processes = [proc_root / str(pid)] if namespace_home is None else list(proc_root.iterdir())
+        for process in processes:
+            if not process.name.isdecimal():
+                continue
+            try:
+                status = (process / 'status').read_text(encoding='utf-8')
+                if re.search(r'^State:\s+Z\b', status, re.M):
+                    continue
+                if namespace_home is not None:
+                    match = re.search(r'^NSpid:\s+([0-9\s]+)$', status, re.M)
+                    if not match:
+                        raise RuntimeError('Unknown File worker PID namespace; restart refused')
+                    if int(match.group(1).split()[-1]) != pid:
+                        continue
+                argv = [os.fsdecode(value) for value in (process / 'cmdline').read_bytes().split(b'\0') if value]
+                if not argv:
+                    raise RuntimeError('Unknown File background worker process; restart refused')
+                if not any(Path(value).name == 'rsi-worker.py' for value in argv):
+                    continue  # The recorded PID has been reused by another program.
+                if '--config' not in argv:
+                    raise RuntimeError('Unknown File background worker configuration; restart refused')
+                position = argv.index('--config') + 1
+                if position >= len(argv):
+                    raise RuntimeError('Unknown File background worker configuration; restart refused')
+                config = Path(argv[position])
+                account = Path(namespace_home) if namespace_home is not None else home
+                if not config.is_absolute() or not config.is_relative_to(account / 'rsi'):
+                    continue
+                # A namespace-local PID can also name an unrelated host process.
+                # Inspect its mount only after the command and account match;
+                # inaccessible facts for an actual candidate still fail closed.
+                if namespace_home is not None:
+                    mounted = process / 'root' / Path(namespace_home).relative_to('/')
+                    if not mounted.samefile(home):
+                        continue
+                return True
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+    except (OSError, ValueError, TypeError) as error:
+        raise RuntimeError('Unknown File background worker process; restart refused') from error
+    return False
+
+
 def assert_idle(plan):
     config = read(plan['gateway_config'])
     outputs = [Path(plan['owner_output'])]
     members = Path(config['membersDir'])
     if members.exists():
         outputs += [p / 'tasks' for p in members.iterdir() if p.is_dir()]
+    # File's SDK has its own durable state, outside ordinary tasks/comparisons.
+    # Members persist under their output bind. The established owner home is
+    # rooted in the RUNNING gateway checkout, not the candidate release/output.
+    file_roots = [(outputs[0] / 'file-management', None)] + [
+        (output / 'file-management', output.parent / 'config' / 'policy.json') for output in outputs[1:]]
+    if config.get('sourceDir') is not None:
+        source = Path(config['sourceDir'])
+        if not source.is_absolute() or source.is_symlink() or source.name != 'src' or not source.is_dir():
+            raise RuntimeError('Unknown owner File source root; restart refused')
+        root = source.resolve().parent
+        gateway = root / 'scripts' / 'harless_gateway.mjs'
+        argv = plan.get('gateway', {}).get('argv', [])
+        if (not gateway.is_file() or gateway.is_symlink() or
+                Path(plan.get('gateway', {}).get('cwd', '')).resolve() != root or
+                not any(isinstance(value, str) and Path(value).is_absolute() and
+                        Path(value).resolve() == gateway for value in argv)):
+            raise RuntimeError('Owner File source root differs from running gateway; restart refused')
+        file_roots.append((root / '.local' / 'web' / 'file-management', None))
+    for directory, member_policy in file_roots:
+        workers = set()
+
+        def remember_worker(pid, home):
+            namespace_home = None
+            if member_policy is not None:
+                try:
+                    output = Path(read(member_policy)['output'])
+                    if not output.is_absolute():
+                        raise ValueError('Member output is not absolute')
+                    namespace_home = output / 'file-management' / home.relative_to(directory)
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    raise RuntimeError('Unknown File background worker scope; restart refused') from error
+            if type(pid) is not int or pid <= 0:
+                raise RuntimeError('Unknown File background worker identity; restart refused')
+            workers.add((pid, home, namespace_home))
+
+        for path in directory.glob('accounts/*/tasks/*/state.json'):
+            try:
+                if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(directory.resolve()):
+                    raise ValueError('Invalid File state path')
+                state = read(path)
+                if not isinstance(state, dict):
+                    raise ValueError('Invalid File state object')
+            except (OSError, ValueError, TypeError) as error:
+                raise RuntimeError('Unknown File task state; restart refused') from error
+            if not isinstance(state.get('status'), str) or state['status'] not in FILE_TERMINAL:
+                raise RuntimeError('Active or unknown File task exists; restart refused')
+            metrics = state.get('metrics')
+            if metrics is not None and not isinstance(metrics, dict):
+                raise RuntimeError('Unknown File background worker receipt; restart refused')
+            learning = (metrics or {}).get('continuous_rsi')
+            if learning is not None and not isinstance(learning, dict):
+                raise RuntimeError('Unknown File background worker receipt; restart refused')
+            worker = (learning or {}).get('worker')
+            if worker is not None:
+                if not isinstance(worker, dict):
+                    raise RuntimeError('Unknown File background worker receipt; restart refused')
+                remember_worker(worker.get('pid'), path.parents[2])
+        for path in directory.glob('accounts/*/rsi/*/worker.lock'):
+            try:
+                if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(directory.resolve()):
+                    raise ValueError('Invalid File worker lock path')
+                lock = read(path)
+                if not isinstance(lock, dict):
+                    raise ValueError('Invalid File worker lock object')
+            except FileNotFoundError:
+                continue  # The learner released its own lock during this read.
+            except (OSError, ValueError, TypeError) as error:
+                raise RuntimeError('Unknown File background worker lock; restart refused') from error
+            remember_worker(lock.get('pid'), path.parents[2])
+        for pid, home, namespace_home in workers:
+            if file_worker_running(pid, home, namespace_home):
+                raise RuntimeError('Active File background learning worker exists; restart refused')
     for output in outputs:
         for path in output.glob('tasks/*/task-state.json'):
             if read(path).get('status') not in TERMINAL:
@@ -335,6 +482,8 @@ class Lifecycle:
                 self.publish_state({'plan': plan, 'digest': plan_digest(plan),
                                     'rollback_plan': str(directory / 'plan.json'), 'processes': processes})
             return {'already_running': True, **result}
+        if not processes['owner']:
+            assert_watch_capacity(plan)
         directory = self.root / ('start-' + uuid4().hex)
         directory.mkdir(mode=0o700)
         frozen = self.snapshot(plan, directory)
@@ -374,6 +523,7 @@ class Lifecycle:
         self.inspect(old['plan'], old)
         same_data(old['plan'], target)
         assert_idle(old['plan'])
+        assert_watch_capacity(target)
         if not all(old['processes'].values()):
             raise RuntimeError('Incomplete deployment; use start for recovery')
         try:
@@ -409,13 +559,27 @@ class Lifecycle:
                 return result
             if action == 'start':
                 record = self.current()
+                recovering = False
                 if record:
                     if plan_digest(record['plan']) != record['digest']:
                         raise RuntimeError('Managed configuration changed in place')
                     if plan_digest(self.plan) != record['digest']:
-                        raise RuntimeError('A different release is running; use restart with the prepared plan')
-                    self.inspect(record['plan'], record)
-                result = self.start(record['plan'] if record else self.plan)
+                        # Both the failed release and its automatic rollback
+                        # can exit before health. Permit a prepared recovery
+                        # only when the known ports are vacant; never replace
+                        # a surviving/unknown process or bypass active tasks.
+                        processes = self.inspect(record['plan'], record)
+                        if any(processes.values()):
+                            raise RuntimeError('A different release is running; use restart with the prepared plan')
+                        same_data(record['plan'], self.plan)
+                        assert_idle(record['plan'])
+                        recovering = True
+                    else:
+                        self.inspect(record['plan'], record)
+                result = self.start(self.plan if recovering or not record else record['plan'])
+                if recovering:
+                    save(self.previous_path, {'plan': record['rollback_plan']})
+                    result['recovered_stopped_deployment'] = True
             elif action == 'restart':
                 result = self.restart()
             elif action == 'rollback':

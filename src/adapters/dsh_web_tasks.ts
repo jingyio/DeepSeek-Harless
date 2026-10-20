@@ -10,6 +10,7 @@ import { isAgentLoopRequest, createUserMessage, createAssistantMessage } from '@
 import { scopeOf } from '@deepseek-ai/dsh-scope';
 import { ApiSessionNotFound } from '@deepseek-ai/dsh-api-session-controller';
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
+import {symbols as cordisSymbols} from '@deepseek-ai/cordis';
 import { createOnlineInterceptor, loopbackSimilarity } from './dsh_online_motif.mjs';
 import {createPaperLearning} from './harless_paper_learning.ts';
 import {createPptLearning} from './harless_ppt_learning.ts';
@@ -37,7 +38,7 @@ import {bindProductPrompt} from './harless_product_prompt.ts';
 import {commonToolDenial, sceneCertifiedTools} from './geneloop_capabilities.ts';
 import {createPptRecovery} from './harless_ppt_recovery.ts';
 import {createPaperRecovery,paperExportRequested} from './harless_paper_recovery.ts';
-import {protectPublicSessionOutput, publicTaskView} from './harless_public_output.ts';
+import {protectPublicSessionOutput, publicSessionEvent, publicTaskView} from './harless_public_output.ts';
 import {createConversationTitles} from './geneloop_conversation_titles.ts';
 import {createSessionBranchService,sessionBranchTitle} from './harless_session_branch.ts';
 import {registerManagedWorkspaceRoutes} from './harless_managed_workspaces.ts';
@@ -46,6 +47,12 @@ import {createSessionTrash, protectDeletedSessions, protectDeletedSessionFiles, 
 
 export const name = 'sss-web-tasks';
 export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController'];
+const conversationReaders=new WeakMap<object,(sessionId:string)=>Promise<{role:string,text:string}[]>>();
+// Cordis gives each plugin a traceable service proxy. Its exported original
+// identity distinguishes host/isolation scopes while surviving those proxies.
+const conversationHost=(ctx:any)=>ctx.sessionController[cordisSymbols.original]??ctx.sessionController;
+/** Internal same-host handoff: ownership is rechecked by the registered reader. */
+export async function publicConversationContext(ctx:object,sessionId:string){return conversationReaders.get(conversationHost(ctx))?.(sessionId);}
 type Policy = {
   learning_python?: string; output: string; user_id?: string; allowed_tools: string[]; endpoint: string; max_output_tokens: number | null;
   command_resources?: any;
@@ -410,6 +417,7 @@ export function apply(ctx: any) {
   const saveOwnership = () => json(ownershipPath, { scope: ownershipScope,
     sessions: [...ownedSessions], bound: [...boundSessions], chat_only_sessions: [...legacyChatSessions] });
   if (importedLegacy) saveOwnership();
+  const restoredSessions = new Set(ownedSessions);
   const modelPath = join(config.output, 'session-models-' + runScope + '.json');
   try {
     const saved = JSON.parse(readFileSync(modelPath, 'utf8'));
@@ -753,8 +761,39 @@ export function apply(ctx: any) {
   function originalContentFor(sessionId:string,event:any):readonly any[]|undefined {
     if(event.type!=='user/message'||event.data?.source?.kind!=='user')return;
     const task=tasks.get(requests.get(event.data.source.rpcId)??'');
-    if(task?.request.session_id===sessionId)return task.request.content;
+    if(task && task.request.session_id===sessionId)return task.request.content;
   }
+  const conversationReader=async(sessionId:string)=>{
+    await ensureOwned(sessionId);
+    const {events}=await controller.inspect(sessionId),history:{role:string,text:string}[]=[];
+    const toolSteps=new Set(events.filter((event:any)=>event.type==='tool/call').map((event:any)=>`${event.data.turn}:${event.data.step}`));
+    for(const event of events){
+      if(event.type==='user/message'&&event.data?.source?.kind==='user'){
+        const text=humanContent(event.data.content??[],originalContentFor(sessionId,event))
+          .filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n');
+        if(text)history.push({role:'user',text});
+        const ref=event.data.harless_comparison;
+        const saved=ref&&comparisons?.snapshot(sessionId,ref.id);
+        if(saved?.session_id===sessionId&&['completed','failed','cancelled'].includes(saved.status)){
+          const visible=publicTaskView(saved);
+          const text=Object.entries(visible.lanes).map(([lane,value]:[string,any])=>
+            (visible.presentation==='single'?'':lane==='baseline'?'Baseline\n':'Motif\n')+(value.answer_display??value.answer??'')).join('\n\n');
+          if(text.trim())history.push({role:'assistant',text});
+        }
+      }else if(event.type==='assistant/message'){
+        const parts=event.data.message?.content??[];
+        // Carry final public text, never tool arguments, results, extraction
+        // records or the commentary attached to a tool-executing step.
+        if(parts.some((part:any)=>part.type==='tool-call')||toolSteps.has(`${event.data.turn}:${event.data.step}`))continue;
+        const text=publicSessionEvent(event).data.message.content.filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n');
+        if(text)history.push({role:'assistant',text});
+      }
+    }
+    return history;
+  };
+  const conversationScope=conversationHost(ctx);
+  conversationReaders.set(conversationScope,conversationReader);
+  ctx.effect(()=>()=>{if(conversationReaders.get(conversationScope)===conversationReader)conversationReaders.delete(conversationScope);},'harless-conversation-context');
   function recalledChildEvents(sessionId:string,events:any[]):any[] {
     return events.filter(event=>{
       if(event.type!=='user/message')return true;
@@ -1450,6 +1489,14 @@ export function apply(ctx: any) {
     }
     const previousScene = forSession(request.sessionId)?.scene.id;
     const sourceSnapshot=await controller.inspect(request.sessionId);
+    // File's independent SDK publishes real turns on the visible parent but
+    // has no ordinary Task in this host. Once started, its native preset is
+    // immutable too: continue through the same private Chat lane used after
+    // other scenes instead of trying to compose a first task over that log.
+    const externallyStartedParent=!forSession(request.sessionId)&&sourceSnapshot.events.some((event:any)=>event.type==='turn/start');
+    const latestNativeTurn=externallyStartedParent&&sourceSnapshot.events.findLast((event:any)=>event.type==='turn/start');
+    if(latestNativeTurn&&!admitted&&!sourceSnapshot.events.some((event:any)=>event.type==='turn/end'&&event.data.turn===latestNativeTurn.data.turn&&event.seq>latestNativeTurn.seq))
+      throw new TaskError('session_busy','请等待当前回复完成或取消后再发送。',409);
     const contaminatedHistory=sourceSnapshot.events.some((event:any)=>event.type==='user/message'&&event.data?.source?.kind==='user'&&
       digest(humanContent(event.data.content??[],originalContentFor(request.sessionId,event)))!==digest(event.data.content??[]));
     // A native Chat task with bound sources cannot admit a new source version
@@ -1457,7 +1504,7 @@ export function apply(ctx: any) {
     // just as scene switches do, while retaining the public conversation.
     const replacesSources = previousScene && !forSession(request.sessionId)?.source_pending && content.some((part: any) => part.type === 'file');
     const hasFiles=content.some((part:any)=>part.type==='file');
-    if (comparisons && (hasFiles || replacesSources || contaminatedHistory || config.comparison_scenes?.includes(selected.scene) || (previousScene && previousScene !== selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || sourceSnapshot.meta.isSeeded)) {
+    if (comparisons && (hasFiles || replacesSources || contaminatedHistory || externallyStartedParent || config.comparison_scenes?.includes(selected.scene) || (previousScene && previousScene !== selected.scene) || comparisons.hasSession(request.sessionId) || legacyChatSessions.has(request.sessionId) || sourceSnapshot.meta.isSeeded)) {
       const priorTask = forSession(request.sessionId);
       if (priorTask && !terminal.has(priorTask.status)) throw new TaskError('session_busy', '请等待当前回复完成或取消后再发送。', 409);
       await priorTask?.closing;
@@ -1850,7 +1897,17 @@ export function apply(ctx: any) {
       // native preset stays immutable. Reinstall the tool guard for the actual
       // mounted branch scope, not its next-send selection after cold recovery.
       const mountedScene = readBranchInputs(agent.session.id)?.mounted_scene ?? restoredMountedScene(agent);
-      bindScene(agent, sceneFor(task?.scene.id ?? mountedScene ?? selections.get(agent.session.id)?.scene ?? defaults.scene), task?.source_pending);
+      const configuredScene = sceneFor(task?.scene.id ?? mountedScene ?? selections.get(agent.session.id)?.scene ?? defaults.scene);
+      if (restoredSessions.has(agent.session.id) && !task && !comparisons?.isLane(agent.session.id) && !legacyChatSessions.has(agent.session.id)) {
+        // Comparison-only parents have no ordinary task/effective-config to
+        // detect old preset drift. Keep their immutable mounted tools closed;
+        // the existing legacy continuation creates a fresh private child.
+        const available = new Set(agent.ctx.tools.schemas(scopeOf(agent.ctx)).map((tool: any) => tool.name));
+        if (configuredScene.allowed_tools.some(name => !available.has(name))) {
+          legacyChatSessions.add(agent.session.id); saveOwnership();
+        }
+      }
+      bindScene(agent, configuredScene, task?.source_pending);
     }
     agent.ctx.on('tools/result', (execution: any, result: any) => {
       const task=forSession(agent.session.id);

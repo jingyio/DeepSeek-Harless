@@ -175,3 +175,47 @@ def test_liveness_never_signals_the_current_process(monkeypatch):
     monkeypatch.setattr(os,'kill',lambda *args:(_ for _ in ()).throw(AssertionError('must not signal self')))
     assert process_exists(os.getpid())
     assert not process_exists(-1)
+
+
+@pytest.mark.parametrize('name',['management-profile','state'])
+def test_file_metadata_admission_waits_for_short_live_writer(tmp_path,name):
+    import threading,time
+    ready=threading.Event()
+    def writer():
+        with rsi.writer_lock(tmp_path,name):ready.set();time.sleep(.15)
+    thread=threading.Thread(target=writer);thread.start()
+    try:
+        assert ready.wait(2)
+        with rsi.writer_lock(tmp_path,name):assert (tmp_path/(name+'.lock')).exists()
+    finally:thread.join()
+    assert not (tmp_path/(name+'.lock')).exists()
+
+
+def test_parallel_file_initialization_keeps_seed_registry_a_single_writer(configuration,monkeypatch):
+    import threading,time
+    from concurrent.futures import ThreadPoolExecutor
+    from src.adapters import experience_library as library,management_seed
+    path,_=configuration;cfg=rsi.load_config(path)
+    barrier=threading.Barrier(5);mutex=threading.Lock();active=0;peak=0;visits=[]
+    monkeypatch.setattr(library,'enabled',lambda unused:True)
+    monkeypatch.setattr(library,'synchronize',lambda unused:None)
+    def install(unused):
+        nonlocal active,peak
+        with mutex:active+=1;peak=max(peak,active)
+        time.sleep(.03)
+        with mutex:active-=1;visits.append(True)
+    monkeypatch.setattr(management_seed,'install',install)
+    def initialize():barrier.wait(2);return rsi.initialize(cfg)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        assert list(executor.map(lambda unused:initialize(),range(5)))==[Path(cfg['state_root'])]*5
+    assert len(visits)==5 and peak==1
+    assert rsi.read(Path(cfg['state_root'])/'pool.json')=={'runs':{}}
+
+
+@pytest.mark.parametrize('name',['management-profile','state'])
+def test_busy_file_metadata_lock_times_out_without_removing_live_owner(tmp_path,monkeypatch,name):
+    lock=tmp_path/(name+'.lock');durable(lock,{'pid':os.getpid(),'created':1})
+    clock=iter([0,31]);monkeypatch.setattr(rsi.time,'monotonic',lambda:next(clock))
+    with pytest.raises(RuntimeError,match=name+' writer is active'):
+        with rsi.writer_lock(tmp_path,name):pytest.fail('must not acquire a live writer')
+    assert rsi.read(lock)=={'pid':os.getpid(),'created':1}

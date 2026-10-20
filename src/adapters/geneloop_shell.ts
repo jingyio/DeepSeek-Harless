@@ -12,6 +12,19 @@ function fixedDirectory(path: string) {
     throw Error('command workspace is not a fixed directory');
   return path;
 }
+function prepareMountPoints(layout: ReturnType<typeof commandLayout>) {
+  const work = fixedDirectory(layout.work), scratch = fixedDirectory(layout.scratch);
+  if (scratch !== join(work, 'code')) throw Error('command scratch is not a fixed directory inside its workspace');
+  // bubblewrap must find child bind destinations before /work becomes
+  // read-only. These empty seats live only in this Session's scratch tree.
+  for (const name of ['inputs', 'outputs']) {
+    const path = join(scratch, name), existing = lstatSync(path, { throwIfNoEntry: false });
+    if (existing && (existing.isSymbolicLink() || !existing.isDirectory()))
+      throw Error('command mount point is not a fixed directory');
+    if (!existing) mkdirSync(path, { mode: 0o700 });
+    fixedDirectory(path);
+  }
+}
 export function commandLayout(output: string, session: string) {
   if (!/^(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})$/.test(session)) throw Error('command requires an owning Session');
   const work = join(output, 'sessions', session, 'work');
@@ -24,6 +37,7 @@ export function commandArgv(layout: ReturnType<typeof commandLayout>, command: s
     python = process.env.SSS_PYTHON ?? '/usr/bin/python3', node = process.execPath, readOnly = false,
     resources: {pptMasterRoot?:string;rendererRoot?:string;fontRoot?:string;projectRoot?:string;network?:'none'} = {}) {
   if (process.platform !== 'linux' || !existsSync('/usr/bin/bwrap')) throw Error('isolated command execution requires Linux bubblewrap');
+  prepareMountPoints(layout);
   // env -i also supports the server's older bubblewrap (without --clearenv).
   const args = ['/usr/bin/env', '-i', '/usr/bin/bwrap', '--unshare-user', '--unshare-pid', '--unshare-ipc', '--unshare-uts',
     '--die-with-parent', '--new-session', '--cap-drop', 'ALL'];

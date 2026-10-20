@@ -135,6 +135,17 @@ export function publicTaskView(value: any): any {
 /** Public controller methods only. inspect() remains authoritative for execution/forking. */
 export function protectPublicSessionOutput(controller: any, originalFor?:(session:string,event:any)=>readonly any[]|undefined) {
   const undo: (() => void)[] = [];
+  const requestedSession = (request: any): string | undefined => {
+    if (typeof request === 'string') return request;
+    const address = request?.address;
+    const id = address === undefined ? request?.sessionId
+      : address?.kind === 'session' ? address.sessionId
+      : address?.kind === 'subagent' ? address.childSessionId : undefined;
+    return typeof id === 'string' && id.length ? id : undefined;
+  };
+  // A missing address has no authority to resolve admission records. In
+  // particular, never equate two absent IDs in a legacy-content callback.
+  const originalContent = (id: string | undefined, event: any) => id === undefined ? undefined : originalFor?.(id, event);
   const wrap = (name: string, make: (original: any) => any) => {
     if (typeof controller[name] !== 'function') return;
     const original = controller[name]; const replacement = make(original.bind(controller));
@@ -143,21 +154,20 @@ export function protectPublicSessionOutput(controller: any, originalFor?:(sessio
   };
   wrap('page', original => async (...args: any[]) => {
     const result = await original(...args);
-    const id=typeof args[0]==='string'?args[0]:args[0]?.sessionId;
-    return { ...result, records: result.records.map((record: any) => ({ ...record, event: publicSessionEvent(record.event,originalFor?.(id,record.event)) })) };
+    const id = requestedSession(args[0]);
+    return { ...result, records: result.records.map((record: any) => ({ ...record, event: publicSessionEvent(record.event,originalContent(id,record.event)) })) };
   });
   wrap('follow', original => async function* (...args: any[]) {
     let stream = createPublicStreamProjection();
-    let id=typeof args[0]==='string'?args[0]:args[0]?.sessionId;
+    let id = requestedSession(args[0]);
     for await (const value of original(...args)) {
       if (value.type === 'snapshot') {
         stream = createPublicStreamProjection();
         const active = value.assistantStream?.activeAttempt;
         const { cwd, ...header } = value.header;
-        id??=header.id;
-        yield { ...value, header, records: value.records.map((record: any) => ({ ...record, event: publicSessionEvent(record.event,originalFor?.(id,record.event)) })),
+        yield { ...value, header, records: value.records.map((record: any) => ({ ...record, event: publicSessionEvent(record.event,originalContent(id,record.event)) })),
           ...(active ? { assistantStream: { ...value.assistantStream, activeAttempt: { ...active, stream: stream.compact(active.stream) } } } : {}) };
-      } else if (value.type === 'event') yield { ...value, event: publicSessionEvent(value.event,originalFor?.(id,value.event)) };
+      } else if (value.type === 'event') yield { ...value, event: publicSessionEvent(value.event,originalContent(id,value.event)) };
       else if (value.type === 'assistant-stream') {
         if (value.frame.type === 'start') stream = createPublicStreamProjection();
         yield value.frame.type === 'chunk' ? { ...value, frame: { ...value.frame, chunk: stream.chunk(value.frame.chunk) } } : value;
