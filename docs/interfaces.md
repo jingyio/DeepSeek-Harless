@@ -854,13 +854,17 @@ IR 为 `sandboxed_script_motif_library` v1：`programs[]` 保存 `id/version/lan
 
 `catalog:true` 通过公开 `systemPrompt.variable/section` 挂载稳定目录，普通 `mode:"cache"` 只允许模型选择，不接管 provider。已有 Bash 接受 `geneloop-cache '{"calls":[{"id":"script_...","paths":["/work/当前文件"],"argv":[]}]}'`；每批 1–8 个，参数只绑定当前工作区文件或最多 32 个有界标量。允许已验证的 `cd /work/... &&` 前缀；拒绝 head、管道和重定向并提示保留完整回执，不静默裁剪命令。批量回执全部验证后才发布 Evidence，部分失败不得成为结构前驱。缓存和完整 Motif 具有同样批量能力。目录不增加工具 schema，普通脚本缓存的选择开销仍计入模型请求。
 
-实验可显式设置 `mode:"execute",catalog:true,executionFrontier:true`。此时使用 `script_execution_frontier.ts`：从库中真实前驱关系发现无分支、同文件输入契约的 2–8 节点片段，绑定当前唯一输入；通过原系统提示接口暴露一次当前需求选择，模型仅用已有 Bash 返回：
+实验可显式设置 `mode:"execute",catalog:true,executionFrontier:true`。此时使用 `script_execution_frontier.ts`：从库中真实前驱关系发现无分支、同文件输入契约的 2–8 节点片段，也可接纳独立认证的单算子；不为单算子虚构后继关系。绑定当前唯一输入后，通过原系统提示接口暴露一次当前需求选择，模型仅用已有 Bash 返回：
 
 ```sh
-geneloop-resolve '{"request_id":"当前请求 ID","status":"selected","candidate_id":"当前候选 ID"}'
+geneloop-resolve '{"request_id":"当前请求 ID","status":"selected","candidate_ids":["当前候选 ID","另一个必要候选 ID"]}'
 ```
 
-允许 `unknown/ambiguous/unneeded`（不带 candidate_id），不会执行。严格校验字段、当前候选、一次性回执、输入版本及用户消息范围；不接受路径改写或代码字段。命令必须独立，追加 shell 操作或非法 JSON 会撤回本任务的候选邀请并回退，避免反复发送未解决的邀请。确认后 Runtime 在原生循环中逐节点执行并验收，直至完成或失败；失败回退语义处理，最终结论仍由模型生成。结构确定的路径/哈希不再由模型复述。当前参数缺口仅支持片段枚举选择，尚未实现一般文献身份判断或任意 argv 自动解析。每任务最多提出两个新版本请求；不调用额外子模型，不压缩原上下文，也不把 confirmation 请求算作跳过。此路径不依赖 embedding 排名，仍保留其他模式的原匹配能力。
+一次可选1–8个不同的当前候选、合计最多16节点，按模型给定顺序执行各独立片段；片段内部仍只沿已认证关系续接，不凭相似度推断必要性或发明依赖。兼容旧单项 `candidate_id`；不能同时提供两种字段。任一候选、版本或回执不合格时不批准整批，执行中失败/输入变化则停止剩余队列。已验证的重复节点不重做。允许 `unknown/ambiguous/unneeded`（不带候选字段），不会执行。
+
+严格校验一次性选择、输入版本及用户消息范围，不接受路径改写或代码字段。命令必须独立，追加 shell 操作或非法 JSON 会撤回邀请并回退。选择一旦消费便不可再次使用；完成通知明确“没有待填写选择”，不把完成状态继续写成邀请。最终结论由模型根据回执完成，启发式标签不等于领域判定。每任务最多两个新版本请求；不调用额外子模型，不压缩原上下文，也不把模型的选择请求计作跳过。此路径不依赖 embedding 排名。
+
+当前已批准上传可在scratch尚未创建时绑定。可绑定的初始候选通过一次生成且本任务内固定的提示前缀暴露；稳定目录置前，当前文件绑定与随机request_id置后。进入初始选择的算子不再重复展示整个静态目录，标量/网络/输入歧义等未进入选择的算子仍保留原缓存接口，不能为了缩短提示隐藏既有能力。真实用量、反例及质量边界见[批量控制实验](experiments/paper-frontier-batch-20261020-v1.md)。
 
 当前输入扫描包括 `inputs`、`code` 和 `/work/outputs` 对应的 `outputs/code`；Python 来源提取与 TS 绑定使用同一映射。路径必须规范、当前且无符号链接/越界，多候选仍回退。验证过且版本未变的缓存节点可以满足片段中的已完成节点；更改输入或当前用户目标会失效。这里是显式当前语义选择后的执行控制，不是凭历史轨迹推断任务必要性，也不等于完整任务进度图。真实证据及失败见[Frontier 实验](experiments/paper-script-frontier-20261019-v1.md)。
 
@@ -949,7 +953,11 @@ node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-mo
 
 `--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。worker 不调用模型，允许学习有 Script sidecar 的已完成任务中的原生调用，排除 `sss-script-` / `sss-reuse-` 合成调用，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
 
-下个任务的 sidecar 可以用 `learningStore` 替代 `library`，按 owner 加载 pointer，任务开始后冻结。不能用同一论文的重复任务声称独立科研决定。当前是最小实验生命周期，worker 崩溃监控、自动淘汰/覆盖合并、负收益降权与前端可视状态仍待完善。
+`run-script-motif-experiment.py` 中，`--learning-store` 现在同时写入该任务的私有 sidecar 副本，用于后续任务加载；sidecar 中已配置的 `learningStore` 也会接通学习 worker。两处指定不同目录时，在付费启动前拒绝。Baseline 只学习、不加载；cache/shadow/execute 仍须提供对应模式的 `--script-config`。没有 latest 的冷启动保留正常 Agent 路径。
+
+下个任务按 owner、路径、库摘要及代码锁加载 pointer，保存 `script-learning-snapshot.json`，任务开始后冻结。`resolved` 只代表指针解析成功，完成全部 Runtime 准入后才记 `loaded` 与对应审计。发布保存父摘要、触发任务、训练/留出任务与事件摘要到不可覆盖的 `round-*/lineage.json`。无合格产物或失败不替换父指针；子进程启动/异常退出留下失败状态。runner 最多等待340秒，未结算学习单独记录，不把超时算成功。
+
+不能用同一论文的重复任务声称独立科研决定。自动淘汰、负收益降权、崩溃恢复重试与前端可视状态仍待完善。当前是独立实验生命周期，未部署到生产；真实验证见[闭环记录](experiments/paper-rsi-live-loop-20261020-v1.md)。
 
 
 ## 实验性统一复用协议（2026-10-19）
@@ -1085,3 +1093,17 @@ TypeScript Runtime 在首次模型请求前验证当前任务ID、输出授权�
 - `POST /api/account/invites` 仍要求 owner 登录、同源请求、当前密码和整数 `count: 1..20`；返回 `codes`，沿用既有接口。邀请码不按创建时间或登录会话过期，服务端只存哈希，注册成功原子消耗该码，重启后未用码继续有效。邀请码无效/已用与登录过期分别提示，不改变七天登录会话策略。
 - 设置页与独立 `/account` 都支持批量生成、逐码/全部复制、可选中的只读文本；后续失败不清掉先前显示的码。原文只保存在当前页面内存，离开前复制保存；不在 localStorage 或服务器存明文。注册框支持原生粘贴，去除首尾空白，不改邀请码大小写。
 - PPT、Paper、Data 及旧 File 双栏每侧恢复 1–5 单选评分；使用既有 `action: rate`、`lane`、`score`、`revision`、`output_sha256` 接口，双方完成才启用。保存失败保留确认分数，陈旧版本冲突只重新读取，不重放写入；历史分数和账号隔离不变。普通 Chat 和新版独立 File 单栏没有旧评分接口，本次不虚构评分记录。
+
+
+### 同任务检索证据（隔离实验，2026-10-20）
+
+`run-script-motif-experiment.py --retrieval-evidence`设置私有`SSS_RETRIEVAL_EVIDENCE=1`，实验启动器只在生成的host patch中换用`retrieval_web_search.ts`，并启用`search_evidence_accounting.py`。生产搜索/cost gate字节及认证库不变；关闭参数回原入口。实验shim的准入接线与生产保持一致，升级native provider/gateway时须同步验证。
+
+- 原`web_search`保留queries，新增可选`reuse:[{query_index:整数,evidence_id:字符串}]`。模型选择当前问题需要哪份候选；Runtime绑定task/user/session、真实输入字节、题面、模型和15分钟有效期。未知/失效ID回退新搜索，不把相似度当作事实/版本认证。
+- Map最多32查询，每项32来源/128KiB；native批次上限4、源列表上限8保持。每查询来源另进不可信content，避免合并截断后无法找回；额外上下文也有费用，保存数不是节省。
+- 精确重复查询可由provider直接复用；跨语句须显式选择ID，不猜测目标。返回原/当前query、获取时间、fact_verified:false。候选仍须进行必要的权威读取和科研判断；新任务或输入变化不共享Map。
+- 私有retrieval-evidence.jsonl记录捕获/失效/实际绕过内部搜索请求。avoided_search_requests按native查询去重记账，不等同整次Agent请求跳过。新账本search_trace.request_sha256对齐native请求，其他字段只含响应结构计数，不含正文/凭证；旧日志不追造逐查询费用。
+- --search-output-tokens 128..4096仅该实验生效，默认4096。保留原预算book/settle；短输出不保证总用量/总费用更低。
+- 局部任务用--evaluation-scope local_retrieval_validation；--no-output将当前scene_options.allow_output=false，不授予报告导出，不改变公共默认，也不把少交付必需报告计作收益。
+
+这不是新增已认证Motif库或跨论文RSI成果。四次真实局部复用命中均为0，费用/路径变化和质量失败分别记录。见[实验](experiments/paper-retrieval-evidence-20261020-v1.md)。

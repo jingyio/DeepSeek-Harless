@@ -28,6 +28,9 @@ def summarize(task):
                 reports.append({'file': str(path.relative_to(workspace)),
                                 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
     stops = [row['data'].get('reason') for row in events if row.get('type') == 'turn/end']
+    def learning_record(name):
+        path=task/name
+        return json.loads(path.read_text()) if path.exists() else None
     return {
         'task_id': state['task_id'], 'native_status': state['status'],
         'native_failure': state.get('failure'), 'provider_mode': config.get('provider_mode'),
@@ -40,6 +43,8 @@ def summarize(task):
         'turn_stop_reasons': stops, 'pdf_files': reports,
         'pdf_delivery_observed': bool(reports),
         'quality': 'not_independently_reviewed',
+        'loaded_learning_generation': learning_record('script-learning-snapshot.json'),
+        'post_task_learning': learning_record('script-learning-status.json'),
         'cost_scope': 'proxy_estimate_not_provider_bill; skips_are_not_net_savings',
     }
 

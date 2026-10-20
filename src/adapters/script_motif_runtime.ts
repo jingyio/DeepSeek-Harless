@@ -33,6 +33,14 @@ export function consumeScriptGrant(session:string,command:string){
 }
 export function registerScriptCache(options:any){
  const {library,session}=options;caches.set(session,{...options,pending:new Map()});
+ if(options.frontier){
+  const notice=options.frontier.takeNotice('initial_stable_prefix'),offered=new Set(options.frontier.offeredProgramIds?.()??[]);
+  const fallback=library.programs.filter((p:any)=>!offered.has(p.id));
+  return '可复用检查由 Runtime 按本次文件绑定，详细候选见当前选择通知；只选择本次任务确实需要的操作。执行回执是证据，最终判断仍由你完成。其他需要的检查可使用原生工具。必要时原有 bash 可调用 geneloop-cache '+
+  "'{\"calls\":[{\"id\":\"当前候选中的 script_ID\",\"paths\":[\"/work/实际文件\"],\"argv\":[]}]}'"+
+  '；paths按算子inputs顺序，禁止附加管道或重定向。不要重做已有且版本未变的检查。\n'+
+  (fallback.length?'仍可由你显式绑定和选择的缓存算子（未进入当前自动选择）：'+JSON.stringify(fallback.map((p:any)=>({id:p.id,operation:p.interface??p.description,inputs:p.inputs,argv_contract:p.argv_contract,network_policy:p.network_policy})))+'\n':'')+notice;
+ }
  return '可复用脚本库（真实历史代码；输出是证据，不代表文献判断正确）。按当前任务选择需要的操作，用原有 bash 调用，不必重写等价脚本。允许批量 calls，仍由你选择查询对象、判断来源与撰写最终报告。命令格式：geneloop-cache '+
   "'{\"calls\":[{\"id\":\"script_ID\",\"paths\":[\"/work/实际文件\"],\"argv\":[]}]}'"+
   '\n命令可带 cd /work/... &&，不要附加 head、重定向或其他管道；输出已受限，完整回执用于验证。文件 paths 对应 inputs 顺序；argv 仅供 argv_contract 程序，传本任务中取得的标识符等标量，不能沿用历史值。程序描述由代码的参数变量、输出字段与 URL 字面量生成，适用于本任务的新数据，并非限定历史论文。网络程序只能获取固定 arXiv/Crossref 元数据，其他网络请求会拒绝。已取得的相同证据无需重新计算，失败或信息不足仍可用普通工具。\n'+
@@ -139,6 +147,9 @@ export function bindScript(program:any,workspace:string,predecessorBindings:any[
   const files:any[]=[];
   function visit(dir:string,virtual:string,depth=0){
     if(depth>3||files.length>128)return;
+    // Uploaded inputs already exist before the first command. Missing optional
+    // scratch/output directories must not hide an otherwise complete binding.
+    if(!existsSync(dir))return;
     for(const row of readdirSync(dir,{withFileTypes:true})){
       if(row.name.startsWith('.')||row.isSymbolicLink())continue;
       const host=join(dir,row.name),path=virtual+'/'+row.name;
@@ -169,7 +180,7 @@ export function loadScriptLibrary(path:string){
   }
   return library;
 }
-export const scriptCodeLocks=['src/adapters/reuse_snapshot.py','scripts/learn-script-motifs.py','src/adapters/script_motif_compiler.py','src/adapters/script_dataflow_compiler.py','src/adapters/reuse_mediation.ts','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','src/adapters/script_negative_runtime.ts','src/adapters/negative_field_runtime.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs','scripts/run-certified-script.mjs','scripts/fetch-script-evidence.py'];
+export const scriptCodeLocks=['src/adapters/script_learning_store.ts','src/adapters/reuse_snapshot.py','scripts/learn-script-motifs.py','src/adapters/script_motif_compiler.py','src/adapters/script_dataflow_compiler.py','src/adapters/reuse_mediation.ts','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','src/adapters/script_negative_runtime.ts','src/adapters/negative_field_runtime.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs','scripts/run-certified-script.mjs','scripts/fetch-script-evidence.py'];
 export function createScriptInterceptor({library,workspace,session,goal,mode,endpoint,model,minSimilarity=.88,minMargin=.04,minGoalSimilarity=.6,negativeGoals=[],audit,similarity,demandBound=false,executionFrontier=false}:any){
   if(!['cache','shadow','execute'].includes(mode))throw Error('invalid_script_mode');
   if(!Number.isFinite(minSimilarity)||minSimilarity<.5||minSimilarity>1||!Number.isFinite(minMargin)||minMargin<.01||minMargin>1)throw Error('invalid_script_threshold');

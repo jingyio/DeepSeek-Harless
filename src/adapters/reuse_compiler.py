@@ -10,7 +10,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 from .script_motif_compiler import digest, sha
 
-LOCKS = ['src/adapters/reuse_compiler.py', 'src/adapters/reuse_mediation.ts',
+LOCKS = ['src/adapters/script_learning_store.ts', 'src/adapters/reuse_compiler.py', 'src/adapters/reuse_mediation.ts',
          'src/adapters/probe_motif_compiler.py', 'src/adapters/probe_frontier.ts',
          'src/adapters/script_motif_web.ts', 'src/adapters/script_motif_runtime.ts',
          'src/adapters/script_execution_frontier.ts', 'scripts/compile-reuse-library.py']

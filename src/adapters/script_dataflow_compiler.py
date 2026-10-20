@@ -19,6 +19,11 @@ def access(statement):
     reads = {n.id for n in ast.walk(statement) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
     writes = {n.id for n in ast.walk(statement) if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del))}
     mutations = set()
+    if isinstance(statement, ast.FunctionDef):
+        # Only module-level pure functions are admitted below. Locals/parameters
+        # do not become global dependencies or overwrite the caller's variables.
+        parameters={n.arg for n in ast.walk(statement) if isinstance(n,ast.arg)}
+        return reads-writes-parameters-{statement.name}, {statement.name}, set()
     for node in ast.walk(statement):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             mutations |= roots(node.func.value)
@@ -35,33 +40,38 @@ def access(statement):
 
 def slices(source):
     tree = ast.parse(source)
-    if any(isinstance(n, (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef, ast.Try, ast.With)) for n in ast.walk(tree)):
+    if any(isinstance(n, (ast.ClassDef, ast.AsyncFunctionDef, ast.Try, ast.With)) for n in ast.walk(tree)):
         return []  # Alias/function/control-effect analysis is not yet certified.
+    if any(isinstance(n,ast.FunctionDef) and (n not in tree.body or n.decorator_list or n.args.defaults or any(n.args.kw_defaults)) for n in ast.walk(tree)):
+        return []
     result = []
     for end, statement in enumerate(tree.body):
-        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1 or not isinstance(statement.targets[0], ast.Name):
-            continue
-        target = statement.targets[0].id
-        if not any(isinstance(n, ast.Name) and n.id == target and isinstance(n.ctx, ast.Load)
-                   for later in tree.body[end+1:] for n in ast.walk(later)):
-            continue
-        needed, chosen = {target}, []
-        for index in range(end, -1, -1):
-            row = tree.body[index]
-            reads, writes, mutations = access(row)
-            if needed & (writes | mutations):
-                chosen.append(index)
-                needed = (needed - writes) | reads
-        if any(isinstance(tree.body[i], (ast.Raise, ast.Assert, ast.Delete)) for i in chosen):
-            continue
-        # Preserve aliases and mutating loops as complete AST statements. Any
-        # missed/unsupported dependency fails static admission or sandbox replay.
-        tail = ast.parse('import json as motif_json\nprint(motif_json.dumps({"value": '+target+'}, ensure_ascii=False))').body
-        selected = ast.unparse(ast.Module(body=[tree.body[i] for i in sorted(chosen)] + tail, type_ignores=[]))
-        original = ast.unparse(ast.Module(body=tree.body[:end+1] + tail, type_ignores=[]))
-        result.append({'target': target, 'source': selected, 'prefix_source': original,
-                       'lines': sorted({tree.body[i].lineno for i in chosen}),
-                       'original_source_sha256': digest(source)})
+        targets=set()
+        if isinstance(statement, ast.Assign) and len(statement.targets)==1 and isinstance(statement.targets[0],ast.Name):
+            targets.add(statement.targets[0].id)
+        if isinstance(statement,(ast.For,ast.If,ast.AugAssign)):
+            targets |= access(statement)[2]
+        for target in sorted(targets):
+            if not any(isinstance(n, ast.Name) and n.id == target and isinstance(n.ctx, ast.Load)
+                       for later in tree.body[end+1:] for n in ast.walk(later)):
+                continue
+            needed, chosen = {target}, []
+            for index in range(end, -1, -1):
+                row = tree.body[index]
+                reads, writes, mutations = access(row)
+                if needed & (writes | mutations):
+                    chosen.append(index)
+                    needed = (needed - writes) | reads
+            if any(isinstance(tree.body[i], (ast.Raise, ast.Assert, ast.Delete)) for i in chosen):
+                continue
+            # Preserve aliases/functions/loops as complete statements; both
+            # prefixes still need static read-only admission and sandbox replay.
+            tail = ast.parse('import json as motif_json\nprint(motif_json.dumps({"value": '+target+'}, ensure_ascii=False))').body
+            selected = ast.unparse(ast.Module(body=[tree.body[i] for i in sorted(chosen)] + tail, type_ignores=[]))
+            original = ast.unparse(ast.Module(body=tree.body[:end+1] + tail, type_ignores=[]))
+            result.append({'target': target, 'source': selected, 'prefix_source': original,
+                           'lines': sorted({tree.body[i].lineno for i in chosen}),
+                           'original_source_sha256': digest(source)})
     return result[-16:]
 
 
