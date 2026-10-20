@@ -297,7 +297,7 @@ Harness 原生 `SessionPromptRequest.content` 的实际格式为：
 
 ### 预算、模型与记录
 
-通用 Web 入口每任务、全启动费用和请求次数默认均为 `null`，表示不限。Web 不对单次用户文字另设长度上限；输出配置 `max_output_tokens: null` 时，移除适配器的默认输出值并在真实模型请求中省略 `max_tokens`，不截断模型返回。服务商自身的上下文容量、输出容量和未指定参数时的默认值仍适用。上传容量、账号/路径权限及 HTTP 协议安全边界继续保留。前端预算只能下调服务器任务费用上限；`harness-web.py --budget-usd` 定任务上限，`--run-budget-usd` 定全启动上限，两者显式 `0` 均表示取消对应费用限制。累计 cap 在 policy/effective config/统计中以 `null` 表示不限，禁止使用 Infinity 或巨大数代替；内部 `State(cap_usd=0)` 仍代表零费用预算。可选 `--request-limit/--run-request-limit` 正整数保留次数限制；CLI `0`、配置/统计中的 `null` 表示不限次数，仍完整累计请求与费用。`TaskBudgetRegistry` 支持任务与累计费用分别设为 `null`；有限服务器上限仍禁止客户端提交不限或越界的任务；先不可变注册，原生聊天随发送激活，显式 API 经 submit 激活。预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子记录任务与累计费用，检查仍有效的上限，完整成功用量两层结算，新任务不重置累计账本。
+通用 Web 入口每任务、全启动费用和请求次数默认均为 `null`，表示不限。Web 不对单次用户文字另设长度上限；输出配置 `max_output_tokens: null` 时没有应用层输出额度；按2026-10-20最新要求，Web普通和文件转发请求统一使用官方真实最大单次容量393216 tokens作为 `max_tokens`，避免省略参数触发非思考默认8K截断，不裁剪模型返回。明确设置的有限诊断参数保持原值。服务商自身上下文和最大输出容量仍适用。上传容量、账号/路径权限及 HTTP 协议安全边界继续保留。前端预算只能下调服务器任务费用上限；`harness-web.py --budget-usd` 定任务上限，`--run-budget-usd` 定全启动上限，两者显式 `0` 均表示取消对应费用限制。累计 cap 在 policy/effective config/统计中以 `null` 表示不限，禁止使用 Infinity 或巨大数代替；内部 `State(cap_usd=0)` 仍代表零费用预算。可选 `--request-limit/--run-request-limit` 正整数保留次数限制；CLI `0`、配置/统计中的 `null` 表示不限次数，仍完整累计请求与费用。`TaskBudgetRegistry` 支持任务与累计费用分别设为 `null`；有限服务器上限仍禁止客户端提交不限或越界的任务；先不可变注册，原生聊天随发送激活，显式 API 经 submit 激活。预算代理根据 `x-deepseek-harness-session-id` 路由，同一次请求原子记录任务与累计费用，检查仍有效的上限，完整成功用量两层结算，新任务不重置累计账本。
 
 私有控制服务仅监听 loopback，`/tasks/register/activate/cancel/stats` 均要求 `X-SSS-Control-Token`。该 token 由启动器生成，不提供给浏览器。每任务冻结已选 provider/model、思考档位（`off/low/high/max`，旧 On=`high`）和输出配置（允许 `null`），关闭标题模型、辅助请求和压缩；UI 模型菜单不能绕过预算连接。
 
@@ -305,7 +305,7 @@ Harness 原生 `SessionPromptRequest.content` 的实际格式为：
 
 用户于 2026-10-15 明确取消当前共享服务器原有累计 1 美元费用上限，请求次数同样不限。独立预算进程使用 `serve-web-budget.py --request-limit 0 --task-request-limit 0 --budget-usd 0 --task-budget-usd 0 --max-output 0`；必须沿用原 `--checkpoint`，保留累计已用次数、费用和任务账本，不能清零。该进程生成的私有 `policy.json` 将 `run_budget_usd/request_limit/run_request_limit/max_output_tokens` 记录为 `null`、`budget_usd` 同样为 `null`（2026-10-16 进一步授权）。账号启动策略须同步这些字段；重启预算进程后也须同步新的代理与控制端点。切换时先停止新请求并等待活动任务结算，再停止旧预算进程，使用同一份最新 checkpoint 和账本重启；失败恢复不能用较旧 checkpoint 覆盖新消费。
 
-省略输出参数仍须预约费用：按 [DeepSeek 官方请求契约](https://api-docs.deepseek.com/api/create-chat-completion/)的默认输出计算，关闭思考时为 8192 token，开启思考为 65536，`max` effort 为 131072。这些数值仅用于计费预约，不写入请求或裁剪输出；真实完整用量到达后结算，缺失用量保留预约。未知模型的默认值/容量必须先登记，不能按零输出计费绕过任务预算；GLM 4.6 等已知模型按 [官方最大输出容量](https://docs.z.ai/api-reference/llm/chat-completion)保守预约。可选 GLM 代理在输出配置为 `null` 时移除 pi-ai SDK 自动填入的输出参数，按实际出站正文预约费用。长输入或更高价模型仍可能达到有限任务费用上限，此时按金额拒绝，不偷偷缩减输入或输出。
+底层第三方/辅助调用若省略输出参数仍须预约费用（正式DeepSeek Web已改为显式官方最大容量）：按 [DeepSeek 官方请求契约](https://api-docs.deepseek.com/api/create-chat-completion/)的默认输出计算，关闭思考时为 8192 token，开启思考为 65536，`max` effort 为 131072。这些数值仅用于计费预约，不写入请求或裁剪输出；真实完整用量到达后结算，缺失用量保留预约。未知模型的默认值/容量必须先登记，不能按零输出计费绕过任务预算；GLM 4.6 等已知模型按 [官方最大输出容量](https://docs.z.ai/api-reference/llm/chat-completion)保守预约。可选 GLM 代理在输出配置为 `null` 时移除 pi-ai SDK 自动填入的输出参数，按实际出站正文预约费用。长输入或更高价模型仍可能达到有限任务费用上限，此时按金额拒绝，不偷偷缩减输入或输出。
 
 默认模拟模式无实际支出；`npm run web:real` 显式开放 DeepSeek 连接，仍须工作台预览确认。服务器私有根 `.env` 通过统一 `scripts/project.mjs` 的 `loadEnvFile` 加载（Node 20.12+，已有环境值优先），字段见 `.env.example`。真实模式拒绝原生聊天直接执行付费任务。SDK 基本连通已通过真实 API 验证，真实 Web 尚未验收；其他收费 MCP 和人工费用也不在这份模型代理额度内。
 

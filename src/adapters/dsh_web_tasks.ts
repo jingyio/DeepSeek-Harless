@@ -4,7 +4,7 @@ import { existsSync, appendFileSync, lstatSync, mkdirSync, readFileSync, readdir
 import { basename, dirname, extname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
-import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels, WEB_REASONING_EFFORTS, WEB_REASONING_LABELS } from './harless_reasoning.ts';
+import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels, WEB_REASONING_EFFORTS, WEB_REASONING_LABELS,WEB_DEEPSEEK_OUTPUT_CAPACITY } from './harless_reasoning.ts';
 import type { WebReasoningEffort, WebModelOption } from './harless_reasoning.ts';
 import { isAgentLoopRequest, createUserMessage, createAssistantMessage } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
@@ -1831,11 +1831,9 @@ export function apply(ctx: any) {
     } }), 'harless-comparison-api');
   }
   const options = resolveAdapterOptions({ baseURL: brokerMode ? config.budget_broker_endpoint + '/v1' : config.endpoint,
-    reasoningEffort: 'off', ...(config.max_output_tokens == null ? {} : { maxTokens: config.max_output_tokens }) } as any);
-  // resolveAdapterOptions supplies 256k when omitted; remove that application
-  // default. The Web adapter uses the provider's documented full capacity at
-  // serialization, while this task's application cap remains null.
-  if (config.max_output_tokens == null) delete (options as any).maxTokens;
+    reasoningEffort: 'off', maxTokens:config.max_output_tokens??WEB_DEEPSEEK_OUTPUT_CAPACITY } as any);
+  // Native model defaults reach every routed delegate, including the frozen
+  // File adapter. null remains no application cap; the wire uses real capacity.
   options.models = webDeepSeekModels(options.models, modelOptions);
   const deepseekAdapter = new WebDeepSeekAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
@@ -1957,7 +1955,7 @@ export function apply(ctx: any) {
     if (!task || task.status !== 'running' || !active.has(task.request.task_id) ||
         request.provider !== task.model_option.provider || request.model !== task.model_option.model ||
         request.reasoningEffort !== task.reasoning_effort ||
-        request.maxTokens !== (config.max_output_tokens ?? undefined) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
+        request.maxTokens !== (config.max_output_tokens ?? (task.model_option.provider==='deepseek-official'?WEB_DEEPSEEK_OUTPUT_CAPACITY:undefined)) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
     if (!humans.some((message: any) => task.current_humans.has(message.id)) ||
@@ -1969,6 +1967,7 @@ export function apply(ctx: any) {
     json(join(task.output, 'model-request-config.json'), { provider: request.provider, model: request.model,
       reasoning_effort: request.reasoningEffort ?? null, reasoning_effort_sent: request.reasoningEffort !== undefined,
       max_output_tokens: request.maxTokens ?? null, output_cap_sent: request.maxTokens !== undefined,
+      application_output_cap:config.max_output_tokens,
       tools_order: requestedTools.map((tool: any) => tool.name), tools_sha256: digest(requestedTools),
       human_message_sha256: humans.map((message: any) => digest(message.content)), mode: task.request.mode });
     task.stats.llm_decisions = Number(task.stats.llm_decisions) + 1; record(task);

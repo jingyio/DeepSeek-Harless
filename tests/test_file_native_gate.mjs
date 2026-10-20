@@ -20,11 +20,12 @@ test('Only admitted file tasks use the local gate; other scene serialization sta
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  try{
   const base=`http://127.0.0.1:${server.address().port}`;
-  const options=resolveAdapterOptions({baseURL:base+'/platform',reasoningEffort:'off'});delete options.maxTokens;
+  const options=resolveAdapterOptions({baseURL:base+'/platform',reasoningEffort:'off',maxTokens:WEB_DEEPSEEK_OUTPUT_CAPACITY});
   const adapter=new ManagementRoutedAdapter({options:()=>options,resolveApiKey:async()=>'local-diagnostic-only',resolveUserId:()=>'diagnostic',prepareExtensions:async()=>({fields:{},accept:async()=>{}})},[],id=>id==='file-session'?base+'/file-gate':undefined);
   const prepared=await adapter.prepareCall('deepseek-official','deepseek-flash');
   for(const id of ['paper-session','file-session']){
-   for await(const chunk of prepared.stream({provider:'deepseek-official',model:'deepseek-flash',sessionId:id,reasoningEffort:'off',messages:[{id:'same-user',role:'user',content:[{type:'text',text:'Contract check'}]}]})){}
+   // Match the native Agent's public prepared-model default propagation.
+   for await(const chunk of prepared.stream({provider:'deepseek-official',model:'deepseek-flash',sessionId:id,reasoningEffort:'off',maxTokens:prepared.model.defaultMaxTokens,messages:[{id:'same-user',role:'user',content:[{type:'text',text:'Contract check'}]}]})){}
   }
   assert.deepEqual(rows.map(r=>r.path),['/platform/chat/completions','/file-gate/chat/completions']);
   assert.deepEqual(rows[0].body,rows[1].body);

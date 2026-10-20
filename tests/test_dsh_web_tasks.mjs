@@ -213,7 +213,7 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
   function modelRequest(task, changes = {}, tagged = true) {
     const agent = agents.get(task.session_id), events = agent.events.filter(row => row.type === 'user/message');
     const body = { sessionId: task.session_id, provider: 'deepseek-official', model: 'deepseek-flash',
-      reasoningEffort: 'off', maxTokens: 1000, tools: structuredClone(fixtureSchemas),
+      reasoningEffort: 'off', maxTokens: policy.max_output_tokens??393216, tools: structuredClone(fixtureSchemas),
       messages: events.map(event => ({ role: 'user', id: event.data.id, source: event.data.source,
         content: event.data.content })), ...changes };
     return tagged ? markAgentLoopRequest(body) : body;
@@ -310,19 +310,19 @@ test('reference PDF recovery does not also force main generic report export',opt
  }finally{await f.close();}
 });
 
-test('Uncapped task text and output retain guards and omit the adapter default',options,async()=>{
+test('Uncapped task text retains guards while native model defaults use provider capacity',options,async()=>{
  const f=await fixture({max_output_tokens:null});try{
   const original='完整任务输入'.repeat(3000)+'unique-tail';
   const task=await f.preview(original);await f.submit(task);
   assert.equal(f.promptCalls[0].content.filter(part=>part.type==='text').map(part=>part.text).join(''),original);
   const adapter=f.adapters.find(row=>row.names.includes('deepseek-official')).adapter;
-  assert.equal((await adapter.resolveModel('deepseek-official','deepseek-flash')).defaultMaxTokens,undefined);
-  const request=f.modelRequest(task,{maxTokens:undefined});
+  assert.equal((await adapter.resolveModel('deepseek-official','deepseek-flash')).defaultMaxTokens,393216);
+  const request=f.modelRequest(task,{maxTokens:393216});
   const next=()=> (async function*(){yield {type:'text-delta',delta:'uncapped answer'};})();
   const received=[];for await(const chunk of f.stream(request,next))received.push(chunk);
   assert.equal(received.length,1);
   const recorded=JSON.parse(readFileSync(join(f.directory,'tasks',task.task_id,'model-request-config.json')));
-  assert.equal(recorded.max_output_tokens,null);assert.equal(recorded.output_cap_sent,false);
+  assert.equal(recorded.max_output_tokens,393216);assert.equal(recorded.output_cap_sent,true);assert.equal(recorded.application_output_cap,null);
   assert.throws(()=>f.stream(f.modelRequest(task,{maxTokens:1000}),next),/Unapproved/);
   await f.complete(task);
  }finally{await f.close();}
@@ -445,11 +445,11 @@ test('Pro Off persists and binds the exact native route while unavailable On can
     const task=(await f.api()).value.tasks[0];
     assert.equal(task.model,'deepseek-v4-pro');assert.equal(task.reasoning_effort,'off');
     assert.equal([...f.registrations.values()].find(row=>row.task_id===task.task_id).model,'deepseek-v4-pro');
-    const request=f.modelRequest(task,{model:'deepseek-v4-pro',reasoningEffort:'off',maxTokens:undefined});
+    const request=f.modelRequest(task,{model:'deepseek-v4-pro',reasoningEffort:'off',maxTokens:393216});
     for await(const chunk of f.stream(request,async function*(){yield {type:'text-delta',text:'Pro diagnostic'};})){}
     assert.throws(()=>f.stream({...request,model:'deepseek-flash'},async function*(){}),/Unapproved task model/);
     const audit=JSON.parse(readFileSync(join(f.directory,'tasks',task.task_id,'model-request-config.json')));
-    assert.equal(audit.model,'deepseek-v4-pro');assert.equal(audit.output_cap_sent,false);
+    assert.equal(audit.model,'deepseek-v4-pro');assert.equal(audit.output_cap_sent,true);assert.equal(audit.application_output_cap,null);
     await f.complete(task);
     const registrations=f.registrations.size;
     const invalid=await f.api({action:'preview',request:{instruction:'Do not admit',model:'deepseek-v4-pro',reasoning_effort:'high'}});
@@ -700,15 +700,15 @@ test('Native On/Off selection survives restart, freezes each real request contra
     assert.equal(first.reasoning_effort,'high');assert.equal(f.modelCalls.at(-1).reasoningEffort,'high');
     await assert.rejects(select('off'),error=>error.code==='model_not_allowed');
     const next=async function*(){yield {type:'text-delta',index:0,text:'answer'};};
-    assert.throws(()=>f.stream(f.modelRequest(first,{reasoningEffort:'off',maxTokens:undefined}),next),/Unapproved/);
-    for await(const chunk of f.stream(f.modelRequest(first,{reasoningEffort:'high',maxTokens:undefined}),next)){}
+    assert.throws(()=>f.stream(f.modelRequest(first,{reasoningEffort:'off',maxTokens:393216}),next),/Unapproved/);
+    for await(const chunk of f.stream(f.modelRequest(first,{reasoningEffort:'high',maxTokens:393216}),next)){}
     const firstConfig=JSON.parse(readFileSync(join(f.directory,'tasks',first.task_id,'model-request-config.json')));
-    assert.equal(firstConfig.reasoning_effort,'high');assert.equal(firstConfig.max_output_tokens,null);assert.equal(firstConfig.output_cap_sent,false);
+    assert.equal(firstConfig.reasoning_effort,'high');assert.equal(firstConfig.max_output_tokens,393216);assert.equal(firstConfig.output_cap_sent,true);assert.equal(firstConfig.application_output_cap,null);
     await f.complete(first); await select('off');
     await f.ctx.sessionController.prompt({sessionId,requestId:'thinking-off',mode:'queue',content:[{type:'text',text:'Continue briefly'}]},new AbortController().signal);
     const second=(await f.api()).value.tasks.at(-1);
     assert.equal(second.reasoning_effort,'off');assert.equal(second.session_id,first.session_id);
-    for await(const chunk of f.stream(f.modelRequest(second,{maxTokens:undefined}),next)){}
+    for await(const chunk of f.stream(f.modelRequest(second,{maxTokens:393216}),next)){}
     assert.equal(JSON.parse(readFileSync(join(f.directory,'tasks',first.task_id,'effective-config.json'))).reasoning_effort,'high');
     assert.equal(f.registrations.size,2,'reasoning changes never reset or reuse a previous task budget');
     await f.complete(second);
@@ -746,8 +746,8 @@ test('Low and Max survive restart, bind each task request, and preserve prior ta
    await f.ctx.sessionController.prompt({sessionId,requestId:'native-strength-'+effort,mode:'queue',content:[{type:'text',text:'Use the selected effort'}]},new AbortController().signal);
    const task=(await f.api()).value.tasks.at(-1);tasks.push(task);
    assert.equal(task.reasoning_effort,effort);
-   assert.throws(()=>f.stream(f.modelRequest(task,{reasoningEffort:effort==='max'?'low':'max',maxTokens:undefined}),next),/Unapproved/);
-   for await(const _chunk of f.stream(f.modelRequest(task,{reasoningEffort:effort,maxTokens:undefined}),next)){}
+   assert.throws(()=>f.stream(f.modelRequest(task,{reasoningEffort:effort==='max'?'low':'max',maxTokens:393216}),next),/Unapproved/);
+   for await(const _chunk of f.stream(f.modelRequest(task,{reasoningEffort:effort,maxTokens:393216}),next)){}
    assert.equal(JSON.parse(readFileSync(join(f.directory,'tasks',task.task_id,'model-request-config.json'))).reasoning_effort,effort);
    await f.complete(task);
   }
