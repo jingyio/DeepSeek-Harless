@@ -244,10 +244,7 @@ export function createGateway(config) {
     if (db.users.some(u => u.username === username)) return json(res, 409, { error: '用户名已被使用' });
     const proof = String(claim ? body.claimCode : body.inviteCode ?? '').trim();
     const proofHash = sha(proof);
-    // Invitations do not expire with time, browser navigation or login sessions.
-    const invite = db.invites.find(i => i.hash === proofHash);
-    if (!claim && invite?.usedBy)
-      return json(res, 400, { error: '邀请码已被使用，请使用另一个邀请码。' });
+    const invite = db.invites.find(i => i.hash === proofHash && !i.usedBy);
     if (claim ? (!db.ownerClaim || db.ownerClaim !== proofHash || db.users.some(u => u.role === 'owner')) : !invite)
       return json(res, 400, { error: claim ? '所有者激活链接无效或已使用' : '邀请码无效或已使用' });
     const passwordHash = await hashPassword(body.password);
@@ -283,7 +280,7 @@ export function createGateway(config) {
         return json(res, 403, { error: '当前密码不正确' });
       if (!Number.isInteger(body.count) || body.count < 1 || body.count > 20)
         return json(res, 400, { error: '每次可创建 1–20 个邀请码' });
-      return json(res, 200, { codes: createInvites({ db, save }, body.count), expiresAt: null, singleUse: true });
+      return json(res, 200, { codes: createInvites({ db, save }, body.count) });
     }
     if (path === '/api/account/logout') {
       const raw = (req.headers.cookie ?? '').split(';').map(s => s.trim()).find(s => s.startsWith(cookieName + '='));

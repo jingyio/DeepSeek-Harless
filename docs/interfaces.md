@@ -805,12 +805,12 @@ PPT Web MCP 的私有目录由可信部署 policy 绑定。代码 release 与历
 
 DeepSeek 保留各侧 Session→turn 的预算路由及请求授权检查；不同账号、同账号不同对话、普通聊天与不同场景对照均可并行，没有应用层任务并行数量上限。同一公开对话的新请求仍互斥，重复 requestId 不重跑。场景调度使用 Host.concurrent 启动独立轮次，Host.parallel 控制同轮两侧；短准入锁不等待模型完成。缺少明确 Session 路由的旧模型适配器继续互斥；Host.prepare 在锁内失去就绪条件时返回 deferred，调度重试而不是把竞争误报为失败。已知准入拒绝通过原生 RemoteError 保留 session_busy/comparison_busy/request_id_conflict 等代码，公网仅输出安全提示；私有 prompt-admission-errors.jsonl 只存时间、Session/request/task 标识和错误代码。重连和历史读取不启动模型，完整终态快照不再反复访问预算服务，旧记录保留必要的交付恢复。
 
-`rate` 和 `feedback` 使用短临界区，校验输出 SHA 和版本，持久化后返回，不等待原生页面通知。2026-10-16 按用户要求移除网页 1–5 分控件及客户端评分保存队列；不再从网页发送 `action:"rate"`。后端研究评分协议与历史数据继续兼容，回复赞踩仍走独立 `feedback`。401/403、退出页面或插件停止时清空账号内存缓存；一般操作失败显示错误并读取服务器确认。
+`rate` 和 `feedback` 使用短临界区，校验输出 SHA 和版本，持久化后返回，不等待原生页面通知。2026-10-20 恢复网页 1–5 分控件，点击后通过通用 action 写入既有 `rate` 接口；保留历史数据与独立赞踩 `feedback`。401/403、退出页面或插件停止时清空账号内存缓存；一般操作失败显示错误并读取服务器确认。
 
 
 ## 回复操作栏一致性（2026-10-15）
 
-场景前端通过公开 primitives 复用 Chat 的复制、勾选、赞踩、分支、用量和用时图标及 Tooltip；不导入私有组件或依赖生成的样式类。最新轮由公开 `useChat` 的整个 `timeline.turnOrder` 判定，包括后续普通 Chat；历史侧栏仅在支持 hover 的设备上淡出，hover/focus-within 或统计面板展开时恢复。网页已移除数字评分区。
+场景前端通过公开 primitives 复用 Chat 的复制、勾选、赞踩、分支、用量和用时图标及 Tooltip；不导入私有组件或依赖生成的样式类。最新轮由公开 `useChat` 的整个 `timeline.turnOrder` 判定，包括后续普通 Chat；历史侧栏仅在支持 hover 的设备上淡出，hover/focus-within 或统计面板展开时恢复。网页每侧提供 1–5 分评分区。
 
 统计使用每侧已有 usage/stats、duration_ms、started_at/finished_at，未知总量/时长不显示虚构数字；不从全程耗时推算 TPS/TTFT。弹层使用公开锚点定位及外点关闭，Escape 返回触发按钮；复制成功勾选一秒后恢复，沿用版本绑定的反馈与分支接口。桌面窄栏允许统计整组换行，手机窄屏采用原生紧凑图标并保留可访问名称。
 
@@ -1067,6 +1067,6 @@ TypeScript Runtime 在首次模型请求前验证当前任务ID、输出授权�
 
 ## 邀请与场景数值评分（2026-10-20 恢复）
 
-- `POST /api/account/invites` 仍要求 owner 登录、同源请求、当前密码和整数 `count: 1..20`；返回 `codes`、`expiresAt: null`、`singleUse: true`。邀请码不按创建时间或登录会话过期，服务端只存哈希，注册成功原子消耗该码，重启后未用码继续有效。验证码已用与登录过期分别提示，不改变七天登录会话策略。
+- `POST /api/account/invites` 仍要求 owner 登录、同源请求、当前密码和整数 `count: 1..20`；返回 `codes`，沿用既有接口。邀请码不按创建时间或登录会话过期，服务端只存哈希，注册成功原子消耗该码，重启后未用码继续有效。邀请码无效/已用与登录过期分别提示，不改变七天登录会话策略。
 - 设置页与独立 `/account` 都支持批量生成、逐码/全部复制、可选中的只读文本；后续失败不清掉先前显示的码。原文只保存在当前页面内存，离开前复制保存；不在 localStorage 或服务器存明文。注册框支持原生粘贴，去除首尾空白，不改邀请码大小写。
 - PPT、Paper、Data 及旧 File 双栏每侧恢复 1–5 单选评分；使用既有 `action: rate`、`lane`、`score`、`revision`、`output_sha256` 接口，双方完成才启用。保存失败保留确认分数，陈旧版本冲突只重新读取，不重放写入；历史分数和账号隔离不变。普通 Chat 和新版独立 File 单栏没有旧评分接口，本次不虚构评分记录。
