@@ -68,12 +68,13 @@ def test_review_rejection_preserves_every_executable_and_description_field(tmp_p
     assert status['rejected_program_ids'] == [library['programs'][0]['id']]
 
 
-@pytest.mark.parametrize('mutation', ['extra_code', 'unknown_id', 'wrong_evidence', 'duplicate', 'longer', 'multiline'])
+@pytest.mark.parametrize('mutation', ['extra_root', 'extra_code', 'unknown_id', 'wrong_evidence', 'duplicate', 'longer', 'multiline'])
 def test_bad_proposals_cannot_escape_metadata_scope(tmp_path, mutation):
     store, output, library = fixture(tmp_path); calls = []
     def request(phase, system, value):
         assert phase == 'propose'
         result = model(calls)(phase, system, value); row = result['updates'][0]
+        if mutation == 'extra_root': result['type'] = 'json_object'
         if mutation == 'extra_code': row['template'] = 'print("injected")'
         if mutation == 'unknown_id': row['program_id'] = 'invented'
         if mutation == 'wrong_evidence': row['evidence_id'] = '0'*64
