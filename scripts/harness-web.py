@@ -177,8 +177,8 @@ def prepare(args, output, endpoint):
                 if os.environ.get(variable):
                     policy['command_resources'][field] = os.environ[variable]
     save(output / 'policy.json', policy)
-    disabled = ['llm-deepseek', 'session-title-llm', 'llm-retry',
-                'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']
+    disabled = ['llm-deepseek', 'session-title-llm',
+                'compaction-basic', 'session-log-deepseek', 'goal', 'goal-round-driver']
     if not args.frozen:
         disabled += ['bash-sandbox', 'pwsh-sandbox', 'web-search-deepseek']
     patch = [{'id': name, 'disabled': True} for name in disabled]
@@ -205,8 +205,14 @@ def prepare(args, output, endpoint):
         {'insert': [{'id': 'sss-web-policy', 'name': (ROOT / 'src/adapters/dsh_web_policy.ts' if args.frozen else
             ROOT / 'src/adapters/harless_web_client/index.mjs').as_uri()}]}]
     if not args.frozen:
+        patch.extend([
+            {'id':'fs-sandbox', 'name': (ROOT / 'src/adapters/geneloop_fs.ts').as_uri()},
+            {'id':'subprocess', 'name': (ROOT / 'src/adapters/geneloop_fs_search.ts').as_uri()},
+            {'id':'command-compact','disabled':False},
+        ])
         patch.append({'insert': [
             {'id': 'geneloop-shell', 'name': (ROOT / 'src/adapters/geneloop_shell.ts').as_uri()},
+            {'id': 'geneloop-native-work', 'name': (ROOT / 'src/adapters/geneloop_native_work.ts').as_uri()},
             {'id': 'geneloop-web-search', 'name': (ROOT / 'src/adapters/geneloop_web_search.ts').as_uri()}]})
     save(output / 'host.patch.yml', patch)
     (output / 'prompt.md').write_text(prepared['prompt'], encoding='utf-8'); (output / 'prompt.md').chmod(0o600)

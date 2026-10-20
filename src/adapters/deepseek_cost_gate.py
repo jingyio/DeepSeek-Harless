@@ -359,8 +359,10 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                 headers['x-deepseek-harness-session-id'] = match[1]
             return state_selector(headers) if state_selector else state
 
-        def _reply(self, code: int, message: str) -> None:
-            raw = json.dumps({"error": message}).encode()
+        def _reply(self, code: int, message: str, *, error_code: str | None = None) -> None:
+            # Distinguish local quota denial from upstream rate limiting.
+            error = {"code": error_code, "type": "quota_exceeded", "message": message} if error_code else message
+            raw = json.dumps({"error": error}).encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(raw)))
@@ -424,6 +426,7 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
             return json.dumps({'usage': usage.finish()}).encode()
 
         def _call_upstream(self, body: bytes | None, method: str, *, stream: bool = False) -> tuple[int, str, bytes]:
+            self.provider_retry_after = None
             headers = {key: value for key, value in self.headers.items()
                        if key.lower() not in HOP_HEADERS | {'x-sss-model-gate-token'}
                        and not (stream and key.lower() == 'accept-encoding')}
@@ -441,6 +444,7 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                             content_type,
                             response.read())
             except urllib.error.HTTPError as exc:
+                self.provider_retry_after = exc.headers.get('Retry-After')
                 return (exc.code, exc.headers.get("Content-Type", "application/json"),
                         exc.read())
             except Exception:
@@ -450,6 +454,9 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(answer)))
+            retry_after = getattr(self, 'provider_retry_after', None)
+            if isinstance(retry_after, str) and len(retry_after) <= 128 and not any(c in retry_after for c in '\r\n'):
+                self.send_header('Retry-After', retry_after)
             self.end_headers()
             self.wfile.write(answer)
 
@@ -554,7 +561,7 @@ def create_server(host: str, port: int, upstream: str, state: State, *,
                 return
             if booked is None:
                 request_state.log({'kind': 'budget_denied', 'reason': 'budget_or_request_limit'})
-                self._reply(429, "approved research budget exhausted")
+                self._reply(429, "approved research budget exhausted", error_code='GENELOOP_BUDGET_EXHAUSTED')
                 return
             request_id, model, dollars, ceiling = booked
             if search:

@@ -1,10 +1,15 @@
 /** Public execution progress from native model/tool lifecycle events, never simulated prose. */
+import {projectNativeTodos,type NativeTodo} from './geneloop_native_work.ts';
+import {publicText} from './harless_public_output.ts';
 export type TaskActivity = { label: string; status: 'running' | 'completed' | 'failed' | 'cancelled'; tool?: string; subject?: string };
 export type TaskMessage = { id: string; text: string; status: 'streaming' | 'completed' | 'interrupted'; attempt: number; started_at: string; finished_at?: string };
 export type TaskTrace = TaskActivity & { id: string; time: string; kind: 'assistant' | 'thinking' | 'tool' | 'motif' | 'request'; text?: string; optimized: boolean; verified_skip: boolean };
-export type TaskProgressSnapshot = { answer: string; progress: TaskActivity; activity: TaskActivity[]; messages: TaskMessage[]; trace: TaskTrace[] };
+export type TaskProgressSnapshot = { answer: string; progress: TaskActivity; activity: TaskActivity[]; messages: TaskMessage[]; trace: TaskTrace[]; todos:NativeTodo[]|null };
 export type AttachmentPreparation = { phase: 'extracting' | 'rendering' | 'visual'; filename?: string; completed?: number; total?: number };
 const toolLabels: [RegExp, string][] = [
+  [/^skill$/, '读取技能说明'],
+  [/^todo_write$/, '更新任务清单'],
+  [/^present$/, '交付结果文件'],
   [/^web_search$/, '搜索网页'],
   [/^web_fetch$/, '读取网页'],
   [/^job_output$/, '读取后台任务结果'],
@@ -53,6 +58,7 @@ export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = 
   const activities: TaskActivity[] = Array.isArray(saved?.activity) ? saved.activity.slice(-40).map(restored).filter((row): row is TaskActivity => Boolean(row)) : [];
   const messages: TaskMessage[] = Array.isArray(saved?.messages) ? structuredClone(saved.messages) : [];
   const trace: TaskTrace[] = Array.isArray(saved?.trace) ? structuredClone(saved.trace) : [];
+  let todos=projectNativeTodos(null,{type:'todo/write',data:{todos:saved?.todos}});
   let attempt = Math.max(0,...messages.map(row=>row.attempt)), serial = trace.length;
   let current: TaskMessage | undefined, requestRow: TaskTrace | undefined, thinking: TaskTrace | undefined, messageRow: TaskTrace | undefined, preparationRow: TaskTrace | undefined;
   const tools = new Map<string, { activity: TaskActivity; trace: TaskTrace }>();
@@ -106,7 +112,30 @@ export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = 
     },
     event(event: any) {
       const time=typeof event?.time==='number'?new Date(event.time).toISOString():now();
-      if(event?.type==='tool/call'){
+      const nextTodos=projectNativeTodos(todos,event);
+      if(nextTodos!==todos){
+        todos=nextTodos?.map(item=>({...item,content:publicText(item.content)}))??null;
+        if(todos){const completed=todos.filter(item=>item.status==='completed').length;
+          const label=`任务清单：${completed}/${todos.length} 已完成`,status=completed===todos.length?'completed':'running';
+          row('tool',label,'completed',time);setProgress(label,status);}
+      }
+      if(event?.type==='assistant/attempt'){
+        // Native failed attempts never become model-visible assistant messages.
+        // Withdraw their transient prose before a retry, but retain a failed
+        // request marker and all previously completed messages/tool evidence.
+        if(current?.status==='streaming'){
+          const index=messages.indexOf(current);if(index>=0)messages.splice(index,1);
+          if(messageRow){const index=trace.indexOf(messageRow);if(index>=0)trace.splice(index,1);}
+        }
+        for(const entry of [requestRow,thinking])if(entry?.status==='running')entry.status='failed';
+        current=undefined;messageRow=undefined;thinking=undefined;currentText=new Map();
+        answer=messages.at(-1)?.text??'';
+      }else if(event?.type==='llm/retry'){
+        row('request','连接暂时中断，正在等待重试','running',time);setProgress('连接暂时中断，正在等待重试');
+      }else if(event?.type==='llm/retry-started'){
+        const pending=trace.at(-1);if(pending?.kind==='request'&&pending.label==='连接暂时中断，正在等待重试')pending.status='completed';
+        setProgress('正在重新连接');
+      }else if(event?.type==='tool/call'){
         const key=String(event.data?.callId??'');if(!key||tools.has(key))return;
         settleAttempt('completed');
         const subject=taskDocumentSubject(event.data?.arguments);
@@ -146,6 +175,6 @@ export function createTaskProgress(saved?: Partial<TaskProgressSnapshot>, now = 
       for(const item of trace)if(item.status==='running')item.status=state==='completed'?'failed':state;
       setProgress(state==='completed'?'回复完成':state==='cancelled'?'已停止':'处理未完成',state);
     },
-    snapshot(): TaskProgressSnapshot { return {answer,progress:{...progress},activity:activities.map(item=>({...item})),messages:structuredClone(messages),trace:structuredClone(trace)}; },
+    snapshot(): TaskProgressSnapshot { return {answer,progress:{...progress},activity:activities.map(item=>({...item})),messages:structuredClone(messages),trace:structuredClone(trace),todos:structuredClone(todos)}; },
   };
 }

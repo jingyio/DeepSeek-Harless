@@ -5,6 +5,8 @@ import {fileURLToPath} from 'node:url';
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local';
 import type { ShellExecRequest, ShellExecSpec } from '@deepseek-ai/dsh-shell';
 import {pptMasterInstallation} from './geneloop_skill_installation.mjs';
+import {rgPath} from '@vscode/ripgrep';
+import {resolveExecutionAgent} from './geneloop_delegation.ts';
 
 const inside = (root: string, path: string) => { const r = relative(root, path); return !r.startsWith('..') && !isAbsolute(r); };
 function fixedDirectory(path: string) {
@@ -56,6 +58,9 @@ export function commandArgv(layout: ReturnType<typeof commandLayout>, command: s
   }
   const skill=pptMasterInstallation(resources.pptMasterRoot,resources.projectRoot);
   if(skill)args.push('--ro-bind',skill.source,skill.target);
+  const rg=realpathSync(rgPath),rgStat=lstatSync(rg);
+  if(!isAbsolute(rg)||!rgStat.isFile()||rgStat.isSymbolicLink())throw Error('invalid packaged search installation');
+  args.push('--ro-bind',rg,'/opt/geneloop/rg');
   if(resources.rendererRoot){
     const renderer=fixedDirectory(resources.rendererRoot);
     if(!existsSync(join(renderer,'program/soffice.bin')) || !existsSync(join(renderer,'share')))throw Error('invalid command renderer installation');
@@ -81,7 +86,7 @@ export function commandArgv(layout: ReturnType<typeof commandLayout>, command: s
 export default class GeneLoopShell extends LocalBashExecutor {
   get sandboxMode() { return 'workspace-write' as const; }
   resolve(request: ShellExecRequest): ShellExecSpec {
-    const agent = this.ctx.get('agents')?.currentInitiator();
+    const agent = resolveExecutionAgent(this.ctx);
     if (!agent) throw Error('command requires an active owning Agent');
     const policy = JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!, 'utf8'));
     const layout = commandLayout(policy.output, agent.session.id);

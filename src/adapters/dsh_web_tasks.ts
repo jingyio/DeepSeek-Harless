@@ -44,9 +44,13 @@ import {createSessionBranchService,sessionBranchTitle} from './harless_session_b
 import {registerManagedWorkspaceRoutes} from './harless_managed_workspaces.ts';
 import {registerPrivateLanes} from './harless_private_lanes.ts';
 import {createSessionTrash, protectDeletedSessions, protectDeletedSessionFiles, protectDeletedSessionQuery, registerSessionTrashRoute, SessionTrashError} from './harless_session_trash.ts';
+import {WEB_RETRY_POLICY,taskFailureStatus} from './geneloop_retry.ts';
+import {createContextAdmission,GeneLoopContextEngine,assertContextUserEnvelope,routeNativeCompact} from './geneloop_context.ts';
+import {installInteractionBridge} from './geneloop_interactions.ts';
+import {installTaskDelegation,TaskDelegationAdapter,resolveExecutionAgent} from './geneloop_delegation.ts';
 
 export const name = 'sss-web-tasks';
-export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController'];
+export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController','tokenMeter','subagents'];
 const conversationReaders=new WeakMap<object,(sessionId:string)=>Promise<{role:string,text:string}[]>>();
 // Cordis gives each plugin a traceable service proxy. Its exported original
 // identity distinguishes host/isolation scopes while surviving those proxies.
@@ -136,6 +140,7 @@ export function apply(ctx: any) {
   const brokerMode = config.budget_broker_endpoint !== undefined;
   if (config.comparison_scenes && (!brokerMode || !Array.isArray(config.comparison_scenes) || config.comparison_scenes.some(id => !['ppt', 'paper-proofreading', 'research-data-analysis', 'literature'].includes(id)))) throw Error('Invalid comparison policy');
   let comparisons: ReturnType<typeof createComparisonService> | undefined;
+  const taskParents = new Map<string, any>();
   let trash: ReturnType<typeof createSessionTrash>;
   const modelOptions = config.models ?? [{ provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true }];
   const defaultModel = modelOptions.find(option => option.available);
@@ -530,6 +535,22 @@ export function apply(ctx: any) {
     return tasks.get(id)!;
   }
   const forSession = (id: string): Task | undefined => tasks.get(sessions.get(id) ?? '');
+  const delegation=installTaskDelegation(ctx,{taskForSession:forSession,
+    isActive:task=>task.status==='running'&&active.has(task.request.task_id),
+    onChild:(child,_root,task)=>bindScene(child,task.scene,task.source_pending),audit:(row,task)=>audit(task,row)});
+  ctx.effect(()=>()=>delegation.close(),'geneloop-delegation-lifetime');
+  const contextAdmission=createContextAdmission({policy:config,taskForSession:forSession,
+    executionAgent:agent=>resolveExecutionAgent(ctx,agent),
+    isActive:task=>task.status==='running'&&active.has(task.request.task_id),ensureOwned,control,broker,
+    audit:(row,task)=>task?audit(task,row):appendFileSync(join(config.output,'context-maintenance.jsonl'),JSON.stringify(row)+'\n',{mode:0o600})});
+  new GeneLoopContextEngine(ctx,contextAdmission,{auto:true,maxTokens:WEB_DEEPSEEK_OUTPUT_CAPACITY});
+  installInteractionBridge(ctx,{owns:ensureOwned,resolve:agent=>{
+    if(!agent||agents.get(agent.session.id)!==agent)return;
+    const task=forSession(agent.session.id);
+    if(!task||task.status!=='running'||!active.has(task.request.task_id))return;
+    const meta=taskParents.get(task.request.task_id);
+    return {session:comparisons?.parentFor(agent.session.id)??agent.session.id,task:task.request.task_id,lane:meta?.lane??'baseline'};
+  }});
   function view(task: Task, detail = false) {
     const request = task.request;
     const live=progress.get(request.task_id)?.snapshot();
@@ -548,7 +569,7 @@ export function apply(ctx: any) {
       scene_options: task.scene_options, scene_inputs: task.scene_inputs, source_pending: task.source_pending ?? false,
       effects: 'Configured scene tools, public web search/reading, and Session-isolated commands and background jobs.',
       stats: task.stats, sources: task.sources,
-      ...(live?{progress:live.progress,activity:live.activity,messages:live.messages,trace:live.trace}:{}),
+      ...(live?{progress:live.progress,activity:live.activity,messages:live.messages,trace:live.trace,todos:live.todos}:{}),
       ...(detail ? { answer: task.answer, input_preview: task.delivery.filter(part => part.type === 'text').map(part => (part as any).text).join('\n').slice(0, 4096), artifacts: ['task.json', 'effective-config.json', 'events.jsonl',
         'ledger.jsonl', 'motif-audit.jsonl', ...(task.answer ? ['answer.md'] : [])] } : {}) };
   }
@@ -609,7 +630,7 @@ export function apply(ctx: any) {
         } catch { /* Missing legacy proof never authorizes another turn. */ }
       }
     }
-    let live=createTaskProgress({answer:task.answer,progress:state.progress,activity:state.activity,messages:state.messages,trace:state.trace});
+    let live=createTaskProgress({answer:task.answer,progress:state.progress,activity:state.activity,messages:state.messages,trace:state.trace,todos:state.todos});
     if(!Array.isArray(state.trace)){
       // Old tasks already saved native events. Anchor at this exact admitted
       // request so a reused child session cannot expose another turn's trace.
@@ -700,6 +721,7 @@ export function apply(ctx: any) {
     // Every terminal task closes its proxy admission; in-flight calls still settle.
     // Release the launch slot only after budget ownership is retired.
     task.closing = (async () => {
+      await delegation.drain(task);
       const owner = agents.get(task.request.session_id), jobs = ctx.get?.('jobs');
       if (owner && jobs) {
         const live = jobs.list(owner).filter((job: any) => job.ownerSession === owner.id && ['running', 'stopping'].includes(job.status));
@@ -1297,7 +1319,7 @@ export function apply(ctx: any) {
       allowed_tools: task.scene.allowed_tools, offered_allowed_tools: task.scene.allowed_tools,
       workspace: task.workspace, scope_sha256: task.scope_sha256,
       runtime_file_locks:task.scene.runtime_file_locks,
-      tool_schemas_sha256: digest(task.tools), reasoning_effort: task.reasoning_effort ?? null, compression: false,
+      tool_schemas_sha256: digest(task.tools), reasoning_effort: task.reasoning_effort ?? null, compression: 'native-pressure-checkpoint-v1',
       paper_flow_shadow_sha256: task.paper_flow_shadow_sha256,
       budget: { task_usd: task.request.budget_usd, task_requests: config.request_limit === 0 ? null : config.request_limit,
         run_usd: config.run_budget_usd, run_requests: config.run_request_limit === 0 ? null : config.run_request_limit, reset_history: false },
@@ -1445,6 +1467,7 @@ export function apply(ctx: any) {
   }
   const admitPrompt = (request: any, signal: AbortSignal) => serialize(async () => {
     await ensureOwned(request.sessionId);
+    if(contextAdmission.isMaintaining(request.sessionId))throw new TaskError('context_busy','正在整理当前对话，请稍后发送。',409);
     if (comparisons?.isLane(request.sessionId)) throw new TaskError('comparison_child', '请回到原对照会话继续发送，左右两侧会分别保留历史。', 409);
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
     if (!selections.has(request.sessionId)) {
@@ -1599,7 +1622,7 @@ export function apply(ctx: any) {
     const result = await original.cancel(request); if (task) finish(task, 'cancelled', 'user_cancelled'); return result;
   };
   if (config.comparison_scenes?.length) {
-    const artifacts = comparisonArtifacts(config.output), taskParents = new Map<string, any>();
+    const artifacts = comparisonArtifacts(config.output);
     comparisons = createComparisonService(config.output, principal, {
       owns: ensureOwned,
       parallel: turn => findModel(turn.model).provider === 'deepseek-official',
@@ -1878,18 +1901,38 @@ export function apply(ctx: any) {
     } }), 'harless-comparison-api');
   }
   const options = resolveAdapterOptions({ baseURL: brokerMode ? config.budget_broker_endpoint + '/v1' : config.endpoint,
-    reasoningEffort: 'off', maxTokens:config.max_output_tokens??WEB_DEEPSEEK_OUTPUT_CAPACITY } as any);
+    reasoningEffort: 'off', maxTokens:config.max_output_tokens??WEB_DEEPSEEK_OUTPUT_CAPACITY,retryPolicy:WEB_RETRY_POLICY } as any);
   // Native model defaults reach every routed delegate, including the frozen
   // File adapter. null remains no application cap; the wire uses real capacity.
   options.models = webDeepSeekModels(options.models, modelOptions);
-  const deepseekAdapter = new WebDeepSeekAdapter({ options: () => options,
+  const deepseekAdapter = new TaskDelegationAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
     resolveAttachments: () => ctx.attachments,
     resolveUserId: () => principal, prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
-  }, modelOptions);
+  }, modelOptions,delegation);
   ctx.effect(() => ctx.llm.registerAdapter(['deepseek-official'], deepseekAdapter), 'sss-web-task-provider');
   ctx.on('agent/created', ({ agent }: any) => {
     agents.set(agent.session.id, agent);
+    if(ownedSessions.has(agent.session.id)&&!comparisons?.isLane(agent.session.id)){
+      const native=ctx.commands.find(agent,'compact');
+      if(native)agent.ctx.plugin({name:'geneloop-public-compact',inject:['commands'],apply(scoped:any){
+        scoped.commands.register({...native,handler:(invocation:any)=>routeNativeCompact(invocation,native,ctx.commands,async parent=>{
+          const id=parent.session.id;await ensureOwned(id);
+          if(comparisons?.busy(id))throw new TaskError('context_busy','请先等待本轮回复完成。',409);
+          const lanes=comparisons?.currentExecutionSessions(id)??[];
+          if(!lanes.length)return [{agent:parent,label:'当前对话'}];
+          const targets=[];
+          for(const row of lanes){
+            if(comparisons?.parentFor(row.session_id)!==id)throw new TaskError('context_scope','对话上下文归属无效',403);
+            await ensureOwned(row.session_id);
+            if(!agents.has(row.session_id))await original.selectModel(modelSelection(row.session_id,modelSelections.get(row.session_id)??defaultModel));
+            const target=agents.get(row.session_id);if(!target)throw Error('Execution context unavailable');
+            targets.push({agent:target,label:row.lane==='baseline'?'Baseline':'Motif'});
+          }
+          return targets;
+        },contextAdmission)});
+      }});
+    }
     if (ownedSessions.has(agent.session.id)) {
       workspaceFor(agent.session.id);
       const task = forSession(agent.session.id);
@@ -1998,7 +2041,7 @@ export function apply(ctx: any) {
     record(task);
   }, { global: true });
   ctx.on('agent/error', ({ agent, error }: any) => {
-    const task = forSession(agent.session.id); if (task) finish(task, /budget|request limit|429/i.test(String(error)) ? 'budget_exhausted' : 'failed', String(error));
+    const task = forSession(agent.session.id); if (task) finish(task, taskFailureStatus(error), String(error));
   }, { global: true });
   ctx.on('agent/status', ({ agent, status }: any) => {
     const task = forSession(agent.session.id);
@@ -2008,6 +2051,9 @@ export function apply(ctx: any) {
     }
   }, { global: true });
   ctx.on('llm/stream', (request: any, next: any) => {
+    if(request.purpose==='compaction'){contextAdmission.assertAuthorized(request);return next();}
+    const child=delegation.authorizeRequest(request);
+    if(child){child.task.stats.llm_decisions=Number(child.task.stats.llm_decisions)+1;record(child.task);return next();}
     const task = forSession(request.sessionId);
     if (!task || task.status !== 'running' || !active.has(task.request.task_id) ||
         request.provider !== task.model_option.provider || request.model !== task.model_option.model ||
@@ -2015,8 +2061,7 @@ export function apply(ctx: any) {
         request.maxTokens !== (config.max_output_tokens ?? (task.model_option.provider==='deepseek-official'?WEB_DEEPSEEK_OUTPUT_CAPACITY:undefined)) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
-    if (!humans.some((message: any) => task.current_humans.has(message.id)) ||
-        humans.some((message: any) => task.humans.get(message.id) !== digest(message.content))) throw Error('Task user envelope changed');
+    assertContextUserEnvelope(request,agents.get(request.sessionId).session,task.humans,task.current_humans);
     // DSH omits the tools field entirely when the agent has no capabilities.
     // Treat that wire representation as the same empty schema bound at creation.
     const requestedTools = request.tools ?? [];

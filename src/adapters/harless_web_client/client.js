@@ -188,6 +188,42 @@ window.__ModuleLoader__.load({
         ctx.effect(() => () => { sessions.fork = originalFork; }, 'harless: durable branch names');
       }
       const h = React.createElement;
+      function NativeQuestions({session, lane='baseline',active}) {
+        const [questions,setQuestions]=React.useState([]),[answers,setAnswers]=React.useState({}),[error,setError]=React.useState(''),[saving,setSaving]=React.useState(false);
+        React.useEffect(()=>{
+          if(!active){setQuestions([]);return;}
+          const abort=new AbortController();let timer;
+          const poll=async()=>{try{
+            const response=await fetch('/api/harless/questions?session_id='+encodeURIComponent(session),{credentials:'same-origin',cache:'no-store',signal:abort.signal});
+            if(!response.ok)throw Error('无法获取待回答的问题');
+            const value=await response.json();if(!abort.signal.aborted)setQuestions(value.questions.filter(row=>row.lane===lane));
+          }catch(error){if(!abort.signal.aborted)setError(error.message);}finally{if(!abort.signal.aborted)timer=setTimeout(poll,1000);}};
+          void poll();return()=>{abort.abort();clearTimeout(timer);};
+        },[session,lane,active]);
+        if(!questions.length)return null;
+        const update=(id,q,value)=>setAnswers(old=>({...old,[id]:{...old[id],[q]:{...old[id]?.[q],...value}}}));
+        return h('section',{className:'geneloop-native-questions','aria-label':'需要你的回答'},
+          ...questions.map(row=>h('form',{key:row.id,onSubmit:async event=>{
+            event.preventDefault();setSaving(true);setError('');
+            try{const response=await fetch('/api/harless/questions',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:session,id:row.id,
+              answers:row.questions.map(q=>({id:q.id,selected:answers[row.id]?.[q.id]?.selected??[],custom:answers[row.id]?.[q.id]?.custom??''}))})});
+              const value=await response.json();if(!response.ok)throw Error(value.error?.message??'回答未发送');setQuestions(old=>old.filter(q=>q.id!==row.id));
+            }catch(error){setError(error.message);}finally{setSaving(false);}
+          }},...row.questions.map(q=>h('fieldset',{key:q.id,disabled:saving},h('legend',null,q.question),
+            q.detail&&h('p',null,typeof q.detail==='string'?q.detail:JSON.stringify(q.detail)),
+            ...(q.options??[]).map(option=>h('label',{key:option.label,style:{display:'block',margin:'6px 0'}},
+              h('input',{type:q.multiSelect?'checkbox':'radio',name:row.id+q.id,checked:(answers[row.id]?.[q.id]?.selected??[]).includes(option.label),onChange:event=>{
+                const previous=answers[row.id]?.[q.id]?.selected??[];
+                update(row.id,q.id,{selected:q.multiSelect?event.target.checked?[...previous,option.label]:previous.filter(label=>label!==option.label):[option.label]});
+              }}),option.label,option.description&&h('small',null,' — '+option.description))),
+            h('textarea',{'aria-label':'补充回答：'+q.question,placeholder:'也可以直接输入回答',value:answers[row.id]?.[q.id]?.custom??'',onChange:event=>update(row.id,q.id,{custom:event.target.value})}))),
+            h('button',{type:'submit',disabled:saving},saving?'正在发送…':'发送回答'))),error&&h('p',{role:'alert'},error));
+      }
+      function NativeTodos({todos}) {
+        if(!todos?.length)return null;
+        return h('ol',{className:'geneloop-native-todos','aria-label':'任务清单'},...todos.map((todo,index)=>h('li',{key:index,'data-status':todo.status},
+          h('span',{'aria-hidden':true},todo.status==='completed'?'✓ ':todo.status==='in_progress'?'◉ ':'○ '),todo.content)));
+      }
       const uploads = new Map();
       // A turn moves between native event seats as the model calls tools. Keep
       // explicit disclosure choices outside those short-lived React seats.
@@ -1027,6 +1063,8 @@ window.__ModuleLoader__.load({
                 ? '本轮未绑定可复用的资料，按标准流程回答。上传资料并通过校验后，才会尝试优化。'
                 : '优化未启用，已回退普通模式：' + result.fallback_reason),
             result.failure && h('p', { role: 'alert', className: 'harless-paired-notice' }, result.failure),
+            h(NativeQuestions,{session:value.session_id,lane,active:!settled(result)}),
+            h(NativeTodos,{todos:result.todos}),
             !settled(result) && previousMessages.length > 0 && h('div', { className: 'harless-stream-messages', onClickCapture: captureLink,
               ref: root => compactArtifactLabels(root, files) }, ...previousMessages.map(message => h('section', {
                 key: message.id, className: 'harless-process-message', 'data-message-id': message.id,
@@ -1844,6 +1882,7 @@ window.__ModuleLoader__.load({
           h('style', null, liveStyle),
           h('style', null, `.geneloop-product-turn{min-width:0}.geneloop-process-toggle{display:flex;align-items:center;gap:8px;border:0;border-radius:8px;padding:7px 9px;margin:0 0 8px -9px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer;text-align:left}.geneloop-process-toggle:hover{background:var(--dsw-alias-interactive-bg-hover)}.geneloop-process-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#729cf7);outline-offset:2px}.geneloop-process-toggle svg{flex:none;transition:transform .15s}.geneloop-process-toggle[aria-expanded=true] svg{transform:rotate(90deg)}.geneloop-process-evidence{border-left:2px solid var(--dsw-alias-border-l2,#8885);padding-left:14px;margin:4px 0 18px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.geneloop-process-evidence>section{margin:12px 0}.geneloop-process-evidence pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.geneloop-process-label{font-weight:500}.geneloop-process-status{font-size:13px;color:var(--dsw-alias-label-secondary);margin:0 0 8px}@media(prefers-reduced-motion:reduce){.geneloop-process-toggle svg{transition:none}}`),
           running && liveStatus(status),
+          h(NativeQuestions,{session,active:running}),
           hasProcess && h('button', { type: 'button', className: 'geneloop-process-toggle', 'aria-expanded': open, 'aria-controls': id,
             onClick: () => setOpen(!open) },
             h('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, 'aria-hidden': true }, h('path', { d: 'm4 2 4 4-4 4' })), label),
