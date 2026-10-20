@@ -410,6 +410,7 @@ export function apply(ctx: any) {
   const saveOwnership = () => json(ownershipPath, { scope: ownershipScope,
     sessions: [...ownedSessions], bound: [...boundSessions], chat_only_sessions: [...legacyChatSessions] });
   if (importedLegacy) saveOwnership();
+  const restoredSessions = new Set(ownedSessions);
   const modelPath = join(config.output, 'session-models-' + runScope + '.json');
   try {
     const saved = JSON.parse(readFileSync(modelPath, 'utf8'));
@@ -1850,7 +1851,17 @@ export function apply(ctx: any) {
       // native preset stays immutable. Reinstall the tool guard for the actual
       // mounted branch scope, not its next-send selection after cold recovery.
       const mountedScene = readBranchInputs(agent.session.id)?.mounted_scene ?? restoredMountedScene(agent);
-      bindScene(agent, sceneFor(task?.scene.id ?? mountedScene ?? selections.get(agent.session.id)?.scene ?? defaults.scene), task?.source_pending);
+      const configuredScene = sceneFor(task?.scene.id ?? mountedScene ?? selections.get(agent.session.id)?.scene ?? defaults.scene);
+      if (restoredSessions.has(agent.session.id) && !task && !comparisons?.isLane(agent.session.id) && !legacyChatSessions.has(agent.session.id)) {
+        // Comparison-only parents have no ordinary task/effective-config to
+        // detect old preset drift. Keep their immutable mounted tools closed;
+        // the existing legacy continuation creates a fresh private child.
+        const available = new Set(agent.ctx.tools.schemas(scopeOf(agent.ctx)).map((tool: any) => tool.name));
+        if (configuredScene.allowed_tools.some(name => !available.has(name))) {
+          legacyChatSessions.add(agent.session.id); saveOwnership();
+        }
+      }
+      bindScene(agent, configuredScene, task?.source_pending);
     }
     agent.ctx.on('tools/result', (execution: any, result: any) => {
       const task=forSession(agent.session.id);
