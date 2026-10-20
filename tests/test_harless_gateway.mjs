@@ -38,25 +38,42 @@ let nativeWatches=0;
 fs.watch=()=>{nativeWatches++;throw Object.assign(new Error('diagnostic inotify exhausted'),{code:'ENOSPC'});};
 const {watch}=await import('chokidar');
 const watcher=watch(process.argv[1],{ignoreInitial:true});
-const error=once(watcher,'error').then(([failure])=>{throw failure;});
+const report=value=>new Promise((resolve,reject)=>process.send(value,error=>error?reject(error):resolve()));
 try {
-  await Promise.race([once(watcher,'ready'),error]);
-  const changed=once(watcher,'change');
-  fs.writeFileSync(process.argv[1],'changed ownership record');
-  await Promise.race([changed,error]);
+  await once(watcher,'ready',{signal:AbortSignal.timeout(30000)});
+  const changed=once(watcher,'change',{signal:AbortSignal.timeout(30000)});
+  await report({phase:'ready'});
+  await changed;
   assert.equal(nativeWatches,0);
+  await report({phase:'changed',nativeWatches});
   console.log('polling-change-without-native-watch');
-} finally {await watcher.close();}
+} finally {await watcher.close();process.disconnect();}
 `;
   const child=spawn(process.execPath,['--input-type=module','-e',source,file],{
     cwd:new URL('../',import.meta.url),
     env:{...process.env,...memberWatcherEnvironment({CHOKIDAR_USEPOLLING:'true',CHOKIDAR_INTERVAL:'20'})},
-    stdio:['ignore','pipe','pipe']});
-  t.after(()=>{if(child.exitCode===null)child.kill();});
+    stdio:['ignore','pipe','pipe','ipc']});
+  t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill();});
   let stdout='',stderr='';child.stdout.on('data',chunk=>stdout+=chunk);child.stderr.on('data',chunk=>stderr+=chunk);
-  const timeout=setTimeout(()=>child.kill(),8000);timeout.unref();
-  const [code]=await once(child,'close');clearTimeout(timeout);
-  assert.equal(code,0,stderr);
+  let phase='starting',timer,mutations,timedOut=false,mutationCount=0,observed=false;
+  const deadline=ms=>{clearTimeout(timer);timer=setTimeout(()=>{timedOut=true;child.kill();},ms);timer.unref();};
+  deadline(30000);
+  child.on('message',message=>{
+    if(message?.phase==='ready'&&phase==='starting'){
+      phase='observing';deadline(30000);
+      // ready does not promise that fs.watchFile's first stat sample has
+      // finished. Keep making real, distinct versions until a poll sees one.
+      const mutate=()=>writeFileSync(file,'changed ownership record '+(++mutationCount)+' '.repeat(mutationCount));
+      mutate();mutations=setInterval(mutate,100);
+    }else if(message?.phase==='changed'&&phase==='observing'){
+      observed=message.nativeWatches===0;phase='closing';clearInterval(mutations);deadline(10000);
+    }
+  });
+  let code,signal;
+  try{[code,signal]=await once(child,'close');}
+  finally{clearTimeout(timer);clearInterval(mutations);}
+  assert.equal(code,0,JSON.stringify({phase,signal,timedOut,mutationCount,stdout,stderr}));
+  assert.ok(observed&&mutationCount>0,'child must observe a real changed file with zero native watch allocations');
   assert.match(stdout,/polling-change-without-native-watch/);
 });
 
