@@ -20,9 +20,11 @@ def reviewed_checkout(tmp_path,monkeypatch):
         names.update(compat.read(old/'certification.json')['code_locks'])
     for name in names:
         destination=root/name;destination.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/name,destination)
-    registry=(ROOT/'config/harless-scenes.json').read_text(encoding='utf-8')
-    for old,new,*_ in compat.RELEASES:registry=registry.replace('motif-libraries/'+new,'motif-libraries/'+compat.REGISTRY_SELECTED[old])
-    (root/'config/harless-scenes.json').write_text(registry,encoding='utf-8')
+    registry=compat.read(ROOT/'config/harless-scenes.json')
+    for old,_,scene,*_ in compat.RELEASES:
+        row=next(row for row in registry['scenes'] if row['id']==scene)
+        row['rsi']['runtime_bundle']='motif-libraries/'+compat.REGISTRY_SELECTED[old]
+    compat.write(root/'config/harless-scenes.json',registry)
     monkeypatch.setattr(compat,'ROOT',root)
     return root
 
