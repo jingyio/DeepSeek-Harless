@@ -1,5 +1,6 @@
 """Lifecycle protocol diagnostics; local fixture servers never call a model."""
 import importlib.util
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -92,6 +93,46 @@ class PlanTests(unittest.TestCase):
         service.save(self.config, {**service.read(self.config), 'marker': 'changed'})
         self.assertEqual(digest, service.plan_digest(frozen))
         self.assertNotEqual(digest, service.plan_digest(self.plan))
+
+    def test_start_prepared_recovery_only_after_both_managed_processes_exit(self):
+        lifecycle=service.Lifecycle(self.plan)
+        old=json.loads(json.dumps(self.plan))
+        old['owner']['env']['RECOVERY_VARIANT']='old'
+        record={'plan':old,'digest':service.plan_digest(old),'rollback_plan':str(self.plan_file)}
+        with mock.patch.object(lifecycle,'lock',return_value=nullcontext()), \
+                mock.patch.object(lifecycle,'current',return_value=record), \
+                mock.patch.object(lifecycle,'inspect',return_value={'owner':None,'gateway':None}), \
+                mock.patch.object(service,'assert_idle') as idle, \
+                mock.patch.object(lifecycle,'start',return_value={'already_running':False}) as start:
+            result=lifecycle.run('start')
+        idle.assert_called_once_with(old)
+        start.assert_called_once_with(self.plan)
+        self.assertTrue(result['recovered_stopped_deployment'])
+
+    def test_prepared_recovery_refuses_a_surviving_process(self):
+        lifecycle=service.Lifecycle(self.plan)
+        old=json.loads(json.dumps(self.plan));old['owner']['env']['RECOVERY_VARIANT']='old'
+        record={'plan':old,'digest':service.plan_digest(old),'rollback_plan':str(self.plan_file)}
+        with mock.patch.object(lifecycle,'lock',return_value=nullcontext()), \
+                mock.patch.object(lifecycle,'current',return_value=record), \
+                mock.patch.object(lifecycle,'inspect',return_value={'owner':{'pid':1},'gateway':None}), \
+                mock.patch.object(lifecycle,'start') as start:
+            with self.assertRaisesRegex(RuntimeError,'different release'):
+                lifecycle.run('start')
+        start.assert_not_called()
+
+    def test_prepared_recovery_keeps_active_task_guard(self):
+        lifecycle=service.Lifecycle(self.plan)
+        old=json.loads(json.dumps(self.plan));old['owner']['env']['RECOVERY_VARIANT']='old'
+        record={'plan':old,'digest':service.plan_digest(old),'rollback_plan':str(self.plan_file)}
+        with mock.patch.object(lifecycle,'lock',return_value=nullcontext()), \
+                mock.patch.object(lifecycle,'current',return_value=record), \
+                mock.patch.object(lifecycle,'inspect',return_value={'owner':None,'gateway':None}), \
+                mock.patch.object(service,'assert_idle',side_effect=RuntimeError('Active task')), \
+                mock.patch.object(lifecycle,'start') as start:
+            with self.assertRaisesRegex(RuntimeError,'Active task'):
+                lifecycle.run('start')
+        start.assert_not_called()
 
     def test_persistent_data_migration_is_rejected(self):
         second = json.loads(json.dumps(self.plan))

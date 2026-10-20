@@ -530,13 +530,27 @@ class Lifecycle:
                 return result
             if action == 'start':
                 record = self.current()
+                recovering = False
                 if record:
                     if plan_digest(record['plan']) != record['digest']:
                         raise RuntimeError('Managed configuration changed in place')
                     if plan_digest(self.plan) != record['digest']:
-                        raise RuntimeError('A different release is running; use restart with the prepared plan')
-                    self.inspect(record['plan'], record)
-                result = self.start(record['plan'] if record else self.plan)
+                        # Both the failed release and its automatic rollback
+                        # can exit before health. Permit a prepared recovery
+                        # only when the known ports are vacant; never replace
+                        # a surviving/unknown process or bypass active tasks.
+                        processes = self.inspect(record['plan'], record)
+                        if any(processes.values()):
+                            raise RuntimeError('A different release is running; use restart with the prepared plan')
+                        same_data(record['plan'], self.plan)
+                        assert_idle(record['plan'])
+                        recovering = True
+                    else:
+                        self.inspect(record['plan'], record)
+                result = self.start(self.plan if recovering or not record else record['plan'])
+                if recovering:
+                    save(self.previous_path, {'plan': record['rollback_plan']})
+                    result['recovered_stopped_deployment'] = True
             elif action == 'restart':
                 result = self.restart()
             elif action == 'rollback':
