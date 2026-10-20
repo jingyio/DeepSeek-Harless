@@ -28,7 +28,7 @@ def require_budget_gate() -> None:
             or endpoint.scheme != "http"
             or endpoint.hostname not in {"127.0.0.1", "localhost", "::1"}
             or endpoint.port is None
-            or not 0 < cap < float("inf")
+            or not (0 < cap < float("inf") or os.environ.get("SSS_BUDGET_CAP_USD") == 'null')
             or not os.environ.get("SSS_BUDGET_LEDGER")):
         raise ValueError("paid semantic request requires a local budget gate with a positive cap")
 

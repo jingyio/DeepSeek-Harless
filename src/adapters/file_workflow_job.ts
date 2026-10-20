@@ -61,11 +61,10 @@ export class FileJob {
       const task = resolve(arg.task_file), delivery = resolve(arg.delivery_root);
       if (![task, delivery].every(p => p.startsWith(resolve(this.root, '.local') + sep)) || !hex(arg.execution_version_sha256)) throw Error('invalid job binding');
       const limits = arg.limits;
-      if (!limits || !Number.isFinite(limits.budget_usd) || limits.budget_usd < 0 || limits.budget_usd > 1000
-        || !Number.isInteger(limits.max_requests) || limits.max_requests < 1 || limits.max_requests > 100
-        || !Number.isInteger(limits.max_steps) || limits.max_steps < 1 || limits.max_steps > 100
-        || !Number.isInteger(limits.max_output) || limits.max_output < 1 || limits.max_output > 8000
-        || !Number.isInteger(limits.max_repairs) || limits.max_repairs < 0 || limits.max_repairs > 2) throw Error('invalid frozen limits');
+      const count = (value:any, minimum=1, maximum=100) => value===null || Number.isSafeInteger(value)&&value>=minimum&&value<=maximum;
+      if (!limits || !(limits.budget_usd===null || Number.isFinite(limits.budget_usd)&&limits.budget_usd>=0&&limits.budget_usd<=1000)
+        || !count(limits.max_requests) || !count(limits.max_steps)
+        || !count(limits.max_output,1,393216) || !count(limits.max_repairs,0,2)) throw Error('invalid frozen limits');
       const state = { schema_version: 1, sequence: 0, task_file: task, task_sha256: sha(task), delivery_root: delivery,
         execution_version_sha256: arg.execution_version_sha256, limits, status: 'running', spent_units: 0,
         requests: 0, steps: 0, repairs: 0, checks: 0, pending: {}, accepted: false, motif_disabled: true };
@@ -75,12 +74,14 @@ export class FileJob {
     if (command === 'state') return { state: s };
     this.validateBinding(s);
     const running = () => { if (s.status !== 'running') throw Error('job is inactive: ' + s.status); };
+    const reached = (field:string,value:number) => s.limits[field]!==null && value>=s.limits[field];
+    const costReached = (value:number) => s.limits.budget_usd!==null && value>=Math.floor(s.limits.budget_usd*1e9);
     if (command === 'reserve') {
       const amount = units(arg.upper_usd);
       if (typeof arg.model !== 'string' || !hex(arg.request_sha256)) throw Error('invalid request reservation');
-      if (s.status !== 'running' || s.requests >= s.limits.max_requests || s.steps >= s.limits.max_steps
-        || s.spent_units + amount > Math.floor(s.limits.budget_usd * 1e9)) {
-        if(s.status==='running' && (s.requests>=s.limits.max_requests || s.steps>=s.limits.max_steps || s.spent_units>=Math.floor(s.limits.budget_usd*1e9)))s.status='limit_exhausted';
+      if (s.status !== 'running' || reached('max_requests',s.requests) || reached('max_steps',s.steps)
+        || s.limits.budget_usd!==null && s.spent_units + amount > Math.floor(s.limits.budget_usd * 1e9)) {
+        if(s.status==='running' && (reached('max_requests',s.requests)||reached('max_steps',s.steps)||costReached(s.spent_units)))s.status='limit_exhausted';
         this.commit(s, 'request_denied', { reason: 'inactive_or_original_limit' }); return { admitted: false, state: s };
       }
       const id = ++s.requests; s.steps++; s.spent_units += amount;
@@ -107,11 +108,11 @@ export class FileJob {
       if (arg.execution_version_sha256 !== s.execution_version_sha256) throw Error('execution version changed');
       s.status = 'running';
     } else if (command === 'begin-check') {
-      running(); if (s.checks >= s.limits.max_repairs + 1) throw Error('acceptance check limit exhausted');
+      running(); if (s.limits.max_repairs!==null && s.checks >= s.limits.max_repairs + 1) throw Error('acceptance check limit exhausted');
       const round = s.checks++; return { round, state: this.commit(s, 'acceptance_started', { round }) };
     } else if (command === 'repair') {
-      running(); if (s.repairs >= s.limits.max_repairs || s.spent_units >= Math.floor(s.limits.budget_usd * 1e9)
-        || s.requests >= s.limits.max_requests || s.steps >= s.limits.max_steps) {
+      running(); if (reached('max_repairs',s.repairs) || costReached(s.spent_units)
+        || reached('max_requests',s.requests) || reached('max_steps',s.steps)) {
           s.status='failed';this.commit(s,'repair_denied',{reason:'original_limit'});throw Error('original repair/budget limit exhausted');
         }
       s.repairs++; s.motif_disabled = true;

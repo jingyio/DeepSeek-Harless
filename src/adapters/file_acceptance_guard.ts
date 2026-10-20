@@ -8,14 +8,14 @@ import { FileJob } from './file_workflow_job.ts';
 
 export const name = 'sss-acceptance-guard';
 export const inject = ['agents', 'tools'];
-type Policy = { kind: 'file_management'; max_repairs: number; project_root: string;
+type Policy = { kind: 'file_management'; max_repairs: number|null; project_root: string;
   python: string; task_file: string; delivery_root: string; archive_root: string; job_file?: string; interruptible?:true };
 export function validatePolicy(p: any): Policy {
   if (!p || !['archive_root,delivery_root,kind,max_repairs,project_root,python,task_file',
       'archive_root,delivery_root,job_file,kind,max_repairs,project_root,python,task_file',
       'archive_root,delivery_root,interruptible,job_file,kind,max_repairs,project_root,python,task_file'].includes(Object.keys(p).sort().join(','))
       || p.interruptible!==undefined&&p.interruptible!==true
-      || p.kind !== 'file_management' || !Number.isInteger(p.max_repairs) || p.max_repairs < 0 || p.max_repairs > 2
+      || p.kind !== 'file_management' || !(p.max_repairs===null&&p.job_file || Number.isSafeInteger(p.max_repairs)&&p.max_repairs>=0&&p.max_repairs<=2)
       || ['project_root','python','task_file','delivery_root','archive_root'].some(k => typeof p[k] !== 'string' || !p[k]))
     throw new TypeError('Invalid bounded acceptance policy');
   const base = resolve(p.project_root, '.local') + sep;
@@ -54,7 +54,7 @@ export function createAcceptanceGuard(policy: Policy, evaluate: (round: number, 
       }
       if (result.passed) { if(job)job.apply('accept',{round});accepted = true; return null; }
       if (result.repairable === false) { if(job)job.apply('fail',{reason:'not_repairable'});throw new Error('TASK_ACCEPTANCE_NOT_REPAIRABLE: ' + JSON.stringify(result.errors)); }
-      if (repairs >= policy.max_repairs) { if(job)job.apply('fail',{reason:'repair_exhausted'});throw new Error('TASK_ACCEPTANCE_FAILED: bounded repair exhausted'); }
+      if (policy.max_repairs!==null && repairs >= policy.max_repairs) { if(job)job.apply('fail',{reason:'repair_exhausted'});throw new Error('TASK_ACCEPTANCE_FAILED: bounded repair exhausted'); }
       if(job)repairs=job.apply('repair',{round,errors:result.errors}).state.repairs;else repairs++;
       // The subprocess has exited. Preserve this allocated repair and hand back to the bounded launcher.
       if(job && result.restart_required===true)throw new Error('TASK_RECOVERY_RESTART_REQUIRED: recorded MCP boundary; original job limits preserved');

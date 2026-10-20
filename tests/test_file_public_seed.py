@@ -30,7 +30,7 @@ print(json.dumps({'state':cfg['state_root'],'entries':len(state['entries']),'pai
 
 
 def test_seed_release_contains_only_policies_and_sanitized_certification():
-    release=ROOT/'motif-libraries/file-v6';manifest=json.loads((release/'entry.json').read_text())
+    release=ROOT/'motif-libraries/file-v7';manifest=json.loads((release/'entry.json').read_text())
     assert manifest['raw_private_evidence_published'] is False
     for name in manifest['files']:
         raw=(release/name).read_text()
@@ -79,7 +79,8 @@ def test_current_seed_keeps_every_previous_graph_shape_and_admits_current_code()
         release=ROOT/'motif-libraries'/version;manifest=read(release/'entry.json')
         return {digest(read(release/e['payload'])['artifact']['nodes']) for e in manifest['entries']}
     assert shapes('file-v5') == shapes('file-v6')
-    release=ROOT/'motif-libraries/file-v6'
+    assert shapes('file-v6') == shapes('file-v7')
+    release=ROOT/'motif-libraries/file-v7'
     for entry in read(release/'entry.json')['entries']:
         payload=release/entry['payload']
-        assert validate_certificate(read(payload),release/entry['certificate'],sha(payload))['release']=='file-v6'
+        assert validate_certificate(read(payload),release/entry['certificate'],sha(payload))['release']=='file-v7'

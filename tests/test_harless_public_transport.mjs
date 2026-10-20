@@ -50,3 +50,12 @@ test('model selection failures retain actionable safe codes without returning pr
     assert.match(error.message,code==='model_budget_unavailable'?/Off/:/模型/);
   }
 });
+
+test('prompt admission failures preserve actionable codes without exposing internal paths',()=>{
+ for(const code of ['session_busy','comparison_busy','task_busy','request_id_conflict']){
+  const error=publicTransportError({code,message:'/home/private/request',details:{secret:'token'}});
+  assert.equal(error.code,code);assert.deepEqual(error.details,{});
+  assert.doesNotMatch(JSON.stringify(error),/private|secret|token/);
+  assert.notEqual(error.message,'请求未能完成，请稍后重试。');
+ }
+});

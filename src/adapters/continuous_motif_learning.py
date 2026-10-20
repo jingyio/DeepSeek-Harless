@@ -339,8 +339,8 @@ def run_material(cfg, job, label, origin, role, registry=None):
     if not marker.exists():durable(marker,{'material_sha256':sha(directory/'material.json'),'role':role},exclusive=True)
     limits=cfg['limits'];env={**__import__('os').environ,'FM_TASK_FILE':str(directory/'input.json'),'FM_OUTPUT':str(directory/'delivery')}
     args=[sys.executable,str(ROOT/'scripts/run-file-scenario.py'),'--scenario',str(directory/'scenario.json'),
-          '--rsi-config',str(directory/'rsi.json'),'--model','deepseek-flash','--budget-usd',str(limits['budget_usd']),
-          '--max-steps',str(limits['max_steps']),'--max-output',str(limits['max_output']),'--call-model']
+          '--rsi-config',str(directory/'rsi.json'),'--model','deepseek-flash','--budget-usd',str(limits['budget_usd'] if limits['budget_usd'] is not None else 0),
+          '--max-steps',str(limits['max_steps'] if limits['max_steps'] is not None else 0),'--max-output',str(limits['max_output'] or 393216),'--call-model']
     if pending:args=[sys.executable,str(ROOT/'scripts/run-file-scenario.py'),'--rsi-resume',str(pending[0].parent),'--call-model']
     log_file=job/(label+'-stdout.log')
     if log_file.exists():log_file=job/(label+'-resume-'+uuid4().hex+'.log')

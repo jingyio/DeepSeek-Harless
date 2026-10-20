@@ -58,8 +58,11 @@ def main():
     # Keep the old CLI alias; runtime and budget accounting use the official ID.
     if args.model == 'deepseek-pro':
         args.model = 'deepseek-v4-pro'
-    if not 0 < args.budget_usd <= 100 or not 1 <= args.max_output <= 8000 or not 1 <= args.max_steps <= 100:
+    if (not 0 <= args.budget_usd <= 100 or not 1 <= args.max_output <= 393216 or not 0 <= args.max_steps <= 100
+            or (args.budget_usd==0 or args.max_steps==0) and not (args.rsi_config or args.rsi_resume)):
         parser.error('invalid budget')
+    if args.budget_usd==0:args.budget_usd=None
+    if args.max_steps==0:args.max_steps=None
     if not args.rsi_config and not args.rsi_resume and args.scenario:
         candidate=json.loads(args.scenario.read_text())
         if candidate.get('acceptance_guard',{}).get('durable_job') and any('management_tools.py' in str(v.get('args',[])) for v in candidate.get('servers',[])):

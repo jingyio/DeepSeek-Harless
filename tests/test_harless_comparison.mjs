@@ -129,6 +129,34 @@ test('a headerless host explicitly retains sequential execution',async()=>{
  }finally{f.close();}
 });
 
+test('header-routed independent conversations run concurrently and cancellation affects only its own lanes',async()=>{
+ const f=fixture({concurrent:()=>true,submit:async id=>{f.submitted.push(id);f.tasks.get(id).status='running';}});
+ try{
+  const first=await f.send('a','parallel-a'),second=await f.send('b','parallel-b');
+  for(let i=0;i<100&&f.submitted.length<4;i++)await new Promise(r=>setTimeout(r,2));
+  assert.equal(f.submitted.length,4,'a second conversation does not wait for either first-conversation lane');
+  assert.deepEqual(await f.send('b','parallel-b'),second,'retry cannot create extra runs');
+  await assert.rejects(f.send('a','overlap'),/仍在运行/);
+  await f.service.cancel('a',first.comparison_id);
+  const other=await f.service.view('b',second.comparison_id);
+  assert.ok(Object.values(other.lanes).every(l=>f.tasks.get(l.task_id).status==='running'));
+  for(const task of f.tasks.values())if(task.status==='running')task.status='completed';
+  assert.equal((await f.wait(second.comparison_id,'b')).status,'completed');
+ }finally{f.close();}
+});
+
+test('a lost readiness hint retries preparation without creating a failed lane or duplicate submission',async()=>{
+ let attempts=0;
+ const f=fixture({prepare:async(t,lane,requestId)=>{
+  attempts++;if(attempts<4)return{deferred:true};
+  f.prepared.push({lane,requestId});f.tasks.set(requestId,{status:'queued',answer:'ready',deliveries:[]});return{task_id:requestId};
+ }});
+ try{const sent=await f.send();const done=await f.wait(sent.comparison_id);
+  assert.equal(done.status,'completed');assert.equal(f.prepared.length,2);assert.equal(f.submitted.length,2);
+  assert.equal(new Set(f.submitted).size,2);assert.equal(attempts,5);
+ }finally{f.close();}
+});
+
 test('durable ratings return without waiting for native publication and complete snapshots need no cold backend inspection',async()=>{
  let block=false,release;const gate=new Promise(resolve=>release=resolve);
  const f=fixture({publish:async()=>{if(block)await gate;},submit:async id=>{f.submitted.push(id);Object.assign(f.tasks.get(id),{status:'completed',trace:[],messages:[]});}});

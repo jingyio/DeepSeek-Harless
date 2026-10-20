@@ -38,8 +38,9 @@ export function createJobPlanGuard(root:string,bindingPath:string,policyPath:str
       const full=resolve(root,path);if(!full.startsWith(root+sep)||sha(full)!==hash)throw Error('execution_dependency_changed:'+path);
     }
     if(state.repairs>0)throw Error('acceptance_repair_requires_ordinary_harness');
-    if(state.spent_units>=Math.floor(state.limits.budget_usd*1e9)||state.requests>=state.limits.max_requests
-      ||state.steps>=state.limits.max_steps||Object.keys(state.pending).length)throw Error('original_budget_or_request_limit');
+    if(state.limits.budget_usd!==null&&state.spent_units>=Math.floor(state.limits.budget_usd*1e9)
+      ||state.limits.max_requests!==null&&state.requests>=state.limits.max_requests
+      ||state.limits.max_steps!==null&&state.steps>=state.limits.max_steps||Object.keys(state.pending).length)throw Error('original_budget_or_request_limit');
     return state;
   };
   const disable=(reason:string)=>{

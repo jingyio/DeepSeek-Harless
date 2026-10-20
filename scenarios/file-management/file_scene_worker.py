@@ -69,8 +69,11 @@ def run(value):
                       HARLESS_FILE_APPROVAL_HOME=str(directory / 'approvals'))
     args = SimpleNamespace(call_model=True, rsi_resume=value.get('resume_origin'),
         rsi_config=config, scenario=directory / 'management/scenario.json',
-        model=request['model'], budget_usd=min(5, request['budget_usd']),
-        max_steps=cfg['limits']['max_steps'], max_output=cfg['limits']['max_output'])
+        model=request['model'], budget_usd=request['budget_usd'],
+        max_steps=cfg['limits']['max_steps'], max_output=cfg['limits']['max_output'] or 393216)
+    scenario = read(args.scenario)
+    scenario['acceptance_guard']['max_repairs'] = cfg['limits']['max_repairs']
+    durable(args.scenario, scenario)
     def started(context):
         durable(directory / 'management/enrollment.json', context)
         emit({'kind': 'bound', 'origin': context['origin'], 'out': context['out'],

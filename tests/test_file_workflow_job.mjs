@@ -14,6 +14,27 @@ function fixture(limits={}) {
   return {root,file,path,job,delivery};
 }
 const reservation={model:'deepseek-flash',upper_usd:0.2,request_sha256:'b'.repeat(64)};
+
+test('uncapped durable tasks exceed old quotas and preserve accounting across reconstruction',()=>{
+  const f=fixture({budget_usd:null,max_requests:null,max_steps:null,max_output:393216,max_repairs:null});
+  for(let i=0;i<105;i++){
+    const job=new FileJob(f.root,f.path),r=job.apply('reserve',reservation);assert.equal(r.admitted,true);
+    job.apply('settle',{request_id:r.request_id,model:'deepseek-flash',observed_usd:0.1});
+  }
+  const state=new FileJob(f.root,f.path).load();
+  assert.equal(state.requests,105);assert.equal(state.steps,105);assert.equal(state.spent_units,10500000000);
+  assert.equal(state.status,'running');assert.equal(state.limits.budget_usd,null);
+  f.job.apply('cancel');assert.equal(new FileJob(f.root,f.path).apply('reserve',reservation).admitted,false);
+});
+
+test('uncapped repair continues past two failures while cancellation and acceptance still govern it',async()=>{
+  const f=fixture({budget_usd:null,max_requests:null,max_steps:null,max_repairs:null});
+  const policy={kind:'file_management',max_repairs:null,project_root:f.root,python:'python3',task_file:f.file,delivery_root:f.delivery,archive_root:join(f.root,'.local/acceptance'),job_file:f.path};
+  const signal=new AbortController().signal;
+  for(let i=1;i<=4;i++)assert.equal((await createAcceptanceGuard(policy,async()=>({passed:false,errors:['repairable'],repairable:true})).stop([],signal)).repair,i);
+  await createAcceptanceGuard(policy,async()=>({passed:true,errors:[]})).stop([],signal);
+  assert.equal(f.job.load().status,'completed');assert.equal(f.job.load().repairs,4);
+});
 test('pending reservation and request limit survive cold reconstruction without reset',()=>{
   const f=fixture();f.job.apply('reserve',reservation);
   const restarted=new FileJob(f.root,f.path);assert.equal(restarted.load().spent_units,200000000);

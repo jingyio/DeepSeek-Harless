@@ -1,6 +1,6 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
-PR84/PR88 的共同集成在 [PR93](https://github.com/jingyio/GeneLoop/pull/93) 审阅，已保留 PR92 附件阅读能力；本分支使用 Paper v17、PPT v12 和重新认证的 File v6。验证与反例见[集成记录](docs/experiments/file-ppt-integration-20261019.md)，尚未合并或部署。
+正式DeepSeek Web已移除账号级并发数量上限，费用、请求次数和应用输出额度均为null，原账本继续累计。普通Chat、三场景及File转发统一使用官方最大393216输出容量，避免省略参数时默认8K截断；File独立SDK也继承不限额策略。运行源码c3cd21a已发布，当前Paper v19、PPT v14、File v7；真实验证、保留的失败及服务商容量边界见[额度与输出修复](docs/experiments/provider-output-20261020.md)。
 
 
 **开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。本地开发仍用 `npm run web`。
@@ -65,7 +65,7 @@ Web 的 DeepSeek 模型提供 **关闭 / 低 / 高 / 最高** 的横向思考强
 
 已有 PPT、论文、数据分析 Motif 库已统一到版本化的 [motif-libraries/](motif-libraries/README.md)。管理员在成员 Web policy 配置 `comparison_scenes: ["ppt", "paper-proofreading", "research-data-analysis"]` 后，原生 `/ppt`、`/paper`、`/data` 聊天分别执行 Baseline 与 Motif 两路，保留各自多轮历史、交付文件与赞/踩反馈。三个场景的 Motif 默认均为 **Execute**；Paper 新库只续接模型已选定来源的默认第一页读取，旧 Shadow 库及历史记录保留。历史数值评分数据及研究接口保留，网页不再展示或提交数值评分。资料通过原生附件上传，账号隔离与预算沿用现有服务。库缺失或兼容锁失效会明确回退，不能把回退记为优化成功。
 
-持续部署可使用 `scripts/serve-web-budget.py`，显式指定私有 output、现有累计 checkpoint 和获准上限；缺少 checkpoint 会拒绝启动，禁止因重启清零。用户于 2026-10-15 取消当前共享服务器累计 1 美元费用上限，配置使用 `--budget-usd 0`（policy 的 `run_budget_usd: null`），请求次数也不限；用户于 2026-10-16 进一步取消每任务及对照每侧的费用上限，`--task-budget-usd 0`、policy 的 `budget_usd: null` 表示不限。按后续指示，Web 单次文字输入不设应用长度上限，输出使用 `max_output_tokens: null` 并省略请求 `max_tokens`，保留服务商原生容量边界。调用前持久化预约费用，未知使用量继续占用任务预算，累计账本照常记录。Linux 服务器的真实三场景功能验收和失败边界见 [联调记录](docs/experiments/trained-three-scenes-20261014-v1.md)。
+持续部署可使用 `scripts/serve-web-budget.py`，显式指定私有 output、现有累计 checkpoint 和获准上限；缺少 checkpoint 会拒绝启动，禁止因重启清零。用户于 2026-10-15 取消当前共享服务器累计 1 美元费用上限，配置使用 `--budget-usd 0`（policy 的 `run_budget_usd: null`），请求次数也不限；用户于 2026-10-16 进一步取消每任务及对照每侧的费用上限，`--task-budget-usd 0`、policy 的 `budget_usd: null` 表示不限。按后续指示，Web 单次文字输入不设应用长度上限，输出使用 `max_output_tokens: null` 表示无应用额度；2026-10-20起正式 DeepSeek Web 请求显式使用官方最大单次输出容量393216 tokens，避免省略参数触发默认8K截断，服务商上下文/容量边界仍适用。调用前持久化预约费用，未知使用量继续占用任务预算，累计账本照常记录。Linux 服务器的真实三场景功能验收和失败边界见 [联调记录](docs/experiments/trained-three-scenes-20261014-v1.md)。
 
 四场景研究代码的分支整合与兼容验收见 [当前整合记录](docs/experiments/four-scenario-main-integration-20261014-v1.md)。论文生成工具/轨迹 RSI 的显式实验入口在 [论文场景](scenarios/paper-submission/README.md)，文献处理在 [文献场景](scenarios/literature-notes/README.md)。研究 CLI 与统一 Web 的工具契约不同，分支合并不会自动赋予旧实验库产品 Execute 权限；文献的任务级 Web 绑定和双栏评分仍需单独验收。
 
