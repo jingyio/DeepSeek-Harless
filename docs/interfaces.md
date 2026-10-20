@@ -951,11 +951,21 @@ node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-mo
 
 ## 自动学习生命周期
 
-`--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。worker 不调用模型，允许学习有 Script sidecar 的已完成任务中的原生调用，排除 `sss-script-` / `sss-reuse-` 合成调用，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
+`--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。默认worker不调用模型，允许学习有 Script sidecar 的已完成任务中的原生调用，排除 `sss-script-` / `sss-reuse-` 合成调用，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
 
 `run-script-motif-experiment.py` 中，`--learning-store` 现在同时写入该任务的私有 sidecar 副本，用于后续任务加载；sidecar 中已配置的 `learningStore` 也会接通学习 worker。两处指定不同目录时，在付费启动前拒绝。Baseline 只学习、不加载；cache/shadow/execute 仍须提供对应模式的 `--script-config`。没有 latest 的冷启动保留正常 Agent 路径。
 
-下个任务按 owner、路径、库摘要及代码锁加载 pointer，保存 `script-learning-snapshot.json`，任务开始后冻结。`resolved` 只代表指针解析成功，完成全部 Runtime 准入后才记 `loaded` 与对应审计。发布保存父摘要、触发任务、训练/留出任务与事件摘要到不可覆盖的 `round-*/lineage.json`。无合格产物或失败不替换父指针；子进程启动/异常退出留下失败状态。runner 最多等待340秒，未结算学习单独记录，不把超时算成功。
+下个任务按 owner、路径、库摘要及代码锁加载 pointer，保存 `script-learning-snapshot.json`，任务开始后冻结。`resolved` 只代表指针解析成功，完成全部 Runtime 准入后才记 `loaded` 与对应审计。发布保存父摘要、触发任务、训练/留出任务与事件摘要到不可覆盖的 `round-*/lineage.json`。无合格产物或失败不替换父指针；子进程启动/异常退出留下失败状态。runner默认最多等待340秒，启用下述描述学习时为540秒，未结算学习单独记录，不把超时算成功。
+
+### 可选描述更新（独立私有实验）
+
+store内显式存在`description-learning.json`才启用`script_description_learning.py`，配置严格为`{"schema_version":1,"model":"deepseek-flash","max_output_tokens":1536,"max_programs":1,"cap_usd":null}`；输出可设512–4096、每批1–3算子。本轮只接受已有不限额实验授权，不能直接用于未获准的产品付费入口。默认无配置保持模型请求0。worker仅在此开关下取得既有环境中的`DEEPSEEK_API_KEY`，不写配置或日志；沙箱执行继续清空凭证环境。
+
+每批最多一次生成与一次独立审核，真实DeepSeek、推理off、无自动重试。只读取已认证模板（每个最多6000字符）、输入/输出接口、旧描述及来源摘要；请求不超过48000字节，不提交完整轨迹或用户文档。响应仅允许`updates:[{program_id,description,evidence_id}]`，审核仅允许`verdicts:[{program_id,accepted,reason}]`。目标/证据必须精确匹配，描述为24–480字符单行且短于原描述；超预算目标分别拒绝，额外字段/未知目标/错误证据拒绝整份。模型审核不能代替执行认证或科研质量评审。
+
+只修改`program.description`与全库摘要，程序ID、代码、契约、前驱边、证书、代码锁不变；沿原入口发布冻结版本。`description-base-library.json`保留本轮结构库，`description-learning.json`保留接纳/拒绝及保留结果。父库摘要和路径须通过校验，且算子身份与接口一致，才能保留其已审核的描述；候选失败或比当前描述更长时保留旧改进，不把新代码继承为旧语义。未知目标仍走原有语义选择，不增加执行授权。
+
+store下`description-cache`绑定来源、提示词、配置和学习器版本；同条件的审核或失败不重复付费，变化后才重新提议。`description-budget.json`与`description-ledger.jsonl`复用现有State预约/结算协议，失败与未知用量保留，重启不清零。结构库自身`compilation_model_requests:0`仅指结构编译；任务`script-learning-status.json`的`compilation_model_requests`包括当轮描述请求，完整费用还须纳入局部worker重试账本。真实F→G证据、额外费用和全部反例见[描述更新实验](experiments/paper-description-rsi-20261020-v1.md)。
 
 不能用同一论文的重复任务声称独立科研决定。自动淘汰、负收益降权、崩溃恢复重试与前端可视状态仍待完善。当前是独立实验生命周期，未部署到生产；真实验证见[闭环记录](experiments/paper-rsi-live-loop-20261020-v1.md)。
 
