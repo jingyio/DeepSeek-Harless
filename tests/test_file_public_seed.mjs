@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const options={skip:!process.features?.typescript};
-for(const version of ['file-v8','file-v9'])test(version+' online file runtime validates portable public seeds and rejects altered witnesses',options,async()=>{
+for(const version of ['file-v10'])test(version+' online file runtime validates portable public seeds and rejects altered witnesses',options,async()=>{
  const {validatePublicManagementSeed}=await import('../src/adapters/management_seed.ts');
  const release=new URL('../motif-libraries/'+version+'/',import.meta.url);
  const manifest=JSON.parse(readFileSync(new URL('entry.json',release)));
@@ -16,7 +16,7 @@ for(const version of ['file-v8','file-v9'])test(version+' online file runtime va
  }
 });
 
-for(const version of ['file-v5','file-v7'])test(version+' historical File seeds cannot acquire execution authority after source changes',options,async()=>{
+for(const version of ['file-v5','file-v7','file-v8','file-v9'])test(version+' historical File seeds cannot acquire execution authority after source changes',options,async()=>{
  const {validatePublicManagementSeed}=await import('../src/adapters/management_seed.ts');
  const release=new URL('../motif-libraries/'+version+'/',import.meta.url),manifest=JSON.parse(readFileSync(new URL('entry.json',release)));
  const entry=manifest.entries[0],bytes=readFileSync(new URL(entry.payload,release));
