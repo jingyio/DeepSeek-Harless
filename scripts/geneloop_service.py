@@ -151,6 +151,54 @@ def starting_listener(port, child_pid):
     return child_pid if len(rows) == 1 and pids == {child_pid} else None
 
 
+def file_worker_running(pid, home, namespace_home=None, proc_root=Path('/proc')):
+    """Read-only identity check; member lock PIDs belong to their bwrap namespace.
+
+    A reused PID running another command is not the old learner. Inaccessible
+    process facts are unknown, never permission to interrupt or remove a lock.
+    """
+    if type(pid) is not int or pid <= 0:
+        raise RuntimeError('Unknown File background worker identity; restart refused')
+    home = Path(home)
+    try:
+        processes = [proc_root / str(pid)] if namespace_home is None else list(proc_root.iterdir())
+        for process in processes:
+            if not process.name.isdecimal():
+                continue
+            try:
+                status = (process / 'status').read_text(encoding='utf-8')
+                if re.search(r'^State:\s+Z\b', status, re.M):
+                    continue
+                if namespace_home is not None:
+                    match = re.search(r'^NSpid:\s+([0-9\s]+)$', status, re.M)
+                    if not match:
+                        raise RuntimeError('Unknown File worker PID namespace; restart refused')
+                    if int(match.group(1).split()[-1]) != pid:
+                        continue
+                    mounted = process / 'root' / Path(namespace_home).relative_to('/')
+                    if not mounted.samefile(home):
+                        continue
+                argv = [os.fsdecode(value) for value in (process / 'cmdline').read_bytes().split(b'\0') if value]
+                if not argv:
+                    raise RuntimeError('Unknown File background worker process; restart refused')
+                if not any(Path(value).name == 'rsi-worker.py' for value in argv):
+                    continue  # The recorded PID has been reused by another program.
+                if '--config' not in argv:
+                    raise RuntimeError('Unknown File background worker configuration; restart refused')
+                position = argv.index('--config') + 1
+                if position >= len(argv):
+                    raise RuntimeError('Unknown File background worker configuration; restart refused')
+                config = Path(argv[position])
+                account = Path(namespace_home) if namespace_home is not None else home
+                if config.is_absolute() and config.is_relative_to(account / 'rsi'):
+                    return True
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+    except (OSError, ValueError, TypeError) as error:
+        raise RuntimeError('Unknown File background worker process; restart refused') from error
+    return False
+
+
 def assert_idle(plan):
     config = read(plan['gateway_config'])
     outputs = [Path(plan['owner_output'])]
@@ -160,7 +208,8 @@ def assert_idle(plan):
     # File's SDK has its own durable state, outside ordinary tasks/comparisons.
     # Members persist under their output bind. The established owner home is
     # rooted in the RUNNING gateway checkout, not the candidate release/output.
-    file_roots = [output / 'file-management' for output in outputs]
+    file_roots = [(outputs[0] / 'file-management', None)] + [
+        (output / 'file-management', output.parent / 'config' / 'policy.json') for output in outputs[1:]]
     if config.get('sourceDir') is not None:
         source = Path(config['sourceDir'])
         if not source.is_absolute() or source.is_symlink() or source.name != 'src' or not source.is_dir():
@@ -173,8 +222,24 @@ def assert_idle(plan):
                 not any(isinstance(value, str) and Path(value).is_absolute() and
                         Path(value).resolve() == gateway for value in argv)):
             raise RuntimeError('Owner File source root differs from running gateway; restart refused')
-        file_roots.append(root / '.local' / 'web' / 'file-management')
-    for directory in file_roots:
+        file_roots.append((root / '.local' / 'web' / 'file-management', None))
+    for directory, member_policy in file_roots:
+        workers = set()
+
+        def remember_worker(pid, home):
+            namespace_home = None
+            if member_policy is not None:
+                try:
+                    output = Path(read(member_policy)['output'])
+                    if not output.is_absolute():
+                        raise ValueError('Member output is not absolute')
+                    namespace_home = output / 'file-management' / home.relative_to(directory)
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    raise RuntimeError('Unknown File background worker scope; restart refused') from error
+            if type(pid) is not int or pid <= 0:
+                raise RuntimeError('Unknown File background worker identity; restart refused')
+            workers.add((pid, home, namespace_home))
+
         for path in directory.glob('accounts/*/tasks/*/state.json'):
             try:
                 if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(directory.resolve()):
@@ -186,6 +251,32 @@ def assert_idle(plan):
                 raise RuntimeError('Unknown File task state; restart refused') from error
             if not isinstance(state.get('status'), str) or state['status'] not in FILE_TERMINAL:
                 raise RuntimeError('Active or unknown File task exists; restart refused')
+            metrics = state.get('metrics')
+            if metrics is not None and not isinstance(metrics, dict):
+                raise RuntimeError('Unknown File background worker receipt; restart refused')
+            learning = (metrics or {}).get('continuous_rsi')
+            if learning is not None and not isinstance(learning, dict):
+                raise RuntimeError('Unknown File background worker receipt; restart refused')
+            worker = (learning or {}).get('worker')
+            if worker is not None:
+                if not isinstance(worker, dict):
+                    raise RuntimeError('Unknown File background worker receipt; restart refused')
+                remember_worker(worker.get('pid'), path.parents[2])
+        for path in directory.glob('accounts/*/rsi/*/worker.lock'):
+            try:
+                if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(directory.resolve()):
+                    raise ValueError('Invalid File worker lock path')
+                lock = read(path)
+                if not isinstance(lock, dict):
+                    raise ValueError('Invalid File worker lock object')
+            except FileNotFoundError:
+                continue  # The learner released its own lock during this read.
+            except (OSError, ValueError, TypeError) as error:
+                raise RuntimeError('Unknown File background worker lock; restart refused') from error
+            remember_worker(lock.get('pid'), path.parents[2])
+        for pid, home, namespace_home in workers:
+            if file_worker_running(pid, home, namespace_home):
+                raise RuntimeError('Active File background learning worker exists; restart refused')
     for output in outputs:
         for path in output.glob('tasks/*/task-state.json'):
             if read(path).get('status') not in TERMINAL:

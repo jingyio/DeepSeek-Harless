@@ -200,6 +200,94 @@ class PlanTests(unittest.TestCase):
         stop.assert_not_called()
         start.assert_not_called()
 
+    def test_completed_file_spawn_receipt_blocks_restart_before_learning_lock_is_written(self):
+        path = self.file_state(self.output)
+        service.save(path, {'status': 'completed', 'metrics': {'continuous_rsi': {'worker': {'pid': 12345}}}})
+        before = path.read_bytes()
+        with mock.patch.object(service, 'file_worker_running', return_value=True) as probe:
+            with self.assertRaisesRegex(RuntimeError, 'Active File background learning'):
+                service.assert_idle(self.plan)
+        probe.assert_called_once_with(12345, path.parents[2], None)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_member_learning_lock_uses_the_member_namespace_scope_and_retains_dead_lock(self):
+        home = self.members / 'one' / 'tasks' / 'file-management' / 'accounts' / 'scope'
+        lock = home / 'rsi' / 'daily' / 'worker.lock'
+        lock.parent.mkdir(parents=True)
+        service.save(lock, {'pid': 42, 'created': 1})
+        policy = self.members / 'one' / 'config' / 'policy.json'
+        policy.parent.mkdir()
+        namespace_output = self.root / 'sandbox-output'
+        service.save(policy, {'output': str(namespace_output)})
+        before = lock.read_bytes()
+        with mock.patch.object(service, 'file_worker_running', return_value=True) as probe:
+            with self.assertRaisesRegex(RuntimeError, 'Active File background learning'):
+                service.assert_idle(self.plan)
+        probe.assert_called_once_with(42, home, namespace_output / 'file-management' / 'accounts' / 'scope')
+        with mock.patch.object(service, 'file_worker_running', return_value=False):
+            service.assert_idle(self.plan)
+        self.assertEqual(lock.read_bytes(), before, 'A dead worker check never steals or removes its lock')
+
+    def test_unknown_learning_receipts_and_locks_refuse_restart(self):
+        path = self.file_state(self.output)
+        for metrics in ('bad', {'continuous_rsi': []}, {'continuous_rsi': {'worker': []}}, {'continuous_rsi': {'worker': {'pid': True}}}):
+            with self.subTest(metrics=metrics):
+                service.save(path, {'status': 'completed', 'metrics': metrics})
+                with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                    service.assert_idle(self.plan)
+        service.save(path, {'status': 'completed'})
+        lock = path.parents[2] / 'rsi' / 'daily' / 'worker.lock'
+        lock.parent.mkdir(parents=True)
+        for raw in ('{', '[]', '{}', '{"pid":0}', '{"pid":"42"}'):
+            with self.subTest(raw=raw):
+                lock.write_text(raw, encoding='utf-8')
+                with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                    service.assert_idle(self.plan)
+
+
+class FileWorkerIdentityTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.proc = self.root / 'proc'
+        self.proc.mkdir()
+        self.home = self.root / 'account'
+        self.home.mkdir()
+
+    def process(self, host_pid, namespace_pid, config, command='rsi-worker.py'):
+        process = self.proc / str(host_pid)
+        process.mkdir()
+        (process / 'status').write_text(f'State:\tS (sleeping)\nNSpid:\t{host_pid}\t{namespace_pid}\n', encoding='utf-8')
+        argv = [sys.executable, command, '--config', str(config), '--drain']
+        (process / 'cmdline').write_bytes(b'\0'.join(os.fsencode(value) for value in argv) + b'\0')
+        return process
+
+    def test_dead_and_reused_host_pids_do_not_false_positive_or_signal(self):
+        with mock.patch.object(service.os, 'kill', side_effect=AssertionError('Must not signal any process')):
+            self.assertFalse(service.file_worker_running(100, self.home, proc_root=self.proc))
+            self.process(100, 100, self.home / 'rsi' / 'config.json', command='other.py')
+            self.assertFalse(service.file_worker_running(100, self.home, proc_root=self.proc))
+
+    def test_live_host_worker_requires_its_own_account_config(self):
+        process = self.process(100, 100, self.home / 'rsi' / 'config.json')
+        self.assertTrue(service.file_worker_running(100, self.home, proc_root=self.proc))
+        (process / 'cmdline').write_bytes(b'python\0rsi-worker.py\0--config\0/other-account/rsi/config.json\0')
+        self.assertFalse(service.file_worker_running(100, self.home, proc_root=self.proc))
+
+    @unittest.skipUnless(os.name == 'posix', 'Hosted PID-namespace inspection is Linux-only')
+    def test_member_pid_uses_namespace_id_and_bind_inode_not_host_pid(self):
+        namespace_home = Path('/app/.local/web/file-management/accounts/scope')
+        self.process(54321, 42, namespace_home / 'rsi' / 'config.json')
+        with mock.patch.object(Path, 'samefile', return_value=True) as same:
+            self.assertTrue(service.file_worker_running(42, self.home, namespace_home, self.proc))
+        same.assert_called_once_with(self.home)
+        with mock.patch.object(Path, 'samefile', return_value=False):
+            self.assertFalse(service.file_worker_running(42, self.home, namespace_home, self.proc))
+        with mock.patch.object(Path, 'samefile', side_effect=PermissionError('Synthetic inaccessible namespace')):
+            with self.assertRaisesRegex(RuntimeError, 'Unknown File background worker'):
+                service.file_worker_running(42, self.home, namespace_home, self.proc)
+
 
 class StartupListenerTests(unittest.TestCase):
     def setUp(self):
