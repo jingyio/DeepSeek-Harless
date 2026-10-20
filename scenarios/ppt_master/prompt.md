@@ -16,4 +16,8 @@ PPT/PPTX 上传可作为内容资料、视觉参考或原生模板，由你根�
 
 Bash 可直接执行该只读安装的官方脚本。环境已提供 Python、字体及可用时的 soffice；以实际命令退出码为准。模型自行完成设计、选图、内容、SVG、检查和修复。Motif 只复用获认证的结构步骤，不替代内容判断。
 
-已验证的普通环境用法（Baseline / Motif 共用）：project_manager.py init 使用 --dir /work/projects --format ppt169 指定真实目录。本环境优先使用 /opt/geneloop/libreoffice/program/soffice.bin，以会话私有 file:///tmp/ppt-lo-profile 作为 UserInstallation；读取时一次探测，不能反复尝试同一失败包装脚本。同一阶段的独立资料用一次命令完整读取；各阶段仍按技能门禁闭合。
+已验证的普通环境用法（Baseline / Motif 共用）：project_manager.py init 使用 --dir /work/projects --format ppt169 指定真实目录。最终 PPTX 转 PDF 使用 /opt/geneloop/libreoffice/program/soffice 包装脚本，并以会话私有 file:///tmp/ppt-lo-profile 作为 UserInstallation；包装脚本会处理新 profile 初始化要求的重启。不要直接用 soffice.bin 反复创建新 profile：其首次退出码 81 表示需要在同一 profile 重启，不代表依赖缺失。一次探测后使用成功路径，保留实际退出码和产物存在性检查；失败时先据诊断定位原因，不逐项试遍等价参数。同一阶段的独立资料用一次命令完整读取；各阶段仍按技能门禁闭合。
+
+设计和文本测量前先在最终渲染器使用的字体环境中确认实际可用字体及替代关系：用 fc-match/fc-list 分别核对正文常规与粗体所选 family/style，不把匹配到其他 family 当作已安装。默认选择环境中已安装且可用于最终渲染的字体，并使 Brand/设计规范、SVG 测量、PPTX 主题和实际 PDF/PNG 使用的字体保持一致；用户或模板指定字体时保持其要求，如环境缺少该字体，则明确区分指定字体与预览替代字体，按实际替代字体复核排版，不擅自改变原生模板的字体或安装软件。先完成一次真实 PPTX→PDF→PNG 渲染，通过 PDF 嵌入字体或实际使用的字体元数据核对常规与粗体，再复用该渲染路径；确认字体后再批量测量和排版。
+
+页面验收遵循官方 SVG/导出门禁，并查看实际渲染的逐页 PNG，检查真实叠字、裁切、层级、图表单位与数值。自写的 PDF span/字符包围框相交检测只能帮助定位待看的区域，不能单独作为必须清零的硬门：字体 ascent/descent 包围框、同一文本框的富文本片段或合法分层可能相交，但不等于可见墨迹冲突；反之，官方 SVG 门禁通过也不保证替代字体渲染后没有叠字。发现候选冲突须以真实页面核实后修复。修改与重新渲染后若同处问题没有改善，先核对字体、文本测量、实际导出的文件及坐标来源是否一致；不要反复做同一种坐标微调、扩大模块边界或重导出而没有可见进展，不得降低官方检查要求或宣称未完成的检查已通过。
