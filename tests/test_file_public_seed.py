@@ -30,7 +30,7 @@ print(json.dumps({'state':cfg['state_root'],'entries':len(state['entries']),'pai
     assert all(row['paid_calls']==0 for row in results)
 
 
-@pytest.mark.parametrize('version', ['file-v7', 'file-v8', 'file-v9', 'file-v10'])
+@pytest.mark.parametrize('version', ['file-v7', 'file-v8', 'file-v9', 'file-v10', 'file-v11'])
 def test_seed_release_contains_only_policies_and_sanitized_certification(version):
     release=ROOT/'motif-libraries'/version;manifest=json.loads((release/'entry.json').read_text())
     assert manifest['raw_private_evidence_published'] is False
@@ -86,7 +86,8 @@ def test_current_seed_keeps_every_previous_graph_shape_and_admits_current_code()
     assert shapes('file-v7') == shapes('file-v8')
     assert shapes('file-v8') == shapes('file-v9')
     assert shapes('file-v9') == shapes('file-v10')
-    release=ROOT/'motif-libraries/file-v10'
+    assert shapes('file-v10') == shapes('file-v11')
+    release=ROOT/'motif-libraries/file-v11'
     for entry in read(release/'entry.json')['entries']:
         payload=release/entry['payload']
-        assert validate_certificate(read(payload),release/entry['certificate'],sha(payload))['release']=='file-v10'
+        assert validate_certificate(read(payload),release/entry['certificate'],sha(payload))['release']=='file-v11'
