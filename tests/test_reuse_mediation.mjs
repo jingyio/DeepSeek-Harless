@@ -80,6 +80,17 @@ test('one semantic plan binds the successful previous result and continues witho
  const b=await dispatch(f);assert.deepEqual(b.arguments,{handle:'fresh-handle'});f.r.guard(b);f.r.observe(b,result({data:['current']}));
  assert.equal(await dispatch(f),null);assert.ok(f.audit.some(a=>a.kind==='reuse_plan_completed'&&a.steps===2));
 });
+test('inspection reads exact current values, bounds large content and never authorizes execution',async t=>{
+ const f=fixture(t),path=join(f.workspace,'code/current.json');writeFileSync(path,JSON.stringify({title:'current approved text',sections:[],large:'x'.repeat(17000)}));
+ const id=values(f).find(v=>v.origin.path==='/work/current.json').id;
+ const inspect=pointer=>f.r.prepare('geneloop-reuse '+JSON.stringify({inspect:{artifact:id,pointer}})).control_receipt;
+ const one=inspect('/title');assert.equal(one.kind,'reuse_inspection');assert.equal(one.complete,true);assert.equal(one.value,'current approved text');assert.equal(one.value_sha256,digest(one.value));
+ const large=inspect('/large');assert.equal(large.complete,false);assert.equal(large.value,undefined);assert.equal(await dispatch(f),null);
+ assert.throws(()=>f.r.prepare('geneloop-reuse '+JSON.stringify({inspect:{step:0}})));
+ assert.throws(()=>inspect('/__proto__/polluted'));
+ writeFileSync(path,'{}');assert.throws(()=>inspect('/title'),/stale/);
+ assert.ok(!f.audit.some(r=>r.kind==='reuse_plan_selected'));
+});
 test('typed export failure stops successors but allows a new semantic correction',async t=>{
  const f=fixture(t);accept(f,[{tool:tool.name,arguments:{title:'x',sections:[]}},{tool:nextTool.name,arguments:{handle:'wrong'}}]);
  f.r.observe(await dispatch(f),result({exported:false,failed_checks:['page_constraint_satisfied']}));
@@ -198,10 +209,10 @@ test('diagnosis without effect allowlist or with foreign failure is unavailable'
 function liveEvidence(f,args){return {version:1,kind:'review_execution_evidence',arguments_sha256:digest(args),source_versions:JSON.parse(readFileSafe(join(f.workspace,'approved-inputs.json'))).files,config_sha256:'a'.repeat(64),grant_sha256:digest(null),task_id:null};}
 function readFileSafe(path){return readFileSync(path,'utf8');}
 function sourceArgs(f){return {title:'complete report',sections:[{heading:'results',paragraphs:Array.from({length:30},(_,i)=>'statement '+i)}],source_versions:JSON.parse(readFileSafe(join(f.workspace,'approved-inputs.json'))).files};}
-function evidenceRuntime(f){
+function evidenceRuntime(f,options={}){
  const parameters={...schema,properties:{...schema.properties,source_versions:{type:'object'}}},exportTool={name:tool.name,parameters};
  const probe={id:'probe_fields',tool:tool.name,schema_sha256:digest(parameters),failure:{exported:false,failed_checks:['all_text_preserved']},success_fields:['exported'],axes:[{path:['sections','*','paragraphs']}],max_probes:12};
- f.r=createReuseMediation({workspace:f.workspace,tools:[exportTool],library:{contracts:[{tool:tool.name,schema_sha256:digest(parameters)}],probe_contracts:[probe]},probeTools:[tool.name],audit:v=>f.audit.push(v)});return probe;
+ f.r=createReuseMediation({workspace:f.workspace,tools:[exportTool],library:{contracts:[{tool:tool.name,schema_sha256:digest(parameters)}],probe_contracts:[probe]},probeTools:[tool.name],audit:v=>f.audit.push(v),...options});return probe;
 }
 test('verified current field evidence suppresses unrelated diagnosis and patch preserves all other fields',async t=>{
  const f=fixture(t),probe=evidenceRuntime(f),args=sourceArgs(f),path='/sections/0/paragraphs/12';
@@ -271,6 +282,48 @@ test('a matched negative constraint offers an executable current-field restorati
  const text=f.r.takeNotice(),line=text.split('\n').find(x=>x.startsWith('{"negative_restoration_candidate"'));
  assert.ok(line);assert.equal(await dispatch(f),null);const command=JSON.parse(line).negative_restoration_candidate.command;
  const receipt=f.r.prepare(command);f.r.observe({name:'bash',arguments:{command}},result(receipt.control_receipt));const call=await dispatch(f);f.r.guard(call);assert.deepEqual(call.arguments,args);
+});
+function typedChoiceFixture(t){
+ const f=fixture(t),{args,goal,grant}=currentObligation(f);delete goal.execution_obligation;
+ writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify(goal));evidenceRuntime(f,{repairChoices:true});
+ const bad=structuredClone(args),pointer='/sections/0/paragraphs';bad.sections[0].paragraphs.pop();bad.title='keep current semantic edit';
+ const scopeHash=createHash('sha256').update(readFileSync(join(f.workspace,'review-recovery-scope.json'))).digest('hex');
+ const failure={exported:false,failed_checks:['shape'],execution_evidence:{...liveEvidence(f,bad),task_id:grant.task_id,grant_sha256:digest(grant),recovery_scope_sha256:scopeHash},argument_issues:[{pointer,check:'shape',hash_kind:'json',value_sha256:digest(bad.sections[0].paragraphs)}]};
+ f.r.observe({name:tool.name,callId:'current',arguments:bad},result(failure));
+ const constraint={motif_id:'certified',failure_code:'shape',failure_arguments_sha256:digest(bad),scope_sha256:scopeHash,issues:[{pointer}]};f.r.setNegativeConstraint(constraint);
+ const id=f.audit.find(x=>x.kind==='reuse_repair_choice_offered').request_id;
+ return {...f,args,bad,id,constraint,command:status=>'geneloop-reuse '+JSON.stringify({repair_choice:{request_id:id,status}})};
+}
+test('typed repair choice shows complete current evidence and requires verified selection before field restoration',async t=>{
+ const f=typedChoiceFixture(t),notice=f.r.takeNotice();assert.ok(notice.includes('statement 29'));assert.ok(notice.includes('unknown'));assert.equal(await dispatch(f),null);
+ assert.throws(()=>f.r.prepare('geneloop-reuse '+JSON.stringify({calls:[]})),/typed_resolution/);
+ const command=f.command('restore');assert.equal(f.r.guard({name:'bash',arguments:{command}}),undefined);
+ const p=f.r.prepare(command);assert.equal(await dispatch(f),null);f.r.observe({name:'bash',arguments:{command}},result(p.control_receipt));
+ const call=await dispatch(f);f.r.guard(call);assert.deepEqual(call.arguments.sections,f.args.sections);assert.equal(call.arguments.title,f.bad.title);
+ assert.ok(f.audit.some(x=>x.kind==='reuse_repair_choice_verified'&&x.status==='restore'));
+ writeFileSync(join(f.workspace,'paper-output-grant.json'),'{}');assert.throws(()=>f.r.guard(call));
+});
+test('unknown and nonconforming choices release once; stale or forged choices cannot dispatch',async t=>{
+ for(const status of ['unknown','ambiguous','unneeded']){
+  const f=typedChoiceFixture(t),command=f.command(status),p=f.r.prepare(command);f.r.observe({name:'bash',arguments:{command}},result(p.control_receipt));assert.equal(await dispatch(f),null);
+  f.r.setNegativeConstraint(f.constraint);assert.equal(f.audit.filter(x=>x.kind==='reuse_repair_choice_offered').length,1);
+ }
+ const f=typedChoiceFixture(t);assert.match(f.r.guard({name:'bash',arguments:{command:'python3 read.py'}}),/交回普通流程/);assert.equal(f.r.guard({name:'bash',arguments:{command:'python3 read.py'}}),undefined);
+ const g=typedChoiceFixture(t),command=g.command('restore'),p=g.r.prepare(command);g.r.observe({name:'bash',arguments:{command}},result({...p.control_receipt,nonce:'forged'}));assert.equal(await dispatch(g),null);
+ const h=typedChoiceFixture(t);writeFileSync(join(h.workspace,'review-recovery-scope.json'),'{}');assert.throws(()=>h.r.prepare(h.command('restore')));assert.equal(await dispatch(h),null);
+});
+test('delivery handoff reports changes against the actual task start, separating earlier goal differences',t=>{
+ const f=fixture(t),{goal,grant,args}=currentObligation(f);
+ const initial=structuredClone(args);initial.title='already revised before this task';initial.sections[0].paragraphs.pop();
+ goal.resume_arguments=initial;goal.execution_obligation.arguments_pointer='/resume_arguments';goal.execution_obligation.arguments_sha256=digest(initial);
+ writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify(goal));
+ const after={...args,title:initial.title},dir='outputs/documents/current';mkdirSync(join(f.workspace,dir),{recursive:true});
+ const name=dir+'/review.pdf',data=Buffer.from('protocol diagnostic');writeFileSync(join(f.workspace,name),data);
+ const files=[{name,bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')}],receipt_name=dir+'/delivery.json',raw=JSON.stringify({layout_passed:true,task_id:grant.task_id,source_versions:args.source_versions,files});writeFileSync(join(f.workspace,receipt_name),raw);
+ const e={...liveEvidence(f,after),task_id:grant.task_id,grant_sha256:digest(grant),recovery_scope_sha256:createHash('sha256').update(readFileSync(join(f.workspace,'review-recovery-scope.json'))).digest('hex'),delivery_passed:true,receipt_name,receipt_sha256:createHash('sha256').update(raw).digest('hex')};
+ f.r.observe({name:tool.name,callId:'success',arguments:after},result({exported:true,artifacts:files,execution_evidence:e}));
+ const record=f.audit.find(x=>x.kind==='reuse_delivery_verified');assert.deepEqual(record.changes.changed_pointers,['/title']);assert.deepEqual(record.current_run_changes.changed_pointers,['/sections/0/paragraphs']);assert.equal(record.current_run_changes.basis_sha256,digest(initial));
+ const notice=f.r.takeNotice();assert.ok(notice.includes('current_run_changes'));assert.ok(!notice.includes('"changes":'));assert.ok(notice.includes('历史内容'));
 });
 test('a real failed candidate can resume separately from the approved complete goal, with exact pointer and source binding',async t=>{
  const f=fixture(t),{goal,args}=currentObligation(f);

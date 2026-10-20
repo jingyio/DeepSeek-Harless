@@ -958,6 +958,12 @@ TypeScript `reuse_mediation.ts` 在现有 Bash 工具内接收 `geneloop-reuse`�
 
 `patches` 还可写 `{op:"replace",path:"/目标",from:{artifact:"当前值ID",pointer:"/来源"}}` 复制当前字段，不得同时填 `value`，此处不接受 `step`。Runtime 同时验证 base 和来源 artifact 的当前依赖。已匹配的当前结构条件可提供完整字段恢复候选，但仅供模型选择；恢复会覆盖该字段内已改内容，需要保留的语义修订仍须另给必要 patch。候选不是授权，也不保证模型会选择。
 
+`geneloop-reuse '{"inspect":{"artifact":"当前值ID","pointer":"/字段"}}'`只读当前引用，返回`reuse_inspection`数据回执，不创建执行计划。值超过16000字节时`complete:false`，不返回被静默截断的值，须缩小pointer；外部/过时引用、危险指针和step引用拒绝。
+
+独立sidecar的`repairChoices:true`默认关闭，只在execute及已匹配、认证的当前结构失败上发起一次类型化交接。模型获得完整失败/批准字段（合计超过24KB则回退），仅选择`geneloop-reuse '{"repair_choice":{"request_id":"当前ID","status":"restore"}}'`，也可unknown/ambiguous/unneeded。restore通过一次性回执和当前来源、grant、scope、schema后，复用缓存字段修订计划；未知不执行。其他工具选择被拒一次后释放该交接，同一状态不循环强迫选择。不增加工具schema，也不由Runtime决定语义修订。审计`reuse_repair_choice_offered/verified/fallback`与局部早停、完整请求skip分别统计。
+
+交付审计仍保留相对批准目标的`changes`；最终模型通知改为`current_run_changes`，其`basis_sha256/final_sha256`绑定本轮受保护起点及最终参数。较早目标的差异不等于本轮操作；字段缺失时不能断言实际修改。该差异是参数事实，不能独立认证自然语言解释或科研结论。
+
 同一计划可包含 `{script:"script_ID",paths:["/work/current.bib"]}`；单输入算子可通过 `foreach:{artifact,pointer:"/active_files"},root:"/work/current-source"` 绑定最多16个真实输入。必须有当前完整文件集合，不能由后缀相似推断全文已读。网络/argv算子仍用原缓存协议，未扩展通用写脚本权限。
 
 当前 JSON、原生参数及结果引用仅在本任务有效。文件与批准输入用 SHA 守卫，工具参数按当前 schema 验证；原参数局部修改不自动说明其科研结论仍正确。静态协议放系统前缀，新增引用和修订机会用 Harness 原生 plugin notice 追加。原始结果不改写、不隐藏失败。尚无自动从任意目标合成执行图；模型仍需选择结构计划，选中后的连续执行才可省去后继模型决策。

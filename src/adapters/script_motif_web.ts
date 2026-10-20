@@ -51,7 +51,7 @@ export function apply(ctx:any){
    const task=JSON.parse(readFileSync(join(output,'task.json'),'utf8')),effective=JSON.parse(readFileSync(join(output,'effective-config.json'),'utf8'));
    if(effective.session_id!==session||effective.user_id!==policy.user_id)throw Error('script_owner_changed');
    const negative=settings.negativeLibrary?createNegativeRuntime({library:loadNegativeLibrary(settings.negativeLibrary),workspace:effective.workspace,mode:settings.negativeMode,audit}):null;
-   const reuse=settings.reuseLibrary?createReuseMediation({library:loadReuseLibrary(settings.reuseLibrary),scriptLibrary:library,workspace:effective.workspace,tools:effective.tools,mode:settings.mode,probeTools:settings.probeTools??[],audit}):null;
+   const reuse=settings.reuseLibrary?createReuseMediation({library:loadReuseLibrary(settings.reuseLibrary),scriptLibrary:library,workspace:effective.workspace,tools:effective.tools,mode:settings.mode,probeTools:settings.probeTools??[],repairChoices:settings.repairChoices===true,audit}):null;
    if(!library&&!negative&&!reuse)throw Error('motif_library_required');
    writeFileSync(join(output,'script-motif-config.json'),JSON.stringify({...settings,library_digest:library?.digest}),{mode:0o600});
    runtime=library?createScriptInterceptor({...settings,library,workspace:effective.workspace,session,
@@ -65,7 +65,7 @@ export function apply(ctx:any){
  ctx.on('agent/created',({agent}:any)=>{
   agent.ctx.systemPrompt.variable('script_cache_catalog',()=>{const r=interceptor(agent.session.id);return (r?.catalog??'')+(r?.reuse?.staticPrompt()??'');});
   agent.ctx.systemPrompt.section({name:'script-cache-catalog',order:10220,text:'{{script_cache_catalog}}'});
-  agent.ctx.tools.guard((execution:any)=>{trace(agent.session.id)?.before(execution);const r=interceptor(agent.session.id);r?.reuse?.guard(execution);return r?.negative?.guard(execution);});
+  agent.ctx.tools.guard((execution:any)=>{trace(agent.session.id)?.before(execution);const r=interceptor(agent.session.id);return r?.reuse?.guard(execution)??r?.negative?.guard(execution);});
   agent.ctx.on('tools/result',(execution:any,result:any)=>{
    trace(agent.session.id)?.after(execution,result);const r=current.get(agent.session.id)?.runtime;
    const facts=r?.observe(agent.session.id,execution,result);r?.reuse?.observe(execution,result,facts??[]);r?.negative?.observe(execution,result);

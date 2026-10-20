@@ -1,17 +1,18 @@
 # 论文校对当前交接
 
 - 更新时间与交接人：2026-10-20，Codex。
-- 目标与范围：补通新报告失败的采集、条件编译认证和实际加载，保留当前证据安全边界；真实测试后仍未证明稳定净降本，不扩场景、不调 embedding。
-- 分支/提交：独立 `codex/paper-negative-recovery`，基于 origin/main `4b7a215`（PR94 已合并），实现提交以本分支 Git 历史为准，本地提交尚未推送。原脏工作区未动；尚未 PR/合并/部署，遵循效果稳定后再 PR 的要求。
-- 已完成：`negative_outcome.py/.ts` 统一 `failed_checks` 与旧协议，成功对照必须有明确成功标志；`negative_constraint_compiler.py` 对已审阅 `structure_issues` 原语做实际回执与双向干预认证；TS 绑定当前完整 scope 重算错误条件。负面提示追加发送，只有实际模型请求看见后才允许早停。未知页数原因仅提示。
-- 当前值复用：`reuse_mediation.ts` 新增 `patches[].from`，复制字段并检查两端依赖；已匹配负面条件可提供候选，不能自动修订或声称语义无损。runner 新增 `--recovery-goal-scope`，原 scope SHA 必须与实际失败回执一致，将失败候选与完整目标分开。
-- 已验证：定向 Node56；全量 Python1300/Node1159 通过，213/5 跳过；无模型 smoke18题/83来源及 motif:check 通过。初次遗漏项目 Python 的局部失败日志保留；本轮未运行 GitHub CI。
-- 真实结果：共3次历史产物局部恢复，113请求，13次实际提示、6次局部早停，完整请求skip为0。001为38请求/$0.071828424，逐条记录/来源版本保留；002为47请求，流超时未交付，保守估费$0.266239308含待核预留；003为28请求/$0.050857044，导出通过但逐条表和来源文字被改写，模型没选择字段复制候选，不能认定无损降本。两次成功后均无额外工具调用。
-- 实验结论：[本轮完整记录](../experiments/paper-negative-recovery-20261020-v1.md)。排除了“新失败不参与编译/加载”和“只能拦重复 ID”；剩余主瓶颈是开放模型循环里反复读取/生成脚本和未知的页数修复条件。不是通用自动原因学习，不是跨论文独立评测，也未做科研盲评。
-- 配置与数据：`.local/paper-negative-recovery-20261020-v1/` 保存授权、逐轮配置/日志/quality/native/breakdown/aggregate；003用 execute-003.json、negative-004、native-002。完整源码/环境快照随 `.local/script-motif-experiments/<run>/` 保存，不追改旧hash。未调用 embedding；离线编译模型费用0。
-- 最短复现：按实验记录统一runner命令；结构恢复在原参数上增加 `--recovery-goal-scope`，需要已授权字体/原始输入/实际checkpoint/锁定的库及 `SSS_LOCAL_SCRIPT_EXPERIMENT=1`。代码锁变化必须重编新库，不能改旧摘要。
-- 权限与预算：本地 DeepSeek Flash，reasoning off，输出32768，请求/费用不限，reset_history:false。本轮保守估费$0.388924776，已观测$0.213109776，余$0.175815为1笔待结算预留。累计5085请求/$8.701509444保守估费，旧pending2+新1；V100/账单仍待核。三个真实任务已结束，不重启生产服务。
-- 接手下一步：1）对已认证错误实现有界的类型化修订交接，先确认模型实际选择当前值复制、Runtime连续执行，减少数组搬运脚本。2）核验逐条记录/来源信息与最终解释的保留，不用形状合格代替科研质量。3）局部复杂恢复收益稳定后再提交PR、考虑独立论文和扩场景；目前不宜用单次成功声称净费用下降。
-- 回退与风险：禁用负面sidecar/实验恢复开关回原路径；公共库、生产服务、私人原件不改。未知数值形状及缺少证据均退回模型；不把页数观测当根因。
+- 目标与范围：解释有提示/早停仍昂贵的成因，修复不当分页约束、缺少字段读取与修复控制交接、总结比较基准。只改独立实验，不扩其他场景。
+- 分支/提交：`codex/paper-negative-recovery`，基于 main `4b7a215`，前轮 `79f165a`，本轮提交以分支最新 Git 为准。仅本地提交，未推送/PR/合并/部署；原脏工作区及生产默认库未动，按效果稳定后再PR的要求继续保留实验边界。
+- 已完成：`evidence_report.py`在隔离引擎中执行自然页长契约，保留显式max/exact及其他硬检查，共享基准引擎原样。`reuse_mediation.ts`新增只读inspect、有类型repair_choice与本轮起点diff；`script_motif_web.ts`显式repairChoices开关和工具守卫拒绝传递。
+- 执行边界：只有认证结构规则、当前失败回执、完整目标/来源/grant/schema绑定齐备，才提供完整字段证据并请求restore或unknown。模型选择后经nonce回执再执行缓存复制；未知/证据大/非法选择有界回退。保留其他当前字段，不由Runtime创造语义目标或科研结论；无新增模型工具。
+- 已验证：定向Node60通过；最终npm test Python1301/Node1163通过，213/5跳过；无模型smoke（18题/83来源）与motif:check通过。先前16个库锁失败已通过撤回共享引擎修改解决，46项相关检查通过；一次HTTP超时单测复核及后续全量通过。新增协议局部失败/路径笔误全部保留，本轮未跑GitHub CI。
+- 真实证据：同一7页PDF只有旧6页限制失败，其他10项通过；自然页长全部通过，最终隔离实现的7页渲染与已逐页检查图片逐像素一致。page普通27请求/$0.039288828，Runtime1/$0.006181584，后者参数未改但总结曾混淆历史修订，不能认定全任务质量合格。
+- 结构恢复：开放路径7/18请求，负面提示路径5/29请求，后者仍改写逐条表。类型化006/007/008均2请求，分别约$0.010407288/$0.011252520/$0.010232388。三次均精确等于当前失败参数加所选批准字段，其余字段/逐条表不变、成功后无工具调用。008最终说明正确列出本轮3个实际字段；006/007旧总结错误保留。均为同论文历史恢复，不是独立新论文/科研盲评或普遍稳定净降本。
+- 实验记录：[本轮成因、全部费用和失败](../experiments/paper-recovery-page-policy-20261020-v1.md)。首次确认真正从长脚本生成转为一次有限选择后连续执行；传统verified-skips仍0，不能把局部早停或每个合成原生步数直接算请求节省。
+- 配置与数据：`.local/paper-recovery-page-policy-20261020-v1/`含授权、逐运行配置/日志/native/quality/breakdown/aggregate、choice-verification及replay-final/visual-equivalence。最终execute-final.json指向native-final、negative-choices；repairChoices:true。旧库实现锁失效后用新真实002/003重新认证，一条结构规则/3失败见证，无模型编译、无embedding。
+- 最短复现：沿用实验统一runner，实际source/prompt/checkpoint/原scope，execute+report-evidence+preserve-recovery-structure+resume-current-operation，显式私有sidecar及已核验字体。代码锁变化须重编新库，不能修改旧见证/hash。任务当前目标仍来自显式恢复状态，不是历史相似性推断。
+- 权限与预算：本地DeepSeek Flash、reasoning off、输出32768，请求/费用不限、reset_history:false。本轮9完成运行93请求/$0.169047900代理估费，另1次preview400未进入模型阶段；累计5178/$8.870557344，旧pending3、V100/账单待核，无新增pending。学习轨迹25请求/$0.041581476已计入。所有真实任务已结束；无需部署或重启正式服务。
+- 接手下一步：1）用独立恢复留出验证restore/unknown/ambiguous、新证据和语义冲突，继续核对实际费用、字段保留及最终说明。2）对报告历史处理说明和科研判断进行质量验收，不能用字段不变或导出通过代替。3）收益稳定后再PR和生产兼容认证，之后才考虑全论文自动目标数据流与其他场景；不绕过现有公共库锁。
+- 回退与风险：关闭repairChoices回开放修复，禁用实验sidecar/report-evidence回原路径；保留全部原始日志/账本/旧库，不改变私人原件、生产服务或外部应用。
 
-前轮：[显式当前操作接管](../experiments/paper-recovery-control-20261020-v2.md)、[恢复与成功复用](../experiments/paper-recovery-evidence-20261020-v1.md)。
+前轮：[失败接入](../experiments/paper-negative-recovery-20261020-v1.md)、[显式当前操作接管](../experiments/paper-recovery-control-20261020-v2.md)。

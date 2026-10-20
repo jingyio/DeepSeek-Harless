@@ -75,3 +75,22 @@ def test_explicit_current_recovery_scope_rejects_subset_before_render_but_accept
     assert failure['failed_checks']==['recovery_structure_preserved'] and not calls
     assert failure['scope_issues'][0]['expected_items']==2
     assert module.structure_issues(args,{**args,'title':'Necessary revised title'})==[]
+
+
+def test_natural_length_contract_removes_only_the_benchmark_page_cap(tmp_path):
+    pytest.importorskip('reportlab');pytest.importorskip('fitz')
+    payload={'title':'Full report','sections':[{'heading':'Complete records','paragraphs':[
+        f'Record {i}: Preserve the original interpretation, all source evidence and the limitations. '*4 for i in range(110)]}],
+        'figures':[],'metrics':[],'requirements':{'style':'brief','page_mode':'auto','pages':None}}
+    built=module.build_document(payload,tmp_path/'natural',repair=False)
+    assert built['page_count']>6 and built['quality_passed']
+    assert built['audit']['acceptance_policy']['auto_page_limit'] is None
+    capped=module._benchmark_audit(Path(built['path']),built['manifest_path'])
+    assert not capped['checks']['page_constraint_satisfied']
+    for key,value in built['audit']['checks'].items():
+        if key!='page_constraint_satisfied':assert capped['checks'][key]==value
+    explicit=module.engine.audit_document(Path(built['path']),built['manifest_path'],
+        {'page_mode':'max','pages':6})
+    assert not explicit['checks']['page_constraint_satisfied']
+    assert module.rendering_config()['auto_page_limit'] is None
+    assert explicit['quality_passed'] is False
