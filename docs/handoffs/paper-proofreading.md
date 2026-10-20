@@ -1,14 +1,13 @@
 # 论文校对 当前交接
 - 更新时间与交接人：2026-10-20，Codex。
-- 目标与本次范围：审计旧完整任务17条检索，接通候选证据保存/类型化选择，做少量真实局部任务。未重跑完整Baseline、未扩场景、未提交新PR。
-- 分支 / 代码：codex/paper-retrieval-evidence基于main f3c175e（PR98）。本轮代码、文档与诊断测试见该分支提交；未推送、未创建PR、未部署。前轮PR97已由负责人合并到c63196c，四项Windows/Ubuntu检查最终全绿，不再等待合并。
-- 已完成：retrieval_evidence.ts保存真实每查询候选，原web_search增加可选reuse；retrieval_web_search.ts与search_evidence_accounting.py仅由实验host patch启用，生产search/cost gate及库未改。audit-search-evidence.py按旧批次/新指纹归因；入口新增retrieval-evidence/search-output-tokens/evaluation-scope/no-output。接口和最短复现见本轮实验。
-- 已验证：完整Python1322通过/213跳过；完整Node1192通过/5跳过，见私有node-final-project-python.log；smoke和motif:check通过，均为免费诊断。覆盖真实输入字节/跨用户拒绝、失效回退、取消/失败不入缓存、混合批次/去重、原生展示、gateway原记账。首次17失败、随后15失败为公共文件认证锁触发；将扩展隔离并恢复生产原字节后通过，未改证书或删检查。手动Node遗漏项目Python导致另8项沙箱/xcrun失败，设定SSS_PYTHON和SSS_PURE_CODE_PYTHON后整套复核通过，失败保留。
-- 实验结论：[检索证据实验](../experiments/paper-retrieval-evidence-20261020-v1.md)。17条无完全相同重复，旧证据未证明可安全删除哪次完整搜索。六批均截断到8来源/无明文摘要；网页读取有5次非公网解析拒绝及脚本/索引失败。新响应只有加密正文，不能还原摘要。搜索冷输入不能归因于传入报告全文。
-- 四次真实局部：001两条核验65请求/$0.067447320，违背不生成PDF要求而导出、答复自相矛盾；002四条候选发现19/$0.028794288，不作成本对照；003/004同001题面、只读+搜索输出128，24/23请求，$0.034789140/$0.032639628，均无导出。四项保留20/40/24/24条候选，复用命中/跳过搜索模型/verified_skips全0；模型未重复相同查询或选择ID，未预填接口制造收益。权限、搜索参数和路径不同，不主张Motif因果降幅。
-- 质量与限制：003局部关键字段较完整但页码定位不精确；004摘要称APC缺第四作者，正文又说明正式版三人正确，且未取得会议方页码便要求改页码，明确未通过。002作者说明也矛盾。搜索输出1822→428/461，但冷输入11069→15796/16552，搜索费用$0.005511700→$0.005257770/$0.005524940，未稳定下降。暂不PR。
-- 前轮成果保留：[自动状态](../experiments/paper-live-state-20261020-v1.md)、[Negative集成](../experiments/paper-negative-live-integration-20261020-v1.md)。三次结构恢复2请求，自动采集6/5请求，79段和来源保留、成功后无工具；自由总结计数错误仍存在。本轮未加载旧Script/Negative/reuse库，不把检索子机制当作完整方法验收。实验脚本字节已变，未来加载旧Script库须正常再认证，不改旧锁。
-- 配置与数据：私有.local/paper-retrieval-evidence-20261020-v1/保存授权、17项审计、4项题面/质量/回答/breakdown、aggregate、scope澄清及所有失败/回归日志。各.local/script-motif-experiments/<run>/保存有效配置/源码哈希，事件/账本在对应Web任务。输入匿名版本96fad89059b4…；001/003/004题面SHA7305a6d805ff…。001旧manifest默认full_task标记过宽，补充scope-clarifications说明实际局部范围，不覆盖旧记录。
-- 权限与预算：本地DeepSeek Flash、reasoning off、Agent输出8192、费用/请求不限、reset_history:false。本轮131请求/$0.163670376，累计5582/$9.664779960保守代理估费；新增pending/unknown均0；旧pending3、服务器历史和服务商账单仍待核。学习API0，开发/计算/人工未量化。四项已结束，无新完整Baseline。
-- 接手下一步：1）把实际已读权威字段与模型当前版本选择保存为同一份带出处的结构化决定，先消除004摘要/正文冲突；未取得字段保留缺口。2）自然出现重复请求时验证候选复用和净用量，不强制重复或预填ID；无机会则缩小缓存收益主张。3）局部质量和实际节省达标后再PR、与最新main集成，不扩场景或盲调embedding。
-- 回退与风险：去掉retrieval-evidence回原生搜索，no-output仅局部题面使用；旧恢复sidecar/report-evidence另行显式启用。未改生产、认证库、私人原件、网络守卫、上游Harness或外部应用。新机制仅macOS真实验证。
+- 目标与本次范围：用户要求把真实轨迹→自动挖掘/认证/发布→下一任务加载/实际复用的Script RSI跑起来。本轮为真实BibTeX局部检查，未重跑完整Baseline、未做完整PDF核验、未部署。
+- 分支 / 代码：codex/paper-rsi-loop-20261020，基于d52db4f，继承上一轮隔离检索代码但本轮关闭。已核对origin/main仍为f3c175e（PR98）；本轮本地提交见分支，未推送/未PR。PR97已合并，四项CI最终全绿。
+- 已完成：runner统一learning-store生产/消费，拒绝目录冲突并保存sidecar副本；script_learning_store.ts校验owner/路径/摘要，原loader校验代码锁；逐任务冻结并保存加载收据。worker保存父摘要/任务/事件lineage，失败不覆盖库，异常子进程记失败。提取本命令新建脚本、保留已有文件一致性检查，支持顶层函数/循环后只读切片；Frontier允许经当前语义选择的认证单算子。接口、README与RSI说明已更新。
+- 已验证：修复后完整npm test：Python1326通过/213跳过，Node1194通过/5跳过；后补worker状态/失败保留父指针及核算检查另跑6通过；smoke、motif:check通过。首次全量1失败已修复，失败日志保留。最新私有库通过当前编译/TS加载代码锁检查。均为免费开发诊断，模型行为另见真实任务。
+- 实验结论：[Script自动闭环](../experiments/paper-rsi-live-loop-20261020-v1.md)。A首次12请求学习零产物；A2冷启动7请求后自动发布3算子；B换另一完整真实书目，精确加载A2库、实际接管1次，结束自动发布12算子/1契约。开发中两次免费兼容重认证另记。C在100条真实子集上接管1次、复用5个B来源缓存算子，自动发布；D精确加载C版本并接管1次、再次自动发布。A2→B和冻结代码C→D均自动交接，未把B→C兼容重认证说成自动。三个后继均实际执行，已排除仅有latest没有使用的问题。
+- 质量与限制：核心数量/唯一键26/26、39/39、100/99及来源哈希已复核。B含不必要格式问题、C误称有BOM、D有混乱book字段说明，文字未全面合格。C/D各一次过期选择被守卫拒绝，恢复费用保留。A2→D同输入请求7→6、输出3106→2585，但冷输入增加，估费+1.7%；不宣称净降本。单节点接管与模型选择费用分列，未新增证明连续多步接管。C子集、D重复输入不算独立新论文。
+- 配置与数据：.local/paper-rsi-live-loop-20261020-v1/保存授权、输入溯源、题面、aggregate/acceptance/quality-check/environment、所有失败与兼容重认证。store首任务固定留出，不复制旧库；每任务快照/事件/账本按run关联，私有库不得进Git。摘要和最短复现命令见实验文档。最新D后库12算子/1契约，当前代码锁验证通过。
+- 权限与预算：本地真实DeepSeek Flash、reasoning off、输出8192、费用/请求不限、reset_history:false；仅只读任务副本，未外部写入。新增59请求/$0.068327232代理估费；历史累计5641/$9.733107192。新增pending/unknown0，旧3笔、服务器历史和账单未核；开发/人工成本未量化。编译模型调用0，五项任务都已结束，无后台付费任务。
+- 未完成：跨脚本中间文件的自动生产链；过期选择和重复后检的控制开销；有界库目录/容量对费用的影响；完整PDF交付及净降本；一般Negative原因学习未在本轮扩展。旧检索子机制四次均零命中，证据仍见[检索记录](../experiments/paper-retrieval-evidence-20261020-v1.md)，不能把本轮复用归到它。
+- 接手下一步：1）从C/D过期选择和后续重检轨迹减少恢复调用，先做局部复测。2）为真实缺失中间输入学习当前生产者→消费者的可验证链，保留跨输入认证与语义缺口。3）局部质量/控制开销改善后再做少量完整论文验收；有证据后再评估PR，不重复固定配置的完整Baseline。
+- 回退与风险：不传script-config/learning-store则走原生Agent，检索实验默认关闭；旧轮和累计账本保留。新机制仅本地macOS实验验收，不是生产发布。上一轮报告/Negative局部成果见[自动状态](../experiments/paper-live-state-20261020-v1.md)与[Negative集成](../experiments/paper-negative-live-integration-20261020-v1.md)，不因本轮检索/RSI局限否定已观察的局部收益。

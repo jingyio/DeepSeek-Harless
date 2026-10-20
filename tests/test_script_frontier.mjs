@@ -26,7 +26,8 @@ for(const status of ['unknown','ambiguous','unneeded'])test(status+' does not au
  const f=fixture();acknowledge(f,f.command(status));assert.equal(f.frontier.ready(),null);assert.equal(f.frontier.prompt(),'');
 });
 test('historical frequency, scalar network calls and branching do not create forced routes',()=>{
- assert.equal(learnedScriptFragments({programs:[first,{...second,argv_contract:{}}]}).length,0);
+ const standalone=learnedScriptFragments({programs:[first,{...second,argv_contract:{}}]});
+ assert.deepEqual(standalone.map(f=>f.nodes.map(p=>p.id)),[['a']]);
  assert.equal(learnedScriptFragments({programs:[first,second,{...second,id:'c'}]}).length,0);
  assert.equal(learnedScriptFragments({programs:[{...first,predecessor:{program_id:'b'}},second]}).length,0);
 });

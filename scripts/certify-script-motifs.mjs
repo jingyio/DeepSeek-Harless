@@ -91,7 +91,7 @@ function certify(rows){
      witnesses:cases,source_task_id:task.task_id,source_call_id:witness.call_id,events_sha256:witness.events_sha256,
      ...(expression_witness?{expression:{target:expression_witness.target,lines:expression_witness.lines,source_sha256:expression_witness.original_source_sha256}}:{}),
      scope:expression_witness?'source_prefix_and_dependency_slice_equivalence_on_distinct_inputs_not_historical_stdout_or_semantic_quality':'deterministic_source_equivalence_on_distinct_inputs_not_semantic_quality_proof'}});
-  }catch(error){rejected.push({id:p.id,call_id:p.witness.call_id,reason:error.message});}
+  }catch(error){rejected.push({id:p.id,call_id:p.witness.call_id,reason:error.message,...(error.cause?{diagnostic:error.cause}:{})});}
  }
  const locks=Object.fromEntries(scriptCodeLocks.map(p=>[p,sha(readFileSync(join(root,p)))]));
  // Bounded catalogue should not crowd out substantial computation with early

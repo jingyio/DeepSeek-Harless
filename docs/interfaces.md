@@ -854,7 +854,7 @@ IR 为 `sandboxed_script_motif_library` v1：`programs[]` 保存 `id/version/lan
 
 `catalog:true` 通过公开 `systemPrompt.variable/section` 挂载稳定目录，普通 `mode:"cache"` 只允许模型选择，不接管 provider。已有 Bash 接受 `geneloop-cache '{"calls":[{"id":"script_...","paths":["/work/当前文件"],"argv":[]}]}'`；每批 1–8 个，参数只绑定当前工作区文件或最多 32 个有界标量。允许已验证的 `cd /work/... &&` 前缀；拒绝 head、管道和重定向并提示保留完整回执，不静默裁剪命令。批量回执全部验证后才发布 Evidence，部分失败不得成为结构前驱。缓存和完整 Motif 具有同样批量能力。目录不增加工具 schema，普通脚本缓存的选择开销仍计入模型请求。
 
-实验可显式设置 `mode:"execute",catalog:true,executionFrontier:true`。此时使用 `script_execution_frontier.ts`：从库中真实前驱关系发现无分支、同文件输入契约的 2–8 节点片段，绑定当前唯一输入；通过原系统提示接口暴露一次当前需求选择，模型仅用已有 Bash 返回：
+实验可显式设置 `mode:"execute",catalog:true,executionFrontier:true`。此时使用 `script_execution_frontier.ts`：从库中真实前驱关系发现无分支、同文件输入契约的 2–8 节点片段，也可接纳独立认证的单算子；不为单算子虚构后继关系。绑定当前唯一输入后，通过原系统提示接口暴露一次当前需求选择，模型仅用已有 Bash 返回：
 
 ```sh
 geneloop-resolve '{"request_id":"当前请求 ID","status":"selected","candidate_id":"当前候选 ID"}'
@@ -949,7 +949,11 @@ node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-mo
 
 `--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。worker 不调用模型，允许学习有 Script sidecar 的已完成任务中的原生调用，排除 `sss-script-` / `sss-reuse-` 合成调用，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
 
-下个任务的 sidecar 可以用 `learningStore` 替代 `library`，按 owner 加载 pointer，任务开始后冻结。不能用同一论文的重复任务声称独立科研决定。当前是最小实验生命周期，worker 崩溃监控、自动淘汰/覆盖合并、负收益降权与前端可视状态仍待完善。
+`run-script-motif-experiment.py` 中，`--learning-store` 现在同时写入该任务的私有 sidecar 副本，用于后续任务加载；sidecar 中已配置的 `learningStore` 也会接通学习 worker。两处指定不同目录时，在付费启动前拒绝。Baseline 只学习、不加载；cache/shadow/execute 仍须提供对应模式的 `--script-config`。没有 latest 的冷启动保留正常 Agent 路径。
+
+下个任务按 owner、路径、库摘要及代码锁加载 pointer，保存 `script-learning-snapshot.json`，任务开始后冻结。`resolved` 只代表指针解析成功，完成全部 Runtime 准入后才记 `loaded` 与对应审计。发布保存父摘要、触发任务、训练/留出任务与事件摘要到不可覆盖的 `round-*/lineage.json`。无合格产物或失败不替换父指针；子进程启动/异常退出留下失败状态。runner 最多等待340秒，未结算学习单独记录，不把超时算成功。
+
+不能用同一论文的重复任务声称独立科研决定。自动淘汰、负收益降权、崩溃恢复重试与前端可视状态仍待完善。当前是独立实验生命周期，未部署到生产；真实验证见[闭环记录](experiments/paper-rsi-live-loop-20261020-v1.md)。
 
 
 ## 实验性统一复用协议（2026-10-19）

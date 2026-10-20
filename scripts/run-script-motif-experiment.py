@@ -26,6 +26,20 @@ def load(name, filename):
     return module
 
 
+def learning_config(config, store):
+    """One explicit store controls both post-task learning and next-task loading."""
+    configured = config.get('learningStore')
+    if configured and store and Path(configured).resolve() != store.resolve():
+        raise ValueError('learning_store_producer_consumer_mismatch')
+    selected = store or (Path(configured) if configured else None)
+    if selected:
+        selected = selected.resolve()
+        if not selected.is_relative_to(ROOT / '.local'):
+            raise ValueError('private_learning_scope_required')
+        config = {**config, 'learningStore': str(selected)}
+    return config, selected
+
+
 def main():
     started = time.monotonic()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -33,7 +47,7 @@ def main():
     parser.add_argument('--report-evidence',action='store_true',help='显式隔离导出变体，两组必须采用相同设置')
     parser.add_argument('--retrieval-evidence',action='store_true',help='显式同任务检索证据复用；不改变生产默认或认证库')
     parser.add_argument('--search-output-tokens',type=int,default=4096,help='实验搜索模型输出上限；仅retrieval-evidence启用，可见来源仍需真实验收')
-    parser.add_argument('--evaluation-scope',choices=['full_task','local_retrieval_validation'],default='full_task')
+    parser.add_argument('--evaluation-scope',choices=['full_task','local_retrieval_validation','local_bibliography_validation'],default='full_task')
     parser.add_argument('--no-output',action='store_true',help='局部核验仅聊天交付；不授权写入报告产物')
     parser.add_argument('--source', required=True, type=Path)
     parser.add_argument('--prompt', type=Path, default=ROOT / 'scenarios/paper-submission/reference-audit.prompt.md')
@@ -73,11 +87,12 @@ def main():
     env['SSS_RETRIEVAL_SEARCH_OUTPUT_TOKENS']=str(args.search_output_tokens)
     env.pop('SSS_SCRIPT_MOTIF_CONFIG', None)
     env.pop('SSS_SCRIPT_MOTIF_LEARNING_STORE', None)
+    config = None
     if args.script_config:
         config = json.loads(args.script_config.read_text())
         if config['mode'] != args.mode:
             parser.error('sidecar mode 与实验模式不一致')
-        env['SSS_SCRIPT_MOTIF_CONFIG'] = str(args.script_config.resolve())
+    config, args.learning_store = learning_config(config or {}, args.learning_store)
     if args.learning_store:
         env['SSS_SCRIPT_MOTIF_LEARNING_STORE'] = str(args.learning_store.resolve())
     source = args.source.resolve(strict=True)
@@ -106,6 +121,13 @@ def main():
     run_id = uuid4().hex
     record = ROOT / '.local/script-motif-experiments' / run_id
     record.mkdir(parents=True, exist_ok=False, mode=0o700)
+    if args.learning_store:
+        args.learning_store.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if args.script_config:
+        effective_sidecar = record / 'script-config.json'
+        effective_sidecar.write_text(json.dumps(config, ensure_ascii=False, indent=2))
+        effective_sidecar.chmod(0o600)
+        env['SSS_SCRIPT_MOTIF_CONFIG'] = str(effective_sidecar)
     output = ROOT / '.local/web/runs' / run_id
     manifest = {
         'run_id': run_id, 'mode': args.mode,
@@ -124,6 +146,9 @@ def main():
         'retrieval_evidence':args.retrieval_evidence,
         'search_output_tokens':args.search_output_tokens,
         'allow_output':not args.no_output,
+        'learning_store': str(args.learning_store) if args.learning_store else None,
+        'learning_enabled': bool(args.learning_store),
+        'load_learned_library': bool(args.learning_store and args.script_config),
         'preserve_recovery_structure': args.preserve_recovery_structure,
         'resume_current_operation': args.resume_current_operation,
         'recovery_goal_scope_sha256':hashlib.sha256(args.recovery_goal_scope.read_bytes()).hexdigest() if args.recovery_goal_scope else None,
@@ -246,10 +271,12 @@ def main():
                 time.sleep(3)
             task = output / 'tasks' / draft['task_id']
             if args.learning_store and result['status'] == 'completed':
-                for _ in range(300):
+                for _ in range(1700):
                     if (task / 'script-learning-status.json').exists():
                         break
                     time.sleep(.2)
+                if not (task / 'script-learning-status.json').exists():
+                    (record / 'learning-wait-timeout.json').write_text(json.dumps({'status':'unsettled','timeout_seconds':340}))
             summary = load('script_experiment_accounting', 'summarize-script-motif-run.py').summarize(task)
             summary['experiment_wall_ms_until_summary'] = round((time.monotonic() - started) * 1000)
             summary['wall_scope'] = 'includes_startup_upload_and_learning_wait; excludes_installation_and_shutdown'
