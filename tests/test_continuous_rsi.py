@@ -45,6 +45,22 @@ def test_series_budget_accounts_for_pending_tasks(configuration):
     cfg=rsi.load_config(path);rsi.initialize(cfg);rsi.reserve(cfg,'one',5)
     with pytest.raises(ValueError,match='series budget'):rsi.reserve(cfg,'two',5)
 
+
+def test_uncapped_file_policy_preserves_prior_reservations_without_inventing_zero(configuration,monkeypatch):
+    path,c=configuration
+    cfg=rsi.load_config(path);root=rsi.initialize(cfg);rsi.reserve(cfg,'old-bounded',5)
+    c.update(series_cap_usd=None,learning_cap_usd=None)
+    c['limits']={k:None for k in c['limits']};durable(path,c);cfg=rsi.load_config(path)
+    monkeypatch.setattr(rsi,'series_accounting',lambda:(_ for _ in ()).throw(AssertionError('no monetary quota to enforce')))
+    for i in range(4):rsi.reserve(cfg,'unlimited-'+str(i),None)
+    pool=rsi.read(root/'pool.json')['runs']
+    assert pool['old-bounded']['cap_usd']==5
+    assert len(pool)==5 and pool['unlimited-3']['cap_usd'] is None
+    with pytest.raises(ValueError,match='already exists'):rsi.reserve(cfg,'unlimited-3',None)
+    c.update(series_cap_usd=1000,learning_cap_usd=10);durable(path,c)
+    monkeypatch.setattr(rsi,'series_accounting',lambda:{'estimated_usd':7})
+    with pytest.raises(ValueError,match='series budget'):rsi.reserve(rsi.load_config(path),'cannot-hide-unbounded-reservation',1)
+
 def test_cold_import_learning_spend_and_reservation_keep_original_cap(configuration,monkeypatch):
     path,c=configuration;c.update(role='native_certification',auto_worker=False)
     durable(path,c);cfg=rsi.load_config(path);root=rsi.initialize(cfg)

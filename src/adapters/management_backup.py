@@ -90,9 +90,10 @@ def budget_snapshot(project):
     from .continuous_rsi import STATE_HOME
     runs=[r for p in STATE_HOME.glob('*/pool.json') for r in json.loads(p.read_text())['runs'].values()]
     prior=imported_budget(ROOT)
-    return {'series':accounting(),'pending_usd':sum(r['cap_usd'] for r in runs if r['status']=='reserved'),
+    def total(values):return None if None in values else sum(values)
+    return {'series':accounting(),'pending_usd':total([r['cap_usd'] for r in runs if r['status']=='reserved']),
             'learning_spent_usd':sum(r.get('cost_usd',0) for r in runs if r['status']=='settled' and r['role']!='ordinary')+prior.get('learning_spent_usd',0),
-            'learning_reserved_usd':sum(r['cap_usd'] for r in runs if r['status']=='reserved' and r['role']!='ordinary')+prior.get('learning_reserved_usd',0)}
+            'learning_reserved_usd':total([r['cap_usd'] for r in runs if r['status']=='reserved' and r['role']!='ordinary']+[prior.get('learning_reserved_usd',0)])}
 def backup(project,output,*,roots=ROOTS):
     project=Path(project).resolve();offline(project);output=Path(output).absolute()
     if output.exists() or output.is_symlink():raise ValueError('backup output already exists')

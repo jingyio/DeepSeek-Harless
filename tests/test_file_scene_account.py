@@ -10,6 +10,38 @@ from src.adapters.file_web_task_budget import TaskBudgetRegistry
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def test_web_file_profile_inherits_uncapped_policy_without_resetting_existing_state():
+    base=ROOT/'.local/account-isolation-tests'/uuid4().hex
+    base.mkdir(parents=True)
+    policy=base/'policy.json';policy.write_text(json.dumps({k:None for k in ['budget_usd','run_budget_usd','request_limit','max_output_tokens']}))
+    code="""import sys,json,os;sys.path.insert(0,'scenarios/file-management')
+from management_web import default_config
+from src.adapters.continuous_rsi import load_config,read
+from src.motif_core.offline.experience_registry import durable
+from pathlib import Path
+os.environ.pop('SSS_WEB_POLICY',None)
+old=default_config(False);before=load_config(old);pool=Path(before['state_root'])/'pool.json'
+durable(pool,{'runs':{'old-task':{'status':'settled','cap_usd':5,'cost_usd':0.02,'role':'ordinary'}}})
+os.environ['SSS_WEB_POLICY']=sys.argv[1]
+new=default_config(False);after=load_config(new)
+assert old!=new and before['state_root']==after['state_root']
+assert all(v is None for v in after['limits'].values())
+assert after['series_cap_usd'] is None and after['learning_cap_usd'] is None
+assert read(pool)['runs']['old-task']['cost_usd']==0.02
+print('uncapped-policy-and-original-accounting-preserved')"""
+    env={**os.environ,'HARLESS_MANAGEMENT_PRIVATE_ROOT':str(base/'account')}
+    assert 'uncapped-policy-and-original-accounting-preserved' in subprocess.check_output([sys.executable,'-c',code,str(policy)],cwd=ROOT,env=env,text=True)
+
+
+def test_unlimited_platform_meter_is_still_required_for_semantic_calls(monkeypatch):
+    from src.adapters.dsh_client import require_budget_gate
+    monkeypatch.setenv('DEEPSEEK_BASE_URL','http://127.0.0.1:37724/v1')
+    monkeypatch.setenv('SSS_BUDGET_GATE_ACTIVE','1');monkeypatch.setenv('SSS_BUDGET_LEDGER','private-ledger.jsonl')
+    monkeypatch.setenv('SSS_BUDGET_CAP_USD','null');require_budget_gate()
+    monkeypatch.delenv('SSS_BUDGET_LEDGER')
+    with pytest.raises(ValueError):require_budget_gate()
+
+
 def test_acceptance_recognizes_only_the_host_owned_account_copy_root(monkeypatch):
     import importlib.util, tempfile
     sys.path.insert(0,str(ROOT/'scenarios/file-management'))

@@ -79,9 +79,9 @@ def execute(args,prepared=None,*,on_event=None,on_start=None):
         platform=enroll_platform(session,args.model,args.budget_usd,out,resuming=bool(args.rsi_resume)) if cfg['provider_mode']=='real' else None
         if platform:endpoint=platform.upstream
         gate=create_server('127.0.0.1',0,endpoint,state,forward_headers=platform.headers if platform else None,forward_model_alias=platform is None);thread=threading.Thread(target=gate.serve_forever,daemon=True);thread.start()
-        env.update(DEEPSEEK_BASE_URL=f'http://127.0.0.1:{gate.server_port}/v1',SSS_BUDGET_GATE_ACTIVE='1',SSS_BUDGET_CAP_USD=str(args.budget_usd),SSS_BUDGET_LEDGER=str(state.record))
+        env.update(DEEPSEEK_BASE_URL=f'http://127.0.0.1:{gate.server_port}/v1',SSS_BUDGET_GATE_ACTIVE='1',SSS_BUDGET_CAP_USD='null' if args.budget_usd is None else str(args.budget_usd),SSS_BUDGET_LEDGER=str(state.record))
         prior=[json.loads(l) for l in (out/'agent-events.jsonl').read_text().splitlines()] if (out/'agent-events.jsonl').exists() else []
-        count=len(prior);guard=NativeBudgetGuard(max_model_requests=max(1,s['limits']['max_steps']-s['steps']),max_observed_input_tokens=None)
+        count=len(prior);guard=NativeBudgetGuard(max_model_requests=None if s['limits']['max_steps'] is None else max(1,s['limits']['max_steps']-s['steps']),max_observed_input_tokens=None)
         def observe(n):
             nonlocal count
             if n.method=='session.event' and isinstance(n.payload.get('event'),dict):

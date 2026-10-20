@@ -36,5 +36,5 @@ def status(config):
       'experience_library':summary(root),
       'active_motifs':len(compatible),'registered_active_motifs':len(active),'version_invalid_motifs':len(active)-len(compatible),'disabled_motifs':sum(e['state']=='disabled' for e in library['entries']),
       'certification':jobs,'worker_running':alive,'recorded_tasks':len(pool),'estimated_cost_usd':sum(v.get('cost_usd',0) for v in pool.values()),
-      'reserved_upper_usd':sum(v['cap_usd'] for v in pool.values() if v['status']=='reserved'),'learning_cap_usd':cfg['learning_cap_usd'],
+      'reserved_upper_usd':None if any(v['cap_usd'] is None for v in pool.values() if v['status']=='reserved') else sum(v['cap_usd'] for v in pool.values() if v['status']=='reserved'),'learning_cap_usd':cfg['learning_cap_usd'],
       'series_cap_usd':cfg['series_cap_usd'],'actual_paid_usd':0 if cfg['provider_mode']=='mock' else None,'cost_basis':'proxy_estimate_not_provider_bill'}

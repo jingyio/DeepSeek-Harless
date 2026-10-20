@@ -152,7 +152,7 @@ export function installFileScene(ctx:any,launch:typeof spawn=spawn){
   if([...tasks.values()].some(t=>t.workspace_id===workspaceId&&!['completed','failed','cancelled'].includes(t.status)))throw Error('同一工作区有文件管理任务正在运行或等待恢复。');
   const task={id,workspace_id:workspaceId,session:request.sessionId,request_id:request.requestId,request_digest:digest(request),turn:1+Math.max(0,...snapshot.events.filter((e:any)=>e.type==='turn/start').map((e:any)=>e.data.turn)),status:'admitted',next_step:0,model:model.model};
   const priorContext=snapshot.events.filter((e:any)=>['user/message','assistant/message'].includes(e.type)).slice(-6).map((e:any)=>({role:e.type.startsWith('user')?'user':'assistant',text:(e.data.content??e.data.message?.content??[]).filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n')}));
-  const input={task_id:id,directory,objective,prior_context:priorContext,workspace_id:workspaceId,owner,sources,model:model.model,provider_mode:policy.provider_mode,budget_usd:Math.min(5,policy.budget_usd??5)};
+  const input={task_id:id,directory,objective,prior_context:priorContext,workspace_id:workspaceId,owner,sources,model:model.model,provider_mode:policy.provider_mode,budget_usd:policy.budget_usd??null};
   save(join(directory,'request.json'),input);tasks.set(id,task);store(task);
   const admitted=await ctx.attachments.admitPromptContent(content),binding=ctx.fileUploads.bindPrompt(agent,receipts,request.requestId);
   try{agent.session.append('turn/start',{turn:task.turn});agent.session.append('user/message',createUserMessage({content:admitted,source:{kind:'user',rpcId:request.requestId}}),{surfaceOp:'append'});binding.commit();}finally{binding[Symbol.dispose]();}

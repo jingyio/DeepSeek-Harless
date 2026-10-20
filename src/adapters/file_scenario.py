@@ -109,8 +109,9 @@ def prepare_scenario(path: Path, *, case: str = '', session_workspace: str | Non
     acceptance = scenario.get('acceptance_guard')
     if acceptance is not None:
         if (not isinstance(acceptance, dict) or set(acceptance) not in ({'kind', 'max_repairs'},{'kind','max_repairs','durable_job'},{'kind','max_repairs','durable_job','interruptible'})
-                or acceptance['kind'] != 'file_management' or type(acceptance['max_repairs']) is not int
-                or not 0 <= acceptance['max_repairs'] <= 2 or tool_presentation != 'native'
+                or acceptance['kind'] != 'file_management'
+                or not (acceptance['max_repairs'] is None and acceptance.get('durable_job') is True or
+                        type(acceptance['max_repairs']) is int and 0 <= acceptance['max_repairs'] <= 2) or tool_presentation != 'native'
                 or 'durable_job' in acceptance and acceptance['durable_job'] is not True
                 or 'interruptible' in acceptance and (acceptance['interruptible'] is not True or not acceptance.get('durable_job'))
                 or 'mcp__file_management__submit_report' not in allowed):

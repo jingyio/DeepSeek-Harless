@@ -18,7 +18,7 @@ export class OperationJob extends FileJob {
   if(s.status!=='running')throw Error('original task inactive');
   if(command==='owner')s.owner_pid=arg.pid;
   if(command==='provider-retry'){if((s.provider_retries??0)>=2)return {admitted:false,state:s};s.provider_retries=(s.provider_retries??0)+1;}
-  if(command==='motif-step'){if(s.steps>=s.limits.max_steps)throw Error('original task step limit exhausted');s.steps++;}
+  if(command==='motif-step'){if(s.limits.max_steps!==null&&s.steps>=s.limits.max_steps)throw Error('original task step limit exhausted');s.steps++;}
   return {admitted:true,state:this.commit(s,command,arg)};
  }
 }
