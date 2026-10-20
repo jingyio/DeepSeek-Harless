@@ -48,6 +48,7 @@ import {WEB_RETRY_POLICY,taskFailureStatus} from './geneloop_retry.ts';
 import {createContextAdmission,GeneLoopContextEngine,assertContextUserEnvelope,routeNativeCompact} from './geneloop_context.ts';
 import {installInteractionBridge} from './geneloop_interactions.ts';
 import {installTaskDelegation,TaskDelegationAdapter,resolveExecutionAgent} from './geneloop_delegation.ts';
+import {createClosingTurnMirror} from './geneloop_task_trace.ts';
 import {PlanModeController} from '@deepseek-ai/dsh-plan-mode';
 import {createPlanAdmission,PLAN_GUIDANCE} from './geneloop_plan.ts';
 import {GoalService} from '@deepseek-ai/dsh-goal';
@@ -544,8 +545,12 @@ export function apply(ctx: any) {
     return tasks.get(id)!;
   }
   const forSession = (id: string): Task | undefined => tasks.get(sessions.get(id) ?? '');
+  const closingTurns=createClosingTurnMirror((task,event)=>
+    appendFileSync(join(task.output,'events.jsonl'),JSON.stringify(event)+'\n',{mode:0o600}));
   const delegation=installTaskDelegation(ctx,{taskForSession:forSession,
     isActive:task=>task.status==='running'&&active.has(task.request.task_id),
+    modelRoute:task=>({provider:task.model_option.provider,model:task.model_option.model,reasoningEffort:task.reasoning_effort,
+      maxTokens:config.max_output_tokens??(task.model_option.provider==='deepseek-official'?WEB_DEEPSEEK_OUTPUT_CAPACITY:undefined)}),
     onChild:(child,_root,task)=>bindScene(child,task.scene,task.source_pending),audit:(row,task)=>audit(task,row)});
   ctx.effect(()=>()=>delegation.close(),'geneloop-delegation-lifetime');
   const contextAdmission=createContextAdmission({policy:config,taskForSession:forSession,
@@ -760,6 +765,8 @@ export function apply(ctx: any) {
   }
   function finish(task: Task, status: string, failure: string | null = null) {
     if (terminal.has(task.status)) return;
+    const cancellingOwner=status==='cancelled'?agents.get(task.request.session_id):undefined;
+    if(cancellingOwner)closingTurns.arm(task,cancellingOwner);
     goals.disarmTask(task);
     task.status = status; task.failure = failure; task.finished_at = utc();
     // Pin command bytes before another turn can edit the persistent workspace.
@@ -773,6 +780,10 @@ export function apply(ctx: any) {
     // Release the launch slot only after budget ownership is retired.
     task.closing = (async () => {
       await delegation.drain(task);
+      // Native cancel only acknowledges the abort request. Keep the existing
+      // turn's final journal events and route alive until it is quiescent;
+      // a later Task cannot be admitted before this closing promise settles.
+      try{await cancellingOwner?.whenIdle?.();}finally{closingTurns.release(task);}
       const owner = agents.get(task.request.session_id), jobs = ctx.get?.('jobs');
       if (owner && jobs) {
         const live = jobs.list(owner).filter((job: any) => job.ownerSession === owner.id && ['running', 'stopping'].includes(job.status));
@@ -2119,6 +2130,7 @@ export function apply(ctx: any) {
     });
   }, { global: true });
   ctx.on('session/event', (session: any, event: any) => {
+    if(closingTurns.record(session,event))return;
     const task = forSession(session.id); if (!task || task.status !== 'running') return;
     if (Number.isSafeInteger(event.data?.turn) && event.data.turn > 0) task.native_turn = event.data.turn;
     progress.get(task.request.task_id)?.event(event);

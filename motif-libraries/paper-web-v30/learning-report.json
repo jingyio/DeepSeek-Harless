@@ -1,0 +1,626 @@
+{
+  "schema_version": 1,
+  "new_training": true,
+  "method": "existing_witnessed_edge_compiler",
+  "training_tasks": 2,
+  "heldout_tasks": 1,
+  "artifacts": 1,
+  "library_digest": "0d8ea2f703b635f808e00b50cc64d429d901049aa752cadc5726498559d63f9c",
+  "manifest_digest": "18a69646917830c3d1206e9bdaa758125939e755f9aa6332ffb3b39b7fa05c83",
+  "evidence_sha256": "76ddb181021106915fea64ee02117c78db8fb3ef9d6324cb35a488fc9f459629",
+  "schema_capture_sha256": "0ba797b7a3ed5155d92e4fda235ba4b251162cc0e7f014bb778ea956d29da0b0",
+  "current_whole_schema_sha256": "f9b6146e3a51f6a783577809ed81168da2afb014c6e1350b00d1094363acc979",
+  "current_tool_count": 24,
+  "collection_source_sha": "30b5a37423f4f2b5e1568dc44d8442610069dc0c",
+  "collection_source_sha_basis": "optional_dataset_collection_metadata_not_inferred_from_current_checkout",
+  "current_candidate_source_tree_sha256": "e29f2a5f21ae6a804771b4255462ff36d67e91767811239e9d3ed6aaca9397bd",
+  "collection_tracked_dirty": true,
+  "collection_tree_scope": "Candidate tracked-source snapshot, including uncommitted changes when present; commit alone is not a clean-source claim.",
+  "compilation_source_sha": null,
+  "compilation_source_binding": "exact source locks; compatibility recompilation from unchanged collection evidence",
+  "compilation_model_requests": 0,
+  "compilation_seconds": 0.5014873370528221,
+  "model_weights_trained": false,
+  "compilation_executes_scene_tools": false,
+  "common_native_tools": [
+    "web_search",
+    "web_fetch",
+    "bash",
+    "job_list",
+    "job_output",
+    "job_kill",
+    "read",
+    "read_image",
+    "write",
+    "edit",
+    "glob",
+    "grep",
+    "ask_user_question",
+    "todo_write",
+    "skill",
+    "present",
+    "subagent",
+    "exit_plan_mode",
+    "get_goal",
+    "update_goal"
+  ],
+  "common_native_tools_in_certified_mcp_schema": false,
+  "common_capabilities_compatibility_scope": "Public native tools are separately admitted by current code-locked policy; they are not mined, certified, replayed, or claimed as newly learned by this MCP-only compatibility re-export.",
+  "trace_collection_requests": 15,
+  "trace_collection_proxy_usd": 0.00775239,
+  "excluded_collection": [
+    {
+      "task_id": "b285d931caea437b8eeffe3bdea9417b",
+      "status": "completed",
+      "mode": "baseline",
+      "events_sha256": "3434a02beb17385ec76b045f2b84f3b51ddca28cf704d0eb884971d9f846b544",
+      "failure_sha256": null,
+      "document_read_edge_observed": true,
+      "exclusion_scope": "retained_collection_attempt_not_used_for_independent_certification",
+      "requests": 10,
+      "tokens": {
+        "prompt_tokens": 50273,
+        "prompt_cache_hit_tokens": 46592,
+        "prompt_cache_miss_tokens": 3681,
+        "completion_tokens": 3879,
+        "total_tokens": 54152
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 10
+      },
+      "proxy_peak_usd": 0.0060386599999999995,
+      "actual_paid_usd": null,
+      "tool_calls": 8,
+      "tool_errors": 1,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "b285d931f2a64ee08e4cb700a4d08d92",
+      "status": "completed",
+      "mode": "baseline",
+      "events_sha256": "ecc549bdb1504d4b6355b6f8a13dfb6f0a9471f3998fb2ab44e06d076f8622f8",
+      "failure_sha256": null,
+      "document_read_edge_observed": false,
+      "exclusion_scope": "retained_collection_attempt_not_used_for_independent_certification",
+      "requests": 1,
+      "tokens": {
+        "prompt_tokens": 3481,
+        "prompt_cache_hit_tokens": 2944,
+        "prompt_cache_miss_tokens": 537,
+        "completion_tokens": 394,
+        "total_tokens": 3875
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 1
+      },
+      "proxy_peak_usd": 0.00065156,
+      "actual_paid_usd": null,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "b285d931fe6049aca440adbfbf0c0ca8",
+      "status": "completed",
+      "mode": "baseline",
+      "events_sha256": "d8910a32f333f81b38e8709a5afa8b0046b533c2f6edea4ffbfd43dac43ea2ac",
+      "failure_sha256": null,
+      "document_read_edge_observed": true,
+      "exclusion_scope": "retained_collection_attempt_not_used_for_independent_certification",
+      "requests": 4,
+      "tokens": {
+        "prompt_tokens": 15159,
+        "prompt_cache_hit_tokens": 13824,
+        "prompt_cache_miss_tokens": 1335,
+        "completion_tokens": 707,
+        "total_tokens": 15866
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 4
+      },
+      "proxy_peak_usd": 0.00133184,
+      "actual_paid_usd": null,
+      "tool_calls": 3,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "b285d93193af4b5cac5061e87c1fc339",
+      "status": "completed",
+      "mode": "baseline",
+      "events_sha256": "2d535deef6173adb8847aa6e5bf45bd3499f071dbdc34e4435427fadc6414c92",
+      "failure_sha256": null,
+      "document_read_edge_observed": true,
+      "exclusion_scope": "retained_collection_attempt_not_used_for_independent_certification",
+      "requests": 5,
+      "tokens": {
+        "prompt_tokens": 20547,
+        "prompt_cache_hit_tokens": 19072,
+        "prompt_cache_miss_tokens": 1475,
+        "completion_tokens": 1681,
+        "total_tokens": 22228
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 5
+      },
+      "proxy_peak_usd": 0.00257413,
+      "actual_paid_usd": null,
+      "tool_calls": 4,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    }
+  ],
+  "learning_total_requests": 35,
+  "learning_total_proxy_usd": 0.01834858,
+  "collection_cost_basis": "exact_task_id_ledger_observed_peak_estimate_not_provider_invoice",
+  "actual_paid_usd": null,
+  "review_scope": "structural_provenance_only",
+  "scientific_quality_reviewed": false,
+  "visual_quality_reviewed": false,
+  "quality_cost_promoted": false,
+  "scope": "model_selected_uploaded_document_default_first_page_read_not_manuscript_semantics_or_report_generation",
+  "new_training_for_recompilation": false,
+  "new_collection_tasks_for_recompilation": 0,
+  "compatibility_compilation_model_requests": 0,
+  "recompilation_of_manifest_digest": "18a69646917830c3d1206e9bdaa758125939e755f9aa6332ffb3b39b7fa05c83",
+  "previous_manifest_file_sha256": "7b5e9274b712501a59369403e5707b771a32bd7ffa75bf512844206bb85ad0d1",
+  "compatibility_changed_code_locks": [
+    "benchmarks/research_report_agent_v2/document_engine.py",
+    "config/geneloop-capabilities.json",
+    "config/geneloop-capabilities.md",
+    "config/pdf-ocr-assets.json",
+    "scenarios/data_analysis/table_inputs.py",
+    "scenarios/paper-submission/README.md",
+    "scenarios/paper-submission/checks.py",
+    "scenarios/paper-submission/environment/README.md",
+    "scenarios/paper-submission/patch-learning-server.ts",
+    "scenarios/paper-submission/patch-rsi-task-server.ts",
+    "scenarios/paper-submission/reference-audit.prompt.md",
+    "scenarios/paper-submission/revision-rsi-learning.prompt.md",
+    "scenarios/paper-submission/rsi-learning.prompt.md",
+    "scenarios/paper-submission/rsi-server.ts",
+    "scenarios/paper-submission/server.py",
+    "scenarios/paper-submission/trace-rsi-learning.prompt.md",
+    "scenarios/paper-submission/trace-rsi-server.ts",
+    "scenarios/paper-submission/trace-rsi-task-server.ts",
+    "scenarios/paper_proofreading/document-read-contracts.json",
+    "scenarios/paper_proofreading/document-read-version-fields.json",
+    "scenarios/paper_proofreading/motif-contracts.json",
+    "scenarios/paper_proofreading/motif-version-fields.json",
+    "scenarios/paper_proofreading/prompt.md",
+    "scenarios/paper_proofreading/revision_session.ts",
+    "scenarios/paper_proofreading/scenario.json",
+    "scenarios/paper_proofreading/server.py",
+    "scripts/check-common-capabilities.py",
+    "scripts/harless_gateway.mjs",
+    "scripts/harless_member_scenes.mjs",
+    "scripts/harness-web.py",
+    "scripts/learn-web-paper-document-motif.py",
+    "scripts/learn-web-paper-tasks.py",
+    "scripts/recompile-ppt-common-capabilities.py",
+    "scripts/serve-web-budget.py",
+    "scripts/web_budget_broker.mjs",
+    "src/adapters/deepseek_cost_gate.py",
+    "src/adapters/dsh_event_projection.py",
+    "src/adapters/dsh_online_motif.mjs",
+    "src/adapters/dsh_trajectory.py",
+    "src/adapters/dsh_web_tasks.ts",
+    "src/adapters/file_lock.py",
+    "src/adapters/geneloop_capabilities.ts",
+    "src/adapters/geneloop_command_broker.ts",
+    "src/adapters/geneloop_command_client.mjs",
+    "src/adapters/geneloop_pdf.py",
+    "src/adapters/geneloop_pdf_vision.ts",
+    "src/adapters/geneloop_presentation.py",
+    "src/adapters/geneloop_presentation.ts",
+    "src/adapters/geneloop_presentation_render.py",
+    "src/adapters/geneloop_shell.ts",
+    "src/adapters/geneloop_web_search.ts",
+    "src/adapters/harless_attachment_text.py",
+    "src/adapters/harless_comparison.ts",
+    "src/adapters/harless_legacy_motif.ts",
+    "src/adapters/harless_paper_learning.ts",
+    "src/adapters/harless_paper_recovery.ts",
+    "src/adapters/harless_paper_renderer.py",
+    "src/adapters/harless_rsi_binding.ts",
+    "src/adapters/harless_rsi_bundle.py",
+    "src/adapters/harless_scenarios.py",
+    "src/adapters/harless_task_scope.ts",
+    "src/adapters/paper_archive.py",
+    "src/adapters/paper_bibliography.py",
+    "src/adapters/paper_query_recovery.py",
+    "src/adapters/paper_renderer.py",
+    "src/adapters/paper_static_checks.py",
+    "src/adapters/ppt_master_recovery.ts",
+    "src/adapters/session_files.py",
+    "src/adapters/session_report.py",
+    "src/adapters/task_identity.py",
+    "src/adapters/tool_contract_loader.py",
+    "src/adapters/tool_schema_contracts.py",
+    "src/adapters/web_task_budget.py",
+    "src/motif_core/online_skill_runtime.mjs"
+  ],
+  "compatibility_scope": "Read-only public OCR manifest mounted in member namespaces for intact certificate verification; immutable source/lane checks retained. Same historical read artifacts, independent evidence, tool schemas and scientific scope. No new collection, model calls or quality/cost promotion.",
+  "previous_certification_sha256": "ade00648de422f520bfbf3120daff08b5be138b70008b5bb0d4fff5f7b29cc4a",
+  "compilation_base_commit": "7d74e9e2fa05353a3cf0a1fcb054378e196a66b3",
+  "compilation_timing_note": "New compatibility compilation wall time not independently recorded; do not reuse the previous compilation duration.",
+  "compilation_base_sha": "9a25a7d8b8ff10dfef4a93e6b88d812ec8654f98",
+  "compilation_timing_basis": "current compatibility recompilation only",
+  "delivery_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "previous_release": "paper-web-v12",
+    "previous_certification_sha256": "eb4dfd9ed9258013d0e850f694bea0bb5dc86fd8811ad5b849f0ce45763df47d",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/harless_comparison.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/clickable-generated-files-20261019.md"
+  },
+  "attachment_context_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "previous_release": "paper-web-v13",
+    "previous_certification_sha256": "2e7fc9dc0041d7ed086da95de28bd691da75c516cfe8d5553d0d18c2bbf4bfd3",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/geneloop_pdf.py",
+      "src/adapters/geneloop_pdf_vision.ts",
+      "src/adapters/geneloop_presentation.ts",
+      "src/adapters/geneloop_presentation_render.py",
+      "src/adapters/harless_attachment_text.py",
+      "src/adapters/harless_comparison.ts",
+      "src/adapters/harless_task_scope.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-attachment-context-compat.py",
+      "src/adapters/geneloop_attachment_cache.ts",
+      "src/adapters/harless_attachment_context.ts",
+      "src/adapters/harless_public_output.ts",
+      "src/adapters/harless_task_progress.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/attachment-context-streaming-20261019.md"
+  },
+  "attachment_surface_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "native_session_append_public_surface_option",
+      "comparison_preparation_progress_subscription"
+    ],
+    "previous_release": "paper-web-v14",
+    "previous_certification_sha256": "94fc7558e0654cf9aaa9a3f7fb0e56dec2ffc803f01cf18108c742bfb5bec34a",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/harless_comparison.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-surface-context-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/attachment-context-streaming-20261019.md"
+  },
+  "attachment_evidence_consumption_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "integration": "version_bound_evidence_consumption_policy_and_reading_index",
+    "previous_release": "paper-web-v15",
+    "previous_certification_sha256": "cdf35e92bb893e7f8d80bf04a06fc40350399fc0a9d286779492e28de8f61ad5",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/harless_attachment_context.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-attachment-reading-compat.py",
+      "src/adapters/harless_attachment_reading.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/attachment-context-streaming-20261019.md"
+  },
+  "ppt_learning_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "ppt_learning_on_current_attachment_host",
+      "canonical_tool_result_observation"
+    ],
+    "previous_release": "paper-web-v16",
+    "previous_certification_sha256": "2987e1b365e812dcd28c9bec659f210a11e3a318976ffc47cc222dc960a0d04a",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_online_motif.mjs",
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/harless_rsi_bundle.py"
+    ],
+    "additional_code_locks": [
+      "scripts/learn-web-ppt-tasks.py",
+      "scripts/reexport-ppt-learning-compat.py",
+      "src/adapters/harless_ppt_learning.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/file-ppt-integration-20261019.md"
+  },
+  "concurrent_chat_and_provider_output_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "header_routed_tasks_without_account_concurrency_cap",
+      "independent_comparison_scheduler_runs",
+      "retry_readiness_inside_admission_lock",
+      "provider_documented_maximum_instead_of_omitted_8k_default"
+    ],
+    "previous_release": "paper-web-v18",
+    "previous_certification_sha256": "619bf5b1f0d8854a7ee7867ad67f84af26e99d9f85158972c6612a80b50a6612",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-provider-default-compat.py",
+      "src/adapters/harless_reasoning.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/concurrent-chat-20261020.md"
+  },
+  "public_history_paging_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "resolve_native_session_page_address",
+      "require_existing_task_before_original_content_resolution"
+    ],
+    "previous_release": "paper-web-v19",
+    "previous_certification_sha256": "8878bf1d570e009a72510fe25f74fe963917be1cb5282532a27e91a9f37ee806",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/harless_public_output.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-multiuser-page-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  },
+  "sandbox_mountpoint_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "prepare_fixed_scratch_child_mountpoints_before_readonly_parent_bind",
+      "reject_symlink_and_nondirectory_mountpoints"
+    ],
+    "preserved_guards": [
+      "readonly_inputs_and_scratch",
+      "network_namespace_isolation",
+      "session_scoped_workspaces"
+    ],
+    "previous_release": "paper-web-v20",
+    "previous_certification_sha256": "e1c808feb6cbeacf77d3627a29b2a76bec82947310d51fe5bede59cdc5a24d37",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/geneloop_shell.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-sandbox-mount-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  },
+  "cold_parent_tool_scope_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "compare_restored_public_parent_tools_without_ordinary_task_record",
+      "close_obsolete_parent_tools_through_existing_legacy_history_path",
+      "admit_later_prompts_in_fresh_current_private_scopes"
+    ],
+    "preserved_guards": [
+      "immutable_historical_presets",
+      "session_scoped_authorization",
+      "unchanged_current_preset_capabilities"
+    ],
+    "previous_release": "paper-web-v21",
+    "previous_certification_sha256": "81914ccbe14762083e133b71d8088a33ae8b837e8fc739be75d987d85e29666a",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-cold-parent-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  },
+  "gateway_watcher_environment_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "explicit_allowlisted_member_chokidar_polling_environment",
+      "validate_boolean_polling_and_positive_integer_interval",
+      "default_member_polling_without_native_inotify_handles"
+    ],
+    "previous_release": "paper-web-v22",
+    "previous_certification_sha256": "a88c35621497a0735f132579ac3ffd47286365ba1fc07944e6ba0d677b9b6c4a",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "same_tool_schema": true,
+    "new_capabilities": false,
+    "changed_code_locks": [
+      "scripts/harless_gateway.mjs"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-gateway-polling-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  },
+  "file_chat_public_context_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "same_host_owned_public_conversation_reader",
+      "carry_human_text_and_public_final_assistant_context",
+      "continue_started_external_parent_in_fresh_private_chat_scope",
+      "reject_new_prompt_while_external_native_turn_is_unclosed",
+      "remove_cross_user_cold_start_count_gate_keep_per_user_deduplication"
+    ],
+    "preserved_guards": [
+      "session_ownership_and_host_identity",
+      "tool_argument_result_and_extraction_filtering",
+      "member_credentials_and_budget_route_ownership",
+      "immutable_started_parent_presets"
+    ],
+    "previous_release": "paper-web-v23",
+    "previous_certification_sha256": "b03a719e60c03b07d8c0cea132aae2cacad9489afd7aacc7c24db21383a16cd1",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "same_tool_schema": true,
+    "new_capabilities": false,
+    "changed_code_locks": [
+      "scripts/harless_gateway.mjs",
+      "src/adapters/dsh_web_tasks.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-file-chat-continuation-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "larger_concurrency_capacity_measured": false,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  },
+  "native_capabilities_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "previous_release": "paper-web-v29",
+    "previous_certification_sha256": "9c06ea3461ebf0c00222f33e3e7e54fb2684241a488302b1342bd168faf05a17",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "same_mcp_schema": true,
+    "public_native_tools": [
+      "web_search",
+      "web_fetch",
+      "bash",
+      "job_list",
+      "job_output",
+      "job_kill",
+      "read",
+      "read_image",
+      "write",
+      "edit",
+      "glob",
+      "grep",
+      "ask_user_question",
+      "todo_write",
+      "skill",
+      "present",
+      "subagent",
+      "exit_plan_mode",
+      "get_goal",
+      "update_goal"
+    ],
+    "public_native_tools_in_certified_mcp_schema": false,
+    "public_native_tools_learned_or_certified": false,
+    "changed_code_locks": [
+      "scripts/harless_gateway.mjs",
+      "src/adapters/deepseek_cost_gate.py",
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/geneloop_delegation.ts",
+      "src/adapters/geneloop_fs_search.ts"
+    ],
+    "additional_code_locks": [
+      "config/geneloop-transport.json",
+      "scripts/reexport-native-recovery-compat.py",
+      "src/adapters/geneloop_task_trace.ts",
+      "src/adapters/model_transport.py"
+    ],
+    "previous_code_lock_differences": {
+      "scripts/harless_gateway.mjs": {
+        "previous": "f8204f1017a1a1fe0cfa7b3398b99320e809952b4eb93a099e99ef762edcd49e",
+        "current": "82986f72ee047cc5fcf2698f31fc40fa4796999b1b2fca1abe840f023a6e3669"
+      },
+      "src/adapters/deepseek_cost_gate.py": {
+        "previous": "38186818ccb3150d0e813b8f448a117b7ab251909b402d00ef91ea1dec095d58",
+        "current": "120d694948cd9501cea95f987d84d9805cae985ff1059aff4bdb48cf1122d61f"
+      },
+      "src/adapters/dsh_web_tasks.ts": {
+        "previous": "8db951b248e33d94abac69dc5425918818f056e30bc622c47d4f8ec7a7be9dc2",
+        "current": "bca9417b44242cc7078cd171edb886703f67bdc47b313fa65d6c71c1b927f2f0"
+      },
+      "src/adapters/geneloop_delegation.ts": {
+        "previous": "ad99d4366618206369d62f17814333a2171b9922d50590393a4423be6f062454",
+        "current": "7d0c0a96cfe18da985363b6fedc921ad800a740bec58ad07a3ad8dfd8b987f86"
+      },
+      "src/adapters/geneloop_fs_search.ts": {
+        "previous": "84e8f071b582ce9bd6185964525b3167d010a3dc93bdb406a7ca407497a21373",
+        "current": "a34b668611ab7770b12680f23360ec7bb7048fc37ae8af5d4dbc323b0d215410"
+      }
+    },
+    "unchanged_artifact_sha256": {
+      "library.json": "61ff932d7143fa3784ef122d1dfbe598bf65319c8d86989ff6e534eff5d1ec41",
+      "online-manifest.json": "7b5e9274b712501a59369403e5707b771a32bd7ffa75bf512844206bb85ad0d1",
+      "task.json": "d527101604be85ea4c50ee3a8c018d8643c44749e986d1caf15a521f9ff72c65",
+      "tool-schemas.json": "0ba797b7a3ed5155d92e4fda235ba4b251162cc0e7f014bb778ea956d29da0b0",
+      "source-evidence.json": "76ddb181021106915fea64ee02117c78db8fb3ef9d6324cb35a488fc9f459629"
+    },
+    "repairs": [
+      "shared_model_request_transport_capacity",
+      "preserve_bound_delegated_model_route",
+      "mirror_native_terminal_turn_events",
+      "sandbox_file_search_argument_compatibility"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "net_cost_reduction_proven": false,
+    "validation_record": "docs/experiments/dsh-native-capabilities-20261021.md",
+    "training_flag_scope": "Existing entry/report new_training=true identifies the original independently trained library; this compatibility export adds zero training tasks.",
+    "runtime_delta": "Reviewed request transport capacity, delegated model route binding, native terminal-turn projection and session-contained file search compatibility. Shared transport configuration/helper and task trace helper are explicitly source-locked. The learned online program, certified MCP schemas and original training evidence are unchanged; this export performs no new model calls or quality promotion."
+  }
+}

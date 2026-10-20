@@ -65,6 +65,8 @@ LEARNER += ['scenarios/file-management/management_temporal.py','src/adapters/man
 
 LEARNER += ['src/adapters/file_event_projection.ts','scenarios/file-management/semantic-sdk.patch.yml','src/adapters/harless_file_scene.ts','src/adapters/file_approval_bridge.ts','scenarios/file-management/file_scene_worker.py','scenarios/file-management/general-tools.json','src/adapters/file_scenario.py','src/adapters/file_cost_gate.py','src/adapters/file_acceptance_guard.ts','src/adapters/file_entry_motif.ts']
 
+LEARNER += ['src/adapters/geneloop_task_trace.ts','src/adapters/model_transport.py','config/geneloop-transport.json']
+
 def private(path):
     p = Path(path).absolute()
     if not p.is_relative_to((ROOT / '.local').absolute()):

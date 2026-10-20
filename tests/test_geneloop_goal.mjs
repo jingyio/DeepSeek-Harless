@@ -13,10 +13,11 @@ import {ToolRuntime} from '@deepseek-ai/dsh-tools';
 import {LlmRuntime,createUserMessage,isAgentLoopRequest} from '@deepseek-ai/dsh-llm';
 import {resolveAdapterOptions} from '@deepseek-ai/dsh-llm-deepseek';
 import {GoalService} from '@deepseek-ai/dsh-goal';
-import {apply as nativeGoalDriver} from '@deepseek-ai/dsh-goal-round-driver';
-import {apply as nativeGoalTools} from '@deepseek-ai/dsh-tool-goal';
+import * as nativeGoalDriver from '@deepseek-ai/dsh-goal-round-driver';
+import * as nativeGoalTools from '@deepseek-ai/dsh-tool-goal';
 import {WebDeepSeekAdapter} from '../src/adapters/harless_reasoning.ts';
 import {createGoalAdmission} from '../src/adapters/geneloop_goal.ts';
+import {createClosingTurnMirror} from '../src/adapters/geneloop_task_trace.ts';
 const frame=(delta,finish_reason=null)=>'data: '+JSON.stringify({id:'goal-local',object:'chat.completion.chunk',created:1,
  model:'deepseek-flash',choices:[{index:0,delta,finish_reason}]})+'\n\n';
 const text=value=>frame({content:value})+frame({},'stop')+'data: [DONE]\n\n';
@@ -40,8 +41,12 @@ async function fixture({complete=false,hold=false,clearContinue=false}={}){
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));server.unref();
  new SessionStore(ctx);new AgentRegistry(ctx);new SessionProjectionRegistry(ctx);new SystemPrompt(ctx,{});new ToolRuntime(ctx,{});new LlmRuntime(ctx);
- const loop=new AgentLoop(ctx,{agents:[]});new GoalService(ctx);nativeGoalDriver(ctx);nativeGoalTools(ctx,{});
+ const loop=new AgentLoop(ctx,{agents:[]});new GoalService(ctx);
+ for(const plugin of [nativeGoalDriver,nativeGoalTools]){const fiber=ctx.plugin(plugin,{});await fiber.await();assert.equal(fiber.state,2);}
  let task={request:{},status:'running',budget_session_id:'same-original-goal-meter'};
+ const traces=[],closing=createClosingTurnMirror((task,event)=>traces.push({task,event}));
+ ctx.on('session/event',(session,event)=>{if(session!==agent?.session||closing.record(session,event))return;
+  if(task.status==='running')traces.push({task,event});},{global:true});
  const goals=createGoalAdmission(ctx,{ensureOwned:async id=>assert.equal(id,parent.id),taskForSession:id=>id===agent?.id?task:undefined,isActive:()=>active,
   ownsLane:(id,a,t)=>id===parent.id&&a===agent&&(!t||t===task),currentTargets:async()=>[agent],
   submit:async input=>{submits.push(input);return {kind:'success',text:'admitted through normal task'};},audit:row=>audit.push(row)});
@@ -52,7 +57,7 @@ async function fixture({complete=false,hold=false,clearContinue=false}={}){
  ctx.on('agent/status',({agent:a,status})=>{if(a===agent&&status==='idle')kept.push(goals.keepTask(task,agent));},{global:true});
  parent=await loop.create('session-'+randomUUID(),{provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off',maxTokens:1000});
  agent=await loop.create('session-'+randomUUID(),{provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off',maxTokens:1000});task.request.session_id=agent.id;
- return {ctx,parent,agent,get task(){return task;},goals,wire,requests,submits,audit,errors,kept,roundStarted,
+ return {ctx,parent,agent,get task(){return task;},goals,wire,requests,submits,audit,errors,kept,roundStarted,traces,closing,
   invoke:(rawInput='',attachments=[])=>goals.command({agent:parent,commandId:'explicit-human-goal',rawInput,attachments,signal:new AbortController().signal}),
   start(){const input=submits.at(-1);goals.bind(input.intent,task,agent);assert.equal(ctx.goals.get(agent),undefined);
    agent.followup(createUserMessage({source:{kind:'user'},content:input.content}));},
@@ -121,6 +126,26 @@ test('disarming before meter close cancels goal authority and preserves authenti
   assert.equal(f.ctx.goals.get(f.agent).activation,'disarmed');assert.equal(f.goals.keepTask(f.task,f.agent),false);
   f.agent.followup(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'Hello after the cancelled goal.'}]}));await f.agent.whenIdle();
   assert.equal(f.errors.length,0,f.errors.map(e=>e.stack+' '+String(e.cause?.stack)).join('\n'));assert.equal(f.wire.length,3);assert.equal(f.requests.at(-1).round,false);
+ }finally{await f.close();}
+});
+
+test('cancelling a real native second goal turn preserves its aborted journal boundary in only the original Task mirror',async()=>{
+ const f=await fixture({hold:true});try{
+  await f.invoke('--rounds 3 Review evidence');f.start();await f.roundStarted;
+  const original=f.task;
+  assert.equal(f.agent.session.snapshotEvents().filter(e=>e.type==='turn/start').length,2);
+  f.closing.arm(original,f.agent);f.goals.disarmTask(original);original.status='cancelled';
+  f.agent.cancel({kind:'user'},{keepInbox:false});await f.agent.whenIdle();f.closing.release(original);
+  const source=f.agent.session.snapshotEvents().findLast(e=>e.type==='turn/end');
+  assert.equal(source.data.turn,2);assert.equal(source.data.reason.kind,'aborted');
+  const mirrored=f.traces.filter(row=>row.task===original).map(row=>row.event);
+  assert.deepEqual(mirrored.findLast(e=>e.type==='turn/end'),source);
+  assert.equal(mirrored.filter(e=>e.type==='turn/end').length,2);
+  assert.equal(original.status,'cancelled');assert.equal(f.ctx.goals.get(f.agent).activation,'disarmed');
+  const count=mirrored.length;f.replaceTask();
+  f.agent.followup(createUserMessage({source:{kind:'user'},content:[{type:'text',text:'Ordinary follow-up after cancel.'}]}));await f.agent.whenIdle();
+  assert.equal(f.traces.filter(row=>row.task===original).length,count,'next Task cannot append to the cancelled Task');
+  assert.equal(f.errors.length,0,f.errors.map(e=>e.message).join('\n'));assert.equal(f.wire.length,3);
  }finally{await f.close();}
 });
 

@@ -19,15 +19,19 @@ const within=(root:string,path:string)=>{const r=relative(root,path);return r===
 export function nativeSearchArgs(argv:readonly string[]):{args:string[];path:string} {
   if(argv[0]!==rgPath||argv[1]!=='--no-config'||argv.some(value=>typeof value!=='string'||value.includes('\0')))throw denied();
   const args=argv.slice(2),separator=args.lastIndexOf('--');
-  if(separator<0||separator!==args.length-2)throw denied();
-  const path=args.at(-1)!;let expected:string[];
+  if(separator>=0&&separator!==args.length-2)throw denied();
+  // The upstream tools omit both `--` and the path when the model chooses
+  // their documented current-directory default. Validate that exact template
+  // before adding our own explicit logical root for the isolated command.
+  const explicit=separator>=0,path=explicit?args.at(-1)!:'.',root=explicit?{path}:{};
+  let expected:string[];
   if(args[0]==='--files'&&args[1]?.startsWith('--glob=')){
-    expected=buildGlobCommand({pattern:args[1].slice(7),path});
+    expected=buildGlobCommand({pattern:args[1].slice(7),...root});
   }else if(args[0]==='--json'&&args[1]?.startsWith('--regexp=')){
-    expected=buildGrepCommand({pattern:args[1].slice(9),path,...(args[2]?.startsWith('--glob=')?{include:args[2].slice(7)}:{})});
+    expected=buildGrepCommand({pattern:args[1].slice(9),...root,...(args[2]?.startsWith('--glob=')?{include:args[2].slice(7)}:{})});
   }else throw denied();
   if(JSON.stringify(expected)!==JSON.stringify(args))throw denied();
-  return {args:[...args],path};
+  return {args:explicit?[...args]:[...args,'--',path],path};
 }
 
 export default class GeneLoopSubprocessRuntime extends LocalSubprocessRuntime {

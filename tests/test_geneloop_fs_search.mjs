@@ -13,6 +13,10 @@ const session='session-11111111-1111-4111-8111-111111111111';
 test('native rg admission accepts only exact upstream glob/grep templates, including literal shell characters',()=>{
  for(const args of [buildGlobCommand({pattern:'*.png',path:'/work/outputs'}),buildGrepCommand({pattern:"x'; echo injection",path:'.',include:'*.md'})])
   assert.deepEqual(nativeSearchArgs([rgPath,'--no-config',...args]).args,args);
+ for(const args of [buildGlobCommand({pattern:'inputs/*'}),buildGrepCommand({pattern:'alpha'})]){
+  const admitted=nativeSearchArgs([rgPath,'--no-config',...args]);
+  assert.equal(admitted.path,'.');assert.deepEqual(admitted.args,[...args,'--','.']);
+ }
  for(const args of [[rgPath,'--pre=cat','--','/work'],[rgPath,'--no-config','--files','--follow','--','/work'],
   ['/usr/bin/rg','--no-config',...buildGlobCommand({pattern:'*',path:'.'})],
   [rgPath,'--no-config','--json','--regexp=x','--pre=cat','--','.']])assert.throws(()=>nativeSearchArgs(args));
@@ -33,6 +37,10 @@ test('upstream glob/grep run in the same Session bwrap, hide credentials/foreign
   const glob=await definitions.get('glob').execute({pattern:'*.txt',path:'/work'},exec);
   const globText=JSON.stringify(glob);assert.ok(globText.includes('/work/inputs/notes.txt'));assert.ok(globText.includes('/work/outputs/page.txt'));
   assert.ok(!globText.includes(foreign));
+  const defaultGlob=await definitions.get('glob').execute({pattern:'inputs/*.txt'},exec);
+  assert.ok(JSON.stringify(defaultGlob).includes('/work/inputs/notes.txt'),'upstream omitted path searches this Session root');
+  const defaultGrep=await definitions.get('grep').execute({pattern:'current source alpha'},exec);
+  assert.ok(JSON.stringify(defaultGrep).includes('current source alpha'));
   const grep=await definitions.get('grep').execute({pattern:'alpha',path:'/work'},exec);
   assert.ok(JSON.stringify(grep).includes('current source alpha'));
   assert.ok(!JSON.stringify(grep).includes('OUTSIDE_SECRET'));

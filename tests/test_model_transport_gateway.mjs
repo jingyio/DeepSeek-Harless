@@ -14,13 +14,16 @@ const listen=async server=>{server.listen(0,'127.0.0.1');await once(server,'list
 const digest=body=>createHash('sha256').update(body).digest('hex');
 
 async function fixture(t){
-  const dir=mkdtempSync(join(tmpdir(),'model-http-envelope-')),received=[];
+  const dir=mkdtempSync(join(tmpdir(),'model-http-envelope-')),received=[],forwardedHeaders=[];
   t.after(()=>rmSync(dir,{recursive:true,force:true}));
   const upstream=http.createServer(async(req,res)=>{
     let size=0;const hash=createHash('sha256');
     for await(const part of req){size+=part.length;hash.update(part);}
     received.push({path:req.url,bytes:size,sha256:hash.digest('hex')});
-    res.writeHead(200,{'content-type':'application/json'});res.end('{}');
+    forwardedHeaders.push(req.headers);
+    res.writeHead(200,{'content-type':'application/json','connection':'keep-alive, x-upstream-hop',
+      'keep-alive':'timeout=12345','x-upstream-hop':'private hop','x-end-to-end-response':'preserved',
+      'set-cookie':'upstream-only=private'});res.end('{}');
   });
   const target=await listen(upstream);
   t.after(()=>{upstream.closeAllConnections();return new Promise(resolve=>upstream.close(resolve));});
@@ -42,8 +45,8 @@ async function fixture(t){
   const bind=await fetch(`http://127.0.0.1:${port}/bind`,{method:'POST',
     headers:{'content-type':'application/json','x-sss-control-token':delegated(alice,'control')},
     body:JSON.stringify({session_id:session,budget_session_id:'turn-'+digest(alice.id).slice(0,8)+'a'.repeat(24)})});
-  assert.equal(bind.status,200);await bind.text();received.length=0;
-  return {port,received,headers,alice,bob,delegated};
+  assert.equal(bind.status,200);await bind.text();received.length=0;forwardedHeaders.length=0;
+  return {port,received,forwardedHeaders,headers,alice,bob,delegated};
 }
 
 for(const size of [3*MiB,9*MiB,28*MiB])test(`scoped model relay forwards ${size/MiB} MiB byte-for-byte`,async t=>{
@@ -69,11 +72,11 @@ test('scoped vision and Chat use the same envelope capacity',async t=>{
   assert.deepEqual(f.received,[{path,bytes:Buffer.byteLength(body),sha256:digest(body)}]);
 });
 
-function rawPost(f,{length,chunks}){
+function rawPost(f,{length,chunks,headers={}}){
   return new Promise((resolve,reject)=>{
     let responded=false;
     const request=http.request({host:'127.0.0.1',port:f.port,path:'/v1/chat/completions',method:'POST',
-      headers:{...f.headers(),...(length===undefined?{}:{'content-length':length})}},response=>{
+      headers:{...f.headers(),...headers,...(length===undefined?{}:{'content-length':length})}},response=>{
       responded=true;const parts=[];response.on('data',part=>parts.push(part));
       response.on('end',()=>resolve({status:response.statusCode,body:JSON.parse(Buffer.concat(parts)),headers:response.headers}));
       response.on('error',reject);
@@ -85,6 +88,25 @@ function rawPost(f,{length,chunks}){
     }catch(error){if(!responded)reject(error);}})();
   });
 }
+
+test('valid chunked model body is reframed once with exact bytes and only end-to-end headers',async t=>{
+  const f=await fixture(t),body=JSON.stringify({model:'deepseek-flash',max_tokens:393216,
+    messages:[{role:'user',content:'A'.repeat(3*MiB)}]});
+  const response=await rawPost(f,{chunks:[body.slice(0,17),body.slice(17)],headers:{
+    connection:'keep-alive, x-hop-only','keep-alive':'timeout=5','x-hop-only':'must not be relayed',
+    te:'trailers','x-end-to-end':'preserved'}});
+  assert.equal(response.status,200);
+  assert.deepEqual(f.received,[{path:'/v1/chat/completions',bytes:Buffer.byteLength(body),sha256:digest(body)}]);
+  const forwarded=f.forwardedHeaders[0];
+  assert.equal(forwarded['content-length'],String(Buffer.byteLength(body)));
+  for(const name of ['transfer-encoding','keep-alive','x-hop-only','te'])assert.equal(forwarded[name],undefined,name);
+  assert.equal(forwarded['x-end-to-end'],'preserved');
+  assert.equal(forwarded['x-deepseek-harness-session-id'],session);
+  assert.equal(forwarded.authorization,'Bearer synthetic-provider-key');
+  for(const name of ['x-upstream-hop','set-cookie'])assert.equal(response.headers[name],undefined,name);
+  assert.notEqual(response.headers['keep-alive'],'timeout=12345','gateway may advertise its own socket lifetime');
+  assert.equal(response.headers['x-end-to-end-response'],'preserved');
+});
 
 test('oversized Content-Length returns typed 413 without resetting or forwarding',async t=>{
   const f=await fixture(t);

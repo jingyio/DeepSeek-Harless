@@ -3,7 +3,6 @@
  */
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {isAgentLoopRequest} from '@deepseek-ai/dsh-llm';
-import {parentAgentOptionsForDelegation} from '@deepseek-ai/dsh-subagent';
 import {WebDeepSeekAdapter} from './harless_reasoning.ts';
 import {assertContextUserEnvelope} from './geneloop_context.ts';
 import {digest} from '../motif_core/online_skill_runtime.mjs';
@@ -21,6 +20,7 @@ export function resolveExecutionAgent(ctx:any,agent=ctx.get('agents')?.currentIn
 export type DelegationHost={
  taskForSession:(id:string)=>any;
  isActive:(task:any)=>boolean;
+ modelRoute:(task:any,root:any)=>{provider:string;model:string;reasoningEffort?:string;maxTokens?:number};
  onChild?:(child:any,root:any,task:any)=>void;
  audit:(row:any,task:any)=>void;
 };
@@ -41,12 +41,20 @@ export function installTaskDelegation(ctx:any,host:DelegationHost,
   const task=host.taskForSession(parent.session.id);assertActive(task,parent);
   return {task,root:parent};
  };
+ const taskRoute=(task:any,root:any)=>{
+  const route=host.modelRoute(task,root),header=root.session.requestHeader()?.config;
+  if(!route||!route.provider||!route.model||
+   (route.maxTokens!==undefined&&(!Number.isSafeInteger(route.maxTokens)||route.maxTokens<=0))||
+   (header&&['provider','model','reasoningEffort','maxTokens'].some(field=>header[field]!==route[field])))
+   throw Error('Original delegated model route is not admitted');
+  return Object.freeze({provider:route.provider,model:route.model,reasoningEffort:route.reasoningEffort,maxTokens:route.maxTokens});
+ };
  const created=ctx.on('agent/created',({agent}:any)=>{
   const start=starts.getStore();if(!start)return;
   if(start.bound||agent.session.header.parentSession!==start.parent.session.id)throw Error('Unexpected native child publication');
   assertActive(start.task,start.root);start.bound=agent;
   const binding={child:agent,parent:start.parent,root:start.root,task:start.task,prompt:digest(start.request.prompt),
-   route:parentAgentOptionsForDelegation(start.root),humans:new Map<string,string>(),current:new Set<string>(),tools:undefined};
+   route:start.route,humans:new Map<string,string>(),current:new Set<string>(),tools:undefined};
   bindings.set(agent.session.id,binding);
   executionOwners.set(agent,{root:start.root,assert:()=>assertActive(start.task,start.root)});
   host.onChild?.(agent,start.root,start.task);
@@ -60,15 +68,19 @@ export function installTaskDelegation(ctx:any,host:DelegationHost,
  const disposeProvider=ctx.subagents.registerProvider({name:providerName,capabilities:{...native.capabilities,outputSchema:false},
   inheritsParentContext:native.inheritsParentContext,
   async start(request:any){
-   const {task,root}=ownedParent(request.parent),expected=parentAgentOptionsForDelegation(root);
+   const {task,root}=ownedParent(request.parent),expected=taskRoute(task,root);
    for(const field of ['provider','model','reasoningEffort','maxTokens'])
     if(request.agentOptions?.[field]!==undefined&&request.agentOptions[field]!==expected[field])throw Error('Delegated model route cannot exceed its parent task');
-   const abort=new AbortController(),slot:any={task,root,parent:request.parent,request,abort,ready:Promise.withResolvers()};
+   const abort=new AbortController(),slot:any={task,root,parent:request.parent,request,route:expected,abort,ready:Promise.withResolvers()};
    const signal=AbortSignal.any([request.signal,abort.signal]);signal.throwIfAborted();
    if(!slots.has(task))slots.set(task,new Set());slots.get(task)!.add(slot);
    let published:any;
    try{
-    const run=published=await starts.run(slot,()=>native.start({...request,signal}));
+    // Adapter defaults are part of the already admitted parent request even
+    // when absent from its creation options. Pin them in the native child
+    // options rather than weakening the request guard or inheriting a new
+    // provider default after a deployment/configuration change.
+    const run=published=await starts.run(slot,()=>native.start({...request,agentOptions:{...request.agentOptions,...expected},signal}));
     if(!slot.bound||run.localAgent!==slot.bound||run.id!==slot.bound.id)throw Error('Native child identity was not admitted');
     let closed:Promise<void>|undefined;
     const wrapped={...run,dispose(){return closed??=Promise.resolve().then(()=>run.dispose()).finally(()=>remove(slot));}};

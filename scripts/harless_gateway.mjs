@@ -170,11 +170,23 @@ export function createGateway(config) {
       return actual.length === expected.length && timingSafeEqual(actual, expected);
     }) ?? null;
   };
+  const endToEndHeaders = headers => {
+    const excluded = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+      'te', 'trailer', 'transfer-encoding', 'upgrade']);
+    for (const [name, value] of Object.entries(headers)) if (name.toLowerCase() === 'connection') {
+      for (const option of (Array.isArray(value) ? value : [value]))
+        for (const nominated of String(option).split(',')) excluded.add(nominated.trim().toLowerCase());
+    }
+    return Object.fromEntries(Object.entries(headers).filter(([name]) => !excluded.has(name.toLowerCase())));
+  };
   const scopedForward = (targetPort, path, method, headers, body, res, after) => {
     const upstream = http.request({ host: '127.0.0.1', port: targetPort, path, method,
-      headers: { ...headers, host: `127.0.0.1:${targetPort}`, 'content-length': body?.length ?? 0 }, timeout: 120000 }, response => {
+      // readBounded has decoded any incoming chunk framing. Forward exactly
+      // those bytes with their true length, never both Transfer-Encoding and
+      // Content-Length or another connection's hop-by-hop header fields.
+      headers: { ...endToEndHeaders(headers), host: `127.0.0.1:${targetPort}`, 'content-length': body?.length ?? 0 }, timeout: 120000 }, response => {
       if (after) after(response.statusCode);
-      const outgoing = { ...response.headers }; delete outgoing['set-cookie'];
+      const outgoing = endToEndHeaders(response.headers); delete outgoing['set-cookie'];
       res.writeHead(response.statusCode ?? 502, outgoing); response.pipe(res);
     });
     upstream.on('error', () => { if (!res.headersSent) send(res, 502, 'budget service unavailable'); else res.destroy(); });

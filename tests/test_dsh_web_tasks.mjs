@@ -1125,6 +1125,31 @@ test('Native mock chat admits dynamic content in a new session and records task 
   } finally { await f.close(); }
 });
 
+test('Task cancellation mirrors its native closing turn and keeps the original route until the Agent is idle',options,async()=>{
+ const f=await fixture({broker:true,realSessions:true});let release;
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  await f.ctx.sessionController.prompt({sessionId,requestId:'closing-turn-first',mode:'queue',content:[{type:'text',text:'Synthetic cancel boundary'}]},new AbortController().signal);
+  const task=(await f.api()).value.tasks[0],agent=f.agents.get(sessionId);
+  agent.session.append('turn/start',{turn:1});
+  const idle=new Promise(resolve=>release=resolve);agent.whenIdle=()=>idle;
+  await f.ctx.sessionController.cancel({sessionId});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.brokerRoutes.get(sessionId),'turn-'+task.task_id,'abort acknowledgement cannot retire an executing turn route');
+  const end=agent.session.append('turn/end',{turn:1,reason:{kind:'aborted',reason:{kind:'user'}}});
+  const path=join(f.directory,'tasks',task.task_id,'events.jsonl');
+  const recorded=readFileSync(path,'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(recorded.at(-1),end);assert.equal(recorded.filter(e=>e.type==='turn/end').length,1);
+  release();assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'cancelled');
+  assert.equal(f.brokerRoutes.has(sessionId),false);
+  const old=readFileSync(path,'utf8');
+  await f.ctx.sessionController.prompt({sessionId,requestId:'closing-turn-next',mode:'queue',content:[{type:'text',text:'Independent next turn'}]},new AbortController().signal);
+  agent.session.append('turn/start',{turn:2});agent.session.append('turn/end',{turn:2,reason:{kind:'completed'}});
+  assert.equal(readFileSync(path,'utf8'),old,'new Task cannot append to the cancelled Task journal');
+  await f.complete((await f.api()).value.tasks.find(row=>row.request_id==='closing-turn-next'));
+ }finally{release?.();await f.close();}
+});
+
 test('Real-provider native prompt runs immediately with budget admission and no confirmation dialog', options, async () => {
   const f = await fixture({ provider_mode: 'real' });
   try {
