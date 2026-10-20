@@ -104,3 +104,58 @@ test('reconnect compact baseline and subsequent delta share the same private tai
   assert.equal(initial+result[1].frame.chunk.text,'位置 〔内部路径已隐藏〕。');
   assert.equal(result[0].assistantStream.activeAttempt.nextIndex,1);
 });
+
+test('cold history passes the native session address when resolving old human admission content', async () => {
+  const event={type:'user/message',seq:8,time:1,surfaceOp:'append',data:{id:'old-user',role:'user',
+    source:{kind:'user',rpcId:'old-comparison-request'},content:[{type:'text',text:'请核对教学资料。'}],
+    harless_comparison:{id:'old-comparison'}}};
+  const record={type:'event',event}, requested=[];
+  const controller={async page(){return {records:[record],hasMore:false}}};
+  const restore=protectPublicSessionOutput(controller,(id,received)=>{
+    assert.equal(id,'old-session');requested.push(id);assert.equal(received,event);
+    return undefined; // The old comparison has no ordinary task admission.
+  });
+  const result=await controller.page({address:{kind:'session',sessionId:'old-session'},throughSeq:8});
+  assert.deepEqual(requested,['old-session']);assert.equal(result.records[0].event,event);
+  assert.equal(result.hasMore,false);restore();
+});
+
+test('native subagent history resolves the child identity for pages and live frames', async () => {
+  const event={type:'user/message',seq:0,time:1,surfaceOp:'append',data:{id:'user',role:'user',
+    source:{kind:'user',rpcId:'request'},content:[{type:'text',text:'hello'}]}};
+  const record={type:'event',event}, requested=[];
+  const controller={async page(){return {records:[record],hasMore:false}},async *follow(){
+    yield {type:'snapshot',header:{id:'child'},cursor:0,records:[record]};yield {type:'event',event};
+  }};
+  protectPublicSessionOutput(controller,id=>{requested.push(id);return undefined;});
+  const request={address:{kind:'subagent',parentSessionId:'parent',childSessionId:'child',mode:'background'},throughSeq:0};
+  await controller.page(request);for await(const _ of controller.follow(request)){}
+  assert.deepEqual(requested,['child','child','child']);
+});
+
+test('absent or malformed history addresses never resolve admission records with an undefined identity', async () => {
+  const event={type:'user/message',seq:0,time:1,surfaceOp:'append',data:{id:'user',role:'user',
+    source:{kind:'user',rpcId:'old-request'},content:[{type:'text',text:'untouched'}]}};
+  const record={type:'event',event};let lookedUp=0;
+  const controller={async page(){return {records:[record],hasMore:false}},async *follow(){
+    yield {type:'snapshot',header:{id:'server-header-is-not-request-authority'},cursor:0,records:[record]};
+    yield {type:'event',event};
+  }};
+  protectPublicSessionOutput(controller,()=>{lookedUp++;throw Error('Admission lookup requires a request identity');});
+  for(const request of [undefined,{}, {address:{}}, {address:{kind:'other',sessionId:'ignored'}},
+    {address:{kind:'session'}}, {address:{kind:'session',sessionId:42}}, {address:{kind:'subagent',parentSessionId:'parent'}}]){
+    assert.equal((await controller.page(request)).records[0].event,event);
+    for await(const frame of controller.follow(request))if(frame.type==='event')assert.equal(frame.event,event);
+  }
+  assert.equal(lookedUp,0);
+});
+
+test('history presentation preserves authoritative page and follow permission failures', async () => {
+  const denied=Object.assign(Error('forbidden'),{code:'gateway/forbidden'});let lookedUp=0;
+  const controller={async page(){throw denied;},async *follow(){throw denied;}};
+  protectPublicSessionOutput(controller,()=>{lookedUp++;});
+  const request={address:{kind:'session',sessionId:'foreign'},throughSeq:0};
+  await assert.rejects(controller.page(request),error=>error===denied);
+  await assert.rejects(async()=>{for await(const _ of controller.follow(request)){}},error=>error===denied);
+  assert.equal(lookedUp,0);
+});

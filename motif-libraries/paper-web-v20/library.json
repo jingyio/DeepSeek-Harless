@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "status": "certified_read_library",
+  "artifacts": [
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_8f37c5d30132",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__paper_checks__pin_document",
+        "mcp__paper_checks__read_pinned_document"
+      ],
+      "source_trace_ids": [
+        "train-1",
+        "train-2"
+      ],
+      "source_task_fingerprints": [
+        "paper-current-doc-arithmetic-v1",
+        "paper-current-doc-grammar-v1"
+      ],
+      "contract_signature": "ddd2865d938b00b6e3302fbdeb9c52570a7077df0c64f8e085a74a4d332dcf9b",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__paper_checks__pin_document",
+          "mcp__paper_checks__read_pinned_document"
+        ],
+        "operators": {
+          "mcp__paper_checks__pin_document": {
+            "tool": "mcp__paper_checks__pin_document",
+            "read_only": true,
+            "required_params": [
+              "name",
+              "sha256"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__paper_checks__read_pinned_document": {
+            "tool": "mcp__paper_checks__read_pinned_document",
+            "read_only": true,
+            "required_params": [
+              "source_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__paper_checks__pin_document",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__paper_checks__pin_document",
+                "from_field": "source_id",
+                "to_param": "source_id"
+              }
+            ],
+            "default_params": {
+              "page": 1
+            }
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__paper_checks__pin_document",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__paper_checks__read_pinned_document",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "train-1": 1,
+        "train-2": 1
+      },
+      "validation_trace_id": "heldout-1",
+      "validation_task_fingerprint": "paper-current-doc-table-v1",
+      "certified_digest": "2683e6525ff5c1fbdad660f53ce031b6b5bdd286e6b80b92ee4b68f0ddb4b0aa"
+    }
+  ],
+  "connectors": {},
+  "links": [],
+  "rejected": [],
+  "training_trace_ids": [
+    "train-1",
+    "train-2"
+  ],
+  "heldout_trace_ids": [
+    "heldout-1"
+  ],
+  "library_digest": "0d8ea2f703b635f808e00b50cc64d429d901049aa752cadc5726498559d63f9c",
+  "task_identity_evidence": {
+    "train-1": {
+      "research_decision_id": "paper-current-doc-arithmetic-v1",
+      "task_id": "b285d9312590448cbc54bb8d63ff5276",
+      "question_sha256": "b3db6647a9edca012802c8917e7204272f3f8f1e3d5dc65fe59dea625610dd41",
+      "manifest_sha256": "fdf8a5e56568f0276e66d1e052da9b6d0d6b03ea2d61cb8c8334511e76687ad0",
+      "events_sha256": "5578f484a80387870035b6cbb4eedf326a8bf6a7416d5da058ee28dd05114ad2",
+      "identity_sha256": "df15c441196f86eb5243ce3e872eaa1f7ed4487ed14ad46c51dfbaa3ec2c6adc"
+    },
+    "train-2": {
+      "research_decision_id": "paper-current-doc-grammar-v1",
+      "task_id": "b285d9310f8c4cd899f97b0f1376f22e",
+      "question_sha256": "64303f5a9f37b7071172703d18d6648d068065ca92aaab3f31b80f7ea924b0cb",
+      "manifest_sha256": "513199ed7580d3ab038c179ed6bead264a382414f007baf429ed06871d10de99",
+      "events_sha256": "1e650f134af82a5186dd5f012d77a27e9f1f2d88e4503114381c0e94a965f93e",
+      "identity_sha256": "c75443d33e523787937bf32ff10e4c918dcc8bbb36f2c54fdd12ef5aea7c604c"
+    },
+    "heldout-1": {
+      "research_decision_id": "paper-current-doc-table-v1",
+      "task_id": "b285d931b5e34bacba2e2203b30fee35",
+      "question_sha256": "24c42b6485a96c5bd7417efa4df94e9b36b098f03b59cac7ee943ca14397445c",
+      "manifest_sha256": "727083be1e1d613d38657ed7ebf97ce1ef7903995247fe3c4eeec58383e75b4f",
+      "events_sha256": "1f1fbd40e8944cf6f44b4b76b198ac6e55577c59093d4576de960f359904de2c",
+      "identity_sha256": "3ca1a42859bbbd4358ef5f597d58f63a12c905ccd61816972dc8b0e3fe7daedc"
+    }
+  }
+}

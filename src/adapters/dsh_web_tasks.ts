@@ -753,7 +753,7 @@ export function apply(ctx: any) {
   function originalContentFor(sessionId:string,event:any):readonly any[]|undefined {
     if(event.type!=='user/message'||event.data?.source?.kind!=='user')return;
     const task=tasks.get(requests.get(event.data.source.rpcId)??'');
-    if(task?.request.session_id===sessionId)return task.request.content;
+    if(task && task.request.session_id===sessionId)return task.request.content;
   }
   function recalledChildEvents(sessionId:string,events:any[]):any[] {
     return events.filter(event=>{

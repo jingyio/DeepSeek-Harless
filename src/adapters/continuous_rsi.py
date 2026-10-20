@@ -170,15 +170,25 @@ def load_config(path):
 def writer_lock(root, name):
     """One writer; dead owners are archived, never reset their paid reservations."""
     root=Path(root);root.mkdir(parents=True,exist_ok=True,mode=0o700);path=root/(name+'.lock')
+    # These locks cover short metadata publication, never a model/tool run.
+    # Independent chats can contend during startup without rejecting a task.
+    # Background learning keeps its existing fail-fast single-worker gate.
+    wait_for_metadata=name in {'series','state','management-profile'}
     deadline=time.monotonic()+30
     while True:
         try:
             with path.open('x') as f:json.dump({'pid':os.getpid(),'created':time.time()},f)
             break
+        except PermissionError:
+            # Windows can briefly report a delete-pending lock as access
+            # denied rather than FileExistsError. Retain real permission
+            # errors after the same bounded metadata wait.
+            if os.name!='nt' or not wait_for_metadata or time.monotonic()>=deadline:raise
+            time.sleep(.05)
         except FileExistsError:
             try:previous=read(path)
             except (FileNotFoundError,json.JSONDecodeError):
-                if name!='series' or time.monotonic()>=deadline:raise RuntimeError(name+' writer is active')
+                if not wait_for_metadata or time.monotonic()>=deadline:raise RuntimeError(name+' writer is active')
                 time.sleep(.05);continue
             from .process_state import process_exists
             if not process_exists(previous['pid']):
@@ -186,7 +196,7 @@ def writer_lock(root, name):
                 try:path.rename(archive/(name+'-'+uuid4().hex+'.json'))
                 except FileNotFoundError:pass
                 continue
-            if name!='series' or time.monotonic()>=deadline:raise RuntimeError(name+' writer is active')
+            if not wait_for_metadata or time.monotonic()>=deadline:raise RuntimeError(name+' writer is active')
             time.sleep(.05)
     path.chmod(0o600)
     try: yield
@@ -214,15 +224,17 @@ def records(root):
 
 def initialize(cfg):
     root=Path(cfg['state_root']);root.mkdir(parents=True,exist_ok=True,mode=0o700)
+    from .experience_library import enabled, synchronize
+    managed=enabled(cfg)
     with writer_lock(root,'state'):
         if not (root/'registry/current.json').exists():
             ExperienceRegistry(root/'registry').publish(reason='empty continuous library; learn only from new ordinary task events')
             durable(root/'pool.json',{'runs':{}},exclusive=True)
             state_event(root,'initialized',{'net_benefit_required':False,'config_sha256':cfg['config_sha256']})
-    from .experience_library import enabled, synchronize
-    if enabled(cfg):
-        from .management_seed import install
-        install(cfg)
+        if managed:
+            from .management_seed import install
+            install(cfg)
+    if managed:
         synchronize(cfg)
     return root
 

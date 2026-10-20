@@ -129,7 +129,10 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
     sessionController: {
       async list() { return { items: [...storedHeaders].map(([sessionId, meta]) => ({ sessionId, title: meta.title })) }; },
       async search() { return this.list(); },
-      async page({sessionId}) { return this.inspect(sessionId); },
+      async page({address,sessionId}) {
+        const snapshot=await this.inspect(address?.sessionId??sessionId);
+        return {records:snapshot.events.map(event=>({type:'event',event})),hasMore:false};
+      },
       async create(request) {
         assert.ok(request.cwd === undefined || request.workspaceId === undefined, 'native create rejects workspaceId together with cwd');
         const id = request.sessionId ?? `mock-session-${agents.size + 1}`;
@@ -2688,6 +2691,23 @@ test('paired native steps reach SSE, scoped trace, feedback and a single-lane br
   assert.equal(privateFailures.length,1);assert.match(privateFailures[0].message,/tools\.restrict/);
   await reader.cancel();reader=undefined;
  }finally{await reader?.cancel();await f.close();}
+});
+
+test('cold native history opens old comparison messages without ordinary task admission records', options, async () => {
+ const f=await fixture();try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const agent=f.agents.get(sessionId);
+  agent.session.append('turn/start',{turn:1});
+  const message=agent.session.append('user/message',createUserMessage({source:{kind:'user',rpcId:'legacy-comparison'},
+    content:[{type:'text',text:'请核对教学资料。'}],harless_comparison:{id:'legacy-comparison',turn:1}}),{surfaceOp:'append'});
+  agent.session.append('turn/end',{turn:1,reason:'stop'});
+  await f.restart();
+  const page=await f.ctx.sessionController.page({address:{kind:'session',sessionId},throughSeq:2,maxMessages:50},new AbortController().signal);
+  assert.equal(page.hasMore,false);
+  assert.equal(page.records.find(row=>row.event.type==='user/message').event.data.id,message.data.id);
+  assert.equal(page.records.find(row=>row.event.type==='user/message').event.data.content[0].text,'请核对教学资料。');
+  assert.equal(f.promptCalls.length,0,'opening old history must not run a model or create another task');
+ }finally{await f.close();}
 });
 
 test('cold blank archive restoration preserves authoritative native title events instead of resetting a manual name', options, async () => {
