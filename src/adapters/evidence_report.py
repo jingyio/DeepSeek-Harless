@@ -9,6 +9,7 @@ import hashlib
 import re
 import json
 import os
+import sys
 from collections import OrderedDict
 from importlib.metadata import version
 from contextvars import ContextVar
@@ -85,6 +86,34 @@ def fixed_bytes(root, relative, limit=32*1024*1024):
     if Path(relative).is_absolute() or '..' in Path(relative).parts or path.resolve()!=path or not path.is_file() or path.stat().st_nlink!=1 or path.stat().st_size>limit:
         raise ValueError('export_evidence_file_not_fixed')
     return path.read_bytes()
+
+def _replace_recovery_scope(work, raw, expected_sha256, *, windows=sys.platform=='win32'):
+    """Publish only over the verified current scope, preserving its protection.
+
+    Windows denies replacing a read-only destination (and deleting a read-only
+    temporary). Only the trusted service can access these scope files; Bash's
+    mount excludes them. Clear that attribute just for the checked replacement,
+    then restore it on both success and failure. No delete-before-rename gap.
+    """
+    name='review-recovery-scope.json';target=work/name
+    temporary=work/('report-scope-'+os.urandom(12).hex()+'.tmp')
+    writable=False
+    try:
+        with temporary.open('xb') as stream:
+            os.chmod(stream.name,0o600 if windows else 0o400);stream.write(raw)
+        if hashlib.sha256(fixed_bytes(work,name)).hexdigest()!=expected_sha256:
+            raise ValueError('current_recovery_scope_changed')
+        if windows:
+            os.chmod(target,0o600);writable=True
+            if hashlib.sha256(fixed_bytes(work,name)).hexdigest()!=expected_sha256:
+                raise ValueError('current_recovery_scope_changed')
+        os.replace(temporary,target)
+    finally:
+        try:
+            if writable:os.chmod(target,0o400)
+        finally:
+            if temporary.exists():
+                os.chmod(temporary,0o600);temporary.unlink()
 
 def rendering_config():
     # Hash the actual configured fonts and implementation, not only a preset ID.
@@ -202,15 +231,7 @@ class SessionReport(base.SessionReport):
         scope['capture']['arguments_sha256']=digest(args)
         scope.pop('input_contract_issues',None)
         raw=json.dumps(scope,ensure_ascii=False,sort_keys=True).encode()
-        if hashlib.sha256(fixed_bytes(self.work,'review-recovery-scope.json')).hexdigest()!=context['recovery_scope_sha256']:
-            raise ValueError('current_recovery_scope_changed')
-        temporary=self.work/('report-scope-'+os.urandom(12).hex()+'.tmp')
-        try:
-            with temporary.open('xb') as stream:
-                os.chmod(stream.name,0o400);stream.write(raw)
-            os.replace(temporary,self.work/'review-recovery-scope.json')
-        finally:
-            if temporary.exists():temporary.unlink()
+        _replace_recovery_scope(self.work,raw,context['recovery_scope_sha256'])
         return None
 
     def context(self,args):

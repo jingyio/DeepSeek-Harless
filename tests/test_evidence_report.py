@@ -156,3 +156,45 @@ def test_automatic_input_recovery_rejects_lost_text_then_accepts_lossless_regrou
     assert final['arguments']==corrected and final['policy']=='preserve_structure_allow_semantic_leaf_revisions'
     assert final['semantic_quality_accepted'] is False
     assert final['initial_arguments']==args and final['initial_arguments_sha256']==module.digest(args)
+
+
+@pytest.mark.parametrize('windows',[True] if module.sys.platform=='win32' else [False,True])
+def test_scope_publication_keeps_readonly_and_replaces_without_deleting_current_file(tmp_path,monkeypatch,windows):
+    import stat
+    target=tmp_path/'review-recovery-scope.json';old=b'previous protected scope';target.write_bytes(old);target.chmod(0o400)
+    replace=module.os.replace;calls=[]
+    def checked(source,destination):
+        assert destination.read_bytes()==old  # No unlink-before-replace window.
+        if windows:
+            assert destination.stat().st_mode&stat.S_IWRITE
+            assert source.stat().st_mode&stat.S_IWRITE
+        calls.append(1);return replace(source,destination)
+    monkeypatch.setattr(module.os,'replace',checked)
+    # Windows' native branch is already checked by the integration test above;
+    # POSIX can exercise both contracts without changing os.name/sys.platform.
+    module._replace_recovery_scope(tmp_path,b'current protected scope',hashlib.sha256(old).hexdigest(),windows=windows)
+    assert calls==[1] and target.read_bytes()==b'current protected scope'
+    assert not target.stat().st_mode&stat.S_IWRITE
+    assert not list(tmp_path.glob('report-scope-*.tmp'))
+
+
+def test_failed_windows_scope_replacement_preserves_old_version_protection_and_cleans_temporary(tmp_path,monkeypatch):
+    import stat
+    target=tmp_path/'review-recovery-scope.json';old=b'unchanged scope';target.write_bytes(old);target.chmod(0o400)
+    def refuse(*args):raise PermissionError('simulated replacement refused')
+    monkeypatch.setattr(module.os,'replace',refuse)
+    with pytest.raises(PermissionError,match='simulated replacement refused'):
+        module._replace_recovery_scope(tmp_path,b'new scope',hashlib.sha256(old).hexdigest(),windows=True)
+    assert target.read_bytes()==old and not target.stat().st_mode&stat.S_IWRITE
+    assert not list(tmp_path.glob('report-scope-*.tmp'))
+
+
+def test_windows_scope_replacement_rejects_stale_evidence_before_changing_target(tmp_path,monkeypatch):
+    import stat
+    target=tmp_path/'review-recovery-scope.json';target.write_bytes(b'newer current version');target.chmod(0o400)
+    def forbidden(*args):pytest.fail('stale scope must not be replaced')
+    monkeypatch.setattr(module.os,'replace',forbidden)
+    with pytest.raises(ValueError,match='current_recovery_scope_changed'):
+        module._replace_recovery_scope(tmp_path,b'stale candidate','0'*64,windows=True)
+    assert target.read_bytes()==b'newer current version' and not target.stat().st_mode&stat.S_IWRITE
+    assert not list(tmp_path.glob('report-scope-*.tmp'))

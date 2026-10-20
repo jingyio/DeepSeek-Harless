@@ -61,3 +61,13 @@
 定向 Python13、Negative Node27、复用 Node41通过。完整 Python1312通过/213跳过、完整 Node1171通过/5跳过；smoke18题/83来源和motif:check通过。初轮缺字体/本机Poppler配置导致3项Python失败；补环境后的Node先出现1项旧文案断言失败，已改为校验实际文件名和摘要。手工直接运行Node时另有两项调用到系统Python3.9，保留日志，统一项目Python后复核。没有放宽校验或删除测试；免费诊断不当真实模型收益。
 
 在上述条件下支持：旧结构模式能通过当前条件重新认证并接入；类型化局部恢复保留内容并保持低请求；负面库与正常状态捕获可共存。尚不支持：任意错误原因自动学习、自动捕获任务中所有 Negative 触发路径的真实覆盖、完整论文净降本、跨论文泛化及自由总结无误。后续先处理检索证据重复与科研事实核验，不继续扩大本次PR。
+
+## PR97：Windows失败修复与PR96同步
+
+PR97原始Windows检查在 `test_automatic_input_recovery_rejects_lost_text_then_accepts_lossless_regrouping` 失败：`chmod(0400)` 使目标带只读属性，Windows拒绝`os.replace`覆盖；异常清理又因临时文件只读而拒绝unlink。push/pull_request两项红叉重复同一故障。原始[Windows日志](https://github.com/jingyio/GeneLoop/actions/runs/39395007967/job/118535455106)保留，当次为1失败/1315通过/212跳过，Ubuntu通过。这是新增状态晋级实现的跨平台缺陷，不能用macOS通过代替Windows验收。
+
+修复仅作用于已认证当前scope的发布：同目录独占临时文件写完后校验旧SHA；Windows短暂清除目标只读属性，再次核对SHA后原子替换，成功/失败均恢复只读属性。临时文件清理前先清除自身只读属性，避免原异常被清理失败覆盖。保留旧文件直到replace，拒绝过时版本，不放宽原文、来源、授权或Schema检查。新增诊断覆盖两个发布路径、替换失败时旧字节/只读保留及清理、过时版本拒绝；实际Windows仍由原集成用例验证，不跳过原失败测试。
+
+同轮已无冲突合入main `abb9cf7`（[PR96](https://github.com/jingyio/GeneLoop/pull/96)）：Web并发、额度及默认输出容量更新保留，公共认证库也保留主线原样。历史实验的显式32768诊断输出配置和记录不追改；本次不新增真实模型请求，累计费用与pending不变。报告工具实现字节已变，后续付费实验须重新认证对应私有库，不能改旧锁重放为当前认证。
+
+本地完整回归Python1319通过/213跳过、Node1181通过/5跳过，smoke和motif:check通过。针对性22项通过。本地验证和跨平台检查均为免费代码诊断；修复提交的Windows/Ubuntu实际结果见[PR97检查](https://github.com/jingyio/GeneLoop/pull/97/checks)，不把代码兼容性通过扩大为Windows真实论文任务验收。日志位于私有`.local/pr97-windows-fix-20261020/`。
