@@ -194,23 +194,45 @@ test('cached results cannot leak into a different conversation during navigation
   assert.equal(f.render(), null); f.dispose();
 });
 
-test('numeric scoring is absent for running, completed and failed comparisons and never submits on refresh', async () => {
-  for (const status of ['running', 'completed', 'failed']) {
-    const value = comparison(); value.status = status; value.snapshot_revision = 1;
-    value.scores = { baseline: 2, motif: 5 }; // Old research results remain server-owned metadata.
-    for (const lane of Object.values(value.lanes)) lane.status = status;
+test('all paired scenes restore persisted 1–5 scores without writes on refresh or navigation', async () => {
+  for (const scene of ['ppt', 'paper-proofreading', 'research-data-analysis', 'files']) {
+    const value = comparison(); value.scene = scene; value.snapshot_revision = 1; value.scores = { baseline: 2, motif: 5 };
     const f = fixture(undefined, value); await flush(); f.render();
-    const absent = () => {
-      assert.equal(f.all(row => row.type === 'fieldset' || (row.type === 'input' && row.props.type === 'radio')).length, 0);
-      assert.doesNotMatch(f.content(f.render()), /结果评分|两侧完成后评分|正在保存评分/);
-    };
-    absent(); value.score_revision++; value.scores.baseline = 4;
-    f.events.get('focus')(); await flush(); f.render(); absent();
-    f.remount(structuredClone(value)); await flush(); f.render(); absent();
-    assert.equal(f.requests.filter(row => row.init.method === 'POST').length, 0,
-      'historic scores and navigation cannot create a hidden rating write');
-    f.dispose();
+    const checked = () => f.all(row => row.type === 'input' && row.props.type === 'radio' && row.props.checked).map(row => row.props['aria-label']);
+    assert.deepEqual(checked(), ['Baseline 2 分', 'Motif 5 分']);
+    f.events.get('focus')(); await flush(); f.render();
+    f.remount(structuredClone(value)); await flush(); f.render();
+    assert.deepEqual(checked(), ['Baseline 2 分', 'Motif 5 分']);
+    assert.equal(f.requests.filter(row => row.init.method === 'POST').length, 0); f.dispose();
   }
+});
+
+test('score changes bind exact output and revision; failed writes preserve confirmed scores', async () => {
+  let value = comparison(), reject = false;
+  const f = fixture((_url, init) => {
+    if (init.method !== 'POST') return Response.json(value);
+    if (reject) return Response.json({ error: { message: '结果已更新，请重试' } }, { status: 409 });
+    const body = JSON.parse(init.body); value = structuredClone(value);
+    value.scores[body.lane] = body.score; value.score_revision++; return Response.json(value);
+  }, value); await flush(); f.render();
+  const radio = label => f.all(row => row.props['aria-label'] === label)[0];
+  await radio('Baseline 4 分').props.onChange(); await flush(); f.render();
+  const body = JSON.parse(f.requests.find(row => row.init.method === 'POST').init.body);
+  assert.equal(body.action, 'rate'); assert.equal(body.score, 4); assert.equal(body.revision, 1); assert.equal(body.output_sha256, 'baseline-hash');
+  assert.equal(radio('Baseline 4 分').props.checked, true); assert.equal(radio('Motif 4 分').props.checked, false);
+  reject = true; await radio('Baseline 1 分').props.onChange(); await flush(); f.render();
+  assert.equal(radio('Baseline 4 分').props.checked, true); assert.equal(radio('Baseline 1 分').props.checked, false);
+  assert.match(f.content(f.render()), /结果已更新/); f.dispose();
+});
+
+test('ratings stay unavailable until both lanes complete and never appear on a single Chat continuation', async () => {
+  const value = comparison(); value.status = 'running'; value.scoring_available = false; value.lanes.motif.status = 'running';
+  const f = fixture(undefined, value); await flush(); f.render();
+  assert.ok(f.all(row => row.type === 'fieldset').every(row => row.props.disabled));
+  assert.match(f.content(f.render()), /两侧完成后可评分/); f.dispose();
+  const single = comparison(); single.presentation = 'single';
+  const g = fixture(undefined, single); await flush(); g.render();
+  assert.equal(g.all(row => row.type === 'fieldset').length, 0); g.dispose();
 });
 
 test('a rejected feedback action keeps confirmed votes and leaves the other lane unchanged', async () => {

@@ -65,7 +65,7 @@
         <p id="login-error" class="notice" role="status"></p><p class="switch">第一次使用？ <a href="/register">使用邀请码注册</a></p>
       </section>
       <section id="register-view" hidden><h2>创建你的工作空间</h2><p class="hint">邀请码由管理员提供。账号创建后，你的对话和文件会独立保存在服务器。</p>
-        <form id="register-form"><div class="field"><label for="register-invite">邀请码</label><input id="register-invite" name="inviteCode" autocomplete="off" required></div><div class="field"><label for="register-user">用户名</label><input id="register-user" name="username" minlength="3" maxlength="32" pattern="[a-zA-Z][a-zA-Z0-9_-]{2,31}" autocomplete="username" required><small>用于登录，可在账户设置中修改</small></div><div class="field"><label for="register-name">显示名称</label><input id="register-name" name="displayName" maxlength="40" autocomplete="name" required></div><div class="field"><label for="register-pass">密码</label><input id="register-pass" name="password" type="password" minlength="10" autocomplete="new-password" required><small>至少 10 位。本站暂不提供邮箱找回，请妥善保存。</small></div><button class="primary">创建账号</button></form>
+        <form id="register-form"><div class="field"><label for="register-invite">邀请码</label><input id="register-invite" name="inviteCode" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="在此粘贴邀请码" required></div><div class="field"><label for="register-user">用户名</label><input id="register-user" name="username" minlength="3" maxlength="32" pattern="[a-zA-Z][a-zA-Z0-9_-]{2,31}" autocomplete="username" required><small>用于登录，可在账户设置中修改</small></div><div class="field"><label for="register-name">显示名称</label><input id="register-name" name="displayName" maxlength="40" autocomplete="name" required></div><div class="field"><label for="register-pass">密码</label><input id="register-pass" name="password" type="password" minlength="10" autocomplete="new-password" required><small>至少 10 位。本站暂不提供邮箱找回，请妥善保存。</small></div><button class="primary">创建账号</button></form>
         <p id="register-error" class="notice" role="status"></p><p class="switch">已有账号？ <a href="/login">返回登录</a></p>
       </section>
       <section id="claim-view" hidden><h2>激活所有者账号</h2><p class="hint">设置你的登录信息后，原有的对话、论文资料和工作区会保留在这个账号。</p>
@@ -79,7 +79,7 @@
     <main class="content"><div class="crumb">设置 / 账户</div><h1>账户设置</h1><p class="intro">管理你的登录信息。更改会保存在服务器，下次登录继续使用。</p>
       <section class="section"><div><h2>个人资料</h2><p>这个名称显示在你的账户中。</p></div><div><form id="profile-form"><div class="field"><label for="profile-name">显示名称</label><input id="profile-name" name="displayName" maxlength="40" required></div><div class="field"><label for="profile-user">用户名</label><input id="profile-user" name="username" minlength="3" maxlength="32" pattern="[a-zA-Z][a-zA-Z0-9_-]{2,31}" required></div><button class="primary">保存资料</button></form><p id="profile-error" class="notice" role="status"></p></div></section>
       <section class="section"><div><h2>密码与安全</h2><p>修改密码后，所有设备都需要重新登录。</p></div><div><form id="password-form"><div class="field"><label for="current-pass">当前密码</label><input id="current-pass" name="currentPassword" type="password" autocomplete="current-password" required></div><div class="field"><label for="new-pass">新密码</label><input id="new-pass" name="newPassword" type="password" minlength="10" autocomplete="new-password" required><small>至少 10 位</small></div><div class="field"><label for="repeat-pass">确认新密码</label><input id="repeat-pass" name="repeatPassword" type="password" minlength="10" autocomplete="new-password" required></div><button class="primary">修改密码</button></form><p id="password-error" class="notice" role="status"></p></div></section>
-      <section id="invite-section" class="section" hidden><div><h2>邀请同学</h2><p>生成一次性邀请码。收到邀请码的同学可自行注册账号；请单独发给受邀者。</p></div><div><form id="invite-form"><div class="field"><label for="invite-pass">确认当前密码</label><input id="invite-pass" name="currentPassword" type="password" autocomplete="current-password" required></div><button class="primary">生成邀请码</button></form><p id="invite-error" class="notice" role="status"></p><output id="invite-code" class="invite-code" aria-label="新邀请码" hidden></output></div></section>
+      <section id="invite-section" class="section" hidden><div><h2>邀请同学</h2><p>邀请码永久有效，每个码可注册一个账号，使用后失效。</p></div><div><form id="invite-form"><div class="field"><label for="invite-pass">确认当前密码</label><input id="invite-pass" name="currentPassword" type="password" autocomplete="current-password" required></div><div class="field"><label for="invite-count">生成数量（1–20）</label><input id="invite-count" name="count" type="number" min="1" max="20" step="1" value="5" required></div><button class="primary">生成邀请码</button></form><p id="invite-error" class="notice" role="status"></p><div id="invite-code" hidden><button id="invite-copy-all" type="button" class="minor">复制全部邀请码</button><div id="invite-list"></div></div></div></section>
       <section class="section"><div><h2>工作空间</h2><p>你的会话、任务与文件仅属于此账号。</p></div><div class="meta"><div>账号类型　<strong id="role"></strong></div><div>创建时间　<strong id="created"></strong></div><div>存储位置　<strong>服务器私有空间</strong></div></div></section>
     </main>
   </div>
@@ -116,13 +116,32 @@
           $('loading-note').textContent='启动时间较长，请重新尝试。';$('loading-retry').hidden=false;return
         }
         if(path==='/account'){if(!me){location.replace('/login?next=%2Faccount');return}show('account');$('side-name').textContent=me.displayName;$('avatar').textContent=me.displayName.slice(0,1);$('profile-name').value=me.displayName;$('profile-user').value=me.username;$('role').textContent=me.role==='owner'?'所有者':'成员';$('created').textContent=new Date(me.createdAt).toLocaleString('zh-CN');
-          if(me.role==='owner'){$('invite-section').hidden=false;$('invite-form').addEventListener('submit',async event=>{event.preventDefault();const button=$('invite-form').querySelector('button.primary');button.disabled=true;$('invite-code').hidden=true;notice('invite-error','');try{const result=await api('invites',{currentPassword:$('invite-pass').value,count:1});$('invite-code').textContent=result.codes[0];$('invite-code').hidden=false;$('invite-pass').value='';notice('invite-error','邀请码只显示这一次，请现在复制并单独发送给同学。',true)}catch(error){notice('invite-error',error.message)}finally{button.disabled=false}})}
+          if(me.role==='owner'){
+            $('invite-section').hidden=false;const codes=[];
+            const copy=async values=>{try{await navigator.clipboard.writeText(values.join('\n'));notice('invite-error','已复制 '+values.length+' 个邀请码。',true)}catch{notice('invite-error','浏览器未允许自动复制，请点击邀请码后按 Ctrl+C（Mac：⌘C）复制。')}};
+            $('invite-copy-all').onclick=()=>copy(codes);
+            $('invite-form').addEventListener('submit',async event=>{
+              event.preventDefault();const button=$('invite-form').querySelector('button.primary');if(button.disabled)return;button.disabled=true;notice('invite-error','');
+              try{const result=await api('invites',{currentPassword:$('invite-pass').value,count:Number($('invite-count').value)});
+                for(const code of result.codes){codes.push(code);const row=document.createElement('div');row.className='field';row.style.marginTop='12px';
+                  const input=document.createElement('input');input.value=code;input.readOnly=true;input.spellcheck=false;input.setAttribute('aria-label','邀请码 '+codes.length);input.style.userSelect='text';input.onfocus=()=>input.select();
+                  const copyButton=document.createElement('button');copyButton.type='button';copyButton.className='minor';copyButton.textContent='复制';copyButton.setAttribute('aria-label','复制邀请码 '+codes.length);copyButton.onclick=()=>copy([code]);
+                  row.append(input,copyButton);$('invite-list').append(row);
+                }
+                $('invite-code').hidden=false;$('invite-pass').value='';notice('invite-error','已生成 '+result.codes.length+' 个永久邀请码。离开页面前请复制保存；关闭页面不会使邀请码失效。',true);
+              }catch(error){notice('invite-error',error.message)}finally{button.disabled=false}
+            });
+          }
           bind('profile-form','profile','profile-error',result=>{$('side-name').textContent=result.user.displayName;$('avatar').textContent=result.user.displayName.slice(0,1);notice('profile-error','资料已保存',true)});
           $('password-form').addEventListener('submit',async event=>{event.preventDefault();const form=$('password-form'),body=formObject(form);if(body.newPassword!==body.repeatPassword){notice('password-error','两次输入的新密码不一致');return}const button=form.querySelector('button.primary');button.disabled=true;try{await api('password',body);location.replace('/login?changed=1')}catch(error){notice('password-error',error.message)}finally{button.disabled=false}});
           $('logout').onclick=async()=>{try{await api('logout',{});location.replace('/login')}catch(error){alert(error.message)}};return}
         if(me){location.replace('/');return}show('auth');const view=path==='/claim'?'claim':path==='/register'?'register':'login';$(view+'-view').hidden=false;
         if(view==='login'){if(new URLSearchParams(location.search).has('changed'))notice('login-error','密码已修改，请重新登录。',true);bind('login-form','login','login-error',()=>{const next=new URLSearchParams(location.search).get('next');location.replace(next==='/account'?next:'/')})}
-        else if(view==='register')bind('register-form','register','register-error',()=>location.replace('/'));
+        else if(view==='register'){
+          // Native paste stays available; trim accidental surrounding whitespace only.
+          $('register-invite').addEventListener('input',event=>{const input=event.target;const value=input.value.trim();if(value!==input.value)input.value=value});
+          bind('register-form','register','register-error',()=>location.replace('/'));
+        }
         else{const code=new URLSearchParams(location.search).get('claim');if(!code){notice('claim-error','激活链接缺少验证码');$('claim-form').querySelector('button').disabled=true;return}bind('claim-form','claim','claim-error',()=>location.replace('/'));$('claim-form').addEventListener('formdata',event=>event.formData.set('claimCode',code));}
       }init();
     })();

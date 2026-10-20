@@ -15,7 +15,7 @@ const catalog = { default: { provider: 'deepseek', model: 'flash', reasoning_eff
     { id: 'off', label: 'Off', available: true }, { id: 'high', label: 'On', available: false, unavailable_reason: '超过当前任务预算' }] },
 ] };
 
-function fixture(fetcher, { lateShell = false } = {}) {
+function fixture(fetcher, { lateShell = false, clipboard } = {}) {
   const entries = new Map(), declared = new Set(['sidebar.settings', 'settings.section', 'settings.general.item']);
   const listeners = new Map(), cleanups = [], requests = [], navigations = [], mounted = new Set();
   let seat, cursor = 0;
@@ -57,7 +57,7 @@ function fixture(fetcher, { lateShell = false } = {}) {
     },
   };
   const ctx = { slots, effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup); } };
-  const window = { location: { replace: url => navigations.push(url) } };
+  const window = { navigator: { clipboard }, location: { replace: url => navigations.push(url) } };
   const fetch = async (url, options) => {
     requests.push({ url, options });
     return fetcher ? fetcher(url, options) : Response.json(url === '/api/account/me' ? { user } : catalog);
@@ -159,15 +159,38 @@ test('password mismatch does not submit and an explicit successful change return
   assert.deepEqual(f.navigations, ['/login?changed=1']); assert.equal(f.requests[1].url, '/api/account/password'); f.dispose();
 });
 
-test('owner invitation requires current password and keeps the returned single-use code only in this page', async () => {
+test('owner can generate batches, copy individual/all codes, paste passwords and retain previous codes on failure', async () => {
+  let post = 0; const copied = [];
+  const f = fixture((url) => url.endsWith('/me') ? Response.json({ user: { ...user, role: 'owner' } }) :
+    ++post === 1 ? Response.json({ codes: ['invite-one', 'invite-two', 'invite-three'] }) :
+    post === 2 ? Response.json({ error: '当前密码不正确' }, { status: 403 }) : Response.json({ codes: ['invite-four'] }),
+    { clipboard: { writeText: async text => copied.push(text) } });
+  const page = f.mount('geneloop-account'); await flush(); page.render();
+  const input = name => page.all(row => row.type === 'input' && row.props.name === name).at(-1);
+  const submit = async () => { page.all(row => row.type === 'form')[2].props.onSubmit({ preventDefault() {} }); await flush(); page.render(); };
+  let stopped = false; input('currentPassword').props.onPaste({ stopPropagation() { stopped = true; } }); assert.ok(stopped);
+  input('currentPassword').props.onChange({ target: { value: 'current-password' } });
+  input('count').props.onChange({ target: { value: '3' } }); page.render(); await submit();
+  assert.deepEqual(JSON.parse(f.requests[1].options.body), { currentPassword: 'current-password', count: 3 });
+  assert.match(page.text(), /永久有效.*使用后失效/);
+  const codes = () => page.all(row => row.type === 'input' && row.props.readOnly);
+  assert.deepEqual(codes().map(row => row.props.value), ['invite-one', 'invite-two', 'invite-three']);
+  await page.all(row => row.props['aria-label'] === '复制邀请码 2')[0].props.onClick(); page.render();
+  await page.all(row => row.type === 'button' && row.children.includes('复制全部邀请码'))[0].props.onClick(); page.render();
+  assert.deepEqual(copied, ['invite-two', 'invite-one\ninvite-two\ninvite-three']);
+  await submit(); assert.match(page.text(), /当前密码不正确/); assert.equal(codes().length, 3);
+  await submit(); assert.equal(codes().length, 4); assert.deepEqual(f.navigations, []); f.dispose();
+});
+
+test('blocked clipboard keeps invitation selectable with a recoverable copy hint', async () => {
   const f = fixture(url => Response.json(url.endsWith('/me') ? { user: { ...user, role: 'owner' } } : { codes: ['fixture-invite'] }));
-  const page = f.mount('geneloop-account'); await flush(); page.render(); assert.match(page.text(), /邀请同学/);
-  const form = page.all(row => row.type === 'form')[2];
-  f.all(row => row.type === 'input', form)[0].props.onChange({ target: { value: 'current-password' } }); page.render();
+  const page = f.mount('geneloop-account'); await flush(); page.render();
   page.all(row => row.type === 'form')[2].props.onSubmit({ preventDefault() {} }); await flush(); page.render();
-  assert.equal(f.requests[1].url, '/api/account/invites'); assert.deepEqual(JSON.parse(f.requests[1].options.body), { currentPassword: 'current-password', count: 1 });
-  assert.equal(page.all(row => row.type === 'output')[0].children[0], 'fixture-invite');
-  assert.deepEqual(f.navigations, []); f.dispose();
+  await page.all(row => row.props['aria-label'] === '复制邀请码 1')[0].props.onClick(); page.render();
+  assert.match(page.text(), /Ctrl\+C/);
+  const code = page.all(row => row.type === 'input' && row.props.readOnly)[0]; let selected = false;
+  code.props.onFocus({ target: { select() { selected = true; } } }); assert.ok(selected);
+  assert.equal(code.props.style.userSelect, 'text'); assert.equal(code.props.value, 'fixture-invite'); f.dispose();
 });
 
 test('account authentication failures stay recoverable in settings and do not redirect without user action', async () => {

@@ -1,4 +1,6 @@
-> 2026-10-20 当前：PR84/88/92/93已集成，后续[PR96](https://github.com/jingyio/GeneLoop/pull/96)修复多对话准入错误、默认8K截断和File独立路径额度。运行源码c3cd21a已统一发布；费用/次数/output app cap为null，wire最大393216，File v7/Paper19/PPT14，旧库/数据/累计账本保留。Python1514通过/3跳过，Node1167通过/8个主线既有实验沙箱失败/3跳过，smoke/Motif和最终原生Chat/File复验通过。CI与合并状态以PR96对应head为准。当前交接见[Web](harness-web.md)、[File](file-management.md)，完整证据及剩余沙箱失败见[实验记录](../experiments/provider-output-20261020.md)。以下各PR状态按其历史时间保留。
+> 2026-10-20 当前：PR84/88/92/93及[PR96](https://github.com/jingyio/GeneLoop/pull/96)已集成。当前运行源码756a181（[PR98](https://github.com/jingyio/GeneLoop/pull/98)批量邀请码与评分恢复）已统一发布、定向检查与Ubuntu/Windows完整CI通过，正式网页评分保存/刷新验收通过；详见[本轮记录](../experiments/invites-ratings-20261020.md)。费用/次数/output app cap为null，wire最大393216，File v7/Paper19/PPT14，原账号、库与累计账本保留。此前并行/输出额度检查及环境失败见[记录](../experiments/provider-output-20261020.md)；当前交接见[Web](harness-web.md)、[File](file-management.md)。以下各PR状态按其历史时间保留。
+
+- 2026-10-20（Codex）：[PR98](https://github.com/jingyio/GeneLoop/pull/98) 恢复场景双栏 1–5 分，账户两入口支持默认5/每批1–20个邀请码、逐个/全部复制与原生粘贴。原邀请码本无TTL，未使用永久有效，每码注册一次；页面关闭只丢失明文显示。源码756a181已统一发布，保留原账号、评分、库和累计账本。本地/服务器定向127项、服务器smoke/Motif及Ubuntu/Windows完整CI通过；正式网页已有Paper/PPT/Data记录均显示评分，Data两侧4/5分保存并刷新保留（仅接口诊断，不是质量打分）。普通Chat/新版独立File不加旧数值接口。本轮新增模型请求0；历史测试会话仍有加载失败/慢提示，未宣称本轮修复加载链路。见[实验记录](../experiments/invites-ratings-20261020.md)和[接口](../interfaces.md#邀请与场景数值评分2026-10-20-恢复)。合并状态以PR98为准；回退用统一service rollback。
 
 ## 2026-10-20：PR84 / PR88 能力保留集成（PR93，待审）
 
