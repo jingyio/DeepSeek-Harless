@@ -8,6 +8,8 @@ Default is a network-free preview. Run on the configured Linux service host:
 Use --base-url with the configured publicOrigin to include the public website
 path; the default remains gateway loopback. Invite administration is always
 loopback-only and account credentials are never followed to another origin.
+An optional --https-proxy http://127.0.0.1:PORT routes only public HTTPS through
+a local CONNECT proxy; the internal invitation API remains a direct request.
 
 Does not start/restart services, rewrite quotas, reset accounting, use existing
 members, author presentations, or automatically cancel timed-out requests.
@@ -40,6 +42,7 @@ import zipfile
 TERMINAL = {"completed", "failed", "cancelled", "budget_exhausted"}
 SCENES = {"paper": "/paper ", "ppt": "/ppt ", "data": "/data ", "chat": ""}
 TASK_ID = re.compile(r"[a-f0-9]{32}")
+USER_AGENT = "Mozilla/5.0 GeneLoopStress/1.0"
 
 
 def now():
@@ -94,6 +97,15 @@ def normalized_origin(value):
     return parsed.scheme + "://" + host + suffix
 
 
+def loopback_proxy(value):
+    parsed = urllib.parse.urlsplit(str(value))
+    if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or parsed.port is None
+            or not 1 <= parsed.port <= 65535 or parsed.username is not None or parsed.password is not None
+            or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
+        raise ValueError("HTTPS proxy must be http://127.0.0.1:PORT without credentials, path, query or fragment")
+    return "http://127.0.0.1:" + str(parsed.port)
+
+
 class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, request, response, code, message, headers, newurl):
         target = urllib.parse.urljoin(request.full_url, newurl)
@@ -106,15 +118,18 @@ class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class Client:
-    def __init__(self, base, origin, cookie=""):
+    def __init__(self, base, origin, cookie="", *, https_proxy=None):
         self.base, self.origin, self.cookie = base.rstrip("/"), origin, cookie
+        if https_proxy and (not self.base.startswith("https://") or normalized_origin(self.base) != normalized_origin(origin)):
+            raise ValueError("HTTPS proxy is restricted to this client's configured public HTTPS origin")
+        self.https_proxy = loopback_proxy(https_proxy) if https_proxy else None
         # A member has several concurrent conversations. Keep urllib handler
         # instances thread-local; the authenticated account cookie is fixed
         # before workers start and no shared CookieJar is mutated by requests.
         self.local = threading.local()
 
     def request(self, path, body=None, *, binary=False, timeout=120, headers=None):
-        request_headers = {"Origin": self.origin, **(headers or {})}
+        request_headers = {"Origin": self.origin, "User-Agent": USER_AGENT, **(headers or {})}
         if self.cookie:
             request_headers["Cookie"] = self.cookie
         data = None if body is None else body if binary else json.dumps(body).encode()
@@ -122,7 +137,8 @@ class Client:
             request_headers["Content-Type"] = "application/octet-stream" if binary else "application/json"
         request = urllib.request.Request(self.base + path, data=data, headers=request_headers)
         if not hasattr(self.local, "opener"):
-            self.local.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), SameOriginRedirect())
+            proxies = {"https": self.https_proxy} if self.https_proxy else {}
+            self.local.opener = urllib.request.build_opener(urllib.request.ProxyHandler(proxies), SameOriginRedirect())
         try:
             with self.local.opener.open(request, timeout=timeout) as response:
                 raw = response.read()
@@ -248,6 +264,7 @@ class Stress:
         self.loopback = f'http://127.0.0.1:{int(config["port"])}'
         self.base = normalized_origin(args.base_url) if args.base_url else self.loopback
         self.origin = config["publicOrigin"]
+        self.https_proxy = args.https_proxy if self.base.startswith("https://") and self.base == normalized_origin(self.origin) else None
         self.members = Path(config["membersDir"])
         self.clients, self.credentials = {}, {}
         self.result = load(directory / "results.json") if args.resume else {
@@ -292,7 +309,7 @@ class Stress:
                 raise RuntimeError("Resume requires the original five private diagnostic identities")
             for index in range(1, 6):
                 private = credentials[str(index)]
-                client = Client(self.base, self.origin)
+                client = Client(self.base, self.origin, https_proxy=self.https_proxy)
                 try:
                     _, _, headers = self.account_request(client, index, "/api/account/login", {
                         "username": private["username"], "password": private["password"]})
@@ -338,7 +355,7 @@ class Stress:
             save(self.directory / "credentials.json", self.credentials)
             for index in range(1, 6):
                 private = self.credentials[str(index)]
-                client = Client(self.base, self.origin)
+                client = Client(self.base, self.origin, https_proxy=self.https_proxy)
                 _, answer, headers = self.account_request(client, index, "/api/account/register", {
                     "inviteCode": private["inviteCode"], "username": private["username"],
                     "displayName": f"压力诊断 {index}", "password": private["password"]})
@@ -368,7 +385,7 @@ class Stress:
                 except HttpFailure as error:
                     if error.status not in {429, 503}:
                         raise
-                time.sleep(1)
+                time.sleep(self.args.poll_interval)
             else:
                 raise RuntimeError("Member cold start timeout")
             self.update(user, cold_start_seconds=round(time.monotonic() - started, 3))
@@ -434,7 +451,7 @@ class Stress:
                     with self.lock:
                         row.setdefault("read_errors", []).append({"at": now(), "error": error_code(error)})
                         self.persist()
-                    time.sleep(1)
+                    time.sleep(max(1, self.args.poll_interval))
                     continue
                 states = {name: lane.get("status") for name, lane in view.get("lanes", {}).items()}
                 if row.get("status") != view["status"] or row.get("lane_states") != states:
@@ -463,7 +480,7 @@ class Stress:
             if last != row.get("status"):
                 last = row.get("status")
                 self.persist()
-            time.sleep(.5)
+            time.sleep(self.args.poll_interval)
         self.update(row, timed_out=True, status="unknown_timeout")
         raise TimeoutError("Request remains unverified; not automatically resubmitted or cancelled")
 
@@ -817,21 +834,33 @@ def main():
     parser.add_argument("--execute-real", action="store_true")
     parser.add_argument("--service-plan", type=Path, default=os.environ.get("GENELOOP_SERVICE_CONFIG"))
     parser.add_argument("--base-url", help="Configured publicOrigin or gateway loopback only; default loopback")
+    parser.add_argument("--https-proxy", help="Optional http://127.0.0.1:PORT CONNECT proxy for public HTTPS only")
     parser.add_argument("--results", type=Path)
     parser.add_argument("--resume", type=Path, help="Existing private run; reuses only its five test members")
     parser.add_argument("--phase", choices=("scheduler", "delivery", "all", "audit"), default="all")
     parser.add_argument("--timeout", type=float, default=1200, help="Per request; timeout never means success")
     parser.add_argument("--startup-timeout", type=float, default=180)
+    parser.add_argument("--poll-interval", type=float, default=1, help="HTTP status polling seconds; local concurrency sampling stays 0.5 s")
     parser.add_argument("--sleep-seconds", type=int, default=20)
     parser.add_argument("--retry-failed", type=int, default=0, help="Explicit new attempts for terminal failures only; defaults to none")
     parser.add_argument("--ledger", type=Path, help="Existing cumulative proxy JSONL; read-only, no reset")
     args = parser.parse_args()
+    if args.https_proxy:
+        try:
+            args.https_proxy = loopback_proxy(args.https_proxy)
+        except (TypeError, ValueError):
+            parser.error("--https-proxy must be http://127.0.0.1:PORT without credentials, path, query or fragment")
     if args.sleep_seconds < 1 or args.retry_failed < 0 or args.timeout <= 0:
         parser.error("Invalid duration or retry count")
+    if not math.isfinite(args.poll_interval) or args.poll_interval <= 0:
+        parser.error("--poll-interval must be a finite positive number")
     preview = {"executed": False, "users": 5, "new_accounts_via_invites": True, "conversations_per_user": list(SCENES),
                "initial_concurrent_scenario_conversations": 15, "initial_scene_lanes": 30, "extra_chat_conversations": 5,
                "scheduler_rounds_per_conversation": 3, "delivery_rounds_per_conversation": 1, "phase": args.phase,
                "transport": "explicit origin, checked against service plan at execution" if args.base_url else "gateway loopback",
+               "public_https_proxy_requested": bool(args.https_proxy), "admin_proxy": False,
+               "user_agent": USER_AGENT, "http_poll_interval_seconds": args.poll_interval,
+               "local_task_sample_interval_seconds": .5,
                "real_model": "DeepSeek Flash / Off", "application_budget_and_request_caps": None, "provider_max_tokens": 393216,
                "accounting": "Cumulative ledger remains unchanged; only exact own task receipts are reported", "credentials_printed": False}
     if not args.execute_real:
@@ -868,7 +897,10 @@ def main():
             parser.error("Published member policy has an application cap: " + key)
     runner = Stress(args, plan, config, directory)
     runner.result["executions"].append({"at": now(), "phase": args.phase, "source_sha": plan.get("source_sha"),
-                                         "resume": bool(args.resume), "base_url": runner.base, "admin_transport": "gateway loopback"})
+                                         "resume": bool(args.resume), "base_url": runner.base, "https_proxy": runner.https_proxy,
+                                         "admin_transport": "gateway loopback", "admin_proxy": False,
+                                         "user_agent": USER_AGENT, "http_poll_interval_seconds": args.poll_interval,
+                                         "local_task_sample_interval_seconds": .5})
     runner.persist()
     thread = None
     try:
