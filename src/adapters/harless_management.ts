@@ -12,7 +12,7 @@ const helper=fileURLToPath(new URL('../../scenarios/file-management/management_w
 const root=fileURLToPath(new URL('../../',import.meta.url));
 export function managementAcceptance(task:any){
  const b=task.management.binding;
- const policy={kind:'file_management' as const,max_repairs:2,project_root:root,python:task.management.config.python,
+ const policy={kind:'file_management' as const,max_repairs:new OperationJob(root,b.job_file).load().limits.max_repairs,project_root:root,python:task.management.config.python,
   task_file:b.task_file,delivery_root:b.delivery,archive_root:join(task.management.config.private_root??join(root,'.local'),'management-acceptance'),job_file:b.job_file,interruptible:true as const};
  return createAcceptanceGuard(policy,verifier(policy,task.request.session_id,b.task_sha256));
 }
