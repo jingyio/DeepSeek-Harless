@@ -1,6 +1,6 @@
 # DeepSeek Harless Web 当前交接
 
-- 2026-10-20（Codex）：`codex/invites-scene-ratings` 基于 main abb9cf7，补批量永久邀请码/复制及恢复场景双栏 1–5 分。原邀请码本无 TTL，已用即失效；页面关闭只丢失明文显示。默认5/每批1–20，权限/密码/原账本不变；注册粘贴保留原生行为，评分沿原输出哈希/版本接口。定向无模型 Node127项通过，完整检查、公开浏览器和统一发布待完成；不涉及模型效果，无新增模型调用。接口见 [说明](../interfaces.md#邀请与场景数值评分2026-10-20-恢复)，下一步完整检查和发布后读写复验；回退用统一service rollback，保留账号/评分历史。
+- 2026-10-20（Codex）：[PR98](https://github.com/jingyio/GeneLoop/pull/98) 恢复场景双栏 1–5 分，账户两入口支持默认5/每批1–20个邀请码、逐个/全部复制与原生粘贴。原邀请码本无TTL，未使用永久有效，每码注册一次；页面关闭只丢失明文显示。源码756a181已统一发布，保留原账号、评分、库和累计账本。本地/服务器定向127项、服务器smoke/Motif及Ubuntu/Windows完整CI通过；正式网页已有Paper/PPT/Data记录均显示评分，Data两侧4/5分保存并刷新保留（仅接口诊断，不是质量打分）。普通Chat/新版独立File不加旧数值接口。本轮新增模型请求0；历史测试会话仍有加载失败/慢提示，未宣称本轮修复加载链路。见[实验记录](../experiments/invites-ratings-20261020.md)和[接口](../interfaces.md#邀请与场景数值评分2026-10-20-恢复)。合并状态以PR98为准；回退用统一service rollback。
 
 - 2026-10-20（Codex）：[PR96](https://github.com/jingyio/GeneLoop/pull/96)修复账号执行槽导致多对话gateway/internal及省略max_tokens触发8K截断。运行源码c3cd21a已统一发布，费用/次数/output app cap均null，普通/场景/文件wire使用393216。File独立SDK的5美元/96步/4000输出旧额度已清理，冷重建保留原pool/计数；File v7四图真实重新认证，Paper19/PPT14仅兼容继承。6普通对话真实同时运行、三场景区间重叠；1000行完整输出；最终原生Chat与File上线复验通过，公网成员正常。Python1514通过/3跳过，Node1167通过/8实验沙箱既有失败/3跳过，smoke/Motif通过；CI以PR对应head Checks为准。实验、73次重认证费用、失败和回退边界见[输出记录](../experiments/provider-output-20261020.md)及[并行记录](../experiments/concurrent-chat-20261020.md)。生产位置仅通过私有环境GENELOOP_SERVICE_HOME/CONFIG定位，沿用累计账本、保留旧代码/计划；仍走npm service。额度修复与上线完成，8项实验Script Motif的Linux只读挂载测试尚未解决；不将其称为正式聊天失败或整套服务器测试全绿。
 
