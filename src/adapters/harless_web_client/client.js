@@ -1074,6 +1074,16 @@ window.__ModuleLoader__.load({
                 result.finished_at && messageClock(result.finished_at) && h('time', { className: 'harless-message-time', dateTime: result.finished_at }, messageClock(result.finished_at))),
                 copied === lane && h('span', { role: 'status', className: 'harless-visually-hidden' }, '已复制')),
               h('small', null, `模型请求 ${result.stats?.upstream_requests || 0} · ${result.mode === 'shadow' ? '预测候选 ' + (result.stats?.shadow_candidates || 0) : '已验证跳过 ' + (result.stats?.verified_skips || 0)}`),
+              !single && h('fieldset', { className: 'harless-result-rating',
+                disabled: saving || !value.scoring_available || !result.output_sha256, 'aria-label': title + ' 结果评分' },
+                h('legend', null, '结果评分'),
+                ...[1, 2, 3, 4, 5].map(score => h('label', { key: score },
+                  h('input', { type: 'radio', name: key + ':' + lane + ':score', value: score,
+                    'aria-label': title + ' ' + score + ' 分', checked: value.scores?.[lane] === score,
+                    onChange: () => action({ action: 'rate', lane, score, revision: value.score_revision, output_sha256: result.output_sha256 }) }),
+                  h('span', null, String(score)))),
+                h('small', { role: 'status' }, saving ? '正在保存…' : !value.scoring_available ? '两侧完成后可评分' :
+                  Number.isInteger(value.scores?.[lane]) ? '已保存 ' + value.scores[lane] + ' 分' : '1 分最低，5 分最高')),
               ['failed', 'cancelled'].includes(result.status) && settled(value) && h('button', { type: 'button', disabled: saving, onClick: () => action({ action: 'retry', lane }) }, '重试此侧')));
         };
         if (traceOnly) {
@@ -1104,6 +1114,7 @@ window.__ModuleLoader__.load({
 .harless-paired .harless-message-metric-trigger{display:inline-flex;align-items:center;gap:4px;min-width:0;height:calc(28px + var(--dsh-content-font-delta,0px));padding:6px 8px;border:0;border-radius:28px;color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);font-variant-numeric:tabular-nums;line-height:calc(24px + var(--dsh-content-font-delta,0px));white-space:nowrap}
 .harless-message-metric-label{min-width:0;overflow:hidden;text-overflow:ellipsis}.harless-message-time{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);white-space:nowrap}
 .harless-visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.harless-result-rating{display:flex;align-items:center;flex-wrap:wrap;gap:8px;border:0;padding:0;margin:0;font-size:13px}.harless-result-rating legend{padding:0;margin-bottom:8px;color:var(--dsw-alias-label-secondary)}.harless-result-rating label{position:relative;cursor:pointer}.harless-result-rating input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:inherit}.harless-result-rating label span{display:grid;place-items:center;min-width:32px;height:32px;border:1px solid var(--dsw-alias-border-l2,#8885);border-radius:8px}.harless-result-rating input:checked+span{background:var(--gl-selection,#729cf733);border-color:var(--gl-blue,#729cf7);color:var(--gl-blue,#729cf7)}.harless-result-rating input:focus-visible+span{outline:2px solid var(--gl-blue,#729cf7);outline-offset:2px}.harless-result-rating:disabled label{opacity:.5;cursor:default}
 @media(hover:hover){.harless-paired-pane[data-actions-reveal=hover] .harless-message-actions{opacity:0;transition:opacity 80ms}.harless-paired-pane[data-actions-reveal=hover]:hover .harless-message-actions,.harless-paired-pane[data-actions-reveal=hover]:focus-within .harless-message-actions,.harless-paired-pane[data-actions-reveal=hover]:has(.harless-message-metric[data-open]) .harless-message-actions{opacity:1}}
 @media(prefers-reduced-motion:reduce){.harless-paired-pane[data-actions-reveal=hover] .harless-message-actions{transition:none}}
 @media(max-width:480px){.harless-message-metric-label{display:none}}

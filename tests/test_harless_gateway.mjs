@@ -422,7 +422,10 @@ test('owner claim, login, profile, password, logout and persistence', async t =>
   const generated = await f.request('/api/account/invites', { method: 'POST', cookie: firstCookie,
     body: { currentPassword: 'StrongPass123!', count: 1 } });
   assert.equal(generated.status, 200);
-  const inviteCode = (await generated.json()).codes[0];
+  const invitation = await generated.json();
+  assert.equal(invitation.expiresAt, null);
+  assert.equal(invitation.singleUse, true);
+  const inviteCode = invitation.codes[0];
   assert.ok(inviteCode.length >= 20);
   assert.ok(!readFileSync(join(f.config.dataDir, 'accounts.json'), 'utf8').includes(inviteCode));
   assert.equal((await f.request('/api/account/me', { cookie: firstCookie }).then(r => r.json())).user.username, 'owner');
@@ -476,6 +479,26 @@ test('invite registration is single-use and account metadata is independent', as
   assert.ok(!JSON.stringify(db).includes('AlicePass123!'));
   assert.ok(!JSON.stringify(db).includes(invite));
   assert.ok(db.users[0].passwordHash.startsWith('scrypt-v1$'));
+});
+
+test('batch invitations stay valid after years and restarts, consume only one code, and keep raw codes out of storage', async t => {
+  const f = await fixture(t);
+  const codes = createInvites(f.gateway, 20);
+  assert.equal(new Set(codes).size, 20);
+  for (const row of f.gateway.db.invites) row.createdAt = '2000-01-01T00:00:00.000Z';
+  f.gateway.save(); await f.restart();
+  const register = (code, username) => f.request('/api/account/register', { method: 'POST',
+    body: { inviteCode: code, username, displayName: username, password: 'LongTestPassword123!' } });
+  const registered = await register(' \n' + codes[0] + '\n ', 'old_invite');
+  assert.equal(registered.status, 200, 'creation time and whitespace do not expire an unused code');
+  const duplicate = await register(codes[0], 'another_user');
+  assert.equal(duplicate.status, 400);
+  assert.match((await duplicate.json()).error, /已被使用/);
+  await f.restart();
+  assert.equal((await register(codes[19], 'last_invite')).status, 200);
+  const saved = readFileSync(join(f.config.dataDir, 'accounts.json'), 'utf8');
+  for (const code of codes) assert.ok(!saved.includes(code));
+  assert.equal(JSON.parse(saved).invites.filter(row => !row.usedBy).length, 18);
 });
 
 test('two invited users register and remain authenticated concurrently', async t => {

@@ -10,7 +10,6 @@
       const response = await fetch(path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', signal,
         ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
       if (response.status === 401) throw Error('登录已过期，请重新登录。');
-      if (response.status === 403) throw Error('当前账号没有执行此操作的权限。');
       const value = await response.json().catch(() => { throw Error('连接暂时中断，请重试。'); });
       if (!response.ok) throw Error(typeof value.error === 'string' ? value.error : '操作未完成，请重试。');
       return value;
@@ -20,7 +19,8 @@
       const [user, setUser] = React.useState(null), [loading, setLoading] = React.useState(true), [revision, setRevision] = React.useState(0);
       const [profile, setProfile] = React.useState({ displayName: '', username: '' });
       const [password, setPassword] = React.useState({ currentPassword: '', newPassword: '', repeatPassword: '' });
-      const [invitePassword, setInvitePassword] = React.useState(''), [invite, setInvite] = React.useState('');
+      const [invitePassword, setInvitePassword] = React.useState(''), [invites, setInvites] = React.useState([]);
+      const [inviteCount, setInviteCount] = React.useState('5');
       const [busy, setBusy] = React.useState(''), [notice, setNotice] = React.useState(null);
       const active = React.useRef(false), pending = React.useRef(false);
       React.useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
@@ -44,7 +44,17 @@
       };
       const status = scope => notice?.scope === scope && h('p', { role: notice.error ? 'alert' : 'status' }, notice.text,
         notice.text.includes('重新登录') && h('a', { href: '/login' }, ' 前往登录'));
-      const field = (label, props) => h('label', null, label, h('input', { required: true, disabled: !!busy, ...props }));
+      // Keep normal input paste inside settings instead of the chat's global handlers.
+      const field = (label, props) => h('label', null, label, h('input', { required: true, disabled: !!busy,
+        onPaste: event => event.stopPropagation(), ...props }));
+      const copyInvites = async codes => {
+        try {
+          await window.navigator.clipboard.writeText(codes.join('\n'));
+          if (active.current) setNotice({ scope: 'invites', text: codes.length === 1 ? '邀请码已复制。' : `已复制 ${codes.length} 个邀请码，每行一个。` });
+        } catch {
+          if (active.current) setNotice({ scope: 'invites', error: true, text: '浏览器未允许自动复制，请点击邀请码后按 Ctrl+C（Mac：⌘C）复制。' });
+        }
+      };
       if (loading) return h('section', { className: 'geneloop-settings-page', 'aria-label': '账户与安全' }, h('h2', null, '账户与安全'), h('p', { role: 'status' }, '正在加载账户…'));
       if (!user) return h('section', { className: 'geneloop-settings-page', 'aria-label': '账户与安全' }, h('h2', null, '账户与安全'), status('load'),
         h('button', { type: 'button', onClick: () => setRevision(value => value + 1) }, '重试'));
@@ -66,12 +76,21 @@
             key: name, name, type: 'password', value: password[name], minLength: name === 'currentPassword' ? undefined : 10,
             autoComplete: name === 'currentPassword' ? 'current-password' : 'new-password', onChange: event => setPassword({ ...password, [name]: event.target.value }),
           })), h('button', { type: 'submit', disabled: !!busy }, busy === 'password' ? '修改中…' : '修改密码')), status('password')),
-        user.role === 'owner' && h('section', { className: 'geneloop-settings-section' }, h('h3', null, '邀请同学'), h('p', null, '生成一次性邀请码，供受邀者自行注册。'),
-          h('form', { onSubmit: event => { setInvite(''); void save(event, 'invites', { currentPassword: invitePassword, count: 1 }, value => {
-            setInvite(value.codes?.[0] || ''); setInvitePassword(''); setNotice({ scope: 'invites', text: '邀请码只显示这一次，请复制并单独发送给同学。' });
+        user.role === 'owner' && h('section', { className: 'geneloop-settings-section' }, h('h3', null, '邀请同学'), h('p', null, '邀请码永久有效，每个码可注册一个账号，使用后失效。'),
+          h('form', { onSubmit: event => { void save(event, 'invites', { currentPassword: invitePassword, count: Number(inviteCount) }, value => {
+            setInvites(previous => [...previous, ...(value.codes || [])]); setInvitePassword('');
+            setNotice({ scope: 'invites', text: `已生成 ${value.codes.length} 个永久邀请码。离开页面前请复制保存；关闭页面不会使邀请码失效。` });
           }); } }, field('确认当前密码', { name: 'currentPassword', type: 'password', autoComplete: 'current-password', value: invitePassword,
-            onChange: event => setInvitePassword(event.target.value) }), h('button', { type: 'submit', disabled: !!busy }, busy === 'invites' ? '生成中…' : '生成邀请码')),
-          status('invites'), invite && h('output', { 'aria-label': '新邀请码' }, invite)),
+            onChange: event => setInvitePassword(event.target.value) }),
+            field('生成数量（1–20）', { name: 'count', type: 'number', min: 1, max: 20, step: 1, value: inviteCount,
+              onChange: event => setInviteCount(event.target.value) }),
+            h('button', { type: 'submit', disabled: !!busy }, busy === 'invites' ? '生成中…' : '生成邀请码')),
+          status('invites'), invites.length > 0 && h('div', { className: 'geneloop-invite-results' },
+            h('button', { type: 'button', onClick: () => copyInvites(invites) }, '复制全部邀请码'),
+            ...invites.map((code, index) => h('div', { key: code, style: { display: 'flex', gap: 8, marginTop: 8 } },
+              h('input', { 'aria-label': '邀请码 ' + (index + 1), value: code, readOnly: true, spellCheck: false,
+                style: { minWidth: 0, flex: 1, userSelect: 'text', fontFamily: 'monospace' }, onFocus: event => event.target.select() }),
+              h('button', { type: 'button', 'aria-label': '复制邀请码 ' + (index + 1), onClick: () => copyInvites([code]) }, '复制'))))),
         h('section', { className: 'geneloop-settings-section' }, h('h3', null, '登录状态'), h('p', null, user.role === 'owner' ? '所有者账号' : '成员账号'),
           h('button', { type: 'button', disabled: !!busy, onClick: event => save(event, 'logout', {}, () => { window.location.replace('/login'); }) }, '退出登录'), status('logout')));
     }

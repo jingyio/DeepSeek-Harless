@@ -1,5 +1,7 @@
 > 2026-10-20 当前：PR84/88/92/93已集成，后续[PR96](https://github.com/jingyio/GeneLoop/pull/96)修复多对话准入错误、默认8K截断和File独立路径额度。运行源码c3cd21a已统一发布；费用/次数/output app cap为null，wire最大393216，File v7/Paper19/PPT14，旧库/数据/累计账本保留。Python1514通过/3跳过，Node1167通过/8个主线既有实验沙箱失败/3跳过，smoke/Motif和最终原生Chat/File复验通过。CI与合并状态以PR96对应head为准。当前交接见[Web](harness-web.md)、[File](file-management.md)，完整证据及剩余沙箱失败见[实验记录](../experiments/provider-output-20261020.md)。以下各PR状态按其历史时间保留。
 
+- 2026-10-20（Codex）：`codex/invites-scene-ratings` 基于 main abb9cf7，补批量永久邀请码/复制及恢复场景双栏 1–5 分。原邀请码本无 TTL，已用即失效；页面关闭只丢失明文显示。默认5/每批1–20，权限/密码/原账本不变；注册粘贴保留原生行为，评分沿原输出哈希/版本接口。定向无模型 Node127项通过，完整检查、公开浏览器和统一发布待完成；不涉及模型效果，无新增模型调用。接口见 [说明](../interfaces.md#邀请与场景数值评分2026-10-20-恢复)，下一步完整检查和发布后读写复验；回退用统一service rollback，保留账号/评分历史。
+
 ## 2026-10-20：PR84 / PR88 能力保留集成（PR93，待审）
 
 - 目标/范围：独立 `codex/integrate-file-ppt-rsi` 分支，完整接入 PR84、PR88 和推进中新增的 PR92；源码提交 `6603d7d` 已推送 [PR93](https://github.com/jingyio/GeneLoop/pull/93)，未合并、未部署，已完成集成验证，等待负责人审阅。

@@ -1,5 +1,7 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+管理员可在“设置 → 账户与安全 → 邀请同学”批量生成 1–20 个邀请码（默认 5 个）。邀请码永久有效、每码注册一个账号后失效；支持逐个或全部复制，关闭页面不会使未用码失效。生成结果仅在当前页面显示，请离开前复制保存。
+
 正式DeepSeek Web已移除账号级并发数量上限，费用、请求次数和应用输出额度均为null，原账本继续累计。普通Chat、三场景及File转发统一使用官方最大393216输出容量，避免省略参数时默认8K截断；File独立SDK也继承不限额策略。运行源码c3cd21a已发布，当前Paper v19、PPT v14、File v7；真实验证、保留的失败及服务商容量边界见[额度与输出修复](docs/experiments/provider-output-20261020.md)。
 
 
@@ -41,7 +43,7 @@ Chat 与场景对照共用实时状态文案：正在回复、思考、阅读文
 
 归档对话、最近删除和账户与安全统一放在设置右侧面板，分别使用归档盒、垃圾桶和账户安全线条图标。切换对话时只在聊天区域显示 GeneLoop 圆环，工作区侧栏保持可用；没有“显示已加载内容”按钮，进行中的回复继续实时输出。已归档对话可恢复到原工作区或移入最近删除；最近删除支持核对清单后永久清空，清空后无法从网页访问或恢复。清空属于持久访问撤销，服务器底层历史、文件及备份的保留策略不变，并非物理擦除。原设置验收见 [记录](docs/experiments/geneloop-settings-model-loading-20261015-v1.md)。
 
-场景回复与 Chat 使用同一套原生操作图标、提示及用量/用时文案。最新一轮常显，历史轮在桌面悬停或键盘聚焦时显示；触屏始终可用。每侧统计可点击查看真实明细；网页已移除 1–5 分评分区，保留赞/踩反馈。
+场景回复与 Chat 使用同一套原生操作图标、提示及用量/用时文案。最新一轮常显，历史轮在桌面悬停或键盘聚焦时显示；触屏始终可用。每侧统计可点击查看真实明细；网页在每侧回复下提供 1–5 分评分，双方完成后可保存、修改，保留赞/踩反馈。
 
 交付文件使用与上传附件一致的类型图标、名称、类型和大小卡片，右侧提供独立下载图标；未知格式使用通用文件图标。正文中的已登记文件链接显示为蓝色文字，去掉文件代码胶囊，普通行内代码保持。下载继续核验原账号、文件大小和 SHA，详见[界面验收](docs/experiments/geneloop-delivery-file-cards-20261016-v1.md)。
 
@@ -61,7 +63,7 @@ Web 的 DeepSeek 模型提供 **关闭 / 低 / 高 / 最高** 的横向思考强
 
 普通聊天默认展示最终回答，工具调用、上下文和早期回复收在可展开的过程区；生成中继续显示真实文字增量和简明状态。原生 Markdown、图片、文件入口以及最终回复的复制、分支操作保留。对照标题统一为 Baseline / Motif，影子模式另标“影子评估”。Web 共用 GeneLoop 产品身份；旧会话也在公开读取与实时输出时隐藏内部环境信息，原始 journal、用户消息和文件字节保持不变。代码行为、定向检查、真实浏览器及正式部署验收记录在 [本轮说明](docs/experiments/geneloop-message-privacy-20261015-v1.md)。
 
-已有 PPT、论文、数据分析 Motif 库已统一到版本化的 [motif-libraries/](motif-libraries/README.md)。管理员在成员 Web policy 配置 `comparison_scenes: ["ppt", "paper-proofreading", "research-data-analysis"]` 后，原生 `/ppt`、`/paper`、`/data` 聊天分别执行 Baseline 与 Motif 两路，保留各自多轮历史、交付文件与赞/踩反馈。三个场景的 Motif 默认均为 **Execute**；Paper 新库只续接模型已选定来源的默认第一页读取，旧 Shadow 库及历史记录保留。历史数值评分数据及研究接口保留，网页不再展示或提交数值评分。资料通过原生附件上传，账号隔离与预算沿用现有服务。库缺失或兼容锁失效会明确回退，不能把回退记为优化成功。
+已有 PPT、论文、数据分析 Motif 库已统一到版本化的 [motif-libraries/](motif-libraries/README.md)。管理员在成员 Web policy 配置 `comparison_scenes: ["ppt", "paper-proofreading", "research-data-analysis"]` 后，原生 `/ppt`、`/paper`、`/data` 聊天分别执行 Baseline 与 Motif 两路，保留各自多轮历史、交付文件与赞/踩反馈。三个场景的 Motif 默认均为 **Execute**；Paper 新库只续接模型已选定来源的默认第一页读取，旧 Shadow 库及历史记录保留。历史数值评分继续显示，网页评分绑定本轮结果版本并持久保存。资料通过原生附件上传，账号隔离与预算沿用现有服务。库缺失或兼容锁失效会明确回退，不能把回退记为优化成功。
 
 持续部署可使用 `scripts/serve-web-budget.py`，显式指定私有 output、现有累计 checkpoint 和获准上限；缺少 checkpoint 会拒绝启动，禁止因重启清零。用户于 2026-10-15 取消当前共享服务器累计 1 美元费用上限，配置使用 `--budget-usd 0`（policy 的 `run_budget_usd: null`），请求次数也不限；用户于 2026-10-16 进一步取消每任务及对照每侧的费用上限，`--task-budget-usd 0`、policy 的 `budget_usd: null` 表示不限。按后续指示，Web 单次文字输入不设应用长度上限，输出使用 `max_output_tokens: null` 表示无应用额度；2026-10-20起正式 DeepSeek Web 请求显式使用官方最大单次输出容量393216 tokens，避免省略参数触发默认8K截断，服务商上下文/容量边界仍适用。调用前持久化预约费用，未知使用量继续占用任务预算，累计账本照常记录。Linux 服务器的真实三场景功能验收和失败边界见 [联调记录](docs/experiments/trained-three-scenes-20261014-v1.md)。
 
