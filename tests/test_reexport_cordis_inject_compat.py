@@ -1,8 +1,8 @@
 """Actual bundle admission under the exact one-file injection compatibility delta."""
 import importlib.util
 from pathlib import Path
-import shutil
 import pytest
+from reexport_compat_fixture import prepare_checkout, remove_expected_difference
 
 ROOT=Path(__file__).resolve().parents[1]
 SPEC=importlib.util.spec_from_file_location('cordis_inject_export',ROOT/'scripts/reexport-cordis-inject-compat.py')
@@ -11,17 +11,11 @@ compat=wrapper.compat
 
 @pytest.fixture
 def frozen_checkout(tmp_path,monkeypatch):
-    root=tmp_path/'checkout';root.mkdir();names=set(compat.ADDITIONAL_LOCKS)
-    for old,*_ in compat.RELEASES:
-        source=ROOT/'motif-libraries'/old;shutil.copytree(source,root/'motif-libraries'/old)
-        names.update(compat.read(source/'certification.json')['code_locks'])
-    for name in names:
-        target=root/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/name,target)
-    registry=compat.read(ROOT/'config/harless-scenes.json')
-    for old,_,scene,*_ in compat.RELEASES:
-        next(row for row in registry['scenes'] if row['id']==scene)['rsi']['runtime_bundle']='motif-libraries/'+old
-    compat.write(root/'config/harless-scenes.json',registry);monkeypatch.setattr(compat,'ROOT',root)
-    return root
+    root=tmp_path/'checkout'
+    published=prepare_checkout(compat,ROOT,root)
+    monkeypatch.setattr(compat,'ROOT',root)
+    yield root
+    assert all(path.read_bytes()==raw for path,raw in published.items())
 
 def test_exact_injection_delta_only_and_real_unchanged_bundle_admission(frozen_checkout):
     candidates,_=compat.review()
@@ -42,4 +36,9 @@ def test_exact_injection_delta_only_and_real_unchanged_bundle_admission(frozen_c
 
 def test_extra_runtime_delta_is_rejected(frozen_checkout):
     file=frozen_checkout/'src/adapters/geneloop_goal.ts';file.write_bytes(file.read_bytes()+b'\n')
+    with pytest.raises(ValueError,match='Exact source review differs'):compat.review()
+
+
+def test_missing_reviewed_difference_is_rejected(frozen_checkout):
+    remove_expected_difference(compat,frozen_checkout,'src/adapters/dsh_web_tasks.ts')
     with pytest.raises(ValueError,match='Exact source review differs'):compat.review()

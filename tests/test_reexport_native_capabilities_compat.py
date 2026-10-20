@@ -1,10 +1,9 @@
 """No model calls: unchanged real IR/evidence, exact source allowlists and native/MCP separation."""
 import importlib.util
-import json
 from pathlib import Path
-import shutil
 
 import pytest
+from reexport_compat_fixture import prepare_checkout, remove_expected_difference
 
 ROOT=Path(__file__).resolve().parents[1]
 SPEC=importlib.util.spec_from_file_location('native_capabilities_compat',ROOT/'scripts/reexport-native-capabilities-compat.py')
@@ -12,21 +11,11 @@ compat=importlib.util.module_from_spec(SPEC);SPEC.loader.exec_module(compat)
 
 @pytest.fixture
 def reviewed_checkout(tmp_path,monkeypatch):
-    root=tmp_path/'checkout';root.mkdir()
-    names=set(compat.ADDITIONAL_LOCKS)
-    for old_name,_,_,_,_ in compat.RELEASES:
-        old=ROOT/'motif-libraries'/old_name
-        shutil.copytree(old,root/'motif-libraries'/old_name)
-        names.update(compat.read(old/'certification.json')['code_locks'])
-    for name in names:
-        destination=root/name;destination.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/name,destination)
-    registry=compat.read(ROOT/'config/harless-scenes.json')
-    for old,_,scene,*_ in compat.RELEASES:
-        row=next(row for row in registry['scenes'] if row['id']==scene)
-        row['rsi']['runtime_bundle']='motif-libraries/'+compat.REGISTRY_SELECTED[old]
-    compat.write(root/'config/harless-scenes.json',registry)
+    root=tmp_path/'checkout'
+    published=prepare_checkout(compat,ROOT,root)
     monkeypatch.setattr(compat,'ROOT',root)
-    return root
+    yield root
+    assert all(path.read_bytes()==raw for path,raw in published.items())
 
 def test_preview_is_read_only_and_records_exact_per_release_changes(reviewed_checkout):
     registry=compat.sha(reviewed_checkout/'config/harless-scenes.json')
@@ -59,6 +48,11 @@ def test_prepared_clones_keep_real_ir_schema_and_evidence_bytes_without_new_trai
 
 def test_extra_source_change_is_rejected(reviewed_checkout):
     path=reviewed_checkout/'src/adapters/geneloop_pdf_vision.ts';path.write_bytes(path.read_bytes()+b'\n')
+    with pytest.raises(ValueError,match='Exact source review differs'):compat.review()
+
+
+def test_missing_reviewed_difference_is_rejected(reviewed_checkout):
+    remove_expected_difference(compat,reviewed_checkout,'src/adapters/dsh_web_tasks.ts')
     with pytest.raises(ValueError,match='Exact source review differs'):compat.review()
 
 def test_changed_historical_evidence_is_rejected(reviewed_checkout):
