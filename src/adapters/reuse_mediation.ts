@@ -465,7 +465,7 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
    const delivery=deliveryEvidence(execution.arguments,value);
    if(delivery){
     const {changes,...currentDelivery}=delivery;
-    completionNotice='\nRuntime 已验证当前报告交付成功，以下为当前任务的文件与版本证据（不证明科研结论）：'+JSON.stringify(currentDelivery)+'。current_run_changes 是相对于本轮受保护起点的实际改动；它缺失时修改范围未知。它为0时不得声称本轮改过章节、统计或表格。原稿内的修复记录是历史内容，不是本轮执行记录；最终修改说明只依据本轮差异。truncated=true 时未列完，不可据列表断言其余未变。这些 outputs/documents 文件由原生文档服务管理，Bash 工作区不挂载该目录，不能用 Bash 的 ls/find/open 再次读取；文件真实字节、大小、摘要和交付回执已由 Runtime 校验。现在交回你生成最终回答并说明必要限制。交付成功不证明已找到历史失败根因，缺少因果证据时应明确未知。内容、来源与导出配置未变时直接引用这些文件，无需重复导出、分段测试或为排除偶发再生成一份；新证据或新要求出现时重新核验。';
+    completionNotice='\nRuntime 已验证当前报告交付成功，以下为当前任务的文件与版本证据（不证明科研结论）：'+JSON.stringify(currentDelivery)+'。current_run_changes 是相对于本轮受保护起点的实际改动；它缺失时修改范围未知。它为0时不得声称本轮改过章节、统计或表格。原稿内的修复记录是历史内容，不是本轮执行记录；最终修改说明只依据本轮差异。truncated=true 时未列完，不可据列表断言其余未变。这些 outputs/documents 文件由原生文档服务管理，Bash 工作区不挂载该目录，不能用 Bash 的 ls/find/open 再次读取；文件真实字节、大小、摘要和交付回执已由 Runtime 校验。现在交回你完成必要总结：给出 artifacts[].name 对应的可点击文件链接、本轮 changed_pointers 和未经重新核验的限制即可。不要再次复述原稿统计、来源数量或历史修复经过，不从这些历史文字推断本轮动作或根因；用户明确要求的其他结论仍需当前证据支持。交付成功不证明已找到历史失败根因，缺少因果证据时应明确未知。内容、来源与导出配置未变时直接引用这些文件，无需重复导出、分段测试或为排除偶发再生成一份；新证据或新要求出现时重新核验。';
     audit({kind:'reuse_delivery_verified',tool:execution.name,call_id:execution.callId,...delivery,semantic_quality_accepted:false});
    }
    const argumentKey=digest([execution.name,execution.arguments]);

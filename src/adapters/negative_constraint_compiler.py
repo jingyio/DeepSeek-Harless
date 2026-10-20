@@ -102,3 +102,42 @@ def certify_current_constraint(rule,observations,validator):
     return {'version':1,'kind':'current_scope_shape','scope_file':'review-recovery-scope.json','tool':rule['tool'],'failure_code':rule['failure_code'],
             'certification':{'scope':'reviewed_validator_and_real_scope_shape_not_semantic_quality',
                 'failures':failures,'successes':successes,'interventions':interventions}}
+
+
+def recertify_current_constraints(library, observations, validator, validator_ref, historical_sources):
+    """Re-certify necessary conditions, never migrate historical tool authority.
+
+    A changed tool implementation invalidates ordinary trace compilation. This
+    explicit path retains only rules independently certified by the CURRENT
+    reviewed pure validator. The online runtime must still observe that failure
+    on the current tool, bind its evidence and deliver a warning before blocking.
+    Historical successes are contrasts for this predicate, not certification of
+    the new tool's execution, rendering or scientific quality.
+    """
+    name, function = validator_ref.split(':')
+    if name not in library['implementation_locks'] or not function.isidentifier() or not historical_sources:
+        raise ValueError('current_constraint_validator_and_history_required')
+    result = copy.deepcopy(library)
+    retained, dropped = [], []
+    for rule in result['rules']:
+        try:
+            if rule.get('failure_source') != 'failed_checks':
+                raise ValueError('current_constraint_failure_source_required')
+            guard = certify_current_constraint(rule, observations, validator)
+        except (ValueError, KeyError, TypeError) as error:
+            dropped.append({'rule_id': rule['id'], 'failure_code': rule['failure_code'], 'reason': str(error)})
+            continue
+        guard.update(validator=validator_ref, validator_sha256=result['implementation_locks'][name])
+        rule.update(argument_guard=guard, retry_policy='warn_then_current_constraint')
+        rule['id'] = 'negative_' + digest({k: v for k, v in rule.items() if k != 'id'})[:16]
+        retained.append(rule)
+    if not retained:
+        raise ValueError('no_current_constraints_recertified')
+    result['rules'] = retained
+    result['recertification'] = {
+        'kind': 'current_constraint_recertification',
+        'scope': 'current_predicate_and_bound_live_failure_not_historical_tool_execution',
+        'validator': validator_ref, 'historical_sources': historical_sources, 'dropped_rules': dropped,
+    }
+    result['digest'] = digest({k: v for k, v in result.items() if k != 'digest'})
+    return result

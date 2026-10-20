@@ -243,7 +243,7 @@ test('only actual source-bound delivery files permit a completion handoff; tampe
  const receipt={layout_passed:true,source_versions:args.source_versions,files};const raw=JSON.stringify(receipt),receipt_name='outputs/documents/current/delivery.json';writeFileSync(join(f.workspace,receipt_name),raw);
  const response={exported:true,artifacts:files,execution_evidence:{...liveEvidence(f,args),delivery_passed:true,receipt_name,receipt_sha256:createHash('sha256').update(raw).digest('hex')}};
  f.r.observe({name:tool.name,callId:'success',arguments:args},result(response));
- assert.ok(f.r.takeNotice().includes('现在交回你生成最终回答'));assert.equal(f.audit.filter(a=>a.kind==='reuse_delivery_verified').length,1);
+ const notice=f.r.takeNotice();assert.ok(notice.includes(name)&&notice.includes(files[0].sha256));assert.equal(f.audit.filter(a=>a.kind==='reuse_delivery_verified').length,1);
  writeFileSync(join(f.workspace,name),'changed');f.r.observe({name:tool.name,callId:'stale',arguments:args},result(response));
  assert.ok(!f.r.takeNotice().includes('交付成功'));assert.equal(f.audit.filter(a=>a.kind==='reuse_delivery_verified').length,1);
 });

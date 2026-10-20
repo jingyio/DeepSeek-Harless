@@ -862,6 +862,8 @@ geneloop-resolve '{"request_id":"当前请求 ID","status":"selected","candidate
 
 ## Negative Motif 实验接口
 
+`learn-negative-motifs.py --recertify-current-constraints --constraint-validator <受信当前文件:函数>` 提供显式跨工具实现的条件再认证。默认编译仍要求旧源码快照与当前实现相同；再认证只保留当前纯校验器通过真实失败/成功对照、修复/重新引入及无关编辑认证的规则，其他规则丢弃，无合格规则则拒绝。新库保存旧事件、源码快照和实现摘要，并锁定当前校验器与Runtime；旧成功不认证新工具的执行、渲染或科研质量。此入口不支持field-profile，不迁移prompt-only或未知原因的早停权限，不替换旧库哈希。当前实际失败、实际提示投递及在线证据守卫继续必需。
+
 Positive Script Motif 负责复用可执行结构；Negative Tool Motif 负责标记有轨迹证据的失败重试。两库可同时装载，不增加模型工具。负面规则只通过当前显式实验 sidecar 启用，默认仅提示：
 
 ```json
@@ -1007,7 +1009,7 @@ sidecar新增`captureCurrentReport:true`（默认关闭），同时需要`reuseL
 
 通用引用支持`from:{concat:[{artifact:"当前ID",pointer:"/数组A"},{artifact:"当前ID",pointer:"/数组B"}]}`。仅拼接当前数组，最多32个引用、4096项和256KB；拒绝嵌套concat、非数组、过期/越界引用，保留各依赖守卫，不求值代码。JSON状态仍受1MB读取限制；已批准输入按SessionFiles的20MiB上限校验，避免大PDF静默导致参数采集失败。采集失败新增`reuse_capture_fallback`审计。
 
-本机制只覆盖已登记的原生报告操作，不能从任意Bash程序推断完整草稿或语义目标；新增Negative库仍须重新编译认证，不能替换旧hash绕过实现锁。真实恢复、失败与完整任务记录见[自动状态接入实验](experiments/paper-live-state-20261020-v1.md)。
+本机制只覆盖已登记的原生报告操作，不能从任意Bash程序推断完整草稿或语义目标；新增Negative库仍须重新编译认证，不能替换旧hash绕过实现锁。自动目标的Negative守卫同时核对当前用户消息摘要、当前工具与Schema，用户范围变化后旧目标不能因新回执重新激活。成功交接依据实际文件回执与`current_run_changes`给出本轮修改，不重述旧稿统计；这是提示约束，仍未保证任意自由总结无误。真实恢复、失败与完整任务记录见[自动状态接入实验](experiments/paper-live-state-20261020-v1.md)和[负面库集成验收](experiments/paper-negative-live-integration-20261020-v1.md)。
 
 
 

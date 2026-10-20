@@ -1,17 +1,18 @@
 # 论文校对当前交接
 
 - 更新时间与交接人：2026-10-20，Codex。
-- 目标与本次范围：把真实执行中的报告参数、失败字段与来源版本自动接到已有复用协议；不再由runner预置完整恢复scope。用户明确不重跑Baseline，少输出Token/少费用同样算收益。已完成局部真实恢复与一项原PDF/原提示词完整验证；未扩其他场景。
-- 分支/提交：`codex/paper-live-recovery-state`，实现与实验记录本地提交`7d626d6`（基于`56beadd`）；本次未推送、未提交新PR、未合并或部署。旧[PR95](https://github.com/jingyio/GeneLoop/pull/95)仍是前轮恢复实现，未因本次改动更新；原脏检出与生产服务未动。
-- 已完成：`reuse_mediation.ts`区分1MB JSON与20MiB已批准输入，修复约2MB PDF导致参数采集静默失败，并增加失败审计；正常实际报告调用启用受保护policy，`evidence_report.py`保存当前草稿与版本，先保留原文修复输入格式，再进入结构/叶子修订。显式sidecar `captureCurrentReport:true`默认关闭，无新增模型工具。
-- 类型化执行：当前服务明确数组数量错误时，模型只选顺序完整分组或unknown；Runtime拼接原标题及全部段落，再经原工具重验。分组适配器是工程结构交接，不能冒充新挖Motif；原生传参契约从真实历史成功轨迹重编。新增引用concat有界且无代码求值。`initial_arguments`及摘要保留原始起点，恢复边界更新不再把结构修改记为0。
-- 已验证：最终定向Node41/Python9通过；最终`npm test` Python1305通过/213跳过、Node1170通过/5跳过；无模型smoke（18题/83来源）和motif:check通过。环境为macOS、本轮实际私有字体及规范化TMPDIR；其他平台新路径未做真实模型验收。
-- 实验结论：[自动状态接入、全部失败与费用](../experiments/paper-live-state-20261020-v1.md)。001/002普通patch为11/9请求，002删掉16条文献而判失败；003加内容保护后20请求、5034输出/$0.029079876。004/005/006类型化分组均4请求，输出1020/1098/971，估费$0.018611484/$0.017023560/$0.016981980，79/97/79段原文完整保留，成功后无工具调用。004/005有0变更总结错误；006修复基准后正确说明`/sections`结构变化。均为同论文历史失败局部恢复，原科研结论未重新核验，不当作独立论文/科研质量通过。
-- 正常完整任务：run `6f852b3ec40248ce8f11fb12fa8d8ced`、task `6e9d860c7511413893f24b49ecca5774`，无checkpoint/scope/人工答案注入。18次当前值采集，step59明确返回段落数组输入错误，step64由Runtime执行一次字段补丁后成功导出6页；其他6节逐字段不变，所有非空正文保留，只去掉3空串，逐条表覆盖1–34。81真实请求、49,616输出/$0.231602928；成功后无工具调用，传统verified_skips仍0。报告仍有NeurIPS年份、DSPy/SARATHI误判，事实抽查未通过；不另行人工修稿冒充Agent成果。
-- 成本归因：与前一次方法轨迹（非新Baseline）相比，未缓存输入196732→463668，其中检索110714→340102，解释增量85.93%。检索模型10→17请求、费用$0.04378017→$0.12142486；其余费用$0.160423062→$0.110178068。总费用上升主要来自不同搜索路径/内部上下文；不能据此否定局部机制，也不能把全部非检索下降归因Motif。首请求总输入仅+49Token；运行中通知仍非零成本，剩余37548未缓存增量未逐消息拆清。
-- 配置与数据：私有根`.local/paper-live-state-20261020-v1/`含授权、真实失败参数、各版本配置/库、all-local-results/aggregate/full-breakdown/previous-method-comparison/full-quality/final-local-content-check及全部回归日志。最终`execute-native-v4.json`：native-v4摘要`57d7f8693f321a1cfabecad4448ab43a679f233f02bac3e97a04a27948053bd1`，captureCurrentReport/repairChoices均true，script库为空、无Frontier/embedding，Negative库未加载（实现锁变化须另行再认证，不能改旧hash）。全部run仍关联有效配置和逐文件source-snapshot；真实调用时为基于56beadd的未提交源码，当前实现见7d626d6。
-- 最短复现：沿用`run-script-motif-experiment.py --real-model --mode execute --report-evidence --source <原PDF> --prompt <原题面或恢复题面> --script-config <当前重编配置> --budget-usd 0 --max-output-tokens 32768`。历史局部恢复另加`--reuse-checkpoint <真实旧调用>`，不加preserve/resume参数；普通完整任务完全不加checkpoint。通过Node `--env-file=.env`加载已有私有凭证，设置当前私有字体、SSS_LOCAL_SCRIPT_EXPERIMENT及隔离Python，不显示密钥。
-- 权限与预算：本地DeepSeek Flash、reasoning off、输出32768，请求与费用不限、reset_history:false。本轮6项局部+1完整共133请求/$0.356092428，沿用原5301/$9.074760576后累计5434/$9.430853004保守代理估费；旧pending3、V100与服务商账单仍待核，无新增pending/unknown。开发/维护/人工时间未量化；所有付费任务已结束。
-- 未完成与反例：完整科研事实质量和整任务净降本尚未证明；普通Bash未登记产物仍无法自动解释为完整草稿，捕获起点不保证原稿覆盖全部源文献。Negative自动捕获状态的兼容守卫有局部回归，新的端到端库再认证未完成。完整任务原生580.526秒与runner552.316秒不一致，保留原值，未定位时钟/口径问题，不混用为延迟因果结论。较早1页摘要与4页产物的先后判断已按原始事件纠正，见前轮记录附注。
-- 接手下一步：1）按已取得一手证据审计17条检索词中的必要新增与重复，不凭总费用高就回调匹配阈值；把搜索内部输入及缓存成本单列。2）针对事实误报建立有来源的语义核验与交付检查，不能把结构成功当科学正确。3）再认证Negative当前状态接口并做真实局部留出，先保持当前基准/全文保护；暂不增加完整Baseline或扩场景。
-- 回退与风险：关闭captureCurrentReport/repairChoices或移除实验sidecar回原生路径，移除--report-evidence回生产默认报告模块；本次无部署/原件/外部应用修改。完整原始日志、失败产物和旧库均保留；旧PR不应依据本轮局部结果自动合并。
+- 目标与范围：自动接入真实报告状态、复用局部参数与成功产物，补回Negative Motif认证和库接入；仅实验侧启用，不扩检索、不重跑Baseline。
+- 分支与同步：`codex/paper-live-recovery-state`；前轮本地实现`7d626d6`及交接`59762a3`，本轮增量待提交。已拉取最新`origin/main`=`8b4fdc5`，此前[PR95](https://github.com/jingyio/GeneLoop/pull/95)已合并；本次尚未创建新PR，未部署，原脏工作区未动。
+- 已完成：`reuse_mediation.ts`修复2MB来源被1MB JSON上限误拒，默认关闭的`captureCurrentReport`将实际选择的原生报告调用绑定当前任务、来源、grant、Schema和用户意图。`evidence_report.py`捕获受保护草稿，输入修复保留全部原文，再允许必要叶子修订；有界concat和语义分组选择由Runtime执行，不增加模型工具，不冒充新挖Motif。
+- Negative接入：显式`learn-negative-motifs.py --recertify-current-constraints --constraint-validator <受信当前文件:函数>`只迁移当前纯校验器重新双向认证通过的条件；默认旧实现拒绝仍有效，不迁移旧执行认证和prompt-only规则。新库保留旧事件及实现摘要，当前运行仍需真实失败、实际提示及当前证据。自动scope额外核对当前用户消息、工具与Schema，变化后不能重激活旧目标。
+- 成功交接：实际文件、回执、配置、来源和本轮差异均核验；`initial_arguments`保留原始修复起点，成功后不重复导出。收紧总结提示只聚焦链接、变化和限制，仍不是自由文本事实校验器。
+- 已验证：本轮定向Python13、Negative Node27、复用Node41通过；完整Python1312通过/213跳过，完整Node1171通过/5跳过；smoke18题/83来源、motif:check通过，均为免费诊断。初轮字体/Poppler环境3项失败、旧文案断言1项失败、手动Node调用系统Python导致2项失败全部留日志；使用项目Python、前轮字体、规范化TMPDIR及可用PDF后端复核，没有放宽测试。
+- 真实实验：[前轮自动状态接入](../experiments/paper-live-state-20261020-v1.md)和[本轮Negative集成](../experiments/paper-negative-live-integration-20261020-v1.md)。本轮001/003/004结构恢复均2请求，输出641/715/483，估费$0.011086656/$0.011042388/$0.010934088；原参数+所选完整字段逐字一致。002/005无预置scope的自动采集恢复6/5请求、输出1300/1038，79段原文保留，估费$0.019789092/$0.017404356。五项文件字节/摘要/来源均通过，成功后无工具调用，004/005共7/5页已逐页渲染查看，无明显重叠或裁切。均为历史失败局部恢复，科学事实未重新核验。
+- 真实覆盖限制：负面提示和类型化恢复在三次明确完整目标的任务中实际发生；两次自动捕获任务加载负面库，但未出现该库认证的结构错误，自动origin激活仍仅由定向回归覆盖。无不合格重试，所以本轮早停0，传统verified_skips0；不能把原生合成步骤当整请求节省，不宣称比PR95的2请求又有新降幅。
+- 质量反例：001/003总结混入历史动作和不准的来源数量。收紧提示后004的范围和链接正确；005仍把合计9段说成“各9段”（实际4+5）。参数与文件正确不代表任意自由总结正确，未人工改稿遮盖。前轮完整任务报告仍有科研误判；本轮只读证实其所有非空正文在局部修复前后逐字同序，原有误判未由该补丁引入，但静态提示对更早语义路径的影响未隔离。
+- 前轮完整任务：原PDF与完整原提示，无恢复scope注入；run `6f852b3ec40248ce8f11fb12fa8d8ced` / task `6e9d860c7511413893f24b49ecca5774`，81真实请求、49616输出/$0.231602928，导出6页，质量抽查未通过。比更早方法轨迹贵主要在检索10→17请求、$0.04378017→$0.12142486；其余费用$0.160423062→$0.110178068，不能作受控因果收益。全部17次检索在动态报告接管前完成，不支持认定局部恢复直接增加了检索，仍未排除静态提示影响。
+- 配置与数据：本轮私有根`.local/paper-negative-live-integration-20261020-v1/`含授权、真实失败/完整目标、源码快照关联、逐项质量/breakdown、aggregate、semantic-error-origin及所有失败日志。负面库`e6c9c34642c596f84fd6d91d7052eb2b23e14c4f236eb361302ea8a6c709f66c`；最终原生库`4a54a156ffabd8c14be1785f13ea6b0635a26beb655f3c647eabc0819eeb3232`。两库均实际加载；Script库为空、无embedding/Frontier。001–003与004/005配置分别保存，没有改旧hash。
+- 最短复现：沿用`run-script-motif-experiment.py --real-model --mode execute --report-evidence --source <原输入> --prompt <原恢复题面> --reuse-checkpoint <实际旧调用> --script-config <冻结配置> --budget-usd 0 --max-output-tokens 32768`；明确完整目标的结构恢复另加`--preserve-recovery-structure --resume-current-operation --recovery-goal-scope <绑定原失败的scope>`，自动采集恢复不加。凭证通过现有私有.env加载，不展示密钥；保留本地沙箱、项目Python与已验证私有字体。
+- 权限与账本：本地DeepSeek Flash、reasoning off、输出32768，请求/费用不限、reset_history:false。本轮全部五项17请求/$0.070256580，累计5451请求/$9.501109584保守代理估费。无新增pending/unknown；旧pending3、V100及服务商账单仍待核，开发和人工时间未量化。全部付费任务已结束，无新Baseline。
+- 接手下一步：1）提交范围明确的自动状态/局部修订PR供审阅，不自动合并或部署。2）审计已有17次检索的证据覆盖与重复，不凭总费用加匹配规则或降阈值。3）科研事实核验和自由总结错误另行处理，保持结构交付与科学质量分离，暂不扩场景。
+- 回退与风险：关闭captureCurrentReport/repairChoices或移除实验sidecar回原生路径，移除--report-evidence回生产默认报告模块；本轮没有生产配置、私人原件或外部应用修改，所有失败和旧库保留。真实新路径仅在macOS验证，其他平台不作新验收声明。

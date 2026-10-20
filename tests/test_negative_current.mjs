@@ -75,7 +75,7 @@ test('native tool runtime stops invalid prospective arguments after a real warni
 
 test('an automatically captured current draft needs its service policy binding and never grants semantic approval',t=>{
  for(const altered of [false,true]){
-  const f=fixture(t),policy={version:1,kind:'capture_current_report_policy',task_id:f.goal.task_id,source_versions:f.goal.source_versions,tool:f.rule.tool,schema_sha256:'a'.repeat(64),user_envelope_sha256:'b'.repeat(64)};
+  const f=fixture(t),policy={version:1,kind:'capture_current_report_policy',task_id:f.goal.task_id,source_versions:f.goal.source_versions,tool:f.rule.tool,schema_sha256:digest(f.tools[0].parameters),user_envelope_sha256:digest([])};
   f.write('report-state-policy.json',policy);
   f.goal.origin='observed_current_export_operation_not_semantic_approval';
   f.goal.capture={arguments_sha256:digest(f.goal.arguments),policy_sha256:hash(readFileSync(join(f.root,'report-state-policy.json'))),tool:policy.tool,schema_sha256:policy.schema_sha256,user_envelope_sha256:policy.user_envelope_sha256};
@@ -84,4 +84,14 @@ test('an automatically captured current draft needs its service policy binding a
   if(altered)f.write('report-state-policy.json',{...policy,task_id:'foreign'});
   f.fail();f.warn();assert.equal(!!f.r.guard(f.call),!altered);
  }
+});
+
+test('a new human goal cannot reactivate a negative guard from an earlier automatically captured draft',t=>{
+ const f=fixture(t),policy={version:1,kind:'capture_current_report_policy',task_id:f.goal.task_id,source_versions:f.goal.source_versions,tool:f.rule.tool,schema_sha256:digest(f.tools[0].parameters),user_envelope_sha256:digest([])};
+ f.write('report-state-policy.json',policy);f.goal.origin='observed_current_export_operation_not_semantic_approval';
+ f.goal.capture={arguments_sha256:digest(f.goal.arguments),policy_sha256:hash(readFileSync(join(f.root,'report-state-policy.json'))),tool:policy.tool,schema_sha256:policy.schema_sha256,user_envelope_sha256:policy.user_envelope_sha256};
+ f.write('review-recovery-scope.json',f.goal);f.failure.execution_evidence.recovery_scope_sha256=hash(readFileSync(join(f.root,'review-recovery-scope.json')));
+ f.fail();f.warn();assert.match(f.r.guard(f.call),/早停/);
+ f.r.update({...f.request,messages:[{id:'new-request',role:'user',source:{kind:'user'},content:'Please change the report scope.'}]});
+ f.fail();assert.equal(f.r.takeNotice(),'');assert.equal(f.r.guard({...f.call,callId:'new-failure'}),undefined);
 });
