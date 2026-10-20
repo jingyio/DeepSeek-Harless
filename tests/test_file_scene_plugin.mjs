@@ -9,11 +9,11 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 const enabled={skip:!process.features?.typescript};
 
-async function fixture(){
+async function fixture(budget=.25){
  const {installFileScene,fileShortcut}=await import('../src/adapters/harless_file_scene.ts');
  const directory=mkdtempSync(join(tmpdir(),'file-plugin-')),id='file-test-'+randomUUID(),events=[];
  const policy=join(directory,'policy.json'),saved=process.env.SSS_WEB_POLICY;
- writeFileSync(policy,JSON.stringify({output:directory,user_id:id,provider_mode:'mock',budget_usd:.25,
+ writeFileSync(policy,JSON.stringify({output:directory,user_id:id,provider_mode:'mock',budget_usd:budget,
   python:'diagnostic-only',scenes:[{id:'files',allowed_tools:['mcp__file_management__list_files']}]}));
  process.env.SSS_WEB_POLICY=policy;
  const routes=new Map(),hooks=new Map(),disposers=[],calls=[],workers=[];
@@ -45,6 +45,14 @@ test('file extension delegates Paper/PPT/Data/chat without launching or changing
   }
   assert.equal(f.workers.length,0);
   assert.ok(f.fileShortcut('/file整理资料'));assert.equal(f.fileShortcut('/file.txt'),null);
+ }finally{await f.close();}
+});
+
+test('file worker receives the uncapped policy instead of a hidden five dollar allowance',enabled,async()=>{
+ const f=await fixture(null);try{
+  await f.ctx.sessionController.prompt({sessionId:'owned',requestId:randomUUID(),mode:'queue',content:[{type:'text',text:'/file 盘点文件'}]});
+  const request=JSON.parse(readFileSync(f.workers[0].input.request_file));
+  assert.equal(request.budget_usd,null);
  }finally{await f.close();}
 });
 

@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "format": "sss-operation-graph-v2",
+  "execution_version_sha256": "56b0d2d3d632141deef4992bb19bbda1d6a06da5018b7d6f0cbb3ae5101417a8",
+  "artifact": {
+    "kind": "learned_mcp_operation_dag",
+    "status": "trace_validated_read_only",
+    "nodes": [
+      {
+        "tool": "mcp__file_management__pin_files",
+        "bindings": {}
+      },
+      {
+        "tool": "mcp__file_management__read_files",
+        "bindings": {
+          "source_ids": {
+            "node": 0,
+            "path": "source_ids"
+          }
+        }
+      }
+    ],
+    "tool_contracts": {
+      "mcp__file_management__pin_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [
+            "source_ids"
+          ],
+          "statuses": [
+            "pinned_batch"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "file_ids": {
+              "description": "Unique actual file_ids from list_files or inspect_plan_result.files. Returns source_ids for later reading.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "File Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "file_ids"
+          ],
+          "title": "pin_filesArguments"
+        },
+        "schema_sha256": "8e3e70422123716562472fa583443282874de98464e14bdd5df604390c5049a8"
+      },
+      "mcp__file_management__read_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [],
+          "statuses": [
+            "read_batch_complete"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "source_ids": {
+              "description": "Unique actual source_ids returned by a completed pin_files or pin_file call. Do not substitute file_ids or guess handles.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "Source Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "source_ids"
+          ],
+          "title": "read_filesArguments"
+        },
+        "schema_sha256": "89d0f6c08e26ce80323be57ef01ab5db9950d7b40c9ffc2c4fb1f57624d0556e"
+      }
+    },
+    "max_nodes": 8,
+    "execution_version": "56b0d2d3d632141deef4992bb19bbda1d6a06da5018b7d6f0cbb3ae5101417a8",
+    "certification_contract": "sss-operation-certification-v2",
+    "interleaving_contracts": {
+      "mcp__file_management__list_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": false,
+          "exports": [],
+          "safe_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "list_filesArguments"
+        },
+        "schema_sha256": "fbe3e382dd6c8e9281fe26492070587b61f9dd4de908bb735cd9697af616533d"
+      }
+    },
+    "request_lane_contracts": {},
+    "source_task_fingerprints": [
+      "3b2f4a7a6525467a51276545a1d82bdc606db5f970e458c13ae90294b5b0a400",
+      "b487b4e51d5b19bdbfeb7da96e85e48fba1a9f1f9690067332a914ae6146c4af"
+    ],
+    "witnesses": [
+      {
+        "session_id": "sss-1699fda061c24deea87c773b4ef76b09",
+        "calls": [
+          "call_00_1n45VrbqvQ6GQNEzc23X8043",
+          "call_00_1Jn78DQbrVBg7Uoiyz9Y9830"
+        ],
+        "native_new_nodes": [
+          1
+        ],
+        "inherited_policy": null,
+        "events_sha256": "2d2fad0dd76ff2dee961173ab787ab034819ac1df1544d84e76a72bf52214a1a"
+      },
+      {
+        "session_id": "sss-9b5faea488684166b8007b58013218cd",
+        "calls": [
+          "call_00_Pnu6OnfrzVSEkRdRRTnb3407",
+          "call_00_ZePIjk4Htt6ALMUko1Nb9949"
+        ],
+        "native_new_nodes": [
+          1
+        ],
+        "inherited_policy": null,
+        "events_sha256": "ecfb4f6aad63109c389f3b88c3c364a0d382ee77650db5307a2a850333b928f9"
+      }
+    ],
+    "recertification_provenance": {
+      "old_policy_digest": "298275e25104d729b1a1ac55f9b8c0bed1cd9cec66f0c0faf9178f43cb10e452",
+      "old_payload_sha256": "eaad1046f990006a4b0c7f661710db8af852d22fe569f10f569ece3f872484f8",
+      "old_certificate_sha256": "56d9be22b9cf7905bab5dee5b7388c43fa2879263f9d091644da298259fcbecd",
+      "candidate_lock_sha256": "fe40d00fdf799fea583bc676307d22db7938ca5144b77152b2e66cf76d07347c",
+      "recertifier_sha256": "d0f8e2003d2ee57ee67077360409a7140fe1223ef35c91fcd5e2f3d8415bdded",
+      "native_prefix": {
+        "format": "sss-native-connected-prefix-v1",
+        "calls": [
+          "call_00_4VviqGCAl5diJqe683rh5893",
+          "call_00_jeQjRptyRYxJ8yQZZTsm0818"
+        ],
+        "view_end_result_seq": 24,
+        "full_events_sha256": "96e68066d39b0b9dfc9ff8b3756ac45d6797411d17f3bca11043013fab5be925",
+        "full_native_witness_calls": [
+          "call_00_4VviqGCAl5diJqe683rh5893",
+          "call_00_jeQjRptyRYxJ8yQZZTsm0818"
+        ],
+        "raw_events_unchanged": true
+      }
+    },
+    "validation_task_fingerprint": "15aab7b03918ba144c4dfff66d9e62181b75a3777c0bbb6b27213cf43bbb1a8e",
+    "validation_witness": {
+      "nodes": [
+        {
+          "tool": "mcp__file_management__pin_files",
+          "bindings": {}
+        },
+        {
+          "tool": "mcp__file_management__read_files",
+          "bindings": {
+            "source_ids": {
+              "node": 0,
+              "path": "source_ids"
+            }
+          }
+        }
+      ],
+      "values": {
+        "1:source_ids": [
+          "source-4e6c40ec29778eb68d94e55a515e0b55",
+          "source-ac64cb51c1fd268d784c4eb6e84c804c"
+        ]
+      },
+      "calls": [
+        "call_00_4VviqGCAl5diJqe683rh5893",
+        "call_00_jeQjRptyRYxJ8yQZZTsm0818"
+      ],
+      "native_new_nodes": [
+        1
+      ],
+      "inherited_policy": null
+    },
+    "certified_digest": "6887fb4f4b2841463742ab2aac65a91d950db348a4f4335324eb5a8062eb2acd"
+  },
+  "policy_digest": "80c29037bcb8a577aeebe8519913636bf05db188124a88aadf340b2c785134a8"
+}

@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "status": "certified_read_library",
+  "artifacts": [
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_ac2b06316941",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__ppt_master__convert_source",
+        "mcp__ppt_master__read_converted_source"
+      ],
+      "source_trace_ids": [
+        "train-1",
+        "train-2"
+      ],
+      "source_task_fingerprints": [
+        "ppt-master-style-v2-train-attention-recovery",
+        "ppt-master-style-v2-train-dora"
+      ],
+      "contract_signature": "21175e238bd3f2fbb194bfe849041bf33dc807fd394f10c6beb90dda60fa4b6a",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__ppt_master__convert_source",
+          "mcp__ppt_master__read_converted_source"
+        ],
+        "operators": {
+          "mcp__ppt_master__convert_source": {
+            "tool": "mcp__ppt_master__convert_source",
+            "read_only": true,
+            "required_params": [
+              "source_id"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__ppt_master__read_converted_source": {
+            "tool": "mcp__ppt_master__read_converted_source",
+            "read_only": true,
+            "required_params": [
+              "converted_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__ppt_master__convert_source",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__ppt_master__convert_source",
+                "from_field": "converted_id",
+                "to_param": "converted_id"
+              }
+            ]
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt_master__convert_source",
+          "from_field": "converted_id",
+          "to_param": "converted_id",
+          "to_tool": "mcp__ppt_master__read_converted_source",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "train-1": 1,
+        "train-2": 1
+      },
+      "validation_trace_id": "heldout-1",
+      "validation_task_fingerprint": "ppt-master-style-v2-heldout-loftq-phase",
+      "certified_digest": "99f89de26b00b2b82037dd9ec99ee8478de79fce7e94f53eab6bd1725cb836e5"
+    },
+    {
+      "schema_version": 1,
+      "motif_id": "edge_motif_46b2201bf007",
+      "status": "trace_validated_read_only",
+      "mining_basis": "witnessed_parameter_edge",
+      "argument_scope": "exact_required_arguments_only",
+      "tools": [
+        "mcp__ppt_master__pin_source",
+        "mcp__ppt_master__convert_source"
+      ],
+      "source_trace_ids": [
+        "train-1",
+        "train-2"
+      ],
+      "source_task_fingerprints": [
+        "ppt-master-style-v2-train-attention-recovery",
+        "ppt-master-style-v2-train-dora"
+      ],
+      "contract_signature": "783d7ee8ebf422645a42ed6dff7a7e4248628e48343c16d0322e9266fa457f2b",
+      "dependencies": {
+        "required_evidence": [
+          "mcp__ppt_master__pin_source",
+          "mcp__ppt_master__convert_source"
+        ],
+        "operators": {
+          "mcp__ppt_master__pin_source": {
+            "tool": "mcp__ppt_master__pin_source",
+            "read_only": true,
+            "required_params": [
+              "name",
+              "sha256"
+            ],
+            "requires": [],
+            "bindings": []
+          },
+          "mcp__ppt_master__convert_source": {
+            "tool": "mcp__ppt_master__convert_source",
+            "read_only": true,
+            "required_params": [
+              "source_id"
+            ],
+            "requires": [
+              {
+                "output": "mcp__ppt_master__pin_source",
+                "kind": "acquisition"
+              }
+            ],
+            "bindings": [
+              {
+                "from_tool": "mcp__ppt_master__pin_source",
+                "from_field": "source_id",
+                "to_param": "source_id"
+              }
+            ]
+          }
+        }
+      },
+      "transfer_evidence": [
+        {
+          "from_tool": "mcp__ppt_master__pin_source",
+          "from_field": "source_id",
+          "to_param": "source_id",
+          "to_tool": "mcp__ppt_master__convert_source",
+          "supporting_trace_ids": [
+            "train-1",
+            "train-2"
+          ]
+        }
+      ],
+      "witness_counts": {
+        "train-1": 1,
+        "train-2": 1
+      },
+      "validation_trace_id": "heldout-1",
+      "validation_task_fingerprint": "ppt-master-style-v2-heldout-loftq-phase",
+      "certified_digest": "5232530454b608ef0e9aff7861d694fc77aa97a1c72d4de574074ee032db69e4"
+    }
+  ],
+  "connectors": {},
+  "links": [],
+  "rejected": [
+    {
+      "tools": [
+        "mcp__ppt_master__pin_source",
+        "mcp__ppt_master__convert_source",
+        "mcp__ppt_master__read_converted_source"
+      ],
+      "reason": "tool lacks replay-stable observations: mcp__ppt_master__pin_source"
+    }
+  ],
+  "training_trace_ids": [
+    "train-1",
+    "train-2"
+  ],
+  "heldout_trace_ids": [
+    "heldout-1"
+  ],
+  "library_digest": "9392b9b3b2f5d132db0c81f96b76818b2b70a3b29e3e8627394d9b2ede9da94a",
+  "task_identity_evidence": {
+    "train-1": {
+      "research_decision_id": "ppt-master-style-v2-train-attention-recovery",
+      "task_id": "4a0f7b913a1b45068f16288aebdb44df",
+      "question_sha256": "ae6d305768de814d196059467829174bcedc095b3b903779ab578dd8565df406",
+      "manifest_sha256": "9c8180eccdf29482c363fc3a655421001747deaf0cda8e4d38aaad5ea2d0daef",
+      "events_sha256": "aa1f18358a67d5137df31aab854eca6d54c31bfa73c2e3c9d759ea876b053124",
+      "identity_sha256": "e40cfbc60df47ea8913c0689323d3db41eccac137b26dc26e5dc3ef372909634"
+    },
+    "train-2": {
+      "research_decision_id": "ppt-master-style-v2-train-dora",
+      "task_id": "d48c66018d2e4d7fb57a06a11b7b47f7",
+      "question_sha256": "d53ed636024e0ce17a8e5a20eea48bb680f88717c64a21147edc59af9147a443",
+      "manifest_sha256": "53ae000961408e54881f64bd4080699167f875506a6ec4acfe649228d96a8559",
+      "events_sha256": "a6e8cbd53fd1a85e73b1e3fd7dfb70edda21404bdd437e1e1a368a2ddb4dfe2a",
+      "identity_sha256": "eefb4f34b25befff581d785c3c21ab5b321892bb954aef860a24a88a9535d34a"
+    },
+    "heldout-1": {
+      "research_decision_id": "ppt-master-style-v2-heldout-loftq-phase",
+      "task_id": "1ba8c1d8e0af4321a2338ad1cb06f024",
+      "question_sha256": "b68085ce937fe961f348e16920a160956d336d964f6c5a3bcb4f9e1ad664b17c",
+      "manifest_sha256": "2e6066586f2745a461c8565ff6794cabe52282579cc31c7accb4233f0784d36b",
+      "events_sha256": "88a9b6257adb2cb45bb9beb96770fa04fc6a88d429a46c2918baa79aa6bd0948",
+      "identity_sha256": "39909c4630de84cb4285e92a13ce0ad46255d2804e83a63743264fa4d3c8a7c9"
+    }
+  }
+}

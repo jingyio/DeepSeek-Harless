@@ -15,7 +15,7 @@ class PlatformBudget:
         self.endpoint=endpoint;self.token=policy['control_token'];self.upstream=policy['endpoint'].rstrip('/').removesuffix('/v1')
         self.out=Path(out)
         platform_cap=policy.get('budget_usd')
-        cap=cap if platform_cap is None else min(cap,platform_cap)
+        cap=platform_cap if cap is None else cap if platform_cap is None else min(cap,platform_cap)
         self.call('/tasks/register',{'task_id':self.task,'session_id':self.session,'model':model,'budget_usd':cap})
         self.call('/tasks/activate',{'session_id':self.session})
     def call(self,path,value):

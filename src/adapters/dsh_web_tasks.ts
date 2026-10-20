@@ -4,7 +4,7 @@ import { existsSync, appendFileSync, lstatSync, mkdirSync, readFileSync, readdir
 import { basename, dirname, extname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek';
-import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels, WEB_REASONING_EFFORTS, WEB_REASONING_LABELS } from './harless_reasoning.ts';
+import { WebDeepSeekAdapter, webReasoningEffort, webReasoningAvailability, webDeepSeekModels, WEB_REASONING_EFFORTS, WEB_REASONING_LABELS,WEB_DEEPSEEK_OUTPUT_CAPACITY } from './harless_reasoning.ts';
 import type { WebReasoningEffort, WebModelOption } from './harless_reasoning.ts';
 import { isAgentLoopRequest, createUserMessage, createAssistantMessage } from '@deepseek-ai/dsh-llm';
 import { scopeOf } from '@deepseek-ai/dsh-scope';
@@ -23,7 +23,7 @@ import type { Scene, Selection } from './harless_settings.ts';
 import type { NormalizedWebTask, PromptPart, ExecutionMode } from './web_task_request.ts';
 import {bindUploadedPptTask,bindApprovedUploadedReadTask,bindUploadedSourceTask,closedPaperDocumentFirstPage,closedPptSourceFirstPage,closedPptConvertedSource,structuralOnlySimilarity} from './harless_rsi_binding.ts';
 import {createPptMasterRecovery} from './ppt_master_recovery.ts';
-import {createComparisonService} from './harless_comparison.ts';
+import {createComparisonService,ComparisonError} from './harless_comparison.ts';
 import { attachmentContextMessage, attachmentContextPolicy, attachmentEvidence, attachmentImages, attachmentImageKey,
   uniqueAttachmentEvidence,uniqueAttachmentImages,humanContent,isAttachmentContext } from './harless_attachment_context.ts';
 import {comparisonArtifacts,captureComparisonDeliveries} from './harless_comparison_artifacts.ts';
@@ -670,11 +670,11 @@ export function apply(ctx: any) {
   }
   function canStart(comparison?: string, provider?: string) {
     if (!active.size) return true;
-    // Only the two isolated lanes of this exact comparison may share a slot.
-    // DeepSeek forwards the session header through the turn-budget broker;
-    // legacy headerless adapters must retain unambiguous single-task routing.
-    return Boolean(brokerMode && comparison && provider === 'deepseek-official' && active.size < 2 &&
-      [...active.values()].every(row => row.comparison === comparison && row.provider === provider));
+    // The broker binds every native Session to its own immutable turn budget.
+    // Header-routed conversations and comparisons have no account-wide cap.
+    // Headerless legacy adapters still cannot safely identify concurrent calls.
+    return Boolean(brokerMode && provider === 'deepseek-official' &&
+      [...active.values()].every(row => row.provider === provider));
   }
   function requireIdle(comparison?: string, provider?: string) {
     if (!canStart(comparison, provider)) throw new TaskError('task_busy', 'Another task is running; wait or cancel it', 409);
@@ -1404,7 +1404,7 @@ export function apply(ctx: any) {
       throw error;
     }
   }
-  controller.prompt = (request: any, signal: AbortSignal) => serialize(async () => {
+  const admitPrompt = (request: any, signal: AbortSignal) => serialize(async () => {
     await ensureOwned(request.sessionId);
     if (comparisons?.isLane(request.sessionId)) throw new TaskError('comparison_child', '请回到原对照会话继续发送，左右两侧会分别保留历史。', 409);
     if (request.mode !== 'queue') throw new TaskError('delivery_not_supported', 'Use a new queued task; steer is not task admission');
@@ -1442,6 +1442,12 @@ export function apply(ctx: any) {
       await setSelection(request.sessionId, { scene: chatScene.id });
     }
     const selected = admitted ? {...selections.get(request.sessionId)!,scene:admitted.scene} : selections.get(request.sessionId)!;
+    // Older rejected native sends left an unsubmitted draft behind. It owns
+    // no running Agent; a fresh request can retire it without touching a run.
+    const abandoned=forSession(request.sessionId);
+    if(abandoned?.status==='awaiting_confirmation'&&abandoned.entrypoint==='native_chat'&&abandoned.request.request_id!==request.requestId){
+      finish(abandoned,'cancelled','superseded_unsubmitted_request');await abandoned.closing;
+    }
     const previousScene = forSession(request.sessionId)?.scene.id;
     const sourceSnapshot=await controller.inspect(request.sessionId);
     const contaminatedHistory=sourceSnapshot.events.some((event:any)=>event.type==='user/message'&&event.data?.source?.kind==='user'&&
@@ -1528,6 +1534,18 @@ export function apply(ctx: any) {
     resetNextMessageScene(request.sessionId);
     return { accepted: true };
   });
+  controller.prompt = async (request:any,signal:AbortSignal) => {
+    try{return await admitPrompt(request,signal);}
+    catch(error:any){
+      // Metadata only: never copy user content, attachment text or credentials.
+      try{appendFileSync(join(config.output,'prompt-admission-errors.jsonl'),JSON.stringify({at:utc(),
+        session_id:request.sessionId,request_id:request.requestId,code:error?.code??error?.name??'unknown',
+        active_task_ids:[...active.keys()]})+'\n',{mode:0o600});}catch{}
+      if(error instanceof TaskError||error instanceof ComparisonError)
+        throw new RemoteError(error.code as any,error.message,{} as any);
+      throw error;
+    }
+  };
   controller.cancel = async (request: any) => {
     if (!ownedSessions.has(request.sessionId)) throw new TaskError('session_not_owned', 'Session is outside this Web run');
     const task = forSession(request.sessionId);
@@ -1538,6 +1556,7 @@ export function apply(ctx: any) {
     comparisons = createComparisonService(config.output, principal, {
       owns: ensureOwned,
       parallel: turn => findModel(turn.model).provider === 'deepseek-official',
+      concurrent: turn => brokerMode && findModel(turn.model).provider === 'deepseek-official',
       ready: turn => canStart(turn.id, findModel(turn.model).provider),
       async cancelPreparing(turn) {
         for(const [id,meta] of taskParents)if(meta.turn.id===turn.id){
@@ -1553,7 +1572,10 @@ export function apply(ctx: any) {
         return created.sessionId;
       },
       async prepare(turn, lane, requestId,taskReady) { return serialize(async () => {
-        requireIdle(turn.id, findModel(turn.model).provider); const child = turn.lanes[lane].session_id;
+        // Readiness outside the admission lock is only a hint. A legacy task
+        // may have claimed its headerless route meanwhile; retry, don't fail.
+        if(!canStart(turn.id,findModel(turn.model).provider))return {deferred:true as const};
+        const child = turn.lanes[lane].session_id;
         if (turn.cancellation_requested) throw new TaskError('comparison_cancelled', '任务已取消。', 409);
         await ensureOwned(turn.session_id); await ensureOwned(child);
         if (comparisons!.parentFor(child) !== turn.session_id) throw new TaskError('comparison_scope_mismatch', '对话执行范围不匹配。', 403);
@@ -1809,10 +1831,9 @@ export function apply(ctx: any) {
     } }), 'harless-comparison-api');
   }
   const options = resolveAdapterOptions({ baseURL: brokerMode ? config.budget_broker_endpoint + '/v1' : config.endpoint,
-    reasoningEffort: 'off', ...(config.max_output_tokens == null ? {} : { maxTokens: config.max_output_tokens }) } as any);
-  // resolveAdapterOptions supplies 256k when omitted; remove that application
-  // default so the native adapter leaves max_tokens off the provider request.
-  if (config.max_output_tokens == null) delete (options as any).maxTokens;
+    reasoningEffort: 'off', maxTokens:config.max_output_tokens??WEB_DEEPSEEK_OUTPUT_CAPACITY } as any);
+  // Native model defaults reach every routed delegate, including the frozen
+  // File adapter. null remains no application cap; the wire uses real capacity.
   options.models = webDeepSeekModels(options.models, modelOptions);
   const deepseekAdapter = new WebDeepSeekAdapter({ options: () => options,
     resolveApiKey: async () => config.provider_mode === 'mock' ? 'sss-mock-only' : process.env.DEEPSEEK_API_KEY!,
@@ -1934,7 +1955,7 @@ export function apply(ctx: any) {
     if (!task || task.status !== 'running' || !active.has(task.request.task_id) ||
         request.provider !== task.model_option.provider || request.model !== task.model_option.model ||
         request.reasoningEffort !== task.reasoning_effort ||
-        request.maxTokens !== (config.max_output_tokens ?? undefined) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
+        request.maxTokens !== (config.max_output_tokens ?? (task.model_option.provider==='deepseek-official'?WEB_DEEPSEEK_OUTPUT_CAPACITY:undefined)) || !isAgentLoopRequest(request)) throw Error('Unapproved task model request');
     const humans = request.messages.filter((message: any) => message.role === 'user' && message.source?.kind === 'user');
     if (request.messages.some((message: any) => message.source?.kind === 'goal')) throw Error('Goal continuation is outside this task admission');
     if (!humans.some((message: any) => task.current_humans.has(message.id)) ||
@@ -1946,6 +1967,7 @@ export function apply(ctx: any) {
     json(join(task.output, 'model-request-config.json'), { provider: request.provider, model: request.model,
       reasoning_effort: request.reasoningEffort ?? null, reasoning_effort_sent: request.reasoningEffort !== undefined,
       max_output_tokens: request.maxTokens ?? null, output_cap_sent: request.maxTokens !== undefined,
+      application_output_cap:config.max_output_tokens,
       tools_order: requestedTools.map((tool: any) => tool.name), tools_sha256: digest(requestedTools),
       human_message_sha256: humans.map((message: any) => digest(message.content)), mode: task.request.mode });
     task.stats.llm_decisions = Number(task.stats.llm_decisions) + 1; record(task);

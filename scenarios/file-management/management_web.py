@@ -20,13 +20,24 @@ def task_events(directory):
 
 def default_config(real):
     name='daily-management-real-v3' if real else 'daily-management-mock-v3';file=STATE_HOME/(name+'.json')
+    policy_path=os.environ.get('SSS_WEB_POLICY')
+    policy=read(policy_path) if policy_path else None
+    if policy is not None:
+        # A fresh immutable policy config reuses the original account state,
+        # registry and cumulative records. No old task or budget is rewritten.
+        caps={k:policy.get(k) for k in ['budget_usd','run_budget_usd','request_limit','max_output_tokens']}
+        file=STATE_HOME/(name+'-web-'+digest(caps)[:16]+'.json')
     with writer_lock(STATE_HOME,'management-profile'):
         if not file.exists():
             workspace=PRIVATE_HOME/'management-copies'/name;workspace.mkdir(parents=True,exist_ok=True,mode=0o700)
             durable(file,{'schema_version':1,'format':'sss-continuous-rsi-v1','adapter':'management_v3','state_root':str(STATE_HOME/name),
               'workspace_roots':[str(workspace)],'mode':'learn' if real else 'observe','provider_mode':'real' if real else 'mock',
-              'series_cap_usd':1000,'learning_cap_usd':25,'auto_worker':real,'allow_material_copy':real,
-              'limits':{'budget_usd':5,'max_steps':96,'max_output':4000,'max_repairs':2}},exclusive=True)
+              'series_cap_usd':policy.get('run_budget_usd') if policy is not None else 1000,
+              'learning_cap_usd':policy.get('run_budget_usd') if policy is not None else 25,
+              'auto_worker':real,'allow_material_copy':real,
+              'limits':({'budget_usd':policy.get('budget_usd'),'max_steps':policy.get('request_limit'),
+                         'max_output':policy.get('max_output_tokens'),'max_repairs':None} if policy is not None else
+                        {'budget_usd':5,'max_steps':96,'max_output':4000,'max_repairs':2})},exclusive=True)
     initialize(load_config(file));return file
 
 def dispatch(v):
@@ -55,8 +66,9 @@ def dispatch(v):
         spec['approved_inputs']=inputs;spec['learning_eligible']=v.get('rsi',True);durable(directory/'input.json',spec)
         spec['rules']['read_only']=v.get('allow_output',True) is False;durable(directory/'input.json',spec)
         durable(native/'file-task.json',spec)
-        limits={**cfg['limits'],'budget_usd':v['budget_usd'],'max_output':min(v.get('output_cap',4000),cfg['limits']['max_output']),'max_requests':min(v.get('request_limit',96),cfg['limits']['max_steps'])}
-        if v['budget_usd']>cfg['limits']['budget_usd']:raise ValueError('native task budget exceeds original cap')
+        def bound(a,b):return b if a is None else a if b is None else min(a,b)
+        limits={**cfg['limits'],'budget_usd':v['budget_usd'],'max_output':bound(v.get('output_cap'),cfg['limits']['max_output']),'max_requests':bound(v.get('request_limit'),cfg['limits']['max_steps'])}
+        if cfg['limits']['budget_usd'] is not None and (v['budget_usd'] is None or v['budget_usd']>cfg['limits']['budget_usd']):raise ValueError('native task budget exceeds original cap')
         job=out/'operation-job.json';initialize_job(job,directory/'input.json',directory/'delivery',limits)
         # Main's native Session preset references this immutable current task.
         durable(native/'management-binding.json',{'directory':str(directory),'task_file':str(directory/'input.json'),'delivery':str(directory/'delivery'),'job_file':str(job)})

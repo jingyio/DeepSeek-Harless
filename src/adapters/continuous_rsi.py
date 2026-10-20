@@ -8,6 +8,7 @@ import asyncio
 from contextlib import contextmanager
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -132,12 +133,18 @@ def load_config(path):
     if any(type(cfg[k]) is not bool for k in ('auto_worker','allow_material_copy')):
         raise ValueError('RSI switches must be booleans')
     if cfg['provider_mode']=='mock' and cfg['mode']=='learn': raise ValueError('mock evidence cannot learn')
-    if not 0 < cfg['series_cap_usd'] <= 1000 or not 0 <= cfg['learning_cap_usd'] <= cfg['series_cap_usd']:
+    def number(value, minimum=0):
+        return value is None or type(value) in (int,float) and math.isfinite(value) and value >= minimum
+    if (not number(cfg['series_cap_usd']) or not number(cfg['learning_cap_usd']) or
+            cfg['series_cap_usd'] is not None and not 0 < cfg['series_cap_usd'] <= 1000 or
+            cfg['series_cap_usd'] is not None and (cfg['learning_cap_usd'] is None or cfg['learning_cap_usd'] > cfg['series_cap_usd'])):
         raise ValueError('RSI caps exceed existing authorization')
     limits=cfg['limits']
-    if set(limits) != {'budget_usd','max_steps','max_output','max_repairs'} or not 0 < limits['budget_usd'] <= 5:
+    if (set(limits) != {'budget_usd','max_steps','max_output','max_repairs'} or not number(limits['budget_usd']) or
+            limits['budget_usd'] is not None and not 0 < limits['budget_usd'] <= 5):
         raise ValueError('invalid original per-task RSI limits')
-    if not 1 <= limits['max_steps'] <= 96 or not 1 <= limits['max_output'] <= 4000 or not 0 <= limits['max_repairs'] <= 2:
+    if any(limits[k] is not None and (type(limits[k]) is not int or not minimum <= limits[k] <= maximum)
+           for k,minimum,maximum in [('max_steps',1,96),('max_output',1,393216),('max_repairs',0,2)]):
         raise ValueError('RSI limits cannot expand original bounds')
     roots=[]
     for value in cfg['workspace_roots']:
@@ -231,17 +238,20 @@ def reserve(cfg, session, cap):
     with writer_lock(STATE_HOME,'series'):
         pool=read(root/'pool.json')
         if session in pool['runs']: raise ValueError('task reservation already exists; no cold budget reset')
-        current=series_accounting()
-        pending=sum(r['cap_usd'] for p in STATE_HOME.glob('*/pool.json') for r in read(p)['runs'].values() if r['status']=='reserved')
-        if current['estimated_usd']+pending+cap>cfg['series_cap_usd']: raise ValueError('original series budget exhausted')
+        pending_runs=[r for p in STATE_HOME.glob('*/pool.json') for r in read(p)['runs'].values() if r['status']=='reserved']
+        if cfg['series_cap_usd'] is not None:
+            current=series_accounting()
+            if cap is None or any(r['cap_usd'] is None for r in pending_runs) or current['estimated_usd']+sum(r['cap_usd'] for r in pending_runs)+cap>cfg['series_cap_usd']:
+                raise ValueError('original series budget exhausted')
         # A new adapter/version cannot receive a fresh independent learning cap.
         all_runs=[r for p in STATE_HOME.glob('*/pool.json') for r in read(p)['runs'].values()]
-        from .management_backup import imported_budget
-        carry=imported_budget(ROOT)
-        learned=sum(r['cost_usd'] for r in all_runs if r['status']=='settled' and r['role']!='ordinary')+carry.get('learning_spent_usd',0)
-        booked=sum(r['cap_usd'] for r in all_runs if r['status']=='reserved' and r['role']!='ordinary')+carry.get('learning_reserved_usd',0)
-        if cfg['role']!='ordinary' and learned+booked+cap>cfg['learning_cap_usd']:
-            raise ValueError('continuous learning budget exhausted')
+        if cfg['role']!='ordinary' and cfg['learning_cap_usd'] is not None:
+            from .management_backup import imported_budget
+            carry=imported_budget(ROOT)
+            learned=sum(r['cost_usd'] for r in all_runs if r['status']=='settled' and r['role']!='ordinary')+carry.get('learning_spent_usd',0)
+            pending=[r['cap_usd'] for r in all_runs if r['status']=='reserved' and r['role']!='ordinary']+[carry.get('learning_reserved_usd',0)]
+            if cap is None or None in pending or learned+sum(pending)+cap>cfg['learning_cap_usd']:
+                raise ValueError('continuous learning budget exhausted')
         pool['runs'][session]={'status':'reserved','cap_usd':cap,'role':cfg['role'],'pid':os.getpid(),'reserved_at':time.time()}
         durable(root/'pool.json',pool)
 
@@ -301,11 +311,12 @@ def fingerprint(spec):
 def enroll(config_file, prepared, session, out, args, env):
     cfg=load_config(config_file);root=initialize(cfg);out=private(out)
     limits=cfg['limits']
-    if args.budget_usd>limits['budget_usd'] or args.max_steps>limits['max_steps'] or args.max_output>limits['max_output']:
+    if any(limits[k] is not None and (value is None or value>limits[k]) for k,value in
+           [('budget_usd',args.budget_usd),('max_steps',args.max_steps),('max_output',args.max_output)]):
         raise ValueError('ordinary run exceeds original RSI task bounds')
     if not prepared.get('acceptance_guard') or prepared['acceptance_guard'].get('durable_job') and cfg.get('adapter') not in ('file_operations_v2','management_v3'):
         raise ValueError('continuous read tasks require the original independent file acceptance guard')
-    if prepared['acceptance_guard']['max_repairs']>limits['max_repairs']: raise ValueError('repair grant exceeds original RSI limits')
+    if limits['max_repairs'] is not None and (prepared['acceptance_guard']['max_repairs'] is None or prepared['acceptance_guard']['max_repairs']>limits['max_repairs']): raise ValueError('repair grant exceeds original RSI limits')
     task_file=private(env.get('FM_TASK_FILE') or os.environ.get('FM_TASK_FILE',''))
     delivery=private(env.get('FM_OUTPUT') or os.environ.get('FM_OUTPUT',''));spec=read(task_file)
     work=Path(spec['workspace']).resolve()
