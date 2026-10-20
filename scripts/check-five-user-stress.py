@@ -5,6 +5,10 @@ Default is a network-free preview. Run on the configured Linux service host:
   python scripts/check-five-user-stress.py --execute-real --results /PRIVATE/.local/stress-ID
   python scripts/check-five-user-stress.py --execute-real --resume /PRIVATE/.local/stress-ID --phase delivery
 
+Use --base-url with the configured publicOrigin to include the public website
+path; the default remains gateway loopback. Invite administration is always
+loopback-only and account credentials are never followed to another origin.
+
 Does not start/restart services, rewrite quotas, reset accounting, use existing
 members, author presentations, or automatically cancel timed-out requests.
 Credentials, synthetic inputs, raw answers and evidence stay in --results (0600).
@@ -77,6 +81,30 @@ class HttpFailure(RuntimeError):
         super().__init__(f"HTTP {status}: {self.path}")
 
 
+def normalized_origin(value):
+    parsed = urllib.parse.urlsplit(str(value))
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+            or parsed.username is not None or parsed.password is not None
+            or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
+        raise ValueError("Expected an HTTP(S) origin without credentials, path, query or fragment")
+    port = parsed.port
+    host = parsed.hostname.lower()
+    host = "[" + host + "]" if ":" in host else host
+    suffix = "" if port is None or port == (443 if parsed.scheme == "https" else 80) else ":" + str(port)
+    return parsed.scheme + "://" + host + suffix
+
+
+class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, newurl):
+        target = urllib.parse.urljoin(request.full_url, newurl)
+        if normalized_origin(urllib.parse.urlunsplit((*urllib.parse.urlsplit(target)[:2], "", "", ""))) != normalized_origin(
+                urllib.parse.urlunsplit((*urllib.parse.urlsplit(request.full_url)[:2], "", "", ""))):
+            raise RuntimeError("Cross-origin redirect blocked; credentials were not forwarded")
+        if urllib.parse.urlsplit(target).username is not None or urllib.parse.urlsplit(target).password is not None:
+            raise RuntimeError("Redirect credentials are not allowed")
+        return super().redirect_request(request, response, code, message, headers, target)
+
+
 class Client:
     def __init__(self, base, origin, cookie=""):
         self.base, self.origin, self.cookie = base.rstrip("/"), origin, cookie
@@ -94,7 +122,7 @@ class Client:
             request_headers["Content-Type"] = "application/octet-stream" if binary else "application/json"
         request = urllib.request.Request(self.base + path, data=data, headers=request_headers)
         if not hasattr(self.local, "opener"):
-            self.local.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            self.local.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), SameOriginRedirect())
         try:
             with self.local.opener.open(request, timeout=timeout) as response:
                 raw = response.read()
@@ -217,7 +245,8 @@ class Stress:
     def __init__(self, args, plan, config, directory):
         self.args, self.plan, self.config, self.directory = args, plan, config, directory
         self.lock, self.stop = threading.RLock(), threading.Event()
-        self.base = f'http://127.0.0.1:{int(config["port"])}'
+        self.loopback = f'http://127.0.0.1:{int(config["port"])}'
+        self.base = normalized_origin(args.base_url) if args.base_url else self.loopback
         self.origin = config["publicOrigin"]
         self.members = Path(config["membersDir"])
         self.clients, self.credentials = {}, {}
@@ -295,7 +324,7 @@ class Stress:
             self.credentials = credentials
             save(self.directory / "credentials.json", credentials)
         else:
-            admin = Client(self.base, self.origin)
+            admin = Client(self.loopback, self.origin)
             _, response, _ = admin.request("/api/internal/admin", {"action": "invite", "count": 5},
                                          headers={"X-Harless-Admin": self.config["adminToken"]})
             codes = response["codes"]
@@ -787,6 +816,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--execute-real", action="store_true")
     parser.add_argument("--service-plan", type=Path, default=os.environ.get("GENELOOP_SERVICE_CONFIG"))
+    parser.add_argument("--base-url", help="Configured publicOrigin or gateway loopback only; default loopback")
     parser.add_argument("--results", type=Path)
     parser.add_argument("--resume", type=Path, help="Existing private run; reuses only its five test members")
     parser.add_argument("--phase", choices=("scheduler", "delivery", "all", "audit"), default="all")
@@ -801,6 +831,7 @@ def main():
     preview = {"executed": False, "users": 5, "new_accounts_via_invites": True, "conversations_per_user": list(SCENES),
                "initial_concurrent_scenario_conversations": 15, "initial_scene_lanes": 30, "extra_chat_conversations": 5,
                "scheduler_rounds_per_conversation": 3, "delivery_rounds_per_conversation": 1, "phase": args.phase,
+               "transport": "explicit origin, checked against service plan at execution" if args.base_url else "gateway loopback",
                "real_model": "DeepSeek Flash / Off", "application_budget_and_request_caps": None, "provider_max_tokens": 393216,
                "accounting": "Cumulative ledger remains unchanged; only exact own task receipts are reported", "credentials_printed": False}
     if not args.execute_real:
@@ -821,6 +852,14 @@ def main():
     directory.mkdir(parents=True, exist_ok=bool(args.resume), mode=0o700)
     plan = load(args.service_plan)
     config = load(plan["gateway_config"])
+    if args.base_url:
+        try:
+            selected = normalized_origin(args.base_url)
+            allowed = {normalized_origin(config["publicOrigin"]), f'http://127.0.0.1:{int(config["port"])}'}
+            if selected not in allowed:
+                parser.error("--base-url must be this service's publicOrigin or default gateway loopback")
+        except (TypeError, ValueError, KeyError):
+            parser.error("--base-url must be a valid configured origin without credentials, path, query or fragment")
     if not config.get("adminToken") or not config.get("membersDir"):
         parser.error("Existing gateway does not support the required private admin/member paths")
     policy = config.get("memberPolicy", {})
@@ -828,7 +867,8 @@ def main():
         if policy.get(key) is not None:
             parser.error("Published member policy has an application cap: " + key)
     runner = Stress(args, plan, config, directory)
-    runner.result["executions"].append({"at": now(), "phase": args.phase, "source_sha": plan.get("source_sha"), "resume": bool(args.resume)})
+    runner.result["executions"].append({"at": now(), "phase": args.phase, "source_sha": plan.get("source_sha"),
+                                         "resume": bool(args.resume), "base_url": runner.base, "admin_transport": "gateway loopback"})
     runner.persist()
     thread = None
     try:
