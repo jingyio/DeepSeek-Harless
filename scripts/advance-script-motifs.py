@@ -31,6 +31,8 @@ def main():
         save(store/'history.json',history)
         if len(history['tasks'])<2:
             save(task/'script-learning-status.json',{'status':'waiting_for_distinct_task_inputs'});return
+        parent=read(store/'latest.json') if (store/'latest.json').exists() else None
+        if parent and parent.get('user')!=a.user:raise ValueError('foreign_learning_store')
         round_dir=store/('round-'+uuid4().hex)
         command=[sys.executable,str(ROOT/'scripts/learn-script-motifs.py'),*[x for t in history['tasks'] for x in ['--task',t]],'--output',str(round_dir)]
         started=__import__('time').monotonic()
@@ -45,8 +47,12 @@ def main():
         save(round_dir/'reuse-library.json',reuse)
         published=bool(library['programs'] or reuse['contracts'])
         status={'status':'published' if published else 'no_qualified_programs','round':round_dir.name,'programs':len(library['programs']),'digest':library['digest'],
-                'reuse_contracts':len(reuse['contracts']),'reuse_digest':reuse['digest'],'compilation_model_requests':0,'elapsed_seconds':__import__('time').monotonic()-started}
+                'reuse_contracts':len(reuse['contracts']),'reuse_digest':reuse['digest'],'compilation_model_requests':0,'elapsed_seconds':__import__('time').monotonic()-started,
+                'triggered_by_task':task.name,'parent_digest':parent.get('digest') if parent else None,
+                'heldout_task_id':library['heldout_task_id'],'training_task_ids':[Path(t).name for t in history['tasks'][1:]]}
+        save(round_dir/'lineage.json',{**status,'evidence':[{'task_id':Path(t).name,'events_sha256':hashlib.sha256((Path(t)/'events.jsonl').read_bytes()).hexdigest()} for t in history['tasks']]})
         if published:save(store/'latest.json',{'file':str((round_dir/'library.json').relative_to(store)),'digest':library['digest'],'user':a.user,
-                                             'reuse_file':str((round_dir/'reuse-library.json').relative_to(store)),'reuse_digest':reuse['digest']})
+                                             'reuse_file':str((round_dir/'reuse-library.json').relative_to(store)),'reuse_digest':reuse['digest'],
+                                             'triggered_by_task':task.name,'parent_digest':status['parent_digest']})
         save(task/'script-learning-status.json',status)
 if __name__=='__main__':main()

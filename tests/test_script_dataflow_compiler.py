@@ -38,8 +38,28 @@ def test_mutating_loops_and_imports_preserved_but_unrelated_data_excluded():
 
 
 def test_unsupported_alias_and_control_scope_is_not_guessed():
-    assert slices('def transform(x):\n return x\ny=transform(1)\nprint(y)')==[]
+    assert slices('def transform(x):\n def nested(y):\n  return y\n return nested(x)\ny=transform(1)\nprint(y)')==[]
     assert slices('try:\n x=1\nexcept Exception:\n x=2\nprint(x)')==[]
+
+
+def test_pure_parser_function_and_completed_mutating_loop_are_lifted(tmp_path):
+    (tmp_path/'inputs').mkdir();(tmp_path/'code').mkdir()
+    (tmp_path/'inputs/current.txt').write_text('a\nb\n')
+    source="""def parse(line):
+    return {'title':line.upper()}
+raw=open('inputs/current.txt').read()
+records=[]
+for line in raw.splitlines():
+    records.append(parse(line))
+import json
+json.dump(records,open('records.json','w'))
+"""
+    rows=observe_slices("python3 - <<'PY'\n"+source+'PY','parse',tmp_path,'','task','call')
+    completed=[r for r in rows if r['expression_witness']['target']=='records' and 'for line in' in r['template']]
+    assert len(completed)==1
+    assert 'def parse' in completed[0]['template']
+    assert 'json.dump(' not in completed[0]['template']
+    assert "'w'" not in completed[0]['template']
 
 
 def test_slice_still_requires_registered_inputs_and_existing_readonly_admission(tmp_path):

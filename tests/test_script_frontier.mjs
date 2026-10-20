@@ -26,7 +26,8 @@ for(const status of ['unknown','ambiguous','unneeded'])test(status+' does not au
  const f=fixture();acknowledge(f,f.command(status));assert.equal(f.frontier.ready(),null);assert.equal(f.frontier.prompt(),'');
 });
 test('historical frequency, scalar network calls and branching do not create forced routes',()=>{
- assert.equal(learnedScriptFragments({programs:[first,{...second,argv_contract:{}}]}).length,0);
+ const standalone=learnedScriptFragments({programs:[first,{...second,argv_contract:{}}]});
+ assert.deepEqual(standalone.map(f=>f.nodes.map(p=>p.id)),[['a']]);
  assert.equal(learnedScriptFragments({programs:[first,second,{...second,id:'c'}]}).length,0);
  assert.equal(learnedScriptFragments({programs:[{...first,predecessor:{program_id:'b'}},second]}).length,0);
 });
@@ -67,4 +68,51 @@ test('semantic gap is announced once and completion evidence is appended once',(
  const f=fixture();assert.ok(f.frontier.takeNotice().includes('有界语义选择'));assert.equal(f.frontier.takeNotice(),'');
  acknowledge(f,f.command());f.frontier.finish('a',true);f.frontier.finish('b',true);
  assert.ok(f.frontier.takeNotice().includes('已完成'));assert.equal(f.frontier.takeNotice(),'');
+});
+
+function batchFixture(){
+ const events=[];let valid=true;
+ const third={...first,id:'c',interface:{stdout_labels:['encoding']}};
+ const frontier=createScriptExecutionFrontier({library:{programs:[first,second,third],digest:'test'},goal:'check current document',
+  bind:()=>[{path:'/work/current.txt',sha256:'v'}],verify:()=>valid,audit:r=>events.push(r)});
+ const notice=frontier.takeNotice('initial_stable_prefix'),request=JSON.parse(notice.split('\n').at(-1));
+ const command=(ids=request.candidates.map(c=>c.id))=>'geneloop-resolve '+JSON.stringify({request_id:request.request_id,status:'selected',candidate_ids:ids});
+ return {frontier,events,command,request,change:()=>{valid=false;}};
+}
+test('one semantic selection authorizes several exact fragments and gives one completion notice',()=>{
+ const f=batchFixture();acknowledge(f,f.command());
+ for(const id of ['a','b','c']){
+  assert.equal(f.frontier.ready().program.id,id);
+  assert.equal(f.frontier.takeNotice(),'');
+  f.frontier.finish(id,true);
+ }
+ assert.equal(f.frontier.ready(),null);
+ const done=f.frontier.takeNotice();
+ assert.ok(done.includes('旧 request_id 已消费'));
+ assert.ok(!done.includes('当前有一个有界语义选择'));
+ assert.equal(f.frontier.takeNotice(),'');
+ assert.equal(f.events.filter(e=>e.kind==='script_frontier_resolution_verified').length,1);
+ assert.equal(f.events.find(e=>e.kind==='script_frontier_resolution_verified').operators,3);
+});
+test('batch rejects duplicates, invented fragments and excess work before starting any node',()=>{
+ for(const build of [f=>[f.request.candidates[0].id,f.request.candidates[0].id],_f=>['invented'],f=>Array(9).fill(f.request.candidates[0].id)]){
+  const f=batchFixture();assert.throws(()=>f.frontier.prepare(f.command(build(f))));
+  assert.equal(f.frontier.ready(),null);
+ }
+});
+test('input changes or failure in the first fragment stop later approved fragments',()=>{
+ let f=batchFixture();acknowledge(f,f.command());f.frontier.finish('a',true);f.change();
+ assert.equal(f.frontier.ready(),null);
+ f=batchFixture();acknowledge(f,f.command());f.frontier.finish('a',false);
+ assert.equal(f.frontier.ready(),null);
+ assert.equal(f.events.filter(e=>e.kind==='script_frontier_completed').length,0);
+});
+test('task-specific bindings and random IDs follow the stable catalogue prefix',()=>{
+ function notice(path){return createScriptExecutionFrontier({library:{programs:[first,second],digest:'same'},goal:'check document',
+  bind:()=>[{path,sha256:'current'}],verify:()=>true,audit:()=>{}}).takeNotice('initial_stable_prefix');}
+ const a=notice('/work/a.txt'),b=notice('/work/b.txt');
+ assert.equal(a.slice(0,a.indexOf('"bindings":')),b.slice(0,b.indexOf('"bindings":')));
+ const request=JSON.parse(a.split('\n').at(-1));
+ assert.ok(a.indexOf(request.request_id)>a.indexOf('"bindings":'));
+ assert.deepEqual(Object.values(request.bindings),[['/work/a.txt']]);
 });

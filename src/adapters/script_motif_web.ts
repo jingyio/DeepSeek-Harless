@@ -1,5 +1,5 @@
 /** Wrap only the native provider continuation, after all existing admission guards. */
-import {appendFileSync,readFileSync,readdirSync,writeFileSync} from 'node:fs';
+import {appendFileSync,readFileSync,readdirSync,writeFileSync,existsSync,mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -9,6 +9,7 @@ import {createNegativeRuntime,loadNegativeLibrary} from './script_negative_runti
 import {createReuseMediation,loadReuseLibrary} from './reuse_mediation.ts';
 import {createReuseTrace} from './reuse_trace.ts';
 import {createUserMessage} from '@deepseek-ai/dsh-llm';
+import {resolveScriptLearningSettings} from './script_learning_store.ts';
 export const name=native.name;
 export const inject=native.inject;
 export function apply(ctx:any){
@@ -37,15 +38,10 @@ export function apply(ctx:any){
   const audit=(row:any)=>appendFileSync(join(output,'script-motif-audit.jsonl'),JSON.stringify({...row,task_id:state.task_id,at:new Date().toISOString()})+'\n',{mode:0o600});
   let runtime:any;
   try{
-   const settings=JSON.parse(readFileSync(process.env.SSS_SCRIPT_MOTIF_CONFIG!,'utf8'));
-   if(settings.learningStore){
-    const pointer=JSON.parse(readFileSync(join(settings.learningStore,'latest.json'),'utf8'));
-    if(pointer.user!==policy.user_id||!/^round-[a-f0-9]+\/library\.json$/.test(pointer.file))throw Error('foreign_script_library');
-    settings.library=join(settings.learningStore,pointer.file);
-    if(pointer.reuse_file){
-     if(!/^round-[a-f0-9]+\/reuse-library\.json$/.test(pointer.reuse_file))throw Error('foreign_reuse_library');
-     settings.reuseLibrary=join(settings.learningStore,pointer.reuse_file);
-    }
+   const {settings,snapshot}=resolveScriptLearningSettings(JSON.parse(readFileSync(process.env.SSS_SCRIPT_MOTIF_CONFIG!,'utf8')),policy.user_id);
+   if(snapshot)writeFileSync(join(output,'script-learning-snapshot.json'),JSON.stringify({...snapshot,status:snapshot.status==='loaded'?'resolved':snapshot.status},null,2)+'\n',{mode:0o600});
+   if(snapshot?.status==='cold_start'&&!settings.library&&!settings.reuseLibrary&&!settings.negativeLibrary){
+    audit({kind:'script_learning_cold_start'});current.set(session,{id:state.task_id,runtime:null});return null;
    }
    const library=settings.library?loadScriptLibrary(settings.library):null;
    const task=JSON.parse(readFileSync(join(output,'task.json'),'utf8')),effective=JSON.parse(readFileSync(join(output,'effective-config.json'),'utf8'));
@@ -59,6 +55,10 @@ export function apply(ctx:any){
    runtime.negative=negative;
    runtime.reuse=reuse;registerReuseMediation(session,reuse);
    if(library&&settings.catalog)runtime.catalog=registerScriptCache({...settings,library,workspace:effective.workspace,session,audit,frontier:runtime.frontier});
+   if(snapshot?.status==='loaded'){
+    writeFileSync(join(output,'script-learning-snapshot.json'),JSON.stringify(snapshot,null,2)+'\n',{mode:0o600});
+    audit({kind:'script_learning_library_loaded',library_digest:library?.digest,reuse_digest:snapshot.reuse?.digest??null,triggered_by_task:snapshot.triggered_by_task,pointer_sha256:snapshot.pointer_sha256});
+   }
   }catch(error:any){audit({kind:'script_fallback',reason:error.message});runtime=null;}
   current.set(session,{id:state.task_id,runtime});return runtime;
  }
@@ -86,9 +86,12 @@ export function apply(ctx:any){
     if(state.session_id!==agent.session.id||state.user_id!==policy.user_id||state.status!=='completed'||state.mode!=='baseline'||scheduled.has(id))continue;
     scheduled.add(id);
     const worker=fileURLToPath(new URL('../../scripts/advance-script-motifs.py',import.meta.url));
+    mkdirSync(process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE!,{recursive:true,mode:0o700});
     const child=spawn(policy.learning_python,[worker,'--task',output,'--store',process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE!,'--user',policy.user_id],
      {env:{PATH:process.env.PATH,SSS_PYTHON:policy.learning_python,SSS_LOCAL_SCRIPT_EXPERIMENT:process.env.SSS_LOCAL_SCRIPT_EXPERIMENT,PYTHONUTF8:'1'},stdio:'ignore'});
-    child.on('error',()=>{});
+    const failed=(reason:string)=>{if(!existsSync(join(output,'script-learning-status.json')))writeFileSync(join(output,'script-learning-status.json'),JSON.stringify({status:'failed',reason}),{mode:0o600});};
+    child.on('error',()=>failed('learning_worker_spawn_failed'));
+    child.on('exit',(code,signal)=>{if(code!==0||signal)failed('learning_worker_exited_without_result');});
    }catch{}
   },50);
  },{global:true});

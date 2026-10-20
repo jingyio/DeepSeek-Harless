@@ -13,6 +13,10 @@ PPT 账户内结构学习现接入已启用PPT双路对照的真实聊天任务�
 
 独立论文实验新增从实际报告操作自动记录当前草稿、返回明确输入错误及有类型分组修复，不再要求runner预置恢复scope；真实局部恢复连续三次4请求，正常完整任务也触发了局部引用修订。完整费用仍受不同检索路径影响，科研事实验收未通过，不能宣称稳定整任务净降本。默认关闭、未部署；配置及全部失败见[自动状态接入记录](docs/experiments/paper-live-state-20261020-v1.md)。
 
+独立 Script RSI 实验现将学习发布与下一任务加载接到同一私有 store，保存逐任务版本收据。真实 BibTeX 检查中，库从3算子增至12，后续三任务均实际接管一次，另观察到五次新学脚本缓存复用。首次失败、恢复和费用均保留，尚未证明整任务净降本或完整报告合格。见[自动闭环记录](docs/experiments/paper-rsi-live-loop-20261020-v1.md)，未部署生产。
+
+后续[执行控制优化](docs/experiments/paper-frontier-batch-20261020-v1.md)保持原算子，支持一次当前语义选择后连续执行多个片段，真实接管3–8个程序且不再重复提交过期选择。观察到局部模型费下降和更贵反例，报告仍有数字/编码判断错误，不能视为完整论文合格降本；全部失败与费用保留，未PR或部署。
+
 论文 Breakdown 的 [具体读写实例](docs/experiments/paper-operation-breakdown-20261019-v1.md) 现展示实际命令、工具参数、费用和复用边界。同一读取算子在另一真实多文件论文中，单主文件覆盖失败，绑定10个来源文件后覆盖一致；这仅为局部无模型检查，不是新端到端降费成绩。
 
 PPT/PPTX 输入现结合原生主题/母版/布局、字体颜色和对象位置声明，以及隔离渲染的逐页视觉观察。GeneLoop 可用上传 PPT 作为设计参考；沿用原生模板填新内容时使用 ppt-master 的 round-trip 编辑流程，原件保留。旧 PPT 可隔离转换为标准 PPTX；字体、媒体和复杂效果仍有保真边界。见[附件说明](docs/attachment-input-behavior.md#pptpptx-的视觉与风格输入)。兼容库更新为 `ppt-master-v6` / `paper-web-v11`，沿用原证据与结构，旧库保留。
@@ -268,6 +272,8 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 论文 Script Motif 的边界快照重放、有界诊断片段和当前产物引用仍为显式实验功能；`--report-evidence`可给两组对照同时启用隔离的缺字修复与失败字段证据，不修改生产导出模块或旧认证库。连续接管次数不能直接折算净费用，当前仍未验证独立论文上的稳定合格降本。入口、默认关闭的副作用权限和复现见[接口说明](docs/interfaces.md#边界快照诊断片段与隔离导出变体2026-10-19)与[本轮记录](docs/experiments/paper-evidence-slice-20261019-v1.md)。
 
 论文实验的当前恢复目标、版本化失败字段与成功产物复用已接通：`--report-evidence --preserve-recovery-structure`可在显式局部恢复中拒绝子集交付、复用完整参数做叶子补丁，并核验当前成功文件后交回总结；公开默认不启用。真实页数失败任务已完成17字段补丁及六页交付，37条记录与来源保持；早期错误交付、低效尝试与费用均保留，未主张稳定净降本。见[实验记录](docs/experiments/paper-recovery-evidence-20261020-v1.md)。
+
+论文检索证据实验通过 `run-script-motif-experiment.py --retrieval-evidence` 显式启用，保留每个查询的候选来源，并在原 `web_search` 中提供同任务证据 ID 选择；不新增工具，不把检索候选当作正式发表结论。局部只读验证可用 `--no-output --evaluation-scope local_retrieval_validation`；`--search-output-tokens` 仅调整实验搜索模型的输出上限。已有四次真实局部运行尚未触发证据复用，不能据费用较低的两次运行宣称 Motif 降本；质量反例、失败回归和全部费用见[检索证据实验](docs/experiments/paper-retrieval-evidence-20261020-v1.md)。生产默认和认证库不变。
 
 
 论文恢复实验新增显式`--resume-current-operation`：当前任务已选择的完整操作，经任务/来源/授权/Schema核验后由Runtime先执行一次，失败交回修订、成功交回总结。两次真实正常恢复均只需1个模型总结请求；复杂页数恢复仍有18/43请求和不可靠解释，尚未证明稳定净降本。全部仍为显式实验入口，非生产默认；失败与累计费用见[新实验记录](docs/experiments/paper-recovery-control-20261020-v2.md)。

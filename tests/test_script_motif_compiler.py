@@ -34,6 +34,14 @@ def test_readonly_regex_script_does_not_require_json_ir():
     assert p['language']=='python'
 
 
+def test_new_saved_source_is_bound_to_current_command_not_old_file(tmp_path):
+    (tmp_path/'code').mkdir()
+    command="cat > read.py <<'PY'\nprint(open('inputs/current.bib').read())\nPY\npython3 read.py"
+    assert extract(command,tmp_path)[1]=="print(open('inputs/current.bib').read())"
+    for tail in [' | head','; rm x',' && echo extra']:
+        with pytest.raises(ValueError):extract(command+tail,tmp_path)
+
+
 def test_real_heredoc_forms_keep_body_and_reject_shell_expansion_or_tail():
     for prefix in ["python3 << 'EOF'","python3 - << 'EOF'",'python <<EOF']:
         assert extract(prefix+'\nprint(1)\nEOF')==('/work','print(1)')

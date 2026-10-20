@@ -52,6 +52,19 @@ def extract(command, workspace=None):
     if saved:
         declared = (saved.group(1), saved.group(3))
         command = saved.group(4)
+        invocation = shlex.split(command)
+        if len(invocation)>=2 and invocation[0] in ('python','python3') and invocation[1]==declared[0] and not any(p in {'|',';','&&','||','>','2>&1'} for p in invocation):
+            if workspace:
+                virtual=posixpath.normpath(posixpath.join(cwd,invocation[1]))
+                if not virtual.startswith('/work/'):raise ValueError('script_outside_workspace')
+                path=virtual_host(workspace,virtual)
+                if path.is_symlink() or not path.resolve().is_relative_to(Path(workspace).resolve()):raise ValueError('script_source_not_fixed')
+                # Existing saved bytes still have to agree. A newly declared
+                # source may be absent from the native pre-call snapshot.
+                if path.exists() and path.read_bytes().decode('utf-8').strip()!=declared[1].strip():raise ValueError('saved_source_changed')
+            # This source is created by the current command; it cannot exist in
+            # the pre-call snapshot. Its bytes are witnessed by native arguments.
+            return cwd, declared[1], invocation[2:], sha(declared[1])
     match = re.fullmatch(r"\s*python(?:3)?\s+(?:-\s*)?<<\s*(?P<quote>['\"]?)(?P<delimiter>[A-Za-z_]\w*)(?P=quote)[ \t]*\n(?P<body>.*?)\n(?P=delimiter)[ \t]*\s*", command, re.S)
     if match:
         source=match.group('body')
