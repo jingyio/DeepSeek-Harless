@@ -23,6 +23,7 @@ from harless_owner_access import sync_owner_access, verify_access
 
 
 TERMINAL = {'completed', 'failed', 'cancelled', 'budget_exhausted', 'awaiting_confirmation'}
+FILE_TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
 
 
 def read(path):
@@ -156,6 +157,35 @@ def assert_idle(plan):
     members = Path(config['membersDir'])
     if members.exists():
         outputs += [p / 'tasks' for p in members.iterdir() if p.is_dir()]
+    # File's SDK has its own durable state, outside ordinary tasks/comparisons.
+    # Members persist under their output bind. The established owner home is
+    # rooted in the RUNNING gateway checkout, not the candidate release/output.
+    file_roots = [output / 'file-management' for output in outputs]
+    if config.get('sourceDir') is not None:
+        source = Path(config['sourceDir'])
+        if not source.is_absolute() or source.is_symlink() or source.name != 'src' or not source.is_dir():
+            raise RuntimeError('Unknown owner File source root; restart refused')
+        root = source.resolve().parent
+        gateway = root / 'scripts' / 'harless_gateway.mjs'
+        argv = plan.get('gateway', {}).get('argv', [])
+        if (not gateway.is_file() or gateway.is_symlink() or
+                Path(plan.get('gateway', {}).get('cwd', '')).resolve() != root or
+                not any(isinstance(value, str) and Path(value).is_absolute() and
+                        Path(value).resolve() == gateway for value in argv)):
+            raise RuntimeError('Owner File source root differs from running gateway; restart refused')
+        file_roots.append(root / '.local' / 'web' / 'file-management')
+    for directory in file_roots:
+        for path in directory.glob('accounts/*/tasks/*/state.json'):
+            try:
+                if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(directory.resolve()):
+                    raise ValueError('Invalid File state path')
+                state = read(path)
+                if not isinstance(state, dict):
+                    raise ValueError('Invalid File state object')
+            except (OSError, ValueError, TypeError) as error:
+                raise RuntimeError('Unknown File task state; restart refused') from error
+            if not isinstance(state.get('status'), str) or state['status'] not in FILE_TERMINAL:
+                raise RuntimeError('Active or unknown File task exists; restart refused')
     for output in outputs:
         for path in output.glob('tasks/*/task-state.json'):
             if read(path).get('status') not in TERMINAL:

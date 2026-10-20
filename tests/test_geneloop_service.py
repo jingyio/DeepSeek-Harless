@@ -117,6 +117,89 @@ class PlanTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             service.assert_idle(self.plan)
 
+    def file_state(self, base, name='task'):
+        path = base / 'file-management' / 'accounts' / 'diagnostic-scope' / 'tasks' / name / 'state.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def bind_gateway_source(self, root):
+        source = root / 'src'
+        source.mkdir(parents=True)
+        entry = root / 'scripts' / 'harless_gateway.mjs'
+        entry.parent.mkdir()
+        entry.write_text('// Source identity fixture; never executed.\n', encoding='utf-8')
+        service.save(self.config, {**service.read(self.config), 'sourceDir': str(source)})
+        self.plan['gateway']['cwd'] = str(root)
+        self.plan['gateway']['argv'] = [sys.executable, str(entry), str(self.config)]
+
+    def test_member_sdk_file_active_and_unknown_states_refuse_restart(self):
+        path = self.file_state(self.members / 'one' / 'tasks')
+        for status in ('running', 'queued', 'preparing', 'awaiting_confirmation', 'unexpected', None, []):
+            with self.subTest(status=status):
+                service.save(path, {'status': status})
+                with self.assertRaisesRegex(RuntimeError, 'Active or unknown File task'):
+                    service.assert_idle(self.plan)
+
+    def test_file_terminal_states_allow_restart_and_do_not_modify_records(self):
+        for status in ('completed', 'failed', 'cancelled', 'interrupted'):
+            for output in (self.output, self.members / 'one' / 'tasks', self.members / 'two' / 'tasks'):
+                path = self.file_state(output, status)
+                service.save(path, {'status': status, 'retained': 'original'})
+        before = {path: path.read_bytes() for path in self.root.rglob('state.json')}
+        service.assert_idle(self.plan)
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+
+    def test_owner_sdk_file_uses_running_gateway_source_not_output(self):
+        running = self.root / 'running-checkout'
+        self.bind_gateway_source(running)
+        path = self.file_state(running / '.local' / 'web')
+        service.save(path, {'status': 'running'})
+        with self.assertRaisesRegex(RuntimeError, 'Active or unknown File task'):
+            service.assert_idle(self.plan)
+        service.save(path, {'status': 'interrupted'})
+        service.assert_idle(self.plan)
+
+    def test_mismatched_owner_file_source_cannot_hide_active_old_tasks(self):
+        running = self.root / 'running-checkout'
+        self.bind_gateway_source(running)
+        path = self.file_state(running / '.local' / 'web')
+        service.save(path, {'status': 'running'})
+        other = self.root / 'candidate-checkout' / 'src'
+        other.mkdir(parents=True)
+        service.save(self.config, {**service.read(self.config), 'sourceDir': str(other)})
+        with self.assertRaisesRegex(RuntimeError, 'Owner File source root differs'):
+            service.assert_idle(self.plan)
+
+    def test_invalid_owner_file_source_is_not_silently_skipped(self):
+        for source in ('relative/src', str(self.root / 'missing' / 'src'), str(self.output)):
+            with self.subTest(source=source):
+                service.save(self.config, {**service.read(self.config), 'sourceDir': source})
+                with self.assertRaisesRegex(RuntimeError, 'Unknown owner File source root'):
+                    service.assert_idle(self.plan)
+
+    def test_corrupt_or_nonobject_file_state_refuses_restart(self):
+        path = self.file_state(self.members / 'one' / 'tasks')
+        for raw in ('{', '[]', 'null', '"completed"'):
+            with self.subTest(raw=raw):
+                path.write_text(raw, encoding='utf-8')
+                with self.assertRaisesRegex(RuntimeError, 'Unknown File task state'):
+                    service.assert_idle(self.plan)
+
+    def test_restart_refuses_active_file_before_stopping_any_process(self):
+        path = self.file_state(self.members / 'one' / 'tasks')
+        service.save(path, {'status': 'running'})
+        lifecycle = service.Lifecycle(self.plan)
+        record = {'plan': self.plan, 'digest': 'same-intent', 'processes': {'owner': {'pid': 1}, 'gateway': {'pid': 2}}}
+        with mock.patch.object(lifecycle, 'current', return_value=record), \
+                mock.patch.object(service, 'plan_digest', return_value='same-intent'), \
+                mock.patch.object(lifecycle, 'inspect'), \
+                mock.patch.object(lifecycle, 'stop_record') as stop, \
+                mock.patch.object(lifecycle, 'start') as start:
+            with self.assertRaisesRegex(RuntimeError, 'Active or unknown File task'):
+                lifecycle.restart()
+        stop.assert_not_called()
+        start.assert_not_called()
+
 
 class StartupListenerTests(unittest.TestCase):
     def setUp(self):
