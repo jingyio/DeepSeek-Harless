@@ -56,7 +56,9 @@ import {createGoalAdmission,GOAL_GUIDANCE} from './geneloop_goal.ts';
 import {guardNativeModeCommand,protectGoalRpc} from './geneloop_runtime_routes.ts';
 
 export const name = 'sss-web-tasks';
-export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController','tokenMeter','subagents'];
+// Controllers constructed below share this plugin's Cordis context. Their
+// service dependencies are not inherited from their static inject declarations.
+export const inject = ['llm', 'agents', 'sessionController', 'sessionProjections', 'connection', 'webServer', 'fileUploads', 'commands', 'agentPresets', 'attachments', 'workspaceRegistry', 'workspaceController','tokenMeter','subagents','tools','systemPrompt','sessions'];
 const conversationReaders=new WeakMap<object,(sessionId:string)=>Promise<{role:string,text:string}[]>>();
 // Cordis gives each plugin a traceable service proxy. Its exported original
 // identity distinguishes host/isolation scopes while surviving those proxies.

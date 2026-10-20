@@ -1,6 +1,7 @@
 """Trusted File capability expansion; no network/model calls in these diagnostics."""
 import json
 from pathlib import Path
+import tempfile
 import pytest
 from src.adapters.file_scenario import ROOT, prepare_scenario
 from src.adapters.harness_runtime import create_harness
@@ -54,12 +55,18 @@ def test_generated_web_file_patch_boots_the_installed_sdk_without_model_calls(tm
     pytest.importorskip('deepseek_harness', reason='optional Python SDK is installed in the server runtime')
     file, _ = scenario(tmp_path)
     prepared = prepare_scenario(file, web_deployment=True)
-    with create_harness(root=ROOT, patches=(prepared['patch'],), cwd=str(tmp_path), runtime_cwd=str(tmp_path),
-                        env={'DSH_HOME': str(tmp_path / 'dsh'),
-                             'SSS_SCENARIO_TOOLS': json.dumps(prepared['allowed_tools']),
-                             'FM_TASK_FILE': str(ROOT / '.local/diagnostic-task.json'),
-                             'FM_JOB_FILE': str(ROOT / '.local/diagnostic-job.json'),
-                             'FM_OUTPUT': str(ROOT / '.local/diagnostic-output'),
-                             'DEEPSEEK_BASE_URL': 'http://127.0.0.1:9',
-                             'DEEPSEEK_API_KEY': 'diagnostic-only'}):
-        pass
+    # The real acceptance plugin hashes its frozen task while loading. This
+    # handshake creates no agent/job and never dispatches a model or tool call.
+    with tempfile.TemporaryDirectory(prefix='native-sdk-boot-', dir=ROOT / '.local') as directory:
+        private = Path(directory)
+        task = private / 'task.json'
+        task.write_text(json.dumps({'diagnostic': 'SDK configuration boot only'}), encoding='utf-8')
+        with create_harness(root=ROOT, patches=(prepared['patch'],), cwd=str(tmp_path), runtime_cwd=str(tmp_path),
+                            env={'DSH_HOME': str(tmp_path / 'dsh'),
+                                 'SSS_SCENARIO_TOOLS': json.dumps(prepared['allowed_tools']),
+                                 'FM_TASK_FILE': str(task),
+                                 'FM_JOB_FILE': str(private / 'job.json'),
+                                 'FM_OUTPUT': str(private / 'output'),
+                                 'DEEPSEEK_BASE_URL': 'http://127.0.0.1:9',
+                                 'DEEPSEEK_API_KEY': 'diagnostic-only'}):
+            pass

@@ -21,7 +21,7 @@ import {SubagentRuntime} from '@deepseek-ai/dsh-subagent';
 import {apply as nativeSpawn} from '@deepseek-ai/dsh-subagent-spawn-in-process';
 import {ApiSessionNotFound} from '@deepseek-ai/dsh-api-session-controller';
 import {apply as nativeCompact} from '@deepseek-ai/dsh-command-compact';
-import {apply as mountTasks} from '../src/adapters/dsh_web_tasks.ts';
+import * as taskPlugin from '../src/adapters/dsh_web_tasks.ts';
 import {digest} from '../src/motif_core/online_skill_runtime.mjs';
 
 async function fixture({restored=false}={}){
@@ -65,11 +65,19 @@ async function fixture({restored=false}={}){
   async page(){return {records:[],hasMore:false};},async *follow(){},
  };
  ctx.sessionController={...underlying};
+ // Fixture host ports are actual provided Cordis services, so the plugin sees
+ // the same dependency-isolation rules as the native Web loader.
+ for(const name of ['agentPresets','attachments','fileUploads','workspaceRegistry','workspaceController','connection','webServer','sessionController']){
+  const service=ctx[name];delete ctx[name];ctx.provide(name,service);
+ }
  const nativePlan={name:'plan',description:'Global unsafe plan sentinel',input:{hint:'[message]',attachments:true},handler(){throw Error('Global plan bypassed Task admission');}};
  const nativeGoal={name:'goal',description:'Global unsafe goal sentinel',input:{hint:'[objective]',attachments:true},handler(){throw Error('Global goal bypassed Task admission');}};
  ctx.commands.register(nativePlan);ctx.commands.register(nativeGoal);
  const restoreEnv=()=>{if(prior===undefined)delete process.env.SSS_WEB_POLICY;else process.env.SSS_WEB_POLICY=prior;if(priorHome===undefined)delete process.env.DSH_HOME;else process.env.DSH_HOME=priorHome;};
- try{mountTasks(ctx);}catch(error){await ctx.fiber.dispose();restoreEnv();rmSync(directory,{recursive:true,force:true});throw error;}
+ // Use the real Cordis plugin boundary. Direct apply(ctx) bypasses dependency
+ // access checks and previously hid missing native-controller injections.
+ try{const taskFiber=ctx.plugin(taskPlugin);await taskFiber.await();assert.equal(taskFiber.state,2,'Web task plugin must activate through declared native dependencies');}
+ catch(error){await ctx.fiber.dispose();restoreEnv();rmSync(directory,{recursive:true,force:true});throw error;}
  const unowned=await underlying.create({sessionId:'session-'+randomUUID()}),foreign=ctx.agents.get(unowned.sessionId);
  const globals=Object.fromEntries(['plan','goal','compact'].map(name=>[name,ctx.commands.find(foreign,name)]));
  return {ctx,directory,nativePlan,nativeGoal,globals,underlying,restoredParent,restoredPrivate,async close(){await ctx.fiber.dispose();restoreEnv();rmSync(directory,{recursive:true,force:true});}};

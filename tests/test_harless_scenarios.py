@@ -44,7 +44,12 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert rows['ppt']['scenario'] == 'scenarios/ppt_master/scenario.json'
     assert rows['ppt']['adapter'] == 'ppt'
     assert rows['ppt']['ppt_execution_strategy']=='ppt_master'
-    assert len(rows['ppt']['allowed_tools'])==11
+    # Five scene MCP tools plus the approved common native tool set. Do not
+    # conflate an expanded public tool surface with additional PPT MCP tools.
+    common = json.loads((ROOT/'config/geneloop-capabilities.json').read_text(encoding='utf-8'))['tools']
+    ppt_tools = json.loads((ROOT/'scenarios/ppt_master/scenario.json').read_text(encoding='utf-8'))['allowed_tools']
+    assert len(ppt_tools) == 5
+    assert rows['ppt']['allowed_tools'] == [*ppt_tools, *common]
     assert 'mcp__ppt_master__read_skill_entry' in rows['ppt']['allowed_tools']
     assert not any(t.startswith('mcp__ppt__') for t in rows['ppt']['allowed_tools'])
     assert rows['ppt']['instructions'].startswith('完成用户的 PPT 任务。')
@@ -54,7 +59,6 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
     assert rows['ppt']['instructions_sha256']==hashlib.sha256(rows['ppt']['instructions'].encode()).hexdigest()
     assert all('design_skill_sha256' not in rows[key] for key in ['paper-proofreading','research-data-analysis','new-scene'])
     assert 'scenarios/ppt_master/server.py' in json.dumps(rows['ppt']['mcp_rows']).replace('\\\\','/')
-    common = json.loads((ROOT/'config/geneloop-capabilities.json').read_text(encoding='utf-8'))['tools']
     assert {'read_image','read','write','edit','glob','grep','ask_user_question','todo_write','skill','present','subagent'} <= set(common)
     assert rows['new-scene']['allowed_tools'] == ['mcp__workspace__list_files', 'mcp__workspace__read_file', *common]
     for scene in rows.values():
@@ -63,7 +67,9 @@ def test_product_scenes_bind_real_backends_or_explicit_unavailability(tmp_path):
         assert set(common) <= set(scene['allowed_tools'])
     assert rows['files']['scenario'] == 'scenarios/file-management/web-scenario.json'
     assert rows['files']['adapter'] == 'files'
-    assert len(rows['files']['allowed_tools']) == 19
+    file_tools = json.loads((ROOT/'scenarios/file-management/web-scenario.json').read_text(encoding='utf-8'))['allowed_tools']
+    assert len(file_tools) == 13 and all(name.startswith('mcp__file_management__') for name in file_tools)
+    assert rows['files']['allowed_tools'] == [*file_tools, *common]
     assert 'FM_WEB_WORKSPACE' in json.dumps(rows['files']['mcp_rows'])
     assert '__HARLESS_SESSION_WORKSPACE__' in json.dumps(rows['files']['mcp_rows'])
     assert 'examples/' not in rows['files']['scenario']
@@ -90,7 +96,10 @@ def test_paper_default_library_and_generic_export_survive_without_private_deploy
     assert row['paper_reference_output_unavailable_reason'] == 'paper_renderer_not_deployed'
     assert 'mcp__paper_checks__export_review_report' in row['allowed_tools']
     assert 'mcp__paper_checks__collect_current_local_citation_evidence' in row['allowed_tools']
-    assert len(row['allowed_tools']) == 30
+    scene_tools = json.loads((ROOT/row['scenario']).read_text(encoding='utf-8'))['allowed_tools']
+    common = json.loads((ROOT/'config/geneloop-capabilities.json').read_text(encoding='utf-8'))['tools']
+    assert len(scene_tools) == 24 and all(name.startswith('mcp__paper_checks__') for name in scene_tools)
+    assert row['allowed_tools'] == [*scene_tools, *common]
     assert '每项发现只给一条保留原始事实的最小建议' in row['instructions']
 
 
