@@ -5,6 +5,7 @@ modify live files in place. This tool owns process identity, auth, receipts and
 rollback. It never starts/stops the shared model budget or changes user data.
 """
 import argparse
+import ctypes
 from contextlib import contextmanager
 import hashlib
 import json
@@ -50,6 +51,26 @@ def private_file(path):
     if os.name == 'posix' and path.stat().st_mode & 0o077:
         raise RuntimeError('Private launch/configuration files require mode 600')
     return path
+
+
+def assert_watch_capacity(plan):
+    """Probe before stopping a healthy owner when native watchers are enabled."""
+    if sys.platform != 'linux' or plan['owner']['env'].get('CHOKIDAR_USEPOLLING','').lower() in {'1','true'}:
+        return
+    libc=ctypes.CDLL(None,use_errno=True)
+    libc.inotify_init1.argtypes=[ctypes.c_int]
+    libc.inotify_init1.restype=ctypes.c_int
+    libc.inotify_add_watch.argtypes=[ctypes.c_int,ctypes.c_char_p,ctypes.c_uint32]
+    libc.inotify_add_watch.restype=ctypes.c_int
+    descriptor=libc.inotify_init1(os.O_CLOEXEC)
+    if descriptor < 0:
+        raise RuntimeError('Native file watcher unavailable; prepare a polling launch plan before publishing')
+    try:
+        path=os.fsencode(plan['owner']['env']['SSS_WEB_POLICY'])
+        if libc.inotify_add_watch(descriptor,path,2|4) < 0:
+            raise RuntimeError('Native file watcher capacity exhausted; prepare a polling launch plan before publishing')
+    finally:
+        os.close(descriptor)
 
 
 def load_plan(path):
@@ -456,6 +477,8 @@ class Lifecycle:
                 self.publish_state({'plan': plan, 'digest': plan_digest(plan),
                                     'rollback_plan': str(directory / 'plan.json'), 'processes': processes})
             return {'already_running': True, **result}
+        if not processes['owner']:
+            assert_watch_capacity(plan)
         directory = self.root / ('start-' + uuid4().hex)
         directory.mkdir(mode=0o700)
         frozen = self.snapshot(plan, directory)
@@ -495,6 +518,7 @@ class Lifecycle:
         self.inspect(old['plan'], old)
         same_data(old['plan'], target)
         assert_idle(old['plan'])
+        assert_watch_capacity(target)
         if not all(old['processes'].values()):
             raise RuntimeError('Incomplete deployment; use start for recovery')
         try:

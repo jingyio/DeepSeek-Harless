@@ -134,6 +134,36 @@ class PlanTests(unittest.TestCase):
                 lifecycle.run('start')
         start.assert_not_called()
 
+    def test_polling_plan_does_not_allocate_native_watches(self):
+        self.plan['owner']['env']['CHOKIDAR_USEPOLLING']='1'
+        with mock.patch.object(service.ctypes,'CDLL') as library:
+            service.assert_watch_capacity(self.plan)
+        library.assert_not_called()
+
+    def test_exhausted_native_watch_is_closed_and_refuses_before_stop(self):
+        self.plan['owner']['env']['CHOKIDAR_USEPOLLING']='0'
+        library=mock.Mock()
+        library.inotify_init1.return_value=41
+        library.inotify_add_watch.return_value=-1
+        with mock.patch.object(service.sys,'platform','linux'), \
+                mock.patch.object(service.ctypes,'CDLL',return_value=library), \
+                mock.patch.object(service.os,'O_CLOEXEC',524288,create=True), \
+                mock.patch.object(service.os,'close') as close:
+            with self.assertRaisesRegex(RuntimeError,'capacity exhausted'):
+                service.assert_watch_capacity(self.plan)
+        close.assert_called_once_with(41)
+        lifecycle=service.Lifecycle(self.plan)
+        record={'plan':self.plan,'digest':service.plan_digest(self.plan),
+                'processes':{'owner':{'pid':1},'gateway':{'pid':2}}}
+        with mock.patch.object(lifecycle,'current',return_value=record), \
+                mock.patch.object(lifecycle,'inspect'),mock.patch.object(service,'same_data'), \
+                mock.patch.object(service,'assert_idle'), \
+                mock.patch.object(service,'assert_watch_capacity',side_effect=RuntimeError('capacity exhausted')), \
+                mock.patch.object(lifecycle,'stop_record') as stop:
+            with self.assertRaisesRegex(RuntimeError,'capacity exhausted'):
+                lifecycle.restart()
+        stop.assert_not_called()
+
     def test_persistent_data_migration_is_rejected(self):
         second = json.loads(json.dumps(self.plan))
         other = self.root / 'different-config.json'

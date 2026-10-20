@@ -95,7 +95,21 @@ function safePath(url) {
 }
 function errorCode(error) { return typeof error?.code === 'string' ? error.code : 'error'; }
 
+/** Forward only Chokidar's public watcher settings into the member whitelist. */
+export function memberWatcherEnvironment(environment = process.env) {
+  const polling = environment.CHOKIDAR_USEPOLLING ?? '1';
+  const interval = environment.CHOKIDAR_INTERVAL ?? '1000';
+  if (typeof polling !== 'string' || !/^(?:true|false|1|0)$/i.test(polling))
+    throw Error('CHOKIDAR_USEPOLLING must be true, false, 1, or 0');
+  if (typeof interval !== 'string' || !/^\d+$/.test(interval) ||
+      !Number.isSafeInteger(Number(interval)) || Number(interval) < 1 || Number(interval) > 2147483647)
+    throw Error('CHOKIDAR_INTERVAL must be a positive integer within the timer range');
+  return { CHOKIDAR_USEPOLLING: /^(?:true|1)$/i.test(polling) ? '1' : '0',
+    CHOKIDAR_INTERVAL: String(Number(interval)) };
+}
+
 export function createGateway(config) {
+  const memberWatchers = memberWatcherEnvironment();
   const sceneDeployment = memberSceneDeployment(config.memberPolicy, config.memberSceneDeployment);
   const dataDir = config.dataDir;
   const dbPath = join(dataDir, 'accounts.json');
@@ -380,6 +394,7 @@ export function createGateway(config) {
       const env = { PATH: '/opt/node/bin:/usr/bin:/bin', HOME: '/user/workspace', DSH_HOME: '/user/dsh',
         SSS_WEB_POLICY: '/user/config/policy.json', DEEPSEEK_API_KEY: delegate(user, 'model'),
         HARLESS_GATEWAY_ENABLED: '1',
+        ...memberWatchers,
         ...(commandBroker?{GENELOOP_COMMAND_SOCKET:'/user/config/commands.sock'}:{}),
         ...(sceneDeployment ? {SSS_PYTHON:sceneDeployment.python,...sceneDeployment.attachmentEnvironment} : {}),
         NO_PROXY: 'localhost,127.0.0.1,::1', no_proxy: 'localhost,127.0.0.1,::1',

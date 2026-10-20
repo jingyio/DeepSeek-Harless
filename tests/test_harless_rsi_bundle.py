@@ -43,6 +43,25 @@ def test_new_ppt_release_keeps_artifact_and_current_source_locks():
     assert {tuple(a['tools']) for a in manifest['artifacts']}=={('mcp__ppt_master__pin_source','mcp__ppt_master__convert_source'),('mcp__ppt_master__convert_source','mcp__ppt_master__read_converted_source')}
 
 
+@pytest.mark.parametrize('previous,release',[
+    ('paper-web-v22','paper-web-v23'),('ppt-master-v19','ppt-master-v20')])
+def test_gateway_polling_compatibility_preserves_certified_program_and_source_evidence(previous,release):
+    root=Path(__file__).resolve().parents[1]
+    old=root/'motif-libraries'/previous;new=root/'motif-libraries'/release
+    for name in ['library.json','online-manifest.json','task.json','tool-schemas.json','source-evidence.json']:
+        assert (new/name).read_bytes()==(old/name).read_bytes(),name
+    report=json.loads((new/'learning-report.json').read_text(encoding='utf-8'))
+    compatibility=report['gateway_watcher_environment_compatibility']
+    assert compatibility['previous_release']==previous
+    assert compatibility['same_online_program'] and compatibility['same_tool_schema']
+    assert not compatibility['new_capabilities'] and not compatibility['quality_cost_promoted']
+    assert compatibility['model_requests']==compatibility['new_training_tasks']==0
+    before=json.loads((old/'certification.json').read_text(encoding='utf-8'))['code_locks']
+    after=json.loads((new/'certification.json').read_text(encoding='utf-8'))['code_locks']
+    assert {name for name,value in before.items() if after.get(name)!=value}=={'scripts/harless_gateway.mjs'}
+    assert set(after)-set(before)=={'scripts/reexport-gateway-polling-compat.py'}
+
+
 def test_bundle_freezes_runtime_code_artifacts_and_whole_schema(tmp_path):
     root=tmp_path/'project';root.mkdir();code=root/'core.mjs';code.write_text('version one')
     bundle=tmp_path/'runtime';bundle.mkdir()
