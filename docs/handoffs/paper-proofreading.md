@@ -2,7 +2,7 @@
 
 - 更新时间与交接人：2026-10-20，Codex。
 - 目标与范围：自动接入真实报告状态、复用局部参数与成功产物，补回Negative Motif认证和库接入；仅实验侧启用，不扩检索、不重跑Baseline。
-- 分支与同步：`codex/paper-live-recovery-state`；前轮本地实现`7d626d6`及交接`59762a3`，本轮增量待提交。已拉取最新`origin/main`=`8b4fdc5`，此前[PR95](https://github.com/jingyio/GeneLoop/pull/95)已合并；本次尚未创建新PR，未部署，原脏工作区未动。
+- 分支与同步：`codex/paper-live-recovery-state`；前轮实现`7d626d6`，本轮实现及验收`93205b4`，本地无冲突对齐main提交`22fa910`（代码树与测试版本一致）。已推送并创建[PR97](https://github.com/jingyio/GeneLoop/pull/97)供审阅；最新main=`8b4fdc5`、此前PR95已合并。本次PR未合并、未部署，原脏工作区未动。
 - 已完成：`reuse_mediation.ts`修复2MB来源被1MB JSON上限误拒，默认关闭的`captureCurrentReport`将实际选择的原生报告调用绑定当前任务、来源、grant、Schema和用户意图。`evidence_report.py`捕获受保护草稿，输入修复保留全部原文，再允许必要叶子修订；有界concat和语义分组选择由Runtime执行，不增加模型工具，不冒充新挖Motif。
 - Negative接入：显式`learn-negative-motifs.py --recertify-current-constraints --constraint-validator <受信当前文件:函数>`只迁移当前纯校验器重新双向认证通过的条件；默认旧实现拒绝仍有效，不迁移旧执行认证和prompt-only规则。新库保留旧事件及实现摘要，当前运行仍需真实失败、实际提示及当前证据。自动scope额外核对当前用户消息、工具与Schema，变化后不能重激活旧目标。
 - 成功交接：实际文件、回执、配置、来源和本轮差异均核验；`initial_arguments`保留原始修复起点，成功后不重复导出。收紧总结提示只聚焦链接、变化和限制，仍不是自由文本事实校验器。
@@ -14,5 +14,5 @@
 - 配置与数据：本轮私有根`.local/paper-negative-live-integration-20261020-v1/`含授权、真实失败/完整目标、源码快照关联、逐项质量/breakdown、aggregate、semantic-error-origin及所有失败日志。负面库`e6c9c34642c596f84fd6d91d7052eb2b23e14c4f236eb361302ea8a6c709f66c`；最终原生库`4a54a156ffabd8c14be1785f13ea6b0635a26beb655f3c647eabc0819eeb3232`。两库均实际加载；Script库为空、无embedding/Frontier。001–003与004/005配置分别保存，没有改旧hash。
 - 最短复现：沿用`run-script-motif-experiment.py --real-model --mode execute --report-evidence --source <原输入> --prompt <原恢复题面> --reuse-checkpoint <实际旧调用> --script-config <冻结配置> --budget-usd 0 --max-output-tokens 32768`；明确完整目标的结构恢复另加`--preserve-recovery-structure --resume-current-operation --recovery-goal-scope <绑定原失败的scope>`，自动采集恢复不加。凭证通过现有私有.env加载，不展示密钥；保留本地沙箱、项目Python与已验证私有字体。
 - 权限与账本：本地DeepSeek Flash、reasoning off、输出32768，请求/费用不限、reset_history:false。本轮全部五项17请求/$0.070256580，累计5451请求/$9.501109584保守代理估费。无新增pending/unknown；旧pending3、V100及服务商账单仍待核，开发和人工时间未量化。全部付费任务已结束，无新Baseline。
-- 接手下一步：1）提交范围明确的自动状态/局部修订PR供审阅，不自动合并或部署。2）审计已有17次检索的证据覆盖与重复，不凭总费用加匹配规则或降阈值。3）科研事实核验和自由总结错误另行处理，保持结构交付与科学质量分离，暂不扩场景。
+- 接手下一步：1）审阅PR97的自动状态/局部修订边界及已保留反例，不自动合并或部署。2）审计已有17次检索的证据覆盖与重复，不凭总费用加匹配规则或降阈值。3）科研事实核验和自由总结错误另行处理，保持结构交付与科学质量分离，暂不扩场景。
 - 回退与风险：关闭captureCurrentReport/repairChoices或移除实验sidecar回原生路径，移除--report-evidence回生产默认报告模块；本轮没有生产配置、私人原件或外部应用修改，所有失败和旧库保留。真实新路径仅在macOS验证，其他平台不作新验收声明。
