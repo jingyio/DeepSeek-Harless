@@ -110,7 +110,7 @@ def test_full_native_host_boots_and_exposes_scoped_controls_without_model_work()
 import {scopeOf} from '@deepseek-ai/dsh-scope';
 import {createHash} from 'node:crypto';
 export const name='native-boot-readiness';
-export const inject=['connection','agents','agentPresets','commands','compaction','planMode','goals','subagents','sessions','tools','fs','skills','userQuestions'];
+export const inject=['connection','agents','agentPresets','commands','compaction','planMode','goals','subagents','sessions','tools','fs','subprocess','skills','userQuestions'];
 export function apply(ctx){
  const handles=[];ctx.effect(()=>async()=>{for(const handle of handles.reverse())await handle.dispose();},'native-diagnostic-handles');
  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/diagnostic/command-targets',methods:['POST'],requestBody:'buffered',async fetch(request){
@@ -135,6 +135,7 @@ export function apply(ctx){
    persistence:typeof ctx.sessions.flush==='function',questions:typeof ctx.userQuestions.ask==='function',
    spawn:!!ctx.subagents.getProvider('spawn'),delegation:!!ctx.subagents.getProvider('geneloop-task'),
    tools:ctx.tools.schemas(agent?scopeOf(agent.ctx):undefined).map(t=>t.name),
+   filesystem:ctx.fs.constructor.name,subprocess:ctx.subprocess.constructor.name,
    ...(agent?{events_sha256:createHash('sha256').update(JSON.stringify(agent.session.snapshotEvents())).digest('hex'),
      plan_state:ctx.planMode.get(agent),user_messages:agent.session.snapshotEvents().filter(e=>e.type==='user/message').length}:{} )});
  }}),'native-boot-readiness');
@@ -186,6 +187,8 @@ export function apply(ctx){
                 pytest.fail('Composed native services did not activate:\n' + text[-8000:])
             assert all(ready[key] for key in ('compaction', 'plan', 'goal', 'persistence',
                                              'questions', 'spawn', 'delegation')), ready
+            assert ready['filesystem'] == 'GeneLoopFileSystem', ready
+            assert ready['subprocess'] == 'GeneLoopSubprocessRuntime', ready
 
             def rpc(method, args):
                 result = request('/api/' + method, {'type': 'client-request', 'rpcId': str(uuid4()),

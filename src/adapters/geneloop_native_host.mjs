@@ -6,8 +6,11 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
 
 const switches={'llm-retry':false,'compaction-basic':true,'command-compact':false,goal:true,'goal-round-driver':true};
-const modules={'fs-sandbox':'geneloop_fs.ts',subprocess:'geneloop_fs_search.ts'};
-const nativeIds=new Set([...Object.keys(switches),...Object.keys(modules),'geneloop-native-work']);
+const providers=[
+ {upstreamId:'fs-sandbox',upstreamName:'@deepseek-ai/dsh-fs-sandbox',id:'geneloop-fs',file:'geneloop_fs.ts'},
+ {upstreamId:'subprocess',upstreamName:'@deepseek-ai/dsh-subprocess-local',id:'geneloop-fs-search',file:'geneloop_fs_search.ts'},
+];
+const nativeIds=new Set([...Object.keys(switches),...providers.flatMap(row=>[row.upstreamId,row.id]),'geneloop-native-work']);
 
 export function composeNativeHost(input,sourceDir,{member=false}={}){
  if(!Array.isArray(input)||typeof sourceDir!=='string'||!isAbsolute(sourceDir))throw Error('Invalid native host composition');
@@ -25,9 +28,13 @@ export function composeNativeHost(input,sourceDir,{member=false}={}){
   return result;
  };
  for(const row of input){const kept=clean(row);if(kept)patch.push(kept);}
+ // Include patches treat `name` as an identity guard, not a replacement.
+ // Disable each shipped provider and insert our implementation under its own
+ // entry id, so the actual loader activates exactly one service per seam.
  patch.push(...Object.entries(switches).map(([id,disabled])=>({id,disabled})),
-  ...Object.entries(modules).map(([id,file])=>({id,name:source+'adapters/'+file})),
-  {insert:[{id:'geneloop-native-work',name:source+'adapters/geneloop_native_work.ts'}]});
+  ...providers.map(({upstreamId:id,upstreamName:name})=>({id,name,disabled:true})),
+  {insert:[...providers.map(({id,file})=>({id,name:source+'adapters/'+file})),
+   {id:'geneloop-native-work',name:source+'adapters/geneloop_native_work.ts'}]});
  const map=row=>{
   if(typeof row.name==='string'&&row.name.startsWith('file:')){
    const uri=new URL(row.name);

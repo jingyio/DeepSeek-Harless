@@ -1,0 +1,93 @@
+{
+  "train": [
+    {
+      "research_decision_id": "ppt-master-style-v2-train-attention-recovery",
+      "task_id": "4a0f7b913a1b45068f16288aebdb44df",
+      "question_sha256": "ae6d305768de814d196059467829174bcedc095b3b903779ab578dd8565df406",
+      "manifest_sha256": "9c8180eccdf29482c363fc3a655421001747deaf0cda8e4d38aaad5ea2d0daef",
+      "events_sha256": "aa1f18358a67d5137df31aab854eca6d54c31bfa73c2e3c9d759ea876b053124",
+      "identity_sha256": "e40cfbc60df47ea8913c0689323d3db41eccac137b26dc26e5dc3ef372909634",
+      "requests": 97,
+      "tokens": {
+        "prompt_tokens": 12611763,
+        "prompt_cache_hit_tokens": 12476800,
+        "prompt_cache_miss_tokens": 134963,
+        "completion_tokens": 60161,
+        "total_tokens": 12671924
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 97
+      },
+      "proxy_peak_usd": 0.9653679500000001,
+      "actual_paid_usd": null,
+      "tool_calls": 96,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0,
+      "skill_package_sha256": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+      "effective_config_sha256": "fba789b5449d14c04628192d3108d366f564a0698e022da491d85697a36e1f40"
+    },
+    {
+      "research_decision_id": "ppt-master-style-v2-train-dora",
+      "task_id": "d48c66018d2e4d7fb57a06a11b7b47f7",
+      "question_sha256": "d53ed636024e0ce17a8e5a20eea48bb680f88717c64a21147edc59af9147a443",
+      "manifest_sha256": "53ae000961408e54881f64bd4080699167f875506a6ec4acfe649228d96a8559",
+      "events_sha256": "a6e8cbd53fd1a85e73b1e3fd7dfb70edda21404bdd437e1e1a368a2ddb4dfe2a",
+      "identity_sha256": "eefb4f34b25befff581d785c3c21ab5b321892bb954aef860a24a88a9535d34a",
+      "requests": 138,
+      "tokens": {
+        "prompt_tokens": 20868970,
+        "prompt_cache_hit_tokens": 20708608,
+        "prompt_cache_miss_tokens": 160362,
+        "completion_tokens": 88008,
+        "total_tokens": 20956978
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 138
+      },
+      "proxy_peak_usd": 1.4713682599999995,
+      "actual_paid_usd": null,
+      "tool_calls": 137,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0,
+      "skill_package_sha256": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+      "effective_config_sha256": "007eb6ef8e30ae0c8959a2f09680395be5b52b0eb4cce4aaec81c0e5f663fb53"
+    }
+  ],
+  "heldout": [
+    {
+      "research_decision_id": "ppt-master-style-v2-heldout-loftq-phase",
+      "task_id": "1ba8c1d8e0af4321a2338ad1cb06f024",
+      "question_sha256": "b68085ce937fe961f348e16920a160956d336d964f6c5a3bcb4f9e1ad664b17c",
+      "manifest_sha256": "2e6066586f2745a461c8565ff6794cabe52282579cc31c7accb4233f0784d36b",
+      "events_sha256": "88a9b6257adb2cb45bb9beb96770fa04fc6a88d429a46c2918baa79aa6bd0948",
+      "identity_sha256": "39909c4630de84cb4285e92a13ce0ad46255d2804e83a63743264fa4d3c8a7c9",
+      "requests": 145,
+      "tokens": {
+        "prompt_tokens": 22058473,
+        "prompt_cache_hit_tokens": 21891584,
+        "prompt_cache_miss_tokens": 166889,
+        "completion_tokens": 90596,
+        "total_tokens": 22149069
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 145
+      },
+      "proxy_peak_usd": 1.5422832999999996,
+      "actual_paid_usd": null,
+      "tool_calls": 144,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0,
+      "skill_package_sha256": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+      "effective_config_sha256": "f4672dc8f754373456ea6f80a76644474b9dfa709c48d4b23e520d2768f34dda"
+    }
+  ]
+}

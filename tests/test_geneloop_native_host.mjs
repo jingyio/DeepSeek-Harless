@@ -6,6 +6,8 @@ import {join,dirname} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {applyEntryPatches,entryListSchema} from '@deepseek-ai/cordis-plugin-include';
+import {load} from 'js-yaml';
 import {composeNativeHost} from '../src/adapters/geneloop_native_host.mjs';
 import {prepareNativeHost} from '../scripts/prepare-native-host.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -44,20 +46,50 @@ test('native host composition is idempotent, preserves shell/search and has one 
  const patch=composeNativeHost([...f.candidate.patch,{id:'fs-sandbox',name:'@deepseek-ai/dsh-fs-sandbox'},
   {id:'llm-retry',disabled:true},{insert:[{id:'geneloop-native-work',name:uri+'adapters/geneloop_native_work.ts'}]}],join(f.source,'src'));
  assert.equal(JSON.stringify(f.candidate.patch),before);assert.deepEqual(composeNativeHost(patch,join(f.source,'src')),patch);
- const rows=flat(patch);for(const id of ['llm-retry','compaction-basic','command-compact','goal','goal-round-driver','fs-sandbox','subprocess','geneloop-native-work'])assert.equal(rows.filter(row=>row.id===id).length,1,id);
+ const rows=flat(patch);for(const id of ['llm-retry','compaction-basic','command-compact','goal','goal-round-driver','fs-sandbox','subprocess','geneloop-fs','geneloop-fs-search','geneloop-native-work'])assert.equal(rows.filter(row=>row.id===id).length,1,id);
  assert.equal(rows.find(row=>row.id==='llm-retry').disabled,false);assert.equal(rows.find(row=>row.id==='command-compact').disabled,false);
  assert.equal(rows.find(row=>row.id==='goal').disabled,true);assert.equal(rows.find(row=>row.id==='compaction-basic').disabled,true);
  for(const id of ['geneloop-shell','geneloop-web-search','web-runtime'])assert.deepEqual(rows.find(row=>row.id===id),flat(f.candidate.patch).find(row=>row.id===id));
- assert.equal(rows.find(row=>row.id==='fs-sandbox').name,uri+'adapters/geneloop_fs.ts');
+ assert.deepEqual(rows.find(row=>row.id==='fs-sandbox'),{id:'fs-sandbox',name:'@deepseek-ai/dsh-fs-sandbox',disabled:true});
+ assert.deepEqual(rows.find(row=>row.id==='subprocess'),{id:'subprocess',name:'@deepseek-ai/dsh-subprocess-local',disabled:true});
+ assert.equal(rows.find(row=>row.id==='geneloop-fs').name,uri+'adapters/geneloop_fs.ts');
 });
 
 test('member composition maps top-level and inserted modules and refuses stale/traversing URIs',t=>{
  const f=fixture(t),patch=composeNativeHost(f.candidate.patch,join(f.source,'src'),{member:true});
  assert.deepEqual(composeNativeHost(patch,join(f.source,'src'),{member:true}),patch);
  assert.ok(flat(patch).filter(row=>row.name?.startsWith('file:')).every(row=>row.name.startsWith('file:///app/src/')));
- assert.equal(flat(patch).find(row=>row.id==='subprocess').name,'file:///app/src/adapters/geneloop_fs_search.ts');
+ assert.equal(flat(patch).find(row=>row.id==='geneloop-fs-search').name,'file:///app/src/adapters/geneloop_fs_search.ts');
  for(const name of ['file:///foreign/source/plugin.ts',pathToFileURL(join(f.source,'src')).href+'/../escape.ts'])
   assert.throws(()=>composeNativeHost([{id:'other',name}],join(f.source,'src'),{member:true}),/source|URI/);
+});
+
+test('installed official patch engine disables shipped providers and inserts exactly one GeneLoop provider',t=>{
+ const f=fixture(t),warnings=[];
+ const base=load(readFileSync(new URL('../node_modules/@deepseek-ai/dsh-base/cordis.patch.yml',import.meta.url),'utf8'),{schema:entryListSchema});
+ const entries=applyEntryPatches([],base,(...args)=>warnings.push(args));
+ const patch=composeNativeHost([],join(f.source,'src'));
+ const composed=applyEntryPatches(entries,patch,(...args)=>warnings.push(args));
+ assert.deepEqual(warnings,[],'A skipped identity patch must not look like successful provider replacement');
+ for(const [upstreamId,id,file] of [['fs-sandbox','geneloop-fs','geneloop_fs.ts'],['subprocess','geneloop-fs-search','geneloop_fs_search.ts']]){
+  assert.equal(composed.find(row=>row.id===upstreamId).disabled,true);
+  const matches=composed.filter(row=>row.name?.endsWith('/adapters/'+file)&&row.disabled!==true);
+  assert.equal(matches.length,1);assert.equal(matches[0].id,id);
+ }
+});
+
+test('installed dsh dump-config applies provider replacement without name mismatch warnings',t=>{
+ const f=fixture(t),patchPath=join(f.base,'effective-native.patch.json');
+ write(patchPath,composeNativeHost([],join(f.source,'src')));
+ const result=spawnSync(process.execPath,[fileURLToPath(new URL('../node_modules/@deepseek-ai/dsh/lib/bin.js',import.meta.url)),
+  '--profile','web','--patch',patchPath,'--dump-config'],{encoding:'utf8',cwd:f.base,
+  env:{...process.env,DSH_HOME:join(f.base,'isolated-dsh-home')},timeout:30000});
+ assert.equal(result.status,0,result.stderr);assert.doesNotMatch(result.stderr,/name mismatch|skipping|not found/);
+ const rows=load(result.stdout,{schema:entryListSchema});
+ for(const upstreamId of ['fs-sandbox','subprocess'])assert.equal(rows.find(row=>row.id===upstreamId).disabled,true);
+ for(const id of ['geneloop-fs','geneloop-fs-search','geneloop-native-work']){
+  assert.equal(rows.filter(row=>row.id===id&&row.disabled!==true).length,1,id);
+ }
 });
 
 test('candidate default dry-run writes nothing, explicit apply changes only native rows and hashes all preserved configuration',t=>{

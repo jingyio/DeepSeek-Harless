@@ -343,7 +343,7 @@ export function createGateway(config) {
       const userDir = join(config.membersDir, user.id);
       for (const sub of ['', 'dsh', 'workspace', 'tasks/tasks', 'config']) mkdirSync(join(userDir, sub), { recursive: true, mode: 0o700 });
       const policy = { ...config.memberPolicy, output: sceneDeployment?.output ?? '/user/tasks',
-        ...(sceneDeployment ? {scenes:sceneDeployment.scenes} : {}),
+        ...(sceneDeployment ? {scenes:sceneDeployment.scenes,command_resources:sceneDeployment.native_resources} : {}),
         allowed_tools: sceneDeployment?.allowed_tools ?? [], resources: {}, ownership_legacy_outputs: [], budget_task_prefix: taskPrefix(user),
         endpoint: `http://127.0.0.1:${scopedPort}/v1`,
         control_endpoint: `http://127.0.0.1:${scopedPort}`,
