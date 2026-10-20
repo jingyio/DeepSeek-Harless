@@ -78,3 +78,19 @@ def test_source_pin_is_session_local_and_version_checked(tmp_path):
     with pytest.raises(ValueError,match='admission'):reader.document(anchor['source_id'])
     manifest.write_text(json.dumps({'files':{pdf.name:digest}}));pdf.write_bytes(b'changed')
     with pytest.raises(ValueError,match='admission'):reader.document(anchor['source_id'])
+
+
+def test_generated_preview_cannot_be_relabelled_as_an_approved_source(tmp_path):
+    """Generated files do not grant the source MCP an output-image read path."""
+    inputs=tmp_path/'inputs';inputs.mkdir()
+    outputs=tmp_path/'outputs';outputs.mkdir()
+    preview=outputs/'preview_p1.png';preview.write_bytes(b'generated preview fixture')
+    version=hashlib.sha256(preview.read_bytes()).hexdigest()
+    (tmp_path/'approved-inputs.json').write_text(json.dumps({'files':{}}))
+    reader=server.SourceReader(inputs)
+    assert reader.list_files()=={'files':[]}
+    for name in ('../outputs/preview_p1.png',str(preview)):
+        with pytest.raises(ValueError,match='file_not_in_session'):reader.pin(name,version)
+    # Even copying bytes into inputs cannot mint the original upload admission.
+    (inputs/preview.name).write_bytes(preview.read_bytes())
+    with pytest.raises(ValueError,match='admission'):reader.pin(preview.name,version)

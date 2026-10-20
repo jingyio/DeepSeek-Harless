@@ -1,0 +1,408 @@
+{
+  "schema_version": 1,
+  "new_training": true,
+  "method": "existing_witnessed_edge_compiler",
+  "training_tasks": 2,
+  "heldout_tasks": 1,
+  "artifacts": 2,
+  "skill_package_sha256": "7dc4ca13eb0bc6ab9cf794c53ad3569171356b7af8b8a005cd732269726bb794",
+  "library_digest": "9392b9b3b2f5d132db0c81f96b76818b2b70a3b29e3e8627394d9b2ede9da94a",
+  "manifest_digest": "ad31263ba7a787786a1304e1618181d9bf2ed32861415eb23d30781480709ebd",
+  "model_weights_trained": false,
+  "quality_cost_promoted": false,
+  "scientific_quality_reviewed": false,
+  "compilation_model_requests": 0,
+  "compilation_seconds": 0.9873238625004888,
+  "trace_collection_requests": 380,
+  "trace_collection_proxy_usd": 3.9790195099999988,
+  "excluded_collection": [
+    {
+      "task_id": "d3852b2b803a492ca815d9d2e6fcf5e3",
+      "status": "completed",
+      "requests": 20,
+      "tokens": {
+        "prompt_tokens": 1200765,
+        "prompt_cache_hit_tokens": 1097728,
+        "prompt_cache_miss_tokens": 103037,
+        "completion_tokens": 12818,
+        "total_tokens": 1213583
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 20
+      },
+      "proxy_peak_usd": 0.23506815000000003,
+      "actual_paid_usd": null,
+      "tool_calls": 30,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    },
+    {
+      "task_id": "65950983175a4b0db91d3690c06b74e9",
+      "status": "completed",
+      "requests": 127,
+      "tokens": {
+        "prompt_tokens": 19397619,
+        "prompt_cache_hit_tokens": 19243904,
+        "prompt_cache_miss_tokens": 153715,
+        "completion_tokens": 71514,
+        "total_tokens": 19469133
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 127
+      },
+      "proxy_peak_usd": 1.3328309899999995,
+      "actual_paid_usd": null,
+      "tool_calls": 137,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0
+    }
+  ],
+  "actual_paid_usd": null,
+  "total_collection_requests": 527,
+  "total_collection_proxy_usd": 5.5469186499999985,
+  "scope": "Model-selected PDF pin, official source conversion in private derivative cache, and exact converted text read; no slide authoring or scientific interpretation.",
+  "compilation_source_sha": null,
+  "compilation_source_binding": "exact source locks; compatibility recompilation from unchanged collection evidence",
+  "previous_certification_sha256": "329e4453396855e85ff799e1c24855a0bd04f002003e1b094ffb6ed461befee5",
+  "new_collection_tasks_for_recompilation": 0,
+  "compatibility_compilation_model_requests": 0,
+  "compatibility_changed_code_locks": [
+    "config/geneloop-capabilities.json",
+    "config/geneloop-capabilities.md",
+    "config/pdf-ocr-assets.json",
+    "scenarios/ppt_master/contracts.json",
+    "scenarios/ppt_master/converted_source.py",
+    "scenarios/ppt_master/package.py",
+    "scenarios/ppt_master/prompt.md",
+    "scenarios/ppt_master/requirements.txt",
+    "scenarios/ppt_master/scenario.json",
+    "scenarios/ppt_master/server.py",
+    "scenarios/ppt_master/skill-lock.json",
+    "scenarios/ppt_master/version-fields.json",
+    "scenarios/research_ppt/motif_v6.py",
+    "scripts/harless_gateway.mjs",
+    "scripts/harless_member_scenes.mjs",
+    "scripts/install-ppt-master.py",
+    "scripts/learn-ppt-master-motif.py",
+    "scripts/serve-web-budget.py",
+    "scripts/web_budget_broker.mjs",
+    "src/adapters/deepseek_cost_gate.py",
+    "src/adapters/dsh_online_motif.mjs",
+    "src/adapters/dsh_web_tasks.ts",
+    "src/adapters/geneloop_capabilities.ts",
+    "src/adapters/geneloop_command_broker.ts",
+    "src/adapters/geneloop_pdf.py",
+    "src/adapters/geneloop_pdf_vision.ts",
+    "src/adapters/geneloop_presentation.py",
+    "src/adapters/geneloop_presentation.ts",
+    "src/adapters/geneloop_presentation_render.py",
+    "src/adapters/geneloop_shell.ts",
+    "src/adapters/geneloop_skill_installation.mjs",
+    "src/adapters/harless_attachment_text.py",
+    "src/adapters/harless_comparison.ts",
+    "src/adapters/harless_rsi_binding.ts",
+    "src/adapters/harless_rsi_bundle.py",
+    "src/adapters/harless_scenarios.py",
+    "src/adapters/harless_settings.ts",
+    "src/adapters/harless_task_scope.ts",
+    "src/adapters/ppt_master_recovery.ts",
+    "src/adapters/session_files.py",
+    "src/adapters/web_task_budget.py",
+    "src/motif_core/online_skill_runtime.mjs"
+  ],
+  "compatibility_scope": "Read-only public OCR manifest mounted in member namespaces for intact certificate verification; immutable source/lane checks retained. Same historical read artifacts, independent evidence, tool schemas and scientific scope. No new collection, model calls or quality/cost promotion.",
+  "compilation_timing_basis": "current compatibility recompilation only",
+  "delivery_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "previous_release": "ppt-master-v7",
+    "previous_certification_sha256": "dcd6b23988aaaa8dfb462a7d60a79b7589fb2ae02bb936092c163e5147e4d605",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/harless_comparison.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/clickable-generated-files-20261019.md"
+  },
+  "attachment_context_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "previous_release": "ppt-master-v8",
+    "previous_certification_sha256": "37abaabb56861cf0be5d52e920aa5244a9952ed376c47d3af9ea77a5027d7350",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/geneloop_pdf.py",
+      "src/adapters/geneloop_pdf_vision.ts",
+      "src/adapters/geneloop_presentation.ts",
+      "src/adapters/geneloop_presentation_render.py",
+      "src/adapters/harless_attachment_text.py",
+      "src/adapters/harless_comparison.ts",
+      "src/adapters/harless_task_scope.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-attachment-context-compat.py",
+      "src/adapters/geneloop_attachment_cache.ts",
+      "src/adapters/harless_attachment_context.ts",
+      "src/adapters/harless_public_output.ts",
+      "src/adapters/harless_task_progress.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/attachment-context-streaming-20261019.md"
+  },
+  "attachment_surface_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "native_session_append_public_surface_option",
+      "comparison_preparation_progress_subscription"
+    ],
+    "previous_release": "ppt-master-v9",
+    "previous_certification_sha256": "a4fe0e5c0611de0c7d72af6b8a66d2cc895610eb02a7af5d4868758011690967",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/harless_comparison.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-surface-context-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/attachment-context-streaming-20261019.md"
+  },
+  "attachment_evidence_consumption_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "integration": "version_bound_evidence_consumption_policy_and_reading_index",
+    "previous_release": "ppt-master-v10",
+    "previous_certification_sha256": "4ca8b1a1af242bc66fdd8f26e03d7a8ba00edc1e2f79f598641a35860ebe52d0",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/harless_attachment_context.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-attachment-reading-compat.py",
+      "src/adapters/harless_attachment_reading.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/attachment-context-streaming-20261019.md"
+  },
+  "ppt_learning_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "ppt_learning_on_current_attachment_host",
+      "canonical_tool_result_observation"
+    ],
+    "previous_release": "ppt-master-v11",
+    "previous_certification_sha256": "a53b06764f88ca8595d05738f76c749a83ff269c3ce3803884b033c4ddb0bc8d",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "scripts/learn-ppt-master-motif.py",
+      "src/adapters/dsh_online_motif.mjs",
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/harless_rsi_bundle.py",
+      "src/adapters/harless_settings.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/learn-web-ppt-tasks.py",
+      "scripts/reexport-ppt-learning-compat.py",
+      "src/adapters/harless_ppt_learning.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/file-ppt-integration-20261019.md"
+  },
+  "concurrent_chat_and_provider_output_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "header_routed_tasks_without_account_concurrency_cap",
+      "independent_comparison_scheduler_runs",
+      "retry_readiness_inside_admission_lock",
+      "provider_documented_maximum_instead_of_omitted_8k_default"
+    ],
+    "previous_release": "ppt-master-v13",
+    "previous_certification_sha256": "5ebbf5222939adba5b51146a4046275226ab8918c254008a9e9d1c7cf174db89",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-provider-default-compat.py",
+      "src/adapters/harless_reasoning.ts"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/concurrent-chat-20261020.md"
+  },
+  "public_history_paging_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "resolve_native_session_page_address",
+      "require_existing_task_before_original_content_resolution"
+    ],
+    "previous_release": "ppt-master-v14",
+    "previous_certification_sha256": "e7599a796eeab44b9f1e22f46e795990f3fcd0fa09981b31f6e8a4a6a931f9a5",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts",
+      "src/adapters/harless_public_output.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-multiuser-page-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  },
+  "sandbox_mountpoint_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "prepare_fixed_scratch_child_mountpoints_before_readonly_parent_bind",
+      "reject_symlink_and_nondirectory_mountpoints"
+    ],
+    "preserved_guards": [
+      "readonly_inputs_and_scratch",
+      "network_namespace_isolation",
+      "session_scoped_workspaces"
+    ],
+    "previous_release": "ppt-master-v15",
+    "previous_certification_sha256": "8472c4398cf9e35635f9cb43a8bd1dd7211b26bb7a19f7337945e09536349569",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/geneloop_shell.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-sandbox-mount-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  },
+  "cold_parent_tool_scope_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "compare_restored_public_parent_tools_without_ordinary_task_record",
+      "close_obsolete_parent_tools_through_existing_legacy_history_path",
+      "admit_later_prompts_in_fresh_current_private_scopes"
+    ],
+    "preserved_guards": [
+      "immutable_historical_presets",
+      "session_scoped_authorization",
+      "unchanged_current_preset_capabilities"
+    ],
+    "previous_release": "ppt-master-v16",
+    "previous_certification_sha256": "2739e82b1ff69d9bc6a1c0a15a3adc6115bcd6f5531553f3aa12fe4f361fb468",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "src/adapters/dsh_web_tasks.ts"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-cold-parent-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  },
+  "ppt_render_workflow_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "use_deployed_soffice_launcher_with_session_private_profile",
+      "verify_actual_font_family_before_measurement_and_final_render",
+      "use_official_gates_and_rendered_page_visual_review",
+      "treat_pdf_span_overlap_as_candidate_not_standalone_hard_gate",
+      "diagnose_nonconverging_geometry_before_repeating_edits"
+    ],
+    "shared_by": [
+      "baseline",
+      "motif"
+    ],
+    "previous_release": "ppt-master-v17",
+    "previous_certification_sha256": "54fbbdc5f99027f3813df3e9438cf76a23ab7c58bf88910eee14c41b7e343585",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "changed_code_locks": [
+      "scenarios/ppt_master/prompt.md"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-ppt-render-workflow-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "deck_files_edited": false,
+    "budget_or_step_caps_added": false,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  },
+  "ppt_generated_preview_boundary_compatibility": {
+    "method": "reexport_certified_serialized_library",
+    "repairs": [
+      "document_no_generated_png_pixel_return_tool_in_current_roster",
+      "preserve_generated_previews_for_human_visual_review",
+      "do_not_claim_text_geometry_or_ascii_as_pixel_visual_review",
+      "keep_output_files_outside_approved_source_mcp_scope"
+    ],
+    "preserved_workflow": [
+      "soffice_launcher_with_session_private_profile",
+      "actual_font_family_calibration",
+      "official_gates_without_standalone_span_overlap_hard_gate"
+    ],
+    "shared_by": [
+      "baseline",
+      "motif"
+    ],
+    "previous_release": "ppt-master-v18",
+    "previous_certification_sha256": "8273dbde7b74ce00fc55b00b22479b1f1827ef556e0fcc6d2ca621e574257a37",
+    "same_library_and_evidence": true,
+    "same_online_program": true,
+    "same_tool_schema": true,
+    "new_capabilities": false,
+    "changed_code_locks": [
+      "scenarios/ppt_master/prompt.md"
+    ],
+    "additional_code_locks": [
+      "scripts/reexport-ppt-preview-boundary-compat.py"
+    ],
+    "raw_traces_replayed": false,
+    "new_training_tasks": 0,
+    "model_requests": 0,
+    "deck_files_edited": false,
+    "budget_or_step_caps_added": false,
+    "quality_cost_promoted": false,
+    "validation_record": "docs/experiments/five-user-stress-20261020.md"
+  }
+}
