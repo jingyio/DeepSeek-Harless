@@ -1085,3 +1085,17 @@ TypeScript Runtime 在首次模型请求前验证当前任务ID、输出授权�
 - `POST /api/account/invites` 仍要求 owner 登录、同源请求、当前密码和整数 `count: 1..20`；返回 `codes`，沿用既有接口。邀请码不按创建时间或登录会话过期，服务端只存哈希，注册成功原子消耗该码，重启后未用码继续有效。邀请码无效/已用与登录过期分别提示，不改变七天登录会话策略。
 - 设置页与独立 `/account` 都支持批量生成、逐码/全部复制、可选中的只读文本；后续失败不清掉先前显示的码。原文只保存在当前页面内存，离开前复制保存；不在 localStorage 或服务器存明文。注册框支持原生粘贴，去除首尾空白，不改邀请码大小写。
 - PPT、Paper、Data 及旧 File 双栏每侧恢复 1–5 单选评分；使用既有 `action: rate`、`lane`、`score`、`revision`、`output_sha256` 接口，双方完成才启用。保存失败保留确认分数，陈旧版本冲突只重新读取，不重放写入；历史分数和账号隔离不变。普通 Chat 和新版独立 File 单栏没有旧评分接口，本次不虚构评分记录。
+
+
+### 同任务检索证据（隔离实验，2026-10-20）
+
+`run-script-motif-experiment.py --retrieval-evidence`设置私有`SSS_RETRIEVAL_EVIDENCE=1`，实验启动器只在生成的host patch中换用`retrieval_web_search.ts`，并启用`search_evidence_accounting.py`。生产搜索/cost gate字节及认证库不变；关闭参数回原入口。实验shim的准入接线与生产保持一致，升级native provider/gateway时须同步验证。
+
+- 原`web_search`保留queries，新增可选`reuse:[{query_index:整数,evidence_id:字符串}]`。模型选择当前问题需要哪份候选；Runtime绑定task/user/session、真实输入字节、题面、模型和15分钟有效期。未知/失效ID回退新搜索，不把相似度当作事实/版本认证。
+- Map最多32查询，每项32来源/128KiB；native批次上限4、源列表上限8保持。每查询来源另进不可信content，避免合并截断后无法找回；额外上下文也有费用，保存数不是节省。
+- 精确重复查询可由provider直接复用；跨语句须显式选择ID，不猜测目标。返回原/当前query、获取时间、fact_verified:false。候选仍须进行必要的权威读取和科研判断；新任务或输入变化不共享Map。
+- 私有retrieval-evidence.jsonl记录捕获/失效/实际绕过内部搜索请求。avoided_search_requests按native查询去重记账，不等同整次Agent请求跳过。新账本search_trace.request_sha256对齐native请求，其他字段只含响应结构计数，不含正文/凭证；旧日志不追造逐查询费用。
+- --search-output-tokens 128..4096仅该实验生效，默认4096。保留原预算book/settle；短输出不保证总用量/总费用更低。
+- 局部任务用--evaluation-scope local_retrieval_validation；--no-output将当前scene_options.allow_output=false，不授予报告导出，不改变公共默认，也不把少交付必需报告计作收益。
+
+这不是新增已认证Motif库或跨论文RSI成果。四次真实局部复用命中均为0，费用/路径变化和质量失败分别记录。见[实验](experiments/paper-retrieval-evidence-20261020-v1.md)。

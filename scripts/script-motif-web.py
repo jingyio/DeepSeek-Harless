@@ -9,11 +9,18 @@ import json
 import sys
 import argparse
 import hashlib
+import os
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('native_web',ROOT/'scripts/harness-web.py')
 web=importlib.util.module_from_spec(spec);spec.loader.exec_module(web)
+if os.environ.get('SSS_RETRIEVAL_EVIDENCE')=='1':
+    from src.adapters.search_evidence_accounting import instrument_search_server
+    original_server=web.create_server
+    def create_server(*args,**kwargs):
+        return instrument_search_server(original_server(*args,**kwargs))
+    web.create_server=create_server
 # Experimental explicit output cap: keep the production CLI/certificate frozen.
 # Native State and prepare receive the same cap; no accounting/admission bypass.
 OUTPUT_CAP=None
@@ -46,6 +53,8 @@ def prepare(args,output,endpoint):
         (ROOT/'src/adapters/harless_web_client/index.mjs').as_uri():(ROOT/'src/adapters/script_motif_web.ts').as_uri(),
         (ROOT/'src/adapters/geneloop_shell.ts').as_uri():(ROOT/'src/adapters/script_motif_shell.ts').as_uri(),
     }
+    if os.environ.get('SSS_RETRIEVAL_EVIDENCE')=='1':
+        replacements[(ROOT/'src/adapters/geneloop_web_search.ts').as_uri()]=(ROOT/'src/adapters/retrieval_web_search.ts').as_uri()
     for row in patch:
         for plugin in row.get('insert',[]):
             if plugin.get('name') in replacements:plugin['name']=replacements[plugin['name']]

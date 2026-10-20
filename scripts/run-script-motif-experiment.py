@@ -31,6 +31,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--real-model', action='store_true', required=True)
     parser.add_argument('--report-evidence',action='store_true',help='显式隔离导出变体，两组必须采用相同设置')
+    parser.add_argument('--retrieval-evidence',action='store_true',help='显式同任务检索证据复用；不改变生产默认或认证库')
+    parser.add_argument('--search-output-tokens',type=int,default=4096,help='实验搜索模型输出上限；仅retrieval-evidence启用，可见来源仍需真实验收')
+    parser.add_argument('--evaluation-scope',choices=['full_task','local_retrieval_validation'],default='full_task')
+    parser.add_argument('--no-output',action='store_true',help='局部核验仅聊天交付；不授权写入报告产物')
     parser.add_argument('--source', required=True, type=Path)
     parser.add_argument('--prompt', type=Path, default=ROOT / 'scenarios/paper-submission/reference-audit.prompt.md')
     parser.add_argument('--mode', choices=['baseline', 'cache', 'shadow', 'execute'], required=True)
@@ -49,6 +53,8 @@ def main():
                         help='真实历史原生调用与失败回执；复制为当前同来源任务的数据，单独统计局部恢复')
     parser.add_argument('--max-seconds', type=float, help='诊断超时取消；保留全部费用，不算正常完成')
     args = parser.parse_args()
+    if not 128<=args.search_output_tokens<=4096:parser.error('搜索模型输出范围128..4096')
+    if args.search_output_tokens!=4096 and not args.retrieval_evidence:parser.error('搜索输出实验必须显式启用retrieval-evidence')
     if args.preserve_recovery_structure and not args.reuse_checkpoint:
         parser.error('结构保留需要显式当前恢复目标 --reuse-checkpoint')
     if args.resume_current_operation and (not args.preserve_recovery_structure or args.mode!='execute'):
@@ -62,6 +68,9 @@ def main():
         parser.error('baseline 不加载 Script Motif；cache/shadow/execute 必须提供 --script-config')
     env = dict(os.environ)
     env['SSS_REUSE_TRACE'] = '1'
+    if args.retrieval_evidence:env['SSS_RETRIEVAL_EVIDENCE']='1'
+    else:env.pop('SSS_RETRIEVAL_EVIDENCE',None)
+    env['SSS_RETRIEVAL_SEARCH_OUTPUT_TOKENS']=str(args.search_output_tokens)
     env.pop('SSS_SCRIPT_MOTIF_CONFIG', None)
     env.pop('SSS_SCRIPT_MOTIF_LEARNING_STORE', None)
     if args.script_config:
@@ -107,11 +116,14 @@ def main():
         'budget_policy': 'uncapped_user_authorized' if args.budget_usd == 0 else 'bounded',
         'request_limit': None, 'max_output_tokens': args.max_output_tokens,
         'reasoning_effort': 'off', 'platform': sys.platform,
-        'evaluation_scope': 'historical_artifact_recovery' if reuse_checkpoint else 'historical_local_recovery' if checkpoint else 'full_task',
+        'evaluation_scope': 'historical_artifact_recovery' if reuse_checkpoint else 'historical_local_recovery' if checkpoint else args.evaluation_scope,
         'checkpoint_sha256': hashlib.sha256(reuse_checkpoint or checkpoint).hexdigest() if reuse_checkpoint or checkpoint else None,
         'max_seconds': args.max_seconds,
         'reuse_boundary_evidence': True,
         'report_evidence_variant': args.report_evidence,
+        'retrieval_evidence':args.retrieval_evidence,
+        'search_output_tokens':args.search_output_tokens,
+        'allow_output':not args.no_output,
         'preserve_recovery_structure': args.preserve_recovery_structure,
         'resume_current_operation': args.resume_current_operation,
         'recovery_goal_scope_sha256':hashlib.sha256(args.recovery_goal_scope.read_bytes()).hexdigest() if args.recovery_goal_scope else None,
@@ -164,10 +176,10 @@ def main():
                 draft = web.api(opener, base, {'action': 'preview', 'session_id': session,
                     'request': {'content': [{'type': 'text', 'text': prompt},
                         {'type': 'file', 'receiptId': uploaded['value']['receiptId']}],
-                        'scene_options': {'allow_output': True}}})
+                        'scene_options': {'allow_output': not args.no_output}}})
             else:
                 draft = web.api(opener, base, {'action': 'preview', 'session_id': session,
-                    'request': {'instruction': prompt, 'scene_options': {'allow_output': True}}})
+                    'request': {'instruction': prompt, 'scene_options': {'allow_output': not args.no_output}}})
                 draft = web.api(opener, base, {'action': 'upload', 'task_id': draft['task_id'],
                     'name': source.name, 'data': base64.b64encode(source.read_bytes()).decode()})
             (record / 'task-id.txt').write_text(draft['task_id'])

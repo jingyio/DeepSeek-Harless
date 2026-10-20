@@ -269,6 +269,8 @@ V7/V8 的同任务 MCP 重启恢复及 TypeScript 有限交付入口见 [恢复�
 
 论文实验的当前恢复目标、版本化失败字段与成功产物复用已接通：`--report-evidence --preserve-recovery-structure`可在显式局部恢复中拒绝子集交付、复用完整参数做叶子补丁，并核验当前成功文件后交回总结；公开默认不启用。真实页数失败任务已完成17字段补丁及六页交付，37条记录与来源保持；早期错误交付、低效尝试与费用均保留，未主张稳定净降本。见[实验记录](docs/experiments/paper-recovery-evidence-20261020-v1.md)。
 
+论文检索证据实验通过 `run-script-motif-experiment.py --retrieval-evidence` 显式启用，保留每个查询的候选来源，并在原 `web_search` 中提供同任务证据 ID 选择；不新增工具，不把检索候选当作正式发表结论。局部只读验证可用 `--no-output --evaluation-scope local_retrieval_validation`；`--search-output-tokens` 仅调整实验搜索模型的输出上限。已有四次真实局部运行尚未触发证据复用，不能据费用较低的两次运行宣称 Motif 降本；质量反例、失败回归和全部费用见[检索证据实验](docs/experiments/paper-retrieval-evidence-20261020-v1.md)。生产默认和认证库不变。
+
 
 论文恢复实验新增显式`--resume-current-operation`：当前任务已选择的完整操作，经任务/来源/授权/Schema核验后由Runtime先执行一次，失败交回修订、成功交回总结。两次真实正常恢复均只需1个模型总结请求；复杂页数恢复仍有18/43请求和不可靠解释，尚未证明稳定净降本。全部仍为显式实验入口，非生产默认；失败与累计费用见[新实验记录](docs/experiments/paper-recovery-control-20261020-v2.md)。
 
