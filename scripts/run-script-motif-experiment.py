@@ -42,6 +42,7 @@ def main():
                         help='显式局部恢复诊断：只复制私有历史草稿，不算完整论文评测')
     parser.add_argument('--preserve-recovery-structure',action='store_true',help='将当前恢复目标的完整结构写入受保护任务状态，允许叶子修订，拒绝子集交付')
     parser.add_argument('--resume-current-operation',action='store_true',help='显式选择以当前完整参数恢复一次原生操作；Runtime核验当前任务授权后先执行，失败即交回模型')
+    parser.add_argument('--recovery-goal-scope',type=Path,help='真实失败回执绑定的原完整目标；与失败候选参数分离，必须匹配旧回执的scope SHA')
     parser.add_argument('--reuse-checkpoint', type=Path,
                         help='真实历史原生调用与失败回执；复制为当前同来源任务的数据，单独统计局部恢复')
     parser.add_argument('--max-seconds', type=float, help='诊断超时取消；保留全部费用，不算正常完成')
@@ -50,6 +51,7 @@ def main():
         parser.error('结构保留需要显式当前恢复目标 --reuse-checkpoint')
     if args.resume_current_operation and (not args.preserve_recovery_structure or args.mode!='execute'):
         parser.error('恢复当前操作需要execute及显式受保护的完整恢复目标')
+    if args.recovery_goal_scope and not args.preserve_recovery_structure:parser.error('独立完整目标需要preserve-recovery-structure')
     if args.budget_usd < 0 or args.max_output_tokens < 1:
         parser.error('预算非负，输出上限必须为正数')
     if args.max_seconds is not None and args.max_seconds <= 0:
@@ -77,6 +79,13 @@ def main():
         if not path.is_relative_to(ROOT / '.local'):
             parser.error('复用恢复仅接受本 worktree 私有轨迹')
         reuse_checkpoint = path.read_bytes()
+    recovery_goal=None
+    if args.recovery_goal_scope:
+        path=args.recovery_goal_scope.resolve(strict=True)
+        if not path.is_relative_to(ROOT/'.local'):raise ValueError('private_recovery_goal_required')
+        raw=path.read_bytes();previous=json.loads(reuse_checkpoint)
+        if previous.get('failure',{}).get('execution_evidence',{}).get('recovery_scope_sha256')!=hashlib.sha256(raw).hexdigest():raise ValueError('recovery_goal_not_bound_to_real_failure')
+        recovery_goal=json.loads(raw)
     if args.recovery_checkpoint:
         checkpoint_path = args.recovery_checkpoint.resolve(strict=True)
         if not checkpoint_path.is_relative_to(ROOT / '.local'):
@@ -103,6 +112,7 @@ def main():
         'report_evidence_variant': args.report_evidence,
         'preserve_recovery_structure': args.preserve_recovery_structure,
         'resume_current_operation': args.resume_current_operation,
+        'recovery_goal_scope_sha256':hashlib.sha256(args.recovery_goal_scope.read_bytes()).hexdigest() if args.recovery_goal_scope else None,
         'local_script_sandbox_requested': env.get('SSS_LOCAL_SCRIPT_EXPERIMENT') == '1',
         'report_font_sha256': hashlib.sha256(Path(env['HARLESS_REPORT_FONT']).read_bytes()).hexdigest() if env.get('HARLESS_REPORT_FONT') and Path(env['HARLESS_REPORT_FONT']).is_file() else None,
     }
@@ -152,14 +162,18 @@ def main():
                 recovered = workspace / 'code' / 'recovery-state.json'
                 recovered.write_bytes(reuse_checkpoint); recovered.chmod(0o600)
                 if args.preserve_recovery_structure:
+                    goal_arguments=recovery_goal['arguments'] if recovery_goal else value['arguments']
+                    if goal_arguments.get('source_versions')!=current_sources:raise ValueError('recovery_goal_sources_changed')
                     scope = {'version':1,'kind':'current_review_recovery_scope','task_id':draft['task_id'],
-                             'source_versions':current_sources,'arguments':value['arguments'],
+                             'source_versions':current_sources,'arguments':goal_arguments,
                              'policy':'preserve_structure_allow_semantic_leaf_revisions',
                              'origin':'explicit_current_recovery_requirement_not_inferred_from_history'}
                     if args.resume_current_operation:
                         from src.adapters.script_motif_compiler import digest
                         scope['execution_obligation']={'kind':'resume_current_operation','tool':value['tool'],
                             'arguments_sha256':digest(value['arguments']),'max_attempts':1}
+                        if recovery_goal:
+                            scope['resume_arguments']=value['arguments'];scope['execution_obligation']['arguments_pointer']='/resume_arguments'
                     target=workspace/'review-recovery-scope.json'
                     target.write_text(json.dumps(scope,ensure_ascii=False,sort_keys=True));target.chmod(0o400)
             if checkpoint:

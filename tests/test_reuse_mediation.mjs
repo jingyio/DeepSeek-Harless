@@ -62,6 +62,18 @@ test('artifact forwarding then one paragraph patch preserves the other 29 paragr
  assert.equal(second.arguments.sections[0].paragraphs.filter((p,i)=>p===sections[0].paragraphs[i]).length,29);
  assert.equal(sections[0].paragraphs[12],'paragraph 12');
 });
+test('a field restoration copies current values without regenerating arrays and guards both source and base',async t=>{
+ const f=fixture(t),approved={title:'approved',sections:[{paragraphs:['one','two','three']}]},candidate={title:'semantic revision',sections:[{paragraphs:['combined']}]};
+ writeFileSync(join(f.workspace,'code/approved.json'),JSON.stringify(approved));writeFileSync(join(f.workspace,'code/candidate.json'),JSON.stringify(candidate));
+ const rows=values(f),from=rows.find(r=>r.origin.path==='/work/approved.json').id,base=rows.find(r=>r.origin.path==='/work/candidate.json').id;
+ const patch={op:'replace',path:'/sections/0/paragraphs',from:{artifact:from,pointer:'/sections/0/paragraphs'}};
+ accept(f,[{tool:tool.name,base:{artifact:base},patches:[patch]}]);const call=await dispatch(f);f.r.guard(call);
+ assert.deepEqual(call.arguments.sections,approved.sections);assert.equal(call.arguments.title,candidate.title);
+ writeFileSync(join(f.workspace,'code/approved.json'),JSON.stringify({...approved,title:'new source'}));assert.throws(()=>f.r.guard(call),/guard_failed/);
+ const g=fixture(t);writeFileSync(join(g.workspace,'code/a.json'),JSON.stringify(approved));const id=values(g)[0].id;
+ assert.throws(()=>accept(g,[{tool:tool.name,base:{artifact:id},patches:[{...patch,from:{artifact:id},value:'conflict'}]}]),/requires_current_artifact/);
+ assert.throws(()=>accept(g,[{tool:tool.name,base:{artifact:id},patches:[{...patch,from:{step:0}}]}]));
+});
 test('one semantic plan binds the successful previous result and continues without model decisions',async t=>{
  const f=fixture(t);accept(f,[{tool:tool.name,arguments:{title:'x',sections:[]}},{tool:nextTool.name,bindings:[{at:'/handle',from:{step:0,pointer:'/handle'}}]}]);
  const a=await dispatch(f);f.r.observe(a,result({exported:true,handle:'fresh-handle'}));
@@ -247,6 +259,31 @@ test('explicit current obligation executes once without model selection and retu
  assert.ok(f.r.takeNotice().includes('参数修订机会'));
  assert.equal(f.audit.filter(a=>a.kind==='reuse_current_obligation_started').length,1);
  assert.ok(!f.audit.some(a=>a.kind==='reuse_plan_selected'));
+});
+test('a matched negative constraint offers an executable current-field restoration, without auto selecting it',async t=>{
+ const f=fixture(t),{args,goal,grant}=currentObligation(f);delete goal.execution_obligation;
+ writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify(goal));
+ const bad=structuredClone(args),pointer='/sections/0/paragraphs';bad.sections[0].paragraphs.pop();
+ const scopeHash=createHash('sha256').update(readFileSync(join(f.workspace,'review-recovery-scope.json'))).digest('hex');
+ const failure={exported:false,failed_checks:['shape'],execution_evidence:{...liveEvidence(f,bad),task_id:grant.task_id,grant_sha256:digest(grant),recovery_scope_sha256:scopeHash},argument_issues:[{pointer,check:'shape',hash_kind:'json',value_sha256:digest(bad.sections[0].paragraphs)}]};
+ f.r.observe({name:tool.name,callId:'real-failure',arguments:bad},result(failure));
+ f.r.setNegativeConstraint({motif_id:'negative_test',failure_code:'shape',failure_arguments_sha256:digest(bad),scope_sha256:scopeHash,issues:[{pointer}]});
+ const text=f.r.takeNotice(),line=text.split('\n').find(x=>x.startsWith('{"negative_restoration_candidate"'));
+ assert.ok(line);assert.equal(await dispatch(f),null);const command=JSON.parse(line).negative_restoration_candidate.command;
+ const receipt=f.r.prepare(command);f.r.observe({name:'bash',arguments:{command}},result(receipt.control_receipt));const call=await dispatch(f);f.r.guard(call);assert.deepEqual(call.arguments,args);
+});
+test('a real failed candidate can resume separately from the approved complete goal, with exact pointer and source binding',async t=>{
+ const f=fixture(t),{goal,args}=currentObligation(f);
+ goal.resume_arguments=structuredClone(args);goal.resume_arguments.sections[0].paragraphs.pop();
+ goal.execution_obligation.arguments_pointer='/resume_arguments';goal.execution_obligation.arguments_sha256=digest(goal.resume_arguments);
+ writeFileSync(join(f.workspace,'review-recovery-scope.json'),JSON.stringify(goal));
+ const call=await dispatch(f);f.r.guard(call);assert.equal(call.arguments.sections[0].paragraphs.length,29);
+ assert.equal(goal.arguments.sections[0].paragraphs.length,30);
+ for(const change of ['pointer','source']){
+  const g=fixture(t),{goal:target}=currentObligation(g);target.resume_arguments=structuredClone(target.arguments);target.execution_obligation.arguments_pointer=change==='pointer'?'/arbitrary':'/resume_arguments';
+  if(change==='source')target.resume_arguments.source_versions={};target.execution_obligation.arguments_sha256=digest(target.resume_arguments);
+  writeFileSync(join(g.workspace,'review-recovery-scope.json'),JSON.stringify(target));assert.equal(await dispatch(g),null);
+ }
 });
 test('missing obligation, foreign task, revoked grant, changed sources or hashes cannot trigger automatic execution',async t=>{
  for(const changed of ['missing','task','grant','source','hash','schema','attempts','origin']){

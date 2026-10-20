@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.adapters.script_negative_compiler import collect_negative, compile_negative, RUNTIME_FILES, sha, digest
 from src.adapters.negative_field_compiler import certify_field_guard, UnsupportedGuard
+from src.adapters.negative_constraint_compiler import constraint_observations, certify_current_constraint
 
 
 def main():
@@ -17,6 +18,7 @@ def main():
     p.add_argument('--implementation-file', action='append', required=True)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--field-profile', type=Path, help='显式受信、只读校验器与私有状态/对照；不执行模型提供的代码')
+    p.add_argument('--constraint-validator',help='经审阅的纯当前目标结构校验器：相对文件:函数；只在真实回执与双向认证一致时编译')
     a = p.parse_args()
     locks = {}
     for name in a.implementation_file:
@@ -63,6 +65,23 @@ def main():
                 except (UnsupportedGuard, KeyError, TypeError) as error:
                     field_report.append({'failure_code': rule['failure_code'], 'status': 'unchanged', 'reason': str(error)})
         library['digest'] = digest({k: v for k, v in library.items() if k != 'digest'})
+    if a.constraint_validator:
+        name,function_name=a.constraint_validator.split(':')
+        if name not in locks or not function_name.isidentifier():raise ValueError('constraint_validator_not_locked')
+        spec=importlib.util.spec_from_file_location('negative_current_constraint',ROOT/name)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);validator=getattr(module,function_name)
+        observations=[r for task in a.task for r in constraint_observations(task)]
+        for rule in library['rules']:
+            if rule.get('failure_source')!='failed_checks':continue
+            try:
+                guard=certify_current_constraint(rule,observations,validator)
+                guard.update(validator=a.constraint_validator,validator_sha256=locks[name])
+                rule['argument_guard']=guard;rule['retry_policy']='warn_then_current_constraint'
+                rule['id']='negative_'+digest({k:v for k,v in rule.items() if k!='id'})[:16]
+                field_report.append({'failure_code':rule['failure_code'],'status':'current_constraint','witnesses':len(guard['certification']['failures'])})
+            except (ValueError,KeyError,TypeError) as error:
+                field_report.append({'failure_code':rule['failure_code'],'status':'prompt_only','reason':str(error)})
+        library['digest']=digest({k:v for k,v in library.items() if k!='digest'})
     a.output.mkdir(parents=True, exist_ok=False)
     (a.output / 'library.json').write_text(json.dumps(library, ensure_ascii=False, indent=2) + '\n')
     (a.output / 'library.json').chmod(0o600)
