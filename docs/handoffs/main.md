@@ -1,4 +1,4 @@
-> 2026-10-19 文件管理独立集成 [PR #84](https://github.com/jingyio/GeneLoop/pull/84) 待用户审阅：`codex/geneloop-file-rsi` 已同步main `6df4c5c`，增加 `/file 文件管理`、自动执行/RSI、各账号长期经验及原生恢复/确认。Paper/PPT/Data原宿主和证书不改；本次不合并、不部署。当前状态和失败边界以 [文件交接](file-management.md) 为准；真实验收及USD0.609053074代理估费见 [实验记录](../experiments/geneloop-file-main-integration-20261019.md)。
+> 2026-10-20 当前：PR84/88/92/93已集成，后续[PR96](https://github.com/jingyio/GeneLoop/pull/96)修复多对话准入错误、默认8K截断和File独立路径额度。运行源码c3cd21a已统一发布；费用/次数/output app cap为null，wire最大393216，File v7/Paper19/PPT14，旧库/数据/累计账本保留。Python1514通过/3跳过，Node1167通过/8个主线既有实验沙箱失败/3跳过，smoke/Motif和最终原生Chat/File复验通过。CI与合并状态以PR96对应head为准。当前交接见[Web](harness-web.md)、[File](file-management.md)，完整证据及剩余沙箱失败见[实验记录](../experiments/provider-output-20261020.md)。以下各PR状态按其历史时间保留。
 
 ## 2026-10-20：PR84 / PR88 能力保留集成（PR93，待审）
 

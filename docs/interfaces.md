@@ -1,5 +1,13 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## 不限额Web与模型容量（2026-10-20）
+
+正式DeepSeek通道按请求头绑定原生Session，账号内独立对话和独立场景可并行，不设账号级数量上限。费用、请求次数和应用输出cap为null时保持不限；同一对话的幂等、运行/取消及来源校验仍逐任务隔离。DeepSeek请求显式传393216容量，不能省略max_tokens而回到8K默认；显式有限诊断cap仍有效。
+
+File独立SDK从同一Web policy创建新的只读RSI配置，复用账号原state_root和pool。持久FileJob的budget_usd、max_requests、max_steps、max_repairs支持null；数值零预算仍不允许付费。null不参与减法、min、累计上界或数值比较。SDK输出使用393216，原验收、权限、不可变任务、账本和取消继续生效；共享文件工作区的写冲突保护保留。有限历史实验不被追改为不限额，旧证书不重新写哈希；File v7按新源码真实重新认证。
+
+上线与测试限制见[本轮记录](experiments/provider-output-20261020.md)。
+
 ## 附件与多轮上下文（2026-10-19）
 
 内部资料事件使用原生公开 `session.append(..., {surfaceOp:"append"})`；比较 host 的 `prepare` 支持 `taskReady(task_id)`，在 preview 后、异步 submit 完成前绑定同一任务并订阅真实准备进度。取消、预算和原接收锁不因此分叉。

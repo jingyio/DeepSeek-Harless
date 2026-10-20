@@ -1,6 +1,6 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
-PR84/PR88 的共同集成在 [PR93](https://github.com/jingyio/GeneLoop/pull/93) 审阅，已保留 PR92 附件阅读能力；本分支使用 Paper v17、PPT v12 和重新认证的 File v6。验证与反例见[集成记录](docs/experiments/file-ppt-integration-20261019.md)，尚未合并或部署。
+正式DeepSeek Web已移除账号级并发数量上限，费用、请求次数和应用输出额度均为null，原账本继续累计。普通Chat、三场景及File转发统一使用官方最大393216输出容量，避免省略参数时默认8K截断；File独立SDK也继承不限额策略。运行源码c3cd21a已发布，当前Paper v19、PPT v14、File v7；真实验证、保留的失败及服务商容量边界见[额度与输出修复](docs/experiments/provider-output-20261020.md)。
 
 
 **开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。本地开发仍用 `npm run web`。
