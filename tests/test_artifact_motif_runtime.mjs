@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,symlinkSync,readFileSync,chmodSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,symlinkSync,readFileSync,chmodSync,copyFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {registerArtifactContext,artifactInvocation,fixedArtifactInput,matchesArtifactInput,hash,runArtifactProgram,provideArtifactPrograms,artifactProgramPath} from '../src/adapters/artifact_motif_runtime.ts';
@@ -61,6 +61,14 @@ test('ordinary Python entry binds current positional arguments through the same 
  assert.throws(()=>artifactInvocation('native-python',`cd /work && python3 '${path.slice(6)}' inputs/current.json outputs/echo-proof; echo \"[exit code: $?]\"`),/standalone_python/);
  const workdir=artifactInvocation('native-python',`python3 '${path}' ../inputs/current.json ../outputs/from-inputs`, '/work/inputs');
  assert.equal(workdir.output,'/work/outputs/from-inputs');
+ copyFileSync(join(f.workspace,'code',path.slice(6)),join(f.workspace,'outputs/code/delivery.py'));
+ const copied=artifactInvocation('native-python','python3 /work/outputs/delivery.py inputs/current.json outputs/copied-proof');
+ assert.equal(copied.program.id,f.program.id);
+ assert.equal(copied.output,'/work/outputs/copied-proof');
+ chmodSync(join(f.workspace,'outputs/code/delivery.py'),0o600);
+ writeFileSync(join(f.workspace,'outputs/code/delivery.py'),'# model changed the program\n');
+ assert.equal(artifactInvocation('native-python','python3 /work/outputs/delivery.py inputs/current.json outputs/changed-proof'),null);
+ assert.equal(artifactInvocation('native-python','python3 /work/ordinary.py; echo unchanged'),null);
  assert.throws(()=>artifactInvocation('native-python',`python3 '${path}' /work/inputs/current.json /work/outputs/fresh | cat`),/standalone_python/);
  assert.throws(()=>artifactInvocation('native-python',`python3 '${path}' /work/inputs/current.json /work/outputs/fresh; echo done`),/standalone_python/);
  assert.throws(()=>artifactInvocation('native-python',`python3 '${path}' /work/inputs/current.json`),/interface_changed/);

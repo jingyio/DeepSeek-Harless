@@ -41,7 +41,7 @@ export function apply(ctx:any){
     if(state.status==='running')registerArtifactContext(session,provideArtifactPrograms(value.context));
     value.catalog=value.marker+'\n当前可复用程序来自本场景已成功执行的历史代码，并已在不同输入上沙箱认证。你负责本轮内容、方法和最终判断。创建新的计算或排版程序前，请先检查以下完整接口；覆盖当前要求时优先复用，确有缺口才编写替代程序并说明缺项。程序已作为只读副本提供，可直接像普通Python程序一样在原生bash单独执行：python3 下方program_path 按argv_order填写本次文件路径和全新输出目录。无需安装或查找额外命令。Runtime会再次核对代码、输入、输出权限及新产物。也可用兼容入口 geneloop-recipe '+
      "'{\"id\":\"artifact_ID\",\"inputs\":[\"/work/本次数据文件\"],\"output\":\"/work/outputs/全新目录名\"}'"+
-     '。inputs 按下列顺序，必须来自本次输入或你刚写的内容文件；output 必须是未存在的新目录，旧文件不会覆盖。无需重写等价程序；不适用、来源改变或执行失败则使用普通工具。原生导出、事实核验和实际图片查看仍须完成。程序产出和机械回执不等于质量通过。\n'+
+     '。inputs 按下列顺序，必须来自本次输入或你刚写的内容文件；output 必须是未存在的新目录，旧文件不会覆盖。成功回执会自动在输出目录交付原样程序 geneloop_reused_program.py，无需为了交付先复制、chmod或重写程序；完整接口已列出，读取完整源码仅在你需要检查具体实现时进行。执行命令不要附加echo或退出码打印，原生工具会报告退出码；后续检查单独调用工具。无需重写等价程序；不适用、来源改变或执行失败则使用普通工具。原生导出、事实核验和实际图片查看仍须完成。程序产出和机械回执不等于质量通过。\n'+
      JSON.stringify(library.programs.map((p:any)=>({id:p.id,program_path:artifactProgramPath(library,p),argv_order:Array.from({length:p.argument_count},(_,i)=>i===p.output_argument_index?'new_output_directory':'input['+p.input_argument_indices.indexOf(i)+']'),interface:p.interface,inputs:p.inputs,output_profile:p.output_profile,outputs:p.certification.output_extensions})))+'\n</geneloop-artifact-catalog>\n';
     writeFileSync(join(output,'artifact-motif-config.json'),JSON.stringify({library_digest:library.digest,library:file,scene:state.scene,mode:'explicit_model_selection',underlying_task_mode:state.mode,experimental:true},null,2)+'\n',{mode:0o600});
     audit({kind:'artifact_library_loaded',library_digest:library.digest});

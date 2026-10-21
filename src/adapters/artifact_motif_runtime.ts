@@ -78,7 +78,25 @@ export function artifactInvocation(session:string,command:string,workdir='/work'
  let transport=command.trim();const cwd=prefix.test(transport)?'/work':posix.resolve('/work',workdir);
  transport=transport.replace(prefix,'');
  const native=transport.startsWith('python ')||transport.startsWith('python3 ');
- const nativeRecipe=native&&transport.includes('.geneloop-motifs/');
+ const cachedReference=native&&transport.includes('.geneloop-motifs/');
+ let nativeProgram:any=null,nativeWords:string[]=[];
+ if(native){
+  const plain=transport.replace(/(?:\s+2>&1)?\s*\|\s*tail\s+-(?:n\s+)?[1-9][0-9]{0,3}\s*$/,'').replace(/\s+2>&1\s*$/,'');
+  try{
+   nativeWords=commandWords(plain);
+   const path=posix.resolve(cwd,nativeWords[1]??'');
+   if(path.endsWith('.py')){
+    const context=contexts.get(session),data=context&&fixedArtifactInput(context.workspace,path).data;
+    if(data){
+     const version=hash(data),expected=cachedReference&&context.library.programs.find((p:any)=>artifactProgramPath(context.library,p)===path);
+     if(cachedReference&&(!expected||expected.source_sha256!==version))throw Error('artifact_cached_source_changed');
+     const candidates=context.library.programs.filter((p:any)=>p.source_sha256===version&&(!cachedReference||p.id===expected.id));
+     if(candidates.length===1)nativeProgram=candidates[0];
+    }
+   }
+  }catch(error){if(cachedReference)throw error;}
+ }
+ const nativeRecipe=cachedReference||!!nativeProgram;
  if(!transport.startsWith('geneloop-recipe ')&&!nativeRecipe){
   if(/\bgeneloop-recipe\s/.test(command))throw Error('复用命令必须单独调用 geneloop-recipe JSON；仅支持 cd /work 前缀及保留完整回执的 tail，不能混入其它命令。');
   return null;
@@ -86,8 +104,7 @@ export function artifactInvocation(session:string,command:string,workdir='/work'
  const c=contexts.get(session);if(!c)throw Error('artifact_context_not_admitted');
  let value:any;
  if(nativeRecipe){
-  const plain=transport.replace(/(?:\s+2>&1)?\s*\|\s*tail\s+-(?:n\s+)?[1-9][0-9]{0,3}\s*$/,'').replace(/\s+2>&1\s*$/,'');
-  const words=commandWords(plain),path=posix.resolve(cwd,words[1]),program=c.library.programs.find((p:any)=>artifactProgramPath(c.library,p)===path);
+  const words=nativeWords,path=posix.resolve(cwd,words[1]),program=nativeProgram;
   if(!program||words.length!==program.argument_count+2)throw Error('artifact_native_interface_changed');
   const cache=fixedArtifactInput(c.workspace,path);if(hash(cache.data)!==program.source_sha256)throw Error('artifact_cached_source_changed');
   const args=words.slice(2).map((arg:string)=>posix.resolve(cwd,arg));value={id:program.id,inputs:program.input_argument_indices.map((i:number)=>args[i]),output:args[program.output_argument_index]};
