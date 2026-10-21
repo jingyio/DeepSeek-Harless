@@ -27,6 +27,22 @@ function originalFiles(path){
   if(f.isDirectory())visit(h);else if(f.isFile())rows.push({path:relative(path,h),bytes:lstatSync(h).size,sha256:hash(readFileSync(h))});
  }}visit(path);return rows.sort((a,b)=>a.path.localeCompare(b.path));
 }
+export function witnessedHeldoutInputs(program,held){
+ const matches=(held.candidates??[]).filter(p=>p.id===program.id&&p.source_sha256===program.source_sha256);
+ if(!matches.length)return null;
+ const versions=new Map();
+ for(const p of matches){
+  const bound=program.input_argument_indices.map((index,i)=>{
+   const host=p.witness.input_paths[index],data=readFileSync(host),version=p.witness.input_sha256[index];
+   const rel=relative(held.workspace,host);
+   if(rel.startsWith('..')||realpathSync(host)!==host||hash(data)!==version||!matchesArtifactInput(program.inputs[i],host,data))throw Error('heldout_native_input_changed');
+   return {host,data,sha256:version};
+  });
+  const key=digest(bound.map(b=>b.sha256));if(!versions.has(key))versions.set(key,{bound,witness:p.witness});
+ }
+ if(versions.size!==1)throw Error('heldout_native_binding_ambiguous');
+ return [...versions.values()][0];
+}
 export function certifyArtifactRows(rows,resources={}){
  if(rows.length<2||new Set(rows.map(r=>r.task_id)).size!==rows.length||new Set(rows.map(r=>r.scene)).size!==1)throw Error('independent_same_scene_tasks_required');
  const [held,...training]=rows,programs=[],rejected=[],seen=new Set();
@@ -38,7 +54,8 @@ export function certifyArtifactRows(rows,resources={}){
     if(realpathSync(host)!==host||hash(data)!==version||!matchesArtifactInput(p.inputs[i],host,data))throw Error('source_input_changed');
     return {host,data,sha256:version};
    });
-   const other=p.inputs.map(contract=>{const matches=candidates(held.workspace,contract);if(matches.length!==1)throw Error('heldout_input_ambiguous_or_absent');return matches[0];});
+   const nativeHeld=witnessedHeldoutInputs(p,held);
+   const other=nativeHeld?.bound??p.inputs.map(contract=>{const matches=candidates(held.workspace,contract);if(matches.length!==1)throw Error('heldout_input_ambiguous_or_absent');return matches[0];});
    if(digest(own.map(b=>b.sha256))===digest(other.map(b=>b.sha256)))throw Error('distinct_input_required');
    const ownText=own.map(b=>b.data.toString('utf8')).join('\n'),otherText=other.map(b=>b.data.toString('utf8')).join('\n');
    // Conservative content-leak guard in addition to sandbox isolation. This is
@@ -47,7 +64,7 @@ export function certifyArtifactRows(rows,resources={}){
    const cases=[];let sourceFiles;
    for(const [role,task,bound] of [['source',row,own],['certification',held,other]]){
     const job={workspace:task.workspace,program:p,bound,resources,nonce:'certification',certification:true,
-     ...(role==='source'?{certificationArguments:p.witness.invocation_arguments}:{})};
+     ...(role==='source'?{certificationArguments:p.witness.invocation_arguments}:nativeHeld?{certificationArguments:nativeHeld.witness.invocation_arguments}:{})};
     const a=runArtifactProgram(job),b=runArtifactProgram(job);
     const signature=receipt=>digest({stdout:receipt.stdout,files:receipt.files.slice().sort((x,y)=>x.path.localeCompare(y.path))});
     if(signature(a.receipt)!==signature(b.receipt))throw Error('artifact_nondeterministic');
@@ -55,6 +72,7 @@ export function certifyArtifactRows(rows,resources={}){
      sourceFiles=a.receipt.files.slice().sort((x,y)=>x.path.localeCompare(y.path));
      if(digest(sourceFiles)!==digest(originalFiles(p.witness.original_output)))throw Error('historical_output_not_reproduced');
     }
+    if(role==='certification'&&nativeHeld&&digest(a.receipt.files.slice().sort((x,y)=>x.path.localeCompare(y.path)))!==digest(originalFiles(nativeHeld.witness.original_output)))throw Error('heldout_historical_output_not_reproduced');
     cases.push({role,task_id:task.task_id,inputs:bound.map(b=>b.sha256),files:a.receipt.files,stdout_sha256:hash(a.receipt.stdout)});
    }
    if(digest(cases[0].files)===digest(cases[1].files))throw Error('input_dependency_not_demonstrated');
@@ -62,6 +80,7 @@ export function certifyArtifactRows(rows,resources={}){
    programs.push({...program,certification:{passed:true,distinct_inputs:2,source_equivalent:true,program_sha256:digest(identity(p)),
     source_task_id:row.task_id,source_call_id:witness.call_id,events_sha256:witness.events_sha256,boundary_sha256:witness.boundary_sha256,
     invariant_input_versions:Object.fromEntries(own.flatMap((b,i)=>b.sha256===other[i].sha256?[[i,b.sha256]]:[])),
+    binding_evidence:nativeHeld?{kind:'native_heldout_invocation',call_id:nativeHeld.witness.call_id,boundary_sha256:nativeHeld.witness.boundary_sha256}:{kind:'unique_typed_approved_input'},
     output_extensions:[...new Set(sourceFiles.map(f=>extname(f.path)))],cases,semantic_quality_accepted:false}});
    seen.add(p.id);
   }catch(error){rejected.push({program_id:p.id,call_id:p.witness.call_id,reason:error.message});}
