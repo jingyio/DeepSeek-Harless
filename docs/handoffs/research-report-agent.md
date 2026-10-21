@@ -5,7 +5,7 @@
 - 本轮分支`codex/motif-cost-learning-20261021`，实现`76ca3e2`；从真实正常程序和模型实际完成的修复学习计算、参数流与多图输出，在不同输入上认证。TypeScript在线选择／绑定，Python离线编译，原模型负责方法与最终解释。
 - 学习过程保留反例：v12实际复用后又多次修图，费用上升37.2%；v13费用虽下降17.7%，总Token仍上升。继续学入模型完成的配对处理修复后，新资料v14得到40→15请求、1,387,459→536,853总Token、USD0.03832493→0.01980017，真实认证程序执行2次、不同新目录重新计算。
 - 这只是固定分组配对协议的合成样例，不能外推原固定线性回归报告或全部Data任务。最新两侧全部组的均值、p95、配对t区间、判定及清洗行ID独立复算一致，未做人工盲评。
-- 来源为正常模型修复；机械重放只补精确参数流，不算独立业务。候选、原轨迹、被拒认证、所有旧输出和费用保留在私有实验根。三类候选和完整材料见`.local/deliverables/geneloop-motif-cost-learning-20261021/`，公开[记录](../experiments/three-scene-motif-cost-learning-20261021.md)与[接口](../interfaces.md#artifact-motif-独立实验接口2026-10-21)。
+- 来源为正常模型修复；机械重放只补精确参数流，不算独立业务。候选、原轨迹、被拒认证、已保存的旧输出和费用保留在私有实验根。三类候选和完整材料见`.local/deliverables/geneloop-motif-cost-learning-20261021/`，公开[记录](../experiments/three-scene-motif-cost-learning-20261021.md)与[接口](../interfaces.md#artifact-motif-独立实验接口2026-10-21)。
 - Linux完整Python1718／Node1359通过、各4skip，smoke/motif通过。默认不启用Artifact实验，不替换正式库；线上仍7e167ed。后续扩大缺失、未配对和绘图边界的训练／留出覆盖，再决定正式接线。
 
 - 更新时间与交接人：2026-10-12，Codex，按用户要求合入最新 main 并提交场景 PR；历史实验原件保留。
