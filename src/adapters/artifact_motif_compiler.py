@@ -22,12 +22,12 @@ def digest(value):
 
 
 MODULES = {
-    'argparse', 'collections', 'copy', 'csv', 'html', 'io', 'itertools', 'json',
+    'argparse', 'collections', 'contextlib', 'copy', 'csv', 'html', 'io', 'itertools', 'json',
     'math', 'os', 'os.path', 'pathlib', 're', 'statistics', 'sys', 'textwrap',
     'xml.etree.ElementTree', 'zipfile', 'numpy', 'pandas', 'scipy', 'scipy.stats',
     'matplotlib', 'matplotlib.pyplot', 'matplotlib.font_manager', 'matplotlib.ticker', 'matplotlib.patches',
     'PIL', 'PIL.Image', 'PIL.ImageDraw', 'PIL.ImageFont',
-    '__future__', 'xml.sax.saxutils', 'text_measure',
+    '__future__', 'xml.sax.saxutils', 'text_measure', 'preset_shape_svg',
 }
 FORBIDDEN = {
     'eval', 'exec', 'compile', '__import__', 'getattr', 'setattr', 'delattr',
@@ -100,14 +100,17 @@ def program_from_witness(source, arguments, input_paths, output_index, witness):
         raise ValueError('program_all_arguments_must_be_bound')
     contracts = [{**file_contract(input_paths[i]), 'source_origin': 'uploaded_input' if Path(input_paths[i]).parent.name == 'inputs' else 'model_artifact'} for i in sorted(input_paths)]
     dependencies = {}
-    if any(isinstance(n, (ast.Import, ast.ImportFrom)) and ('text_measure' in ([n.module] if isinstance(n, ast.ImportFrom) else [a.name for a in n.names])) for n in ast.walk(tree)):
+    if any(isinstance(n, (ast.Import, ast.ImportFrom)) and any(m in ('text_measure', 'preset_shape_svg') for m in ([n.module] if isinstance(n, ast.ImportFrom) else [a.name for a in n.names])) for n in ast.walk(tree)):
         lock = Path(__file__).resolve().parents[2] / 'scenarios/ppt_master/skill-lock.json'
         dependencies['ppt_master_package_sha256'] = json.loads(lock.read_text(encoding='utf-8'))['package_sha256']
     body = {'version': 1, 'source': source, 'inputs': contracts, 'dependencies': dependencies,
             'input_argument_indices': sorted(input_paths), 'output_argument_index': output_index,
             'argument_count': len(arguments), 'language': 'python',
             'execution_policy': 'fresh_output_network_disabled_v1'}
+    interface = ast.get_docstring(tree) or witness.get('description') or 'Witnessed data-driven program'
+    if len(interface.encode()) > 16000:
+        raise ValueError('artifact_complete_interface_exceeds_protocol_bound')
     return {**body, 'id': 'artifact_' + digest(body)[:24],
-            'interface': (ast.get_docstring(tree) or witness.get('description') or 'Witnessed data-driven program')[:1400],
+            'interface': interface,
             'literal_selectors': sorted({n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 3 <= len(n.value) <= 1000}),
             'source_sha256': sha(source), 'witness': witness}
