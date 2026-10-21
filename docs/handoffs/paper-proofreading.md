@@ -1,5 +1,13 @@
 # 论文校对 当前交接
 
+## 2026-10-21：PR106 已提交，主线同步核验
+
+- 范围与代码：`codex/paper-evidence-handoff-20261021`已推送，[PR106](https://github.com/jingyio/GeneLoop/pull/106)以main为base，供审阅，未合并或部署。远端main核对为`5373b0e5`，已是本分支祖先；`git merge origin/main`返回Already up to date，无冲突，无新增机制代码。
+- 依赖：PR104尚未合并，本PR目前包含其Positive描述/Negative提示型RSI和DSH基础兼容改动；PR正文明确列出，建议先审104再收敛增量，不自动合并或关闭旧PR。不要将父PR的绿灯当作本PR CI。
+- 验证：复用当前源码的五篇十次真实结果和源快照一致性核验，不重复付费测试。最近本地Python1519通过/235跳过、相关Node94通过/2跳过、smoke/motif通过；完整Node1368通过/15跳过/1项未修改gateway的ECONNRESET失败保留。远端Ubuntu/Windows检查以PR106当前head为准。
+- 数据与费用：PR仅含代码、题面及匿名指标/结论，私人原件、凭证、原始轨迹未提交。PR准备新增真实模型调用0，累计仍6559请求/USD11.741008680保守估费，旧与新增共10 unknown/2 pending继续待核，不能称最终净降本。私有准备/提交记录在`.local/paper-main-pr-20261021-v1/`，十次证据见下一节。
+- 接手下一步：审阅PR106当前检查及#104依赖；确认合并方式后再同步main。生产与公共默认关闭状态不变，不自动扩大自动学习、执行或外部写入范围。
+
 ## 2026-10-21：修复后五篇论文十次真实复测
 
 - 目标与范围：按用户要求重启原五篇完整BibTeX文件任务，每篇两次，仅Motif；沿用旧10次Baseline与旧10次Motif，不新增普通缓存或Baseline。固定代码/库、不在中途改规则或回灌测试轨迹。
