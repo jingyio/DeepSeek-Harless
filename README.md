@@ -2,12 +2,14 @@
 
 管理员可在“设置 → 账户与安全 → 邀请同学”批量生成 1–20 个邀请码（默认 5 个）。邀请码永久有效、每码注册一个账号后失效；支持逐个或全部复制，关闭页面不会使未用码失效。生成结果仅在当前页面显示，请离开前复制保存。
 
-正式DeepSeek Web已移除账号级并发数量上限，费用、请求次数和应用输出额度均为null，原账本继续累计。普通Chat、三场景及File转发统一使用官方最大393216输出容量，避免省略参数时默认8K截断；File独立SDK也继承不限额策略。运行源码c3cd21a已发布，当前Paper v19、PPT v14、File v7；真实验证、保留的失败及服务商容量边界见[额度与输出修复](docs/experiments/provider-output-20261020.md)。
+正式DeepSeek Web已移除账号级并发数量上限，费用、请求次数和应用输出额度均为null，原账本继续累计。普通Chat、三场景及File转发使用393216输出容量，File独立SDK继承同一策略。2026-10-21当前后端运行7e167ed（Paper31/PPT28/File15），已统一发布并完成新一轮五成员、本机网关783次真实请求复测。公网旧Quick Tunnel失效，候选隧道已由统一入口准备且浏览器登录页正常，原Worker更新仍需维护者登录Cloudflare；不能把本机压力结果称为公网恢复。质量反例、费用、测试判据缺陷与未接入能力均见[本轮记录](docs/experiments/dsh-native-capabilities-20261021.md)；早期额度修复见[历史记录](docs/experiments/provider-output-20261020.md)。
 
 
-**开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。本地开发仍用 `npm run web`。
+**开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。公网使用同一入口的 `public-check`、`public-prepare`、`public-confirm` 单独核验和恢复，后端正常时保留正在执行的任务。本地开发仍用 `npm run web`。
 
-PPT 账户内结构学习现接入已启用PPT双路对照的真实聊天任务：后台从原始 Baseline 轨迹取两个独立训练任务和一个留出任务，经原编译器认证后，仅在后续任务试用；两个独立对照确实调用候选、交付检查通过且包含重试的费用下降，才自动保留。用户无需填写验收表，普通踩可停用候选。只学习已支持的来源固定→转换、转换→读取两条结构，不学习科研结论或任意生成代码；无明确人评时科研质量与人工时间仍未知。状态、证据和失败保留在账号私有目录；无合格候选回原库。当前兼容库为 `ppt-master-v9` / `paper-web-v14`，生成技能仍为 main 的官方 ppt-master。部署条件、实现和真实验证边界见[接线记录](docs/experiments/ppt-user-learning-20261019.md)。
+PPT 账户内结构学习现接入已启用PPT双路对照的真实聊天任务：后台从原始 Baseline 轨迹取两个独立训练任务和一个留出任务，经原编译器认证后，仅在后续任务试用；两个独立对照确实调用候选、交付检查通过且包含重试的费用下降，才自动保留。用户无需填写验收表，普通踩可停用候选。只学习已支持的来源固定→转换、转换→读取两条结构，不学习科研结论或任意生成代码；无明确人评时科研质量与人工时间仍未知。状态、证据和失败保留在账号私有目录；无合格候选回原库。该轮历史兼容库为 `ppt-master-v9` / `paper-web-v14`，生成技能仍为官方 ppt-master；当前版本以本页开头及本轮记录为准。部署条件、实现和真实验证边界见[接线记录](docs/experiments/ppt-user-learning-20261019.md)。
+
+普通Chat、Paper/PPT/Data现接入DSH原生读写/读图/搜索文件、Web搜索与读取、Bash后台任务、任务清单、可信skill、用户提问/计划批准、同任务子Agent、显式有限Goal、上下文摘要与present交付。图片由模型按需调用read_image，源码与成品均须真实返回像素，不以文字描述冒充查看。File是独立文件管理SDK场景，使用27个文件MCP工具与todo_write；它的看页工具同样向模型返回图片，但工具表和执行上下文不同，不假称具备主聊天全部原生工具。原生Workflow的共享宿主执行、无Task归属的Files缓存接口、File逐字delta尚未开放，详见[能力与限制](docs/experiments/dsh-native-capabilities-20261021.md)。
 
 独立 Script Motif 实验现支持当前语义选择、文件参数自动绑定与认证片段连续执行；复用原生 Bash，不增加模型工具表。真实任务已发生两节点自动接管，但三轮仍**未证明稳定净降本或合格交付**。最新对照发现不同报告路径及大量失败恢复，不能将费用差归为纯 Motif 开销。配置见 [接口](docs/interfaces.md#script-motif-实验接口)，结果和全部失败见 [实验记录](docs/experiments/paper-script-frontier-20261019-v1.md)。早期实验保留独立记录，本轮恢复验证与 PR 状态见文末。 新增从真实失败轨迹编译 Negative Motif 的实验入口，支持从已审阅校验器自动编译字段失败条件，按“当前失败提示 → 重算条件 → 仍失败则局部早停”执行；无关字段和版本变化不再自动放行。现支持循环/分支内多种错误的数据与控制依赖、双向原因干预，真实历史的重复 ID 和枚举错误已认证；其他类型仅有局部诊断，见 [原因学习记录](docs/experiments/paper-negative-causes-20261019-v1.md)。随后已完成原论文真实三组重测与历史恢复：完整任务均未合格，负面机制仅在恢复中实际提示一次、未触发硬早停，尚未证明合格净降本；详见 [真实重测](docs/experiments/paper-negative-real-20261019-v1.md)。 后续对448次真实请求的 [费用与接管障碍 Breakdown](docs/experiments/paper-takeover-breakdown-20261019-v1.md) 确认当前仅一个两节点片段、后续普通匹配未进入，报告语义数据与搜索内部模型也未被接管；本次重放不作为新增省费成绩。
 

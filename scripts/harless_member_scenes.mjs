@@ -248,6 +248,11 @@ export function memberSceneDeployment(policy, deployment) {
     if(next.certified_code_locks)next.certified_code_locks=Object.fromEntries(Object.entries(next.certified_code_locks).map(([path,sha])=>[translate(path),sha]));
     return next;
   });
-  return {scenes,mounts,allowed_tools:[...new Set(scenes.filter(s=>!s.unavailable_reason).flatMap(s=>s.allowed_tools))],
+  // Native skill and filesystem adapters execute inside the account namespace.
+  // Derive their public resource paths from these verified mounts, independently
+  // of the host paths retained by the gateway's command broker.
+  const native_resources={projectRoot:'/app',...(skill?{pptMasterRoot:skill.target}:{}),
+    ...(renderer?{rendererRoot:renderer}:{}),...(fonts?{fontRoot:fonts}:{})};
+  return {scenes,mounts,native_resources,allowed_tools:[...new Set(scenes.filter(s=>!s.unavailable_reason).flatMap(s=>s.allowed_tools))],
     output:'/app/.local/web',python:executable,attachmentEnvironment};
 }

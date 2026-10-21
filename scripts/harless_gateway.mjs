@@ -5,11 +5,18 @@ import { randomBytes, createHash, createHmac, timingSafeEqual, scrypt as scryptC
 import { promisify } from 'node:util';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, chmodSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { memberSceneDeployment } from './harless_member_scenes.mjs';
 import { productPersona } from '../src/adapters/harless_product_prompt.ts';
 import {startCommandBroker} from '../src/adapters/geneloop_command_broker.ts';
+import {composeNativeHost} from '../src/adapters/geneloop_native_host.mjs';
 import { createPublicRemoteBridge, forwardPublicRpc, isNativeRpcResponse, REMOTE_MUX_PATH } from './harless_public_transport.mjs';
+
+const modelTransport = JSON.parse(readFileSync(new URL('../config/geneloop-transport.json', import.meta.url), 'utf8'));
+if (Object.keys(modelTransport).sort().join(',') !== 'model_request_max_bytes,schema_version' ||
+    modelTransport.schema_version !== 1 || !Number.isSafeInteger(modelTransport.model_request_max_bytes) ||
+    modelTransport.model_request_max_bytes <= 0) throw Error('Invalid versioned model HTTP transport capacity');
+export const MODEL_REQUEST_MAX_BYTES = modelTransport.model_request_max_bytes;
 
 const scrypt = promisify(scryptCallback);
 const dummyHash = 'scrypt-v1$anonymous-login$' + scryptSync('dummy-password', 'anonymous-login', 64,
@@ -45,7 +52,7 @@ const publicUser = user => ({ id: user.id, username: user.username,
 export function memberProductProfile() {
   return {
     persona: productPersona(),
-    sandboxArgs: ['--dir', '/app/config', ...['geneloop-persona.json', 'geneloop-capabilities.json', 'geneloop-capabilities.md', 'pdf-ocr-assets.json']
+    sandboxArgs: ['--dir', '/app/config', ...['geneloop-persona.json', 'geneloop-capabilities.json', 'geneloop-capabilities.md', 'pdf-ocr-assets.json', 'geneloop-transport.json']
       .flatMap(name => ['--ro-bind', fileURLToPath(new URL('../config/' + name, import.meta.url)), '/app/config/' + name])],
   };
 }
@@ -125,26 +132,36 @@ export function createGateway(config) {
   // Reject a stale host patch before anybody can register into a backend that
   // cannot start. The patch must be generated from the same source checkout.
   const memberPatchTemplate = config.memberPatch ? (() => {
-    const sourceUri = pathToFileURL(config.sourceDir).href.replace(/\/?$/, '/');
     const patch = config.memberPatch.filter(row => !row.insert ||
       !row.insert.some(item => String(item.name ?? '').includes('dsh_paper_revision_web')))
       .map(row => structuredClone(row));
-    for (const row of patch) if (row.insert) row.insert = row.insert.map(item => {
-      const name = String(item.name);
-      if (name.startsWith('file:') && !name.startsWith(sourceUri)) throw Error('Plugin is outside source directory');
-      return { ...item, name: name.startsWith(sourceUri) ? 'file:///app/src/' + name.slice(sourceUri.length) : name };
-    });
-    return patch;
+    return composeNativeHost(patch,config.sourceDir,{member:true});
   })() : null;
   const taskPrefix = user => sha(user.id).slice(0, 8);
   const delegate = (user, purpose) => createHmac('sha256', config.adminToken ?? 'test-only')
     .update(purpose + ':' + user.id).digest('base64url');
   const routeOwner = new Map();
   const scopedPort = config.scopedBudgetPort;
-  const readBounded = (req, max = 8192) => new Promise((resolve, reject) => {
-    let size = 0, parts = [];
-    req.on('data', part => { size += part.length; if (size > max) { reject(Error('body too large')); req.destroy(); } else parts.push(part); });
-    req.on('end', () => resolve(Buffer.concat(parts))); req.on('error', reject);
+  const readBounded = (req, max = 8192, model = false) => new Promise((resolve, reject) => {
+    const tooLarge = () => Object.assign(Error('HTTP request body exceeds transport capacity'), {
+      status: 413, code: model ? 'GENELOOP_MODEL_REQUEST_TOO_LARGE' : 'GENELOOP_CONTROL_REQUEST_TOO_LARGE', maxBytes: max,
+    });
+    const declared = req.headers['content-length'];
+    if (typeof declared === 'string' && /^\d+$/.test(declared) && Number(declared) > max) {
+      req.resume(); reject(tooLarge()); return;
+    }
+    let size = 0, parts = [], exceeded = false;
+    req.on('data', part => {
+      if (exceeded) return;
+      size += part.length;
+      if (size > max) {
+        exceeded = true; parts = [];
+        // Discard the remainder before replying to chunked uploads. Closing a
+        // response with unread request bytes can still reset the HTTP socket.
+      } else parts.push(part);
+    });
+    req.on('end', () => { if (exceeded) reject(tooLarge()); else resolve(Buffer.concat(parts)); }); req.on('error', reject);
+    req.on('aborted', () => reject(Error('Request aborted')));
   });
   const findDelegated = (secret, purpose) => {
     if (typeof secret !== 'string') return null;
@@ -153,11 +170,23 @@ export function createGateway(config) {
       return actual.length === expected.length && timingSafeEqual(actual, expected);
     }) ?? null;
   };
+  const endToEndHeaders = headers => {
+    const excluded = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+      'te', 'trailer', 'transfer-encoding', 'upgrade']);
+    for (const [name, value] of Object.entries(headers)) if (name.toLowerCase() === 'connection') {
+      for (const option of (Array.isArray(value) ? value : [value]))
+        for (const nominated of String(option).split(',')) excluded.add(nominated.trim().toLowerCase());
+    }
+    return Object.fromEntries(Object.entries(headers).filter(([name]) => !excluded.has(name.toLowerCase())));
+  };
   const scopedForward = (targetPort, path, method, headers, body, res, after) => {
     const upstream = http.request({ host: '127.0.0.1', port: targetPort, path, method,
-      headers: { ...headers, host: `127.0.0.1:${targetPort}`, 'content-length': body?.length ?? 0 }, timeout: 120000 }, response => {
+      // readBounded has decoded any incoming chunk framing. Forward exactly
+      // those bytes with their true length, never both Transfer-Encoding and
+      // Content-Length or another connection's hop-by-hop header fields.
+      headers: { ...endToEndHeaders(headers), host: `127.0.0.1:${targetPort}`, 'content-length': body?.length ?? 0 }, timeout: 120000 }, response => {
       if (after) after(response.statusCode);
-      const outgoing = { ...response.headers }; delete outgoing['set-cookie'];
+      const outgoing = endToEndHeaders(response.headers); delete outgoing['set-cookie'];
       res.writeHead(response.statusCode ?? 502, outgoing); response.pipe(res);
     });
     upstream.on('error', () => { if (!res.headersSent) send(res, 502, 'budget service unavailable'); else res.destroy(); });
@@ -174,7 +203,7 @@ export function createGateway(config) {
         const user = typeof auth === 'string' && auth.startsWith('Bearer ') ? findDelegated(auth.slice(7), 'model') : null;
         const session = visionSession ?? searchSession ?? req.headers['x-deepseek-harness-session-id'];
         if (!user || routeOwner.get(session) !== user.id) return json(res, 403, { error: 'No approved user turn' });
-        const body = await readBounded(req, (visionSession ? 8 : 2) * 1024 * 1024);
+        const body = await readBounded(req, MODEL_REQUEST_MAX_BYTES, true);
         return scopedForward(config.upstreamBrokerPort, searchSession || visionSession ? path.pathname : '/v1/chat/completions', 'POST',
           { ...req.headers, authorization: `Bearer ${config.apiKey}`, 'x-api-key': config.apiKey,
             'x-deepseek-harness-session-id': session }, body, res);
@@ -215,7 +244,12 @@ export function createGateway(config) {
       } else return json(res, 404, { error: 'Unknown budget route' });
       return scopedForward(config.upstreamControlPort, path.pathname, 'POST',
         { 'content-type': 'application/json', 'x-sss-control-token': config.memberPolicy.control_token }, body, res);
-    } catch (error) { if (!res.headersSent) json(res, 400, { error: 'Invalid scoped budget request' }); else res.destroy(); }
+    } catch (error) {
+      if (!res.headersSent && error?.status === 413) {
+        json(res, 413, { error: {code:error.code, type:'invalid_request_error',
+          message:error.message, max_bytes:error.maxBytes} }, {'connection':'close'});
+      } else if (!res.headersSent) json(res, 400, { error: 'Invalid scoped budget request' }); else res.destroy();
+    }
   }) : null;
   const cookieName = 'harless_sess';
   const secure = new URL(origin).protocol === 'https:' ? 'Secure; ' : '';
@@ -348,7 +382,7 @@ export function createGateway(config) {
       const userDir = join(config.membersDir, user.id);
       for (const sub of ['', 'dsh', 'workspace', 'tasks/tasks', 'config']) mkdirSync(join(userDir, sub), { recursive: true, mode: 0o700 });
       const policy = { ...config.memberPolicy, output: sceneDeployment?.output ?? '/user/tasks',
-        ...(sceneDeployment ? {scenes:sceneDeployment.scenes} : {}),
+        ...(sceneDeployment ? {scenes:sceneDeployment.scenes,command_resources:sceneDeployment.native_resources} : {}),
         allowed_tools: sceneDeployment?.allowed_tools ?? [], resources: {}, ownership_legacy_outputs: [], budget_task_prefix: taskPrefix(user),
         endpoint: `http://127.0.0.1:${scopedPort}/v1`,
         control_endpoint: `http://127.0.0.1:${scopedPort}`,

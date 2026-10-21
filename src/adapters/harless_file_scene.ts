@@ -12,6 +12,7 @@ import {managementFileContent} from './file_task_scope.ts';
 import {fileEventProjection} from './file_event_projection.ts';
 import {interruptedTurnClosers} from '@deepseek-ai/dsh-session';
 import {publicConversationContext} from './dsh_web_tasks.ts';
+import {registerIndependentFileMode} from './geneloop_runtime_routes.ts';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const hash=(data:Uint8Array|string)=>createHash('sha256').update(data).digest('hex');
@@ -29,6 +30,39 @@ export function fileArtifactBytes(file:string,base:string,sha256:string){
  const data=readFileSync(path);if(hash(data)!==sha256)throw Error('artifact_bytes_changed');return data;
 }
 
+/** A retained reservation is not observed usage. Read only this task's sealed
+ * accounting record; old SDK ledgers and late platform receipts stay immutable. */
+export function fileCostMetadata(task:any,home:string){
+ const metrics=task.metrics??{},number=(v:any)=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
+ const count=(v:any)=>number(v)&&Number.isSafeInteger(v);
+ const requests=count(metrics.upstream_requests)?metrics.upstream_requests:null;
+ const upper=number(metrics.budget_accounted_usd)?metrics.budget_accounted_usd:null;
+ let complete=requests===0&&upper===0,missing:number|null=complete?0:null;
+ if(!complete&&requests!==null&&upper!==null){
+  try{
+   const ref=metrics.continuous_rsi,session=metrics.session_id;
+   if(typeof session!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(session)||typeof task.out!=='string'
+      ||typeof ref?.record_file!=='string'||typeof ref.state_root!=='string'
+      ||typeof ref.record_sha256!=='string'||!/^[a-f0-9]{64}$/.test(ref.record_sha256)
+      ||resolve(ref.record_file)!==resolve(ref.state_root,'records',session+'.json'))throw Error('unverified_cost');
+   const record=JSON.parse(fileArtifactBytes(ref.record_file,home,ref.record_sha256).toString('utf8'));
+   const review=record.cost_accounting;
+   if(record.session_id!==session||typeof record.run_dir!=='string'||resolve(record.run_dir)!==resolve(task.out)
+      ||record.upstream_requests!==requests||record.metrics?.upstream_requests!==requests
+      ||record.metrics?.budget_accounted_usd!==upper||record.cost_usd!==upper
+      ||review?.requests!==requests||!number(review.cost_upper_usd)||Math.abs(review.cost_upper_usd-upper)>1e-6
+      ||!count(review.missing_observed_usage_requests)||review.missing_observed_usage_requests>requests)throw Error('unverified_cost');
+   missing=review.missing_observed_usage_requests;
+   complete=record.accounting_complete===true&&record.observed_usage_complete===true
+      &&review.accounting_complete===true&&review.observed_usage_complete===true&&missing===0;
+  }catch{ /* Missing, stale or foreign evidence remains unknown, never zero. */ }
+ }
+ return {upstream_requests:requests,cost_usd:complete?upper:null,
+  budget_accounted_usd:upper,cost_upper_usd:upper,usage_complete:complete,
+  missing_observed_usage_requests:missing,
+  cost_basis:complete?'observed_usage':upper===null?'unavailable':'conservative_reservation'};
+}
+
 export function installFileScene(ctx:any,launch:typeof spawn=spawn){
  const policy=JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!,'utf8'));
  const deployed=policy.scenes?.find((row:any)=>row.id==='files');
@@ -44,6 +78,7 @@ export function installFileScene(ctx:any,launch:typeof spawn=spawn){
  const agents=new Map<string,any>(),children=new Map<string,any>(),aborters=new Map<string,AbortController>();
  const admissions=new Map<string,{request_digest:string,promise:Promise<any>,cancelled:boolean}>();
  const selected=new Set<string>(),models=new Map<string,any>();
+ ctx.effect(()=>registerIndependentFileMode(ctx,id=>selected.has(id)),'file-scene-native-mode-boundary');
  const stateFile=join(home,'selection.json');
  if(existsSync(stateFile)){const saved=JSON.parse(readFileSync(stateFile,'utf8'));for(const id of saved.sessions??[])selected.add(id);for(const [id,m] of Object.entries(saved.models??{}))models.set(id,m);}
  const persist=()=>save(stateFile,{sessions:[...selected],models:Object.fromEntries(models)});
@@ -59,7 +94,7 @@ export function installFileScene(ctx:any,launch:typeof spawn=spawn){
  const settings=(session:string)=>({selected:selected.has(session),automatic:true,mode:'execute',rsi:true,scene:{id:'files',label:'文件管理',shortcut:'file',available:true,execute_available:true,runtime_kind:'management_graph_v3'}});
  const publicTask=(task:any)=>({id:'file-'+task.id,session_id:task.session,turn:task.turn,presentation:'single',status:task.status,
   lanes:{baseline:{status:task.status,artifacts:(task.artifacts??[]).map(({path,...row}:any)=>row)}},
-  rsi:{automatic:true,upstream_requests:task.metrics?.upstream_requests??null,cost_usd:task.metrics?.budget_accounted_usd??null,
+  rsi:{automatic:true,...fileCostMetadata(task,home),
    acceptance_passed:task.metrics?.acceptance_passed??false,learning:task.metrics?.continuous_rsi?.worker?'scheduled':'recorded'}});
  function end(task:any,text?:string){
   const agent=agents.get(task.session);if(!agent)return;

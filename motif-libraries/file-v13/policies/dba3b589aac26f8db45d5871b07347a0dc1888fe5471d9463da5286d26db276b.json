@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "format": "sss-operation-graph-v2",
+  "execution_version_sha256": "56b0d2d3d632141deef4992bb19bbda1d6a06da5018b7d6f0cbb3ae5101417a8",
+  "artifact": {
+    "kind": "learned_mcp_operation_dag",
+    "status": "trace_validated_read_only",
+    "nodes": [
+      {
+        "tool": "mcp__file_management__select_files",
+        "bindings": {}
+      },
+      {
+        "tool": "mcp__file_management__pin_files",
+        "bindings": {
+          "file_ids": {
+            "node": 0,
+            "path": "files[].file_id"
+          }
+        }
+      },
+      {
+        "tool": "mcp__file_management__read_files",
+        "bindings": {
+          "source_ids": {
+            "node": 1,
+            "path": "source_ids"
+          }
+        }
+      },
+      {
+        "tool": "mcp__file_management__collect_reads",
+        "bindings": {
+          "collection_id": {
+            "node": 0,
+            "path": "collection_id"
+          },
+          "source_ids": {
+            "node": 1,
+            "path": "source_ids"
+          }
+        }
+      }
+    ],
+    "tool_contracts": {
+      "mcp__file_management__select_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "semantic",
+          "auto_continue": false,
+          "exports": [
+            "collection_id",
+            "files[].file_id"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "file_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 32,
+              "minItems": 0,
+              "title": "File Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "file_ids"
+          ],
+          "title": "select_filesArguments"
+        },
+        "schema_sha256": "29d14868457a6a7a5ced7e3cba558c7b5e0884ca57f04ca818c4e6974cae6708"
+      },
+      "mcp__file_management__pin_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [
+            "source_ids"
+          ],
+          "statuses": [
+            "pinned_batch"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "file_ids": {
+              "description": "Unique actual file_ids from list_files or inspect_plan_result.files. Returns source_ids for later reading.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "File Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "file_ids"
+          ],
+          "title": "pin_filesArguments"
+        },
+        "schema_sha256": "8e3e70422123716562472fa583443282874de98464e14bdd5df604390c5049a8"
+      },
+      "mcp__file_management__read_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [],
+          "statuses": [
+            "read_batch_complete"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "source_ids": {
+              "description": "Unique actual source_ids returned by a completed pin_files or pin_file call. Do not substitute file_ids or guess handles.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "Source Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "source_ids"
+          ],
+          "title": "read_filesArguments"
+        },
+        "schema_sha256": "89d0f6c08e26ce80323be57ef01ab5db9950d7b40c9ffc2c4fb1f57624d0556e"
+      },
+      "mcp__file_management__collect_reads": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": true,
+          "exports": [],
+          "statuses": [
+            "collection_complete"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "collection_id": {
+              "title": "Collection Id",
+              "type": "string"
+            },
+            "source_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 32,
+              "minItems": 0,
+              "title": "Source Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "collection_id",
+            "source_ids"
+          ],
+          "title": "collect_readsArguments"
+        },
+        "schema_sha256": "01170d947b85e7d03cce7723a8304c553b53635e80c550909fc9050e198e475e"
+      }
+    },
+    "max_nodes": 8,
+    "execution_version": "56b0d2d3d632141deef4992bb19bbda1d6a06da5018b7d6f0cbb3ae5101417a8",
+    "certification_contract": "sss-operation-certification-v2",
+    "interleaving_contracts": {
+      "mcp__file_management__list_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": false,
+          "exports": [],
+          "safe_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "list_filesArguments"
+        },
+        "schema_sha256": "fbe3e382dd6c8e9281fe26492070587b61f9dd4de908bb735cd9697af616533d"
+      }
+    },
+    "request_lane_contracts": {},
+    "source_task_fingerprints": [
+      "3b2f4a7a6525467a51276545a1d82bdc606db5f970e458c13ae90294b5b0a400",
+      "b487b4e51d5b19bdbfeb7da96e85e48fba1a9f1f9690067332a914ae6146c4af"
+    ],
+    "witnesses": [
+      {
+        "session_id": "sss-1699fda061c24deea87c773b4ef76b09",
+        "calls": [
+          "call_00_hi02bjSIXyr3c9F5JUiX2607",
+          "call_00_1n45VrbqvQ6GQNEzc23X8043",
+          "call_00_1Jn78DQbrVBg7Uoiyz9Y9830",
+          "call_00_ywKYTkefpMgFdJo3ngLe5213"
+        ],
+        "native_new_nodes": [
+          1,
+          2,
+          3
+        ],
+        "inherited_policy": null,
+        "events_sha256": "2d2fad0dd76ff2dee961173ab787ab034819ac1df1544d84e76a72bf52214a1a"
+      },
+      {
+        "session_id": "sss-9b5faea488684166b8007b58013218cd",
+        "calls": [
+          "call_00_fMLAXfObpgg0eGanhDAR6754",
+          "call_00_Pnu6OnfrzVSEkRdRRTnb3407",
+          "call_00_ZePIjk4Htt6ALMUko1Nb9949",
+          "call_00_9o9cQ02prcceikh2dpaQ9380"
+        ],
+        "native_new_nodes": [
+          1,
+          2,
+          3
+        ],
+        "inherited_policy": null,
+        "events_sha256": "ecfb4f6aad63109c389f3b88c3c364a0d382ee77650db5307a2a850333b928f9"
+      }
+    ],
+    "recertification_provenance": {
+      "old_policy_digest": "f9495c461e9c58e8cc96a3947e5e8471d658995a725b23ae65e1bd68f0f5e862",
+      "old_payload_sha256": "bf092608d73b69b47c5acaf56ae042cf5244931297e61d242f8fd3d7af4353be",
+      "old_certificate_sha256": "b03ac9c08a30bd0a85ae50086818b2f0870a1af41f8f2e5c71db8d54c996ba04",
+      "candidate_lock_sha256": "f1f29d373564dd1d4403541f57fc19602d78380700beb0e6ed27a086e8d230f5",
+      "recertifier_sha256": "d0f8e2003d2ee57ee67077360409a7140fe1223ef35c91fcd5e2f3d8415bdded",
+      "native_prefix": {
+        "format": "sss-native-connected-prefix-v1",
+        "calls": [
+          "call_00_ttIhHRYdrh1u9SGRhhRa8733",
+          "call_00_ZdcS17xodEIVQWBg7OHG1829",
+          "call_00_c7nYT1c52YPDetFw7ob14236",
+          "call_00_mVjaSusK6KXB6dyg4SA35595"
+        ],
+        "view_end_result_seq": 35,
+        "full_events_sha256": "a9772234391943de2a37a73901a72076dbf30df7ec2f63ca05014dc46c276a36",
+        "full_native_witness_calls": [
+          "call_00_ttIhHRYdrh1u9SGRhhRa8733",
+          "call_00_ZdcS17xodEIVQWBg7OHG1829",
+          "call_00_c7nYT1c52YPDetFw7ob14236",
+          "call_00_mVjaSusK6KXB6dyg4SA35595"
+        ],
+        "raw_events_unchanged": true
+      }
+    },
+    "validation_task_fingerprint": "453a951f04b846677e3b858460500920e1211df69721bb7f39997b5b619eea24",
+    "validation_witness": {
+      "nodes": [
+        {
+          "tool": "mcp__file_management__select_files",
+          "bindings": {}
+        },
+        {
+          "tool": "mcp__file_management__pin_files",
+          "bindings": {
+            "file_ids": {
+              "node": 0,
+              "path": "files[].file_id"
+            }
+          }
+        },
+        {
+          "tool": "mcp__file_management__read_files",
+          "bindings": {
+            "source_ids": {
+              "node": 1,
+              "path": "source_ids"
+            }
+          }
+        },
+        {
+          "tool": "mcp__file_management__collect_reads",
+          "bindings": {
+            "collection_id": {
+              "node": 0,
+              "path": "collection_id"
+            },
+            "source_ids": {
+              "node": 1,
+              "path": "source_ids"
+            }
+          }
+        }
+      ],
+      "values": {
+        "1:file_ids": [
+          "file:local:9043ccb0b65f2459dad53a73",
+          "file:local:f71b3ec18e31e8ef160887aa"
+        ],
+        "2:source_ids": [
+          "source-96e214a32a32d4b37db0fda527987bf0",
+          "source-9753493cb6f2d6abbc2c26ae0346d48f"
+        ],
+        "3:collection_id": "collection-b05116329f4840f383a88f0b90571f2f",
+        "3:source_ids": [
+          "source-96e214a32a32d4b37db0fda527987bf0",
+          "source-9753493cb6f2d6abbc2c26ae0346d48f"
+        ]
+      },
+      "calls": [
+        "call_00_ttIhHRYdrh1u9SGRhhRa8733",
+        "call_00_ZdcS17xodEIVQWBg7OHG1829",
+        "call_00_c7nYT1c52YPDetFw7ob14236",
+        "call_00_mVjaSusK6KXB6dyg4SA35595"
+      ],
+      "native_new_nodes": [
+        1,
+        2,
+        3
+      ],
+      "inherited_policy": null
+    },
+    "certified_digest": "b2653429ccfe06cd8e4e85f9eab88e862b4ed2934c4097c94e84a764f583d902"
+  },
+  "policy_digest": "dba3b589aac26f8db45d5871b07347a0dc1888fe5471d9463da5286d26db276b"
+}

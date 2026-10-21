@@ -12,7 +12,7 @@ const lanes = ['baseline', 'motif'] as const;
 type LaneName = typeof lanes[number];
 type Lane = { session_id: string; task_id?: string; status: string; answer?: string; failure?: string;
   failure_stage?: 'preparation' | 'execution';
-  answer_display?: string; answer_binding?: any; progress?: any; activity?: any[]; messages?: any[]; trace?: any[];
+  answer_display?: string; answer_binding?: any; progress?: any; activity?: any[]; messages?: any[]; trace?: any[]; todos?:any[]|null;
   started_at?: string; finished_at?: string; duration_ms?: number; feedback?: 'up'|'down'|null;
   mode?:string;library_sha256?:string;source_pending?:boolean;
   delivery_reconciled?: boolean;
@@ -156,7 +156,7 @@ export function createComparisonService(output: string, principal: string, host:
     Object.assign(lane, { status: t.cancellation_requested ? 'cancelled' : task.status === 'budget_exhausted' ? 'failed' : task.status === 'awaiting_confirmation' ? 'queued' : task.status,
       answer: task.answer ?? lane.answer ?? '', stats: task.stats, fallback_reason: task.fallback_reason ?? null,
       answer_display: task.answer_display, answer_binding: task.answer_binding, progress: task.progress, activity: task.activity,
-      messages:task.messages,trace:task.trace,started_at:task.started_at,finished_at:task.finished_at,duration_ms:task.duration_ms,
+      messages:task.messages,trace:task.trace,todos:task.todos,started_at:task.started_at,finished_at:task.finished_at,duration_ms:task.duration_ms,
       mode:task.mode,library_sha256:task.library_sha256,source_pending:task.source_pending === true,
       artifacts: task.deliveries ?? lane.artifacts ?? [], failure: task.status === 'budget_exhausted'
         ? (task.deliveries?.length ? '已完成的文件通过交付校验，可下载；后续模型回复达到请求或预算上限，未完成的部分与支出均已保留。' : '这一路达到预算或请求上限，结果与已有支出已保留。')
@@ -259,6 +259,11 @@ export function createComparisonService(output: string, principal: string, host:
   }
   return {
     hasSession: (id: string) => Boolean(state.threads[id]),
+    currentExecutionSessions: (id:string):{lane:LaneName;session_id:string}[] => {
+      const thread=state.threads[id];if(!thread)return [];
+      return (thread.presentation==='single'?['baseline'] as const:lanes)
+        .filter(lane=>typeof thread.lanes[lane]==='string').map(lane=>({lane,session_id:thread.lanes[lane]}));
+    },
     // Internal account-owned child identities only; the Host reads their
     // already-observed evidence without exposing private Session APIs.
     contextSessions: (id: string) => Object.fromEntries(lanes.map(name => [name, [...new Set(state.turns

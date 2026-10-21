@@ -10,6 +10,14 @@ export const commonToolRows = () => [
   { id: 'geneloop-tool-web', name: '@deepseek-ai/dsh-tool-web' },
   { id: 'geneloop-tool-bash', name: '@deepseek-ai/dsh-tool-bash' },
   { id: 'geneloop-tool-jobs', name: '@deepseek-ai/dsh-tool-jobs', config: { completionDelivery: 'quiet' } },
+  { id: 'geneloop-tool-fs', name: '@deepseek-ai/dsh-tool-fs' },
+  { id: 'geneloop-tool-fs-search', name: '@deepseek-ai/dsh-tool-fs-search',config:{sampleOverCapGlobResults:false} },
+  { id: 'geneloop-tool-questions', name: '@deepseek-ai/dsh-tool-ask-user' },
+  { id: 'geneloop-tool-todo', name: '@deepseek-ai/dsh-tool-todo',config:{allowParallelInProgress:true} },
+  { id: 'geneloop-tool-skill', name: '@deepseek-ai/dsh-tool-skill' },
+  { id: 'geneloop-tool-present', name: '@deepseek-ai/dsh-tool-present' },
+  { id: 'geneloop-tool-subagent',name:'@deepseek-ai/dsh-tool-subagent',config:{provider:'geneloop-task',modelSelectionSettings:false,enableRunInBackground:false,backgroundMode:'one-shot'} },
+  { id:'geneloop-tool-goal',name:'@deepseek-ai/dsh-tool-goal',config:{} },
 ];
 export function sceneCertifiedTools(scene: { common_tools?: string[] }, tools: any[]) {
   const common = new Set(scene.common_tools ?? []);

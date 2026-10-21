@@ -91,6 +91,7 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')]};
   const result=memberSceneDeployment(policy,deployment);
   assert.equal(result.output,'/app/.local/web');
+  assert.deepEqual(result.native_resources,{projectRoot:'/app'});
   assert.deepEqual(result.allowed_tools,scene.allowed_tools);
   assert.equal(result.scenes[0].mcp_rows[0].config.args[0],'/app/scenarios/general/server.py');
   assert.equal(result.scenes[0].mcp_rows[0].config.args[1],'__HARLESS_SESSION_WORKSPACE__/inputs');
@@ -138,6 +139,37 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   assert.ok(linked.mounts.some(row=>row.source===realpathSync(dependencyStore)&&row.target===releaseLink),
     'the dependency mount must resolve the first release symlink inside the member namespace');
   assert.ok(!linked.mounts.some(row=>row.source===join(root,'release')),'never expose a whole release checkout');
+});
+
+test('native member resources use only verified namespace mounts while host resources stay unchanged', t => {
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-native-resources-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for(const name of ['scenarios/ppt_master','python/bin','approved-skill','renderer/program','renderer/share','fonts'])
+    mkdirSync(join(root,name),{recursive:true});
+  const python=join(root,'python/bin/python');writeFileSync(python,'public diagnostic Python');
+  writeFileSync(join(root,'python/pyvenv.cfg'),'diagnostic installation');
+  const skillRoot=join(root,'approved-skill'),raw='---\nname: ppt-master\ndescription: Diagnostic public skill.\n---\nPublic diagnostic content.\n';
+  writeFileSync(join(skillRoot,'SKILL.md'),raw);
+  const files={'SKILL.md':createHash('sha256').update(raw).digest('hex')};
+  writeFileSync(join(root,'scenarios/ppt_master/skill-lock.json'),JSON.stringify({schema_version:1,version:'6.6.0',files,
+    package_sha256:createHash('sha256').update(JSON.stringify(files)).digest('hex')}));
+  const rendererRoot=join(root,'renderer'),fontRoot=join(root,'fonts');
+  writeFileSync(join(rendererRoot,'program/soffice.bin'),'diagnostic renderer');
+  writeFileSync(join(fontRoot,'NotoSansCJKsc-Regular.otf'),'public diagnostic font');
+  writeFileSync(join(fontRoot,'fonts-static.conf'),'public diagnostic configuration');
+  const scene={id:'chat',adapter:'workspace',allowed_tools:[],mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',
+    config:{serverName:'workspace',transport:'stdio',command:python,cwd:root,args:[join(root,'scenarios/general/server.py')]}}]};
+  const policy={scenes:[scene],command_resources:{projectRoot:'/unmounted/host',pptMasterRoot:'/unvalidated/skill',
+    rendererRoot:'/unvalidated/renderer',fontRoot:'/unvalidated/fonts',unapproved:'never-inherit'}};
+  const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')],pptMasterRoot:skillRoot,rendererRoot,fontRoot};
+  const before=structuredClone({policy,deployment}),result=memberSceneDeployment(policy,deployment);
+  assert.deepEqual(result.native_resources,{projectRoot:'/app',pptMasterRoot:'/opt/geneloop/ppt-master',rendererRoot,fontRoot});
+  assert.ok(result.mounts.some(m=>m.source===skillRoot&&m.target===result.native_resources.pptMasterRoot));
+  assert.ok(result.mounts.some(m=>m.source===join(root,'scenarios')&&m.target==='/app/scenarios'));
+  for(const field of ['rendererRoot','fontRoot'])assert.ok(result.mounts.some(m=>m.source===deployment[field]&&m.target===result.native_resources[field]));
+  assert.deepEqual({policy,deployment},before,'owner configuration and host broker resources must not be rewritten');
+  assert.deepEqual(memberSceneDeployment(policy,{...deployment,pptMasterRoot:undefined,rendererRoot:undefined,fontRoot:undefined}).native_resources,
+    {projectRoot:'/app'},'an inherited skill path never grants a mount when the validated deployment has no skill');
 });
 
 test('data report fonts require the fixed mounted resource and its matching digest', t => {

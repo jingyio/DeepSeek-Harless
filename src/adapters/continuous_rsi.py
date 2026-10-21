@@ -65,6 +65,8 @@ LEARNER += ['scenarios/file-management/management_temporal.py','src/adapters/man
 
 LEARNER += ['src/adapters/file_event_projection.ts','scenarios/file-management/semantic-sdk.patch.yml','src/adapters/harless_file_scene.ts','src/adapters/file_approval_bridge.ts','scenarios/file-management/file_scene_worker.py','scenarios/file-management/general-tools.json','src/adapters/file_scenario.py','src/adapters/file_cost_gate.py','src/adapters/file_acceptance_guard.ts','src/adapters/file_entry_motif.ts']
 
+LEARNER += ['src/adapters/geneloop_task_trace.ts','src/adapters/model_transport.py','config/geneloop-transport.json']
+
 def private(path):
     p = Path(path).absolute()
     if not p.is_relative_to((ROOT / '.local').absolute()):
@@ -187,6 +189,12 @@ def writer_lock(root, name):
             time.sleep(.05)
         except FileExistsError:
             try:previous=read(path)
+            except PermissionError:
+                # Its owner can unlink between exclusive-open failure and
+                # this read; Windows then exposes a delete-pending handle as
+                # access denied. Unknown ownership still cannot be stolen.
+                if os.name!='nt' or not wait_for_metadata or time.monotonic()>=deadline:raise
+                time.sleep(.05);continue
             except (FileNotFoundError,json.JSONDecodeError):
                 if not wait_for_metadata or time.monotonic()>=deadline:raise RuntimeError(name+' writer is active')
                 time.sleep(.05);continue
@@ -200,7 +208,19 @@ def writer_lock(root, name):
             time.sleep(.05)
     path.chmod(0o600)
     try: yield
-    finally: path.unlink()
+    finally:
+        # A contender may still be reading this owner's PID when it exits.
+        # Windows' ordinary read handles do not share deletion; a failed
+        # unlink would strand a live-PID lock and make every later waiter time
+        # out. Retry only that transient sharing conflict, never steal a lock
+        # or suppress a real permission/cleanup failure.
+        release_deadline=time.monotonic()+30
+        while True:
+            try:path.unlink();break
+            except PermissionError as error:
+                if (os.name!='nt' or getattr(error,'winerror',None) not in (32,33)
+                        or time.monotonic()>=release_deadline):raise
+                time.sleep(.05)
 
 
 def state_event(root, kind, detail):

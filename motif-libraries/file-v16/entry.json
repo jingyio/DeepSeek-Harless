@@ -1,0 +1,93 @@
+{
+  "format": "sss-management-seed-release-v1",
+  "quality": "sss-management-quality-v7",
+  "runtime_source": {
+    "src/adapters/dsh_operation_motif.ts": "939d3ca228937008ec73482e0e7f07f53dcd015c6307b19022ae05287b996a74",
+    "src/motif_core/operation_graph_policy.ts": "06d13498a44d7c0f0244550e81e986f106b2f5c21b8f8fbd02f8bff97bbbbe1a",
+    "src/motif_core/control_flow_policy.ts": "675af5aedd127d3060b7139adf16c0ce3724650772630523af20859908619369",
+    "src/motif_core/online_skill_runtime.mjs": "d951e7d0ab15ba49c00f99726f82c328e0bb283fd40af0d6eb0252c80d4e54ec",
+    "scenarios/file-management/operation_tools.py": "ad1be569ea60cbe4745a0b8eda8ac9b767aa8aaad2d8f81d1416e84ba476b018",
+    "scenarios/file-management/operation_contract.py": "debf4b79de4b5f17ed2ea2c8db1d085306d479940fc29c102b6ec898c5d591e4",
+    "scenarios/file-management/report_tools.py": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+    "scenarios/file-management/collection_tools.py": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+    "scenarios/file-management/file_tools.py": "7abb038e6bdf6c7922f1440d9caa9a019c74fc8bc37257570d0076d4294a6e61",
+    "scenarios/file-management/common.py": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+    "src/motif_core/operation_graph_policy_v1.ts": "30f5e0e274cd42f2cdec0b9aed314876d91553dc63287828e8d1c4dccf3f9cdb",
+    "scenarios/file-management/operation_tools_v2.py": "d48caa676a62438816219f68d504b3d28a4e54a9feec6e711933fa995ecfd973",
+    "scenarios/file-management/operation_contract_v2.py": "6c0562533692d62d7951a5dd24fe05ba6167ae5ceb6060915f0bdf1992e7e646",
+    "src/adapters/operation_job.ts": "a15f1013742032b790ec063b043fff8c55a20fc5daf2a5cc1b872d9b67ce7609",
+    "src/adapters/file_workflow_job.ts": "eaa01ca84d1d56d5cda05b25c74db5247fbee88a02be28fb6590567baa5ffdf4",
+    "scenarios/file-management/management_tools.py": "0a36c4191201ba469b67aa1ce95d99242b12d4c90069a125a416ecdbfce70324",
+    "scenarios/file-management/management_native.py": "cad6a877e10b8c6d1bf676523af7d0fa506937d0a375e435be166dbfb0d89d8f",
+    "scenarios/file-management/management_reading.py": "557281ff2aebab64cfa7acb60d88da4082bfd3d7b878c1bb87e47dc042c78629",
+    "scenarios/file-management/management_contract.py": "778e6f0630e6f3d12ca41f0531e202b9e7d777bce715978aaac0ed782823f33e",
+    "scenarios/file-management/management_goals.py": "e573370afa52f3d475fad9b2d9f496b8ed5b1d6c76affc57a8b6cc3dc458f1c1",
+    "scenarios/file-management/management_provenance.py": "c92ae3638eb834732e4fcf73efbc51122647ecc6f213456c2cb9afba95ce028c",
+    "src/adapters/management_program.ts": "a266c7eb6a1e370ab5a3a271585e14fd564795e517df783a1f54325bc7b17f86",
+    "src/adapters/general_tool_replay.py": "f317838ffffba1f0d0e2f4fcb20adb4ced515e3a059bc0c9c0d419c76970d48e",
+    "src/adapters/general_tools.py": "43bebd48b53241989776e860271b9ab892a9a709397fd04edffdb3e14cf69a8b",
+    "src/adapters/geneloop_pdf.py": "f3664c058ea83484f37e479e436b7039fd82391a0605d22e01251843b5d51024",
+    "scenarios/file-management/general-tools.json": "c00797b4ae5796f2fa30757015b669687356edd800d4ce6ca9c9ea931dbb21cf",
+    "scenarios/general/runtime.py": "c1db26387d30a0b11d985a9451756df0b2213e0c141807960cb6685f12c38e26",
+    "scenarios/file-management/management_temporal.py": "e03721ac012c97ed1f7cf0e60ee0af9d3d303131becf4ffe8529e5da5b6d732b",
+    "src/adapters/management_temporal.ts": "bc53429f88502008812b0936b6dcc80454f2dc77778de8f9a7b9c6460bce9b97",
+    "src/adapters/management_seed.py": "f9f9f5cfe5d9d7bfd3c9f6b63d94f7be95a1f9fd45fe1462b04c4951ecefec0a",
+    "src/adapters/management_seed.ts": "0e2401f6816a7c4199117418641e8e0d351263189bb5c71dac3ba8fb99ff2da5",
+    "src/adapters/management_model_gate.py": "55f7b87191ce2c5bd53e9d5667ed3b458e51542e9b07b9757e09b535af43167f",
+    "src/adapters/management_model_gate.ts": "57022a9b705dfe00e316c2bcf4b36dcc256fd087d8ababfe88138e8f5b7eb3d1",
+    "src/adapters/management_platform_budget.py": "2c81bb5dea4ee3fe09b909e86722615bd6c9f532b750ff7eab249fa36aab6be1",
+    "src/adapters/file_event_projection.ts": "e9029b17151fbe303373f3e9e8642fa464bd97ab69915a4a6c29015958500771",
+    "src/adapters/file_task_scope.ts": "f1a17e307831e365145726ebd4b2de2805591e9cc0d59f583b66ca3accecb6cf",
+    "src/adapters/harless_file_scene.ts": "27f134dd378968c518923b38aeff1df8e8cdc34e6c8e05da380341de500ad8ae",
+    "src/adapters/file_approval_bridge.ts": "a0202505d245f5777dbc07cd3704c266e4b418d7ec2bad39fed2461758df05ec",
+    "scenarios/file-management/file_scene_worker.py": "eb65bc933ad0aedc7d0ef850c25aaf90d906abdff8d90e9676fb1239b642aa89",
+    "src/adapters/file_scenario.py": "78e4f051c83082eb4db4420ca37e587631566038cfc20a4adce80483be68548c",
+    "src/adapters/file_cost_gate.py": "79a257f0acf7c6b440e7cd00fe195604a158b4f20a2f3b215f4c3f1cfac3b113",
+    "src/adapters/file_acceptance_guard.ts": "86315460db6af6bcc8f7093e0ea1b502fa9cd922bdf19145b7d1bc7b372da149",
+    "src/adapters/model_transport.py": "007591ed719ccdc91bdb48c870b31ea062917e40e54b0baa20c6e08446adcc30",
+    "config/geneloop-transport.json": "f99df93978c9942e09e487a336f886413f8748ca6e2aa683b16f790e8ed83fc6"
+  },
+  "entries": [
+    {
+      "kind": "operation_graph",
+      "policy_digest": "2d2465a57d2131caf13503897e4e36587755d1b5c84a825f17649e9df2b21ace",
+      "payload": "policies/2d2465a57d2131caf13503897e4e36587755d1b5c84a825f17649e9df2b21ace.json",
+      "payload_sha256": "ca09aa776395424474b6cf697b176f39e553d8f560c40b5f58401dc0bd849b6e",
+      "certificate": "certificates/2d2465a57d2131caf13503897e4e36587755d1b5c84a825f17649e9df2b21ace.json"
+    },
+    {
+      "kind": "operation_graph",
+      "policy_digest": "c2478700ecb317da56e3b3136d6d5d6d3538d360f6ce08eb02cb2f50686a9c0e",
+      "payload": "policies/c2478700ecb317da56e3b3136d6d5d6d3538d360f6ce08eb02cb2f50686a9c0e.json",
+      "payload_sha256": "3922a6a5ba39cdd66cfaea00515e5b1112e375bd2772834bbadc6ee060717f2e",
+      "certificate": "certificates/c2478700ecb317da56e3b3136d6d5d6d3538d360f6ce08eb02cb2f50686a9c0e.json"
+    },
+    {
+      "kind": "operation_graph",
+      "policy_digest": "c4e580a641c27c77e43cd8cc5053b4fc430eca7aae7f5dae0ec625d3c93b4bb6",
+      "payload": "policies/c4e580a641c27c77e43cd8cc5053b4fc430eca7aae7f5dae0ec625d3c93b4bb6.json",
+      "payload_sha256": "9c8b5a46e1545dd2fdeb77dff5951d0eee11211f8953483bfcc95e44f32bfb61",
+      "certificate": "certificates/c4e580a641c27c77e43cd8cc5053b4fc430eca7aae7f5dae0ec625d3c93b4bb6.json"
+    },
+    {
+      "kind": "operation_graph",
+      "policy_digest": "5beb7360635c72c176d49579a5d706d397e99fe8a02fc995a311e4402509933a",
+      "payload": "policies/5beb7360635c72c176d49579a5d706d397e99fe8a02fc995a311e4402509933a.json",
+      "payload_sha256": "a00410820481a90bb75d75849572d687876950b7002c065ec617677e57ab4b94",
+      "certificate": "certificates/5beb7360635c72c176d49579a5d706d397e99fe8a02fc995a311e4402509933a.json"
+    }
+  ],
+  "files": {
+    "policies/2d2465a57d2131caf13503897e4e36587755d1b5c84a825f17649e9df2b21ace.json": "ca09aa776395424474b6cf697b176f39e553d8f560c40b5f58401dc0bd849b6e",
+    "certificates/2d2465a57d2131caf13503897e4e36587755d1b5c84a825f17649e9df2b21ace.json": "78a9de95fa8252ace53cd3fdb3da76510cdbdfcc3f2ce4bc397d5c87536c68a6",
+    "policies/c2478700ecb317da56e3b3136d6d5d6d3538d360f6ce08eb02cb2f50686a9c0e.json": "3922a6a5ba39cdd66cfaea00515e5b1112e375bd2772834bbadc6ee060717f2e",
+    "certificates/c2478700ecb317da56e3b3136d6d5d6d3538d360f6ce08eb02cb2f50686a9c0e.json": "8fe08f6dba48b0341aebbee8910c52f576ee7e7d040c9943f1663815e5516383",
+    "policies/c4e580a641c27c77e43cd8cc5053b4fc430eca7aae7f5dae0ec625d3c93b4bb6.json": "9c8b5a46e1545dd2fdeb77dff5951d0eee11211f8953483bfcc95e44f32bfb61",
+    "certificates/c4e580a641c27c77e43cd8cc5053b4fc430eca7aae7f5dae0ec625d3c93b4bb6.json": "57b6025a197ffe51e9fcc03e6b88ab22b99c59a88d8ba9c52c2d4647ea34304e",
+    "policies/5beb7360635c72c176d49579a5d706d397e99fe8a02fc995a311e4402509933a.json": "a00410820481a90bb75d75849572d687876950b7002c065ec617677e57ab4b94",
+    "certificates/5beb7360635c72c176d49579a5d706d397e99fe8a02fc995a311e4402509933a.json": "34f34d276d42f4f358eb4427ac9207a5ea3a6be7d8492a6e4c9acfa6ebd8d74b"
+  },
+  "raw_private_evidence_published": false,
+  "grants_execution": false,
+  "digest": "e5debe252847ecbf2bab6741bf8abb5d082a6f90e51f889dbfcc255ccb6c3de1"
+}

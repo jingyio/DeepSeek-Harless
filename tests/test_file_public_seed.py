@@ -8,6 +8,9 @@ from uuid import uuid4
 import pytest
 
 ROOT=Path(__file__).resolve().parents[1]
+FILE_RELEASES=sorted((p.name for p in (ROOT/'motif-libraries').glob('file-v*')
+                     if p.name[6:].isdigit() and (p/'entry.json').is_file()),
+                    key=lambda name:int(name[6:]))
 
 
 def test_seeds_install_per_account_without_cloud_or_reactivating_disabled_entries():
@@ -30,7 +33,7 @@ print(json.dumps({'state':cfg['state_root'],'entries':len(state['entries']),'pai
     assert all(row['paid_calls']==0 for row in results)
 
 
-@pytest.mark.parametrize('version', ['file-v7', 'file-v8', 'file-v9', 'file-v10', 'file-v11'])
+@pytest.mark.parametrize('version', [name for name in FILE_RELEASES if int(name[6:])>=7])
 def test_seed_release_contains_only_policies_and_sanitized_certification(version):
     release=ROOT/'motif-libraries'/version;manifest=json.loads((release/'entry.json').read_text())
     assert manifest['raw_private_evidence_published'] is False
@@ -75,19 +78,37 @@ def test_historical_seed_is_provenance_only_and_cannot_activate_on_new_code(vers
             validate_certificate(policy,certificate,sha(payload))
 
 
-def test_current_seed_keeps_every_previous_graph_shape_and_admits_current_code():
-    from src.adapters.management_seed import validate_certificate
-    from src.motif_core.offline.experience_registry import read,sha,digest
+def test_current_seed_keeps_every_previous_graph_shape_and_admits_current_code(tmp_path):
+    from src.adapters.management_seed import install,validate_certificate
+    from src.adapters.experience_library import policy_current,sources
+    from src.motif_core.offline.experience_registry import ExperienceRegistry,read,sha,digest
     def shapes(version):
         release=ROOT/'motif-libraries'/version;manifest=read(release/'entry.json')
         return {digest(read(release/e['payload'])['artifact']['nodes']) for e in manifest['entries']}
-    assert shapes('file-v5') == shapes('file-v6')
-    assert shapes('file-v6') == shapes('file-v7')
-    assert shapes('file-v7') == shapes('file-v8')
-    assert shapes('file-v8') == shapes('file-v9')
-    assert shapes('file-v9') == shapes('file-v10')
-    assert shapes('file-v10') == shapes('file-v11')
-    release=ROOT/'motif-libraries/file-v11'
+    previous=[name for name in FILE_RELEASES if int(name[6:])>=5]
+    expected=shapes('file-v5')
+    assert len(expected)==4
+    assert all(shapes(name)==expected for name in previous)
+    # Use the same latest-compatible installation path as a fresh account.
+    # An absent or stale certification must fail instead of falling back to a
+    # hard-coded historical version or accepting an empty active registry.
+    cfg={'state_root':str(tmp_path/'account')}
+    registry=ExperienceRegistry(Path(cfg['state_root'])/'registry')
+    registry.publish(reason='free current seed diagnostic')
+    install(cfg)
+    active=[entry for entry in registry.load()['entries'] if entry['state']=='active']
+    assert len(active)==4
+    versions={read(registry.root/entry['certificate']['file'])['release'] for entry in active}
+    assert len(versions)==1
+    version=versions.pop()
+    release=ROOT/'motif-libraries'/version
+    runtime=sources()
+    assert read(release/'entry.json')['runtime_source']==runtime
+    assert shapes(version)==expected
+    for entry in active:
+        policy=read(registry.root/entry['payload'])
+        assert entry['runtime_source']==runtime and policy_current(policy,runtime)
+        assert validate_certificate(policy,registry.root/entry['certificate']['file'],entry['sha256'])['release']==version
     for entry in read(release/'entry.json')['entries']:
         payload=release/entry['payload']
-        assert validate_certificate(read(payload),release/entry['certificate'],sha(payload))['release']=='file-v11'
+        assert validate_certificate(read(payload),release/entry['certificate'],sha(payload))['release']==version

@@ -1,0 +1,614 @@
+[
+  {
+    "name": "mcp__paper_checks__collect_current_local_citation_evidence",
+    "description": "Collect local citations; source_id for bibliography, citation_id for metadata. Returns title_needs_review_keys and query_recovery_available; no fact check.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "title": "collect_current_local_citation_evidenceArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__export_current_audit_pdf",
+    "description": "Export a new task PDF from the approved or finalized report SHA and reviewed renderer.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "report_sha256": {
+          "title": "Report Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_sha256"
+      ],
+      "title": "export_current_audit_pdfArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__export_review_report",
+    "description": "Export a substantive proofreading report as downloadable PDF and Markdown.\n        sections=[{heading,paragraphs:[text]}]; quote actual source wording, explain\n        corrections and limitations. source_versions is the full list_inputs\n        filename:sha256 map. No original is modified; no empty reference report.\n        ",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "sections": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Sections",
+          "type": "array"
+        },
+        "source_versions": {
+          "additionalProperties": true,
+          "title": "Source Versions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "title",
+        "sections",
+        "source_versions"
+      ],
+      "title": "export_review_reportArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__fetch_pinned_cited_preprint_metadata",
+    "description": "Fetch official arXiv metadata for the bound citations; it does not certify publication.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "citation_id": {
+          "title": "Citation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "citation_id"
+      ],
+      "title": "fetch_pinned_cited_preprint_metadataArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__fetch_pinned_formal_reference_metadata",
+    "description": "Fetch Crossref candidates for bound source identifiers or titles; model reviews identity.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "citation_id": {
+          "title": "Citation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "citation_id"
+      ],
+      "title": "fetch_pinned_formal_reference_metadataArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__finalize_current_audit",
+    "description": "Freeze the report and return current BibTeX count coverage when available.\n\n        A count below the approved bibliography means the report is partial;\n        matching counts alone do not verify bibliographic facts or scope.\n        ",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "expected_draft_sha256": {
+          "title": "Expected Draft Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_draft_sha256"
+      ],
+      "title": "finalize_current_auditArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__list_inputs",
+    "description": "List only the approved files in this Session, with exact SHA256.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "title": "list_inputsArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__pin_document",
+    "description": "Pin any listed upload (PDF, Word, CSV, JSON, TXT etc.) to its exact version. No host paths.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "sha256"
+      ],
+      "title": "pin_documentArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__pin_paper_citations",
+    "description": "Pin the approved current manuscript's active citations to a versioned Session handle.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id"
+      ],
+      "title": "pin_paper_citationsArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__pin_paper_sources",
+    "description": "Pin the uploaded literal LaTeX main and all current source files to a versioned scope.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "main": {
+          "title": "Main",
+          "type": "string"
+        }
+      },
+      "required": [
+        "main"
+      ],
+      "title": "pin_paper_sourcesArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__read_current_audit",
+    "description": "Read the task's approved or model-finalized audit report with its exact SHA256.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "title": "read_current_auditArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__read_pinned_bibliography_first_page",
+    "description": "Read fixed page one using only the source_id from collect_current_local_citation_evidence or pin_paper_citations, not pin_paper_sources.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id"
+      ],
+      "title": "read_pinned_bibliography_first_pageArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__read_pinned_bibliography_page",
+    "description": "Read page two or later with a source_id from collect_current_local_citation_evidence or pin_paper_citations; never use pin_paper_sources' different handle.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_id",
+        "page"
+      ],
+      "title": "read_pinned_bibliography_pageArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__read_pinned_citation_records",
+    "description": "Read original BibTeX entries for the bound active citation batch.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "citation_id": {
+          "title": "Citation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "citation_id"
+      ],
+      "title": "read_pinned_citation_recordsArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__read_pinned_document",
+    "description": "Read one PDF page, a bounded source-text page, or the extracted logical page of Word/table uploads. Follow page_count; no visual review.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "page": {
+          "default": 1,
+          "title": "Page",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_id"
+      ],
+      "title": "read_pinned_documentArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__read_pinned_paper_citations",
+    "description": "Inspect active literal citations and bind a fresh citation batch; no factual judgment.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id"
+      ],
+      "title": "read_pinned_paper_citationsArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__read_pinned_paper_sources",
+    "description": "Use the existing static checker for literal citations, duplicate labels, floats and supplied logs; no compilation or authenticity claim.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id"
+      ],
+      "title": "read_pinned_paper_sourcesArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__recover_pinned_formal_reference_queries",
+    "description": "Only call when collect reports query_recovery_available=true; pass its citation_id, never source_id. Uses administrator-registered query library.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "citation_id": {
+          "title": "Citation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "citation_id"
+      ],
+      "title": "recover_pinned_formal_reference_queriesArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__stage_current_audit",
+    "description": "Append typed fields or remove draft references; use returned SHA for the next call.\n\n        For entries from the current BibTeX bibliography, use\n        stage_current_bibliography_assessments instead; it copies exact titles,\n        keys and file evidence without making the model repeat them.\n\n        scope is text; notes is a list of strings. Each references/sources/issues field is\n        a list of report rows (at most eight per call). citation_checks accepts only\n        list_without_citation, citation_without_entry, duplicate_entries,\n        numbering_anomaly, unresolved_or_abnormal_citations, non_citation_brackets;\n        each value has result/evidence/limitation strings. A reference's\n        source_ids must name rows in sources; uploaded names belong in evidence_files.\n        Missing required fields return staged=false and exact field names without writing.\n        \"已确认\" or \"已确认，但需修正\" without a staged external source_id is\n        rejected; cite the source or mark the item 存疑 pending verification.\n        Duplicate reference keys return staged=false without writing. To repair an older\n        draft, pass only remove_reference_number or remove_reference_numbers and the\n        current draft SHA. The latter removes up to forty distinct one-based rows\n        in one call; later rows are renumbered. Neither can change a finalized\n        report or uploaded original.\n        ",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scope"
+        },
+        "references": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "References"
+        },
+        "sources": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sources"
+        },
+        "issues": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issues"
+        },
+        "citation_checks": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Citation Checks"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "remove_reference_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remove Reference Number"
+        },
+        "remove_reference_numbers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remove Reference Numbers"
+        },
+        "expected_draft_sha256": {
+          "default": "",
+          "title": "Expected Draft Sha256",
+          "type": "string"
+        }
+      },
+      "title": "stage_current_auditArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_checks__stage_current_bibliography_assessments",
+    "description": "Append up to forty assessed BibTeX entries in one versioned draft write.\n\n        Each assessment supplies key, status, priority and explanation;\n        source_ids may name previously staged external sources. The server\n        resolves a unique key against this task's versioned bibliography and\n        copies its original index, literal title and evidence filename. For a\n        duplicate key, supply the one-based index from a bibliography page.\n        Never use entry_index_in_bib from the active-citation view as index.\n        An index/key mismatch rejects the whole batch without writing.\n        This does not verify authenticity or assign an unreviewed status. If\n        staged=false and validation_error=paper_bibliography_title_needs_review,\n        supply short_title for the returned missing_title_index and retry; no\n        draft was written. Duplicate BibTeX keys must be reported as an issue.\n        Pass the returned draft SHA for explicit compare-and-swap. If omitted,\n        the server binds the current task-local draft SHA at this call; an\n        explicit stale SHA still rejects without writing.\n        ",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "assessments": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Assessments",
+          "type": "array"
+        },
+        "expected_draft_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Draft Sha256"
+        }
+      },
+      "required": [
+        "source_id",
+        "assessments"
+      ],
+      "title": "stage_current_bibliography_assessmentsArguments"
+    }
+  },
+  {
+    "name": "mcp__paper_trace_rsi__apply_revision_plan",
+    "description": "Apply the model-selected bounded reference plan to a new task copy; preserve other fields.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "report_sha256": {
+          "type": "string"
+        },
+        "plan": {
+          "type": "object",
+          "properties": {
+            "set_ids": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "arxiv_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "key",
+                  "arxiv_id"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "keep_once_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "remove_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "add_records": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "arxiv_id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "待进一步核验"
+                    ]
+                  }
+                },
+                "required": [
+                  "key",
+                  "arxiv_id",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "set_ids",
+            "keep_once_keys",
+            "remove_keys",
+            "add_records"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "report_sha256",
+        "plan"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "mcp__paper_trace_rsi__export_revision_report",
+    "description": "Export the current reviewed structural report as Markdown in this task only.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "input_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "mcp__paper_trace_rsi__read_task_state",
+    "description": "Read the current private reference report and version. No authenticity claim.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "mcp__paper_trace_rsi__triage_revision_audit",
+    "description": "Run the existing learned audit program on the current versioned reference report.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "input_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_id"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

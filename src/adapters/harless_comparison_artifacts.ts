@@ -2,13 +2,14 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, realpathSync, readdirSync, readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
+import {nativePresentedFiles} from './geneloop_native_work.ts';
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const within = (root: string, path: string) => { const rel = relative(realpathSync(root), realpathSync(path)); return rel && !rel.startsWith('..' + sep) && rel !== '..' && !rel.startsWith(sep); };
 const valid = (id: string) => /^[a-zA-Z0-9-]{1,100}$/.test(id);
 export function comparisonArtifacts(output: string) {
   const root = join(output, 'comparison-artifacts'); mkdirSync(root, { recursive: true, mode: 0o700 });
   return {
-    snapshot(turn: string, lane: string, attempt: number, workspace: string, approvedFiles?:Set<string>, recoverEmpty = false, codeFiles = new Set<string>(), timeWindow?: {start:number;end:number}) {
+    snapshot(turn: string, lane: string, attempt: number, workspace: string, approvedFiles?:Set<string>, recoverEmpty = false, codeFiles = new Set<string>(), timeWindow?: {start:number;end:number}, expectedHashes=new Map<string,string>()) {
       if (!valid(turn) || !['baseline', 'motif'].includes(lane) || !Number.isInteger(attempt) || attempt < 0) throw Error('artifact_identity_invalid');
       const destination = join(root, turn, lane, String(attempt));
       const index = join(destination, 'index.json');
@@ -30,10 +31,11 @@ export function comparisonArtifacts(output: string) {
         if(approvedFiles&&!approvedFiles.has(path))return;
         if(rows.some(row=>row.name===name))return;
         const st = lstatSync(path);
-        if (timeWindow && (st.mtimeMs < timeWindow.start || st.mtimeMs >= timeWindow.end + 1)) return;
+        if (timeWindow && !expectedHashes.has(path) && (st.mtimeMs < timeWindow.start || st.mtimeMs >= timeWindow.end + 1)) return;
         if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1 || !within(workspace, path) ||
             rows.length >= 32 || st.size > 30 * 1024 * 1024 || total + st.size > 80 * 1024 * 1024) return;
         const bytes = readFileSync(path), digest = sha(bytes);
+        if(expectedHashes.has(path)&&expectedHashes.get(path)!==digest)return;
         let id = digest.slice(0, 32) + '-' + nextIndex++;
         while(existsSync(join(destination,id)))id=digest.slice(0,32)+'-'+nextIndex++;
         writeFileSync(join(destination, id), bytes, { mode: 0o600, flag: 'wx' });
@@ -49,7 +51,7 @@ export function comparisonArtifacts(output: string) {
           if (st.isSymbolicLink() || !within(workspace, path)) continue;
           if (st.isDirectory()) { scan(path, prefix + name + '/', depth + 1); continue; }
           if (!st.isFile() || st.nlink !== 1 || st.size > 30 * 1024 * 1024 || total + st.size > 80 * 1024 * 1024) continue;
-          if (!/\.(?:pdf|pptx|png|jpg|svg|csv|tsv|html|md|tex|bib|txt)$/i.test(name) &&
+          if (!expectedHashes.has(path) && !/\.(?:pdf|pptx|png|jpg|svg|csv|tsv|html|md|tex|bib|txt)$/i.test(name) &&
               !((prefix.startsWith('outputs/code/') || prefix.startsWith('code/')) && /\.(?:docx|xlsx|json|zip|py|js)$/i.test(name))) continue;
           copy(path, prefix + name);
         }
@@ -183,6 +185,8 @@ export function captureComparisonDeliveries(service: ReturnType<typeof compariso
     }
   };
   if(context.status==='completed'&&!context.recoverMissing&&Number.isFinite(start)&&Number.isFinite(end)){scanCode(join(context.workspace,'outputs/code'));scanCode(join(context.workspace,'code'),0,true);}
+  const presented=nativePresentedFiles(context,false);
+  for(const path of presented.keys())codeFiles.add(path);
   if (context.adapter === 'data-report') {
     // The Session can contain later successful turns. Only this failed task's
     // own bounded tool events may grant a recovered download.
@@ -193,7 +197,7 @@ export function captureComparisonDeliveries(service: ReturnType<typeof compariso
     if ((context.status !== 'completed'||context.recoverMissing)&&!approved.size)return [];
   }
   return service.snapshot(context.turn, context.lane, context.attempt, context.workspace, approved, context.recoverMissing === true, codeFiles,
-    context.adapter === 'workspace' && Number.isFinite(start) && Number.isFinite(end) ? {start,end} : undefined);
+    context.adapter === 'workspace' && Number.isFinite(start) && Number.isFinite(end) ? {start,end} : undefined,presented);
 }
 
 function taskReportDeliveries(context: { eventsPath?: string; startedAt?: string; finishedAt?: string }, reviewWorkspace?:string) {
