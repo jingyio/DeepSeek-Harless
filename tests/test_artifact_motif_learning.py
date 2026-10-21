@@ -33,7 +33,7 @@ def test_native_repair_requires_exact_pre_call_source_and_fresh_output(tmp_path,
               {'type': 'tool/result', 'data': {'message': {'content': [{'type': 'tool-result', 'toolCallId': 'native', 'isError': False,
                  'content': [{'type': 'text', 'text': '[exit code: 0]'}]}]}}}]
     (task / 'events.jsonl').write_text('\n'.join(map(json.dumps, events)))
-    before = {'code/native.py': {'sha256': sha(source)}, 'inputs/current.json': {'sha256': sha(data.read_bytes())}}
+    before = {'code/native.py': {'sha256': sha(program.read_bytes())}, 'inputs/current.json': {'sha256': sha(data.read_bytes())}}
     boundary = {'call_id': 'native', 'arguments_sha256': digest(arguments), 'is_error': False,
                 'before': {'files': before}, 'after': {'files': {**before, 'outputs/code/new/result.txt': {'sha256': sha('current')}}}}
     (task / 'reuse-boundaries.jsonl').write_text(json.dumps(boundary))
