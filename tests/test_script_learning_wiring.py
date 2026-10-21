@@ -76,3 +76,37 @@ def test_worker_publication_retains_parent_and_failure_does_not_replace_pointer(
     else:
         assert pointer==parent
         assert status['status']==('failed' if outcome=='failed' else 'no_qualified_programs')
+
+
+@pytest.mark.parametrize('state',['failed','cancelled'])
+def test_negative_opt_in_accepts_settled_failures_without_teaching_positive_success(tmp_path,monkeypatch,state):
+    path=Path(__file__).parents[1]/'scripts/advance-script-motifs.py'
+    spec=importlib.util.spec_from_file_location('negative_worker_test',path)
+    worker=importlib.util.module_from_spec(spec);spec.loader.exec_module(worker)
+    monkeypatch.setattr(worker,'ROOT',tmp_path)
+    task=tmp_path/'.local/task';store=tmp_path/'.local/store'
+    task.mkdir(parents=True);store.mkdir(parents=True)
+    for name,value in [('task-state.json',{'user_id':'owner','mode':'baseline','status':state}),
+                       ('effective-config.json',{'user_id':'owner','provider_mode':'real'})]:
+        (task/name).write_text(json.dumps(value))
+    (task/'events.jsonl').write_text('{}\n')
+    (store/'negative-learning.json').write_text('{}')
+    lib={'rules':[{'retry_policy':'prompt_only'}]};lib['digest']=worker.digest(lib)
+    monkeypatch.setattr(worker,'compile_positive',lambda *a:pytest.fail('failed task entered positive compiler'))
+    monkeypatch.setattr(worker,'learn_negatives',lambda tasks,*a:(lib,{'status':'reviewed','model_requests':2}))
+    monkeypatch.setattr(sys,'argv',['advance','--task',str(task),'--store',str(store),'--user','owner'])
+    worker.main()
+    assert json.loads((store/'history.json').read_text())['tasks']==[]
+    assert json.loads((store/'negative-history.json').read_text())['tasks']==[str(task)]
+    pointer=json.loads((store/'latest.json').read_text())
+    assert 'file' not in pointer and pointer['negative_digest']==lib['digest']
+    assert json.loads((task/'script-learning-status.json').read_text())['compilation_model_requests']==2
+    monkeypatch.setattr(worker,'certify_library',lambda *a:None)
+    monkeypatch.setattr(worker,'learn_negatives',lambda *a:(None,{'status':'failed','model_requests':1,'reason':'rejected_review'}))
+    worker.main()
+    retained=json.loads((store/'latest.json').read_text())
+    assert retained['negative_digest']==lib['digest']
+    assert json.loads((task/'script-learning-status.json').read_text())['inherited_assets']==['negative_file']
+    (store/'negative-learning.json').unlink()
+    with pytest.raises(ValueError,match='settled_owner'):
+        worker.main()

@@ -1,13 +1,16 @@
 # 论文校对 当前交接
-- 更新时间与交接人：2026-10-20，Codex。
-- 目标与本次范围：用户要求约7小时内只完成一个小点、不影响现有真实场景。本轮仅接入Positive Motif描述的模型生成、独立审核、发布与后继消费；默认关闭，生产路径未动。未扩展匹配规则、Negative Motif或其他Harness。
-- 分支 / 代码：codex/paper-description-rsi-20261020，基于PR100 head 90c6912；实现8e04aa8、保留守卫5f06499、最终协议597d363b。当前分支仅本地提交，未推送/新增PR/部署。父[PR100](https://github.com/jingyio/GeneLoop/pull/100)最新已知CI成功，不代表本分支跨平台CI；未修改其分支或合并。
-- 已完成：src/adapters/script_description_learning.py与advance-script-motifs.py接入可选描述学习；script_motif_web.ts仅在显式私有配置下向worker提供既有模型凭证，脚本沙箱仍清空凭证。每批1次生成/1次审核，无自动重试；只接收已认证算子的描述，代码/契约/边/证书/代码锁保持不变；已有审核改进在新候选失败或更长时保留。来源、提示词、配置及学习器版本绑定缓存与失败，防止相同条件反复付费。runner只在启用时将学习等待从340延至540秒。
-- 已验证：完整npm test修正本地字体环境后Python1344通过/213跳过、Node1201通过/5跳过；后续局部修复最终Python42、Node29定向通过，未为小修改重复全局付费实验。smoke、motif:check通过；确定性与模拟Provider检查只作诊断。最终修改前后全部非描述字段逐项一致，两份真实输入的完整stdout/摘要一致；默认关闭路径不发起学习模型请求。
-- 真实结论：[描述更新实验](../experiments/paper-description-rsi-20261020-v1.md)。七次已见输入的局部真实任务，全部完成、工具/控制错误0；不是七篇独立论文。最终冻结代码F结束自动生成/审核一条描述，库bccc5a0f…由G精确加载并实际执行；G结束审核缓存复用、保留描述，新增学习请求0。描述313→154字符，不直接换算为计费Token。此前两次人工worker恢复与失败另列，不冒充最终自动证据。
-- 失败与限制：A/一次worker恢复超预算；C拒绝候选时丢掉前轮描述改进，已补保留守卫；E返回额外JSON根字段，拒绝并改进响应契约。G仍自行生成多段解析/复检程序，15请求，比B的4请求更贵，未证明描述更新独立净降本。A仍有无BOM写成有BOM，自由报告未独立盲评，不称质量合格。已有Runtime接管不计为描述学习新增收益。
-- 费用：Agent50请求/USD0.069524928；描述学习8请求/USD0.008065596，包含全部拒绝与局部恢复；本轮58/USD0.077590524代理估费，累计5756/USD9.906226032。新pending/unknown0；旧3笔、服务器历史与账单待核，历史不清零。开发、人工与本地计算未货币量化；编译/学习等待另列。
-- 配置与数据：.local/paper-description-rsi-20261020-v1/保存授权、逐任务有效配置/来源摘要、A–G原始回答和调用、学习请求/响应、审核、缓存、原库/新库、operator-equivalence、aggregate。真实DeepSeek Flash/off，Agent输出8192、学习1536，费用与请求不限，压缩关闭，无Embedding调用；输入26/39条真实书目，题面d055aeef…沿用旧任务。私有数据未提交。
-- 最短入口：按README安装；在新私有store放description-learning.json，内容为{schema_version:1, model:deepseek-flash, max_output_tokens:1536, max_programs:1, cap_usd:null}（有效JSON见实验/接口文档），沿现有run-script-motif-experiment.py的--learning-store与私有sidecar使用同一store。必须沿用已有真实API授权与账本；默认不放该文件就不启用描述模型。
-- 接手下一步：本轮小点收口，所有真实任务已结束，不追加完整论文、全场景或Baseline重测。后续若扩大更新对象或研究净收益，单独确定范围；先审阅本分支与实验，不将描述缩短、缓存命中或结构认证当作稳定质量/降本证明。
-- 回退与风险：移除新store中的description-learning.json，恢复原模型无关结构学习；保留旧版本库、轨迹与账本。涉及旧认证库时必须实际重跑兼容认证，不能只改哈希。原生产、公共认证库、私人原件和Desktop/SSS脏工作区未改；新模块仅本地macOS真实验收。
+- 更新时间与交接人：2026-10-21，Codex。
+- 目标与本次范围：只接通提示型Negative Motif自动生成/独立审核/发布/后继使用的小闭环。沿用已有编译器与同一私有store；未扩大自动早停、生产或外部写入权限。前轮Positive描述闭环及费用保留在Git历史与对应实验中。
+- 分支 / 代码：`codex/paper-negative-learning-loop-20261021`，基于本地`40d015ca`，本分支HEAD包含实现与验收记录；仅本地提交，未推送/新增PR/合并/部署。父PR100状态不等于本分支CI。Desktop/SSS的其他脏工作区未动。
+- 已完成：`script_negative_learning.py`复用当前原生失败编译，两个不同任务且工具源码一致才有候选；有界模型生成+独立审核，强制prompt_only，审核缓存与失败不自动付费重试。`advance-script-motifs.py`区分完成任务Positive历史和已结束任务Negative历史，发布同一不可变round。`script_learning_store.ts`接入negative_file/digest与冻结加载；Runtime实际失败后投递建议。默认无negative-learning.json不启用。
+- 接线修复：自动生成12个Positive算子而实验未配置Embedding，曾因Invalid URL连带停用整个Runtime；`optionalScriptRuntime`现对空库直接跳过，对非空匹配器初始化失败仅局部回退，Negative/Reuse和原生Agent继续。完整配置下原cache catalog保持可用。库摘要/来源/代码锁失败仍保守拒绝。初判为空库已纠正，不以新增算子数量称收益。
+- 已验证：最终完整Python1359通过/213跳过，最终完整Node1206通过/5跳过；相关Python35、Node34定向通过，smoke与motif:check通过。确定性测试仅作诊断。完整Node曾有1项既有MCP子进程5秒期限失败，单独7项复跑及停付费任务后的完整Node均通过，未放宽超时、未删除失败日志；并行负载原因尚属推测。
+- 真实结论：见[Negative闭环验收](../experiments/paper-negative-rsi-20261021-v1.md)。同论文两种历史失败候选，非七篇独立论文。A/B任务传输失败但原生结构错误仍自动采集；学习400后做了一次局部worker恢复。C自动发布5da69dc7…，D精确消费并提示；D结束自动重新生成/审核提示，另编译12个正面算子。E局部发现组件接线问题。第二次局部重编译/当前loader认证后，最终F/G均在当前代码下真实命中并投递，F自动发布a21a7de1…由G精确加载，源码与冻结快照一致。两次人工worker恢复单列，不冒充自动触发。
+- 质量与限制：C/D均有实际7页PDF及工具交付回执，但在最后组件隔离修复前；最终F/G为45秒投递检查，主动取消，未重复完整恢复。没有重检文献真实性或逐页视觉验收，不能称完整论文质量合格。D仍尝试不合法单章重组且保留旧说明；提示不保证修复成功。A通用summary把原论文图片PDF算成报告，本轮已按真实documents产物纠正统计，未改旧原始summary。
+- 费用：本轮Agent157请求/USD0.514436304保守估费；学习5请求（1次400失败+两组生成/审核）/USD0.004753800，合计162/USD0.519190104。已知观测费用USD0.271771704，其余预约保留。新增未知用量3笔、E汇总时1笔pending，旧3笔继续待核；供应商账单与V100历史未核。本轮无完整请求skip、无自动早停、无净降本证明；局部取消与完整恢复不共用分母。累计5918请求/USD10.425416136，历史不清零，人工与本地计算未货币量化。
+- 配置与数据：`.local/paper-negative-rsi-20261021-v1/`包含授权、计划、A–G日志、两次manual-recovery、learning-store、请求/响应、审核、所有失败、aggregate、final-verification；逐run配置/源码快照在`.local/script-motif-experiments/<run_id>/`，原始事件与报告在对应web runs中。真实DeepSeek Flash/off；Agent输出32768，学习1536/max_rules1；正面mode shadow、Negative prompt（有干预）；未调用Embedding，压缩关闭。原恢复prompt SHA443bd3f6…、来源SHA4bd41694…，均沿用历史真实输入。私人材料/日志/凭证未提交。
+- 最短入口：按README项目环境启动现有`run-script-motif-experiment.py`，同一`--learning-store`与私有sidecar，store放严格配置`negative-learning.json`：schema_version1、implementation_files为受信工具实现相对路径列表、model deepseek-flash、max_output_tokens1536、max_rules1、cap_usd null。完整有效JSON、变量化复现命令见接口及实验。必须保留既有无限额实验授权和账本；不是公共产品付费默认。
+- 权限与预算：沿用已授权本地真实API实验，cap_usd:null / uncapped_user_authorized / reset_history:false；请求不限、输出有界、全部失败/重试/预约累计。本轮没有新自动execute，原生工具只写授权隔离报告产物；未改原件、投稿、生产或外部应用。已停止本轮所有真实任务，不安排后台继续付费。
+- 未完成：自动学习仍只生成有依据的历史检查建议，未生成执行失败谓词/早停权限或通用因果机制；仅一个结构错误家族与同论文恢复变体。正面匹配器因无Embedding配置在最终局部任务中停用，不能据12算子评估正面执行收益。
+- 接手下一步：本轮小点可以收口。若继续降本，先分析C/D提示后重写完整参数/报告的调用，设计一次有类型局部修订交接并局部实测；不重跑完整Baseline，不扩大到其他场景或用库数量代替收益。PR按用户后续安排，不因本地通过自动部署。
+- 回退与风险：移除新store中的negative-learning.json可停用负面学习；已有自动负面指针仍会加载，若需完全停用同时从实验sidecar移除learningStore与negativeLibrary并停用worker环境。保留历史store与账本，不清空.local。旧库迁移必须实际重编译/认证，不能改hash绕过。仅本地macOS验收，未宣称跨平台生产支持。

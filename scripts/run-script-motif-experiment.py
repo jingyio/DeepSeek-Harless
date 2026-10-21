@@ -270,10 +270,11 @@ def main():
                     cancelled = True
                 time.sleep(3)
             task = output / 'tasks' / draft['task_id']
-            if args.learning_store and result['status'] == 'completed':
+            if args.learning_store and (result['status'] == 'completed' or
+                    (args.learning_store/'negative-learning.json').exists() and result['status'] in ('failed','cancelled')):
                 # Optional proposal+review has two separately metered 90s calls.
                 # Keep the existing model-free wait unchanged when disabled.
-                learning_wait = 540 if (args.learning_store/'description-learning.json').exists() else 340
+                learning_wait = 340 + 200*sum((args.learning_store/name).exists() for name in ('description-learning.json','negative-learning.json'))
                 for _ in range(learning_wait*5):
                     if (task / 'script-learning-status.json').exists():
                         break

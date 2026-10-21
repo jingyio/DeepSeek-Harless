@@ -37,7 +37,13 @@ def collect_negative(task):
     config = json.loads((task / 'model-request-config.json').read_text())
     events_raw = (task / 'events.jsonl').read_bytes()
     calls, rows = {}, []
-    for event in map(json.loads, events_raw.splitlines()):
+    # Persistent Harness sessions can include older tasks' events. They are
+    # not new witnesses merely because another task owns this export.
+    events = list(map(json.loads, events_raw.splitlines()))
+    start = effective.get('trace_start_index', 0)
+    if type(start) is not int or not 0 <= start <= len(events):
+        raise ValueError('invalid_negative_trace_boundary')
+    for event in events[start:]:
         data = event.get('data', {})
         if event.get('type') == 'tool/call':
             args = data.get('arguments', {})
@@ -51,7 +57,8 @@ def collect_negative(task):
             tool, args = calls.pop(call_id)
             # Shell text, transport failures, opaque errors and negative-guard
             # denials are not promoted to deterministic failure conditions.
-            if not tool.startswith('mcp__') or not isinstance(args, dict): continue
+            if (not tool.startswith('mcp__') or not isinstance(args, dict)
+                    or str(call_id).startswith(('sss-script-', 'sss-reuse-'))): continue
             texts = [b.get('text', '') for b in block.get('content', []) if b.get('type') == 'text']
             if len(texts) != 1: continue
             try: value = json.loads(texts[0])
@@ -66,7 +73,10 @@ def collect_negative(task):
                          'false_paths': [p for p, v in leaves(value) if v is False],
                          'anchors': echoed, 'binding_sha256': digest(args),
                          'call_id': call_id, 'task_id': task.name,
-                         'events_sha256': sha(events_raw), 'tools_sha256': config['tools_sha256']})
+                         'events_sha256': sha(events_raw), 'tools_sha256': config['tools_sha256'],
+                         'failure_observation': {k: value[k] for k in
+                             ('validation_error', 'failed_checks', 'scope_issues', 'validation_context')
+                             if k in value and len(json.dumps(value[k], ensure_ascii=False)) <= 3000}})
     return rows
 
 

@@ -184,16 +184,18 @@ def retain_previous_descriptions(library, status, previous, previous_status):
 
 class MeteredDescriptionModel:
     """Use the existing cost gate's persistent reservations; no automatic retry."""
-    def __init__(self, store, config, output):
+    def __init__(self, store, config, output, *, ledger_prefix='description'):
+        if ledger_prefix not in ('description', 'negative'):
+            raise ValueError('invalid_learning_ledger_prefix')
         self.output, self.config, self.calls = output, config, 0
         self.key = os.environ.get('DEEPSEEK_API_KEY')
         if not self.key:
             raise ValueError('description_model_credentials_missing')
-        checkpoint = store / 'description-budget.json'
+        checkpoint = store / (ledger_prefix+'-budget.json')
         if not checkpoint.exists():
             save(checkpoint, {'request_count': 0, 'reserved_usd': 0})
         self.state = State(cap_usd=config['cap_usd'], output_cap=config['max_output_tokens'],
-                           record=store/'description-ledger.jsonl', checkpoint=checkpoint)
+                           record=store/(ledger_prefix+'-ledger.jsonl'), checkpoint=checkpoint)
 
     def __call__(self, phase, system, value):
         payload = {'model': self.config['model'], 'messages': [
@@ -230,6 +232,10 @@ class MeteredDescriptionModel:
             return json.loads(choice['message']['content'])
         except urllib.error.HTTPError as error:
             status = error.code
+            # Keep bounded provider diagnostics privately; no request headers or
+            # credential values may reach diagnostics or exception text.
+            detail = error.read(16_384).decode('utf-8', errors='replace').replace(self.key, '[redacted]')
+            save(self.output/(phase+'-http-error.json'), {'status': status, 'body': detail})
             raise ValueError('description_provider_http_'+str(status)) from None
         finally:
             observed, released = self.state.settle(request_id, model, status, usage)

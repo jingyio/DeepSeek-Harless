@@ -37,6 +37,9 @@ export function loadNegativeLibrary(path:string){
    const pairs=new Set(r.certification.failures.map((w:any)=>JSON.stringify([w.task_id,w.call_id,w.events_sha256])));
    if(r.failure_source!=='failed_checks'||r.argument_guard.tool!==r.tool||r.argument_guard.failure_code!==r.failure_code||r.argument_guard.certification.failures.some((w:any)=>!pairs.has(JSON.stringify([w.task_id,w.call_id,w.events_sha256])))||!file||library.implementation_locks[file]!==r.argument_guard.validator_sha256)throw Error('unbound_current_constraint');
   }
+  if(r.guidance!==undefined&&(typeof r.guidance!=='string'||r.guidance.trim()!==r.guidance||r.guidance.length<24||r.guidance.length>600||/[\x00-\x1f]/.test(r.guidance)||
+    r.retry_policy!=='prompt_only'||r.guidance_review?.scope!=='reviewed_historical_advice_not_causal_proof_or_execution_authority'||
+    !/^[a-f0-9]{64}$/.test(r.guidance_review?.evidence_digest)||!/^[a-f0-9]{64}$/.test(r.guidance_review?.review_cache_digest)))throw Error('unreviewed_negative_guidance');
   if(r.retry_policy==='warn_then_field_guard'){
    validateFieldGuard(r.field_guard,r.failure_code);
    const file=r.field_guard.validator?.split(':')[0];
@@ -159,13 +162,14 @@ export function createNegativeRuntime({library,workspace,mode='prompt',audit=()=
    }
    active.observation=value?.validation_context?{page_count:value.validation_context.page_count,checks:value.validation_context.checks,reason:value.validation_context.reason}:undefined;
    if(rule.retry_policy==='warn_then_field_guard')active.field_context=fieldState()?.context;
-   audit({kind:'negative_current_failure',motif_id:rule.id,binding_sha256:binding,version_bound:active.anchors.length>0});
+   audit({kind:'negative_current_failure',motif_id:rule.id,library_digest:library.digest,guidance_reviewed:!!rule.guidance,binding_sha256:binding,version_bound:active.anchors.length>0});
   },
   prompt(){
    if(!active)return '';
    try{if(active.scope!==sourceVersion()){active=null;return '';}}catch{active=null;return '';}
    if((active.anchors.length||active.goal_context)&&!current()){active=null;return '';}
    return '\n'+active.notice+'：当前工具 '+active.rule.tool+' 已返回 '+active.rule.failure_code+'；历史真实轨迹也复现了该失败。不要在参数和相关证据版本未变时重复同一调用。先检查并修复上游状态，或改用满足相同验收要求的合法路径；无法修复则说明未完成的交付与证据缺口。不得降低核验要求或声称已完成。'+
+    (active.rule.guidance?'经审核的历史修复建议（仅供检查，不代表当前根因）：'+active.rule.guidance+'。':'')+
     (active.issues?'经双向认证并绑定当前完整目标的必要约束：'+JSON.stringify(active.issues)+'。只改其他字段不会消除这些结构错误；请保持完整原稿，仅提交必要叶子patch。改变报告结构需要新的明确任务范围，不要重复提交相同不满足条件的形状。':'')+
     (active.observation?'当前校验观测（不等于根因）：'+JSON.stringify(active.observation)+'。只有当前检查确证的约束可用于修订；未知原因不得编造。':'')+
     (active.rule.retry_policy==='warn_then_field_guard'?'自动编译的相关字段为 '+JSON.stringify(active.rule.field_guard.read_paths)+(active.anchors.length?'；Runtime 已重算失败条件，它仍成立。仅改无关字段或更换版本号不会修复该条件；条件消失、参数语义变化或证据不足时放行。':'；当前状态无法唯一绑定，仅提示，不自动拦截。'):'')+
