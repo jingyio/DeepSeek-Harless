@@ -83,4 +83,6 @@ node scripts/project.mjs python scripts/run-script-motif-experiment.py \
 - `npm run smoke`、`npm run motif:check`、`git diff --check` 通过。
 - 覆盖正常 Agent 续接、辅助请求不触及状态、无关工具新增、目标参数变化失效、旧规则整表约束、prompt-only 不获得早停权限、编译见证目标 schema 绑定。这些是确定性诊断，不冒充真实效果。
 
+首轮远端 Windows CI 暴露 2 项旧库继承失败：worker 用系统路径分隔符发布指针，Windows 写出的反斜杠不符合既有跨语言 POSIX 路径协议，导致下一轮拒绝继承。修复统一用 `as_posix()` 写入三种资产指针，并在原有正面发布和负面继承回归中检查协议格式；不放宽 loader 或路径安全规则。首轮失败保留在 PR104 的检查记录，后续 CI 以修复后的提交为准；未为这项序列化修复重复付费任务。
+
 本轮已按用户授权推送并提交[审阅 PR104](https://github.com/jingyio/GeneLoop/pull/104)，兼容实现提交为 `99e1b031`，未合并或部署。实验仍默认关闭；移除独立 sidecar 中的学习库接入即可走原生路径，保留历史库与账本。下一步若继续降本，应从提示后重复生成完整参数的实际轨迹切入有类型局部修订；本 PR 不把通用原因自动发现或稳定费用下降列为已完成。

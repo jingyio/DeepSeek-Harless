@@ -67,6 +67,8 @@ def test_worker_publication_retains_parent_and_failure_does_not_replace_pointer(
     pointer=json.loads((store/'latest.json').read_text())
     if outcome in ['published','description_updated']:
         assert pointer['digest']==('description-version' if outcome=='description_updated' else 'new') and pointer['parent_digest']==parent['digest']
+        for key in ['file','reuse_file']:
+            assert pointer[key].startswith(status['round']+'/') and '\\' not in pointer[key]
         assert status['training_task_ids']==['task'] and status['heldout_task_id']=='held'
         assert status['compilation_model_requests']==(2 if outcome=='description_updated' else 0)
         if outcome=='description_updated':
@@ -100,6 +102,7 @@ def test_negative_opt_in_accepts_settled_failures_without_teaching_positive_succ
     assert json.loads((store/'negative-history.json').read_text())['tasks']==[str(task)]
     pointer=json.loads((store/'latest.json').read_text())
     assert 'file' not in pointer and pointer['negative_digest']==lib['digest']
+    assert pointer['negative_file'].endswith('/negative-library.json') and '\\' not in pointer['negative_file']
     assert json.loads((task/'script-learning-status.json').read_text())['compilation_model_requests']==2
     monkeypatch.setattr(worker,'certify_library',lambda *a:None)
     monkeypatch.setattr(worker,'learn_negatives',lambda *a:(None,{'status':'failed','model_requests':1,'reason':'rejected_review'}))

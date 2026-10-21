@@ -117,7 +117,7 @@ def main():
                      'parent_negative_digest':parent.get('negative_digest') if parent else None}
             for key,(filename,value) in assets.items():
                 save(output/filename,value)
-                pointer[key]=str((output/filename).relative_to(store))
+                pointer[key]=(output/filename).relative_to(store).as_posix()
                 pointer[{'file':'digest','reuse_file':'reuse_digest','negative_file':'negative_digest'}[key]]=value['digest']
             save(store/'latest.json',pointer)
         save(task/'script-learning-status.json',status)
