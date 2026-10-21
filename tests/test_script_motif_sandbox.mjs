@@ -174,7 +174,9 @@ test('typed current choice drives two real sandbox nodes with no intervening pro
    similarity:async()=>{throw Error('not an embedding decision');},audit:r=>rows.push(r)});
  registerScriptCache({library,workspace:root,session,audit:r=>rows.push(r),frontier:runtime.frontier});t.after(()=>runtime.dispose());
  const gap=JSON.parse(runtime.frontierPrompt().split('\n').at(-1));
- const command='geneloop-resolve '+JSON.stringify({request_id:gap.request_id,status:'selected',candidate_id:gap.candidates[0].id});
+ const command='cd /work && geneloop-resolve '+JSON.stringify({request_id:gap.request_id,status:'selected',candidate_id:gap.candidates[0].id});
+ assert.throws(()=>prepareCacheInvocation(session,command+' 2>&1 | head -200'),/retry_command/);
+ assert.equal(runtime.frontier.ready(),null);
  const receipt=prepareCacheInvocation(session,command).control_receipt;
  runtime.observe(session,{name:'bash',arguments:{command}},{content:[{type:'text',text:JSON.stringify(receipt)}]});
  for(let step=0;step<2;step++){

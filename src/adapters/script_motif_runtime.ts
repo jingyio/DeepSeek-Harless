@@ -51,7 +51,7 @@ export function prepareCacheInvocation(session:string,command:string){
  if(/\bgeneloop-reuse\s/.test(command)){
   const reuse=reuseMediators.get(session);if(!reuse)throw Error('reuse_mediation_not_admitted');return reuse.prepare(command);
  }
- if(command.trim().startsWith('geneloop-resolve ')){
+ if(command.trim().replace(/^cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*/, '').startsWith('geneloop-resolve ')){
   const frontier=caches.get(session)?.frontier;
   if(!frontier)throw Error('semantic_frontier_not_admitted');
   return frontier.prepare(command);

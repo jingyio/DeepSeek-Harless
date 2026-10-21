@@ -41,6 +41,12 @@ test('syntax hints cannot infer a plan from scripts, shell substitution, truncat
  for(const command of ['cat > plan.json <<EOF\n{}\nEOF\ngeneloop-reuse --plan /work/plan.json','geneloop-reuse "$(cat plan.json)"','geneloop-reuse {"calls":[','cd /tmp && geneloop-reuse {"calls":[{}]}',"geneloop-reuse '{\"calls\":[{}]} broken"])
   assert.equal(reuseSyntaxCorrection(command),null);
 });
+test('selection syntax diagnostic retains only an explicit bounded current-style selection',()=>{
+ const value={request_id:'current',status:'selected',candidate_ids:['c1','c3','c2','c4']},canonical='geneloop-resolve '+JSON.stringify(value);
+ assert.equal(reuseSyntaxCorrection("cd /work && geneloop-resolve '"+JSON.stringify(value)+"' 2>&1 | head -200",'geneloop-resolve'),canonical);
+ for(const command of ['cd /other && '+canonical,'geneloop-resolve "$(cat selection)"',canonical.replace('selected','unneeded'),canonical.replace('"c4"','"c1"'),canonical.replace('"status"','"script"')])
+  assert.equal(reuseSyntaxCorrection(command,'geneloop-resolve'),null);
+});
 test('corrected framing does not bypass artifact validation',t=>{
  const f=fixture(t),command='geneloop-reuse '+JSON.stringify({calls:[{tool:tool.name,base:{artifact:'stale'}}]})+' 2>&1';
  assert.throws(()=>f.r.prepare(command),/retry_command/);

@@ -16,8 +16,11 @@ const own=(o:any,k:string)=>o!==null&&typeof o==='object'&&Object.hasOwn(o,k);
 const forbidden=new Set(['__proto__','prototype','constructor']);
 // A compiler diagnostic, never a shell rewrite or an execution grant. Preserve
 // the model's static plan exactly, including semantic patches, for a NEW call.
-export function reuseSyntaxCorrection(command:string){
- const match=/^(?:cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*)?geneloop-reuse\s+('?)(\{[\s\S]*)$/.exec(command.trim());
+export function reuseSyntaxCorrection(command:string,verb='geneloop-reuse'){
+ if(!['geneloop-reuse','geneloop-resolve'].includes(verb))return null;
+ const pattern=verb==='geneloop-resolve'?/^(?:cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*)?geneloop-resolve\s+('?)(\{[\s\S]*)$/:
+  /^(?:cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*)?geneloop-reuse\s+('?)(\{[\s\S]*)$/;
+ const match=pattern.exec(command.trim());
  if(!match||command.length>256000)return null;
  const raw=match[2];let depth=0,string=false,escaped=false;
  for(let i=0;i<raw.length;i++){
@@ -28,8 +31,15 @@ export function reuseSyntaxCorrection(command:string){
   if(match[1]&&raw[i+1]!=="'")return null;
   try{
    const plan=JSON.parse(raw.slice(0,i+1));
-   if(!plan||Object.keys(plan).join()!=='calls'||!Array.isArray(plan.calls)||!plan.calls.length||plan.calls.length>12)return null;
-   return 'geneloop-reuse '+JSON.stringify(plan);
+   if(verb==='geneloop-reuse'){
+    if(!plan||Object.keys(plan).join()!=='calls'||!Array.isArray(plan.calls)||!plan.calls.length||plan.calls.length>12)return null;
+   }else{
+    const batch=Object.hasOwn(plan??{},'candidate_ids'),ids=batch?plan.candidate_ids:[plan?.candidate_id];
+    if(!plan||plan.status!=='selected'||typeof plan.request_id!=='string'||!plan.request_id||plan.request_id.length>128||
+     digest(Object.keys(plan).sort())!==digest(['request_id','status',batch?'candidate_ids':'candidate_id'].sort())||
+     !Array.isArray(ids)||!ids.length||ids.length>8||new Set(ids).size!==ids.length||ids.some((id:any)=>typeof id!=='string'||!id||id.length>128))return null;
+   }
+   return verb+' '+JSON.stringify(plan);
   }catch{return null;}
  }
  return null;

@@ -3,6 +3,7 @@
  */
 import {randomUUID} from 'node:crypto';
 import {digest} from '../motif_core/online_skill_runtime.mjs';
+import {reuseSyntaxCorrection} from './reuse_mediation.ts';
 
 export function learnedScriptFragments(library:any){
  const programs=library.programs.filter((p:any)=>!p.argv_contract&&!p.network_policy&&p.inputs.length>0);
@@ -72,9 +73,10 @@ export function createScriptExecutionFrontier({library,goal,bind,verify,audit,ma
     bindings:Object.fromEntries(request.candidates.map((c:any)=>[c.id,c.bound.map((b:any)=>b.path)])),request_id:request.id});
  }
  function prepare(command:string){
-  if(!command.trim().startsWith('geneloop-resolve '))throw Error('frontier_resolution_requires_standalone_command');
+  const invocation=command.trim().replace(/^cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*/, '');
+  if(!invocation.startsWith('geneloop-resolve '))throw Error('frontier_resolution_requires_standalone_command');
   if(halted||!request||control||frame)throw Error('no_current_semantic_gap');
-  let raw=command.trim().slice('geneloop-resolve '.length).trim();
+  let raw=invocation.slice('geneloop-resolve '.length).trim();
   // The normal Bash transport uses single-quoted JSON; no shell evaluation.
   if(raw.startsWith("'")&&raw.endsWith("'"))raw=raw.slice(1,-1);
   let value;try{value=JSON.parse(raw);}catch{throw Error('frontier_resolution_requires_JSON_without_shell_operators');}
@@ -132,7 +134,17 @@ export function createScriptExecutionFrontier({library,goal,bind,verify,audit,ma
    '当前没有待填写的片段选择；旧 request_id 已消费，不要再次调用 geneloop-resolve。请根据已完成回执继续尚缺检查或最终答复。认证只证明程序复现一致，不证明“必填/异常”等启发式标签一定适用。请区分观察事实、检测配置与启发式判断；无证据支持的领域规则或出版形态只记待核，不写成确定错误。后续脚本与已有回执冲突时，先检查输入范围和解析覆盖；新结果不自动覆盖旧结果，未消除冲突就明确不确定。结论中的数值、标识符和位置须对应实际观察；区分文件行号与记录序号，不能从记忆补入未经核验的元数据。\n')+text;
  }
  return {prompt,takeNotice,prepare(command:string){
-  try{return prepare(command);}catch(error){
+  try{return prepare(command);}catch(error:any){
+   // A coding Agent commonly adds cd, stderr redirects or head. The fixed cd
+   // prefix is supported, but never silently execute a truncated/compound call.
+   // Give one exact diagnostic retry without consuming the current choice.
+   if(!halted&&request&&!frame&&!control&&!request.transport_retry&&error.message==='frontier_resolution_requires_JSON_without_shell_operators'){
+    const retry=reuseSyntaxCorrection(command,'geneloop-resolve');
+    if(retry&&JSON.parse(retry.slice('geneloop-resolve '.length)).request_id===request.id){
+     request.transport_retry=true;audit({kind:'script_frontier_transport_retry',request_id:request.id,model_requests_skipped:0});
+     throw Error('整体未执行。选择JSON不能附加管道、重定向或其他shell命令；请将retry_command原样作为新的bash.command提交，不要再包装：retry_command='+retry);
+    }
+   }
    // A malformed semantic response must not leave an unresolved invitation
    // in every subsequent model request or trigger an automatic retry loop.
    halt('invalid_semantic_resolution_transport');throw error;
