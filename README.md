@@ -5,7 +5,7 @@
 正式DeepSeek Web已移除账号级并发数量上限，费用、请求次数和应用输出额度均为null，原账本继续累计。普通Chat、三场景及File转发使用393216输出容量，File独立SDK继承同一策略。2026-10-21当前运行378adec（Paper29/PPT26/File14）；原生能力与真实压测修复候选已完成File15独立认证，正在最终回归，尚未切换，不能将候选测试当作上线结果。真实结果、保留的失败及范围见[本轮记录](docs/experiments/dsh-native-capabilities-20261021.md)；早期额度修复见[历史记录](docs/experiments/provider-output-20261020.md)。
 
 
-**开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。本地开发仍用 `npm run web`。
+**开发者与 AI 先阅读 [AGENTS.md](AGENTS.md)。正式网站统一使用 `npm run service -- start` 启动，私有计划由 `GENELOOP_SERVICE_CONFIG` 指定；不得另写发布启动脚本。** 状态检查、重启、发布与回退见 [统一启动与发布流程](docs/service-lifecycle.md)。公网使用同一入口的 `public-check`、`public-prepare`、`public-confirm` 单独核验和恢复，后端正常时保留正在执行的任务。本地开发仍用 `npm run web`。
 
 PPT 账户内结构学习现接入已启用PPT双路对照的真实聊天任务：后台从原始 Baseline 轨迹取两个独立训练任务和一个留出任务，经原编译器认证后，仅在后续任务试用；两个独立对照确实调用候选、交付检查通过且包含重试的费用下降，才自动保留。用户无需填写验收表，普通踩可停用候选。只学习已支持的来源固定→转换、转换→读取两条结构，不学习科研结论或任意生成代码；无明确人评时科研质量与人工时间仍未知。状态、证据和失败保留在账号私有目录；无合格候选回原库。该轮历史兼容库为 `ppt-master-v9` / `paper-web-v14`，生成技能仍为官方 ppt-master；当前版本以本页开头及本轮记录为准。部署条件、实现和真实验证边界见[接线记录](docs/experiments/ppt-user-learning-20261019.md)。
 

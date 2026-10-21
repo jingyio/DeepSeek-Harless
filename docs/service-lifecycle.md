@@ -1,6 +1,6 @@
 # GeneLoop 统一启动与发布流程
 
-所有开发者和 AI 使用仓库中的同一个服务入口。正式网页托管需要 Linux；Windows/macOS 本地开发仍使用 `npm run web`，真实独立联调用 `npm run web:real`。本入口管理已准备好的 owner 与账号网关，不自动安装依赖、生成场景证书、建立 Cloudflare 隧道或创建模型预算服务。
+所有开发者和 AI 使用仓库中的同一个服务入口。正式网页托管需要 Linux；Windows/macOS 本地开发仍使用 `npm run web`，真实独立联调用 `npm run web:real`。本入口管理已准备好的 owner 与账号网关，并提供显式、独立的 Cloudflare Quick Tunnel 恢复流程；不自动安装依赖、生成场景证书或创建模型预算服务。
 
 ## 唯一的服务命令
 
@@ -64,6 +64,54 @@ npm run service -- check
 可选 `runtime_pointer` 指向已有私有运行记录；成功后仅合并更新 owner/gateway PID 和服务管理信息，保留预算等其他字段。可选 `source_sha` 填本次实际代码 commit，不填虚构哈希。
 
 `state_dir/current.json` 保存已核验的进程身份和计划；`previous.json` 指向上一份可回退计划；每次启动的日志、配置快照与回执也在这个私有目录中。不要提交或公开这些文件。生产启动计划路径保存在服务器私有部署目录，公共交接只引用环境变量名。
+
+## 公网入口恢复：保留正在运行的任务
+
+`check` 验证本机后端，不能证明 Cloudflare 公网入口正常。发布和故障恢复还须运行 `public-check`。本机登录页正常、公网出现 530/1016/1033 时，先核验 Cloudflare/隧道链路，不要为此重启健康的 owner/gateway。
+
+公网配置是独立、600 权限的私有 JSON，通过 `--public-config` 或 `GENELOOP_PUBLIC_CONFIG` 指定；不要原地给受管后台计划增加字段。其必需字段如下：
+
+- `version: 1`、`public_origin`（原 workers.dev 地址）、`previous_origin`（实际旧 trycloudflare 地址）。
+- `previous_process`：由原正式收据及 `/proc` 同时核验的 `pid`、`start_ticks`、`argv_sha256`、`cwd`，不能按进程名猜测或选择别的端口的隧道。
+- `tunnel`：显式的 `argv`、`cwd`、`env`、`binary_sha256`。当前受支持的 argv 严格为：已核验绝对二进制路径、`tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:GATEWAY_PORT --http-host-header ORIGINAL_PUBLIC_HOST`。网关端口、Host 和二进制摘要不符即拒绝。
+- 可选 `https_proxy`：明确的本机 HTTP CONNECT 代理，例如 `http://127.0.0.1:4180`。代理也必须允许实际需要的域名；域名策略返回 403 不能记录成隧道验证成功。
+
+默认不需要 Cloudflare API token，采用两段式操作：
+
+```sh
+npm run service -- public-check --public-config /PRIVATE/public.json
+npm run service -- public-prepare --public-config /PRIVATE/public.json
+# 由已获授权、已登录 Cloudflare 的维护者核验候选地址，
+# 在原 Worker 中仅修改原 plain_text UPSTREAM_ORIGIN，再读回确认。
+npm run service -- public-confirm --public-config /PRIVATE/public.json \
+  --route-evidence /PRIVATE/route-evidence.json
+```
+
+`public-prepare` 复用统一生命周期锁，核验受管后台身份与本机登录/Logo，保存原公网错误和旧隧道身份，再由入口启动唯一候选隧道。候选目录、日志、配置及回执均为独立私有文件。返回 `awaiting_route_update` 只表示候选已注册，不能作为公网恢复成功；直接域名无法从当前网络验证时，会明确返回 `candidate_direct_verified: false` 并保留原观察。重复准备在已有待确认候选时拒绝，不再启动第二个候选。
+
+维护者实际读回后的私有 `route-evidence.json` 须包含：
+
+```json
+{
+  "version": 1,
+  "method": "cloudflare-dashboard",
+  "public_origin": "https://app.EXISTING-SUBDOMAIN.workers.dev",
+  "worker_name": "app",
+  "binding_name": "UPSTREAM_ORIGIN",
+  "binding_type": "plain_text",
+  "upstream_origin": "https://ACTUAL-CANDIDATE.trycloudflare.com",
+  "worker_code_unchanged": true,
+  "other_bindings_unchanged": true
+}
+```
+
+可以补充实际观察时间和私有截图定位。该文件是授权维护者的人工读回声明，回执明确标记 `manual-dashboard-attestation`，不冒充自动 API 校验。不要为恢复临时新建宽权限 token。`public-confirm` 还必须独立确认候选 PID/启动代次/命令、后台代次，以及公网 `/login` 和 Logo 的实际字节 SHA 与当前本机应用一致；任何一项失败都不能登记成功。
+
+有现成、已授权的 API token 时，可在独立配置增加 `cloudflare`：`account_id`、`script_name`、`api_token_file`（600 原始 token 文件）、`expected_deployment_id`、`expected_settings_sha256`。设置摘要使用 UTF-8 的排序 JSON、紧凑分隔符 `(',', ':')`。`public-recover` 会检查当前部署和设置，验证候选，然后通过固定的 Cloudflare [Worker settings API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/) 仅更换当前已核验的单一 `plain_text UPSTREAM_ORIGIN`。出现其他绑定类型/额外绑定或并发配置变化时拒绝，不能重部署 Worker 代码或吞掉未知秘密。PATCH 响应丢失时只读回确认，不盲目重复写入。无 `cloudflare` 配置时，`public-recover` 等价于准备阶段，仍须人工更新及 `public-confirm`。
+
+公网维护不调用后台重启或活跃任务终止逻辑，不修改账号、任务、预算指针或累计账本。旧隧道及旧端点始终保留；失败清理仅允许对本次尚未发布的候选子进程做精确身份核验后的正常退出。上游变更可能已生效但无法读回时保留候选和失败证据，不能杀掉可能已成为正式入口的进程。成功记录单独写入 `state_dir/public-current.json`，原后台 `current.json` 和回退链保持。每次新恢复均准备匹配实际旧端点、进程与路由状态的新私有配置，保留旧记录。
+
+此流程提供受管、可核验的人工恢复；Quick Tunnel 仍可能被注销，不承诺长期稳定域名或自动守护。持久化 named tunnel 需要实际域名及现成授权配置，不能用此修复假称已经部署。
 
 ## AI 开发约定
 
