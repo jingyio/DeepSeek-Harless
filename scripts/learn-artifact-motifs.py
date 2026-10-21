@@ -139,7 +139,9 @@ def collect(task):
                 candidates.append(program_from_witness(source_raw.decode('utf-8'), parts[2:], inputs, outputs[0], witness))
             except (ValueError, KeyError, OSError, SyntaxError) as error:
                 rejected.append({'call_id': cid, 'reason': str(error)[:180]})
-    return {'task_id': task.name, 'scene': state['scene'], 'workspace': str(workspace), 'candidates': candidates, 'rejected': rejected}
+    return {'task_id': task.name, 'scene': state['scene'], 'workspace': str(workspace),
+            'approved_inputs': json.loads((workspace / 'approved-inputs.json').read_text(encoding='utf-8'))['files'],
+            'candidates': candidates, 'rejected': rejected}
 
 
 if __name__ == '__main__':

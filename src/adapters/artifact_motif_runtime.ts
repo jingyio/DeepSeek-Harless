@@ -12,7 +12,7 @@ export const artifactLocks=['src/adapters/artifact_motif_runtime.ts','src/adapte
 export const hash=(value:any)=>createHash('sha256').update(value).digest('hex');
 const inside=(base:string,path:string)=>{const r=relative(base,path);return !r.startsWith('..')&&!isAbsolute(r);};
 const contexts=new Map<string,any>();
-export function identity(p:any){return Object.fromEntries(['version','source','inputs','input_argument_indices','output_argument_index','argument_count','language','execution_policy'].map(k=>[k,p[k]]));}
+export function identity(p:any){return Object.fromEntries(['version','source','inputs','dependencies','input_argument_indices','output_argument_index','argument_count','language','execution_policy'].map(k=>[k,p[k]]));}
 export function loadArtifactLibrary(path:string){
  const library=JSON.parse(readFileSync(path,'utf8')), {digest:claimed,...body}=library;
  if(library.kind!=='witnessed_artifact_program_library'||library.version!==1||digest(body)!==claimed||!Array.isArray(library.programs)||library.programs.length>16)throw Error('invalid_artifact_library');
@@ -20,6 +20,7 @@ export function loadArtifactLibrary(path:string){
  for(const p of library.programs){
   if(p.id!=='artifact_'+digest(identity(p)).slice(0,24)||p.source_sha256!==hash(p.source)||p.execution_policy!=='fresh_output_network_disabled_v1'||
    p.certification?.passed!==true||p.certification.distinct_inputs<2||p.certification.source_equivalent!==true||p.certification.program_sha256!==digest(identity(p)))throw Error('uncertified_artifact_program');
+  if(p.dependencies?.ppt_master_package_sha256&&p.dependencies.ppt_master_package_sha256!==JSON.parse(readFileSync(join(root,'scenarios/ppt_master/skill-lock.json'),'utf8')).package_sha256)throw Error('artifact_public_dependency_changed');
  }
  return library;
 }
@@ -56,9 +57,15 @@ export function artifactInvocation(session:string,command:string){
  const program=c.library.programs.find((p:any)=>p.id===value.id);if(!program||value.inputs.length!==program.inputs.length)throw Error('artifact_program_or_arity_changed');
  if(c.allowOutput!==true)throw Error('artifact_output_not_authorized');
  const bound=value.inputs.map((p:string,i:number)=>{
-  const b=fixedArtifactInput(c.workspace,p);if(!matchesArtifactInput(program.inputs[i],p,b.data))throw Error('artifact_input_contract_changed');return {...b,sha256:hash(b.data)};
+  const b=fixedArtifactInput(c.workspace,p),version=hash(b.data);
+  if(program.inputs[i].source_origin==='uploaded_input'&&!p.startsWith('/work/inputs/'))throw Error('artifact_input_origin_changed');
+  if(!matchesArtifactInput(program.inputs[i],p,b.data))throw Error('artifact_input_contract_changed');
+  if(program.certification.invariant_input_versions?.[i]&&program.certification.invariant_input_versions[i]!==version)throw Error('artifact_fixed_protocol_changed');
+  return {...b,sha256:version};
  });
  if(new Set(bound.map((b:any)=>b.host)).size!==bound.length)throw Error('artifact_aliased_inputs');
+ const approved=JSON.parse(readFileSync(join(c.workspace,'approved-inputs.json'),'utf8')).files;
+ if(Object.entries(c.library.invariant_approved_inputs??{}).some(([name,version])=>approved[name]!==version))throw Error('artifact_approved_protocol_changed');
  if(typeof value.output!=='string'||!/^\/work\/outputs\/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(value.output))throw Error('artifact_new_output_directory_required');
  const destination=join(c.workspace,'outputs/code',value.output.slice(14));
  if(existsSync(destination))throw Error('artifact_output_already_exists');
@@ -105,6 +112,11 @@ export function runArtifactProgram(job:any){
  const receipt={kind:'artifact_program_receipt',program_id:program.id,nonce:job.nonce,input_versions:bound.map((b:any)=>b.sha256),
   output_directory:job.output,files,stdout:result.stdout,stderr:result.stderr,semantic_quality_accepted:false};
  if(job.certification)return {receipt,output};
+ const exportedSource=join(output,'geneloop_reused_program.py');
+ if(existsSync(exportedSource))throw Error('artifact_program_export_collision');
+ writeFileSync(exportedSource,program.source,{mode:0o600,flag:'wx'});
+ files.push({path:'geneloop_reused_program.py',bytes:Buffer.byteLength(program.source),sha256:hash(program.source)});
+ Object.assign(receipt,{reusable_program:{path:job.output+'/geneloop_reused_program.py',source_sha256:hash(program.source),origin:'unchanged_model_authored_historical_program'}});
  if(existsSync(job.destination))throw Error('artifact_output_changed_before_publish');
  // Source inputs are revalidated before the atomic publication; old files are never overwritten.
  for(const b of bound)if(hash(readFileSync(b.host))!==b.sha256)throw Error('artifact_input_changed_before_publish');

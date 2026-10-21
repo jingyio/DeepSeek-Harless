@@ -9,8 +9,9 @@ function fixture(){
  const workspace=mkdtempSync(join(tmpdir(),'artifact-guard-'));
  for(const p of ['inputs','code','outputs/code','command-tmp'])mkdirSync(join(workspace,p),{recursive:true});
  writeFileSync(join(workspace,'inputs','current.json'),'{"title":"current"}');
+ writeFileSync(join(workspace,'approved-inputs.json'),'{"files":{}}');
  const contract={suffix:'.json',format:'json',shape:{object:{title:'string'}}};
- const program={id:'test-recipe',inputs:[contract]};
+ const program={id:'test-recipe',inputs:[contract],certification:{}};
  return {workspace,contract,program,library:{programs:[program],digest:'diagnostic'},allowOutput:true,audit(){}};
 }
 const command=(value={})=>'geneloop-recipe '+JSON.stringify({id:'test-recipe',inputs:['/work/inputs/current.json'],output:'/work/outputs/fresh',...value});
@@ -37,6 +38,13 @@ test('current input bytes are returned rather than old source values',()=>{
  writeFileSync(path,'{"title":"different"}');
  const fresh=fixedArtifactInput(f.workspace,'/work/inputs/current.json');
  assert.notEqual(hash(old.data),hash(fresh.data));
+});
+test('unchanged training/certification policy files are version guarded',()=>{
+ const f=fixture();f.program.certification.invariant_input_versions={0:hash(readFileSync(join(f.workspace,'inputs/current.json')))};
+ registerArtifactContext('policy',f);
+ artifactInvocation('policy',command());
+ writeFileSync(join(f.workspace,'inputs/current.json'),'{"title":"policy changed"}');
+ assert.throws(()=>artifactInvocation('policy',command()),/fixed_protocol_changed/);
 });
 test('real namespace preserves inputs, publishes fresh outputs, rejects aliases',{skip:process.platform!=='linux'},()=>{
  const f=fixture(),input=fixedArtifactInput(f.workspace,'/work/inputs/current.json');

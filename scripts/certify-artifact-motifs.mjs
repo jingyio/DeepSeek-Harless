@@ -17,7 +17,7 @@ function candidates(workspace,contract){
    const data=readFileSync(host);if(matchesArtifactInput(contract,host,data))found.push({host,data,sha256:hash(data)});
   }
  }
- for(const dir of ['inputs','code','outputs/code'])visit(join(workspace,dir));
+ for(const dir of (contract.source_origin==='uploaded_input'?['inputs']:['code','outputs/code']))visit(join(workspace,dir));
  return found;
 }
 function originalFiles(path){
@@ -43,7 +43,7 @@ export function certifyArtifactRows(rows,resources={}){
    const ownText=own.map(b=>b.data.toString('utf8')).join('\n'),otherText=other.map(b=>b.data.toString('utf8')).join('\n');
    // Conservative content-leak guard in addition to sandbox isolation. This is
    // not a semantic correctness proof; current model still owns suitability.
-   for(const match of p.source.matchAll(/(['"])([^\n'"\\]{20,})\1/g))if(ownText.includes(match[2])&&!otherText.includes(match[2]))throw Error('task_specific_content_not_parameterized');
+   for(const text of p.literal_selectors??[])if(ownText.includes(text)&&!otherText.includes(text))throw Error('task_specific_content_not_parameterized');
    const cases=[];let sourceFiles;
    for(const [role,task,bound] of [['source',row,own],['certification',held,other]]){
     const job={workspace:task.workspace,program:p,bound,resources,nonce:'certification',certification:true};
@@ -60,11 +60,13 @@ export function certifyArtifactRows(rows,resources={}){
    const {witness,...program}=p;
    programs.push({...program,certification:{passed:true,distinct_inputs:2,source_equivalent:true,program_sha256:digest(identity(p)),
     source_task_id:row.task_id,source_call_id:witness.call_id,events_sha256:witness.events_sha256,boundary_sha256:witness.boundary_sha256,
+    invariant_input_versions:Object.fromEntries(own.flatMap((b,i)=>b.sha256===other[i].sha256?[[i,b.sha256]]:[])),
     output_extensions:[...new Set(sourceFiles.map(f=>extname(f.path)))],cases,semantic_quality_accepted:false}});
    seen.add(p.id);
   }catch(error){rejected.push({program_id:p.id,call_id:p.witness.call_id,reason:error.message});}
  }
- const body={version:1,kind:'witnessed_artifact_program_library',scene:held.scene,programs,code_locks:Object.fromEntries(artifactLocks.map(p=>[p,hash(readFileSync(join(root,p)))])),
+ const invariantApproved=Object.fromEntries(Object.entries(held.approved_inputs??{}).filter(([name,version])=>training.every(r=>r.approved_inputs?.[name]===version)));
+ const body={version:1,kind:'witnessed_artifact_program_library',scene:held.scene,programs,invariant_approved_inputs:invariantApproved,code_locks:Object.fromEntries(artifactLocks.map(p=>[p,hash(readFileSync(join(root,p)))])),
   heldout_task_id:held.task_id,compilation_model_requests:0,scope:'native_program_source_equivalence_and_distinct_input_determinism_not_semantic_quality'};
  return {library:{...body,digest:digest(body)},report:{published:programs.length,rejected,quality_cost_promoted:false}};
 }
