@@ -58,6 +58,19 @@ test('file worker receives the uncapped policy instead of a hidden five dollar a
  }finally{await f.close();}
 });
 
+test('File delivery API labels an unverified retained reservation without claiming an actual fee',enabled,async()=>{
+ const f=await fixture(null);try{
+  await f.ctx.sessionController.prompt({sessionId:'owned',requestId:randomUUID(),mode:'queue',content:[{type:'text',text:'/file inspect'}]});
+  f.workers[0].stdout.emit('data',JSON.stringify({kind:'result',status:'completed',metrics:{acceptance_passed:true,
+   upstream_requests:4,budget_accounted_usd:.486180024},artifacts:[]})+'\n');f.workers[0].emit('close',0);
+  const response=await f.api('&turn=1');assert.equal(response.status,200);const value=await response.json();
+  assert.equal(value.rsi.cost_usd,null);assert.equal(value.rsi.usage_complete,false);
+  assert.equal(value.rsi.cost_upper_usd,.486180024);assert.equal(value.rsi.budget_accounted_usd,.486180024);
+  assert.equal(value.rsi.cost_basis,'conservative_reservation');assert.equal(value.rsi.missing_observed_usage_requests,null);
+  assert.equal(JSON.stringify(value).includes(f.directory),false);
+ }finally{await f.close();}
+});
+
 test('file admission is owned, automatic, idempotent and retains native lifecycle',enabled,async()=>{
  const f=await fixture();try{
   const settings=await (await f.api()).json();assert.equal(settings.automatic,true);assert.equal(settings.scene.shortcut,'file');

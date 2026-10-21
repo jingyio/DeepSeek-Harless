@@ -1116,3 +1116,7 @@ TypeScript Runtime 在首次模型请求前验证当前任务ID、输出授权�
 `/compact`处理当前真实上下文，`/plan [off|内容]`选择原生计划协作；目标仅通过`/goal --rounds <正整数> <目标>`显式开始。目标控制及子Agent继承原任务计量，原生Goal mutation RPC不直接开放；没有新增平台费用/请求/输出额度。独立File SDK模式与原任务恢复沿其自身入口，主聊天模式命令不会假成功。
 
 候选配置使用`node scripts/prepare-native-host.mjs --plan ABS --root ABS`预览，核对后`--apply`仅更新隔离候选host组合；正式启停仍统一`npm run service -- ...`。部署和验证状态以[本轮记录](experiments/dsh-native-capabilities-20261021.md)为准，源码存在不等于生产已发布。
+
+### File公开费用元数据（2026-10-21）
+
+`GET /api/harless/file-scene` 的 `rsi.cost_usd` 仅在本Task、同账号、同原SDK运行的sealed record摘要和完整观测用量均核验后返回代理估费；它不表示服务商实付。未取得完整观测或原取消预留仍未知时返回`null`，不能把预留作为实际费用。`budget_accounted_usd`/`cost_upper_usd`保留原保守金额，`usage_complete`、`missing_observed_usage_requests`及`cost_basis`区分`observed_usage`、`conservative_reservation`和`unavailable`。零请求且原计量金额零可返回零。缺证据保持未知，不公开原文件路径，不覆盖历史SDK/Task/预算池或原账本；平台晚到回执的独立审计也不等于修改SDK旧未知行。
