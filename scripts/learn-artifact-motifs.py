@@ -23,6 +23,56 @@ def host(workspace, virtual):
     return workspace / (rel if rel.startswith('inputs/') else 'outputs/code/' + rel[8:] if rel.startswith('outputs/') else 'code/' + rel)
 
 
+def native_program_invocation(command):
+    """Parse the complete small shell envelope; never drop an unknown pipeline.
+
+    A witnessed mkdir/echo/cat envelope is common in normal Agent traces. It is
+    only admissible with one program, no alternatives/redirections/substitution,
+    and later evidence of fresh program output at this exact tool boundary.
+    """
+    if any(token in command for token in ('`', '$(', '${', '\\n')):
+        raise ValueError('artifact_shell_expansion_not_admitted')
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=';&|<>')
+    lexer.whitespace_split = True
+    lexer.commenters = ''
+    segments, current = [], []
+    for token in lexer:
+        if token in (';', '&&'):
+            if not current:
+                raise ValueError('artifact_empty_shell_segment')
+            segments.append(current)
+            current = []
+        elif token in ('|', '||', '&', '<', '>', '>>', '<<'):
+            raise ValueError('artifact_shell_operator_not_admitted')
+        else:
+            current.append(token)
+    if current:
+        segments.append(current)
+    program = None
+    for segment in segments:
+        if segment[:1] in (['python'], ['python3']):
+            if program is not None or len(segment) < 4 or not segment[1].endswith('.py'):
+                raise ValueError('artifact_one_explicit_program_required')
+            program = segment
+        elif segment == ['cd', '/work']:
+            if program is not None:
+                raise ValueError('artifact_late_directory_change')
+        elif segment[:2] == ['mkdir', '-p']:
+            if program is not None or len(segment) != 3 or not segment[2].startswith(('outputs/', '/work/outputs/')) or '..' in segment[2].split('/'):
+                raise ValueError('artifact_mkdir_outside_fresh_output')
+        elif segment[:1] == ['echo']:
+            if program is None:
+                raise ValueError('artifact_echo_before_program')
+        elif segment[:1] == ['cat']:
+            if program is None or any(not s.startswith(('outputs/', '/work/outputs/')) or '..' in s.split('/') for s in segment[1:]):
+                raise ValueError('artifact_cat_outside_program_output')
+        else:
+            raise ValueError('artifact_unknown_shell_segment')
+    if program is None:
+        raise ValueError('artifact_explicit_program_required')
+    return program
+
+
 def collect(task):
     effective = json.loads((task / 'effective-config.json').read_text(encoding='utf-8'))
     state = json.loads((task / 'task-state.json').read_text(encoding='utf-8'))
@@ -48,13 +98,9 @@ def collect(task):
                 continue
             try:
                 stdout = ''.join(c.get('text', '') for c in block.get('content', []) if c.get('type') == 'text')
-                if re.search(r'\[exit code:\s*[1-9][0-9]*\]', stdout):
+                if re.search(r'\[exit(?: code:)?\s*[1-9][0-9]*\]', stdout) or 'Traceback (most recent call last)' in stdout:
                     raise ValueError('artifact_native_nonzero_exit')
-                parts = shlex.split(args['command'])
-                if parts[:3] == ['cd', '/work', '&&']:
-                    parts = parts[3:]
-                if len(parts) < 4 or parts[0] not in ('python', 'python3') or not parts[1].endswith('.py') or any(p in parts for p in ['|', '&&', ';', '>', '<']):
-                    raise ValueError('artifact_single_explicit_argv_required')
+                parts = native_program_invocation(args['command'])
                 virtual = parts[1] if parts[1].startswith('/work/') else '/work/' + parts[1]
                 path = host(workspace, virtual)
                 boundary = boundaries[cid]
@@ -79,10 +125,16 @@ def collect(task):
                         raise ValueError('artifact_current_file_or_output_required')
                 if len(outputs) != 1:
                     raise ValueError('artifact_one_output_directory_required')
+                output_virtual = parts[2 + outputs[0]]
+                output_host = host(workspace, output_virtual if output_virtual.startswith('/work/') else '/work/' + output_virtual)
+                prefix = output_host.relative_to(workspace).as_posix() + '/'
+                before, after = boundary['before']['files'], boundary['after']['files']
+                if not any(key.startswith(prefix) and before.get(key) != value for key, value in after.items()):
+                    raise ValueError('artifact_fresh_native_output_evidence_required')
                 witness = {'task_id': task.name, 'call_id': cid, 'events_sha256': sha(events_raw), 'description': args.get('description', ''),
                            'boundary_sha256': digest(boundary), 'input_paths': {str(i): str(p) for i, p in inputs.items()},
                            'input_sha256': {str(i): sha(p.read_bytes()) for i, p in inputs.items()},
-                           'original_output': str(host(workspace, parts[2 + outputs[0]] if parts[2 + outputs[0]].startswith('/work/') else '/work/' + parts[2 + outputs[0]])),
+                           'original_output': str(output_host),
                            'stdout': stdout}
                 candidates.append(program_from_witness(source_raw.decode('utf-8'), parts[2:], inputs, outputs[0], witness))
             except (ValueError, KeyError, OSError, SyntaxError) as error:
