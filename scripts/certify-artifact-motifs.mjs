@@ -60,7 +60,7 @@ export function certifyArtifactRows(rows,resources={}){
    const ownText=own.map(b=>b.data.toString('utf8')).join('\n'),otherText=other.map(b=>b.data.toString('utf8')).join('\n');
    // Conservative content-leak guard in addition to sandbox isolation. This is
    // not a semantic correctness proof; current model still owns suitability.
-   for(const text of p.literal_selectors??[])if(ownText.includes(text)&&!otherText.includes(text))throw Error('task_specific_content_not_parameterized');
+   for(const text of p.literal_selectors??[])if(!(p.interface_comparison_literals??[]).includes(text)&&ownText.includes(text)&&!otherText.includes(text))throw Error('task_specific_content_not_parameterized');
    const cases=[];let sourceFiles;
    for(const [role,task,bound] of [['source',row,own],['certification',held,other]]){
     const job={workspace:task.workspace,program:p,bound,resources,nonce:'certification',certification:true,

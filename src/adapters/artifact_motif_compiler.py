@@ -110,7 +110,21 @@ def program_from_witness(source, arguments, input_paths, output_index, witness):
     interface = ast.get_docstring(tree) or witness.get('description') or 'Witnessed data-driven program'
     if len(interface.encode()) > 16000:
         raise ValueError('artifact_complete_interface_exceeds_protocol_bound')
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    uses = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        parent = parents.get(node)
+        while isinstance(parent, (ast.List, ast.Tuple, ast.Set)):
+            parent = parents.get(parent)
+        uses.setdefault(node.value, []).append(isinstance(parent, ast.Compare))
+    # Interface-declared categorical predicates are syntax, not copied answers.
+    # A literal also emitted as data remains subject to the content-leak guard.
+    comparison_literals = sorted(text for text, roles in uses.items()
+                                 if 3 <= len(text) <= 1000 and all(roles) and text in interface)
     return {**body, 'id': 'artifact_' + digest(body)[:24],
             'interface': interface,
+            'interface_comparison_literals': comparison_literals,
             'literal_selectors': sorted({n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and 3 <= len(n.value) <= 1000}),
             'source_sha256': sha(source), 'witness': witness}

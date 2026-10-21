@@ -41,3 +41,19 @@ def test_duplicate_headers_and_invalid_utf8_fail_closed(tmp_path):
     p.write_bytes(b'\xff')
     with pytest.raises(UnicodeError):
         file_contract(p)
+
+
+def test_declared_predicate_is_distinguished_from_copied_output_literal(tmp_path):
+    p = tmp_path / 'content.json'
+    p.write_text('{"verdict":"未通过"}', encoding='utf-8')
+    source = '''"""The verdict label 未通过 denotes a failing row."""
+import sys,json
+d=json.load(open(sys.argv[1]))
+ok='未通过' not in d['verdict']
+print('DeltaBatch cached title',ok)
+'''
+    result = program_from_witness(source, ['content.json','out'], {0:p}, 1, {})
+    assert result['interface_comparison_literals'] == ['未通过']
+    assert 'DeltaBatch cached title' in result['literal_selectors']
+    again = program_from_witness(source + "print('未通过')\n", ['content.json','out'], {0:p}, 1, {})
+    assert '未通过' not in again['interface_comparison_literals']
