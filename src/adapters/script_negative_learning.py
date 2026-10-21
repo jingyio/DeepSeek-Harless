@@ -63,6 +63,7 @@ def evidence_for(rule, rows, locks):
             'failure_source': rule['failure_source'], 'tools_sha256': rule['tools_sha256'],
             'implementation_locks': locks, 'independent_tasks_at_least': 2,
             'argument_shapes': sorted({tuple(r['argument_shape']) for r in selected}),
+            'tool_schema_sha256': rule.get('tool_schema_sha256'),
             'observations': [unique[k] for k in sorted(unique)[:3]]}
 
 
@@ -138,6 +139,15 @@ def learn_negatives(tasks, store, output, root, user, *, request=None):
         evidence = {}
         for rule in rules:
             rule['retry_policy'] = 'prompt_only'
+            witnesses = {(r['task_id'], r['call_id'], r['events_sha256']): r.get('tool_schema_sha256') for r in rows
+                         if (r['tool'], r['code'], r['failure_source'], r['tools_sha256']) ==
+                         (rule['tool'], rule['failure_code'], rule['failure_source'], rule['tools_sha256'])}
+            schemas = set(witnesses.values())
+            if len(schemas) == 1 and None not in schemas:
+                rule['tool_schema_sha256'] = next(iter(schemas))
+                rule['schema_scope'] = 'exact_tool_schema_prompt_only'
+                for witness in rule['certification']['failures']:
+                    witness['tool_schema_sha256'] = witnesses[(witness['task_id'], witness['call_id'], witness['events_sha256'])]
             # Stable content IDs for learning/review caching; compiler witness IDs
             # and final rule IDs still bind the exact certified publication.
             data = evidence_for(rule, rows, locks)

@@ -35,6 +35,7 @@ def collect_negative(task):
     if effective.get('provider_mode') != 'real' or state.get('status') not in ('completed', 'failed', 'cancelled'):
         raise ValueError('settled_real_trace_required')
     config = json.loads((task / 'model-request-config.json').read_text())
+    schemas = {t['name']: digest(t['parameters']) for t in effective.get('tools', []) if isinstance(t, dict) and 'parameters' in t}
     events_raw = (task / 'events.jsonl').read_bytes()
     calls, rows = {}, []
     # Persistent Harness sessions can include older tasks' events. They are
@@ -74,6 +75,7 @@ def collect_negative(task):
                          'anchors': echoed, 'binding_sha256': digest(args),
                          'call_id': call_id, 'task_id': task.name,
                          'events_sha256': sha(events_raw), 'tools_sha256': config['tools_sha256'],
+                         'tool_schema_sha256': schemas.get(tool),
                          'failure_observation': {k: value[k] for k in
                              ('validation_error', 'failed_checks', 'scope_issues', 'validation_context')
                              if k in value and len(json.dumps(value[k], ensure_ascii=False)) <= 3000}})

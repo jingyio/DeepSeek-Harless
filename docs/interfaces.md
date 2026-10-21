@@ -987,6 +987,10 @@ store下`description-cache`绑定来源、提示词、配置和学习器版本�
 
 自动库可能在后续加入Positive算子。空Positive库不初始化匹配器；非空库缺少或提供无效Embedding配置时，`script_component_fallback`只停用正面匹配器与其catalog，不连带停用已验证的Negative/Reuse和原生模型路径。库摘要、来源及代码锁不匹配仍走准入失败，不能借组件回退执行未认证库。完整配置且匹配器成功初始化时，现有脚本缓存catalog保留，即使未启用executionFrontier。
 
+同步新版DSH后的兼容边界：Script续接仍先经过原生admission，仅对SDK标记的`isAgentLoopRequest`进行匹配；compaction、标题等辅助请求直接走原生continuation，不更新Motif Evidence、不消费执行片段或提示回执。不得用Motif工具结果替代上下文整理结果。
+
+自动提示规则可增加`schema_scope:exact_tool_schema_prompt_only`与`tool_schema_sha256`：仅当所有原生失败见证均记录一致的目标工具参数schema时生成，证书中逐见证绑定同一摘要。这样新增无关工具不会使提示失效；当前目标工具参数schema、工具实现、来源或用户要求变化仍拒绝或失效。旧`tools_sha256`保留为历史完整工具表摘要；未带新字段的规则继续要求整表一致。loader拒绝将该范围用于任何早停策略；已有执行/字段守卫的整表约束不变。这是精确的目标工具兼容认证，不是语义相似度或放宽执行权限。
+
 
 ## 实验性统一复用协议（2026-10-19）
 

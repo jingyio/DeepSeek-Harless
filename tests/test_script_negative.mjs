@@ -12,7 +12,7 @@ import {digest} from '../src/motif_core/online_skill_runtime.mjs';
 import {createNegativeRuntime} from '../src/adapters/script_negative_runtime.ts';
 import {evaluateFieldGuard,validateFieldGuard} from '../src/adapters/negative_field_runtime.ts';
 const hash=v=>createHash('sha256').update(v).digest('hex');
-function fixture(t,mode='enforce',fieldGuard=null,document=null){
+function fixture(t,mode='enforce',fieldGuard=null,document=null,toolScoped=false){
  const workspace=realpathSync(mkdtempSync(join(tmpdir(),'negative-motif-')));
  t.after(()=>rmSync(workspace,{recursive:true,force:true}));
  mkdirSync(join(workspace,'inputs'));mkdirSync(join(workspace,'outputs'));
@@ -24,13 +24,27 @@ function fixture(t,mode='enforce',fieldGuard=null,document=null){
  const rule={id:'negative-diagnostic',tool:'mcp__docs__finalize',failure_code:'invalid_shape',tools_sha256:digest(tools),
   retry_policy:'warn_then_exact_version_block',failure_flags:[['done']],version_slots:[{argument_path:['version'],result_path:['current_version']}]};
  if(fieldGuard){rule.retry_policy='warn_then_field_guard';rule.field_guard=fieldGuard;}
+ if(toolScoped){rule.retry_policy='prompt_only';rule.tool_schema_sha256=digest(tools[0].parameters);rule.schema_scope='exact_tool_schema_prompt_only';}
  const runtime=createNegativeRuntime({library:{rules:[rule]},workspace,mode,audit:r=>events.push(r)});
  const call={name:rule.tool,arguments:{version}};
  const request=(system='')=>({system,tools,messages:[]});runtime.beforeRequest(request());
  const fail=()=>runtime.observe(call,{isError:false,content:[{type:'text',text:JSON.stringify({done:false,validation_error:'invalid_shape',current_version:version})}]});
  const warn=()=>{const p=runtime.prompt();runtime.beforeRequest(request(p));return p;};
- return {runtime,call,fail,warn,request,state,workspace,events,version};
+ return {runtime,call,fail,warn,request,state,workspace,events,version,tools};
 }
+test('tool-scoped prompt advice tolerates added unrelated tools without granting retry blocking',t=>{
+ const f=fixture(t,'enforce',null,null,true),request={...f.request(),tools:[...f.tools,{name:'read_image',parameters:{type:'object'}}]};
+ f.runtime.beforeRequest(request);f.fail();const text=f.runtime.takeNotice();assert.match(text,/invalid_shape/);
+ f.runtime.beforeRequest({...request,system:text});assert.equal(f.events.filter(e=>e.kind==='negative_prompt_delivered').length,1);
+ assert.equal(f.runtime.guard(f.call),undefined);
+});
+test('changed target schema invalidates tool-scoped advice and legacy rules still require the entire catalog',t=>{
+ const f=fixture(t,'prompt',null,null,true);f.fail();assert.match(f.runtime.prompt(),/invalid_shape/);
+ f.runtime.beforeRequest({...f.request(),tools:[{...f.tools[0],parameters:{type:'object',required:['new']}}]});
+ assert.equal(f.runtime.prompt(),'');f.fail();assert.equal(f.runtime.prompt(),'');
+ const legacy=fixture(t,'prompt');legacy.runtime.beforeRequest({...legacy.request(),tools:[...legacy.tools,{name:'new_tool',parameters:{}}]});
+ legacy.fail();assert.equal(legacy.runtime.prompt(),'');
+});
 test('history alone and a prompt accessor do not authorize early stopping',t=>{
  const f=fixture(t);assert.equal(f.runtime.guard(f.call),undefined);
  f.fail();assert.match(f.runtime.prompt(),/invalid_shape/);assert.equal(f.runtime.guard(f.call),undefined);

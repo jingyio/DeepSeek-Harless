@@ -8,7 +8,7 @@ import {createScriptInterceptor,loadScriptLibrary,registerScriptCache,registerRe
 import {createNegativeRuntime,loadNegativeLibrary} from './script_negative_runtime.ts';
 import {createReuseMediation,loadReuseLibrary} from './reuse_mediation.ts';
 import {createReuseTrace} from './reuse_trace.ts';
-import {createUserMessage} from '@deepseek-ai/dsh-llm';
+import {createUserMessage,isAgentLoopRequest} from '@deepseek-ai/dsh-llm';
 import {resolveScriptLearningSettings} from './script_learning_store.ts';
 export const name=native.name;
 export const inject=native.inject;
@@ -18,6 +18,18 @@ export function optionalScriptRuntime(settings:any,library:any,options:any,audit
  if(!library?.programs?.length)return fallback();
  try{return createScriptInterceptor({...settings,library,...options,audit});}
  catch(error:any){audit({kind:'script_component_fallback',component:'positive_matcher',reason:error.message});return fallback();}
+}
+/** Called only by the admitted continuation, never for context maintenance. */
+export function continueScriptRequest(request:any,next:any,resolve:(session:string)=>any){
+ if(!isAgentLoopRequest(request))return next();
+ const runtime=resolve(request.sessionId);
+ return (async function*(){
+  runtime?.negative?.update(request);runtime?.reuse?.update(request);
+  const reused=runtime?.reuse?.ready();
+  const checkedNext=()=>{runtime?.negative?.beforeRequest(request);return next();};
+  const stream=reused??(runtime?await runtime.intercept(request.sessionId,request,checkedNext):checkedNext());
+  for await(const chunk of stream)yield chunk;
+ })();
 }
 export function apply(ctx:any){
  const policy=JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!,'utf8'));
@@ -106,13 +118,7 @@ export function apply(ctx:any){
  },{global:true});
  const wrapped=new Proxy(ctx,{get(target,key){
   if(key==='on')return (event:any,handler:any,...rest:any[])=>target.on(event,event==='llm/stream'
-   ?(request:any,next:any)=>handler(request,()=>{const runtime=interceptor(request.sessionId);return (async function*(){
-     runtime?.negative?.update(request);
-     runtime?.reuse?.update(request);
-     const reused=runtime?.reuse?.ready();
-     const checkedNext=()=>{runtime?.negative?.beforeRequest(request);return next();};
-     const stream=reused??(runtime?await runtime.intercept(request.sessionId,request,checkedNext):checkedNext());for await(const chunk of stream)yield chunk;
-    })();})
+   ?(request:any,next:any)=>handler(request,()=>continueScriptRequest(request,next,interceptor))
    :handler,...rest);
   const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
  }});

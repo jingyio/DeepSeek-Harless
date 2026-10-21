@@ -40,6 +40,10 @@ export function loadNegativeLibrary(path:string){
   if(r.guidance!==undefined&&(typeof r.guidance!=='string'||r.guidance.trim()!==r.guidance||r.guidance.length<24||r.guidance.length>600||/[\x00-\x1f]/.test(r.guidance)||
     r.retry_policy!=='prompt_only'||r.guidance_review?.scope!=='reviewed_historical_advice_not_causal_proof_or_execution_authority'||
     !/^[a-f0-9]{64}$/.test(r.guidance_review?.evidence_digest)||!/^[a-f0-9]{64}$/.test(r.guidance_review?.review_cache_digest)))throw Error('unreviewed_negative_guidance');
+  if(r.tool_schema_sha256!==undefined||r.schema_scope!==undefined){
+   if(r.retry_policy!=='prompt_only'||r.schema_scope!=='exact_tool_schema_prompt_only'||!/^[a-f0-9]{64}$/.test(r.tool_schema_sha256)||
+      r.certification.failures.some((w:any)=>w.tool_schema_sha256!==r.tool_schema_sha256))throw Error('unbound_prompt_tool_schema');
+  }
   if(r.retry_policy==='warn_then_field_guard'){
    validateFieldGuard(r.field_guard,r.failure_code);
    const file=r.field_guard.validator?.split(':')[0];
@@ -52,6 +56,7 @@ export function loadNegativeLibrary(path:string){
 export function createNegativeRuntime({library,workspace,mode='prompt',audit=()=>{}}:any){
  if(!['prompt','enforce'].includes(mode))throw Error('invalid_negative_mode');
  let active:any=null,schema:string|null=null,humans:string|undefined,noticeSent='';const denied=new Set<string>(),toolSchemas=new Map<string,string>();
+ const compatible=(rule:any)=>rule.tool_schema_sha256?rule.tool_schema_sha256===toolSchemas.get(rule.tool):rule.tools_sha256===schema;
  function sourceVersion(){
   const p=join(workspace,'approved-inputs.json'),raw=readFileSync(p),manifest=JSON.parse(raw.toString());
   const files=Object.entries(manifest.files??{});if(files.length>16)throw Error('negative_source_limit');
@@ -104,7 +109,7 @@ export function createNegativeRuntime({library,workspace,mode='prompt',audit=()=
   const envelope=digest((request.messages??[]).filter((m:any)=>m.role==='user'&&m.source?.kind==='user').map((m:any)=>({id:m.id,content:m.content})));
   if(humans!==undefined&&humans!==envelope)active=null;humans=envelope;schema=digest(request.tools??[]);
   toolSchemas.clear();for(const tool of request.tools??[])toolSchemas.set(tool.name,digest(tool.parameters));
-  if(active&&active.rule.tools_sha256!==schema)active=null;
+  if(active&&!compatible(active.rule))active=null;
  }
  function fieldState():any{
   try{
@@ -146,7 +151,7 @@ export function createNegativeRuntime({library,workspace,mode='prompt',audit=()=
    }
    const value=observation(result,execution.name)??(result.value&&!result.value.content?result.value:null);
    const outcome=negativeOutcome(value);
-   const rule=library.rules.find((r:any)=>r.tool===execution.name&&r.tools_sha256===schema&&outcome.failures.some(f=>f.code===r.failure_code&&f.source===(r.failure_source??'validation_error'))&&r.failure_flags.every((p:any)=>at(value,p)===false));
+   const rule=library.rules.find((r:any)=>r.tool===execution.name&&compatible(r)&&outcome.failures.some(f=>f.code===r.failure_code&&f.source===(r.failure_source??'validation_error'))&&r.failure_flags.every((p:any)=>at(value,p)===false));
    if(!rule){if(active?.rule.tool===execution.name)active=null;return;}
    const args=execution.arguments??{},binding=digest(args);
    if(active?.rule.id===rule.id&&active.binding===binding&&current())return;

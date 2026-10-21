@@ -25,7 +25,8 @@ def setup(tmp_path,monkeypatch):
 def task(root,name,status='failed',start=0):
     path=root/'.local/web/runs'/name/'tasks'/name
     write(path/'task-state.json',{'user_id':'owner','status':status,'mode':'baseline'})
-    write(path/'effective-config.json',{'user_id':'owner','provider_mode':'real','trace_start_index':start})
+    write(path/'effective-config.json',{'user_id':'owner','provider_mode':'real','trace_start_index':start,
+          'tools':[{'name':'mcp__docs__export','parameters':{'type':'object','properties':{'version':{'type':'string'}}}}]})
     write(path/'model-request-config.json',{'tools_sha256':'a'*64})
     write(root/'.local/script-motif-experiments'/name/'source-snapshot.json',{'src/tool.py':sha((root/'src/tool.py').read_bytes())})
     def events(call):
@@ -52,6 +53,9 @@ def test_native_recurrence_review_publish_cache_and_exact_evidence(tmp_path,monk
     library,status=learning.learn_negatives([a,b],store,output,root,'owner',request=model(calls))
     assert status['model_requests']==2 and calls==['negative-propose','negative-review']
     assert library['rules'][0]['retry_policy']=='prompt_only'
+    rule=library['rules'][0]
+    assert rule['schema_scope']=='exact_tool_schema_prompt_only'
+    assert all(w['tool_schema_sha256']==rule['tool_schema_sha256'] for w in rule['certification']['failures'])
     assert library['rules'][0]['guidance_review']['evidence_digest']
     assert {w['task_id'] for w in library['rules'][0]['certification']['failures']}=={'a','b'}
     c,_=task(root,'c')
