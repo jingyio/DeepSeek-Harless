@@ -1,5 +1,20 @@
 # 论文校对 当前交接
 
+## 2026-10-21：五篇论文 BibTeX 文件任务真实评测
+
+- 目标与范围：用户要求给导师提供最新版论文场景效果，选择5篇论文的完整BibTeX文件完整性/重复检查，随后明确取消普通缓存组。仅Baseline与Script Motif，各篇各2次，共20次；不是联网真实性、正文对应或PDF交付评测。
+- 分支 / 代码：`codex/paper-multipaper-eval-20261021`，运行提交`8c2e2d61`，包含启动时最新main `5373b0e5`及PR104的`b19bda66`；题面/结果记录在当前分支。未新增PR、未合并、未部署，当前评测记录仅本地提交；原Desktop/SSS脏工作区未改。
+- 已完成：复用原`run-script-motif-experiment.py`；冻结并实际再认证12 Script算子/1契约/1提示型Negative，模型学习新增0。5份公开arXiv v1原始文件共598条，训练库无相同完整输入hash，未注入错误或截取。两轮顺序反转，测试轨迹不回灌当前库。公共题面为`scenarios/paper-submission/bibliography-integrity.prompt.md`。
+- 已验证：20次真实DeepSeek Flash/off，输出8192，300秒期限内均原生结束；实际source hash/原件未改/模型配置均核对；所有src/scripts快照及44工具schema一致。独立bibtexparser1.4.3与条目头计数一致，按固定JSON字段离线验收；没有全部文字的独立人工盲评。仅新增文档/题面和指标，未改机制代码，不重复完整npm test或付费全场景。
+- 实验结论：见[完整评测](../experiments/paper-multipaper-eval-20261021-v1.md)及[20次指标](../experiments/paper-multipaper-eval-20261021-v1.csv)。Baseline195请求/USD0.243661320，Motif165/USD0.240745620；请求-15.38%、输出Token-18.89%、Agent时间-29.22%，费用仅-1.20%，核心完全正确9/10→8/10。双方核心正确的7配对中Motif反高7.85%，只作事后诊断。未证明同质量稳定净降本。
+- 机制证据：6/10 Motif任务发生42次认证结构执行，10种程序、8种跨至少两篇复用，覆盖4篇；不是净少42次API。Embedding/Negative提示实际0次，不能归因于它们。片段完成后仍98次模型请求、USD0.10982431；Prefix两轮都接管8程序但实际8→38请求，后续路径差异显著。
+- 失败与归因：QLoRA两次均漏同一组标题重复；同轨迹已有一个解析器返回3组，另一个只认花括号字段返回2组，最终取211计数却保留2组，冲突证据未统一验收。S4首轮Baseline拒绝已存在且hash一致的当前输入、返回null，不能称正确对照。Mac原生文件IO的Linux descriptor限制为B8/M5次，M另1次其他错误；全部保留，不能代表Linux生产。
+- 费用核算：命中输入-515200省USD0.0030912，输出-17907省0.0214884，冷输入+72213增0.0216639；首请求已有23268冷输入增量，余48945来自后续路径，不能全归为目录或纯算法开销。历史描述/Negative学习15请求/USD0.013573896另列，若全部摊到当前十次使用不再净省。历史14来源/认证任务127请求/USD0.164169312另列，不混分母。
+- 配置与数据：`.local/paper-multipaper-eval-20261021-v1/`保存protocol/授权、下载可用性、原始文件/预生成oracle、固定库/编译状态、逐次log/回答/Breakdown、results/analysis/enriched/final-verification及复现脚本；原始事件/账本仍在各web run。库digest `70bfa012…`，阈值.88/.04/.6不变；压缩为native-pressure-checkpoint-v1。凭证/原始资料/日志不提交。V100拒绝SSH，按既有授权本地运行。
+- 权限与预算：cap_usd:null / uncapped_user_authorized / reset_history:false；新增360请求/USD0.484406940，累计6312/USD11.126912532保守估费，非账单；新pending/unknown0，旧6 unknown/2 pending及V100旧账继续待核。所有任务及本轮Embedding进程已结束，无后台继续付费，未改原件/生产/公共库。
+- 接手下一步：先让完整范围和字段级结果可验收，对2组/3组冲突局部核验并确保最终不丢失已有证据；再减少不接管时目录冷输入及片段完成后的重复脚本。不要以库数量、42次结构执行或单次便宜结果代替净降本结论。若改变机制/模型/平台，另开实验ID；不要覆盖这轮失败。
+- 回退与风险：本轮仅独立实验和记录，停止/移除私有sidecar不影响生产；保留全部原始来源、历史库和累计账本。私有库不构成公开自包含benchmark包，未声明Windows/Linux真实模型效果。
+
 ## 2026-10-21：数据驱动证据程序复用实验
 
 - 分支`codex/motif-cost-learning-20261021`，实现`76ca3e2`；新增从真实原生代码及前后快照学习的配对证据程序，独立新输入认证，TypeScript按模型选择、当前输入和版本守卫执行。不是模型权重训练。
