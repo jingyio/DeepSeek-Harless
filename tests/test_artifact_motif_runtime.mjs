@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,symlinkSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {registerArtifactContext,artifactInvocation,fixedArtifactInput,matchesArtifactInput,hash} from '../src/adapters/artifact_motif_runtime.ts';
+import {registerArtifactContext,artifactInvocation,fixedArtifactInput,matchesArtifactInput,hash,runArtifactProgram} from '../src/adapters/artifact_motif_runtime.ts';
 
 function fixture(){
  const workspace=mkdtempSync(join(tmpdir(),'artifact-guard-'));
@@ -37,4 +37,19 @@ test('current input bytes are returned rather than old source values',()=>{
  writeFileSync(path,'{"title":"different"}');
  const fresh=fixedArtifactInput(f.workspace,'/work/inputs/current.json');
  assert.notEqual(hash(old.data),hash(fresh.data));
+});
+test('real namespace preserves inputs, publishes fresh outputs, rejects aliases',{skip:process.platform!=='linux'},()=>{
+ const f=fixture(),input=fixedArtifactInput(f.workspace,'/work/inputs/current.json');
+ const program={id:'diagnostic',source:'import json,sys\nfrom pathlib import Path\nd=json.load(open(sys.argv[1]))\nPath(sys.argv[2],"result.txt").write_text(d["title"])\n',
+  inputs:[f.contract],argument_count:2,input_argument_indices:[0],output_argument_index:1};
+ const job={workspace:f.workspace,program,bound:[{...input,sha256:hash(input.data)}],output:'/work/outputs/fresh',destination:join(f.workspace,'outputs/code/fresh'),audit(){}};
+ const result=runArtifactProgram(job);
+ assert.equal(readFileSync(join(result.output,'result.txt'),'utf8'),'current');
+ assert.equal(hash(readFileSync(input.host)),hash(input.data));
+ assert.throws(()=>runArtifactProgram(job),/changed_before_publish/);
+ const bad={...job,certification:true,program:{...program,source:'import sys\nopen(sys.argv[1],"w").write("corrupt")\n'}};
+ assert.throws(()=>runArtifactProgram(bad),/program_failed/);
+ assert.equal(readFileSync(input.host,'utf8'),'{"title":"current"}');
+ const link={...job,certification:true,program:{...program,source:'import os,sys\nos.symlink(sys.argv[1],os.path.join(sys.argv[2],"link"))\n'}};
+ assert.throws(()=>runArtifactProgram(link),/link_output_rejected/);
 });
