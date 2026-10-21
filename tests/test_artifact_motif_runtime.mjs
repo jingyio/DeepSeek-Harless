@@ -32,6 +32,11 @@ test('traversal, overwrite, schema mismatch and symlink bindings fail closed',()
  assert.throws(()=>fixedArtifactInput(f.workspace,'/work/inputs/../current.json'),/path_invalid/);
  assert.equal(matchesArtifactInput(f.contract,'a.json',Buffer.from('{"title":1}')),false);
 });
+test('normal cd and bounded tail keep the whole one-line recipe receipt',()=>{
+ const f=fixture();registerArtifactContext('wrapped',f);
+ assert.equal(artifactInvocation('wrapped','cd /work && '+command()+" 2>&1 | tail -40").program.id,'test-recipe');
+ for(const c of ['cd /etc && '+command(),command()+'; rm -rf /work/inputs',command()+' | cat > /work/outputs/x'])assert.throws(()=>artifactInvocation('wrapped',c));
+});
 test('current input bytes are returned rather than old source values',()=>{
  const f=fixture();const path=join(f.workspace,'inputs/current.json');
  const old=fixedArtifactInput(f.workspace,'/work/inputs/current.json');
@@ -48,7 +53,7 @@ test('unchanged training/certification policy files are version guarded',()=>{
 });
 test('real namespace preserves inputs, publishes fresh outputs, rejects aliases',{skip:process.platform!=='linux'},()=>{
  const f=fixture(),input=fixedArtifactInput(f.workspace,'/work/inputs/current.json');
- const program={id:'diagnostic',source:'import json,sys\nfrom pathlib import Path\nd=json.load(open(sys.argv[1]))\nPath(sys.argv[2],"result.txt").write_text(d["title"])\n',
+ const program={id:'diagnostic',source:'import json,sys\nfrom pathlib import Path\nd=json.load(open(sys.argv[1]))\nout=Path(sys.argv[2]);out.mkdir()\nPath(out,"result.txt").write_text(d["title"])\n',
   inputs:[f.contract],argument_count:2,input_argument_indices:[0],output_argument_index:1};
  const job={workspace:f.workspace,program,bound:[{...input,sha256:hash(input.data)}],output:'/work/outputs/fresh',destination:join(f.workspace,'outputs/code/fresh'),audit(){}};
  const result=runArtifactProgram(job);
@@ -58,6 +63,6 @@ test('real namespace preserves inputs, publishes fresh outputs, rejects aliases'
  const bad={...job,certification:true,program:{...program,source:'import sys\nopen(sys.argv[1],"w").write("corrupt")\n'}};
  assert.throws(()=>runArtifactProgram(bad),/program_failed/);
  assert.equal(readFileSync(input.host,'utf8'),'{"title":"current"}');
- const link={...job,certification:true,program:{...program,source:'import os,sys\nos.symlink(sys.argv[1],os.path.join(sys.argv[2],"link"))\n'}};
+ const link={...job,certification:true,program:{...program,source:'import os,sys\nos.mkdir(sys.argv[2])\nos.symlink(sys.argv[1],os.path.join(sys.argv[2],"link"))\n'}};
  assert.throws(()=>runArtifactProgram(link),/link_output_rejected/);
 });

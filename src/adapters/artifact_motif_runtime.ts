@@ -1,7 +1,7 @@
 /** Versioned learned programs. The current model owns every selection/binding. */
 import {createHash, randomUUID} from 'node:crypto';
 import {readFileSync, lstatSync, realpathSync, readdirSync, existsSync, mkdirSync, mkdtempSync, writeFileSync, copyFileSync, renameSync} from 'node:fs';
-import {join, resolve, relative, isAbsolute, extname, posix} from 'node:path';
+import {join, resolve, relative, isAbsolute, extname, posix, basename, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {commandArgv} from './geneloop_shell.ts';
@@ -49,9 +49,17 @@ export function matchesArtifactInput(contract:any,path:string,data:Buffer){
 }
 export function registerArtifactContext(session:string,context:any){if(context)contexts.set(session,context);else contexts.delete(session);}
 export function artifactInvocation(session:string,command:string){
- if(!command.trim().startsWith('geneloop-recipe '))return null;
+ let transport=command.trim().replace(/^cd\s+(?:\/work|'\/work'|"\/work")\s*&&\s*/, '');
+ if(!transport.startsWith('geneloop-recipe ')){
+  if(/\bgeneloop-recipe\s/.test(command))throw Error('复用命令必须单独调用 geneloop-recipe JSON；仅支持 cd /work 前缀及保留完整回执的 tail，不能混入其它命令。');
+  return null;
+ }
  const c=contexts.get(session);if(!c)throw Error('artifact_context_not_admitted');
- let raw=command.trim().slice(16).trim();if(raw.startsWith("'")&&raw.endsWith("'"))raw=raw.slice(1,-1);
+ // The executor emits exactly one JSON receipt line. A bounded tail therefore
+ // preserves the entire receipt, including embedded stdout, without truncation.
+ const parsed=/^geneloop-recipe\s+(?:'([^']*)'|(\{[\s\S]*\}))(?:\s+2>&1)?(?:\s*\|\s*tail\s+-(?:n\s+)?[1-9][0-9]{0,3})?\s*$/.exec(transport);
+ if(!parsed)throw Error('复用参数必须是完整JSON；仅支持独立命令、cd /work &&、2>&1 及 tail -N，不支持额外写入或其它管道。');
+ const raw=parsed[1]??parsed[2];
  const value=JSON.parse(raw);
  if(digest(Object.keys(value).sort())!==digest(['id','inputs','output'])||!Array.isArray(value.inputs))throw Error('artifact_explicit_binding_required');
  const program=c.library.programs.find((p:any)=>p.id===value.id);if(!program||value.inputs.length!==program.inputs.length)throw Error('artifact_program_or_arity_changed');
@@ -78,22 +86,36 @@ export function runArtifactProgram(job:any){
  const {program,bound}=job;
  for(const b of bound)if(hash(readFileSync(b.host))!==b.sha256||hash(b.data)!==b.sha256)throw Error('artifact_input_version_changed');
  const base=mkdtempSync(join(job.workspace,'command-tmp','artifact-'));
- const scratch=join(base,'code'),inputs=join(base,'inputs'),output=join(base,'outputs'),temp=join(base,'tmp');
- for(const p of [scratch,inputs,output,temp,join(scratch,'inputs'),join(scratch,'outputs')])mkdirSync(p,{recursive:true,mode:0o700});
- const argv=new Array(program.argument_count),snapshots=[];
- for(let i=0;i<bound.length;i++){
-  const file='input-'+i+program.inputs[i].suffix,host=join(inputs,file);writeFileSync(host,bound[i].data,{mode:0o400});
-  argv[program.input_argument_indices[i]]='/work/inputs/'+file;snapshots.push(hash(readFileSync(host)));
+ const scratch=join(base,'code'),inputs=join(base,'inputs'),outputMount=join(base,'outputs'),temp=join(base,'tmp');
+ for(const p of [scratch,inputs,outputMount,temp,join(scratch,'inputs'),join(scratch,'outputs')])mkdirSync(p,{recursive:true,mode:0o700});
+ const argv=job.certificationArguments?.slice()??new Array(program.argument_count),snapshots:any[]=[],extraReadonly:any[]=[];
+ function virtual(value:string){
+  if(typeof value!=='string'||/[\x00\r\n\\]/.test(value))throw Error('artifact_snapshot_path_invalid');
+  const p=posix.resolve('/work',value);if(!p.startsWith('/work/'))throw Error('artifact_snapshot_path_outside');return p;
  }
- argv[program.output_argument_index]='/work/outputs';
- const operator=join(scratch,'geneloop_cached_program.py');writeFileSync(operator,program.source,{mode:0o400});
+ for(let i=0;i<bound.length;i++){
+  const argIndex=program.input_argument_indices[i],path=job.certificationArguments?virtual(argv[argIndex]):bound[i].path??('/work/inputs/'+basename(bound[i].host));
+  const rel=virtual(path).slice(6),host=rel.startsWith('inputs/')?join(inputs,rel.slice(7)):rel.startsWith('outputs/')?join(outputMount,rel.slice(8)):join(scratch,rel);
+  if(existsSync(host))throw Error('artifact_snapshot_path_collision');
+  mkdirSync(dirname(host),{recursive:true,mode:0o700});writeFileSync(host,bound[i].data,{mode:0o400});
+  if(!job.certificationArguments)argv[argIndex]=path;
+  snapshots.push({host,sha256:hash(readFileSync(host))});
+  if(rel.startsWith('outputs/'))extraReadonly.push({host,path:virtual(path)});
+ }
+ if(!job.certificationArguments)argv[program.output_argument_index]=job.output??'/work/outputs/artifact-result';
+ const outputVirtual=virtual(argv[program.output_argument_index]);
+ if(!outputVirtual.startsWith('/work/outputs/'))throw Error('artifact_output_must_be_fresh_child');
+ const output=join(outputMount,outputVirtual.slice(14));
+ if(existsSync(output)||snapshots.some(b=>inside(output,b.host)||inside(b.host,output)))throw Error('artifact_io_alias_rejected');
+ const operator=join(scratch,'geneloop_cached_program.py');if(existsSync(operator))throw Error('artifact_operator_path_collision');writeFileSync(operator,program.source,{mode:0o400});
  const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'";
  const command=[process.env.SSS_PYTHON??'python3','-I','-B','/work/geneloop_cached_program.py',...argv].map(quote).join(' ');
- const layout={work:base,scratch,inputs,outputs:output,temp};
+ const layout={work:base,scratch,inputs,outputs:outputMount,temp};
  const native=commandArgv(layout,command,'/work',undefined,undefined,true,{...job.resources,network:'none'});
  // The only writable persistent mount is this fresh unpublished output root.
- const mount=native.findIndex((s,i)=>s==='--ro-bind'&&native[i+1]===output&&native[i+2]==='/work/outputs');
+ const mount=native.findIndex((s,i)=>s==='--ro-bind'&&native[i+1]===outputMount&&native[i+2]==='/work/outputs');
  if(mount<0)throw Error('artifact_sandbox_mount_changed');native[mount]='--bind';
+ if(extraReadonly.length){const point=native.indexOf('--chdir');if(point<0)throw Error('artifact_sandbox_layout_changed');native.splice(point,0,...extraReadonly.flatMap(b=>['--ro-bind',b.host,b.path]));}
  const result=spawnSync(native[0],native.slice(1),{encoding:'utf8',timeout:120000,maxBuffer:1_000_000});
  if(result.error||result.status!==0)throw Error('artifact_program_failed: '+String(result.stderr??'').slice(-1400));
  for(const b of bound)if(hash(readFileSync(b.host))!==b.sha256)throw Error('artifact_input_changed_during_execution');
@@ -108,7 +130,7 @@ export function runArtifactProgram(job:any){
   }
  }
  visit(output);if(!files.length)throw Error('artifact_output_missing');
- for(let i=0;i<bound.length;i++)if(hash(readFileSync(join(inputs,'input-'+i+program.inputs[i].suffix)))!==snapshots[i])throw Error('artifact_snapshot_changed');
+ for(const b of snapshots)if(hash(readFileSync(b.host))!==b.sha256)throw Error('artifact_snapshot_changed');
  const receipt={kind:'artifact_program_receipt',program_id:program.id,nonce:job.nonce,input_versions:bound.map((b:any)=>b.sha256),
   output_directory:job.output,files,stdout:result.stdout,stderr:result.stderr,semantic_quality_accepted:false};
  if(job.certification)return {receipt,output};

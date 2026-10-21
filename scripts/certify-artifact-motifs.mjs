@@ -46,7 +46,8 @@ export function certifyArtifactRows(rows,resources={}){
    for(const text of p.literal_selectors??[])if(ownText.includes(text)&&!otherText.includes(text))throw Error('task_specific_content_not_parameterized');
    const cases=[];let sourceFiles;
    for(const [role,task,bound] of [['source',row,own],['certification',held,other]]){
-    const job={workspace:task.workspace,program:p,bound,resources,nonce:'certification',certification:true};
+    const job={workspace:task.workspace,program:p,bound,resources,nonce:'certification',certification:true,
+     ...(role==='source'?{certificationArguments:p.witness.invocation_arguments}:{})};
     const a=runArtifactProgram(job),b=runArtifactProgram(job);
     const signature=receipt=>digest({stdout:receipt.stdout,files:receipt.files.slice().sort((x,y)=>x.path.localeCompare(y.path))});
     if(signature(a.receipt)!==signature(b.receipt))throw Error('artifact_nondeterministic');

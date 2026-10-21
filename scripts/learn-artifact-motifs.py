@@ -132,6 +132,7 @@ def collect(task):
                 if not any(key.startswith(prefix) and before.get(key) != value for key, value in after.items()):
                     raise ValueError('artifact_fresh_native_output_evidence_required')
                 witness = {'task_id': task.name, 'call_id': cid, 'events_sha256': sha(events_raw), 'description': args.get('description', ''),
+                           'invocation_arguments': parts[2:],
                            'boundary_sha256': digest(boundary), 'input_paths': {str(i): str(p) for i, p in inputs.items()},
                            'input_sha256': {str(i): sha(p.read_bytes()) for i, p in inputs.items()},
                            'original_output': str(output_host),
