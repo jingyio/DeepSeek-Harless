@@ -76,8 +76,8 @@ def native_program_invocation(command):
 def collect(task):
     effective = json.loads((task / 'effective-config.json').read_text(encoding='utf-8'))
     state = json.loads((task / 'task-state.json').read_text(encoding='utf-8'))
-    if effective.get('provider_mode') != 'real' or effective.get('mode') != 'baseline' or state.get('status') != 'completed':
-        raise ValueError('completed_real_baseline_required')
+    if effective.get('provider_mode') != 'real' or effective.get('mode') not in ('baseline', 'execute') or state.get('status') != 'completed':
+        raise ValueError('completed_real_native_task_required')
     workspace = Path(effective['workspace'])
     boundaries = {r['call_id']: r for r in map(json.loads, (task / 'reuse-boundaries.jsonl').read_text(encoding='utf-8').splitlines())}
     calls, candidates, rejected = {}, [], []
@@ -132,6 +132,7 @@ def collect(task):
                 if not any(key.startswith(prefix) and before.get(key) != value for key, value in after.items()):
                     raise ValueError('artifact_fresh_native_output_evidence_required')
                 witness = {'task_id': task.name, 'call_id': cid, 'events_sha256': sha(events_raw), 'description': args.get('description', ''),
+                           'source_task_mode': effective['mode'], 'source_rsi': effective.get('rsi', False),
                            'invocation_arguments': parts[2:],
                            'boundary_sha256': digest(boundary), 'input_paths': {str(i): str(p) for i, p in inputs.items()},
                            'input_sha256': {str(i): sha(p.read_bytes()) for i, p in inputs.items()},
@@ -140,7 +141,7 @@ def collect(task):
                 candidates.append(program_from_witness(source_raw.decode('utf-8'), parts[2:], inputs, outputs[0], witness))
             except (ValueError, KeyError, OSError, SyntaxError) as error:
                 rejected.append({'call_id': cid, 'reason': str(error)[:180]})
-    return {'task_id': task.name, 'scene': state['scene'], 'workspace': str(workspace),
+    return {'task_id': task.name, 'scene': state['scene'], 'workspace': str(workspace), 'source_task_mode': effective['mode'],
             'approved_inputs': json.loads((workspace / 'approved-inputs.json').read_text(encoding='utf-8'))['files'],
             'candidates': candidates, 'rejected': rejected}
 
