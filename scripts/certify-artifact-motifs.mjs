@@ -5,6 +5,14 @@ import {fileURLToPath} from 'node:url';
 import {artifactLocks,hash,identity,matchesArtifactInput,runArtifactProgram} from '../src/adapters/artifact_motif_runtime.ts';
 import {digest} from '../src/motif_core/online_skill_runtime.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
+/** Hash the representation that is actually persisted, including optional fields. */
+export function sealArtifactLibrary(body){
+ const persisted=JSON.parse(JSON.stringify(body,function(key,value){
+  if(typeof value==='number'&&!Number.isFinite(value)||['function','symbol','bigint'].includes(typeof value)||Array.isArray(this)&&value===undefined)throw Error('artifact_metadata_must_be_json');
+  return value;
+ }));
+ return {...persisted,digest:digest(persisted)};
+}
 function candidates(workspace,contract){
  const found=[];
  function visit(path,depth=0){
@@ -96,7 +104,7 @@ export function certifyArtifactRows(rows,resources={}){
  const observedCommon=Object.fromEntries(Object.entries(held.approved_inputs??{}).filter(([name,version])=>training.every(r=>r.approved_inputs?.[name]===version)));
  const body={version:1,kind:'witnessed_artifact_program_library',scene:held.scene,programs,observed_common_approved_inputs:observedCommon,code_locks:Object.fromEntries(artifactLocks.map(p=>[p,hash(readFileSync(join(root,p)))])),
   heldout_task_id:held.task_id,compilation_model_requests:0,scope:'native_program_source_equivalence_and_distinct_input_determinism_not_semantic_quality'};
- return {library:{...body,digest:digest(body)},report:{published:programs.length,rejected,quality_cost_promoted:false}};
+ return {library:sealArtifactLibrary(body),report:{published:programs.length,rejected,quality_cost_promoted:false}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const result=certifyArtifactRows(JSON.parse(readFileSync(process.argv[2],'utf8')),process.env.GENELOOP_ARTIFACT_RESOURCES?JSON.parse(process.env.GENELOOP_ARTIFACT_RESOURCES):{});

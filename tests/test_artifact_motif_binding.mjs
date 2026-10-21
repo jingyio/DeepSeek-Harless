@@ -4,7 +4,17 @@ import {mkdtempSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {hash} from '../src/adapters/artifact_motif_runtime.ts';
-import {witnessedHeldoutInputs} from '../scripts/certify-artifact-motifs.mjs';
+import {witnessedHeldoutInputs,sealArtifactLibrary} from '../scripts/certify-artifact-motifs.mjs';
+import {digest} from '../src/motif_core/online_skill_runtime.mjs';
+
+test('optional non-SVG profile cannot invalidate the persisted library digest',()=>{
+ const library=sealArtifactLibrary({version:1,programs:[{id:'non-svg',output_profile:undefined,interface:'中文完整接口'}]});
+ const roundtrip=JSON.parse(JSON.stringify(library)),{digest:claimed,...body}=roundtrip;
+ assert.equal(claimed,digest(body));
+ assert.equal(Object.hasOwn(body.programs[0],'output_profile'),false);
+ assert.throws(()=>sealArtifactLibrary({metric:NaN}),/must_be_json/);
+ assert.throws(()=>sealArtifactLibrary({parameters:[undefined]}),/must_be_json/);
+});
 
 test('actual heldout argument flow wins over unrelated same-shaped JSON files',()=>{
  const workspace=mkdtempSync(join(tmpdir(),'artifact-binding-'));
