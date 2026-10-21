@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,symlinkSync,readFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,symlinkSync,readFileSync,chmodSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {registerArtifactContext,artifactInvocation,fixedArtifactInput,matchesArtifactInput,hash,runArtifactProgram} from '../src/adapters/artifact_motif_runtime.ts';
+import {registerArtifactContext,artifactInvocation,fixedArtifactInput,matchesArtifactInput,hash,runArtifactProgram,provideArtifactPrograms,artifactProgramPath} from '../src/adapters/artifact_motif_runtime.ts';
 
 function fixture(){
  const workspace=mkdtempSync(join(tmpdir(),'artifact-guard-'));
@@ -43,6 +43,35 @@ test('current input bytes are returned rather than old source values',()=>{
  writeFileSync(path,'{"title":"different"}');
  const fresh=fixedArtifactInput(f.workspace,'/work/inputs/current.json');
  assert.notEqual(hash(old.data),hash(fresh.data));
+});
+
+test('ordinary Python entry binds current positional arguments through the same guards',()=>{
+ const f=fixture(),source='"""Diagnostic positional interface."""\n';
+ Object.assign(f.program,{source,source_sha256:hash(source),argument_count:2,input_argument_indices:[0],output_argument_index:1});
+ const path=artifactProgramPath(f.library,f.program);
+ provideArtifactPrograms(f);registerArtifactContext('native-python',f);
+ writeFileSync(join(f.workspace,'inputs','new values.json'),'{"title":"new input"}');
+ const job=artifactInvocation('native-python',`cd /work && python3 '${path}' '/work/inputs/new values.json' /work/outputs/new-result 2>&1 | tail -40`);
+ assert.equal(job.bound[0].path,'/work/inputs/new values.json');
+ assert.equal(job.output,'/work/outputs/new-result');
+ assert.equal(job.program.source,source);
+ assert.throws(()=>artifactInvocation('native-python',`python3 '${path}' /work/inputs/current.json /work/outputs/fresh | cat`),/standalone_python/);
+ assert.throws(()=>artifactInvocation('native-python',`python3 '${path}' /work/inputs/current.json /work/outputs/fresh; echo done`),/standalone_python/);
+ assert.throws(()=>artifactInvocation('native-python',`python3 '${path}' /work/inputs/current.json`),/interface_changed/);
+ assert.equal(artifactInvocation('native-python','python3 /work/ordinary.py'),null);
+});
+
+test('workspace cached source is not an authority and tampering invalidates reuse',()=>{
+ const f=fixture(),source='"""Original witnessed source."""\n';
+ Object.assign(f.program,{source,source_sha256:hash(source),argument_count:2,input_argument_indices:[0],output_argument_index:1});
+ provideArtifactPrograms(f);registerArtifactContext('changed-cache',f);
+ const path=artifactProgramPath(f.library,f.program),host=join(f.workspace,'code',path.slice(6));
+ // A user owning the workspace can change permissions; the certified library
+ // and byte check, rather than the cached copy's file mode, are the authority.
+ chmodSync(host,0o600);writeFileSync(host,'changed source');
+ assert.throws(()=>provideArtifactPrograms(f),/cached_source_changed/);
+ assert.throws(()=>artifactInvocation('changed-cache',`python3 '${path}' /work/inputs/current.json /work/outputs/fresh`),/cached_source_changed/);
+ assert.equal(f.program.source,source);
 });
 test('unchanged training/certification policy files are version guarded',()=>{
  const f=fixture();f.program.certification.invariant_input_versions={0:hash(readFileSync(join(f.workspace,'inputs/current.json')))};

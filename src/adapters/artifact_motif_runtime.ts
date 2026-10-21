@@ -48,19 +48,55 @@ export function matchesArtifactInput(contract:any,path:string,data:Buffer){
  }catch{return false;}
 }
 export function registerArtifactContext(session:string,context:any){if(context)contexts.set(session,context);else contexts.delete(session);}
+export function artifactProgramPath(library:any,program:any){return '/work/.geneloop-motifs/'+library.digest.slice(0,16)+'/'+program.id+'.py';}
+export function provideArtifactPrograms(context:any){
+ const dir=join(context.workspace,'code','.geneloop-motifs',context.library.digest.slice(0,16));
+ mkdirSync(dir,{recursive:true,mode:0o700});
+ if(realpathSync(dir)!==resolve(dir)||!lstatSync(dir).isDirectory())throw Error('artifact_cache_directory_not_fixed');
+ for(const p of context.library.programs){
+  const file=join(dir,p.id+'.py');
+  if(!existsSync(file))writeFileSync(file,p.source,{mode:0o400,flag:'wx'});
+  if(realpathSync(file)!==resolve(file)||!lstatSync(file).isFile()||lstatSync(file).nlink!==1||hash(readFileSync(file))!==p.source_sha256)throw Error('artifact_cached_source_changed');
+ }
+ return context;
+}
+function commandWords(value:string){
+ const words:string[]=[];let word='',quote='',active=false;
+ for(let i=0;i<value.length;i++){
+  const ch=value[i];
+  if(quote){if(ch===quote){quote='';active=true;}else if(ch==='\\'&&quote==='"'&&['"','\\'].includes(value[i+1]))word+=value[++i];else if(ch==='$'||ch==='`'||/[\x00\r\n]/.test(ch))throw Error('artifact_command_expansion_rejected');else word+=ch;continue;}
+  if(ch==='\''||ch==='"'){quote=ch;active=true;continue;}
+  if(/\s/.test(ch)){if(active||word){words.push(word);word='';active=false;}continue;}
+  if(/[;&|<>$`\x00\r\n]/.test(ch))throw Error('artifact_standalone_python_required');
+  if(ch==='\\'){if(++i>=value.length)throw Error('artifact_command_quote_incomplete');word+=value[i];active=true;continue;}
+  word+=ch;active=true;
+ }
+ if(quote)throw Error('artifact_command_quote_incomplete');if(active||word)words.push(word);return words;
+}
 export function artifactInvocation(session:string,command:string){
  let transport=command.trim().replace(/^cd\s+(?:\/work|'\/work'|"\/work")\s*&&\s*/, '');
- if(!transport.startsWith('geneloop-recipe ')){
+ const native=transport.startsWith('python ')||transport.startsWith('python3 ');
+ const nativeRecipe=native&&transport.includes('/work/.geneloop-motifs/');
+ if(!transport.startsWith('geneloop-recipe ')&&!nativeRecipe){
   if(/\bgeneloop-recipe\s/.test(command))throw Error('复用命令必须单独调用 geneloop-recipe JSON；仅支持 cd /work 前缀及保留完整回执的 tail，不能混入其它命令。');
   return null;
  }
  const c=contexts.get(session);if(!c)throw Error('artifact_context_not_admitted');
+ let value:any;
+ if(nativeRecipe){
+  const plain=transport.replace(/(?:\s+2>&1)?\s*\|\s*tail\s+-(?:n\s+)?[1-9][0-9]{0,3}\s*$/,'').replace(/\s+2>&1\s*$/,'');
+  const words=commandWords(plain),program=c.library.programs.find((p:any)=>artifactProgramPath(c.library,p)===words[1]);
+  if(!program||words.length!==program.argument_count+2)throw Error('artifact_native_interface_changed');
+  const cache=fixedArtifactInput(c.workspace,words[1]);if(hash(cache.data)!==program.source_sha256)throw Error('artifact_cached_source_changed');
+  const args=words.slice(2);value={id:program.id,inputs:program.input_argument_indices.map((i:number)=>args[i]),output:args[program.output_argument_index]};
+ }else{
  // The executor emits exactly one JSON receipt line. A bounded tail therefore
  // preserves the entire receipt, including embedded stdout, without truncation.
  const parsed=/^geneloop-recipe\s+(?:'([^']*)'|(\{[\s\S]*\}))(?:\s+2>&1)?(?:\s*\|\s*tail\s+-(?:n\s+)?[1-9][0-9]{0,3})?\s*$/.exec(transport);
  if(!parsed)throw Error('复用参数必须是完整JSON；仅支持独立命令、cd /work &&、2>&1 及 tail -N，不支持额外写入或其它管道。');
  const raw=parsed[1]??parsed[2];
- const value=JSON.parse(raw);
+ value=JSON.parse(raw);
+ }
  if(digest(Object.keys(value).sort())!==digest(['id','inputs','output'])||!Array.isArray(value.inputs))throw Error('artifact_explicit_binding_required');
  const program=c.library.programs.find((p:any)=>p.id===value.id);if(!program||value.inputs.length!==program.inputs.length)throw Error('artifact_program_or_arity_changed');
  if(c.allowOutput!==true)throw Error('artifact_output_not_authorized');

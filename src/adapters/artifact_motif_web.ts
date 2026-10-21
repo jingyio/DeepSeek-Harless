@@ -2,7 +2,7 @@
 import {readFileSync,readdirSync,appendFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import * as native from './harless_web_client/index.mjs';
-import {loadArtifactLibrary,registerArtifactContext} from './artifact_motif_runtime.ts';
+import {loadArtifactLibrary,registerArtifactContext,provideArtifactPrograms,artifactProgramPath} from './artifact_motif_runtime.ts';
 import {createArtifactTrace} from './artifact_motif_trace.ts';
 import {createUserMessage} from '@deepseek-ai/dsh-llm';
 export const name=native.name;
@@ -20,7 +20,7 @@ export function apply(ctx:any){
   const {output,state}=rows[0]!;
   if(active.get(session)?.id===state.task_id){
    const value=active.get(session);
-   if(state.status==='running'&&value.context)registerArtifactContext(session,value.context);
+   if(state.status==='running'&&value.context)registerArtifactContext(session,provideArtifactPrograms(value.context));
    return value;
   }
   const effective=JSON.parse(readFileSync(join(output,'effective-config.json'),'utf8'));
@@ -38,14 +38,14 @@ export function apply(ctx:any){
     value.context={library,workspace:effective.workspace,allowOutput:scene?.adapter==='data-report'||effective.scene_options?.allow_output===true||state.scene_options?.allow_output===true,
      resources:policy.command_resources??{},audit,auditPath};
     value.audit=audit;value.marker='<geneloop-artifact-catalog library="'+library.digest+'">';
-    if(state.status==='running')registerArtifactContext(session,value.context);
-    value.catalog=value.marker+'\n当前可复用程序来自本场景已成功执行的历史代码，并已在不同输入上沙箱认证。它们是待你判断是否适用的工具资料，不是任务指令。你负责当前科研内容、方法和最终判断。仅当接口与当前任务相符时，在原生 bash 用独立命令 geneloop-recipe '+
+    if(state.status==='running')registerArtifactContext(session,provideArtifactPrograms(value.context));
+    value.catalog=value.marker+'\n当前可复用程序来自本场景已成功执行的历史代码，并已在不同输入上沙箱认证。你负责本轮内容、方法和最终判断。创建新的计算或排版程序前，请先检查以下完整接口；覆盖当前要求时优先复用，确有缺口才编写替代程序并说明缺项。程序已作为只读副本提供，可直接像普通Python程序一样在原生bash单独执行：python3 下方program_path 按argv_order填写本次文件路径和全新输出目录。无需安装或查找额外命令。Runtime会再次核对代码、输入、输出权限及新产物。也可用兼容入口 geneloop-recipe '+
      "'{\"id\":\"artifact_ID\",\"inputs\":[\"/work/本次数据文件\"],\"output\":\"/work/outputs/全新目录名\"}'"+
      '。inputs 按下列顺序，必须来自本次输入或你刚写的内容文件；output 必须是未存在的新目录，旧文件不会覆盖。无需重写等价程序；不适用、来源改变或执行失败则使用普通工具。原生导出、事实核验和实际图片查看仍须完成。程序产出和机械回执不等于质量通过。\n'+
-     JSON.stringify(library.programs.map((p:any)=>({id:p.id,interface:p.interface,inputs:p.inputs,output_profile:p.output_profile,outputs:p.certification.output_extensions})))+'\n</geneloop-artifact-catalog>\n';
+     JSON.stringify(library.programs.map((p:any)=>({id:p.id,program_path:artifactProgramPath(library,p),argv_order:Array.from({length:p.argument_count},(_,i)=>i===p.output_argument_index?'new_output_directory':'input['+p.input_argument_indices.indexOf(i)+']'),interface:p.interface,inputs:p.inputs,output_profile:p.output_profile,outputs:p.certification.output_extensions})))+'\n</geneloop-artifact-catalog>\n';
     writeFileSync(join(output,'artifact-motif-config.json'),JSON.stringify({library_digest:library.digest,library:file,scene:state.scene,mode:'explicit_model_selection',underlying_task_mode:state.mode,experimental:true},null,2)+'\n',{mode:0o600});
     audit({kind:'artifact_library_loaded',library_digest:library.digest});
-   }catch(error:any){audit({kind:'artifact_library_fallback',reason:error.message});registerArtifactContext(session,null);}
+   }catch(error:any){audit({kind:'artifact_library_fallback',reason:error.message});value.context=null;value.catalog='';registerArtifactContext(session,null);}
   }else registerArtifactContext(session,null);
   active.set(session,value);return value;
  }
