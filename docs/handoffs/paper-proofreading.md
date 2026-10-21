@@ -1,5 +1,17 @@
 # 论文校对 当前交接
 
+## 2026-10-21：修复后五篇论文十次真实复测
+
+- 目标与范围：按用户要求重启原五篇完整BibTeX文件任务，每篇两次，仅Motif；沿用旧10次Baseline与旧10次Motif，不新增普通缓存或Baseline。固定代码/库、不在中途改规则或回灌测试轨迹。
+- 分支 / 代码：`codex/paper-evidence-handoff-20261021`，运行提交`ca1bbdcc`、接入修复`fe41cd39`。只新增实验记录，本地提交未推送/PR/合并/部署；原Desktop/SSS和生产未动。
+- 已完成与验证：10/10正常结束、核心9/10正确；44工具Schema/顺序与旧Baseline一致、十次源码快照一致、题面/来源hash一致、原件未变。真实DeepSeek Flash/off，输出8192、300秒，cap/request=null、reset_history=false；原生压力检查点策略不变。无机制/接口改动，复用前轮相关94通过/2跳过、smoke/motif通过记录，未重复全量测试；旧gateway超大上传ECONNRESET失败仍保留。
+- 实验结论：见[本轮复测](../experiments/paper-multipaper-retest-20261021-v1.md)及[十次指标](../experiments/paper-multipaper-retest-20261021-v1.csv)。Baseline195请求/94785输出Token，本轮110/52100（-43.59%/-45.03%）；未缓存输入288898→284698（-1.45%），上轮冷输入大增未重现。核心9/10与Baseline同通过率，但失败类型不同，不能称无损。
+- 机制与反例：4/10任务实际接管21程序，8种程序、4种跨论文复用；Prefix两轮均正确，54→10请求、USD0.069582→0.024544。QLoRA首轮实际修正管道后接管4程序。其余6次未提交选择/缓存命令，不能将全部请求下降归因于自动接管或Embedding。S4第二轮模型原生解析器将8条有year记录误报缺失，明确保留；不是漏报一条缺失年份。最终执行后仍14次已知用量模型请求，包含必要总结，不能全算可省。
+- 配置与数据：私有`.local/paper-multipaper-retest-20261021-v1/`保留protocol/授权、run.py、固定sidecar、结果/回答/Breakdown、comparison、mechanism-audit、verification；原生事件/账本在各web run。复用`execute-transport.json`的冻结原12程序/1复用契约/1Negative，库digest `02a887057fc0…`，compactContext=true、阈值不变。自动学习关闭、模型学习0、Embedding0、Negative提示0；这是消费已有学习成果的执行回归，不是新的RSI学习验收。
+- 权限与费用：新增110请求，已知用量估费USD0.170113848；DDPM两笔502无用量，完整保留USD0.107458800预约，保守合计USD0.277572648，比Baseline USD0.243661320高13.92%，最终净费下降尚未确认。累计6559请求/USD11.741008680，旧8 unknown/2 pending保留，新增2 unknown/0 pending；账单未核。上轮137请求/USD0.336523500开发验证另列，不能隐藏或宣称本十次已摊销。
+- 接手下一步：核对两笔未知账单；优先检查为何六次没有选用候选以及原生解析结果的覆盖/失效机制，采用局部回归，不重跑相同Baseline。少量同输入观察不能证明稳定一般收益，不直接发布或自动提PR。
+- 回退与风险：本轮未改机制或生产配置，移除实验sidecar即可走原生路径；保留全部失败与累计历史。十次真实任务及runner全部结束，无后台继续付费；未联网核验文献真实性、未做PDF或全部文字人工盲评，仅本地macOS验收。
+
 ## 2026-10-21：上下文、输出字段与选择传输修复
 
 - 目标与范围：接续五篇评测的冷输入/重复解析归因，在独立分支`codex/paper-evidence-handoff-20261021`开发；实现提交`a62a037f`、`73e3e224`、`fe41cd39`，仅本地，未推送/PR/合并/部署，Desktop/SSS脏工作区未改。
