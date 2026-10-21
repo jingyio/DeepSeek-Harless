@@ -79,9 +79,9 @@ export function runArtifactProgram(job:any){
   argv[program.input_argument_indices[i]]='/work/inputs/'+file;snapshots.push(hash(readFileSync(host)));
  }
  argv[program.output_argument_index]='/work/outputs';
- const operator=join(scratch,'operator.py');writeFileSync(operator,program.source,{mode:0o400});
+ const operator=join(scratch,'geneloop_cached_program.py');writeFileSync(operator,program.source,{mode:0o400});
  const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'";
- const command=[process.env.SSS_PYTHON??'python3','/work/operator.py',...argv].map(quote).join(' ');
+ const command=[process.env.SSS_PYTHON??'python3','-I','-B','/work/geneloop_cached_program.py',...argv].map(quote).join(' ');
  const layout={work:base,scratch,inputs,outputs:output,temp};
  const native=commandArgv(layout,command,'/work',undefined,undefined,true,{...job.resources,network:'none'});
  // The only writable persistent mount is this fresh unpublished output root.
