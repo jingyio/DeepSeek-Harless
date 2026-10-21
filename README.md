@@ -1,5 +1,7 @@
 # GeneLoop：Motif × DeepSeek Harness × 自定义 MCP
 
+新增独立的 Artifact Motif 实验：从真实任务中学到可换输入的 Python 计算／排版程序，经独立输入认证后，通过原生 Bash 复用并保留逐次回执。它仍是显式启用的实验入口，不替换正式服务或默认库；费用下降与反例一起记录。见[接口与复现](docs/interfaces.md#artifact-motif-独立实验接口2026-10-21)和[三场景成本学习](docs/experiments/three-scene-motif-cost-learning-20261021.md)。
+
 管理员可在“设置 → 账户与安全 → 邀请同学”批量生成 1–20 个邀请码（默认 5 个）。邀请码永久有效、每码注册一个账号后失效；支持逐个或全部复制，关闭页面不会使未用码失效。生成结果仅在当前页面显示，请离开前复制保存。
 
 正式DeepSeek Web已移除账号级并发数量上限，费用、请求次数和应用输出额度均为null，原账本继续累计。普通Chat、三场景及File转发使用393216输出容量，File独立SDK继承同一策略。2026-10-21当前后端运行7e167ed（Paper31/PPT28/File15），已统一发布并完成新一轮五成员、本机网关783次真实请求复测。公网旧Quick Tunnel失效，候选隧道已由统一入口准备且浏览器登录页正常，原Worker更新仍需维护者登录Cloudflare；不能把本机压力结果称为公网恢复。质量反例、费用、测试判据缺陷与未接入能力均见[本轮记录](docs/experiments/dsh-native-capabilities-20261021.md)；早期额度修复见[历史记录](docs/experiments/provider-output-20261020.md)。
