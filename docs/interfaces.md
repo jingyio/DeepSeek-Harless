@@ -1120,3 +1120,19 @@ TypeScript Runtime 在首次模型请求前验证当前任务ID、输出授权�
 ### File公开费用元数据（2026-10-21）
 
 `GET /api/harless/file-scene` 的 `rsi.cost_usd` 仅在本Task、同账号、同原SDK运行的sealed record摘要和完整观测用量均核验后返回代理估费；它不表示服务商实付。未取得完整观测或原取消预留仍未知时返回`null`，不能把预留作为实际费用。`budget_accounted_usd`/`cost_upper_usd`保留原保守金额，`usage_complete`、`missing_observed_usage_requests`及`cost_basis`区分`observed_usage`、`conservative_reservation`和`unavailable`。零请求且原计量金额零可返回零。缺证据保持未知，不公开原文件路径，不覆盖历史SDK/Task/预算池或原账本；平台晚到回执的独立审计也不等于修改SDK旧未知行。
+
+### Artifact Motif 独立实验接口（2026-10-21）
+
+`scripts/artifact-motif-web.py` 包装原 `harness-web.py`，只在其私有 host patch 中替换客户端和 Bash 执行器。原生产入口、File SDK、上游 DSH、工具 schema 和既有库均保留。正式服务仍只使用 `npm run service -- ...`；此脚本仅用于隔离实验。
+
+离线入口为 `scripts/learn-artifact-motifs.py --task HELDOUT_TASK --task TRAINING_TASK --output OBSERVATIONS.json`，再运行 `node scripts/certify-artifact-motifs.mjs OBSERVATIONS.json EXISTING_NEW_DIRECTORY`。第一个任务作为独立留出。来源必须是已完成的真实 Baseline 或 Execute 任务，且确实有原生 Python 调用、调用前的精确源码／输入和调用后新输出；修复后的程序可从 Execute 的普通原生调用继续学习。机械重放只补参数流证据，不算新的独立业务决定。编译不调用模型。
+
+IR 包含源码与摘要、完整接口、输入形状／来源、位置参数流、依赖锁和认证案例。程序在不同输入上各重放两次，核对确定性、原始产物和当前协议版本；这不是科研语义或排版质量证明。认证依赖原实验 Python 科学计算环境，变更环境后应重新认证。当前候选仅覆盖固定分析协议和固定三页风格，不宣称任意论文、任意 PPT 模板均可复用。
+
+私有 `GENELOOP_ARTIFACT_MOTIF_CONFIG` 的结构为 `{"owner":"当前账号ID","mode":"execute","libraries":{"场景ID":"绝对库路径"}}`。只有当前账号自己的 `mode=execute,rsi=true` Task 启用；缺配置、模式／来源／代码锁不符则回原生工具。早期诊断专用 `experimental_baseline_sidecar:true` 不能冒充实际 Execute 成绩。`GENELOOP_ARTIFACT_LEDGER` 指向原追加账本，不清账本或重置正式计数。
+
+模型仍决定适用性、当前内容、输入绑定及最终判断。接口可用 `geneloop-recipe JSON`，也可原生执行 `python3 已认证程序.py 本次输入... 全新输出目录`。相对路径按实际 workdir 解析；模型复制的程序须完整字节匹配唯一认证源码，修改后的程序按普通代码执行，不能记认证复用。独立调用支持有界 tail 回执，不接受额外写入／任意管道混入认证命令。工作区缓存副本本身不是权限依据。
+
+TypeScript runtime 核对账号／Task、输入类型和版本、输出授权及新目录，在新 namespace 中运行，只读输入和固定公共依赖、禁网，原子发布新产物与原样源码。执行仍需要当前 Linux Python 和 bubblewrap；不宣称 Windows 执行或脱离 Python 的基础插件已完成。现有普通工具、取消与权限检查继续有效。
+
+私有 `artifact-motif-audit.jsonl` 区分 `artifact_library_loaded`、首请求目录可见、`artifact_program_selected`、`artifact_program_verified` 与回退。完整程序复用减少代码重写，不等同于旧图机制跳过模型决策；旧 `verified_skips=0` 不改写。成本须核对真实账本的命中／未命中输入、输出、所有重试和训练费用；独立计量进程的数字 `global_request_id` 会重叠，跨进程审计必须结合 Task、请求 ID 和时间。

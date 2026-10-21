@@ -1,5 +1,15 @@
 # 科研 PPT 当前交接
 
+## 2026-10-21：固定风格程序复用成本实验
+
+- 本轮：`codex/motif-cost-learning-20261021`，实现`76ca3e2`；`artifact_motif_*`与离线学习／认证脚本，默认关闭。全PPT由GeneLoop制作、修改；测试者只提交题目、读取和复制原始成品。
+- 最新用户范围：不以PPT内容正确性作为验收项，比较同一固定风格和真实交付成本；双方保持完整ppt-master Default、三页、可编辑形状与PPTX/PDF/PNG。不要把免除双方内容审阅的共同改动归因于Motif。
+- 最新匹配：90→106请求、10,538,864→9,876,883总Token、USD0.14433796→0.11510303，认证程序实际执行1次；时间292.4→335.5秒。请求仍增加，不能宣称所有环节都复用或总会省费。此前v12费用上升2.7%、未触发整程序认证，保留反例。
+- 库范围：从历史正常GeneLoop三页渲染程序及独立新文章认证，当前只覆盖固定三页JSON／风格；不是完整ppt-master导出流程的连续执行库。来源、版本守卫、原件只读和语义回退保留；候选IR不直接替换正式旧库。
+- 验证：Linux完整Python1718／Node1359通过、各4skip，smoke/motif通过；当前例实际生成3页、126个可编辑形状、备注每页超过40汉字，真实PNG返回模型。未作内容质量结论。
+- 复现／交付：见[实验记录](../experiments/three-scene-motif-cost-learning-20261021.md)、[接口](../interfaces.md#artifact-motif-独立实验接口2026-10-21)和忽略的`.local/deliverables/geneloop-motif-cost-learning-20261021/`；原任务、所有失败与费用留在私有部署目录的同名实验根。
+- 正式服务仍7e167ed，未替换库／未重启。后续先扩大不同页数和模板的覆盖，再决定正式接线；回退实验只需不设置私有Artifact配置，不能删除历史文件。
+
 ## 2026-10-20：与 File 及 PR92 共同集成（PR93，待审）
 
 - `codex/integrate-file-ppt-rsi` / 源码 `6603d7d` 已推送 [PR93](https://github.com/jingyio/GeneLoop/pull/93)，保留 PR88 原提交祖先关系，未合并/部署。
