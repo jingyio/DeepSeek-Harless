@@ -6,7 +6,7 @@ import {artifactInvocation} from './artifact_motif_runtime.ts';
 import {resolveExecutionAgent} from './geneloop_delegation.ts';
 export default class ArtifactMotifShell extends GeneLoopShell {
  resolve(request:any):any{
-  const agent=resolveExecutionAgent(this.ctx),job=agent&&artifactInvocation(agent.session.id,request.command);
+  const agent=resolveExecutionAgent(this.ctx),job=agent&&artifactInvocation(agent.session.id,request.command,request.workdir);
   const spec=super.resolve(request);
   if(job)spec.artifactJob=job;
   return spec;

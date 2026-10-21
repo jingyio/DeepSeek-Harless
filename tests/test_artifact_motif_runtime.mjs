@@ -55,6 +55,12 @@ test('ordinary Python entry binds current positional arguments through the same 
  assert.equal(job.bound[0].path,'/work/inputs/new values.json');
  assert.equal(job.output,'/work/outputs/new-result');
  assert.equal(job.program.source,source);
+ const relative=artifactInvocation('native-python',`cd /work && python3 '${path.slice(6)}' inputs/current.json inputs/../outputs/relative-proof`);
+ assert.equal(relative.bound[0].path,'/work/inputs/current.json');
+ assert.equal(relative.output,'/work/outputs/relative-proof');
+ assert.throws(()=>artifactInvocation('native-python',`cd /work && python3 '${path.slice(6)}' inputs/current.json outputs/echo-proof; echo \"[exit code: $?]\"`),/standalone_python/);
+ const workdir=artifactInvocation('native-python',`python3 '${path}' ../inputs/current.json ../outputs/from-inputs`, '/work/inputs');
+ assert.equal(workdir.output,'/work/outputs/from-inputs');
  assert.throws(()=>artifactInvocation('native-python',`python3 '${path}' /work/inputs/current.json /work/outputs/fresh | cat`),/standalone_python/);
  assert.throws(()=>artifactInvocation('native-python',`python3 '${path}' /work/inputs/current.json /work/outputs/fresh; echo done`),/standalone_python/);
  assert.throws(()=>artifactInvocation('native-python',`python3 '${path}' /work/inputs/current.json`),/interface_changed/);

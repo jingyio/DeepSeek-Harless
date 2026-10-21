@@ -73,10 +73,12 @@ function commandWords(value:string){
  }
  if(quote)throw Error('artifact_command_quote_incomplete');if(active||word)words.push(word);return words;
 }
-export function artifactInvocation(session:string,command:string){
- let transport=command.trim().replace(/^cd\s+(?:\/work|'\/work'|"\/work")\s*&&\s*/, '');
+export function artifactInvocation(session:string,command:string,workdir='/work'){
+ const prefix=/^cd\s+(?:\/work|'\/work'|"\/work")\s*&&\s*/;
+ let transport=command.trim();const cwd=prefix.test(transport)?'/work':posix.resolve('/work',workdir);
+ transport=transport.replace(prefix,'');
  const native=transport.startsWith('python ')||transport.startsWith('python3 ');
- const nativeRecipe=native&&transport.includes('/work/.geneloop-motifs/');
+ const nativeRecipe=native&&transport.includes('.geneloop-motifs/');
  if(!transport.startsWith('geneloop-recipe ')&&!nativeRecipe){
   if(/\bgeneloop-recipe\s/.test(command))throw Error('复用命令必须单独调用 geneloop-recipe JSON；仅支持 cd /work 前缀及保留完整回执的 tail，不能混入其它命令。');
   return null;
@@ -85,10 +87,10 @@ export function artifactInvocation(session:string,command:string){
  let value:any;
  if(nativeRecipe){
   const plain=transport.replace(/(?:\s+2>&1)?\s*\|\s*tail\s+-(?:n\s+)?[1-9][0-9]{0,3}\s*$/,'').replace(/\s+2>&1\s*$/,'');
-  const words=commandWords(plain),program=c.library.programs.find((p:any)=>artifactProgramPath(c.library,p)===words[1]);
+  const words=commandWords(plain),path=posix.resolve(cwd,words[1]),program=c.library.programs.find((p:any)=>artifactProgramPath(c.library,p)===path);
   if(!program||words.length!==program.argument_count+2)throw Error('artifact_native_interface_changed');
-  const cache=fixedArtifactInput(c.workspace,words[1]);if(hash(cache.data)!==program.source_sha256)throw Error('artifact_cached_source_changed');
-  const args=words.slice(2);value={id:program.id,inputs:program.input_argument_indices.map((i:number)=>args[i]),output:args[program.output_argument_index]};
+  const cache=fixedArtifactInput(c.workspace,path);if(hash(cache.data)!==program.source_sha256)throw Error('artifact_cached_source_changed');
+  const args=words.slice(2).map((arg:string)=>posix.resolve(cwd,arg));value={id:program.id,inputs:program.input_argument_indices.map((i:number)=>args[i]),output:args[program.output_argument_index]};
  }else{
  // The executor emits exactly one JSON receipt line. A bounded tail therefore
  // preserves the entire receipt, including embedded stdout, without truncation.
@@ -111,7 +113,7 @@ export function artifactInvocation(session:string,command:string){
  if(typeof value.output!=='string'||!/^\/work\/outputs\/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(value.output))throw Error('artifact_new_output_directory_required');
  const destination=join(c.workspace,'outputs/code',value.output.slice(14));
  if(existsSync(destination))throw Error('artifact_output_already_exists');
- c.audit({kind:'artifact_program_selected',program_id:program.id,library_digest:c.library.digest,input_versions:bound.map((b:any)=>b.sha256),model_owned_selection:true});
+ c.audit({kind:'artifact_program_selected',program_id:program.id,library_digest:c.library.digest,input_versions:bound.map((b:any)=>b.sha256),model_owned_selection:true,entry:nativeRecipe?'native_python':'recipe_json'});
  return {...c,program,bound,output:value.output,destination,nonce:randomUUID()};
 }
 
