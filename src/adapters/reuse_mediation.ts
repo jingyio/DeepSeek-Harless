@@ -16,8 +16,11 @@ const own=(o:any,k:string)=>o!==null&&typeof o==='object'&&Object.hasOwn(o,k);
 const forbidden=new Set(['__proto__','prototype','constructor']);
 // A compiler diagnostic, never a shell rewrite or an execution grant. Preserve
 // the model's static plan exactly, including semantic patches, for a NEW call.
-export function reuseSyntaxCorrection(command:string){
- const match=/^(?:cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*)?geneloop-reuse\s+('?)(\{[\s\S]*)$/.exec(command.trim());
+export function reuseSyntaxCorrection(command:string,verb='geneloop-reuse'){
+ if(!['geneloop-reuse','geneloop-resolve'].includes(verb))return null;
+ const pattern=verb==='geneloop-resolve'?/^(?:cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*)?geneloop-resolve\s+('?)(\{[\s\S]*)$/:
+  /^(?:cd\s+(?:'\/work'|"\/work"|\/work)\s*&&\s*)?geneloop-reuse\s+('?)(\{[\s\S]*)$/;
+ const match=pattern.exec(command.trim());
  if(!match||command.length>256000)return null;
  const raw=match[2];let depth=0,string=false,escaped=false;
  for(let i=0;i<raw.length;i++){
@@ -28,8 +31,15 @@ export function reuseSyntaxCorrection(command:string){
   if(match[1]&&raw[i+1]!=="'")return null;
   try{
    const plan=JSON.parse(raw.slice(0,i+1));
-   if(!plan||Object.keys(plan).join()!=='calls'||!Array.isArray(plan.calls)||!plan.calls.length||plan.calls.length>12)return null;
-   return 'geneloop-reuse '+JSON.stringify(plan);
+   if(verb==='geneloop-reuse'){
+    if(!plan||Object.keys(plan).join()!=='calls'||!Array.isArray(plan.calls)||!plan.calls.length||plan.calls.length>12)return null;
+   }else{
+    const batch=Object.hasOwn(plan??{},'candidate_ids'),ids=batch?plan.candidate_ids:[plan?.candidate_id];
+    if(!plan||plan.status!=='selected'||typeof plan.request_id!=='string'||!plan.request_id||plan.request_id.length>128||
+     digest(Object.keys(plan).sort())!==digest(['request_id','status',batch?'candidate_ids':'candidate_id'].sort())||
+     !Array.isArray(ids)||!ids.length||ids.length>8||new Set(ids).size!==ids.length||ids.some((id:any)=>typeof id!=='string'||!id||id.length>128))return null;
+   }
+   return verb+' '+JSON.stringify(plan);
   }catch{return null;}
  }
  return null;
@@ -87,7 +97,7 @@ export function reuseChangeSummary(before:any,after:any){
  visit(before,after,'');return {changed_fields:changed,changed_pointers:paths,truncated:changed>paths.length,scope:'exact_parameter_diff_not_semantic_quality'};
 }
 
-export function createReuseMediation({workspace,library,scriptLibrary,audit,tools=[],mode='execute',maxCalls=12,probeTools=[],repairChoices=false,captureCurrentReport=false}:any){
+export function createReuseMediation({workspace,library,scriptLibrary,audit,tools=[],mode='execute',maxCalls=12,probeTools=[],repairChoices=false,captureCurrentReport=false,compactContext=false}:any){
  const artifacts=new Map<string,any>(),latest=new Map<string,string>(),session=randomUUID();
  const contracts=new Map<string,any>(library.contracts.map((c:any)=>[c.tool,c]));
  const programs=new Map<string,any>((scriptLibrary?.programs??[]).map((p:any)=>[p.id,p]));
@@ -559,5 +569,8 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
   if(!pending||execution.callId!==pending.callId||execution.name!==pending.tool||digest(execution.arguments)!==digest(pending.args)||scope()!==pending.scope||pending.planGuard&&!pending.planGuard()||pending.contract&&digest(offered.get(pending.tool)?.parameters??null)!==pending.contract.schema_sha256||pending.dependencies.some((r:any)=>!current(r)))throw Error('reuse_dispatch_guard_failed');
   captureOperation(execution);
  }
- return {prompt,staticPrompt:()=>prompt(false),takeNotice,prepare,observe(execution:any,result:any,facts:any[]=[]){try{observe(execution,result,facts);}catch(e:any){halt(e.message);}},update,ready,guard,halt,setNegativeConstraint(value:any){negativeConstraint=value?copy(value):null;if(!value&&choice?.kind!=='grouping')choice=null;try{offerRepairChoice();}catch(e:any){choice=null;audit({kind:'reuse_repair_choice_fallback',reason:e.message});}}};
+ // Current ready/repair notices carry complete executable examples. Defer the
+ // general protocol until a caller explicitly asks for prompt()/inspection;
+ // never mutate the stable system prefix when new values arrive.
+ return {prompt,staticPrompt:()=>compactContext?'':prompt(false),takeNotice,prepare,observe(execution:any,result:any,facts:any[]=[]){try{observe(execution,result,facts);}catch(e:any){halt(e.message);}},update,ready,guard,halt,setNegativeConstraint(value:any){negativeConstraint=value?copy(value):null;if(!value&&choice?.kind!=='grouping')choice=null;try{offerRepairChoice();}catch(e:any){choice=null;audit({kind:'reuse_repair_choice_fallback',reason:e.message});}}};
 }

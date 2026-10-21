@@ -47,6 +47,33 @@ test('malformed negative resolution withdraws the invitation without authorizing
  assert.ok(f.events.some(r=>r.reason==='invalid_semantic_resolution_transport'));
  assert.equal(f.events.filter(r=>r.kind==='script_frontier_gap').length,1);
 });
+test('fixed workspace prefix preserves exact resolution receipt and version validation',()=>{
+ const f=fixture(),command='cd /work && '+f.command();
+ const body=f.frontier.prepare(command);
+ f.frontier.observe({name:'bash',arguments:{command:f.command()}},{content:[{type:'text',text:JSON.stringify(body.control_receipt)}]});
+ assert.equal(f.frontier.ready(),null);
+ f.frontier.observe({name:'bash',arguments:{command}},{content:[{type:'text',text:JSON.stringify(body.control_receipt)}]});
+ assert.equal(f.frontier.ready().program.id,'a');
+ f.frontier.finish('a',true);f.change();assert.equal(f.frontier.ready(),null);
+});
+test('compound selection gives one diagnostic, never executes a prefix or consumes a choice',()=>{
+ const f=fixture(),canonical=f.command();
+ assert.throws(()=>f.frontier.prepare("cd /work && geneloop-resolve '"+canonical.slice('geneloop-resolve '.length)+"' 2>&1 | head -200"),error=>{
+  assert.ok(error.message.includes('整体未执行'));assert.ok(error.message.endsWith('retry_command='+canonical));return true;
+ });
+ assert.equal(f.frontier.ready(),null);assert.equal(f.events.filter(e=>e.kind==='script_frontier_resolution_verified').length,0);
+ assert.equal(f.events.filter(e=>e.kind==='script_frontier_transport_retry').length,1);
+ acknowledge(f,canonical);assert.equal(f.frontier.ready().program.id,'a');
+});
+test('transport repair is bounded and cannot accept stale choices or foreign shell context',()=>{
+ let f=fixture();assert.throws(()=>f.frontier.prepare(f.command()+' | head'),/retry_command/);
+ assert.throws(()=>f.frontier.prepare(f.command()+' | head'),/JSON/);
+ assert.equal(f.frontier.prompt(),'');assert.equal(f.frontier.ready(),null);
+ f=fixture();assert.throws(()=>f.frontier.prepare(f.command()+'; touch /tmp/unwanted'),/retry_command/);
+ f.change();assert.throws(()=>f.frontier.prepare(f.command()),/stale/);assert.equal(f.frontier.ready(),null);
+ f=fixture();assert.throws(()=>f.frontier.prepare('cd /tmp && '+f.command()),/standalone/);
+ assert.equal(f.frontier.prompt(),'');
+});
 test('input changes before acceptance and after one node prevent continued execution',()=>{
  let f=fixture();f.change();assert.throws(()=>f.frontier.prepare(f.command()),/stale/);
  f=fixture();acknowledge(f,f.command());f.frontier.finish('a',true);f.change();assert.equal(f.frontier.ready(),null);
@@ -115,4 +142,25 @@ test('task-specific bindings and random IDs follow the stable catalogue prefix',
  const request=JSON.parse(a.split('\n').at(-1));
  assert.ok(a.indexOf(request.request_id)>a.indexOf('"bindings":'));
  assert.deepEqual(Object.values(request.bindings),[['/work/a.txt']]);
+});
+
+test('compact choices retain full descriptions, share bindings and authorize only their current targets',()=>{
+ const events=[],description='Read exact current records; quoted fields may be unsupported.';
+ const a={...first,description},b={...first,id:'other',description:'A distinct complete description'};
+ const frontier=createScriptExecutionFrontier({library:{programs:[a,b],digest:'library'},goal:'current check',compactContext:true,
+  bind:()=>[{path:'/work/current.txt',sha256:'v'}],verify:()=>true,audit:r=>events.push(r)});
+ const text=frontier.takeNotice(),gap=JSON.parse(text.split('\n').at(-1));
+ assert.deepEqual(gap.bindings,[['/work/current.txt']]);assert.deepEqual(gap.candidates.map(c=>c.id),['c1','c2']);
+ assert.ok(text.includes(description));assert.ok(text.includes('最小且足够'));assert.equal(frontier.ready(),null);
+ acknowledge({frontier},'geneloop-resolve '+JSON.stringify({request_id:gap.request_id,status:'selected',candidate_ids:['c2']}));
+ assert.equal(frontier.ready().program.id,b.id);frontier.finish(b.id,true);
+ assert.ok(frontier.takeNotice().includes('局部取证'));
+});
+test('a compact alias and its full ID cannot select the same fragment twice',()=>{
+ const frontier=createScriptExecutionFrontier({library:{programs:[{...first,description:'read'}]},goal:'read',compactContext:true,
+  bind:()=>[{path:'/work/current.txt',sha256:'v'}],verify:()=>true,audit:()=>{}});
+ const gap=JSON.parse(frontier.prompt().split('\n').at(-1));
+ const id=learnedScriptFragments({programs:[first]})[0].id;
+ assert.throws(()=>frontier.prepare('geneloop-resolve '+JSON.stringify({request_id:gap.request_id,status:'selected',candidate_ids:['c1',id]})),/duplicate/);
+ assert.equal(frontier.ready(),null);
 });

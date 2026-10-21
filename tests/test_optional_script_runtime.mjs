@@ -1,7 +1,7 @@
 /** Integration regression: auto publication can contain an empty positive lib. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {optionalScriptRuntime,continueScriptRequest} from '../src/adapters/script_motif_web.ts';
+import {optionalScriptRuntime,continueScriptRequest,projectScriptToolDecision} from '../src/adapters/script_motif_web.ts';
 import {markAgentLoopRequest} from '@deepseek-ai/dsh-llm';
 async function collect(stream){const result=[];for await(const item of stream)result.push(item);return result;}
 test('negative-only and empty positive publication need no embedding endpoint',async()=>{
@@ -29,10 +29,21 @@ test('native compaction and other auxiliary requests bypass matching without mut
  }
 });
 test('the exact DSH-marked agent request retains evidence updates and checked native continuation',async()=>{
- const request={sessionId:'owner'};markAgentLoopRequest(request);
+ const request={sessionId:'owner'};markAgentLoopRequest(request);Object.freeze(request);
  const order=[],runtime={negative:{update:r=>{assert.equal(r,request);order.push('negative');},beforeRequest:()=>order.push('warning')},
   reuse:{update:()=>order.push('reuse'),ready:()=>null},intercept:async(_id,r,next)=>{assert.equal(r,request);order.push('match');return next();}};
  const next=async function*(){order.push('native');yield 'result';};
  const stream=continueScriptRequest(request,next,id=>{assert.equal(id,'owner');return runtime;});
  assert.deepEqual(await collect(stream),['result']);assert.deepEqual(order,['negative','reuse','match','warning','native']);
+});
+test('post-policy content projection preserves denials, other replacements and frozen canonical values',()=>{
+ let calls=0;const content=[{type:'text',text:'complete stdout'}],runtime={projectResult(){calls++;return content;}};
+ const result=Object.freeze({isError:false,content:Object.freeze([]),value:Object.freeze({raw:true})});
+ for(const decision of [{kind:'block',feedback:[]},{kind:'accept',value:{}},{kind:'accept',content:[]}]){
+  Object.freeze(decision);assert.equal(projectScriptToolDecision(runtime,{},result,decision),decision);
+ }
+ assert.equal(calls,0);
+ const decision=Object.freeze({kind:'accept',additionalContexts:[]}),view=projectScriptToolDecision(runtime,{},result,decision);
+ assert.equal(view.content,content);assert.equal(view.additionalContexts,decision.additionalContexts);assert.equal(Object.hasOwn(decision,'content'),false);
+ assert.deepEqual(result.value,{raw:true});assert.equal(calls,1);
 });

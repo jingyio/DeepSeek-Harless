@@ -31,6 +31,11 @@ export function continueScriptRequest(request:any,next:any,resolve:(session:stri
   for await(const chunk of stream)yield chunk;
  })();
 }
+export function projectScriptToolDecision(runtime:any,execution:any,result:any,decision:any){
+ if(decision.kind!=='accept'||Object.hasOwn(decision,'content')||Object.hasOwn(decision,'value'))return decision;
+ const content=runtime?.projectResult?.(execution,result);
+ return content?{...decision,content}:decision;
+}
 export function apply(ctx:any){
  const policy=JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!,'utf8'));
  const current=new Map<string,any>();
@@ -66,7 +71,7 @@ export function apply(ctx:any){
    const task=JSON.parse(readFileSync(join(output,'task.json'),'utf8')),effective=JSON.parse(readFileSync(join(output,'effective-config.json'),'utf8'));
    if(effective.session_id!==session||effective.user_id!==policy.user_id)throw Error('script_owner_changed');
    const negative=settings.negativeLibrary?createNegativeRuntime({library:loadNegativeLibrary(settings.negativeLibrary),workspace:effective.workspace,mode:settings.negativeMode,audit}):null;
-   const reuse=settings.reuseLibrary?createReuseMediation({library:loadReuseLibrary(settings.reuseLibrary),scriptLibrary:library,workspace:effective.workspace,tools:effective.tools,mode:settings.mode,probeTools:settings.probeTools??[],repairChoices:settings.repairChoices===true,captureCurrentReport:settings.captureCurrentReport===true,audit}):null;
+   const reuse=settings.reuseLibrary?createReuseMediation({library:loadReuseLibrary(settings.reuseLibrary),scriptLibrary:library,workspace:effective.workspace,tools:effective.tools,mode:settings.mode,probeTools:settings.probeTools??[],repairChoices:settings.repairChoices===true,captureCurrentReport:settings.captureCurrentReport===true,compactContext:settings.compactContext===true,audit}):null;
    if(!library&&!negative&&!reuse)throw Error('motif_library_required');
    writeFileSync(join(output,'script-motif-config.json'),JSON.stringify({...settings,library_digest:library?.digest}),{mode:0o600});
    runtime=optionalScriptRuntime(settings,library,{workspace:effective.workspace,session,
@@ -84,6 +89,11 @@ export function apply(ctx:any){
  ctx.on('agent/created',({agent}:any)=>{
   agent.ctx.systemPrompt.variable('script_cache_catalog',()=>{const r=interceptor(agent.session.id);return (r?.catalog??'')+(r?.reuse?.staticPrompt()??'');});
   agent.ctx.systemPrompt.section({name:'script-cache-catalog',order:10220,text:'{{script_cache_catalog}}'});
+  // DSH loop requests and final results are immutable. Its public post-policy
+  // seam can replace model content while preserving the canonical tool value.
+  agent.ctx.on('tools/post-execute',async(execution:any,result:any,next:any)=>{
+   return projectScriptToolDecision(interceptor(agent.session.id),execution,result,await next());
+  });
   agent.ctx.tools.guard((execution:any)=>{trace(agent.session.id)?.before(execution);const r=interceptor(agent.session.id);return r?.reuse?.guard(execution)??r?.negative?.guard(execution);});
   agent.ctx.on('tools/result',(execution:any,result:any)=>{
    trace(agent.session.id)?.after(execution,result);const r=current.get(agent.session.id)?.runtime;

@@ -1,7 +1,14 @@
 """AST dependency diagnostics, not model/cost experiments."""
 import ast
 import json
-from src.adapters.script_dataflow_compiler import slices, observe_slices
+from src.adapters.script_dataflow_compiler import slices, observe_slices, literal_result_fields
+
+
+def test_literal_default_fields_are_not_presented_as_completed_computation():
+    source = "result={'count':len(rows),'missing':{'name':[]},'groups':[]}\nprint(result)"
+    assert literal_result_fields(source, 'result') == ['/value/missing/name', '/value/groups']
+    assert literal_result_fields("result={'groups':[]}\nresult['groups'].append(x)", 'result') == []
+    assert literal_result_fields("result=compute(rows)\nprint(result)", 'result') == []
 
 
 SOURCE = '''import json
@@ -27,6 +34,15 @@ def test_mines_a_table_inside_one_effectful_tool_call_without_caching_conclusion
     assert table['inputs'][0]['format']=='json'
     assert table['interface']['input_fields']==['number','status']
     assert '__MOTIF_INPUT_0__' in table['template']
+    assert 'value' not in table['literal_selectors'], 'compiler JSON wrapper is not historical task data'
+
+
+def test_original_literals_keep_binding_guards_even_when_equal_to_compiler_labels(tmp_path):
+    (tmp_path/'code').mkdir()
+    (tmp_path/'code/rows.json').write_text(json.dumps({'value': 3}))
+    source="import json\nrows=json.load(open('rows.json'))\nselected=rows['value']\nprint(selected)\n"
+    rows=observe_slices("python3 - <<'PY'\n"+source+'PY','select',tmp_path,'','task','call')
+    assert 'value' in next(r for r in rows if r['expression_witness']['target']=='selected')['literal_selectors']
 
 
 def test_mutating_loops_and_imports_preserved_but_unrelated_data_excluded():

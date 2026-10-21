@@ -4,7 +4,16 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync,symlinkSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {bindScript,createScriptInterceptor,consumeScriptGrant,scriptCommand,registerScriptCache} from '../src/adapters/script_motif_runtime.ts';
+import {bindScript,createScriptInterceptor,consumeScriptGrant,scriptCommand,registerScriptCache,witnessedOutputSchema} from '../src/adapters/script_motif_runtime.ts';
+test('JSON field contracts require two real-shaped outputs and never publish changing data keys as fields',()=>{
+ const schema=witnessedOutputSchema(['{"value":{"count":2,"issues":[]}}','{"value":{"count":3,"issues":["x"]}}']);
+ assert.equal(schema.properties.value.properties.count.type,'number');assert.equal(schema.properties.value.properties.issues.type,'array');
+ assert.equal(witnessedOutputSchema(['{"value":1}']),undefined);
+ assert.equal(witnessedOutputSchema(['{"value":1}','not JSON']),undefined);
+ const dynamic=witnessedOutputSchema(['{"value":{"source_specific_key":1}}','{"value":{"new_task_key":2}}']);
+ assert.deepEqual(dynamic.properties.value,{type:'object'});
+ assert.equal(witnessedOutputSchema(['{"value":1}','{"value":"one"}']),undefined);
+});
 function fixture(t){const workspace=realpathSync(mkdtempSync(join(tmpdir(),'script-motif-')));for(const d of ['inputs','code'])mkdirSync(join(workspace,d));t.after(()=>rmSync(workspace,{recursive:true,force:true}));const path=join(workspace,'inputs','new.bib');writeFileSync(path,'@article{new}\n');return {workspace,path,program:{id:'script_test',template:"print(open('__MOTIF_INPUT_0__').read())",description:'统计 BibTeX 条目',inputs:[{suffix:'.bib',format:'text'}]}};}
 test('binding is by current contract, refuses ambiguity and symlinks',t=>{const {workspace,path,program}=fixture(t);assert.equal(bindScript(program,workspace)[0].path,'/work/inputs/new.bib');writeFileSync(join(workspace,'inputs','second.bib'),'x');assert.throws(()=>bindScript(program,workspace),/ambiguous/);rmSync(path);symlinkSync(join(workspace,'inputs','second.bib'),path);assert.equal(bindScript(program,workspace).length,1);});
 test('an approved input can bind before the first command creates scratch',t=>{
