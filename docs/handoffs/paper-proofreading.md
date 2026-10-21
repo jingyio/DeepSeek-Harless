@@ -12,7 +12,7 @@
 
 - 更新时间与交接人：2026-10-21，Codex。
 - 目标与本次范围：只接通提示型Negative Motif自动生成/独立审核/发布/后继使用的小闭环。沿用已有编译器与同一私有store；未扩大自动早停、生产或外部写入权限。前轮Positive描述闭环及费用保留在Git历史与对应实验中。
-- 分支 / 代码：`codex/paper-negative-learning-loop-20261021`，基于本地`40d015ca`，已通过`3a295837`同步main `73591f62`并保留两侧文档。用户已授权兼容回归与局部真实验证后提PR；状态随下方兼容记录更新，未合并/部署。父PR100状态不等于本分支CI。Desktop/SSS的其他脏工作区未动。
+- 分支 / 代码：`codex/paper-negative-learning-loop-20261021`，基于本地`40d015ca`，已通过`3a295837`同步main `73591f62`并保留两侧文档，兼容实现为`99e1b031`。已推送并创建[PR104](https://github.com/jingyio/GeneLoop/pull/104)，未合并/部署；远端CI以该PR当前检查为准。父PR100状态不等于本分支CI。Desktop/SSS的其他脏工作区未动。
 - 已完成：`script_negative_learning.py`复用当前原生失败编译，两个不同任务且工具源码一致才有候选；有界模型生成+独立审核，强制prompt_only，审核缓存与失败不自动付费重试。`advance-script-motifs.py`区分完成任务Positive历史和已结束任务Negative历史，发布同一不可变round。`script_learning_store.ts`接入negative_file/digest与冻结加载；Runtime实际失败后投递建议。默认无negative-learning.json不启用。
 - 接线修复：自动生成12个Positive算子而实验未配置Embedding，曾因Invalid URL连带停用整个Runtime；`optionalScriptRuntime`现对空库直接跳过，对非空匹配器初始化失败仅局部回退，Negative/Reuse和原生Agent继续。完整配置下原cache catalog保持可用。库摘要/来源/代码锁失败仍保守拒绝。初判为空库已纠正，不以新增算子数量称收益。
 - 已验证：最终完整Python1359通过/213跳过，最终完整Node1206通过/5跳过；相关Python35、Node34定向通过，smoke与motif:check通过。确定性测试仅作诊断。完整Node曾有1项既有MCP子进程5秒期限失败，单独7项复跑及停付费任务后的完整Node均通过，未放宽超时、未删除失败日志；并行负载原因尚属推测。
@@ -25,7 +25,7 @@
 - 最短入口：按README项目环境启动现有`run-script-motif-experiment.py`，同一`--learning-store`与私有sidecar，store放严格配置`negative-learning.json`：schema_version1、implementation_files为受信工具实现相对路径列表、model deepseek-flash、max_output_tokens1536、max_rules1、cap_usd null。完整有效JSON、变量化复现命令见接口及实验。必须保留既有无限额实验授权和账本；不是公共产品付费默认。
 - 权限与预算：沿用已授权本地真实API实验，cap_usd:null / uncapped_user_authorized / reset_history:false；请求不限、输出有界、全部失败/重试/预约累计。本轮没有新自动execute，原生工具只写授权隔离报告产物；未改原件、投稿、生产或外部应用。已停止本轮所有真实任务，不安排后台继续付费。
 - 未完成：自动学习仍只生成有依据的历史检查建议，未生成执行失败谓词/早停权限或通用因果机制；仅一个结构错误家族与同论文恢复变体。正面匹配器因无Embedding配置在最终局部任务中停用，不能据12算子评估正面执行收益。
-- 接手下一步：兼容回归与局部实测已完成，按用户授权推送当前分支并提审阅PR，检查其CI，不自动合并/部署。若继续降本，先分析提示后重写完整参数/报告的调用，设计一次有类型局部修订交接；不重跑完整Baseline，不扩大到其他场景或用库数量代替收益。
+- 接手下一步：兼容回归、局部实测及PR104提交已完成；检查其CI并由用户决定是否合并，不自动合并/部署。若继续降本，先分析提示后重写完整参数/报告的调用，设计一次有类型局部修订交接；不重跑完整Baseline，不扩大到其他场景或用库数量代替收益。
 - 回退与风险：移除新store中的negative-learning.json可停用负面学习；已有自动负面指针仍会加载，若需完全停用同时从实验sidecar移除learningStore与negativeLibrary并停用worker环境。保留历史store与账本，不清空.local。旧库迁移必须实际重编译/认证，不能改hash绕过。仅本地macOS验收，未宣称跨平台生产支持。
 
 ## 2026-10-20：批量控制与PR100历史记录
