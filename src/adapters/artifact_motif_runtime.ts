@@ -8,7 +8,7 @@ import {commandArgv} from './geneloop_shell.ts';
 import {digest} from '../motif_core/online_skill_runtime.mjs';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
-export const artifactLocks=['src/adapters/artifact_motif_runtime.ts','src/adapters/artifact_motif_shell.ts','src/adapters/artifact_motif_web.ts','src/adapters/artifact_motif_trace.ts','src/adapters/artifact_motif_compiler.py','scripts/learn-artifact-motifs.py','scripts/certify-artifact-motifs.mjs','scripts/run-artifact-motif.mjs','scripts/artifact-motif-web.py'];
+export const artifactLocks=['src/adapters/artifact_motif_runtime.ts','src/adapters/artifact_motif_shell.ts','src/adapters/artifact_motif_web.ts','src/adapters/artifact_motif_trace.ts','src/adapters/artifact_motif_compiler.py','src/adapters/geneloop_shell.ts','src/adapters/geneloop_skill_installation.mjs','src/adapters/geneloop_delegation.ts','src/adapters/harless_web_client/index.mjs','src/adapters/dsh_web_tasks.ts','package-lock.json','scripts/learn-artifact-motifs.py','scripts/certify-artifact-motifs.mjs','scripts/run-artifact-motif.mjs','scripts/artifact-motif-web.py'];
 export const hash=(value:any)=>createHash('sha256').update(value).digest('hex');
 const inside=(base:string,path:string)=>{const r=relative(base,path);return !r.startsWith('..')&&!isAbsolute(r);};
 const contexts=new Map<string,any>();
@@ -72,8 +72,6 @@ export function artifactInvocation(session:string,command:string){
   return {...b,sha256:version};
  });
  if(new Set(bound.map((b:any)=>b.host)).size!==bound.length)throw Error('artifact_aliased_inputs');
- const approved=JSON.parse(readFileSync(join(c.workspace,'approved-inputs.json'),'utf8')).files;
- if(Object.entries(c.library.invariant_approved_inputs??{}).some(([name,version])=>approved[name]!==version))throw Error('artifact_approved_protocol_changed');
  if(typeof value.output!=='string'||!/^\/work\/outputs\/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(value.output))throw Error('artifact_new_output_directory_required');
  const destination=join(c.workspace,'outputs/code',value.output.slice(14));
  if(existsSync(destination))throw Error('artifact_output_already_exists');

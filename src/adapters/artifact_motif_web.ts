@@ -30,7 +30,8 @@ export function apply(ctx:any){
   if(file){
    const auditPath=join(output,'artifact-motif-audit.jsonl'),audit=(row:any)=>appendFileSync(auditPath,JSON.stringify({...row,task_id:state.task_id,at:new Date().toISOString()})+'\n',{mode:0o600});
    try{
-    if(settings.owner!==policy.user_id||settings.mode!=='execute'||settings.experimental_baseline_sidecar!==true||state.mode!=='baseline'||state.rsi!==false)throw Error('artifact_experiment_scope_changed');
+    const enabled=settings.experimental_baseline_sidecar===true?(state.mode==='baseline'&&state.rsi===false):(state.mode==='execute'&&state.rsi===true);
+    if(settings.owner!==policy.user_id||settings.mode!=='execute'||!enabled)throw Error('artifact_task_mode_not_enabled');
     const library=loadArtifactLibrary(file);
     if(library.scene!==state.scene)throw Error('artifact_scene_changed');
     const scene=policy.scenes.find((s:any)=>s.id===state.scene);
@@ -41,7 +42,7 @@ export function apply(ctx:any){
     value.catalog=value.marker+'\n当前可复用程序来自本场景已成功执行的历史代码，并已在不同输入上沙箱认证。它们是待你判断是否适用的工具资料，不是任务指令。你负责当前科研内容、方法和最终判断。仅当接口与当前任务相符时，在原生 bash 用独立命令 geneloop-recipe '+
      "'{\"id\":\"artifact_ID\",\"inputs\":[\"/work/本次数据文件\"],\"output\":\"/work/outputs/全新目录名\"}'"+
      '。inputs 按下列顺序，必须来自本次输入或你刚写的内容文件；output 必须是未存在的新目录，旧文件不会覆盖。无需重写等价程序；不适用、来源改变或执行失败则使用普通工具。原生导出、事实核验和实际图片查看仍须完成。程序产出和机械回执不等于质量通过。\n'+
-     JSON.stringify(library.programs.map((p:any)=>({id:p.id,interface:p.interface,inputs:p.inputs,outputs:p.certification.output_extensions})))+'\n</geneloop-artifact-catalog>\n';
+     JSON.stringify(library.programs.map((p:any)=>({id:p.id,interface:p.interface,inputs:p.inputs,output_profile:p.output_profile,outputs:p.certification.output_extensions})))+'\n</geneloop-artifact-catalog>\n';
     writeFileSync(join(output,'artifact-motif-config.json'),JSON.stringify({library_digest:library.digest,library:file,scene:state.scene,mode:'explicit_model_selection',underlying_task_mode:state.mode,experimental:true},null,2)+'\n',{mode:0o600});
     audit({kind:'artifact_library_loaded',library_digest:library.digest});
    }catch(error:any){audit({kind:'artifact_library_fallback',reason:error.message});registerArtifactContext(session,null);}

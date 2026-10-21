@@ -27,6 +27,14 @@ function originalFiles(path){
   if(f.isDirectory())visit(h);else if(f.isFile())rows.push({path:relative(path,h),bytes:lstatSync(h).size,sha256:hash(readFileSync(h))});
  }}visit(path);return rows.sort((a,b)=>a.path.localeCompare(b.path));
 }
+function outputProfile(directory,files){
+ const svgs=files.filter(f=>extname(f.path)==='.svg');if(!svgs.length)return undefined;
+ const raw=readFileSync(join(directory,svgs[0].path),'utf8');
+ return {kind:'observed_svg_declarations_not_rendered_quality',svg_pages:svgs.length,
+  viewBox:/\bviewBox=["']([^"']+)["']/.exec(raw)?.[1]??null,
+  font_families:[...new Set([...raw.matchAll(/font-family=["']([^"']+)["']/g)].map(m=>m[1]))],
+  hex_colors:[...new Set([...raw.matchAll(/(?:fill|stroke)=["'](#[0-9a-fA-F]{3,8})["']/g)].map(m=>m[1]))]};
+}
 export function witnessedHeldoutInputs(program,held){
  const matches=(held.candidates??[]).filter(p=>p.id===program.id&&p.source_sha256===program.source_sha256);
  if(!matches.length)return null;
@@ -77,7 +85,7 @@ export function certifyArtifactRows(rows,resources={}){
    }
    if(digest(cases[0].files)===digest(cases[1].files))throw Error('input_dependency_not_demonstrated');
    const {witness,...program}=p;
-   programs.push({...program,certification:{passed:true,distinct_inputs:2,source_equivalent:true,program_sha256:digest(identity(p)),
+   programs.push({...program,output_profile:outputProfile(p.witness.original_output,sourceFiles),certification:{passed:true,distinct_inputs:2,source_equivalent:true,program_sha256:digest(identity(p)),
     source_task_id:row.task_id,source_call_id:witness.call_id,events_sha256:witness.events_sha256,boundary_sha256:witness.boundary_sha256,
     invariant_input_versions:Object.fromEntries(own.flatMap((b,i)=>b.sha256===other[i].sha256?[[i,b.sha256]]:[])),
     binding_evidence:nativeHeld?{kind:'native_heldout_invocation',call_id:nativeHeld.witness.call_id,boundary_sha256:nativeHeld.witness.boundary_sha256}:{kind:'unique_typed_approved_input'},
@@ -85,8 +93,8 @@ export function certifyArtifactRows(rows,resources={}){
    seen.add(p.id);
   }catch(error){rejected.push({program_id:p.id,call_id:p.witness.call_id,reason:error.message});}
  }
- const invariantApproved=Object.fromEntries(Object.entries(held.approved_inputs??{}).filter(([name,version])=>training.every(r=>r.approved_inputs?.[name]===version)));
- const body={version:1,kind:'witnessed_artifact_program_library',scene:held.scene,programs,invariant_approved_inputs:invariantApproved,code_locks:Object.fromEntries(artifactLocks.map(p=>[p,hash(readFileSync(join(root,p)))])),
+ const observedCommon=Object.fromEntries(Object.entries(held.approved_inputs??{}).filter(([name,version])=>training.every(r=>r.approved_inputs?.[name]===version)));
+ const body={version:1,kind:'witnessed_artifact_program_library',scene:held.scene,programs,observed_common_approved_inputs:observedCommon,code_locks:Object.fromEntries(artifactLocks.map(p=>[p,hash(readFileSync(join(root,p)))])),
   heldout_task_id:held.task_id,compilation_model_requests:0,scope:'native_program_source_equivalence_and_distinct_input_determinism_not_semantic_quality'};
  return {library:{...body,digest:digest(body)},report:{published:programs.length,rejected,quality_cost_promoted:false}};
 }
