@@ -22,10 +22,18 @@ export function resolveScriptLearningSettings(settings:any,user:string){
   if(claimed!==actual||digest(body)!==claimed)throw Error('learning_pointer_digest_mismatch');
   return {path,digest:actual,sha256:createHash('sha256').update(bytes).digest('hex')};
  }
- const script=file(pointer.file,pointer.digest,/^round-[a-f0-9]+\/library\.json$/);
+ const script=pointer.file?file(pointer.file,pointer.digest,/^round-[a-f0-9]+\/library\.json$/):null;
  const reuse=pointer.reuse_file?file(pointer.reuse_file,pointer.reuse_digest,/^round-[a-f0-9]+\/reuse-library\.json$/):null;
- if(reuse&&pointer.file.split('/')[0]!==pointer.reuse_file.split('/')[0])throw Error('mixed_learning_generations');
- return {settings:{...settings,library:script.path,...(reuse?{reuseLibrary:reuse.path}:{})},
-  snapshot:{status:'loaded',user,pointer_sha256:createHash('sha256').update(raw).digest('hex'),script,reuse,
+ const negative=pointer.negative_file?file(pointer.negative_file,pointer.negative_digest,/^round-[a-f0-9]+\/negative-library\.json$/):null;
+ const names=[pointer.file,pointer.reuse_file,pointer.negative_file].filter(Boolean);
+ if(!names.length)throw Error('empty_learning_pointer');
+ if(new Set(names.map((name:string)=>name.split('/')[0])).size!==1)throw Error('mixed_learning_generations');
+ if(negative){
+  const library=JSON.parse(readFileSync(negative.path,'utf8'));
+  if(library.rules?.some((r:any)=>r.retry_policy!=='prompt_only'))throw Error('automatic_negative_authority_denied');
+ }
+ return {settings:{...settings,...(script?{library:script.path}:{}),...(reuse?{reuseLibrary:reuse.path}:{}),
+   ...(negative?{negativeLibrary:negative.path,negativeMode:'prompt'}:{})},
+  snapshot:{status:'loaded',user,pointer_sha256:createHash('sha256').update(raw).digest('hex'),script,reuse,negative,
    triggered_by_task:pointer.triggered_by_task??null,parent_digest:pointer.parent_digest??null}};
 }

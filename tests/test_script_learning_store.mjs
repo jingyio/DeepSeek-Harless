@@ -37,3 +37,26 @@ test('foreign owner, pointer digest changes and path escapes fail closed',t=>{
  writeFileSync(join(store,'latest.json'),JSON.stringify({...pointer,file:'../library.json'}));
  assert.throws(()=>resolveScriptLearningSettings(config,'owner'),/invalid_learning_pointer/);
 });
+test('negative-only generation is frozen and can never acquire automatic blocking authority',t=>{
+ const {store}=fixture(t);mkdirSync(join(store,'round-aaa'));
+ const body={rules:[{retry_policy:'prompt_only'}]},value={...body,digest:digest(body)};
+ writeFileSync(join(store,'round-aaa/negative-library.json'),JSON.stringify(value));
+ const pointer={user:'owner',negative_file:'round-aaa/negative-library.json',negative_digest:value.digest};
+ writeFileSync(join(store,'latest.json'),JSON.stringify(pointer));
+ const selected=resolveScriptLearningSettings({learningStore:store,negativeMode:'enforce'},'owner');
+ assert.equal(selected.settings.negativeMode,'prompt');
+ assert.equal(selected.snapshot.script,null);assert.equal(selected.snapshot.negative.digest,value.digest);
+ const strong={rules:[{retry_policy:'warn_then_current_constraint'}]};
+ writeFileSync(join(store,'round-aaa/negative-library.json'),JSON.stringify({...strong,digest:digest(strong)}));
+ writeFileSync(join(store,'latest.json'),JSON.stringify({...pointer,negative_digest:digest(strong)}));
+ assert.throws(()=>resolveScriptLearningSettings({learningStore:store},'owner'),/authority_denied/);
+});
+test('mixed generations and empty publication cannot silently fall through',t=>{
+ const {store,publish}=fixture(t),pointer=publish('round-aaa','a');
+ mkdirSync(join(store,'round-bbb'));const body={rules:[]};
+ writeFileSync(join(store,'round-bbb/negative-library.json'),JSON.stringify({...body,digest:digest(body)}));
+ writeFileSync(join(store,'latest.json'),JSON.stringify({...pointer,negative_file:'round-bbb/negative-library.json',negative_digest:digest(body)}));
+ assert.throws(()=>resolveScriptLearningSettings({learningStore:store},'owner'),/mixed_learning_generations/);
+ writeFileSync(join(store,'latest.json'),JSON.stringify({user:'owner'}));
+ assert.throws(()=>resolveScriptLearningSettings({learningStore:store},'owner'),/empty_learning_pointer/);
+});

@@ -951,13 +951,45 @@ node scripts/project.mjs python scripts/run-script-motif-experiment.py --real-mo
 
 ## 自动学习生命周期
 
-`--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。worker 不调用模型，允许学习有 Script sidecar 的已完成任务中的原生调用，排除 `sss-script-` / `sss-reuse-` 合成调用，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
+`--learning-store <本检出 .local 下的目录>` 启用任务完成后的 Python worker；直接 Web 入口则用 `SSS_SCRIPT_MOTIF_LEARNING_STORE`。正常真实 baseline 加入同一 owner 的持久历史，首任务固定留出、至少两个不同输入才有机会通过认证。默认worker不调用模型，允许学习有 Script sidecar 的已完成任务中的原生调用，排除 `sss-script-` / `sss-reuse-` 合成调用，生成不可变 `round-<uuid>`，通过后原子更新 `latest.json`；状态在任务的 `script-learning-status.json`。存储、锁及历史不重置。
 
 `run-script-motif-experiment.py` 中，`--learning-store` 现在同时写入该任务的私有 sidecar 副本，用于后续任务加载；sidecar 中已配置的 `learningStore` 也会接通学习 worker。两处指定不同目录时，在付费启动前拒绝。Baseline 只学习、不加载；cache/shadow/execute 仍须提供对应模式的 `--script-config`。没有 latest 的冷启动保留正常 Agent 路径。
 
-下个任务按 owner、路径、库摘要及代码锁加载 pointer，保存 `script-learning-snapshot.json`，任务开始后冻结。`resolved` 只代表指针解析成功，完成全部 Runtime 准入后才记 `loaded` 与对应审计。发布保存父摘要、触发任务、训练/留出任务与事件摘要到不可覆盖的 `round-*/lineage.json`。无合格产物或失败不替换父指针；子进程启动/异常退出留下失败状态。runner 最多等待340秒，未结算学习单独记录，不把超时算成功。
+下个任务按 owner、路径、库摘要及代码锁加载 pointer，保存 `script-learning-snapshot.json`，任务开始后冻结。`resolved` 只代表指针解析成功，完成全部 Runtime 准入后才记 `loaded` 与对应审计。发布保存父摘要、触发任务、训练/留出任务与事件摘要到不可覆盖的 `round-*/lineage.json`。无合格产物或失败不替换已接受的库；子进程启动/异常退出留下失败状态。runner默认最多等待340秒，每开启一种下述模型学习增加200秒，未结算学习单独记录，不把超时算成功。
+
+### 可选描述更新（独立私有实验）
+
+store内显式存在`description-learning.json`才启用`script_description_learning.py`，配置严格为`{"schema_version":1,"model":"deepseek-flash","max_output_tokens":1536,"max_programs":1,"cap_usd":null}`；输出可设512–4096、每批1–3算子。本轮只接受已有不限额实验授权，不能直接用于未获准的产品付费入口。默认无配置保持模型请求0。worker仅在此开关下取得既有环境中的`DEEPSEEK_API_KEY`，不写配置或日志；沙箱执行继续清空凭证环境。
+
+每批最多一次生成与一次独立审核，真实DeepSeek、推理off、无自动重试。只读取已认证模板（每个最多6000字符）、输入/输出接口、旧描述及来源摘要；请求不超过48000字节，不提交完整轨迹或用户文档。响应仅允许`updates:[{program_id,description,evidence_id}]`，审核仅允许`verdicts:[{program_id,accepted,reason}]`。目标/证据必须精确匹配，描述为24–480字符单行且短于原描述；超预算目标分别拒绝，额外字段/未知目标/错误证据拒绝整份。模型审核不能代替执行认证或科研质量评审。
+
+只修改`program.description`与全库摘要，程序ID、代码、契约、前驱边、证书、代码锁不变；沿原入口发布冻结版本。`description-base-library.json`保留本轮结构库，`description-learning.json`保留接纳/拒绝及保留结果。父库摘要和路径须通过校验，且算子身份与接口一致，才能保留其已审核的描述；候选失败或比当前描述更长时保留旧改进，不把新代码继承为旧语义。未知目标仍走原有语义选择，不增加执行授权。
+
+store下`description-cache`绑定来源、提示词、配置和学习器版本；同条件的审核或失败不重复付费，变化后才重新提议。`description-budget.json`与`description-ledger.jsonl`复用现有State预约/结算协议，失败与未知用量保留，重启不清零。结构库自身`compilation_model_requests:0`仅指结构编译；任务`script-learning-status.json`的`compilation_model_requests`包括当轮描述请求，完整费用还须纳入局部worker重试账本。真实F→G证据、额外费用和全部反例见[描述更新实验](experiments/paper-description-rsi-20261020-v1.md)。
 
 不能用同一论文的重复任务声称独立科研决定。自动淘汰、负收益降权、崩溃恢复重试与前端可视状态仍待完善。当前是独立实验生命周期，未部署到生产；真实验证见[闭环记录](experiments/paper-rsi-live-loop-20261020-v1.md)。
+
+### 可选 Negative 提示学习（独立私有实验）
+
+同一私有store内显式放置`negative-learning.json`，沿用既有真实API实验授权。没有此文件时，保持原完成任务的结构学习，不新增模型调用或失败任务学习。
+
+```json
+{"schema_version":1,"implementation_files":["src/adapters/evidence_report.py","src/adapters/session_report.py"],"model":"deepseek-flash","max_output_tokens":1536,"max_rules":1,"cap_usd":null}
+```
+
+`implementation_files`是经开发者确认的工具实现文件锁，并非逐错误字段规则或手工校验器。输出限制512–4096，每轮最多审核1–3种模式。`negative-history.json`接收同owner真实completed/failed/cancelled任务，Positive历史仍只接受completed；仅采集本任务`trace_start_index`之后的原生MCP结构化失败。合成dispatch、工具异常、HTTP502和任务未完成本身不构成错误原因。每种工具/失败码/来源/schema至少需要两个不同任务的原生见证；来源快照与当前实现不一致的轨迹显式拒绝，不替换旧hash。
+
+匹配条件沿用现有Negative编译器，从明确失败码、false outcome和版本回显编译，自动流程强制`prompt_only`。模型仅接收有界校验摘要和参数形状，最多一次生成、一次独立审核；不送完整轨迹、脚本或报告正文，不接受模型修改匹配规则、代码、权限或早停策略。只接受`updates:[{rule_id,evidence_id,guidance}]`及`verdicts:[{rule_id,accepted,reason}]`；建议24–600字符、单行。建议是历史检查线索，不是当前根因或质量证明。审核与同类证据/提示词/配置绑定缓存，重复证据不重复付费；`negative-budget.json`/`negative-ledger.jsonl`保留预约、失败、未知用量与结算，不清零。
+
+通过现有TS在线loader认证后，同一不可变round中保存`negative-library.json`与审核/来源记录，`latest.json`新增`negative_file/negative_digest`。支持Negative-only的generation；所有指针文件必须属于同一round。负面更新不丢弃代码锁兼容的Positive/Reuse库；审核失败也可复制保留已审核负面库，不能扩大权限。实际加载强制`negativeMode:prompt`，拒绝含早停策略的自动库，即使sidecar指定enforce也不能升级。原显式手工认证enforce入口仍独立保留。
+
+下一任务冻结并记录负面digest；只有当前工具真的返回相容失败，Runtime才发送历史建议和当前校验观测。`negative_prompt_delivered`确认提示进入实际模型请求，`negative_current_failure`包含库摘要和`guidance_reviewed`。成功、新来源/任务要求/schema变化或不相容错误使当前提示失效。加载、匹配、提示投递与实际请求/费用节省分开记账。生产默认未启用，尚未代表通用因果学习或一般净降本。
+
+自动库可能在后续加入Positive算子。空Positive库不初始化匹配器；非空库缺少或提供无效Embedding配置时，`script_component_fallback`只停用正面匹配器与其catalog，不连带停用已验证的Negative/Reuse和原生模型路径。库摘要、来源及代码锁不匹配仍走准入失败，不能借组件回退执行未认证库。完整配置且匹配器成功初始化时，现有脚本缓存catalog保留，即使未启用executionFrontier。
+
+同步新版DSH后的兼容边界：Script续接仍先经过原生admission，仅对SDK标记的`isAgentLoopRequest`进行匹配；compaction、标题等辅助请求直接走原生continuation，不更新Motif Evidence、不消费执行片段或提示回执。不得用Motif工具结果替代上下文整理结果。
+
+自动提示规则可增加`schema_scope:exact_tool_schema_prompt_only`与`tool_schema_sha256`：仅当所有原生失败见证均记录一致的目标工具参数schema时生成，证书中逐见证绑定同一摘要。这样新增无关工具不会使提示失效；当前目标工具参数schema、工具实现、来源或用户要求变化仍拒绝或失效。旧`tools_sha256`保留为历史完整工具表摘要；未带新字段的规则继续要求整表一致。loader拒绝将该范围用于任何早停策略；已有执行/字段守卫的整表约束不变。这是精确的目标工具兼容认证，不是语义相似度或放宽执行权限。
 
 
 ## 实验性统一复用协议（2026-10-19）

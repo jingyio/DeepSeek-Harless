@@ -8,10 +8,29 @@ import {createScriptInterceptor,loadScriptLibrary,registerScriptCache,registerRe
 import {createNegativeRuntime,loadNegativeLibrary} from './script_negative_runtime.ts';
 import {createReuseMediation,loadReuseLibrary} from './reuse_mediation.ts';
 import {createReuseTrace} from './reuse_trace.ts';
-import {createUserMessage} from '@deepseek-ai/dsh-llm';
+import {createUserMessage,isAgentLoopRequest} from '@deepseek-ai/dsh-llm';
 import {resolveScriptLearningSettings} from './script_learning_store.ts';
 export const name=native.name;
 export const inject=native.inject;
+/** An absent/empty/disabled positive matcher must not disable Negative advice. */
+export function optionalScriptRuntime(settings:any,library:any,options:any,audit:(row:any)=>void){
+ const fallback=()=>({positiveUnavailable:true,dispose(){},observe(){},frontierPrompt(){return '';},intercept(_id:any,_request:any,next:any){return next();}});
+ if(!library?.programs?.length)return fallback();
+ try{return createScriptInterceptor({...settings,library,...options,audit});}
+ catch(error:any){audit({kind:'script_component_fallback',component:'positive_matcher',reason:error.message});return fallback();}
+}
+/** Called only by the admitted continuation, never for context maintenance. */
+export function continueScriptRequest(request:any,next:any,resolve:(session:string)=>any){
+ if(!isAgentLoopRequest(request))return next();
+ const runtime=resolve(request.sessionId);
+ return (async function*(){
+  runtime?.negative?.update(request);runtime?.reuse?.update(request);
+  const reused=runtime?.reuse?.ready();
+  const checkedNext=()=>{runtime?.negative?.beforeRequest(request);return next();};
+  const stream=reused??(runtime?await runtime.intercept(request.sessionId,request,checkedNext):checkedNext());
+  for await(const chunk of stream)yield chunk;
+ })();
+}
 export function apply(ctx:any){
  const policy=JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!,'utf8'));
  const current=new Map<string,any>();
@@ -50,14 +69,14 @@ export function apply(ctx:any){
    const reuse=settings.reuseLibrary?createReuseMediation({library:loadReuseLibrary(settings.reuseLibrary),scriptLibrary:library,workspace:effective.workspace,tools:effective.tools,mode:settings.mode,probeTools:settings.probeTools??[],repairChoices:settings.repairChoices===true,captureCurrentReport:settings.captureCurrentReport===true,audit}):null;
    if(!library&&!negative&&!reuse)throw Error('motif_library_required');
    writeFileSync(join(output,'script-motif-config.json'),JSON.stringify({...settings,library_digest:library?.digest}),{mode:0o600});
-   runtime=library?createScriptInterceptor({...settings,library,workspace:effective.workspace,session,
-    goal:task.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n'),audit}):{dispose(){},observe(){},frontierPrompt(){return '';},intercept(_id:any,_request:any,next:any){return next();}};
+   runtime=optionalScriptRuntime(settings,library,{workspace:effective.workspace,session,
+    goal:task.content.filter((p:any)=>p.type==='text').map((p:any)=>p.text).join('\n')},audit);
    runtime.negative=negative;
    runtime.reuse=reuse;registerReuseMediation(session,reuse);
-   if(library&&settings.catalog)runtime.catalog=registerScriptCache({...settings,library,workspace:effective.workspace,session,audit,frontier:runtime.frontier});
+   if(library&&settings.catalog&&!runtime.positiveUnavailable)runtime.catalog=registerScriptCache({...settings,library,workspace:effective.workspace,session,audit,frontier:runtime.frontier});
    if(snapshot?.status==='loaded'){
     writeFileSync(join(output,'script-learning-snapshot.json'),JSON.stringify(snapshot,null,2)+'\n',{mode:0o600});
-    audit({kind:'script_learning_library_loaded',library_digest:library?.digest,reuse_digest:snapshot.reuse?.digest??null,triggered_by_task:snapshot.triggered_by_task,pointer_sha256:snapshot.pointer_sha256});
+    audit({kind:'script_learning_library_loaded',library_digest:library?.digest,reuse_digest:snapshot.reuse?.digest??null,negative_digest:snapshot.negative?.digest??null,triggered_by_task:snapshot.triggered_by_task,pointer_sha256:snapshot.pointer_sha256});
    }
   }catch(error:any){audit({kind:'script_fallback',reason:error.message});runtime=null;}
   current.set(session,{id:state.task_id,runtime});return runtime;
@@ -83,12 +102,14 @@ export function apply(ctx:any){
   setTimeout(()=>{
    for(const id of readdirSync(join(policy.output,'tasks')))try{
     const output=join(policy.output,'tasks',id),state=JSON.parse(readFileSync(join(output,'task-state.json'),'utf8'));
-    if(state.session_id!==agent.session.id||state.user_id!==policy.user_id||state.status!=='completed'||state.mode!=='baseline'||scheduled.has(id))continue;
+    const negativeEnabled=existsSync(join(process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE!,'negative-learning.json'));
+    if(state.session_id!==agent.session.id||state.user_id!==policy.user_id||!(state.status==='completed'||negativeEnabled&&['failed','cancelled'].includes(state.status))||state.mode!=='baseline'||scheduled.has(id))continue;
     scheduled.add(id);
     const worker=fileURLToPath(new URL('../../scripts/advance-script-motifs.py',import.meta.url));
     mkdirSync(process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE!,{recursive:true,mode:0o700});
     const child=spawn(policy.learning_python,[worker,'--task',output,'--store',process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE!,'--user',policy.user_id],
-     {env:{PATH:process.env.PATH,SSS_PYTHON:policy.learning_python,SSS_LOCAL_SCRIPT_EXPERIMENT:process.env.SSS_LOCAL_SCRIPT_EXPERIMENT,PYTHONUTF8:'1'},stdio:'ignore'});
+     {env:{PATH:process.env.PATH,SSS_PYTHON:policy.learning_python,SSS_LOCAL_SCRIPT_EXPERIMENT:process.env.SSS_LOCAL_SCRIPT_EXPERIMENT,PYTHONUTF8:'1',
+       ...((negativeEnabled||existsSync(join(process.env.SSS_SCRIPT_MOTIF_LEARNING_STORE!,'description-learning.json')))&&process.env.DEEPSEEK_API_KEY?{DEEPSEEK_API_KEY:process.env.DEEPSEEK_API_KEY}:{})},stdio:'ignore'});
     const failed=(reason:string)=>{if(!existsSync(join(output,'script-learning-status.json')))writeFileSync(join(output,'script-learning-status.json'),JSON.stringify({status:'failed',reason}),{mode:0o600});};
     child.on('error',()=>failed('learning_worker_spawn_failed'));
     child.on('exit',(code,signal)=>{if(code!==0||signal)failed('learning_worker_exited_without_result');});
@@ -97,13 +118,7 @@ export function apply(ctx:any){
  },{global:true});
  const wrapped=new Proxy(ctx,{get(target,key){
   if(key==='on')return (event:any,handler:any,...rest:any[])=>target.on(event,event==='llm/stream'
-   ?(request:any,next:any)=>handler(request,()=>{const runtime=interceptor(request.sessionId);return (async function*(){
-     runtime?.negative?.update(request);
-     runtime?.reuse?.update(request);
-     const reused=runtime?.reuse?.ready();
-     const checkedNext=()=>{runtime?.negative?.beforeRequest(request);return next();};
-     const stream=reused??(runtime?await runtime.intercept(request.sessionId,request,checkedNext):checkedNext());for await(const chunk of stream)yield chunk;
-    })();})
+   ?(request:any,next:any)=>handler(request,()=>continueScriptRequest(request,next,interceptor))
    :handler,...rest);
   const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
  }});
