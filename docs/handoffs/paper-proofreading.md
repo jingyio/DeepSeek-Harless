@@ -1,5 +1,17 @@
 # 论文校对 当前交接
 
+## 2026-10-21：上下文、输出字段与选择传输修复
+
+- 目标与范围：接续五篇评测的冷输入/重复解析归因，在独立分支`codex/paper-evidence-handoff-20261021`开发；实现提交`a62a037f`、`73e3e224`、`fe41cd39`，仅本地，未推送/PR/合并/部署，Desktop/SSS脏工作区未改。
+- 已完成：compactContext默认关闭，短候选ID/共享输入绑定/延迟无用协议；DSH公开post-execute保留全部stdout并私存完整证明；可选JSON形状认证及结果向原数据复用器传递；依赖切片标记常量输出并修正生成标签误判。选择入口支持固定`cd /work &&`，带管道的显式选择整体不执行，只提供一次保留原选择的重试命令；模型重交后才走原守卫。不改上游核心、生产、工具集合、阈值、原件或权限。
+- 已验证：新增传输分支定向Node94通过/2平台跳过。最终npm test为Python1519通过/235跳过、Node1368通过/15跳过/1失败；未改动的gateway在途超大上传413测试发生ECONNRESET，隔离复跑同项仍失败，未宣称全量绿。smoke/motif:check通过。日志位于私有`final-test.log`等。所有库按当前源码实际重新认证，阶段3固定原12个模板/描述/输入契约及原复用/Negative规则；无改锁绕过。检查是免费诊断，不能冒充模型效果。
+- 真实结果：本轮14次启动，4次冻结对象错误在调用API前失败，10次真实完成、核心8/10正确；阶段1四次均正确，阶段2及阶段3各有一次QLoRA漏第三组标题重复。阶段3 DDPM确实经历错误管道→诊断→模型修正→3程序连续接管，10请求/USD0.015021336；QLoRA直接写原生程序，10请求/USD0.023140296且漏检，不计合格降本。不是完整论文联网核验/PDF，也不是独立盲评。见[完整记录](../experiments/paper-context-handoff-20261021-v1.md)及[逐次指标](../experiments/paper-context-handoff-20261021-v1.csv)。
+- 归因更新：原10次Motif+本轮前8次共18次中，3次已selected但带旧入口不识别的包装、均未接管，不能统一解释为模型未选择；任意中间shell前缀仍不支持。字段齐全/程序未崩不等于正确解析；QLoRA原生路径发现引号问题后只修语法检查，未重算已受影响的标题分组。字段覆盖/依赖失效仍未完整实现，不能把提示当验收机制。
+- 配置与复现：`.local/paper-context-handoff-20261021-v1/`保留授权、各阶段protocol、全部失败/学习、认证/库、results/all-attempts/analysis/metrics/final-verification和原runner输出。入口沿用`run-script-motif-experiment.py --real-model --mode execute --script-config "$PRIVATE_CONFIG"`；当前`execute-transport.json`的库摘要`02a887057fc0…`。真实DeepSeek Flash/off，输出8192，300秒；原完整DDPM/QLoRA输入及公共bibliography-integrity题面，只做Motif局部回归、不新跑Baseline。阶段2新增JSON候选漏检，不推广该私有库。
+- 权限与费用：沿用本地持续授权cap_usd:null / uncapped_user_authorized / reset_history:false。Agent136请求/USD0.335993232，另描述学习1请求/USD0.000530268（超原描述预算，未接受）；新增137/USD0.336523500，累计6449/USD11.463436032，均为保守代理估费而非账单。新2笔502保留USD0.113826300预约，旧6 unknown/2 pending保留；没有新增Baseline、后台继续付费或模型学习成果虚报。
+- 接手下一步：先审阅字段读取覆盖与结果依赖；自动学到的程序需要能够区分“字段存在”“值是常量”“实际完成检查”。旧解析修正后，相关旧结果应局部失效/重算，不能只用更强提示告诉模型完成。传输修复已有真实路径证据，整体同质量稳定净降本仍未证明，不急于新增PR或更多全量运行。
+- 回退与风险：移除实验sidecar走原生路径；旧库和所有历史失败留存，生产/认证库/原材料不受影响。仅本地macOS沙箱验收，未声明Windows或Linux真实效果。人工、本地计算及供应商账单尚未量化/核对。
+
 ## 2026-10-21：五篇论文 BibTeX 文件任务真实评测
 
 - 目标与范围：用户要求给导师提供最新版论文场景效果，选择5篇论文的完整BibTeX文件完整性/重复检查，随后明确取消普通缓存组。仅Baseline与Script Motif，各篇各2次，共20次；不是联网真实性、正文对应或PDF交付评测。
