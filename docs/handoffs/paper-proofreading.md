@@ -1,4 +1,12 @@
 # 论文校对 当前交接
+
+## 2026-10-21：数据驱动证据程序复用实验
+
+- 分支`codex/motif-cost-learning-20261021`，实现`76ca3e2`；新增从真实原生代码及前后快照学习的配对证据程序，独立新输入认证，TypeScript按模型选择、当前输入和版本守卫执行。不是模型权重训练。
+- 最新匹配25→16次请求，864,346→501,764总Token，USD0.03208103→0.02229210，实际认证执行1次。全部数字／p95／配对t区间及判定用独立实现复算一致；没有人工科研盲评，不宣称稳定同质降本。
+- 此例仅覆盖固定配对协议的证据复算，研究问题与审阅判断仍由模型完成，不替换原校对／Script RSI库。普通路径、File SDK和上游DSH保留；实验默认关闭，线上仍7e167ed。
+- Linux完整Python1718／Node1359通过（各4skip），smoke/motif通过。所有旧失败、训练／认证／机械重放和费用见[成本学习记录](../experiments/three-scene-motif-cost-learning-20261021.md)；本地可审阅包位于`.local/deliverables/geneloop-motif-cost-learning-20261021/`，私有原轨迹不提交。
+- 后续扩大稿件与协议覆盖；先用[接口](../interfaces.md#artifact-motif-独立实验接口2026-10-21)独立复测，正式发布仍走统一服务入口。以下段落按其历史日期保留。
 - 更新时间与交接人：2026-10-20，Codex。
 - 目标与本次范围：本轮优化批量选择、连续执行与完成交接，保持同库做真实BibTeX局部任务。用户最新明确以RSI闭环跑通作为本轮验收目标，报告质量不作为当前阻塞项；现有真实局部验证足够，本轮不再追加完整论文、全场景或Baseline测试。未部署。
 - 分支 / 代码：实现提交30ee31d，基于a590080（已跑通自动Script RSI），验收说明50f1b5c。[PR100](https://github.com/jingyio/GeneLoop/pull/100)已按用户授权合并至main，merge commit为1055a4f；合并前Ubuntu/Windows的push及PR四项CI全部通过。未部署生产，原Desktop/SSS工作区未改。

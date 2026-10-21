@@ -932,3 +932,5 @@ TaskScene新契约修复全局重命名、明确转换原件/产物读取，以�
 ## 2026-10-16 即时发送与不限额度
 
 当前补丁将每任务及对照每侧费用也设为 `null`，与累计、次数和输出配置一致，移除指令发送前的设置网络等待，并保留模型选择失败时的草稿恢复。完整回归和无模型 smoke 通过；真实网页与上线记录见 [修复验收](../experiments/geneloop-instant-submit-unlimited-20261016-v1.md)。PPT 使用同一冻结证据重编译的 r5 兼容包，不代表新增学习或质量收益。
+> 2026-10-21 Motif成本学习：分支`codex/motif-cost-learning-20261021`，实现`76ca3e2`；新增默认关闭的原生程序学习／独立认证／TypeScript隔离执行入口，未改上游DSH或正式库。最新匹配样例Paper/PPT/Data总Token分别下降41.9%/6.3%/61.3%，代理估费下降30.5%/20.3%/48.3%；PPT调用90→106，不能称所有场景都减少请求。按用户最新指示PPT不验内容正确性。全部45任务2468次真实请求/USD3.62514535，旧退化与零请求取消保留；完整Linux1718 Python、1359 Node通过（各4skip），smoke/motif通过。见[成本学习记录](../experiments/three-scene-motif-cost-learning-20261021.md)与[接口](../interfaces.md#artifact-motif-独立实验接口2026-10-21)。线上仍7e167ed；Cloudflare原Worker已在用户登录后仅更新UPSTREAM_ORIGIN，public-confirm成功，后端PID未变、旧隧道保留，私有GENELOOP_PUBLIC_CONFIG已补齐。当前源码PR合并状态以下续记为准。
+
