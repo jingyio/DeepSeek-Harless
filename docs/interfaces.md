@@ -866,6 +866,10 @@ geneloop-resolve '{"request_id":"当前请求 ID","status":"selected","candidate
 
 当前已批准上传可在scratch尚未创建时绑定。可绑定的初始候选通过一次生成且本任务内固定的提示前缀暴露；稳定目录置前，当前文件绑定与随机request_id置后。进入初始选择的算子不再重复展示整个静态目录，标量/网络/输入歧义等未进入选择的算子仍保留原缓存接口，不能为了缩短提示隐藏既有能力。真实用量、反例及质量边界见[批量控制实验](experiments/paper-frontier-batch-20261020-v1.md)。
 
+独立实验可另外显式设置`compactContext:true`（默认关闭）：当前选择使用请求内短ID，合并相同路径绑定，保留完整候选描述，要求按本次目标选择最小足够集合；仍支持原完整ID，禁止同一片段通过短ID/完整ID重复选择。没有当前数据修订机会时不在system提前展示通用`geneloop-reuse`协议；出现真实Schema兼容参数或修复机会时，原追加通知仍提供完整命令。未进入自动选择的缓存算子保留显式调用格式。
+
+该模式通过DSH公开`tools/post-execute`接口精简已验证脚本的模型内容，不修改冻结的模型请求或canonical工具值。替换前原始回执完整写入私有`script-motif-audit.jsonl`的`script_evidence_raw`事件；模型保留全部stdout、程序ID、当前文件路径/完整哈希及`semantic_quality_accepted:false`。nonce/输出摘要继续在Runtime校验，最终结果被其他策略修改、拒绝或输入变化时不得记作已验证接管；其他策略已有content/value替换时保留其决定。只在字节量确实减少时投影，不截断结果、不合并冲突、不强制停止语义判断。代码变更后须实际重编译/认证旧库，不能只改代码锁；局部真实结果和所有失败见[上下文修复实验](experiments/paper-context-handoff-20261021-v1.md)。这不是字段级完成证明或自动根因诊断。
+
 当前输入扫描包括 `inputs`、`code` 和 `/work/outputs` 对应的 `outputs/code`；Python 来源提取与 TS 绑定使用同一映射。路径必须规范、当前且无符号链接/越界，多候选仍回退。验证过且版本未变的缓存节点可以满足片段中的已完成节点；更改输入或当前用户目标会失效。这里是显式当前语义选择后的执行控制，不是凭历史轨迹推断任务必要性，也不等于完整任务进度图。真实证据及失败见[Frontier 实验](experiments/paper-script-frontier-20261019-v1.md)。
 
 `network_policy:"fixed_metadata_get_v1"` 的子进程仍禁网；`run-certified-script.mjs` 接收沙箱的 HTTP 需求，`fetch-script-evidence.py` 验证既有 arXiv/Crossref 固定元数据权限后抓取本次字节，附 URL/时间/哈希，再重放脚本。只读 GET、响应最多 2 MB、最多 12 次取证、单驱动 90 秒；失败交回模型。只支持这两类元数据，不是任意网络脚本。回执不是语义正确性证明，事实变化后必须重新取证。

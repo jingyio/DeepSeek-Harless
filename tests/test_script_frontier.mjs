@@ -116,3 +116,24 @@ test('task-specific bindings and random IDs follow the stable catalogue prefix',
  assert.ok(a.indexOf(request.request_id)>a.indexOf('"bindings":'));
  assert.deepEqual(Object.values(request.bindings),[['/work/a.txt']]);
 });
+
+test('compact choices retain full descriptions, share bindings and authorize only their current targets',()=>{
+ const events=[],description='Read exact current records; quoted fields may be unsupported.';
+ const a={...first,description},b={...first,id:'other',description:'A distinct complete description'};
+ const frontier=createScriptExecutionFrontier({library:{programs:[a,b],digest:'library'},goal:'current check',compactContext:true,
+  bind:()=>[{path:'/work/current.txt',sha256:'v'}],verify:()=>true,audit:r=>events.push(r)});
+ const text=frontier.takeNotice(),gap=JSON.parse(text.split('\n').at(-1));
+ assert.deepEqual(gap.bindings,[['/work/current.txt']]);assert.deepEqual(gap.candidates.map(c=>c.id),['c1','c2']);
+ assert.ok(text.includes(description));assert.ok(text.includes('最小且足够'));assert.equal(frontier.ready(),null);
+ acknowledge({frontier},'geneloop-resolve '+JSON.stringify({request_id:gap.request_id,status:'selected',candidate_ids:['c2']}));
+ assert.equal(frontier.ready().program.id,b.id);frontier.finish(b.id,true);
+ assert.ok(frontier.takeNotice().includes('局部取证'));
+});
+test('a compact alias and its full ID cannot select the same fragment twice',()=>{
+ const frontier=createScriptExecutionFrontier({library:{programs:[{...first,description:'read'}]},goal:'read',compactContext:true,
+  bind:()=>[{path:'/work/current.txt',sha256:'v'}],verify:()=>true,audit:()=>{}});
+ const gap=JSON.parse(frontier.prompt().split('\n').at(-1));
+ const id=learnedScriptFragments({programs:[first]})[0].id;
+ assert.throws(()=>frontier.prepare('geneloop-resolve '+JSON.stringify({request_id:gap.request_id,status:'selected',candidate_ids:['c1',id]})),/duplicate/);
+ assert.equal(frontier.ready(),null);
+});

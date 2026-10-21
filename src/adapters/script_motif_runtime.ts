@@ -36,10 +36,10 @@ export function registerScriptCache(options:any){
  if(options.frontier){
   const notice=options.frontier.takeNotice('initial_stable_prefix'),offered=new Set(options.frontier.offeredProgramIds?.()??[]);
   const fallback=library.programs.filter((p:any)=>!offered.has(p.id));
-  return '可复用检查由 Runtime 按本次文件绑定，详细候选见当前选择通知；只选择本次任务确实需要的操作。执行回执是证据，最终判断仍由你完成。其他需要的检查可使用原生工具。必要时原有 bash 可调用 geneloop-cache '+
+  return (options.compactContext?'只读执行候选如下；其余工作仍可用原生工具。\n':'可复用检查由 Runtime 按本次文件绑定，详细候选见当前选择通知；只选择本次任务确实需要的操作。执行回执是证据，最终判断仍由你完成。其他需要的检查可使用原生工具。必要时原有 bash 可调用 geneloop-cache '+
   "'{\"calls\":[{\"id\":\"当前候选中的 script_ID\",\"paths\":[\"/work/实际文件\"],\"argv\":[]}]}'"+
-  '；paths按算子inputs顺序，禁止附加管道或重定向。不要重做已有且版本未变的检查。\n'+
-  (fallback.length?'仍可由你显式绑定和选择的缓存算子（未进入当前自动选择）：'+JSON.stringify(fallback.map((p:any)=>({id:p.id,operation:p.interface??p.description,inputs:p.inputs,argv_contract:p.argv_contract,network_policy:p.network_policy})))+'\n':'')+notice;
+  '；paths按算子inputs顺序，禁止附加管道或重定向。不要重做已有且版本未变的检查。\n')+
+  (fallback.length?(options.compactContext?'显式缓存格式：geneloop-cache '+JSON.stringify({calls:[{id:'script_ID',paths:['/work/实际文件'],argv:[]}]})+'。必须独立命令，不能追加管道。\n':'')+'仍可由你显式绑定和选择的缓存算子（未进入当前自动选择）：'+JSON.stringify(fallback.map((p:any)=>({id:p.id,operation:p.interface??p.description,inputs:p.inputs,argv_contract:p.argv_contract,network_policy:p.network_policy})))+'\n':'')+notice;
  }
  return '可复用脚本库（真实历史代码；输出是证据，不代表文献判断正确）。按当前任务选择需要的操作，用原有 bash 调用，不必重写等价脚本。允许批量 calls，仍由你选择查询对象、判断来源与撰写最终报告。命令格式：geneloop-cache '+
   "'{\"calls\":[{\"id\":\"script_ID\",\"paths\":[\"/work/实际文件\"],\"argv\":[]}]}'"+
@@ -181,7 +181,7 @@ export function loadScriptLibrary(path:string){
   return library;
 }
 export const scriptCodeLocks=['src/adapters/script_learning_store.ts','src/adapters/reuse_snapshot.py','scripts/learn-script-motifs.py','src/adapters/script_motif_compiler.py','src/adapters/script_dataflow_compiler.py','src/adapters/reuse_mediation.ts','src/adapters/script_motif_runtime.ts','src/adapters/script_execution_frontier.ts','src/adapters/script_negative_runtime.ts','src/adapters/negative_field_runtime.ts','src/adapters/geneloop_shell.ts','src/adapters/script_motif_shell.ts','src/adapters/script_motif_macos.ts','src/adapters/script_motif_web.ts','scripts/script-motif-web.py','scripts/certify-script-motifs.mjs','scripts/run-certified-script.mjs','scripts/fetch-script-evidence.py'];
-export function createScriptInterceptor({library,workspace,session,goal,mode,endpoint,model,minSimilarity=.88,minMargin=.04,minGoalSimilarity=.6,negativeGoals=[],audit,similarity,demandBound=false,executionFrontier=false}:any){
+export function createScriptInterceptor({library,workspace,session,goal,mode,endpoint,model,minSimilarity=.88,minMargin=.04,minGoalSimilarity=.6,negativeGoals=[],audit,similarity,demandBound=false,executionFrontier=false,compactContext=false}:any){
   if(!['cache','shadow','execute'].includes(mode))throw Error('invalid_script_mode');
   if(!Number.isFinite(minSimilarity)||minSimilarity<.5||minSimilarity>1||!Number.isFinite(minMargin)||minMargin<.01||minMargin>1)throw Error('invalid_script_threshold');
   if(!Number.isFinite(minGoalSimilarity)||minGoalSimilarity<.5||minGoalSimilarity>1||!Array.isArray(negativeGoals)||negativeGoals.length>9||negativeGoals.some((s:any)=>typeof s!=='string'||!s.trim()||s.length>16000))throw Error('invalid_script_goal_policy');
@@ -198,7 +198,7 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
   }
   const used=new Set();let pending:any=null;let halted=false;let history:any[]=[];let userEnvelope:string|undefined;
   if(executionFrontier&&mode!=='execute')throw Error('frontier_requires_explicit_execute');
-  const frontier=executionFrontier?createScriptExecutionFrontier({library,goal,audit,
+  const frontier=executionFrontier?createScriptExecutionFrontier({library,goal,audit,compactContext,
     bind:(program:any)=>bindScript(program,workspace),verify:(b:any)=>{
       try{return sha(fixedInput(workspace,b.host))===b.sha256;}catch{return false;}
     }}):null;
@@ -208,13 +208,36 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
     const command='geneloop-script '+winner.program.id+' '+nonce;
     used.add(winner.key);pending={...winner,nonce,callId,command,origin};grants.set(sha(command),{session,versions:winner.bound,body,expires:Date.now()+30000});
     audit({kind:'script_bypass_attempt',program_id:winner.program.id,input_versions:winner.bound.map((b:any)=>b.sha256),score:winner.score,origin,fragment_id:winner.fragment_id});
-    return syntheticToolStreamBatch([{callId,proposal:{tool:'bash',arguments:{command,description:'复用已认证的只读脚本：'+JSON.stringify(winner.program.interface??winner.program.description)}}}]);
+    return syntheticToolStreamBatch([{callId,proposal:{tool:'bash',arguments:{command,description:compactContext?'执行当前已选择的只读检查':'复用已认证的只读脚本：'+JSON.stringify(winner.program.interface??winner.program.description)}}}]);
+  }
+  function verifiedReceipt(p:any,execution:any,result:any){
+   try{
+    if(!p||!consumed.has(sha(p.command))||result.isError===true||execution.name!=='bash'||execution.callId!==p.callId||execution.arguments?.command!==p.command)return null;
+    const text=(result.content??[]).filter((b:any)=>b.type==='text').map((b:any)=>b.text).join('\n');
+    const receipt=p.projection&&digest(result.content)===p.projection.content_digest?p.projection.receipt:
+     text.split('\n').map((line:string)=>{try{return JSON.parse(line);}catch{return null;}}).find((r:any)=>r?.kind==='script_motif_receipt');
+    return receipt?.nonce===p.nonce&&receipt.program_id===p.program.id&&sha(receipt.output)===receipt.output_sha256&&
+     digest(receipt.versions)===digest(p.bound.map((b:any)=>b.sha256))&&p.bound.every((b:any)=>sha(fixedInput(workspace,b.host))===b.sha256)?receipt:null;
+   }catch{return null;}
   }
   return {
     frontier,
     frontierPrompt(){return frontier?.prompt()??'';},
     frontierNotice(){return frontier?.takeNotice()??'';},
     dispose(){if(pending){const key=sha(pending.command);grants.delete(key);consumed.delete(key);}caches.delete(session);pending=null;halted=true;},
+    projectResult(execution:any,result:any){
+      if(!compactContext)return;
+      const receipt=verifiedReceipt(pending,execution,result);if(!receipt)return;
+      // Do not change the canonical Bash value or any stdout. Full proof is
+      // durably audited BEFORE the public post-execute content replacement.
+      const content=[{type:'text',text:JSON.stringify({kind:'verified_script_evidence',program:pending.program.id,inputs:pending.bound.map((b:any)=>({path:b.path,sha256:b.sha256})),stdout:receipt.output,semantic_quality_accepted:false})}];
+      const saved=Buffer.byteLength(JSON.stringify(result.content))-Buffer.byteLength(JSON.stringify(content));
+      if(saved<=0)return;
+      audit({kind:'script_evidence_raw',call_id:execution.callId,program_id:pending.program.id,content:result.content,content_sha256:digest(result.content)});
+      pending.projection={receipt,content_digest:digest(content)};
+      audit({kind:'script_evidence_context_projected',call_id:execution.callId,utf8_bytes_removed:saved,stdout_complete:true,scope:'model_content_only_canonical_value_and_raw_audit_preserved'});
+      return content;
+    },
     observe(id:string,execution:any,result:any){
       if(id!==session)return;
       frontier?.observe(execution,result);
@@ -224,14 +247,7 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
       history.push({tool:execution.name,program_id:anchor?.id,bound:facts.at(-1)?.bound??(pending&&pending.callId===execution.callId?pending.bound:[]),ok:result?.isError!==true,intent:anchor?.intent??(typeof execution.arguments?.description==='string'?execution.arguments.description.slice(0,240):execution.name)});history=history.slice(-6);
       if(!pending||execution.callId!==pending.callId)return facts;
       const p=pending;pending=null;grants.delete(sha(p.command));
-      let verified=false;
-      try{
-        const text=(result.content??[]).filter((b:any)=>b.type==='text').map((b:any)=>b.text).join('\n');
-        const receipt=text.split('\n').map((line:string)=>{try{return JSON.parse(line);}catch{return null;}}).find((r:any)=>r?.kind==='script_motif_receipt');
-        verified=consumed.has(sha(p.command))&&result.isError!==true&&execution.name==='bash'&&execution.arguments?.command===p.command&&
-          receipt?.nonce===p.nonce&&receipt.program_id===p.program.id&&sha(receipt.output)===receipt.output_sha256&&
-          digest(receipt.versions)===digest(p.bound.map((b:any)=>b.sha256))&&p.bound.every((b:any)=>sha(fixedInput(workspace,b.host))===b.sha256);
-      }catch{}
+      const verified=!!verifiedReceipt(p,execution,result);
       consumed.delete(sha(p.command));
       audit({kind:verified?'script_model_request_skipped_verified':'script_result_unverified',program_id:p.program.id,library_digest:library.digest});
       if(p.origin==='frontier')frontier?.finish(p.program.id,verified);

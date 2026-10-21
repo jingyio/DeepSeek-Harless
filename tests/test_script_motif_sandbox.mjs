@@ -52,6 +52,38 @@ test('actual sandbox receipt verifies a skipped provider decision; source stays 
  assert.equal(rows.at(-1).kind,'script_model_request_skipped_verified');
  assert.equal(await runtime.intercept('s',{tools:[{name:'bash'}]},()=>42),42);
 });
+test('post-execute compact content preserves full stdout and raw proof without mutating frozen values',{skip:!enabled},async t=>{
+ const {root}=fixture(t),audit=[];
+ const program={id:'script_evidence',template:"print(open('__MOTIF_INPUT_0__').read())",inputs:[{suffix:'.txt',format:'text'}],description:'read input'};
+ const runtime=createScriptInterceptor({library:{programs:[program]},workspace:root,session:'compact',goal:'read',mode:'execute',compactContext:true,similarity:async()=>[.95],audit:r=>audit.push(r)});
+ t.after(()=>runtime.dispose());let call;
+ for await(const chunk of await runtime.intercept('compact',{tools:[{name:'bash'}]},()=>{}))if(chunk.block?.type==='tool-call')call=chunk.block;
+ const arguments_=JSON.parse(call.arguments),text=sandboxRun(root,consumeScriptGrant('compact',arguments_.command));
+ const execution=Object.freeze({callId:call.id,name:'bash',arguments:Object.freeze(arguments_)});
+ const content=Object.freeze([Object.freeze({type:'text',text})]),value=Object.freeze({stdout:text});
+ const result=Object.freeze({isError:false,content,value});
+ const projected=runtime.projectResult(execution,result),view=JSON.parse(projected[0].text);
+ assert.equal(view.stdout,JSON.parse(text).output);assert.equal(view.program,program.id);assert.equal(view.inputs[0].path,'/work/inputs/data.txt');
+ assert.equal(result.content,content);assert.equal(result.value,value);assert.equal(result.content[0].text,text);
+ const raw=audit.find(a=>a.kind==='script_evidence_raw');assert.deepEqual(raw.content,content);
+ assert.equal(runtime.projectResult({...execution,callId:'forged'},result),undefined);
+ assert.equal(runtime.projectResult(execution,{...result,content:[{type:'text',text:JSON.stringify({...JSON.parse(text),output:'tampered'})}]}),undefined);
+ writeFileSync(join(root,'inputs/data.txt'),'new version');assert.equal(runtime.projectResult(execution,result),undefined);
+ writeFileSync(join(root,'inputs/data.txt'),'fresh data');
+ runtime.observe('compact',execution,{...result,content:projected});
+ assert.ok(audit.some(a=>a.kind==='script_model_request_skipped_verified'));
+ assert.equal(await runtime.intercept('compact',Object.freeze({tools:[{name:'bash'}],messages:Object.freeze([])}),()=>42),42);
+});
+test('later post-policy changes cannot turn projected evidence into a verified result',{skip:!enabled},async t=>{
+ const {root}=fixture(t),audit=[],program={id:'script',template:"print(open('__MOTIF_INPUT_0__').read())",inputs:[{suffix:'.txt',format:'text'}]};
+ const runtime=createScriptInterceptor({library:{programs:[program]},workspace:root,session:'changed',goal:'read',mode:'execute',compactContext:true,similarity:async()=>[.95],audit:r=>audit.push(r)});
+ t.after(()=>runtime.dispose());let call;
+ for await(const c of await runtime.intercept('changed',{tools:[{name:'bash'}]},()=>{}))if(c.block?.type==='tool-call')call=c.block;
+ const execution={callId:call.id,name:'bash',arguments:JSON.parse(call.arguments)},result={content:[{type:'text',text:sandboxRun(root,consumeScriptGrant('changed',execution.arguments.command))}]};
+ const projected=runtime.projectResult(execution,result);assert.ok(projected);
+ runtime.observe('changed',execution,{content:[{type:'text',text:projected[0].text+'changed'}]});
+ assert.ok(audit.some(a=>a.kind==='script_result_unverified'));assert.equal(await runtime.intercept('changed',{tools:[{name:'bash'}]},()=>42),42);
+});
 
 import {registerScriptCache,prepareCacheInvocation,scriptCommand} from '../src/adapters/script_motif_runtime.ts';
 import {runCertifiedScript} from '../scripts/run-certified-script.mjs';

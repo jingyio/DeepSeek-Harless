@@ -87,7 +87,7 @@ export function reuseChangeSummary(before:any,after:any){
  visit(before,after,'');return {changed_fields:changed,changed_pointers:paths,truncated:changed>paths.length,scope:'exact_parameter_diff_not_semantic_quality'};
 }
 
-export function createReuseMediation({workspace,library,scriptLibrary,audit,tools=[],mode='execute',maxCalls=12,probeTools=[],repairChoices=false,captureCurrentReport=false}:any){
+export function createReuseMediation({workspace,library,scriptLibrary,audit,tools=[],mode='execute',maxCalls=12,probeTools=[],repairChoices=false,captureCurrentReport=false,compactContext=false}:any){
  const artifacts=new Map<string,any>(),latest=new Map<string,string>(),session=randomUUID();
  const contracts=new Map<string,any>(library.contracts.map((c:any)=>[c.tool,c]));
  const programs=new Map<string,any>((scriptLibrary?.programs??[]).map((p:any)=>[p.id,p]));
@@ -559,5 +559,8 @@ export function createReuseMediation({workspace,library,scriptLibrary,audit,tool
   if(!pending||execution.callId!==pending.callId||execution.name!==pending.tool||digest(execution.arguments)!==digest(pending.args)||scope()!==pending.scope||pending.planGuard&&!pending.planGuard()||pending.contract&&digest(offered.get(pending.tool)?.parameters??null)!==pending.contract.schema_sha256||pending.dependencies.some((r:any)=>!current(r)))throw Error('reuse_dispatch_guard_failed');
   captureOperation(execution);
  }
- return {prompt,staticPrompt:()=>prompt(false),takeNotice,prepare,observe(execution:any,result:any,facts:any[]=[]){try{observe(execution,result,facts);}catch(e:any){halt(e.message);}},update,ready,guard,halt,setNegativeConstraint(value:any){negativeConstraint=value?copy(value):null;if(!value&&choice?.kind!=='grouping')choice=null;try{offerRepairChoice();}catch(e:any){choice=null;audit({kind:'reuse_repair_choice_fallback',reason:e.message});}}};
+ // Current ready/repair notices carry complete executable examples. Defer the
+ // general protocol until a caller explicitly asks for prompt()/inspection;
+ // never mutate the stable system prefix when new values arrive.
+ return {prompt,staticPrompt:()=>compactContext?'':prompt(false),takeNotice,prepare,observe(execution:any,result:any,facts:any[]=[]){try{observe(execution,result,facts);}catch(e:any){halt(e.message);}},update,ready,guard,halt,setNegativeConstraint(value:any){negativeConstraint=value?copy(value):null;if(!value&&choice?.kind!=='grouping')choice=null;try{offerRepairChoice();}catch(e:any){choice=null;audit({kind:'reuse_repair_choice_fallback',reason:e.message});}}};
 }

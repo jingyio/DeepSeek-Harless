@@ -11,6 +11,14 @@ const schema={type:'object',properties:{title:{type:'string'},sections:{type:'ar
 const tool={name:'mcp__test__export',parameters:schema};
 const nextTool={name:'mcp__test__read',parameters:{type:'object',properties:{handle:{type:'string'}},required:['handle'],additionalProperties:false}};
 const result=value=>({content:[{type:'text',text:JSON.stringify(value)}]});
+test('deferred protocol keeps a stable empty prefix but still offers exact current ready commands',t=>{
+ const f=fixture(t);
+ const r=createReuseMediation({workspace:f.workspace,library:f.library??{contracts:[{tool:tool.name,schema_sha256:digest(tool.parameters),parameters:[],edges:[]}]},tools:[tool,nextTool],compactContext:true,audit:()=>{}});
+ assert.equal(r.staticPrompt(),'');assert.equal(r.takeNotice(),'');
+ writeFileSync(join(f.workspace,'code/current.json'),JSON.stringify({title:'current',sections:[]}));
+ const notice=r.takeNotice();assert.ok(notice.includes('ready_calls'));assert.ok(notice.includes('geneloop-reuse'));
+ assert.equal(r.staticPrompt(),'');assert.equal(r.takeNotice(),'');
+});
 test('delivery change summary uses actual JSON differences, escaping pointers and bounding output',()=>{
  const before={title:'same',sections:[{paragraphs:['keep','revise']}]},after={sections:[{paragraphs:['keep','corrected']}],title:'same'};
  assert.deepEqual(reuseChangeSummary(before,after).changed_pointers,['/sections/0/paragraphs/1']);
