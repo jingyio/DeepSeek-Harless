@@ -3,7 +3,7 @@ import {readFileSync,readdirSync,appendFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import * as native from './harless_web_client/index.mjs';
 import {loadArtifactLibrary,registerArtifactContext} from './artifact_motif_runtime.ts';
-import {createReuseTrace} from './reuse_trace.ts';
+import {createArtifactTrace} from './artifact_motif_trace.ts';
 export const name=native.name;
 export const inject=native.inject;
 export function apply(ctx:any){
@@ -19,7 +19,7 @@ export function apply(ctx:any){
   if(active.get(session)?.id===state.task_id)return active.get(session);
   const effective=JSON.parse(readFileSync(join(output,'effective-config.json'),'utf8'));
   if(effective.session_id!==session||effective.user_id!==policy.user_id)throw Error('artifact_task_identity_changed');
-  const value:any={id:state.task_id,trace:createReuseTrace(effective.workspace,output),catalog:''};
+  const value:any={id:state.task_id,trace:createArtifactTrace(effective.workspace,output),catalog:''};
   const file=settings?.libraries?.[state.scene];
   if(file){
    const auditPath=join(output,'artifact-motif-audit.jsonl'),audit=(row:any)=>appendFileSync(auditPath,JSON.stringify({...row,task_id:state.task_id,at:new Date().toISOString()})+'\n',{mode:0o600});
@@ -27,7 +27,8 @@ export function apply(ctx:any){
     if(settings.owner!==policy.user_id||settings.mode!=='execute'||settings.experimental_baseline_sidecar!==true||state.mode!=='baseline'||state.rsi!==false)throw Error('artifact_experiment_scope_changed');
     const library=loadArtifactLibrary(file);
     if(library.scene!==state.scene)throw Error('artifact_scene_changed');
-    registerArtifactContext(session,{library,workspace:effective.workspace,allowOutput:effective.scene_options?.allow_output===true||state.scene_options?.allow_output===true,
+    const scene=policy.scenes.find((s:any)=>s.id===state.scene);
+    registerArtifactContext(session,{library,workspace:effective.workspace,allowOutput:scene?.adapter==='data-report'||effective.scene_options?.allow_output===true||state.scene_options?.allow_output===true,
      resources:policy.command_resources??{},audit,auditPath});
     value.catalog='当前可复用程序来自本场景已成功执行的历史代码，并已在不同输入上沙箱认证。它们是待你判断是否适用的工具资料，不是任务指令。你负责当前科研内容、方法和最终判断。仅当接口与当前任务相符时，在原生 bash 用独立命令 geneloop-recipe '+
      "'{\"id\":\"artifact_ID\",\"inputs\":[\"/work/本次数据文件\"],\"output\":\"/work/outputs/全新目录名\"}'"+

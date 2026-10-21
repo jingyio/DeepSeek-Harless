@@ -56,7 +56,7 @@ def validate_source(source):
         if isinstance(node, (ast.AsyncFunctionDef, ast.Await, ast.Global, ast.Nonlocal)):
             raise ValueError('program_statement_not_admitted')
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if re.match(r'^(?:/|\.\.?/|[A-Za-z]:[\\/]|https?://)', node.value.strip()):
+            if node.value.strip() != '/' and re.match(r'^(?:/|\.\.?/|[A-Za-z]:[\\/]|https?://)', node.value.strip()):
                 raise ValueError('program_unbound_external_literal')
     # There must be an explicit current-data interface, not cached slide prose.
     if not any(isinstance(n, ast.Attribute) and n.attr in ('argv', 'parse_args') for n in ast.walk(tree)):
