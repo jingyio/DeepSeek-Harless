@@ -1,0 +1,91 @@
+{
+  "format": "sss-management-seed-release-v1",
+  "quality": "sss-management-quality-v7",
+  "runtime_source": {
+    "src/adapters/dsh_operation_motif.ts": "939d3ca228937008ec73482e0e7f07f53dcd015c6307b19022ae05287b996a74",
+    "src/motif_core/operation_graph_policy.ts": "06d13498a44d7c0f0244550e81e986f106b2f5c21b8f8fbd02f8bff97bbbbe1a",
+    "src/motif_core/control_flow_policy.ts": "675af5aedd127d3060b7139adf16c0ce3724650772630523af20859908619369",
+    "src/motif_core/online_skill_runtime.mjs": "d951e7d0ab15ba49c00f99726f82c328e0bb283fd40af0d6eb0252c80d4e54ec",
+    "scenarios/file-management/operation_tools.py": "ad1be569ea60cbe4745a0b8eda8ac9b767aa8aaad2d8f81d1416e84ba476b018",
+    "scenarios/file-management/operation_contract.py": "debf4b79de4b5f17ed2ea2c8db1d085306d479940fc29c102b6ec898c5d591e4",
+    "scenarios/file-management/report_tools.py": "0b85060ff3c1b60cd2921580d1fb51e1af0a2afdb1dab93c500cd95c0d64d915",
+    "scenarios/file-management/collection_tools.py": "9481cb3cdbd75e5b9b7704cfcb8f94a7d2b89609b5b825a7832123090613fab7",
+    "scenarios/file-management/file_tools.py": "7abb038e6bdf6c7922f1440d9caa9a019c74fc8bc37257570d0076d4294a6e61",
+    "scenarios/file-management/common.py": "adac38ade469cb3b5ef3d60c1658aa446ba70de75d98f4adb3f8604272fb1c4f",
+    "src/motif_core/operation_graph_policy_v1.ts": "30f5e0e274cd42f2cdec0b9aed314876d91553dc63287828e8d1c4dccf3f9cdb",
+    "scenarios/file-management/operation_tools_v2.py": "d48caa676a62438816219f68d504b3d28a4e54a9feec6e711933fa995ecfd973",
+    "scenarios/file-management/operation_contract_v2.py": "6c0562533692d62d7951a5dd24fe05ba6167ae5ceb6060915f0bdf1992e7e646",
+    "src/adapters/operation_job.ts": "a15f1013742032b790ec063b043fff8c55a20fc5daf2a5cc1b872d9b67ce7609",
+    "src/adapters/file_workflow_job.ts": "eaa01ca84d1d56d5cda05b25c74db5247fbee88a02be28fb6590567baa5ffdf4",
+    "scenarios/file-management/management_tools.py": "0a36c4191201ba469b67aa1ce95d99242b12d4c90069a125a416ecdbfce70324",
+    "scenarios/file-management/management_native.py": "cad6a877e10b8c6d1bf676523af7d0fa506937d0a375e435be166dbfb0d89d8f",
+    "scenarios/file-management/management_reading.py": "1453bf11bfa17966dcd78ac87204aca25038d2d92889f870b279679785811898",
+    "scenarios/file-management/management_contract.py": "778e6f0630e6f3d12ca41f0531e202b9e7d777bce715978aaac0ed782823f33e",
+    "scenarios/file-management/management_goals.py": "e573370afa52f3d475fad9b2d9f496b8ed5b1d6c76affc57a8b6cc3dc458f1c1",
+    "scenarios/file-management/management_provenance.py": "c92ae3638eb834732e4fcf73efbc51122647ecc6f213456c2cb9afba95ce028c",
+    "src/adapters/management_program.ts": "a266c7eb6a1e370ab5a3a271585e14fd564795e517df783a1f54325bc7b17f86",
+    "src/adapters/general_tool_replay.py": "f317838ffffba1f0d0e2f4fcb20adb4ced515e3a059bc0c9c0d419c76970d48e",
+    "src/adapters/general_tools.py": "43bebd48b53241989776e860271b9ab892a9a709397fd04edffdb3e14cf69a8b",
+    "src/adapters/geneloop_pdf.py": "f3664c058ea83484f37e479e436b7039fd82391a0605d22e01251843b5d51024",
+    "scenarios/file-management/general-tools.json": "c00797b4ae5796f2fa30757015b669687356edd800d4ce6ca9c9ea931dbb21cf",
+    "scenarios/general/runtime.py": "c1db26387d30a0b11d985a9451756df0b2213e0c141807960cb6685f12c38e26",
+    "scenarios/file-management/management_temporal.py": "e03721ac012c97ed1f7cf0e60ee0af9d3d303131becf4ffe8529e5da5b6d732b",
+    "src/adapters/management_temporal.ts": "bc53429f88502008812b0936b6dcc80454f2dc77778de8f9a7b9c6460bce9b97",
+    "src/adapters/management_seed.py": "f9f9f5cfe5d9d7bfd3c9f6b63d94f7be95a1f9fd45fe1462b04c4951ecefec0a",
+    "src/adapters/management_seed.ts": "0e2401f6816a7c4199117418641e8e0d351263189bb5c71dac3ba8fb99ff2da5",
+    "src/adapters/management_model_gate.py": "55f7b87191ce2c5bd53e9d5667ed3b458e51542e9b07b9757e09b535af43167f",
+    "src/adapters/management_model_gate.ts": "57022a9b705dfe00e316c2bcf4b36dcc256fd087d8ababfe88138e8f5b7eb3d1",
+    "src/adapters/management_platform_budget.py": "f33d08aff8458427e590ceaf1e9c61e838b03cceaa0ea3a30300be1e612f796f",
+    "src/adapters/file_event_projection.ts": "fd0cde8720371100404fe07bcf4be506fd2e15b58f12eef0559efde976f1d7a9",
+    "src/adapters/file_task_scope.ts": "f1a17e307831e365145726ebd4b2de2805591e9cc0d59f583b66ca3accecb6cf",
+    "src/adapters/harless_file_scene.ts": "2b701e5c35c2c949f8f2783b0de273f578377dce8bb5a034eeb2bc772adaebb0",
+    "src/adapters/file_approval_bridge.ts": "a0202505d245f5777dbc07cd3704c266e4b418d7ec2bad39fed2461758df05ec",
+    "scenarios/file-management/file_scene_worker.py": "eb65bc933ad0aedc7d0ef850c25aaf90d906abdff8d90e9676fb1239b642aa89",
+    "src/adapters/file_scenario.py": "5410f00c6bfe21bc10f276cdd390a25b39a93ecfdfd4c9cbd7d2ef391f7124af",
+    "src/adapters/file_cost_gate.py": "6576a59a44eb63e24a1ee8e554d867f1e90e1907a29c8a3a9369b152d447f3b2",
+    "src/adapters/file_acceptance_guard.ts": "86315460db6af6bcc8f7093e0ea1b502fa9cd922bdf19145b7d1bc7b372da149"
+  },
+  "entries": [
+    {
+      "kind": "operation_graph",
+      "policy_digest": "9c78ac850b16762bd29c50fe9cbe8458b400af865dfdfc76c8425de5e00b5401",
+      "payload": "policies/9c78ac850b16762bd29c50fe9cbe8458b400af865dfdfc76c8425de5e00b5401.json",
+      "payload_sha256": "76270c99d3f1bcea50675a5a7b4fbf7d1151a0b29ad1b75c1ba4d880f7c2c9f3",
+      "certificate": "certificates/9c78ac850b16762bd29c50fe9cbe8458b400af865dfdfc76c8425de5e00b5401.json"
+    },
+    {
+      "kind": "operation_graph",
+      "policy_digest": "776f4de1f7787b9a91ec66d8f50b0f0413d7b60ff0edf13ddb1c18caeb4c8723",
+      "payload": "policies/776f4de1f7787b9a91ec66d8f50b0f0413d7b60ff0edf13ddb1c18caeb4c8723.json",
+      "payload_sha256": "cdb06a04a545500ef1006f4d28f61dde96db637d8646cfaf7fed3d696ade0a1d",
+      "certificate": "certificates/776f4de1f7787b9a91ec66d8f50b0f0413d7b60ff0edf13ddb1c18caeb4c8723.json"
+    },
+    {
+      "kind": "operation_graph",
+      "policy_digest": "fb47d2c1dc130a0e86e8cd474e9eed38e78133dc683eb4506c1e92f5f7f243ff",
+      "payload": "policies/fb47d2c1dc130a0e86e8cd474e9eed38e78133dc683eb4506c1e92f5f7f243ff.json",
+      "payload_sha256": "8420741d6eef73a019cae6e5445b317c12753d340bc21425191fb2718153f7b5",
+      "certificate": "certificates/fb47d2c1dc130a0e86e8cd474e9eed38e78133dc683eb4506c1e92f5f7f243ff.json"
+    },
+    {
+      "kind": "operation_graph",
+      "policy_digest": "d9822066cf5d105beb8ad3063bcaa665b90e0a1e11d0c0ecf9ece8741162a4d5",
+      "payload": "policies/d9822066cf5d105beb8ad3063bcaa665b90e0a1e11d0c0ecf9ece8741162a4d5.json",
+      "payload_sha256": "f76f123df7e86c5da5469ac845739ee0b94dd081bfbe89b51704c951de9a5e4e",
+      "certificate": "certificates/d9822066cf5d105beb8ad3063bcaa665b90e0a1e11d0c0ecf9ece8741162a4d5.json"
+    }
+  ],
+  "files": {
+    "policies/9c78ac850b16762bd29c50fe9cbe8458b400af865dfdfc76c8425de5e00b5401.json": "76270c99d3f1bcea50675a5a7b4fbf7d1151a0b29ad1b75c1ba4d880f7c2c9f3",
+    "certificates/9c78ac850b16762bd29c50fe9cbe8458b400af865dfdfc76c8425de5e00b5401.json": "5b742d6ec6eaacb786ed4697bb71d998084716ee4898967a31124fd6f6510cea",
+    "policies/776f4de1f7787b9a91ec66d8f50b0f0413d7b60ff0edf13ddb1c18caeb4c8723.json": "cdb06a04a545500ef1006f4d28f61dde96db637d8646cfaf7fed3d696ade0a1d",
+    "certificates/776f4de1f7787b9a91ec66d8f50b0f0413d7b60ff0edf13ddb1c18caeb4c8723.json": "e7d9481d74a6f96adb077d751547d7ed7fe36d7230d0afaba28b96bb9189e1cc",
+    "policies/fb47d2c1dc130a0e86e8cd474e9eed38e78133dc683eb4506c1e92f5f7f243ff.json": "8420741d6eef73a019cae6e5445b317c12753d340bc21425191fb2718153f7b5",
+    "certificates/fb47d2c1dc130a0e86e8cd474e9eed38e78133dc683eb4506c1e92f5f7f243ff.json": "3318a50d5b8ec44fbf7b62133c1b8d3765d400a6db61064d5e0cee203653d5b7",
+    "policies/d9822066cf5d105beb8ad3063bcaa665b90e0a1e11d0c0ecf9ece8741162a4d5.json": "f76f123df7e86c5da5469ac845739ee0b94dd081bfbe89b51704c951de9a5e4e",
+    "certificates/d9822066cf5d105beb8ad3063bcaa665b90e0a1e11d0c0ecf9ece8741162a4d5.json": "3637caa90369cf1084ed40f7860fffc5e16fedef4b0095388c8ae7ea17129ae3"
+  },
+  "raw_private_evidence_published": false,
+  "grants_execution": false,
+  "digest": "751c2f7bd9d846804f67b278291a38707ed71ed37b527fc59050686adb209be1"
+}

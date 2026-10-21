@@ -177,8 +177,8 @@ def prepare(args, output, endpoint):
                 if os.environ.get(variable):
                     policy['command_resources'][field] = os.environ[variable]
     save(output / 'policy.json', policy)
-    disabled = ['llm-deepseek', 'session-title-llm', 'llm-retry',
-                'compaction-basic', 'command-compact', 'session-log-deepseek', 'goal', 'goal-round-driver']
+    disabled = ['llm-deepseek', 'session-title-llm',
+                'compaction-basic', 'session-log-deepseek', 'goal', 'goal-round-driver']
     if not args.frozen:
         disabled += ['bash-sandbox', 'pwsh-sandbox', 'web-search-deepseek']
     patch = [{'id': name, 'disabled': True} for name in disabled]
@@ -208,6 +208,10 @@ def prepare(args, output, endpoint):
         patch.append({'insert': [
             {'id': 'geneloop-shell', 'name': (ROOT / 'src/adapters/geneloop_shell.ts').as_uri()},
             {'id': 'geneloop-web-search', 'name': (ROOT / 'src/adapters/geneloop_web_search.ts').as_uri()}]})
+        composed = subprocess.run(['node', str(ROOT / 'src/adapters/geneloop_native_host.mjs'),
+            '--source-dir', str(ROOT / 'src')], input=json.dumps(patch), text=True,
+            capture_output=True, check=True)
+        patch = json.loads(composed.stdout)
     save(output / 'host.patch.yml', patch)
     (output / 'prompt.md').write_text(prepared['prompt'], encoding='utf-8'); (output / 'prompt.md').chmod(0o600)
     snapshot = {**public, 'host': '127.0.0.1', 'port': args.port,

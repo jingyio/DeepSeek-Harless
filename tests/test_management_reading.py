@@ -98,12 +98,63 @@ def test_real_image_ocr_is_separate_from_metadata(tmp_path,monkeypatch):
 
 def test_full_read_and_visual_pixels_without_external_poppler(document,monkeypatch):
     import management_reading as reading
+    for key in ('FM_PDFTOPPM','FM_PDFINFO','FM_PDFTOTEXT'):monkeypatch.delenv(key,raising=False)
     monkeypatch.setattr(reading.shutil,'which',lambda _:None)
     s,spec,h,source=document
     d=s.open_document(source);rows=finish(s,d['request_id'])
     assert d['page_count']==4 and any(r['page']==4 and 'IMPORTANT TOKEN 4' in r['text'] for r in rows)
     assert s.document_coverage(d['document_id'])['complete']
     assert s.view_document_page(source,4).structured_content['page']==4
+    assert reading.verify_visual_reads(spec,json.loads(s.state_file.read_text()),s.output)==[]
+    assert s.submit_report('all pages and actual visual pixels read',list(s.files()),[])['semantic_quality_verified']
+
+
+def test_visual_replay_rejects_changed_pixels_with_fallback_renderer(document,monkeypatch):
+    import management_reading as reading
+    for key in ('FM_PDFTOPPM','FM_PDFINFO'):monkeypatch.delenv(key,raising=False)
+    monkeypatch.setattr(reading.shutil,'which',lambda _:None)
+    s,spec,h,source=document
+    view=s.view_document_page(source,4).structured_content
+    state=json.loads(s.state_file.read_text())
+    assert reading.verify_visual_reads(spec,state,s.output)==[]
+    pixels=s.output/'visual-reads'/view['view_id']/'pixels.png'
+    pixels.write_bytes(pixels.read_bytes()+b'changed')
+    assert 'visual pixels differ' in reading.verify_visual_reads(spec,state,s.output)[0]
+
+
+def test_visual_delivery_and_replay_use_same_explicit_poppler(document,monkeypatch):
+    import management_reading as reading
+    tool=reading.executable('FM_PDFTOPPM','pdftoppm')
+    if not tool:pytest.skip('Explicit Poppler diagnostic requires an installed pdftoppm')
+    monkeypatch.setenv('FM_PDFTOPPM',tool)
+    monkeypatch.setattr(reading.shutil,'which',lambda _:None)
+    calls=[];original=reading.run
+    def observe(args,timeout=30):
+        calls.append(args)
+        return original(args,timeout)
+    monkeypatch.setattr(reading,'run',observe)
+    s,spec,h,source=document
+    s.view_document_page(source,4)
+    assert reading.verify_visual_reads(spec,json.loads(s.state_file.read_text()),s.output)==[]
+    render_calls=[args for args in calls if args[0]==tool]
+    assert len(render_calls)==2
+    assert all(args[1:8]==['-f','4','-l','4','-singlefile','-scale-to','2400'] for args in render_calls)
+
+
+def test_missing_pdf_renderer_dependencies_have_explicit_failure(tmp_path,monkeypatch):
+    import management_reading as reading
+    monkeypatch.delenv('FM_PDFTOPPM',raising=False)
+    monkeypatch.setattr(reading.shutil,'which',lambda _:None)
+    monkeypatch.setitem(sys.modules,'pymupdf',None)
+    with pytest.raises(ValueError,match='PDF renderer unavailable: install pdftoppm or PyMuPDF'):
+        reading.render_pdf(tmp_path/'source.pdf',1,tmp_path/'pixels',maximum=2400)
+
+
+def test_broken_explicit_pdf_renderer_does_not_silently_fallback(tmp_path,monkeypatch):
+    import management_reading as reading
+    monkeypatch.setenv('FM_PDFTOPPM',str(tmp_path/'missing-pdftoppm'))
+    with pytest.raises(ValueError,match='PDF renderer unavailable: resolved pdftoppm executable was not found'):
+        reading.render_pdf(tmp_path/'source.pdf',1,tmp_path/'pixels',maximum=2400)
 
 
 def test_real_ocr_without_external_tesseract(tmp_path,monkeypatch):

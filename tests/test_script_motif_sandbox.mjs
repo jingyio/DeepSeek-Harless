@@ -1,12 +1,13 @@
 /** Real OS sandbox diagnostics. No model/provider and no manuscript data. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,realpathSync,existsSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,realpathSync,existsSync,lstatSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {sandboxRun} from '../scripts/certify-script-motifs.mjs';
 import {createScriptInterceptor,consumeScriptGrant} from '../src/adapters/script_motif_runtime.ts';
 const enabled=process.platform==='darwin'||process.platform==='linux'&&existsSync('/usr/bin/bwrap');
+const linuxEnabled=process.platform==='linux'&&existsSync('/usr/bin/bwrap');
 if(process.platform==='darwin')process.env.SSS_LOCAL_SCRIPT_EXPERIMENT='1';
 function fixture(t){
  const parent=realpathSync(mkdtempSync(join(tmpdir(),'script-sandbox-'))),root=join(parent,'work');
@@ -17,10 +18,28 @@ function fixture(t){
 test('sandbox permits current input reads, denies user-file writes, unrelated reads and network',{skip:!enabled},t=>{
  const {root,parent}=fixture(t);
  assert.equal(sandboxRun(root,'python3 -c "print(open(\'/work/inputs/data.txt\').read())"'),'fresh data\n');
- for(const code of ["open('/work/inputs/data.txt','w').write('changed')",`print(open(${JSON.stringify(join(parent,'outside.txt'))}).read())`,"import socket;socket.create_connection(('127.0.0.1',80),timeout=1)"]){
+ for(const code of ["open('/work/inputs/data.txt','w').write('changed')","open('/work/not-allowed.txt','w').write('changed')",`print(open(${JSON.stringify(join(parent,'outside.txt'))}).read())`,"import socket;socket.create_connection(('127.0.0.1',80),timeout=1)"]){
   assert.throws(()=>sandboxRun(root,"python3 - <<'PY'\n"+code+'\nPY'),/sandbox_replay_failed/);
  }
  assert.equal(readFileSync(join(root,'inputs','data.txt'),'utf8'),'fresh data');
+});
+test('first read-only invocation prepares fixed child mount points without a prior writable command',{skip:!linuxEnabled},t=>{
+ const {root}=fixture(t);
+ for(const name of ['inputs','outputs'])assert.equal(existsSync(join(root,'code',name)),false);
+ assert.equal(sandboxRun(root,'python3 -c "print(open(\'/work/inputs/data.txt\').read())"'),'fresh data\n');
+ for(const name of ['inputs','outputs'])assert.ok(lstatSync(join(root,'code',name)).isDirectory());
+});
+test('sandbox refuses redirected scratch and child mount points before launching a command',{skip:!linuxEnabled},t=>{
+ const {root,parent}=fixture(t),scratch=join(root,'code');
+ for(const name of ['inputs','outputs'])for(const kind of ['symlink','file']){
+  const point=join(scratch,name);
+  if(kind==='symlink')symlinkSync(parent,point);else writeFileSync(point,'not a mount directory');
+  assert.throws(()=>sandboxRun(root,'true'),/fixed directory/);
+  rmSync(point);
+ }
+ rmSync(scratch,{recursive:true});symlinkSync(parent,scratch);
+ assert.throws(()=>sandboxRun(root,'true'),/fixed directory/);
+ assert.equal(existsSync(join(parent,'inputs')),false,'rejected aliases must not create mount points outside scratch');
 });
 test('actual sandbox receipt verifies a skipped provider decision; source stays out of tool arguments',{skip:!enabled},async t=>{
  const {root}=fixture(t),rows=[];

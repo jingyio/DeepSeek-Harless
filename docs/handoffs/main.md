@@ -1,6 +1,25 @@
-> 2026-10-20 当前：PR84/88/92/93及[PR96](https://github.com/jingyio/GeneLoop/pull/96)已集成。当前运行源码756a181（[PR98](https://github.com/jingyio/GeneLoop/pull/98)批量邀请码与评分恢复）已统一发布、定向检查与Ubuntu/Windows完整CI通过，正式网页评分保存/刷新验收通过；详见[本轮记录](../experiments/invites-ratings-20261020.md)。费用/次数/output app cap为null，wire最大393216，File v7/Paper19/PPT14，原账号、库与累计账本保留。此前并行/输出额度检查及环境失败见[记录](../experiments/provider-output-20261020.md)；当前交接见[Web](harness-web.md)、[File](file-management.md)。以下各PR状态按其历史时间保留。
+> 2026-10-21 Motif成本学习：分支`codex/motif-cost-learning-20261021`，实现`76ca3e2`；新增默认关闭的原生程序学习／独立认证／TypeScript隔离执行入口，未改上游DSH或正式库。最新匹配样例Paper/PPT/Data总Token分别下降41.9%/6.3%/61.3%，代理估费下降30.5%/20.3%/48.3%；PPT调用90→106，不能称所有场景都减少请求。按用户最新指示PPT不验内容正确性。全部45任务2468次真实请求/USD3.62514535，旧退化与零请求取消保留；完整Linux1718 Python、1359 Node通过（各4skip），smoke/motif通过。见[成本学习记录](../experiments/three-scene-motif-cost-learning-20261021.md)与[接口](../interfaces.md#artifact-motif-独立实验接口2026-10-21)。线上仍7e167ed；Cloudflare原Worker已在用户登录后仅更新UPSTREAM_ORIGIN，public-confirm成功，后端PID未变、旧隧道保留，私有GENELOOP_PUBLIC_CONFIG已补齐。当前源码PR合并状态以下续记为准。
+
+> 2026-10-21当前主线：`codex/dsh-native-capabilities` / PR102；后端7e167ed已统一发布（Paper31/PPT28/File15），完整Linux Python1689/Node1323通过（各4skip），新五成员本机网关783次真实请求、五用户和12上游请求并发下界、平台未知费用0。File实际44观察/43严格通过，U1未捕获安全取消窗自然完成，其余4原Task恢复通过；PPT双路已交付并真实查看全部最终PNG，仍有内容/排版缺陷且未触发Motif复用。主测试原44/61严格通过包含客户端随机oracle及换行缺陷，独立精确字节59/61、单行等价61/61，另补4/4遗漏多轮，不覆盖旧结果。原公网Quick Tunnel被注销；e7a1ed1统一公网恢复入口73项Linux定向通过、四CI通过，新候选登录页可达，原Worker绑定更新仍待Cloudflare登录，不能称公网恢复。正在补File未知预留的公开费用元数据；完整证据、费用与限制见[本轮记录](../experiments/dsh-native-capabilities-20261021.md)。旧账号/账本/库/失败完整保留。以下早期版本按其历史日期保留。
+
+> 最后候选19f898e：File费用投影35项定向及5份真实只读原状态通过，File16独立认证12Task/69请求/USD0.041075430，旧File15九文件不变。Paper32/PPT29仅单一File公开投影差异兼容，无新训练或语义晋级。候选完整检查与CI待实际日志；独立计划已准备但未发布，当前后台仍7e。公网候选待Cloudflare登录，先完成当前代次的public-confirm及五成员公网canary，再安排最后费用补丁的统一发布/公网复核；不得绕过活跃/未知任务保护。40次正式健康采样无失败。私有环境两个服务指针已对齐当前实际计划与公网维护入口，其余字节保持。账本总额拆分五成员1712/USD2.164609860、owner File15 77/USD0.043933140、owner File16 69/USD0.041075430，互不相加到五用户成绩。
+
+> 2026-10-20 五用户压力验收：原5个邀请码成员、四场景20对话、80/80轮通过，任务峰35/对话20/成员5，15对双侧全重叠；1506实际回执/USD1.791760250。纠正请求返回时刻的统计后主上游峰23（旧22撤回），Filev2峰9（旧8撤回），v3峰10。File v3已40/40通过，含10次真正助手CM上下文及5组执行中取消隔离；179File实际请求/USD0.104290008、10Chat另列，189区间无missing/unmatched，45健康采样无错。旧403十失败和v2十preset锁失败全部保留。新PPT192/USD0.287867110文件合同通过，但Motif正文侵footer、白底风格偏差及字体替代未解决，不称整体设计合格或净收益。详见[记录](../experiments/five-user-stress-20261020.md)；匿名报告已生成，当前120/120验收（含5主动取消），原151次尝试/20次旧失败及121份实际产物或预览保留；PR99已合并main（829f2e6）。正式仍744ad5b，另条PR100合并不代表已部署或参加本轮付费压力。
+
+> 正式发布/恢复：9d130cf因宿主inotify耗尽退出且自动回退同样失败；未杀编辑器、改sysctl或任务状态。32f6088安全恢复与polling计划先恢复健康；410e0da默认1/1000ms的成员polling/预停watch检查已正式统一发布，check、公网和真实浏览器历史加载/评分显示正常。该版本Linux全量Python1579/Node1207通过，各3skip，PR/push双平台四CI成功；Paper23/PPT20五件IR与证据不变，File10锁不受gateway变更影响。PPT19及后续版本仍无自产PNG像素回传工具，保留人工预览检查；U03原PPT在取消发出前自然完成，不记取消失败。
+
+> 当前正式744ad5b已统一发布、check/CUA旧历史正常。File/Chat私有child路由、受限助手正文恢复、未闭合busy/幂等修复已取得本次v3真实通过；File11四形认证72次/USD0.043884303完成。运行源码9e2b632完整Linux Python1583/Node1208通过，各3skip，smoke/motif通过；744的PID namespace碰撞修复另57项Linux通过，先核命令和本账号配置再核真实候选mount，不kill或访问不相关旧系统root进程mount。Paper24/PPT21五件IR/证据不变，无新训练晋级。v3的CM只有7个不同值，GLFILE/END/SHA继续独立验隔离；取消后5条cap=null池预约对应paused/未seal，平台用量完整、未知模型预约金额0，保留供恢复；原对话有恢复按钮，同对话须先恢复原File任务，恢复实际执行及极早取消本轮未测。超过5成员冷启动容量仍未实测；后续统计修订bc8105d的PR/push双平台四CI成功，最终文档提交检查与PR99合并状态以GitHub为准。
+
+> 此前发布记录：PR84/88/92/93及[PR96](https://github.com/jingyio/GeneLoop/pull/96)已集成。源码756a181（[PR98](https://github.com/jingyio/GeneLoop/pull/98)批量邀请码与评分恢复）曾统一发布、定向检查与Ubuntu/Windows完整CI通过，正式网页评分保存/刷新验收通过；详见[记录](../experiments/invites-ratings-20261020.md)。费用/次数/output app cap为null，wire最大393216，原账号、库与累计账本保留。此前并行/输出额度检查及环境失败见[记录](../experiments/provider-output-20261020.md)；当前交接见[Web](harness-web.md)、[File](file-management.md)。以下各PR状态按其历史时间保留。
 
 - 2026-10-20（Codex）：[PR98](https://github.com/jingyio/GeneLoop/pull/98) 恢复场景双栏 1–5 分，账户两入口支持默认5/每批1–20个邀请码、逐个/全部复制与原生粘贴。原邀请码本无TTL，未使用永久有效，每码注册一次；页面关闭只丢失明文显示。源码756a181已统一发布，保留原账号、评分、库和累计账本。本地/服务器定向127项、服务器smoke/Motif及Ubuntu/Windows完整CI通过；正式网页已有Paper/PPT/Data记录均显示评分，Data两侧4/5分保存并刷新保留（仅接口诊断，不是质量打分）。普通Chat/新版独立File不加旧数值接口。本轮新增模型请求0；历史测试会话仍有加载失败/慢提示，未宣称本轮修复加载链路。见[实验记录](../experiments/invites-ratings-20261020.md)和[接口](../interfaces.md#邀请与场景数值评分2026-10-20-恢复)。合并状态以PR98为准；回退用统一service rollback。
+
+## 2026-10-20：PR99 / PR100 合并验收
+
+- 用户明确授权修复并分别合并两条PR。[PR100](https://github.com/jingyio/GeneLoop/pull/100)已合并，merge commit为1055a4f；Ubuntu/Windows的push及PR四项CI全部通过。RSI机制闭环已验证，质量问题不阻塞本轮机制验收；不宣称完整论文报告合格或稳定净降本。
+- [PR99](https://github.com/jingyio/GeneLoop/pull/99)上一轮失败来自文件轮询诊断竞态：初次变化可能早于轮询基线，8秒超时后退出码为null。已有d29c806加入父子进程就绪握手、不同版本持续写入和分阶段超时，仍要求实际变化被观察且fs.watch分配为零，未删除断言或掩盖失败。最新账本诊断还修正响应完成时间及毫秒端点的并发区间统计。
+- 独立目录组合检查：全量Python1370通过/228跳过，Node1220通过/7跳过，smoke及motif:check通过；该全量基于744ad5b与PR100的组合。随后账本修改通过相关Python35项/28跳过，网关20项及原竞态单项重复5次通过，均未调用模型。PR99同步main后，由其最新CI检查最终组合，不沿用旧提交的绿灯。
+- 合并必须核对最新head与全部检查，用expected head保护，保留两条独立PR的提交关系；最终merge commit见各PR。没有新增完整论文、Baseline或五用户付费实验，没有修改生产服务、认证数据或累计账本。源码合并不代表生产部署，原运行版本与历史部署状态按上文记录保留。
 
 ## 2026-10-20：PR84 / PR88 能力保留集成（PR93，待审）
 

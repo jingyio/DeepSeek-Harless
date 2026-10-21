@@ -3,13 +3,79 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import net from 'node:net';
 import { once } from 'node:events';
+import { spawn } from 'node:child_process';
 import { createHash, createHmac } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createGateway, createOwnerClaim, createInvites } from '../scripts/harless_gateway.mjs';
+import { createGateway, createOwnerClaim, createInvites, memberWatcherEnvironment } from '../scripts/harless_gateway.mjs';
 import { memberSceneDeployment } from '../scripts/harless_member_scenes.mjs';
 import WebSocket, { WebSocketServer } from 'ws';
+
+test('member watcher environment defaults to polling and forwards no unrelated authority', () => {
+  assert.deepEqual(memberWatcherEnvironment({}), {CHOKIDAR_USEPOLLING:'1',CHOKIDAR_INTERVAL:'1000'});
+  assert.deepEqual(memberWatcherEnvironment({CHOKIDAR_USEPOLLING:'TRUE',CHOKIDAR_INTERVAL:'0250',
+    API_KEY:'private-parent-value',NODE_OPTIONS:'--inspect',CHOKIDAR_IGNORED:'**'}),
+  {CHOKIDAR_USEPOLLING:'1',CHOKIDAR_INTERVAL:'250'});
+  for (const polling of ['0','false','FALSE'])
+    assert.deepEqual(memberWatcherEnvironment({CHOKIDAR_USEPOLLING:polling}),
+      {CHOKIDAR_USEPOLLING:'0',CHOKIDAR_INTERVAL:'1000'});
+  for (const polling of ['', 'yes', '2', 'true\n', true])
+    assert.throws(()=>memberWatcherEnvironment({CHOKIDAR_USEPOLLING:polling}),/CHOKIDAR_USEPOLLING/);
+  for (const interval of ['', '0', '-1', '1.5', '1e3', '1000ms', '2147483648', '9007199254740993', 1000])
+    assert.throws(()=>memberWatcherEnvironment({CHOKIDAR_INTERVAL:interval}),/CHOKIDAR_INTERVAL/);
+});
+
+test('member polling receives actual file changes without allocating fs.watch handles', async t => {
+  const directory=mkdtempSync(join(tmpdir(),'harless-member-poll-')),file=join(directory,'ownership.json');
+  t.after(()=>rmSync(directory,{recursive:true,force:true}));
+  writeFileSync(file,'original');
+  const source=`
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import {once} from 'node:events';
+let nativeWatches=0;
+fs.watch=()=>{nativeWatches++;throw Object.assign(new Error('diagnostic inotify exhausted'),{code:'ENOSPC'});};
+const {watch}=await import('chokidar');
+const watcher=watch(process.argv[1],{ignoreInitial:true});
+const report=value=>new Promise((resolve,reject)=>process.send(value,error=>error?reject(error):resolve()));
+try {
+  await once(watcher,'ready',{signal:AbortSignal.timeout(30000)});
+  const changed=once(watcher,'change',{signal:AbortSignal.timeout(30000)});
+  await report({phase:'ready'});
+  await changed;
+  assert.equal(nativeWatches,0);
+  await report({phase:'changed',nativeWatches});
+  console.log('polling-change-without-native-watch');
+} finally {await watcher.close();process.disconnect();}
+`;
+  const child=spawn(process.execPath,['--input-type=module','-e',source,file],{
+    cwd:new URL('../',import.meta.url),
+    env:{...process.env,...memberWatcherEnvironment({CHOKIDAR_USEPOLLING:'true',CHOKIDAR_INTERVAL:'20'})},
+    stdio:['ignore','pipe','pipe','ipc']});
+  t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill();});
+  let stdout='',stderr='';child.stdout.on('data',chunk=>stdout+=chunk);child.stderr.on('data',chunk=>stderr+=chunk);
+  let phase='starting',timer,mutations,timedOut=false,mutationCount=0,observed=false;
+  const deadline=ms=>{clearTimeout(timer);timer=setTimeout(()=>{timedOut=true;child.kill();},ms);timer.unref();};
+  deadline(30000);
+  child.on('message',message=>{
+    if(message?.phase==='ready'&&phase==='starting'){
+      phase='observing';deadline(30000);
+      // ready does not promise that fs.watchFile's first stat sample has
+      // finished. Keep making real, distinct versions until a poll sees one.
+      const mutate=()=>writeFileSync(file,'changed ownership record '+(++mutationCount)+' '.repeat(mutationCount));
+      mutate();mutations=setInterval(mutate,100);
+    }else if(message?.phase==='changed'&&phase==='observing'){
+      observed=message.nativeWatches===0;phase='closing';clearInterval(mutations);deadline(10000);
+    }
+  });
+  let code,signal;
+  try{[code,signal]=await once(child,'close');}
+  finally{clearTimeout(timer);clearInterval(mutations);}
+  assert.equal(code,0,JSON.stringify({phase,signal,timedOut,mutationCount,stdout,stderr}));
+  assert.ok(observed&&mutationCount>0,'child must observe a real changed file with zero native watch allocations');
+  assert.match(stdout,/polling-change-without-native-watch/);
+});
 
 test('Scene deployment mounts code read-only and keeps user data and credentials out', t => {
   const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-scene-deploy-')));
@@ -25,6 +91,7 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')]};
   const result=memberSceneDeployment(policy,deployment);
   assert.equal(result.output,'/app/.local/web');
+  assert.deepEqual(result.native_resources,{projectRoot:'/app'});
   assert.deepEqual(result.allowed_tools,scene.allowed_tools);
   assert.equal(result.scenes[0].mcp_rows[0].config.args[0],'/app/scenarios/general/server.py');
   assert.equal(result.scenes[0].mcp_rows[0].config.args[1],'__HARLESS_SESSION_WORKSPACE__/inputs');
@@ -72,6 +139,37 @@ test('Scene deployment mounts code read-only and keeps user data and credentials
   assert.ok(linked.mounts.some(row=>row.source===realpathSync(dependencyStore)&&row.target===releaseLink),
     'the dependency mount must resolve the first release symlink inside the member namespace');
   assert.ok(!linked.mounts.some(row=>row.source===join(root,'release')),'never expose a whole release checkout');
+});
+
+test('native member resources use only verified namespace mounts while host resources stay unchanged', t => {
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'harless-native-resources-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  for(const name of ['scenarios/ppt_master','python/bin','approved-skill','renderer/program','renderer/share','fonts'])
+    mkdirSync(join(root,name),{recursive:true});
+  const python=join(root,'python/bin/python');writeFileSync(python,'public diagnostic Python');
+  writeFileSync(join(root,'python/pyvenv.cfg'),'diagnostic installation');
+  const skillRoot=join(root,'approved-skill'),raw='---\nname: ppt-master\ndescription: Diagnostic public skill.\n---\nPublic diagnostic content.\n';
+  writeFileSync(join(skillRoot,'SKILL.md'),raw);
+  const files={'SKILL.md':createHash('sha256').update(raw).digest('hex')};
+  writeFileSync(join(root,'scenarios/ppt_master/skill-lock.json'),JSON.stringify({schema_version:1,version:'6.6.0',files,
+    package_sha256:createHash('sha256').update(JSON.stringify(files)).digest('hex')}));
+  const rendererRoot=join(root,'renderer'),fontRoot=join(root,'fonts');
+  writeFileSync(join(rendererRoot,'program/soffice.bin'),'diagnostic renderer');
+  writeFileSync(join(fontRoot,'NotoSansCJKsc-Regular.otf'),'public diagnostic font');
+  writeFileSync(join(fontRoot,'fonts-static.conf'),'public diagnostic configuration');
+  const scene={id:'chat',adapter:'workspace',allowed_tools:[],mcp_rows:[{name:'@deepseek-ai/dsh-mcp-client',
+    config:{serverName:'workspace',transport:'stdio',command:python,cwd:root,args:[join(root,'scenarios/general/server.py')]}}]};
+  const policy={scenes:[scene],command_resources:{projectRoot:'/unmounted/host',pptMasterRoot:'/unvalidated/skill',
+    rendererRoot:'/unvalidated/renderer',fontRoot:'/unvalidated/fonts',unapproved:'never-inherit'}};
+  const deployment={projectRoot:root,pythonExecutable:python,pythonRoots:[join(root,'python')],pptMasterRoot:skillRoot,rendererRoot,fontRoot};
+  const before=structuredClone({policy,deployment}),result=memberSceneDeployment(policy,deployment);
+  assert.deepEqual(result.native_resources,{projectRoot:'/app',pptMasterRoot:'/opt/geneloop/ppt-master',rendererRoot,fontRoot});
+  assert.ok(result.mounts.some(m=>m.source===skillRoot&&m.target===result.native_resources.pptMasterRoot));
+  assert.ok(result.mounts.some(m=>m.source===join(root,'scenarios')&&m.target==='/app/scenarios'));
+  for(const field of ['rendererRoot','fontRoot'])assert.ok(result.mounts.some(m=>m.source===deployment[field]&&m.target===result.native_resources[field]));
+  assert.deepEqual({policy,deployment},before,'owner configuration and host broker resources must not be rewritten');
+  assert.deepEqual(memberSceneDeployment(policy,{...deployment,pptMasterRoot:undefined,rendererRoot:undefined,fontRoot:undefined}).native_resources,
+    {projectRoot:'/app'},'an inherited skill path never grants a mount when the validated deployment has no skill');
 });
 
 test('data report fonts require the fixed mounted resource and its matching digest', t => {

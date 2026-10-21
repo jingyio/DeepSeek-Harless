@@ -38,9 +38,13 @@ def render_pdf(path,page,prefix,*,dpi=150,maximum=None):
     tool=executable('FM_PDFTOPPM','pdftoppm')
     if tool:
         size=['-scale-to',str(maximum)] if maximum else ['-r',str(dpi)]
-        run([tool,'-f',str(page),'-l',str(page),'-singlefile',*size,'-png',str(path),str(prefix)])
+        try:run([tool,'-f',str(page),'-l',str(page),'-singlefile',*size,'-png',str(path),str(prefix)])
+        except FileNotFoundError as error:
+            raise ValueError('PDF renderer unavailable: resolved pdftoppm executable was not found; check FM_PDFTOPPM') from error
     else:
-        import pymupdf as fitz
+        try:import pymupdf as fitz
+        except ImportError as error:
+            raise ValueError('PDF renderer unavailable: install pdftoppm or PyMuPDF, or configure FM_PDFTOPPM') from error
         with fitz.open(path) as pdf:
             p=pdf[page-1];scale=maximum/max(p.rect.width,p.rect.height) if maximum else dpi/72
             p.get_pixmap(matrix=fitz.Matrix(scale,scale),alpha=False).save(str(prefix)+'.png')
@@ -296,7 +300,7 @@ def verify_visual_reads(spec,state,output,*,pristine=None):
             if not 1<=v['page']<=page_count(source):raise ValueError('visual page outside source')
             cache=out/'visual-replay'/vid;cache.mkdir(parents=True,exist_ok=True)
             rendered=cache/'pixels.png'
-            if source.suffix.lower()=='.pdf':run([os.environ.get('FM_PDFTOPPM','pdftoppm'),'-f',str(v['page']),'-l',str(v['page']),'-singlefile','-scale-to','2400','-png',str(source),str(cache/'pixels')])
+            if source.suffix.lower()=='.pdf':render_pdf(source,v['page'],cache/'pixels',maximum=2400)
             else:
                 with Image.open(source) as im:
                     im=im.convert('RGB');im.thumbnail((2400,2400));im.save(rendered,'PNG')

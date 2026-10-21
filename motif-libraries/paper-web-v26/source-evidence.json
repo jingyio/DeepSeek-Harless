@@ -1,0 +1,150 @@
+{
+  "train": [
+    {
+      "research_decision_id": "paper-current-doc-arithmetic-v1",
+      "task_id": "b285d9312590448cbc54bb8d63ff5276",
+      "question_sha256": "b3db6647a9edca012802c8917e7204272f3f8f1e3d5dc65fe59dea625610dd41",
+      "manifest_sha256": "fdf8a5e56568f0276e66d1e052da9b6d0d6b03ea2d61cb8c8334511e76687ad0",
+      "events_sha256": "5578f484a80387870035b6cbb4eedf326a8bf6a7416d5da058ee28dd05114ad2",
+      "identity_sha256": "df15c441196f86eb5243ce3e872eaa1f7ed4487ed14ad46c51dfbaa3ec2c6adc",
+      "requests": 5,
+      "tokens": {
+        "prompt_tokens": 44699,
+        "prompt_cache_hit_tokens": 43264,
+        "prompt_cache_miss_tokens": 1435,
+        "completion_tokens": 1595,
+        "total_tokens": 46294
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 5
+      },
+      "proxy_peak_usd": 0.00260409,
+      "actual_paid_usd": null,
+      "tool_calls": 4,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0,
+      "reviewer_kind": "deterministic_structural_audit",
+      "review_sha256": "38f3225ac5ea14f520821b7f10247d07ba2b4e3b50d52f412cc15c8600a45230",
+      "readonly_provenance_passed": true,
+      "scientific_review_complete": false,
+      "visual_review_complete": false,
+      "effective_config_sha256": "feb2bd45f7bcf4bccaf8a6d97b15d3c4c2aa2bbdef717c2f5d9e9286007cf336",
+      "task_state_sha256": "842702f2c2838eb5f6972024aaff3c9b39f945566d0613c287cb030fee5bf2fc",
+      "request_sha256": "076ffb9531010d15471ed19dbb56a2018c7b24e85ca4543ea789931d375f6abe",
+      "answer_sha256": "b2e87752c3ee7bcf684fd99e5ef1f9945194fb0ace14a64ab48f3f442e482d8f",
+      "schema_compatibility": {
+        "collection_tool_count": 24,
+        "current_tool_count": 24,
+        "collection_whole_schema_sha256": "f9b6146e3a51f6a783577809ed81168da2afb014c6e1350b00d1094363acc979",
+        "current_whole_schema_sha256": "f9b6146e3a51f6a783577809ed81168da2afb014c6e1350b00d1094363acc979",
+        "whole_schema_unchanged": true,
+        "candidate_two_tool_schemas_unchanged": true,
+        "added_tools": [],
+        "removed_tools": [],
+        "changed_non_candidate_tools": [],
+        "scope": "Recompile the witnessed read edge against the captured current complete tool set; not old whole-schema equivalence."
+      }
+    },
+    {
+      "research_decision_id": "paper-current-doc-grammar-v1",
+      "task_id": "b285d9310f8c4cd899f97b0f1376f22e",
+      "question_sha256": "64303f5a9f37b7071172703d18d6648d068065ca92aaab3f31b80f7ea924b0cb",
+      "manifest_sha256": "513199ed7580d3ab038c179ed6bead264a382414f007baf429ed06871d10de99",
+      "events_sha256": "1e650f134af82a5186dd5f012d77a27e9f1f2d88e4503114381c0e94a965f93e",
+      "identity_sha256": "c75443d33e523787937bf32ff10e4c918dcc8bbb36f2c54fdd12ef5aea7c604c",
+      "requests": 5,
+      "tokens": {
+        "prompt_tokens": 44489,
+        "prompt_cache_hit_tokens": 43008,
+        "prompt_cache_miss_tokens": 1481,
+        "completion_tokens": 1504,
+        "total_tokens": 45993
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 5
+      },
+      "proxy_peak_usd": 0.00250715,
+      "actual_paid_usd": null,
+      "tool_calls": 4,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0,
+      "reviewer_kind": "deterministic_structural_audit",
+      "review_sha256": "38f3225ac5ea14f520821b7f10247d07ba2b4e3b50d52f412cc15c8600a45230",
+      "readonly_provenance_passed": true,
+      "scientific_review_complete": false,
+      "visual_review_complete": false,
+      "effective_config_sha256": "244044577913a3f2921d32c57f29e82780b0d015a2d7f5ba76c9ed7b365c4726",
+      "task_state_sha256": "b7fae87c012a4130b4aeec2656e15685392da7690b5087127623e816128892e8",
+      "request_sha256": "78aebd979d3639bde6974ab53068ac55e64cef08d93fc79860aca16828d139d0",
+      "answer_sha256": "d5cf81b289c38ba5a5ab88a394b2e30194caf2f4ecdc94ee2edefc94026e63d8",
+      "schema_compatibility": {
+        "collection_tool_count": 24,
+        "current_tool_count": 24,
+        "collection_whole_schema_sha256": "f9b6146e3a51f6a783577809ed81168da2afb014c6e1350b00d1094363acc979",
+        "current_whole_schema_sha256": "f9b6146e3a51f6a783577809ed81168da2afb014c6e1350b00d1094363acc979",
+        "whole_schema_unchanged": true,
+        "candidate_two_tool_schemas_unchanged": true,
+        "added_tools": [],
+        "removed_tools": [],
+        "changed_non_candidate_tools": [],
+        "scope": "Recompile the witnessed read edge against the captured current complete tool set; not old whole-schema equivalence."
+      }
+    }
+  ],
+  "heldout": [
+    {
+      "research_decision_id": "paper-current-doc-table-v1",
+      "task_id": "b285d931b5e34bacba2e2203b30fee35",
+      "question_sha256": "24c42b6485a96c5bd7417efa4df94e9b36b098f03b59cac7ee943ca14397445c",
+      "manifest_sha256": "727083be1e1d613d38657ed7ebf97ce1ef7903995247fe3c4eeec58383e75b4f",
+      "events_sha256": "1f1fbd40e8944cf6f44b4b76b198ac6e55577c59093d4576de960f359904de2c",
+      "identity_sha256": "3ca1a42859bbbd4358ef5f597d58f63a12c905ccd61816972dc8b0e3fe7daedc",
+      "requests": 5,
+      "tokens": {
+        "prompt_tokens": 45092,
+        "prompt_cache_hit_tokens": 43392,
+        "prompt_cache_miss_tokens": 1700,
+        "completion_tokens": 1559,
+        "total_tokens": 46651
+      },
+      "usage_complete": true,
+      "provider_response_statuses": {
+        "200": 5
+      },
+      "proxy_peak_usd": 0.0026411499999999997,
+      "actual_paid_usd": null,
+      "tool_calls": 4,
+      "tool_errors": 0,
+      "denials": 0,
+      "unknown_usage_requests": 0,
+      "pending_requests": 0,
+      "reviewer_kind": "deterministic_structural_audit",
+      "review_sha256": "38f3225ac5ea14f520821b7f10247d07ba2b4e3b50d52f412cc15c8600a45230",
+      "readonly_provenance_passed": true,
+      "scientific_review_complete": false,
+      "visual_review_complete": false,
+      "effective_config_sha256": "69caee919597fb113d2c5390d210f00ca6789caa4eee9e6dc44b0993962150b2",
+      "task_state_sha256": "10aa7c9ff5a937155dc5767a66321a7bed03a053a3ba881adb742dbff9449d55",
+      "request_sha256": "681c697edaf0b9530341d5327408486edde6d5bdab58ee07b3cfedc273caf12b",
+      "answer_sha256": "82bf15047f3ba25e2d0e8fc72d85e9f2f97e1384c6df8aaa2dca97c543a182a6",
+      "schema_compatibility": {
+        "collection_tool_count": 24,
+        "current_tool_count": 24,
+        "collection_whole_schema_sha256": "f9b6146e3a51f6a783577809ed81168da2afb014c6e1350b00d1094363acc979",
+        "current_whole_schema_sha256": "f9b6146e3a51f6a783577809ed81168da2afb014c6e1350b00d1094363acc979",
+        "whole_schema_unchanged": true,
+        "candidate_two_tool_schemas_unchanged": true,
+        "added_tools": [],
+        "removed_tools": [],
+        "changed_non_candidate_tools": [],
+        "scope": "Recompile the witnessed read edge against the captured current complete tool set; not old whole-schema equivalence."
+      }
+    }
+  ]
+}

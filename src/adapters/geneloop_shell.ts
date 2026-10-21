@@ -5,12 +5,27 @@ import {fileURLToPath} from 'node:url';
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local';
 import type { ShellExecRequest, ShellExecSpec } from '@deepseek-ai/dsh-shell';
 import {pptMasterInstallation} from './geneloop_skill_installation.mjs';
+import {rgPath} from '@vscode/ripgrep';
+import {resolveExecutionAgent} from './geneloop_delegation.ts';
 
 const inside = (root: string, path: string) => { const r = relative(root, path); return !r.startsWith('..') && !isAbsolute(r); };
 function fixedDirectory(path: string) {
   if (!isAbsolute(path) || realpathSync(path) !== resolve(path) || !lstatSync(path).isDirectory() || lstatSync(path).isSymbolicLink())
     throw Error('command workspace is not a fixed directory');
   return path;
+}
+function prepareMountPoints(layout: ReturnType<typeof commandLayout>) {
+  const work = fixedDirectory(layout.work), scratch = fixedDirectory(layout.scratch);
+  if (scratch !== join(work, 'code')) throw Error('command scratch is not a fixed directory inside its workspace');
+  // bubblewrap must find child bind destinations before /work becomes
+  // read-only. These empty seats live only in this Session's scratch tree.
+  for (const name of ['inputs', 'outputs']) {
+    const path = join(scratch, name), existing = lstatSync(path, { throwIfNoEntry: false });
+    if (existing && (existing.isSymbolicLink() || !existing.isDirectory()))
+      throw Error('command mount point is not a fixed directory');
+    if (!existing) mkdirSync(path, { mode: 0o700 });
+    fixedDirectory(path);
+  }
 }
 export function commandLayout(output: string, session: string) {
   if (!/^(?:session-[a-f0-9-]{36}|sss-[a-f0-9]{32})$/.test(session)) throw Error('command requires an owning Session');
@@ -24,6 +39,7 @@ export function commandArgv(layout: ReturnType<typeof commandLayout>, command: s
     python = process.env.SSS_PYTHON ?? '/usr/bin/python3', node = process.execPath, readOnly = false,
     resources: {pptMasterRoot?:string;rendererRoot?:string;fontRoot?:string;projectRoot?:string;network?:'none'} = {}) {
   if (process.platform !== 'linux' || !existsSync('/usr/bin/bwrap')) throw Error('isolated command execution requires Linux bubblewrap');
+  prepareMountPoints(layout);
   // env -i also supports the server's older bubblewrap (without --clearenv).
   const args = ['/usr/bin/env', '-i', '/usr/bin/bwrap', '--unshare-user', '--unshare-pid', '--unshare-ipc', '--unshare-uts',
     '--die-with-parent', '--new-session', '--cap-drop', 'ALL'];
@@ -42,6 +58,9 @@ export function commandArgv(layout: ReturnType<typeof commandLayout>, command: s
   }
   const skill=pptMasterInstallation(resources.pptMasterRoot,resources.projectRoot);
   if(skill)args.push('--ro-bind',skill.source,skill.target);
+  const rg=realpathSync(rgPath),rgStat=lstatSync(rg);
+  if(!isAbsolute(rg)||!rgStat.isFile()||rgStat.isSymbolicLink())throw Error('invalid packaged search installation');
+  args.push('--ro-bind',rg,'/opt/geneloop/rg');
   if(resources.rendererRoot){
     const renderer=fixedDirectory(resources.rendererRoot);
     if(!existsSync(join(renderer,'program/soffice.bin')) || !existsSync(join(renderer,'share')))throw Error('invalid command renderer installation');
@@ -67,7 +86,7 @@ export function commandArgv(layout: ReturnType<typeof commandLayout>, command: s
 export default class GeneLoopShell extends LocalBashExecutor {
   get sandboxMode() { return 'workspace-write' as const; }
   resolve(request: ShellExecRequest): ShellExecSpec {
-    const agent = this.ctx.get('agents')?.currentInitiator();
+    const agent = resolveExecutionAgent(this.ctx);
     if (!agent) throw Error('command requires an active owning Agent');
     const policy = JSON.parse(readFileSync(process.env.SSS_WEB_POLICY!, 'utf8'));
     const layout = commandLayout(policy.output, agent.session.id);

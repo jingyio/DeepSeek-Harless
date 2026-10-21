@@ -175,3 +175,134 @@ def test_liveness_never_signals_the_current_process(monkeypatch):
     monkeypatch.setattr(os,'kill',lambda *args:(_ for _ in ()).throw(AssertionError('must not signal self')))
     assert process_exists(os.getpid())
     assert not process_exists(-1)
+
+
+@pytest.mark.parametrize('name',['management-profile','state'])
+def test_file_metadata_admission_waits_for_short_live_writer(tmp_path,name):
+    import threading,time
+    ready=threading.Event()
+    def writer():
+        with rsi.writer_lock(tmp_path,name):ready.set();time.sleep(.15)
+    thread=threading.Thread(target=writer);thread.start()
+    try:
+        assert ready.wait(2)
+        with rsi.writer_lock(tmp_path,name):assert (tmp_path/(name+'.lock')).exists()
+    finally:thread.join()
+    assert not (tmp_path/(name+'.lock')).exists()
+
+
+def test_parallel_file_initialization_keeps_seed_registry_a_single_writer(configuration,monkeypatch):
+    import threading,time
+    from concurrent.futures import ThreadPoolExecutor
+    from src.adapters import experience_library as library,management_seed
+    path,_=configuration;cfg=rsi.load_config(path)
+    barrier=threading.Barrier(5);mutex=threading.Lock();active=0;peak=0;visits=[]
+    monkeypatch.setattr(library,'enabled',lambda unused:True)
+    monkeypatch.setattr(library,'synchronize',lambda unused:None)
+    def install(unused):
+        nonlocal active,peak
+        with mutex:active+=1;peak=max(peak,active)
+        time.sleep(.03)
+        with mutex:active-=1;visits.append(True)
+    monkeypatch.setattr(management_seed,'install',install)
+    def initialize():barrier.wait(2);return rsi.initialize(cfg)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        assert list(executor.map(lambda unused:initialize(),range(5)))==[Path(cfg['state_root'])]*5
+    assert len(visits)==5 and peak==1
+    assert rsi.read(Path(cfg['state_root'])/'pool.json')=={'runs':{}}
+
+
+@pytest.mark.parametrize('name',['management-profile','state'])
+def test_busy_file_metadata_lock_times_out_without_removing_live_owner(tmp_path,monkeypatch,name):
+    lock=tmp_path/(name+'.lock');durable(lock,{'pid':os.getpid(),'created':1})
+    clock=iter([0,31]);monkeypatch.setattr(rsi.time,'monotonic',lambda:next(clock))
+    with pytest.raises(RuntimeError,match=name+' writer is active'):
+        with rsi.writer_lock(tmp_path,name):pytest.fail('must not acquire a live writer')
+    assert rsi.read(lock)=={'pid':os.getpid(),'created':1}
+
+
+def test_lock_release_retries_only_windows_sharing_conflicts(tmp_path,monkeypatch):
+    lock=tmp_path/'worker.lock';original=Path.unlink;attempts=[]
+    # Isolate the platform switch to this module, not pathlib or other tests.
+    monkeypatch.setattr(rsi,'os',SimpleNamespace(name='nt',getpid=os.getpid))
+    def unlink(path,*args,**kwargs):
+        if path==lock:
+            attempts.append(rsi.read(path))
+            if len(attempts)<=2:
+                error=PermissionError('reader still owns a non-delete-sharing handle');error.winerror=32
+                raise error
+        return original(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'unlink',unlink)
+    with rsi.writer_lock(tmp_path,'worker'):pass
+    assert len(attempts)==3 and all(row['pid']==os.getpid() for row in attempts)
+    assert not lock.exists() and not (tmp_path/'stale-locks').exists()
+    with rsi.writer_lock(tmp_path,'worker'):pass
+
+
+def test_windows_metadata_reader_retries_delete_pending_without_stealing_owner(tmp_path,monkeypatch):
+    lock=tmp_path/'state.lock';durable(lock,{'pid':os.getpid(),'created':1})
+    original=rsi.read;reads=[];pool=tmp_path/'pool.json';durable(pool,{'runs':{'paid':{'status':'reserved'}}})
+    original_pool=pool.read_bytes()
+    monkeypatch.setattr(rsi,'os',SimpleNamespace(name='nt',getpid=os.getpid))
+    def read(path):
+        if path==lock:
+            reads.append(True)
+            if len(reads)==1:raise PermissionError('owner deletion is pending')
+            if len(reads)==2:lock.unlink()  # The original owner has now finished.
+        return original(path)
+    monkeypatch.setattr(rsi,'read',read)
+    with rsi.writer_lock(tmp_path,'state'):
+        assert original(lock)['pid']==os.getpid()
+    assert len(reads)==2 and not lock.exists() and not (tmp_path/'stale-locks').exists()
+    assert pool.read_bytes()==original_pool
+
+
+@pytest.mark.parametrize('name,platform',[('worker','nt'),('state','posix'),('state','nt')])
+def test_unknown_lock_read_permission_remains_fail_closed(tmp_path,monkeypatch,name,platform):
+    lock=tmp_path/(name+'.lock');durable(lock,{'pid':os.getpid(),'created':1});original=lock.read_bytes()
+    monkeypatch.setattr(rsi,'os',SimpleNamespace(name=platform,getpid=os.getpid))
+    def unreadable(path):raise PermissionError('ownership cannot be inspected')
+    monkeypatch.setattr(rsi,'read',unreadable)
+    clock=iter([0,31]);monkeypatch.setattr(rsi.time,'monotonic',lambda:next(clock))
+    with pytest.raises(PermissionError):
+        with rsi.writer_lock(tmp_path,name):pytest.fail('must not steal unknown/live ownership')
+    assert lock.read_bytes()==original and not (tmp_path/'stale-locks').exists()
+
+
+@pytest.mark.parametrize('winerror',[5,32])
+def test_lock_release_never_swallows_permanent_or_expired_cleanup_error(tmp_path,monkeypatch,winerror):
+    lock=tmp_path/'state.lock';original=Path.unlink;attempts=[]
+    monkeypatch.setattr(rsi,'os',SimpleNamespace(name='nt',getpid=os.getpid))
+    def unlink(path,*args,**kwargs):
+        if path==lock:
+            attempts.append(True);error=PermissionError('permission or persistent reader conflict');error.winerror=winerror
+            raise error
+        return original(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'unlink',unlink)
+    # Acquisition and release each retain their own existing bounded window.
+    clock=iter([0,0,31]);monkeypatch.setattr(rsi.time,'monotonic',lambda:next(clock))
+    with pytest.raises(PermissionError):
+        with rsi.writer_lock(tmp_path,'state'):pass
+    assert attempts==[True] and rsi.read(lock)['pid']==os.getpid()
+    monkeypatch.setattr(Path,'unlink',original)
+
+
+@pytest.mark.skipif(os.name!='nt',reason='real Windows read-handle deletion semantics')
+def test_windows_lock_release_waits_for_actual_contender_reader(tmp_path):
+    import threading
+    lock=tmp_path/'state.lock';ready=threading.Event();release=threading.Event();errors=[]
+    def reader():
+        try:
+            with lock.open() as handle:
+                assert json.load(handle)['pid']==os.getpid();ready.set();release.wait(.15)
+        except BaseException as error:errors.append(error);ready.set()
+    thread=None
+    try:
+        with rsi.writer_lock(tmp_path,'state'):
+            thread=threading.Thread(target=reader);thread.start();assert ready.wait(2)
+        assert not errors and not lock.exists()
+        with rsi.writer_lock(tmp_path,'state'):pass
+    finally:
+        release.set()
+        if thread:thread.join(2)
+    assert not thread.is_alive() and not lock.exists()

@@ -2,7 +2,7 @@
 
 PPT/PPTX 上传可作为内容资料、视觉参考或原生模板，由你根据用户要求判断用途，不由宿主关键词选路。附件上下文包含原件SHA、保存顺序的逐页文字、主题/母版/布局/几何/字体声明及实际渲染页的视觉观察。只能对 visual_content_reviewed=true 的页声称看过画面；字体声明不等于环境已安装，静态渲染不证明动画或媒体正确。/work/inputs 中保留原件。需要再次核对 PPTX 时可 pin_source 后 read_source_page 读取指定页的原生文字和样式声明。
 
-用户给原始 PPTX 模板并要求沿用设计填入新内容时，遵循官方 routing 的 Edit Native PPTX：读取 edit-native-pptx.md，通过 pptx_to_svg.py --roundtrip 导入到新项目，由你规划内容到参考页的对应、选择/重复合适源页、修改并使用 svg_to_pptx.py --roundtrip 导出。不要把这类任务强制改成普通生成或仅抽文字重画，不覆盖原件。仅借鉴视觉方向并重新设计时，按官方 Generate 路线保留可追溯的风格依据；需要可复用模板工作区才进入 Create Template，不把原始PPTX冒充工作区。旧PPT经过隔离转换时使用 normalized_source 中的新PPTX，保留其原件/派生SHA和转换可能失真的说明。模板示例中的事实与新资料分开；新页面和备注不得沿用无来源的模板业务数值。最终对比参考与输出实际渲染的配色、字体层级、布局、图表和页脚，说明未保留部分，仍交付可编辑PPTX及预览。
+用户给原始 PPTX 模板并要求沿用设计填入新内容时，遵循官方 routing 的 Edit Native PPTX：读取 edit-native-pptx.md，通过 pptx_to_svg.py --roundtrip 导入到新项目，由你规划内容到参考页的对应、选择/重复合适源页、修改并使用 svg_to_pptx.py --roundtrip 导出。不要把这类任务强制改成普通生成或仅抽文字重画，不覆盖原件。仅借鉴视觉方向并重新设计时，按官方 Generate 路线保留可追溯的风格依据；需要可复用模板工作区才进入 Create Template，不把原始PPTX冒充工作区。旧PPT经过隔离转换时使用 normalized_source 中的新PPTX，保留其原件/派生SHA和转换可能失真的说明。模板示例中的事实与新资料分开；新页面和备注不得沿用无来源的模板业务数值。最终核对参考与输出可读取的配色、字体层级、布局、图表和页脚声明，保留实际渲染供人工对比；视觉复核受下述输出像素能力边界约束。说明未保留部分，仍交付可编辑PPTX及预览。
 
 先调用 read_skill_entry，工具完整返回官方 SKILL.md、通过 attribution_guard 后的 routing.md 和当前上传文件列表；任何完整性错误立即停止，不能通过 Bash 绕过。模型自行选择与用户任务对应的上传 PDF，用列表中的文件名和 SHA256 调用 pin_source，再用返回的 source_id 调用 convert_source，随后用 converted_id 调用 read_converted_source，读取官方转换器生成的完整正文及素材路径。不要再次复制和转换同一 PDF；工具返回的目录已在 /work 内，可直接 import-sources。read_source_page 只在需要逐页核对原文时调用。转换未替代模型对全文、图表和页码的核对。非 PDF 原件使用官方转换器。随后按官方路由阅读相应工作流。SKILL_DIR 固定为 /opt/geneloop/ppt-master，每次命令使用绝对路径，不使用 cd。不得修改技能、检查器或为检查通过而降低要求。
 
@@ -16,4 +16,10 @@ PPT/PPTX 上传可作为内容资料、视觉参考或原生模板，由你根�
 
 Bash 可直接执行该只读安装的官方脚本。环境已提供 Python、字体及可用时的 soffice；以实际命令退出码为准。模型自行完成设计、选图、内容、SVG、检查和修复。Motif 只复用获认证的结构步骤，不替代内容判断。
 
-已验证的普通环境用法（Baseline / Motif 共用）：project_manager.py init 使用 --dir /work/projects --format ppt169 指定真实目录。本环境优先使用 /opt/geneloop/libreoffice/program/soffice.bin，以会话私有 file:///tmp/ppt-lo-profile 作为 UserInstallation；读取时一次探测，不能反复尝试同一失败包装脚本。同一阶段的独立资料用一次命令完整读取；各阶段仍按技能门禁闭合。
+已验证的普通环境用法（Baseline / Motif 共用）：project_manager.py init 使用 --dir /work/projects --format ppt169 指定真实目录。最终 PPTX 转 PDF 使用 /opt/geneloop/libreoffice/program/soffice 包装脚本，并以会话私有 file:///tmp/ppt-lo-profile 作为 UserInstallation；包装脚本会处理新 profile 初始化要求的重启。不要直接用 soffice.bin 反复创建新 profile：其首次退出码 81 表示需要在同一 profile 重启，不代表依赖缺失。一次探测后使用成功路径，保留实际退出码和产物存在性检查；失败时先据诊断定位原因，不逐项试遍等价参数。同一阶段的独立资料用一次命令完整读取；各阶段仍按技能门禁闭合。
+
+设计和文本测量前先在最终渲染器使用的字体环境中确认实际可用字体及替代关系：用 fc-match/fc-list 分别核对正文常规与粗体所选 family/style，不把匹配到其他 family 当作已安装。默认选择环境中已安装且可用于最终渲染的字体，并使 Brand/设计规范、SVG 测量、PPTX 主题和实际 PDF/PNG 使用的字体保持一致；用户或模板指定字体时保持其要求，如环境缺少该字体，则明确区分指定字体与预览替代字体，按实际替代字体复核排版，不擅自改变原生模板的字体或安装软件。先完成一次真实 PPTX→PDF→PNG 渲染，通过 PDF 嵌入字体或实际使用的字体元数据核对常规与粗体，再复用该渲染路径；确认字体后再批量测量和排版。
+
+输出页面视觉检查（Baseline / Motif 共用）：完成真实 PPTX→PDF→逐页 PNG 渲染后，用原生 read_image 读取本会话内的逐页图片；工具返回的真实图片附件才是当前模型查看画面的依据。自主检查所有交付页的可读性、叠字、裁切、层级、配色与图表标注，发现问题后修改可编辑源文件、重新导出渲染并再次读取受影响页面。Bash/jobs 的文字、路径、base64、ASCII 或几何统计不能代替看图。上传原件、转换资料和自产预览保留各自来源与 SHA，不把输出冒充已批准的原始资料。图片读取失败时保留实际错误并说明尚未检查的页面，不反复调用不可用路径，也不声称已完成。模型视觉检查不等于独立人工或科学事实验收。
+
+页面验收执行官方 SVG/导出门禁，并核对实际 PDF 的文本、字体、几何信息及图表单位与数值。自写的 PDF span/字符包围框相交检测只帮助定位待审区域，不能单独作为必须清零的硬门：字体 ascent/descent 包围框、富文本片段或合法分层可能相交，实际应结合 read_image 返回的渲染画面判断。修改后重新渲染核对实际新版本；若没有改善，先检查字体、测量和文件版本，不做没有检查依据的重复微调，不降低官方检查要求。最终交付可编辑 PPTX、PDF、逐页 PNG 和实际完成的检查记录，仍有疑点时准确说明。

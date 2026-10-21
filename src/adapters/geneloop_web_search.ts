@@ -1,6 +1,7 @@
 /** Official DSH search provider through the existing per-turn accounting route. */
 import { readFileSync } from 'node:fs';
 import { DeepSeekSearchProvider } from '@deepseek-ai/dsh-web-search-deepseek';
+import {resolveExecutionAgent} from './geneloop_delegation.ts';
 export const name = 'geneloop-web-search';
 export const inject = ['web', 'agents'];
 class AdmittedSearchProvider extends DeepSeekSearchProvider {
@@ -13,8 +14,9 @@ export function apply(ctx: any) {
   const endpoint=policy.budget_broker_endpoint ? policy.budget_broker_endpoint+'/v1' : policy.endpoint;
   if (!/^http:\/\/127\.0\.0\.1:\d+\/v1$/.test(endpoint)) throw Error('search requires the admitted model gateway');
   ctx.web.registerSearchProvider(new AdmittedSearchProvider(() => {
-    const agent = ctx.agents.currentInitiator();
-    if (!agent) throw Error('search requires an active owning Agent');
+    const initiator = ctx.agents.currentInitiator();
+    if (!initiator) throw Error('search requires an active owning Agent');
+    const agent=resolveExecutionAgent(ctx,initiator);
     const model = agent.session.requestHeader()?.config.model;
     if (!['deepseek-flash', 'deepseek-v4-flash', 'deepseek-v4-pro'].includes(model)) throw Error('search model is not configured');
     return { apiKey: process.env.DEEPSEEK_API_KEY, baseURL: `${endpoint}/search/${agent.session.id}`,

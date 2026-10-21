@@ -19,6 +19,14 @@ import { Context, Service } from '@deepseek-ai/cordis';
 import { apply as mountNativeConnection } from '@deepseek-ai/dsh-client-connection';
 import { WebServer } from '@deepseek-ai/dsh-host-webserver';
 import { TypertGatewayService } from '@deepseek-ai/dsh-api-gateway';
+import {SessionStore} from '@deepseek-ai/dsh-session';
+import {SessionProjectionRegistry} from '@deepseek-ai/dsh-session-projection';
+import {SystemPrompt} from '@deepseek-ai/dsh-system-prompt';
+import {ToolRuntime} from '@deepseek-ai/dsh-tools';
+import {SubagentRuntime} from '@deepseek-ai/dsh-subagent';
+import {apply as nativeSpawn} from '@deepseek-ai/dsh-subagent-spawn-in-process';
+import {CommandRuntime} from '@deepseek-ai/dsh-commands';
+import {createScope} from '@deepseek-ai/dsh-scope';
 
 test('Scene instructions preserve report value tokens without treating them as Harness variables',()=>{
  const text='Bind {{estimate}} and {{ci_low}} to verified report results.';
@@ -91,9 +99,26 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
     const rows = JSON.parse(readFileSync(join(directory, 'presets', preset, 'agent.cordis.yml'), 'utf8'));
     return rows.flatMap(row => row.config?.fixture_tools ?? []);
   };
-  const emit = (name, ...args) => { for (const listener of listeners.get(name) ?? []) listener(...args); };
-  const ctx = {
-    emit,
+  // Native controllers now consume real host services. Keep only the network,
+  // storage and agent execution ports synthetic; permissions and controllers
+  // use their installed implementations rather than optional runtime fallbacks.
+  let ctx;
+  const emit = (name, ...args) => { for (const listener of [...(listeners.get(name) ?? [])]) listener(...args); };
+  function nativeHost() {
+    const context = new Context(), on = context.on.bind(context);
+    context.on = (name, listener, ...options) => {
+      const rows = listeners.get(name) ?? []; rows.push(listener); listeners.set(name, rows);
+      const dispose = on(name, listener, ...options);
+      return () => { const index=rows.indexOf(listener);if(index>=0)rows.splice(index,1);dispose(); };
+    };
+    new SessionStore(context);new SessionProjectionRegistry(context);new SystemPrompt(context,{});
+    new ToolRuntime(context,{});new SubagentRuntime(context);nativeSpawn(context,{providerName:'spawn'});
+    new CommandRuntime(context);
+    const register=context.commands.register;
+    context.commands.register=function(definition){commands.set(definition.name,definition);return register.call(this,definition);};
+    return context;
+  }
+  ctx = Object.assign(nativeHost(), {
     workspaceController: {
       async *follow() { yield { type: 'baseline', value: { items: [...workspaceGroups.values()], archivedSessionIds: ctx.workspaceRegistry.archivedSessionIds } }; },
       async rename({ workspaceId, title }) { const row = workspaceGroups.get(workspaceId); row.title = title; return { workspace: row }; },
@@ -103,10 +128,7 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
     workspaceRegistry: { archivedSessionIds: [], async archiveSession(id) { if (!this.archivedSessionIds.includes(id)) this.archivedSessionIds.push(id); }, list: () => [...workspaceGroups.values()], get: id => workspaceGroups.get(id),
       async create(path, title) { const old = [...workspaceGroups.values()].find(row => row.path === path); if (old) return old;
         const row = { id:'workspace-' + randomUUID(), path, title, sessionIds:[], async attachSession(id) { if(!this.sessionIds.includes(id)) this.sessionIds.push(id); } }; workspaceGroups.set(row.id,row); return row; } },
-    commands: { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } },
     agentPresets: { async mount() {}, async select(agent, preset) { presetCalls.push({ session_id: agent.session.id, preset }); agent.preset = preset; agent.mountedTools = mountedNames(preset); } },
-    effect(factory) { factory(); },
-    on(name, listener) { const rows = listeners.get(name) ?? []; rows.push(listener); listeners.set(name, rows); },
     llm: { registerAdapter(names, adapter) { adapters.push({ names, adapter }); return () => {}; } },
     connection: {
       fetch: { register(route) { routes.set(route.path, route); return async () => {}; } },
@@ -129,7 +151,10 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
     sessionController: {
       async list() { return { items: [...storedHeaders].map(([sessionId, meta]) => ({ sessionId, title: meta.title })) }; },
       async search() { return this.list(); },
-      async page({sessionId}) { return this.inspect(sessionId); },
+      async page({address,sessionId}) {
+        const snapshot=await this.inspect(address?.sessionId??sessionId);
+        return {records:snapshot.events.map(event=>({type:'event',event})),hasMore:false};
+      },
       async create(request) {
         assert.ok(request.cwd === undefined || request.workspaceId === undefined, 'native create rejects workspaceId together with cwd');
         const id = request.sessionId ?? `mock-session-${agents.size + 1}`;
@@ -140,16 +165,23 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
           if (!storedHeaders.has(id)) storedHeaders.set(id, { id, agentPreset: request.agentPreset,
             cwd: request.workspaceId ? workspaceGroups.get(request.workspaceId).path : request.cwd });
           const mountedPreset = request.agentPreset ?? storedHeaders.get(id)?.agentPreset;
-          const agent = { preset: mountedPreset, mountedTools: mountedNames(mountedPreset), session: { id, snapshotEvents: () => events, append(type,data,extra={}) { const event={type,data,seq:events.length,time:Date.now(),...extra};events.push(event);emit('session/event',agent.session,event);return event;} }, guards: guardFns, events, ctx: {
+          const agent = { id, preset: mountedPreset, mountedTools: mountedNames(mountedPreset), session: { id, header: {}, inheritedEventCount:0,
+            get seq(){return events.length;}, eventAt(seq){return events[seq]&&{seq,...events[seq]};},
+            snapshotEvents:(start=0,end=events.length)=>events.slice(start,end).map((event,index)=>({seq:start+index,...event})),
+            append(type,data,extra={}) { const event={type,data,seq:events.length,time:Date.now(),...extra};events.push(event);emit('session/event',agent.session,event);return event;} }, guards: guardFns, events, ctx: {
             tools: { restrict(value) {
                 if(strictMountedTools){const unknown=value.allow.filter(name=>!agent.mountedTools.includes(name));if(unknown.length)throw Error('tools.restrict() unknown global tools: '+unknown.join(', '));}
                 agent.allow = value; return () => {}; },
               guard(fn) { guardFns.push(fn); return () => guardFns.splice(guardFns.indexOf(fn), 1); },
-              schemas() { return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name))); } },
+              schemas() {
+                if(!agent.allow)return structuredClone(fixtureSchemas.filter(row=>!strictMountedTools||agent.mountedTools.includes(row.name)));
+                return structuredClone(fixtureSchemas.length === 1 && agent.allow.allow.length === 1 ? [{ ...fixtureSchemas[0], name: agent.allow.allow[0] }] : fixtureSchemas.filter(row => agent.allow?.allow.includes(row.name)));
+              } },
             systemPrompt: { suppressRuntimeContext() { return () => {}; }, variable(name,fn) { agent.variables??=new Map();agent.variables.set(name,fn);return()=>agent.variables.delete(name); },
               section(row) { agent.instruction = row.text==='{{harless_scene_literal}}'?agent.variables.get('harless_scene_literal')():row.text; return () => {}; } },
             on(name,fn) { (agent.hooks??=new Map()).set(name,fn); },
           } };
+          agent.ctx=Object.defineProperties(createScope(ctx,agent).ctx,Object.getOwnPropertyDescriptors(agent.ctx));
           agent.steered=[];agent.steer=message=>agent.steered.push(message);
           if(realSessions){
             const session=Session.create(id,events),append=session.append.bind(session);
@@ -171,7 +203,7 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
         }
         const event = { type: 'user/message', data: { id: `user-${promptCalls.length}`,
           content: nativeImageAdmission ? await ctx.attachments.admitPromptContent(request.content) : request.content, source: { kind: 'user', rpcId: request.requestId } } };
-        agent.events.push(event); emit('session/event', agent.session, event);
+        agent.session.append(event.type,event.data);
         return { accepted: true };
       },
       async inspect(id) {
@@ -183,22 +215,23 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
       async selectModel(request) { modelCalls.push(structuredClone(request)); await originalController.create({ sessionId: request.sessionId }); return request; },
       updateQueue(request) { queueMutations.push(request); return { accepted: true }; },
     },
-  };
+  });
   const originalController = { ...ctx.sessionController };
   const originalWorkspaceController = { ...ctx.workspaceController };
   const originalUploads = { ...ctx.fileUploads };
   const originalPresets = { ...ctx.agentPresets };
-  ctx.agents = { async create(request) { const result = await originalController.create({sessionId:request.sessionId,cwd:request.meta.cwd,agentPreset:request.meta.agentPreset});
+  ctx.agents = { get:id=>agents.get(id),list:()=>[...agents.values()],async create(request) { const result = await originalController.create({sessionId:request.sessionId,cwd:request.meta.cwd,agentPreset:request.meta.agentPreset});
     const agent=agents.get(result.sessionId);agent.events.push(...structuredClone(request.seed));Object.assign(storedHeaders.get(result.sessionId),request.meta);
     await request.setup(agent.ctx,agent);return agent; } };
   try {
     const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
   } catch (error) {
+    await ctx.fiber.dispose();
     if (previous === undefined) delete process.env.SSS_WEB_POLICY; else process.env.SSS_WEB_POLICY = previous;
     if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
     if (brokerServer) { brokerServer.closeAllConnections(); await new Promise(resolve => brokerServer.close(resolve)); }
-    rmSync(directory, { recursive: true }); throw error;
+    rmSync(directory, { recursive: true, maxRetries:3, retryDelay:100 }); throw error;
   }
   async function api(body, query = '') {
     const route = routes.get('/api/harless/tasks');
@@ -218,7 +251,7 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
         content: event.data.content })), ...changes };
     return tagged ? markAgentLoopRequest(body) : body;
   }
-  return { ctx, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts, policy, policyPath,
+  return { get ctx(){return ctx;}, api, preview, submit, agents, emit, commands, presetCalls, directory, receipts, policy, policyPath,
     async trash(body) { const request = new Request('http://127.0.0.1/api/harless/session-trash', body === undefined ? {} : { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }); request.authorized=true;
       const response=await routes.get('/api/harless/session-trash').fetch(request); return {status:response.status,value:await response.json()}; },
     async settings(body, query='') { const response = await routes.get('/api/harless/settings').fetch(new Request('http://127.0.0.1/api/harless/settings'+query, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) })); return { status: response.status, value: await response.json() }; },
@@ -228,22 +261,23 @@ async function fixture({ broker = false, dshHome = false, visionReply, nativeIma
     async stopControl() { server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); },
     originalController,
     async restart() {
-      Object.assign(ctx.sessionController, originalController);
-      Object.assign(ctx.workspaceController, originalWorkspaceController);
-      Object.assign(ctx.fileUploads, originalUploads);
-      Object.assign(ctx.agentPresets, originalPresets);
+      const ports={...Object.fromEntries(['workspaceRegistry','agentPresets','llm','connection','webServer','attachments','agents'].map(name=>[name,ctx[name]])),sessionController:{...originalController},workspaceController:{...originalWorkspaceController},
+        fileUploads:{...originalUploads},agentPresets:{...originalPresets}};
+      await ctx.fiber.dispose();
       listeners.clear(); routes.clear(); webRoutes.clear(); agents.clear();
+      ctx=Object.assign(nativeHost(),ports);
       const { apply } = await import('../src/adapters/dsh_web_tasks.ts'); apply(ctx);
     },
     stream(request, next) { return listeners.get('llm/stream')[0](request, next); },
     async complete(task) { emit('agent/status', { agent: agents.get(task.session_id), status: 'idle' });
       await api(undefined, '?task_id=' + task.task_id); },
     async close() {
+      await ctx.fiber.dispose();
       if (previous === undefined) delete process.env.SSS_WEB_POLICY; else process.env.SSS_WEB_POLICY = previous;
       if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome;
       server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
       if (brokerServer) { brokerServer.closeAllConnections(); await new Promise(resolve => brokerServer.close(resolve)); }
-      rmSync(directory, { recursive: true });
+      rmSync(directory, { recursive: true, maxRetries:3, retryDelay:100 });
     },
   };
 }
@@ -668,6 +702,41 @@ test('cold native Pro selection binds the parent mounted preset independently of
  }
 });
 
+test('cold comparison-only parent closes obsolete tools while its next prompt gets a fresh current scope',options,async()=>{
+ const oldTool='mcp__workspace__list_files',newTools=JSON.parse(readFileSync(new URL('../config/geneloop-capabilities.json',import.meta.url),'utf8')).tools;
+ const oldScene={id:'new-scene',label:'Chat',preset:'sss-chat',adapter:'workspace',allowed_tools:[oldTool],config_sha256:'a'.repeat(64),
+  mcp_rows:[{id:'fixture-chat',name:'fixture-mcp',config:{fixture_tools:[oldTool],workspace:'__HARLESS_SESSION_WORKSPACE__'}}]};
+ const dataScene={...oldScene,id:'research-data-analysis',label:'Data',preset:'sss-data'};
+ const fixtureSchemas=[oldTool,...newTools].map(name=>({...toolSchemas[0],name}));
+ const f=await fixture({broker:true,dshHome:true,strictMountedTools:true,fixtureSchemas,scenes:[oldScene,dataScene],capability_profile:'new-scene',comparison_scenes:['research-data-analysis']});
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});const parent=f.agents.get(sessionId),preset=parent.preset;
+  parent.session.append('turn/start',{turn:1});
+  parent.session.append('user/message',{id:'old-comparison-user',role:'user',source:{kind:'user',rpcId:'old-comparison'},
+   content:[{type:'text',text:'read prior teaching input'}],harless_comparison:{id:'old-comparison',turn:1}},{surfaceOp:'append'});
+  parent.session.append('turn/end',{turn:1,reason:{kind:'completed'}});
+  const presetPath=join(f.directory,'presets',preset,'agent.cordis.yml'),before=readFileSync(presetPath,'utf8');
+  const upgraded=structuredClone(oldScene);upgraded.common_tools=[...newTools];upgraded.allowed_tools.push(...newTools);upgraded.mcp_rows[0].config.fixture_tools.push(...newTools);
+  writeFileSync(f.policyPath,JSON.stringify({...f.policy,scenes:[upgraded,dataScene]}));await f.restart();
+  await f.ctx.sessionController.selectModel({sessionId,provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:'off'},new AbortController().signal);
+  const restored=f.agents.get(sessionId);
+  assert.deepEqual(restored.mountedTools,[oldTool]);assert.deepEqual(restored.allow.allow,[]);
+  assert.equal(readFileSync(presetPath,'utf8'),before,'history restore cannot edit its old preset or add current tools');
+  assert.equal((await f.settings(undefined,'?session_id='+sessionId)).value.conversation_only,true);
+  const page=await f.ctx.sessionController.page({address:{kind:'session',sessionId},throughSeq:2},new AbortController().signal);
+  assert.equal(page.records.find(row=>row.event.type==='user/message').event.data.id,'old-comparison-user');
+  assert.equal(f.registrations.size,0);assert.equal(f.promptCalls.length,0,'reading history cannot run a model');
+  const sent=await f.ctx.sessionController.prompt({sessionId,requestId:'new-current-prompt',mode:'queue',content:[{type:'text',text:'hello'}]},new AbortController().signal);
+  assert.ok(sent.comparison_id);
+  let tasks=[];for(let i=0;i<200;i++){tasks=(await f.api()).value.tasks;if(tasks.length&&f.promptCalls.length)break;await new Promise(resolve=>setTimeout(resolve,10));}
+  assert.ok(tasks.length>0,'legacy continuation must prepare a fresh task');
+  const child=f.agents.get(tasks[0].session_id);assert.notEqual(child.session.id,sessionId);
+  assert.deepEqual(child.mountedTools,upgraded.allowed_tools);assert.deepEqual(child.allow.allow,upgraded.allowed_tools);
+  assert.deepEqual(restored.allow.allow,[],'new task tools never broaden the historical parent');
+  assert.equal((await settleAttachmentTurn(f,sessionId,sent.comparison_id)).status,'completed');
+ }finally{await f.close();}
+});
+
 test('Selected model and empty session survive a Web process restart', options, async () => {
   const f = await fixture({ models: [
     { provider: 'deepseek-official', model: 'deepseek-flash', label: 'DeepSeek Flash', available: true },
@@ -805,7 +874,7 @@ test('Model admission rejects auxiliary calls, changed schemas, altered user env
     const original = f.modelRequest(task);
     assert.throws(() => f.stream(f.modelRequest(task, { messages: [...original.messages,
       { role: 'user', id: 'goal-round', source: { kind: 'goal', goalId: 'unapproved-goal', revision: 1, round: 1 },
-        content: [{ type: 'text', text: '未经任务确认的目标续跑' }] }] }), next), /Goal continuation/);
+        content: [{ type: 'text', text: '未经任务确认的目标续跑' }] }] }), next), /Untrusted goal round source/);
     assert.throws(() => f.stream(f.modelRequest(task, { messages: [{ ...original.messages[0],
       content: [{ type: 'text', text: '未经预览的新要求' }] }] }), next), /envelope/);
     const received = []; for await (const row of f.stream(f.modelRequest(task), next)) received.push(row);
@@ -1025,7 +1094,7 @@ test('Real native chat keeps one DSH session across confirmed turns with distinc
     assert.equal(model.messages.length, 2);
     const received = []; for await (const row of f.stream(model, next)) received.push(row);
     assert.equal(received.length, 1);
-    assert.throws(() => f.stream(f.modelRequest(second, { messages: [model.messages[0]] }), next), /envelope/);
+    assert.throws(() => f.stream(f.modelRequest(second, { messages: [model.messages[0]] }), next), /Current task user message is absent/);
     assert.throws(() => f.stream(f.modelRequest(second, { messages: [{ ...model.messages[0],
       content: [{ type: 'text', text: 'changed old user turn' }] }, model.messages[1]] }), next), /envelope/);
     await f.complete(second);
@@ -1054,6 +1123,31 @@ test('Native mock chat admits dynamic content in a new session and records task 
     const second = await f.preview('取消后能运行独立任务'); assert.equal((await f.submit(second)).status, 200);
     await f.complete(second);
   } finally { await f.close(); }
+});
+
+test('Task cancellation mirrors its native closing turn and keeps the original route until the Agent is idle',options,async()=>{
+ const f=await fixture({broker:true,realSessions:true});let release;
+ try{
+  const {sessionId}=await f.ctx.sessionController.create({});
+  await f.ctx.sessionController.prompt({sessionId,requestId:'closing-turn-first',mode:'queue',content:[{type:'text',text:'Synthetic cancel boundary'}]},new AbortController().signal);
+  const task=(await f.api()).value.tasks[0],agent=f.agents.get(sessionId);
+  agent.session.append('turn/start',{turn:1});
+  const idle=new Promise(resolve=>release=resolve);agent.whenIdle=()=>idle;
+  await f.ctx.sessionController.cancel({sessionId});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.brokerRoutes.get(sessionId),'turn-'+task.task_id,'abort acknowledgement cannot retire an executing turn route');
+  const end=agent.session.append('turn/end',{turn:1,reason:{kind:'aborted',reason:{kind:'user'}}});
+  const path=join(f.directory,'tasks',task.task_id,'events.jsonl');
+  const recorded=readFileSync(path,'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(recorded.at(-1),end);assert.equal(recorded.filter(e=>e.type==='turn/end').length,1);
+  release();assert.equal((await f.api(undefined,'?task_id='+task.task_id)).value.status,'cancelled');
+  assert.equal(f.brokerRoutes.has(sessionId),false);
+  const old=readFileSync(path,'utf8');
+  await f.ctx.sessionController.prompt({sessionId,requestId:'closing-turn-next',mode:'queue',content:[{type:'text',text:'Independent next turn'}]},new AbortController().signal);
+  agent.session.append('turn/start',{turn:2});agent.session.append('turn/end',{turn:2,reason:{kind:'completed'}});
+  assert.equal(readFileSync(path,'utf8'),old,'new Task cannot append to the cancelled Task journal');
+  await f.complete((await f.api()).value.tasks.find(row=>row.request_id==='closing-turn-next'));
+ }finally{release?.();await f.close();}
 });
 
 test('Real-provider native prompt runs immediately with budget admission and no confirmation dialog', options, async () => {
@@ -1228,7 +1322,7 @@ test('real Paper product manifest mounts the page-one continuation only on Motif
   assert.ok(motif);assert.ok(baseline);assert.equal(motif.fallback_reason,null);
   assert.equal(motif.source_pending,false);assert.equal(motif.scene_inputs.length,1);
   for(const task of [baseline,motif])assert.deepEqual(f.agents.get(task.session_id).allow.allow,scene.allowed_tools);
-  assert.equal(scene.certified_tool_schemas.length,24);assert.equal(scene.allowed_tools.length,30);
+  assert.equal(scene.certified_tool_schemas.length,24);assert.deepEqual(scene.allowed_tools,[...schemas.map(row=>row.name),...common]);
   const pin='mcp__paper_checks__pin_document',readTool='mcp__paper_checks__read_pinned_document',source='source-'+'b'.repeat(32);
   for(const task of [baseline,motif])f.agents.get(task.session_id).hooks.get('tools/result')(
    {name:pin,callId:'model-pin-'+task.task_id,arguments:{name:'brief.txt',sha256:version}},
@@ -2567,7 +2661,7 @@ test('Task API exposes real text chunks and tool activity before completion and 
   const iterator=stream[Symbol.asyncIterator]();await iterator.next();
   let live=(await f.api(undefined,'?task_id='+task.task_id)).value;assert.equal(live.answer,'first');assert.equal(live.progress.status,'running');
   await iterator.next();live=(await f.api(undefined,'?task_id='+task.task_id)).value;assert.equal(live.answer,'first second');await iterator.next();
-  f.emit('session/event',f.agents.get(task.session_id).session,{type:'tool/call',data:{name:'mcp__demo__read_note',callId:'safe',arguments:{path:'/private/server'}}});
+  f.agents.get(task.session_id).session.append('tool/call',{name:'mcp__demo__read_note',callId:'safe',arguments:{path:'/private/server'}});
   live=(await f.api(undefined,'?task_id='+task.task_id)).value;assert.equal(live.activity[0].label,'读取资料');assert.doesNotMatch(JSON.stringify(live.activity),/private/);
   await f.complete(task);await f.restart();live=(await f.api(undefined,'?task_id='+task.task_id)).value;
   assert.equal(live.progress.status,'completed');assert.equal(live.activity[0].status,'failed','a tool without a real result is never presented as success');
@@ -2579,9 +2673,9 @@ test('Legacy progress rebuilds anchored tools once and preserves saved activitie
   const f=await fixture({broker:true});try{
    const task=await f.preview({instruction:'legacy progress fixture'});await f.submit(task);
    const session=f.agents.get(task.session_id).session;
-   f.emit('session/event',session,{type:'tool/call',data:{name:'mcp__demo__read_note',callId:'legacy-read'}});
-   f.emit('session/event',session,{type:'tool/result',data:{message:{source:{callId:'legacy-read'},content:[]}}});
-   f.emit('session/event',session,{type:'assistant/message',data:{message:{id:'legacy-answer',content:[{type:'text',text:'Legacy final answer.'}]}}});
+   session.append('tool/call',{name:'mcp__demo__read_note',callId:'legacy-read'});
+   session.append('tool/result',{message:{source:{callId:'legacy-read'},content:[]}});
+   session.append('assistant/message',{message:{id:'legacy-answer',content:[{type:'text',text:'Legacy final answer.'}]}});
    await f.complete(task);
    const output=join(f.directory,'tasks',task.task_id),statePath=join(output,'task-state.json'),eventsPath=join(output,'events.jsonl');
    const saved=JSON.parse(readFileSync(statePath,'utf8'));delete saved.trace;delete saved.messages;
@@ -2688,6 +2782,23 @@ test('paired native steps reach SSE, scoped trace, feedback and a single-lane br
   assert.equal(privateFailures.length,1);assert.match(privateFailures[0].message,/tools\.restrict/);
   await reader.cancel();reader=undefined;
  }finally{await reader?.cancel();await f.close();}
+});
+
+test('cold native history opens old comparison messages without ordinary task admission records', options, async () => {
+ const f=await fixture();try {
+  const {sessionId}=await f.ctx.sessionController.create({});
+  const agent=f.agents.get(sessionId);
+  agent.session.append('turn/start',{turn:1});
+  const message=agent.session.append('user/message',createUserMessage({source:{kind:'user',rpcId:'legacy-comparison'},
+    content:[{type:'text',text:'请核对教学资料。'}],harless_comparison:{id:'legacy-comparison',turn:1}}),{surfaceOp:'append'});
+  agent.session.append('turn/end',{turn:1,reason:'stop'});
+  await f.restart();
+  const page=await f.ctx.sessionController.page({address:{kind:'session',sessionId},throughSeq:2,maxMessages:50},new AbortController().signal);
+  assert.equal(page.hasMore,false);
+  assert.equal(page.records.find(row=>row.event.type==='user/message').event.data.id,message.data.id);
+  assert.equal(page.records.find(row=>row.event.type==='user/message').event.data.content[0].text,'请核对教学资料。');
+  assert.equal(f.promptCalls.length,0,'opening old history must not run a model or create another task');
+ }finally{await f.close();}
 });
 
 test('cold blank archive restoration preserves authoritative native title events instead of resetting a manual name', options, async () => {

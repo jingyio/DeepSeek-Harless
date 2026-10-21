@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "format": "sss-operation-graph-v2",
+  "execution_version_sha256": "56b0d2d3d632141deef4992bb19bbda1d6a06da5018b7d6f0cbb3ae5101417a8",
+  "artifact": {
+    "kind": "learned_mcp_operation_dag",
+    "status": "trace_validated_effectful",
+    "nodes": [
+      {
+        "tool": "mcp__file_management__preview_actions",
+        "bindings": {}
+      },
+      {
+        "tool": "mcp__file_management__execute_plan",
+        "bindings": {
+          "plan_id": {
+            "node": 0,
+            "path": "plan_id"
+          }
+        }
+      }
+    ],
+    "tool_contracts": {
+      "mcp__file_management__preview_actions": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "stage",
+          "auto_continue": false,
+          "exports": [
+            "plan_id"
+          ],
+          "statuses": [
+            "validated_management_plan",
+            "confirmation_required"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "$defs": {
+            "ManagementAction": {
+              "additionalProperties": false,
+              "properties": {
+                "op": {
+                  "enum": [
+                    "copy",
+                    "move",
+                    "rename",
+                    "mkdir",
+                    "overwrite",
+                    "delete",
+                    "quarantine",
+                    "read"
+                  ],
+                  "title": "Op",
+                  "type": "string"
+                },
+                "file_ids": {
+                  "description": "At most one actual file_id from list_files. When nonempty, omit source or set source=null; never provide both identities.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 1,
+                  "title": "File Ids",
+                  "type": "array"
+                },
+                "source": {
+                  "anyOf": [
+                    {
+                      "maxLength": 180,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Alternative relative source path. Use only when file_ids is empty. Omit for mkdir.",
+                  "title": "Source"
+                },
+                "source_root": {
+                  "default": "workspace",
+                  "title": "Source Root",
+                  "type": "string"
+                },
+                "destination": {
+                  "anyOf": [
+                    {
+                      "maxLength": 180,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Destination"
+                },
+                "destination_root": {
+                  "default": "workspace",
+                  "title": "Destination Root",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "op"
+              ],
+              "title": "ManagementAction",
+              "type": "object"
+            }
+          },
+          "properties": {
+            "actions": {
+              "items": {
+                "$ref": "#/$defs/ManagementAction"
+              },
+              "title": "Actions",
+              "type": "array"
+            }
+          },
+          "required": [
+            "actions"
+          ],
+          "title": "preview_actionsArguments"
+        },
+        "schema_sha256": "cf0352a1bf7578494b47097b65b74788dda4ee2000d25ca2d74ede6aa134e692"
+      },
+      "mcp__file_management__execute_plan": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "authorized_write",
+          "auto_continue": true,
+          "exports": [
+            "receipt_id"
+          ],
+          "statuses": [
+            "executed_verified"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "plan_id": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plan_id"
+          ],
+          "title": "execute_planArguments"
+        },
+        "schema_sha256": "0150218bed7fc8df5be5bcb92cccb9269815477feb74eca7e9963b2915c33fc7"
+      }
+    },
+    "max_nodes": 8,
+    "execution_version": "56b0d2d3d632141deef4992bb19bbda1d6a06da5018b7d6f0cbb3ae5101417a8",
+    "certification_contract": "sss-operation-certification-v2",
+    "interleaving_contracts": {
+      "mcp__file_management__list_files": {
+        "contract": {
+          "format": "sss-mcp-learning-v1",
+          "effect": "read",
+          "auto_continue": false,
+          "exports": [],
+          "safe_interleaving": true
+        },
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "list_filesArguments"
+        },
+        "schema_sha256": "fbe3e382dd6c8e9281fe26492070587b61f9dd4de908bb735cd9697af616533d"
+      }
+    },
+    "request_lane_contracts": {},
+    "source_task_fingerprints": [
+      "0e7e731ec73bb450a103c3705990bbfaa084af169e9d4ed65be3ab12e48aacca",
+      "0e877920db57f3cb336ce7cf052bafd341ffb4ab5031a0f4b95d4c26d62aa420",
+      "4665601a780ab074dd0dad75698a463406e919329147df51ee26daec057b9007",
+      "6a0aa68aa4a1d088f68e322fb5ea8b5590cc89c3f0dbd51cd6ad56c7ea8970be",
+      "8b2bd179c1a0b58f8fb990ae4ca3eb00c451a612203c9d20d10fed3b1a8ec181",
+      "eeff42907f6d6451a6c429b002608abab54b8492af4d140ef9d3aab419d8a1d3"
+    ],
+    "witnesses": [],
+    "recertification_provenance": {
+      "old_policy_digest": "049c23864b186d24ede9b1d87cf2ca752c46e50a3ef9f5dcce990f1d06397602",
+      "old_payload_sha256": "4253eab8454e5692d9376d080fc837e9af33b117a82dcea87549c3f1ac33f006",
+      "old_certificate_sha256": "d6489fc0b6f7af850dcc249a41637584aba875d6e48e74ab26f3e33a0f9bb032",
+      "candidate_lock_sha256": "6542653277b63bdd020ce469af81d2bd246c63e57b1d2111a9de3987fb68f8d6",
+      "recertifier_sha256": "d0f8e2003d2ee57ee67077360409a7140fe1223ef35c91fcd5e2f3d8415bdded",
+      "native_prefix": {
+        "format": "sss-native-connected-prefix-v1",
+        "calls": [
+          "call_00_FNTZnHzfuiUtFSJnY2uH3260",
+          "call_00_ACh5I5pvgx3Bl0EToqhC6850"
+        ],
+        "view_end_result_seq": 24,
+        "full_events_sha256": "d286ff06b0ac6224fb9806fa181686bdfe57275b6e8bc3119ba4ef322e7678c4",
+        "full_native_witness_calls": [
+          "call_00_FNTZnHzfuiUtFSJnY2uH3260",
+          "call_00_ACh5I5pvgx3Bl0EToqhC6850",
+          "call_00_MeycDZWLV22wvT587zwJ2438"
+        ],
+        "raw_events_unchanged": true
+      }
+    },
+    "validation_task_fingerprint": "3480bf88b8642680fcb39063a971cd8dc7cff05daa1d4397091aeb741bf15836",
+    "validation_witness": {
+      "nodes": [
+        {
+          "tool": "mcp__file_management__preview_actions",
+          "bindings": {}
+        },
+        {
+          "tool": "mcp__file_management__execute_plan",
+          "bindings": {
+            "plan_id": {
+              "node": 0,
+              "path": "plan_id"
+            }
+          }
+        }
+      ],
+      "values": {
+        "1:plan_id": "management-plan-cc79597a358043b9b3e4694dd68cfcc0"
+      },
+      "calls": [
+        "call_00_FNTZnHzfuiUtFSJnY2uH3260",
+        "call_00_ACh5I5pvgx3Bl0EToqhC6850"
+      ],
+      "native_new_nodes": [
+        1
+      ],
+      "inherited_policy": null
+    },
+    "certified_digest": "3b85a325944396ae27c8f90d2c1c41bf87374a3217c6783e4b29abcb1da4bb62"
+  },
+  "policy_digest": "a4c0a51ca48675b97f1fecafc5d706c13ab03a217120fefd6ae91580c0f5ceb7"
+}
