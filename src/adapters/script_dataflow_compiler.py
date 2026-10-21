@@ -15,6 +15,31 @@ def roots(node):
     return {node.id} if isinstance(node, ast.Name) else set()
 
 
+def literal_result_fields(source, target):
+    """Expose literal defaults, not a claim that the corresponding work ran."""
+    body = ast.parse(source).body
+    assignments = [(i, n) for i, n in enumerate(body) if isinstance(n, ast.Assign)
+                   and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == target]
+    if not assignments:
+        return []
+    index, assignment = assignments[-1]
+    if any(target in access(n)[1] | access(n)[2] for n in body[index + 1:]):
+        return []  # Later updates make a literal initializer insufficient evidence.
+    fields = []
+    def visit(node, path):
+        if isinstance(node, ast.Dict) and all(isinstance(k, ast.Constant) and isinstance(k.value, str) for k in node.keys):
+            for key, value in zip(node.keys, node.values):
+                visit(value, path + '/' + key.value.replace('~', '~0').replace('/', '~1'))
+        else:
+            try:
+                ast.literal_eval(node)
+                fields.append(path)
+            except (ValueError, TypeError, SyntaxError):
+                pass
+    visit(assignment.value, '/value')
+    return fields[:64]
+
+
 def access(statement):
     reads = {n.id for n in ast.walk(statement) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
     writes = {n.id for n in ast.walk(statement) if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del))}
@@ -81,6 +106,8 @@ def observe_slices(command, description, workspace, stdout, task_id, call_id):
     if len(extracted) > 2 and extracted[2]:
         return []  # Explicit argv stays with the existing compiler.
     candidates = []
+    original_strings = {n.value for n in ast.walk(ast.parse(source))
+                        if isinstance(n, ast.Constant) and isinstance(n.value, str)}
     for fragment in slices(source):
         try:
             # Both the selected dependency slice and the original source prefix
@@ -92,7 +119,14 @@ def observe_slices(command, description, workspace, stdout, task_id, call_id):
                 continue
             selected['expression_witness'] = {k:v for k,v in fragment.items() if k != 'source'}
             selected['expression_witness']['prefix_program'] = {k:prefix[k] for k in ('id','version','language','template','inputs')}
+            # Compiler-owned JSON envelope labels are not copied task data.
+            # Every literal actually present in the original program retains
+            # the existing cross-input binding check, even with the same text.
+            selected['literal_selectors'] = [s for s in selected['literal_selectors'] if s in original_strings]
             selected['interface']['produces_json'] = {'value': fragment['target']}
+            constants = literal_result_fields(fragment['prefix_source'], fragment['target'])
+            if constants:
+                selected['interface']['literal_output_fields'] = constants
             selected['interface']['input_fields'] = sorted({n.slice.value for n in ast.walk(ast.parse(fragment['source']))
                 if isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Constant) and isinstance(n.slice.value, str)})
             selected['description'] = 'Read-only dependency slice producing JSON value '+fragment['target']+'; current input fields: '+', '.join(selected['interface']['input_fields'])

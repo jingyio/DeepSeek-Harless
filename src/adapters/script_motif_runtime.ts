@@ -6,6 +6,7 @@ import {digest,syntheticToolStreamBatch} from '../motif_core/online_skill_runtim
 import {loopbackSimilarity} from './dsh_online_motif.mjs';
 import {fileURLToPath} from 'node:url';
 import {createScriptExecutionFrontier} from './script_execution_frontier.ts';
+import {validateJsonSchemaValue} from '@deepseek-ai/dsh-tools';
 
 const sha=(s:any)=>createHash('sha256').update(s).digest('hex');
 const grants=new Map<string,{session:string;versions:any[];body:any;expires:number}>();
@@ -106,6 +107,24 @@ export function observeScriptCache(session:string,execution:any,result:any){
  return facts;
 }
 export function programIdentity(p:any){return {version:p.version,language:p.language,template:p.template,inputs:p.inputs,...(p.argv_contract?{argv_contract:p.argv_contract}:{}),...(p.network_policy?{network_policy:p.network_policy}:{})};}
+/** Infer transport shape from BOTH independent executions, never field truth.
+ * Different object keys stay opaque; do not publish source-specific data keys.
+ */
+export function witnessedOutputSchema(outputs:string[]){
+ try{
+  const values=outputs.map(s=>JSON.parse(s));if(values.length<2)return;
+  function schema(rows:any[],depth=0):any{
+   const types=rows.map(v=>v===null?'null':Array.isArray(v)?'array':typeof v);
+   if(new Set(types).size!==1||!['object','array','string','number','boolean','null'].includes(types[0]))throw Error('unstable_output_type');
+   const type=types[0];if(type!=='object')return {type};
+   const keys=Object.keys(rows[0]).sort();
+   if(depth>=4||!keys.length||keys.length>32||keys.some(k=>k.length>80||['__proto__','constructor','prototype'].includes(k))||rows.some(r=>digest(Object.keys(r).sort())!==digest(keys)))return {type:'object'};
+   return {type:'object',required:keys,additionalProperties:false,properties:Object.fromEntries(keys.map(k=>[k,schema(rows.map(r=>r[k]),depth+1)]))};
+  }
+  const result=schema(values);
+  if(result.type==='object'&&result.properties&&Buffer.byteLength(JSON.stringify(result))<=8000)return result;
+ }catch{}
+}
 export function scriptCommand(program:any,paths:string[],versions:string[],nonce:string,options:any={}){
   if(paths.length!==program.inputs.length||paths.some(p=>!p.startsWith('/work/')||p.includes('\n')))throw Error('invalid_script_binding');
   let source=program.template;
@@ -216,8 +235,10 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
     const text=(result.content??[]).filter((b:any)=>b.type==='text').map((b:any)=>b.text).join('\n');
     const receipt=p.projection&&digest(result.content)===p.projection.content_digest?p.projection.receipt:
      text.split('\n').map((line:string)=>{try{return JSON.parse(line);}catch{return null;}}).find((r:any)=>r?.kind==='script_motif_receipt');
-    return receipt?.nonce===p.nonce&&receipt.program_id===p.program.id&&sha(receipt.output)===receipt.output_sha256&&
-     digest(receipt.versions)===digest(p.bound.map((b:any)=>b.sha256))&&p.bound.every((b:any)=>sha(fixedInput(workspace,b.host))===b.sha256)?receipt:null;
+    if(!(receipt?.nonce===p.nonce&&receipt.program_id===p.program.id&&sha(receipt.output)===receipt.output_sha256&&
+     digest(receipt.versions)===digest(p.bound.map((b:any)=>b.sha256))&&p.bound.every((b:any)=>sha(fixedInput(workspace,b.host))===b.sha256)))return null;
+    if(p.program.certification?.output_schema&&validateJsonSchemaValue(p.program.certification.output_schema,JSON.parse(receipt.output)).length){audit({kind:'script_result_schema_mismatch',program_id:p.program.id});return null;}
+    return receipt;
    }catch{return null;}
   }
   return {
@@ -247,11 +268,13 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
       history.push({tool:execution.name,program_id:anchor?.id,bound:facts.at(-1)?.bound??(pending&&pending.callId===execution.callId?pending.bound:[]),ok:result?.isError!==true,intent:anchor?.intent??(typeof execution.arguments?.description==='string'?execution.arguments.description.slice(0,240):execution.name)});history=history.slice(-6);
       if(!pending||execution.callId!==pending.callId)return facts;
       const p=pending;pending=null;grants.delete(sha(p.command));
-      const verified=!!verifiedReceipt(p,execution,result);
+      const receipt=verifiedReceipt(p,execution,result),verified=!!receipt;
       consumed.delete(sha(p.command));
       audit({kind:verified?'script_model_request_skipped_verified':'script_result_unverified',program_id:p.program.id,library_digest:library.digest});
       if(p.origin==='frontier')frontier?.finish(p.program.id,verified);
       if(!verified)halted=true;
+      if(verified)facts.push({program:p.program,bound:p.bound,output:receipt.output});
+      return facts;
     },
     async intercept(id:string,options:any,next:any){
       if(id!==session||halted||pending||mode==='cache'||!options.tools?.some((t:any)=>t.name==='bash'))return next();

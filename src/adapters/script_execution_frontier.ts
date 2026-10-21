@@ -58,9 +58,9 @@ export function createScriptExecutionFrontier({library,goal,bind,verify,audit,ma
    const candidates=request.candidates.map((c:any)=>{
     const paths=c.bound.map((b:any)=>b.path);let input=bindings.findIndex(b=>digest(b)===digest(paths));
     if(input<0){input=bindings.length;bindings.push(paths);}
-    return {id:c.choice_id,operations:c.nodes.map((p:any)=>p.description??p.id),input};
+    return {id:c.choice_id,operations:c.nodes.map((p:any)=>p.certification?.output_schema?{description:p.description??p.id,returns:p.certification.output_schema,...(p.interface?.literal_output_fields?.length?{literal_fields:p.interface.literal_output_fields}:{}),scope:'shape_only_not_factual_validation'}:p.description??p.id),input};
    });
-   return evidence+'\n以下为历史认证的只读候选，不是必做清单。对照本次用户要求，选择最小且足够的集合；同类解析器可互为替代，不必全选，方法与用户限定不符的候选不要选。用独立bash命令 geneloop-resolve '+
+   return evidence+'\n以下为历史认证的只读候选，不是必做清单。returns仅为两次实际输出认证的字段形状，不能证明检查完整或结论正确；literal_fields是源码直接填入的常量，不能据此认定相关检查已执行。对照本次用户要求，选择最小且足够的集合；同类解析器可互为替代，不必全选，方法与用户限定不符的候选不要选。用独立bash命令 geneloop-resolve '+
     "'"+JSON.stringify({request_id:'下方request_id',status:'selected',candidate_ids:['c1']})+"'"+
     '。最多8片段/16程序，按选择顺序连续执行，失败即停；路径由Runtime绑定。无需执行用status:unneeded，证据不足用unknown或ambiguous，均只带request_id和status。选择仅对当前版本有效，request_id一次消费；最终事实判断仍由你完成。\n'+
     JSON.stringify({candidates,bindings,request_id:request.id});

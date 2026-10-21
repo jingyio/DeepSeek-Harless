@@ -5,7 +5,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {scriptArgv} from '../src/adapters/script_motif_shell.ts';
-import {bindScript,scriptCommand,programIdentity,scriptCodeLocks,fixedInput,compatibleInput} from '../src/adapters/script_motif_runtime.ts';
+import {bindScript,scriptCommand,programIdentity,scriptCodeLocks,fixedInput,compatibleInput,witnessedOutputSchema} from '../src/adapters/script_motif_runtime.ts';
 import {runCertifiedScript} from './run-certified-script.mjs';
 import {digest} from '../src/motif_core/online_skill_runtime.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -90,6 +90,7 @@ function certify(rows){
      source_bytes:Buffer.byteLength(p.source),output_bytes:outputs.map(x=>Buffer.byteLength(x)),
      witnesses:cases,source_task_id:task.task_id,source_call_id:witness.call_id,events_sha256:witness.events_sha256,
      ...(expression_witness?{expression:{target:expression_witness.target,lines:expression_witness.lines,source_sha256:expression_witness.original_source_sha256}}:{}),
+     ...(witnessedOutputSchema(outputs)?{output_schema:witnessedOutputSchema(outputs)}:{}),
      scope:expression_witness?'source_prefix_and_dependency_slice_equivalence_on_distinct_inputs_not_historical_stdout_or_semantic_quality':'deterministic_source_equivalence_on_distinct_inputs_not_semantic_quality_proof'}});
   }catch(error){rejected.push({id:p.id,call_id:p.witness.call_id,reason:error.message,...(error.cause?{diagnostic:error.cause}:{})});}
  }

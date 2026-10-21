@@ -84,6 +84,19 @@ test('later post-policy changes cannot turn projected evidence into a verified r
  runtime.observe('changed',execution,{content:[{type:'text',text:projected[0].text+'changed'}]});
  assert.ok(audit.some(a=>a.kind==='script_result_unverified'));assert.equal(await runtime.intercept('changed',{tools:[{name:'bash'}]},()=>42),42);
 });
+test('certified JSON fields are checked on fresh outputs and verified values reach artifact mediation',{skip:!enabled},async t=>{
+ const {root}=fixture(t);writeFileSync(join(root,'inputs/data.txt'),'7');
+ for(const type of ['number','string']){
+  const audit=[],session='fields-'+type,program={id:'fields',template:"import json\nprint(json.dumps({'count':int(open('__MOTIF_INPUT_0__').read())}))",inputs:[{suffix:'.txt',format:'text'}],certification:{output_schema:{type:'object',required:['count'],properties:{count:{type}}}}};
+  const runtime=createScriptInterceptor({library:{programs:[program]},workspace:root,session,goal:'count',mode:'execute',compactContext:true,similarity:async()=>[.95],audit:r=>audit.push(r)});t.after(()=>runtime.dispose());
+  let call;for await(const c of await runtime.intercept(session,{tools:[{name:'bash'}]},()=>{}))if(c.block?.type==='tool-call')call=c.block;
+  const execution={callId:call.id,name:'bash',arguments:JSON.parse(call.arguments)},result={content:[{type:'text',text:sandboxRun(root,consumeScriptGrant(session,execution.arguments.command))}]};
+  const facts=runtime.observe(session,execution,result);
+  assert.equal(facts.length,type==='number'?1:0);
+  if(type==='number')assert.deepEqual(JSON.parse(facts[0].output),{count:7});
+  else assert.ok(audit.some(a=>a.kind==='script_result_schema_mismatch'));
+ }
+});
 
 import {registerScriptCache,prepareCacheInvocation,scriptCommand} from '../src/adapters/script_motif_runtime.ts';
 import {runCertifiedScript} from '../scripts/run-certified-script.mjs';
