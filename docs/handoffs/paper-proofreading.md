@@ -1,5 +1,13 @@
 # 论文校对 当前交接
 
+## 2026-10-23：回执传输独立 main 修复
+
+- 目标与范围：用户同意依次推进传输小PR、明确反例下的候选失效、成本决定。第一步从最新 main `62cb9787` 新建 `codex/script-receipt-transport-20261023`，只整理有界无损回执，不带入尚未发布的集合/关系/反馈实验。原实验分支 `codex/paper-evidence-split-20261023` 在 `fd7f98c9` 完整保留，Desktop脏工作区、生产、原件及旧库未动。
+- 已完成：Runtime校验并解码 `bounded_zlib_v1`，仅显式compactContext和新认证标记共同启用；模型始终看到可读stdout，包括解码结果更大的情况。认证器对来源/独立输入核对完整明文/压缩回执等价。原stdout、权限、版本和一次性授权守卫不变，旧明文路径保留；代码锁仍须实际重认证，不能直接补hash。接口见docs/interfaces，范围见[独立记录](../experiments/script-receipt-transport-20261023-v1.md)。
+- 已验证：40项定向通过；完整Python1519通过/235跳过，Node1372通过/15跳过/1失败。未修改网关的大上传ECONNRESET在原样main私有独立检出也8/9失败，已定位为main同现问题，未借本PR改网关。smoke/motif:check通过、0模型。12个原历史程序重新沙箱认证，ID/模板/描述不变，私有transport-main-library摘要 `beb12ae8…`；未更新生产库。
+- 费用与配置：本步骤API0/USD0，累计6697/USD12.048783156，unknown13/pending2保留，非账单；本地/人工成本未货币量化。原始日志、原样main诊断检出、认证、state及PR材料放 `.local/paper-candidate-guard-20261023-v1/`。真实论文回执失败的付费回归属于先前实验分支，不把本次合成传输诊断称新论文效果。
+- 接手下一步：仅推送/提传输PR供审阅，不合并/部署；远端CI需独立查看。其后另开分支做当前程序/输入/任务目标绑定的明确质量反例，不将相似结果、未选、重写或单次任务失败直接编译为错误原因；关系扩展继续暂停。无后台付费，heartbeat保持暂停。
+
 ## 2026-10-21：PR106 已提交，主线同步核验
 
 - 范围与代码：`codex/paper-evidence-handoff-20261021`已推送，[PR106](https://github.com/jingyio/GeneLoop/pull/106)以main为base，供审阅，未合并或部署。远端main核对为`5373b0e5`，已是本分支祖先；`git merge origin/main`返回Already up to date，无冲突，无新增机制代码。

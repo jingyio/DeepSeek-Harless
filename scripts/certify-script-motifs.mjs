@@ -5,7 +5,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {scriptArgv} from '../src/adapters/script_motif_shell.ts';
-import {bindScript,scriptCommand,programIdentity,scriptCodeLocks,fixedInput,compatibleInput,witnessedOutputSchema} from '../src/adapters/script_motif_runtime.ts';
+import {bindScript,scriptCommand,programIdentity,scriptCodeLocks,fixedInput,compatibleInput,witnessedOutputSchema,decodeScriptReceipt} from '../src/adapters/script_motif_runtime.ts';
 import {runCertifiedScript} from './run-certified-script.mjs';
 import {digest} from '../src/motif_core/online_skill_runtime.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -73,6 +73,8 @@ function certify(rows){
    for(const [role,row,bound] of [['source',{...task,workspace:sourceWorkspace},own],['heldout',{...held,workspace:heldWorkspace},other]]){
     const cmd=scriptCommand(p,bound.map(b=>b.path),bound.map(b=>b.sha256),'certification');
     const first=JSON.parse(sandboxRun(row.workspace,cmd)),second=JSON.parse(sandboxRun(row.workspace,cmd));
+    const compact=decodeScriptReceipt(JSON.parse(sandboxRun(row.workspace,scriptCommand(p,bound.map(b=>b.path),bound.map(b=>b.sha256),'certification',{compactReceipt:true}))));
+    if(digest(compact)!==digest(first))throw Error('compact_receipt_changed_evidence');
     if(Buffer.byteLength(first.output)>16000)throw Error('script_output_exceeds_context_budget');
     if(first.output!==second.output||sha(first.output)!==first.output_sha256)throw Error('nondeterministic_script');
     if(role==='source'&&first.output!==original)throw Error('parameterization_changed_behavior');
@@ -91,6 +93,7 @@ function certify(rows){
      witnesses:cases,source_task_id:task.task_id,source_call_id:witness.call_id,events_sha256:witness.events_sha256,
      ...(expression_witness?{expression:{target:expression_witness.target,lines:expression_witness.lines,source_sha256:expression_witness.original_source_sha256}}:{}),
      ...(witnessedOutputSchema(outputs)?{output_schema:witnessedOutputSchema(outputs)}:{}),
+     receipt_protocol:'bounded_zlib_v1',
      scope:expression_witness?'source_prefix_and_dependency_slice_equivalence_on_distinct_inputs_not_historical_stdout_or_semantic_quality':'deterministic_source_equivalence_on_distinct_inputs_not_semantic_quality_proof'}});
   }catch(error){rejected.push({id:p.id,call_id:p.witness.call_id,reason:error.message,...(error.cause?{diagnostic:error.cause}:{})});}
  }

@@ -1174,3 +1174,9 @@ IR 包含源码与摘要、完整接口、输入形状／来源、位置参数�
 TypeScript runtime 核对账号／Task、输入类型和版本、输出授权及新目录，在新 namespace 中运行，只读输入和固定公共依赖、禁网，原子发布新产物与原样源码。执行仍需要当前 Linux Python 和 bubblewrap；不宣称 Windows 执行或脱离 Python 的基础插件已完成。现有普通工具、取消与权限检查继续有效。
 
 私有 `artifact-motif-audit.jsonl` 区分 `artifact_library_loaded`、首请求目录可见、`artifact_program_selected`、`artifact_program_verified` 与回退。完整程序复用减少代码重写，不等同于旧图机制跳过模型决策；旧 `verified_skips=0` 不改写。成本须核对真实账本的命中／未命中输入、输出、所有重试和训练费用；独立计量进程的数字 `global_request_id` 会重叠，跨进程审计必须结合 Task、请求 ID 和时间。
+
+## Script 回执有界传输（2026-10-23）
+
+独立脚本认证器新增可选 `certification.receipt_protocol: "bounded_zlib_v1"`。当前来源及独立输入均须通过明文／压缩完整回执一致性校验。Runtime 只在 `compactContext:true` 与该认证标记同时成立时使用 `script_motif_envelope`，`encoding: "zlib_base64_v1"`、base64 `payload` 和解码字节 `sha256`；字段集合严格校验，payload最多48,000字符、解码最多256,000字节，原stdout16,000字节上限不变。
+
+该信封只用于传输。解码后仍检查当前call、session授权、nonce、程序、输入版本和输出摘要；模型收到完整可读stdout，不能为了缩短上下文保留base64。旧明文回执仍支持；既有代码锁不得跳过，冻结库迁移须重新执行认证。显式cache及HTTP demand协议不变。不包含中间集合或关系学习，不产生语义质量证明。见[独立修复记录](experiments/script-receipt-transport-20261023-v1.md)。

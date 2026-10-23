@@ -5,6 +5,7 @@ import {join,relative,resolve,isAbsolute,extname} from 'node:path';
 import {digest,syntheticToolStreamBatch} from '../motif_core/online_skill_runtime.mjs';
 import {loopbackSimilarity} from './dsh_online_motif.mjs';
 import {fileURLToPath} from 'node:url';
+import {inflateSync} from 'node:zlib';
 import {createScriptExecutionFrontier} from './script_execution_frontier.ts';
 import {validateJsonSchemaValue} from '@deepseek-ai/dsh-tools';
 
@@ -107,6 +108,21 @@ export function observeScriptCache(session:string,execution:any,result:any){
  return facts;
 }
 export function programIdentity(p:any){return {version:p.version,language:p.language,template:p.template,inputs:p.inputs,...(p.argv_contract?{argv_contract:p.argv_contract}:{}),...(p.network_policy?{network_policy:p.network_policy}:{})};}
+/** Bounded lossless transport avoids native Bash's pre-policy stdout clipping.
+ * Decoding is not certification: the caller must still verify nonce, call,
+ * program, current input versions and every evidence digest.
+ */
+export function decodeScriptReceipt(value:any){
+ if(value?.kind==='script_motif_receipt')return value;
+ if(value?.kind!=='script_motif_envelope'||value.encoding!=='zlib_base64_v1'||
+  digest(Object.keys(value).sort())!==digest(['encoding','kind','payload','sha256'])||typeof value.payload!=='string'||
+  value.payload.length>48000||!value.payload.match(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/)||
+  typeof value.sha256!=='string'||!value.sha256.match(/^[a-f0-9]{64}$/))throw Error('invalid_script_receipt_envelope');
+ const bytes=inflateSync(Buffer.from(value.payload,'base64'),{maxOutputLength:256000});
+ if(sha(bytes)!==value.sha256)throw Error('script_receipt_envelope_digest_changed');
+ const receipt=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+ if(receipt.kind!=='script_motif_receipt')throw Error('nested_or_foreign_script_receipt');return receipt;
+}
 /** Infer transport shape from BOTH independent executions, never field truth.
  * Different object keys stay opaque; do not publish source-specific data keys.
  */
@@ -135,8 +151,11 @@ export function scriptCommand(program:any,paths:string[],versions:string[],nonce
   const http=program.network_policy?`import urllib.request as _sm_http\n_sm_cache=${JSON.stringify(options.http??{})}\n_sm_pending=[]\nclass _sm_Demand(BaseException): pass\ndef _sm_fetch(request, data=None, timeout=None, **kwargs):\n    url=request.full_url if isinstance(request,_sm_http.Request) else request\n    assert data is None and (not isinstance(request,_sm_http.Request) or request.get_method()=='GET'), 'GET_only'\n    assert isinstance(url,str) and len(url)<=4096, 'bounded_url'\n    if url not in _sm_cache:\n        _sm_pending.append(url)\n        raise _sm_Demand()\n    row=_sm_cache[url]\n    payload=open(row['file'],'rb').read()\n    assert _sm_hash.sha256(payload).hexdigest()==row['sha256'], 'http_evidence_changed'\n    return _sm_io.BytesIO(payload)\n_sm_http.urlopen=_sm_fetch\n`:'';
   const header=`import io as _sm_io, contextlib as _sm_context, hashlib as _sm_hash, json as _sm_json, resource as _sm_resource, sys as _sm_sys\n_sm_resource.setrlimit(_sm_resource.RLIMIT_CPU, (20,20))\nif _sm_sys.platform != 'darwin':\n    _sm_resource.setrlimit(_sm_resource.RLIMIT_AS, (536870912,536870912))\n_sm_sys.argv=${JSON.stringify(['cached-script',...(options.argv??[])])}\n_sm_paths=${JSON.stringify(paths)}\n_sm_expected=${JSON.stringify(versions)}\ndef _sm_versions():\n    return [_sm_hash.sha256(open(p,'rb').read()).hexdigest() for p in _sm_paths]\nassert _sm_versions()==_sm_expected, 'input_changed'\n${http}def _sm_program():\n`;
   const invoke=program.network_policy?`try:\n    with _sm_context.redirect_stdout(_sm_buffer):\n        _sm_program()\nexcept _sm_Demand: pass\nif _sm_pending:\n    print(_sm_json.dumps({'kind':'script_http_demand','url':_sm_pending[0]}))\n    _sm_sys.exit(0)\n`:`with _sm_context.redirect_stdout(_sm_buffer):\n    _sm_program()\n`;
-  const footer=`\n_sm_buffer=_sm_io.StringIO()\n${invoke}assert _sm_versions()==_sm_expected, 'input_changed'\n_sm_output=_sm_buffer.getvalue()\nassert 0<len(_sm_output.encode())<=16000, 'output_bound'\nprint(_sm_json.dumps({'kind':'script_motif_receipt','nonce':${JSON.stringify(nonce)},'program_id':${JSON.stringify(program.id)},'versions':_sm_expected,'output':_sm_output,'output_sha256':_sm_hash.sha256(_sm_output.encode()).hexdigest()},ensure_ascii=False))\n`;
-  return "python3 - <<'SCRIPT_MOTIF_BOUNDARY'\n"+header+source.split('\n').map((s:string)=>'    '+s).join('\n')+footer+'SCRIPT_MOTIF_BOUNDARY';
+  const receiptExpression=`_sm_json.dumps({'kind':'script_motif_receipt','nonce':${JSON.stringify(nonce)},'program_id':${JSON.stringify(program.id)},'versions':_sm_expected,'output':_sm_output,'output_sha256':_sm_hash.sha256(_sm_output.encode()).hexdigest()},ensure_ascii=False)`;
+  const footer=`\n_sm_buffer=_sm_io.StringIO()\n${invoke}assert _sm_versions()==_sm_expected, 'input_changed'\n_sm_output=_sm_buffer.getvalue()\nassert 0<len(_sm_output.encode())<=16000, 'output_bound'\n`;
+  const transport=options.compactReceipt?'_sm_receipt='+receiptExpression+'\n'+
+   "import zlib as _sm_zlib, base64 as _sm_b64\n_sm_payload=_sm_receipt.encode('utf-8')\nassert len(_sm_payload)<=256000, 'receipt_bound'\n_sm_compact=_sm_b64.b64encode(_sm_zlib.compress(_sm_payload)).decode('ascii')\nassert len(_sm_compact)<=48000, 'compressed_receipt_bound'\nprint(_sm_json.dumps({'kind':'script_motif_envelope','encoding':'zlib_base64_v1','payload':_sm_compact,'sha256':_sm_hash.sha256(_sm_payload).hexdigest()}))\n":'print('+receiptExpression+')\n';
+  return "python3 - <<'SCRIPT_MOTIF_BOUNDARY'\n"+header+source.split('\n').map((s:string)=>'    '+s).join('\n')+footer+transport+'SCRIPT_MOTIF_BOUNDARY';
 }
 function shape(v:any,depth=0):any{
   if(v===null)return 'null';if(Array.isArray(v))return v.length&&depth<3?{array:shape(v[0],depth+1)}:'array';
@@ -193,6 +212,7 @@ export function loadScriptLibrary(path:string){
   const locked=scriptCodeLocks;
   if(!library.code_locks||locked.some(p=>sha(readFileSync(join(root,p)))!==library.code_locks[p]))throw Error('script_runtime_changed');
   for(const p of library.programs){
+    if(p.certification?.receipt_protocol!==undefined&&p.certification.receipt_protocol!=='bounded_zlib_v1')throw Error('unsupported_script_receipt_protocol');
     if(!p.certification?.passed||p.certification.cases<2||p.certification.source_equivalent!==true||
        p.certification.program_sha256!==digest(programIdentity(p))||
        p.id!=='script_'+p.certification.program_sha256.slice(0,24))throw Error('uncertified_script');
@@ -223,7 +243,7 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
     }}):null;
   function issue(winner:any,origin='matched'){
     const nonce=randomUUID(),callId='sss-script-'+randomUUID();
-    const body=scriptCommand(winner.program,winner.bound.map((b:any)=>b.path),winner.bound.map((b:any)=>b.sha256),nonce);
+    const body=scriptCommand(winner.program,winner.bound.map((b:any)=>b.path),winner.bound.map((b:any)=>b.sha256),nonce,{compactReceipt:compactContext&&winner.program.certification?.receipt_protocol==='bounded_zlib_v1'});
     const command='geneloop-script '+winner.program.id+' '+nonce;
     used.add(winner.key);pending={...winner,nonce,callId,command,origin};grants.set(sha(command),{session,versions:winner.bound,body,expires:Date.now()+30000});
     audit({kind:'script_bypass_attempt',program_id:winner.program.id,input_versions:winner.bound.map((b:any)=>b.sha256),score:winner.score,origin,fragment_id:winner.fragment_id});
@@ -233,8 +253,10 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
    try{
     if(!p||!consumed.has(sha(p.command))||result.isError===true||execution.name!=='bash'||execution.callId!==p.callId||execution.arguments?.command!==p.command)return null;
     const text=(result.content??[]).filter((b:any)=>b.type==='text').map((b:any)=>b.text).join('\n');
-    const receipt=p.projection&&digest(result.content)===p.projection.content_digest?p.projection.receipt:
-     text.split('\n').map((line:string)=>{try{return JSON.parse(line);}catch{return null;}}).find((r:any)=>r?.kind==='script_motif_receipt');
+    const raw=p.projection&&digest(result.content)===p.projection.content_digest?p.projection.receipt:
+     text.split('\n').map((line:string)=>{try{return JSON.parse(line);}catch{return null;}}).find((r:any)=>['script_motif_receipt','script_motif_envelope'].includes(r?.kind));
+    if(raw?.kind==='script_motif_envelope'&&p.program.certification?.receipt_protocol!=='bounded_zlib_v1')return null;
+    const receipt=decodeScriptReceipt(raw);
     if(!(receipt?.nonce===p.nonce&&receipt.program_id===p.program.id&&sha(receipt.output)===receipt.output_sha256&&
      digest(receipt.versions)===digest(p.bound.map((b:any)=>b.sha256))&&p.bound.every((b:any)=>sha(fixedInput(workspace,b.host))===b.sha256)))return null;
     if(p.program.certification?.output_schema&&validateJsonSchemaValue(p.program.certification.output_schema,JSON.parse(receipt.output)).length){audit({kind:'script_result_schema_mismatch',program_id:p.program.id});return null;}
@@ -253,8 +275,10 @@ export function createScriptInterceptor({library,workspace,session,goal,mode,end
       // durably audited BEFORE the public post-execute content replacement.
       const content=[{type:'text',text:JSON.stringify({kind:'verified_script_evidence',program:pending.program.id,inputs:pending.bound.map((b:any)=>({path:b.path,sha256:b.sha256})),stdout:receipt.output,semantic_quality_accepted:false})}];
       const saved=Buffer.byteLength(JSON.stringify(result.content))-Buffer.byteLength(JSON.stringify(content));
-      if(saved<=0)return;
-      audit({kind:'script_evidence_raw',call_id:execution.callId,program_id:pending.program.id,content:result.content,content_sha256:digest(result.content)});
+      // A compressed envelope must become readable stdout even when decoding
+      // expands it. This option never exposes encoded proof as model evidence.
+      if(saved<=0&&pending.program.certification?.receipt_protocol!=='bounded_zlib_v1')return;
+      audit({kind:'script_evidence_raw',call_id:execution.callId,program_id:pending.program.id,content:result.content,content_sha256:digest(result.content),...(pending.program.certification?.receipt_protocol==='bounded_zlib_v1'?{decoded_receipt:receipt}:{})});
       pending.projection={receipt,content_digest:digest(content)};
       audit({kind:'script_evidence_context_projected',call_id:execution.callId,utf8_bytes_removed:saved,stdout_complete:true,scope:'model_content_only_canonical_value_and_raw_audit_preserved'});
       return content;
