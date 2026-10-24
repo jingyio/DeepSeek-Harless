@@ -1,0 +1,1387 @@
+{
+  "title": "GeneLoop RSI Protocol v1",
+  "description": "Transport validation is not execution authorization. Trusted host guards remain mandatory.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "provider_request"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "ledger_ref": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string",
+              "enum": [
+                "booked",
+                "completed",
+                "failed",
+                "unknown"
+              ]
+            },
+            "prompt_tokens": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cache_hit_tokens": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cache_miss_tokens": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "output_tokens": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "observed_peak_usd": {
+              "oneOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reserved_upper_usd": {
+              "oneOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "task_id",
+            "ledger_ref",
+            "model",
+            "phase",
+            "prompt_tokens",
+            "cache_hit_tokens",
+            "cache_miss_tokens",
+            "output_tokens",
+            "observed_peak_usd",
+            "reserved_upper_usd"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "evidence"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "training",
+                "validation",
+                "current",
+                "test"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "valid",
+                "invalidated"
+              ]
+            },
+            "observation_id": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string",
+              "enum": [
+                "tool",
+                "bash",
+                "python",
+                "user"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "task_id",
+            "subject",
+            "sha256",
+            "version",
+            "role",
+            "status",
+            "observation_id",
+            "origin"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "operator"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "source_kind": {
+              "type": "string",
+              "enum": [
+                "tool",
+                "bash",
+                "python"
+              ]
+            },
+            "structure_signature": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "input_schema": {},
+            "output_schema": {},
+            "parameter_sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "parameter": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "task_input",
+                      "evidence",
+                      "prior_output"
+                    ]
+                  },
+                  "ref": {
+                    "type": "string"
+                  },
+                  "pointer": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "parameter",
+                  "source",
+                  "ref",
+                  "pointer"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sha256",
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "effect": {
+              "type": "string",
+              "enum": [
+                "read",
+                "workspace_write",
+                "external_write",
+                "opaque"
+              ]
+            },
+            "code_sha256": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "opaque": {
+              "type": "boolean"
+            },
+            "certificate_ref": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "operation",
+            "description",
+            "source_kind",
+            "structure_signature",
+            "input_schema",
+            "output_schema",
+            "parameter_sources",
+            "dependencies",
+            "effect",
+            "code_sha256",
+            "opaque",
+            "certificate_ref"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "execution_event"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "sequence": {
+              "type": "integer"
+            },
+            "call_id": {
+              "type": "string"
+            },
+            "source_kind": {
+              "type": "string",
+              "enum": [
+                "tool",
+                "bash",
+                "python"
+              ]
+            },
+            "operation": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string",
+              "enum": [
+                "started",
+                "succeeded",
+                "failed"
+              ]
+            },
+            "arguments_sha256": {
+              "type": "string"
+            },
+            "result_sha256": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sha256",
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "permission_ref": {
+              "type": "string"
+            },
+            "versions": {
+              "type": "object",
+              "properties": {
+                "motif": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                },
+                "matcher": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "motif",
+                "matcher"
+              ],
+              "additionalProperties": false
+            },
+            "provider_call_id": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "error": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "task_id",
+            "sequence",
+            "call_id",
+            "source_kind",
+            "operation",
+            "phase",
+            "arguments_sha256",
+            "result_sha256",
+            "dependencies",
+            "permission_ref",
+            "versions",
+            "provider_call_id",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "runtime_request"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "operator_id": {
+              "type": "string"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "arguments_sha256": {
+              "type": "string"
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sha256",
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "versions": {
+              "type": "object",
+              "properties": {
+                "motif": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                },
+                "matcher": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "motif",
+                "matcher"
+              ],
+              "additionalProperties": false
+            },
+            "obligation_ref": {
+              "type": "string"
+            },
+            "state_version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "task_id",
+            "operator_id",
+            "operation",
+            "arguments_sha256",
+            "dependencies",
+            "versions",
+            "obligation_ref",
+            "state_version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "runtime_decision"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "execute",
+                "handoff",
+                "reject"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "versions": {
+              "type": "object",
+              "properties": {
+                "motif": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                },
+                "matcher": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "motif",
+                "matcher"
+              ],
+              "additionalProperties": false
+            },
+            "evidence_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "request_id",
+            "task_id",
+            "action",
+            "reason",
+            "versions",
+            "evidence_ids"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "diagnosis"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "component": {
+              "type": "string",
+              "enum": [
+                "motif",
+                "matcher"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "base_version": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "feedback": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sha256",
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "id",
+            "component",
+            "reason",
+            "base_version",
+            "feedback"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "candidate_patch"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "diagnosis_id": {
+              "type": "string"
+            },
+            "patch_kind": {
+              "type": "string",
+              "enum": [
+                "rule_revision",
+                "motif_split",
+                "matcher_code_patch"
+              ]
+            },
+            "component": {
+              "type": "string",
+              "enum": [
+                "motif",
+                "matcher"
+              ]
+            },
+            "base_version": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "next_version": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "compatible_versions": {
+              "type": "object",
+              "properties": {
+                "motif": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                },
+                "matcher": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "motif",
+                "matcher"
+              ],
+              "additionalProperties": false
+            },
+            "feedback": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sha256",
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "affected_operator_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "payload_sha256": {
+              "type": "string"
+            },
+            "diff_ref": {
+              "type": "string"
+            },
+            "training_task_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "id",
+            "diagnosis_id",
+            "patch_kind",
+            "component",
+            "base_version",
+            "next_version",
+            "compatible_versions",
+            "feedback",
+            "affected_operator_ids",
+            "payload_sha256",
+            "diff_ref",
+            "training_task_ids"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "validation_report"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "candidate_id": {
+              "type": "string"
+            },
+            "candidate_sha256": {
+              "type": "string"
+            },
+            "base_version": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "validator": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "passed": {
+              "type": "boolean"
+            },
+            "checks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "passed": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "passed"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sha256",
+                  "version"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "independent_task_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "id",
+            "candidate_id",
+            "candidate_sha256",
+            "base_version",
+            "validator",
+            "passed",
+            "checks",
+            "evidence",
+            "independent_task_ids"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "publication_receipt"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "candidate_id": {
+              "type": "string"
+            },
+            "report_id": {
+              "type": "string"
+            },
+            "previous_versions": {
+              "type": "object",
+              "properties": {
+                "motif": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                },
+                "matcher": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "motif",
+                "matcher"
+              ],
+              "additionalProperties": false
+            },
+            "next_versions": {
+              "type": "object",
+              "properties": {
+                "motif": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                },
+                "matcher": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "motif",
+                "matcher"
+              ],
+              "additionalProperties": false
+            },
+            "manifest_sha256": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "candidate_id",
+            "report_id",
+            "previous_versions",
+            "next_versions",
+            "manifest_sha256"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "geneloop.rsi/v1"
+        },
+        "record_type": {
+          "type": "string",
+          "const": "rollback_receipt"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "publication_id": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "previous_versions": {
+              "type": "object",
+              "properties": {
+                "motif": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                },
+                "matcher": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "motif",
+                "matcher"
+              ],
+              "additionalProperties": false
+            },
+            "restored_versions": {
+              "type": "object",
+              "properties": {
+                "motif": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                },
+                "matcher": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sha256"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "motif",
+                "matcher"
+              ],
+              "additionalProperties": false
+            },
+            "manifest_sha256": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "publication_id",
+            "reason",
+            "previous_versions",
+            "restored_versions",
+            "manifest_sha256"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol",
+        "record_type",
+        "payload"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

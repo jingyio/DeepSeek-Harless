@@ -1,0 +1,934 @@
+{
+  "kind": "hand_authored_protocol_diagnostic_not_benchmark",
+  "versions": {
+    "motif": {
+      "id": "diagnostic-motif-v1",
+      "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+    },
+    "matcher": {
+      "id": "f02-admission-v1",
+      "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+    }
+  },
+  "tasks": {
+    "A": {
+      "goal": "科研实验数据报告",
+      "arguments": {
+        "rows": [
+          {
+            "group": "control"
+          },
+          {
+            "group": "treatment"
+          },
+          {
+            "group": "control"
+          }
+        ]
+      },
+      "expected": {
+        "counts": {
+          "control": 2,
+          "treatment": 1
+        }
+      }
+    },
+    "B": {
+      "goal": "活动报名汇总",
+      "arguments": {
+        "rows": [
+          {
+            "group": "workshop"
+          },
+          {
+            "group": "poster"
+          },
+          {
+            "group": "workshop"
+          }
+        ]
+      },
+      "expected": {
+        "counts": {
+          "poster": 1,
+          "workshop": 2
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "evidence",
+      "payload": {
+        "id": "current-table",
+        "sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+        "version": "1",
+        "task_id": "registration-summary-B",
+        "subject": "current input table",
+        "role": "current",
+        "status": "valid",
+        "observation_id": "read-table-B",
+        "origin": "tool"
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "operator",
+      "payload": {
+        "id": "group-count",
+        "operation": "table.group_count",
+        "description": "按当前选定 group 列计数；不判断哪些报名有效。",
+        "source_kind": "python",
+        "structure_signature": [
+          "table.group_count"
+        ],
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "group": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "group"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "rows"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "counts": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "counts"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": [
+          {
+            "parameter": "/rows",
+            "source": "task_input",
+            "ref": "current-table",
+            "pointer": "/rows"
+          }
+        ],
+        "dependencies": [],
+        "effect": "read",
+        "code_sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d",
+        "opaque": false,
+        "certificate_ref": "hand-authored-diagnostic-only"
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "operator",
+      "payload": {
+        "id": "tool-group-count",
+        "operation": "table.group_count",
+        "description": "按当前选定 group 列计数；不判断哪些报名有效。",
+        "source_kind": "tool",
+        "structure_signature": [
+          "table.group_count"
+        ],
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "group": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "group"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "rows"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "counts": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "counts"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": [
+          {
+            "parameter": "/rows",
+            "source": "task_input",
+            "ref": "current-table",
+            "pointer": "/rows"
+          }
+        ],
+        "dependencies": [],
+        "effect": "read",
+        "code_sha256": null,
+        "opaque": false,
+        "certificate_ref": "hand-authored-diagnostic-only"
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "operator",
+      "payload": {
+        "id": "opaque-bash",
+        "operation": "table.group_count",
+        "description": "无法解析内部依赖的 Bash 保留 opaque，不能准入执行。",
+        "source_kind": "bash",
+        "structure_signature": [
+          "table.group_count"
+        ],
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "group": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "group"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "rows"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "counts": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "counts"
+          ],
+          "additionalProperties": false
+        },
+        "parameter_sources": [
+          {
+            "parameter": "/rows",
+            "source": "task_input",
+            "ref": "current-table",
+            "pointer": "/rows"
+          }
+        ],
+        "dependencies": [],
+        "effect": "opaque",
+        "code_sha256": "e5f1f7f525ac59da6550938e630adbffb56d73bcbd6890f66b8a5f669f6cc1b5",
+        "opaque": true,
+        "certificate_ref": "hand-authored-diagnostic-only"
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "runtime_request",
+      "payload": {
+        "id": "request-B",
+        "task_id": "registration-summary-B",
+        "operator_id": "group-count",
+        "operation": "table.group_count",
+        "arguments_sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+        "dependencies": [
+          {
+            "id": "current-table",
+            "sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+            "version": "1"
+          }
+        ],
+        "versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "obligation_ref": "current-semantic-choice-B",
+        "state_version": "state-B-1"
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "evidence",
+      "payload": {
+        "id": "training-failure",
+        "sha256": "256a5cc5232d7a52c9195550677c9443b1b268feaf55705ab845a444d0f243e8",
+        "version": "1",
+        "task_id": "train-A",
+        "subject": "counterexample",
+        "role": "training",
+        "status": "valid",
+        "observation_id": "failed-A",
+        "origin": "python"
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "evidence",
+      "payload": {
+        "id": "validation-run",
+        "sha256": "f817aa87357ddbf05dd3b7a3555943328338efbe1d46bb6bda7b22a995e16290",
+        "version": "1",
+        "task_id": "validation-C",
+        "subject": "independent diagnostic",
+        "role": "validation",
+        "status": "valid",
+        "observation_id": "verified-C",
+        "origin": "python"
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "diagnosis",
+      "payload": {
+        "id": "diagnosis-motif",
+        "component": "motif",
+        "reason": "demonstration only",
+        "base_version": {
+          "id": "diagnostic-motif-v1",
+          "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+        },
+        "feedback": [
+          {
+            "id": "training-failure",
+            "sha256": "256a5cc5232d7a52c9195550677c9443b1b268feaf55705ab845a444d0f243e8",
+            "version": "1"
+          }
+        ]
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "diagnosis",
+      "payload": {
+        "id": "diagnosis-matcher",
+        "component": "matcher",
+        "reason": "demonstration only",
+        "base_version": {
+          "id": "f02-admission-v1",
+          "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+        },
+        "feedback": [
+          {
+            "id": "training-failure",
+            "sha256": "256a5cc5232d7a52c9195550677c9443b1b268feaf55705ab845a444d0f243e8",
+            "version": "1"
+          }
+        ]
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "candidate_patch",
+      "payload": {
+        "id": "candidate-rule_revision",
+        "diagnosis_id": "diagnosis-motif",
+        "patch_kind": "rule_revision",
+        "component": "motif",
+        "base_version": {
+          "id": "diagnostic-motif-v1",
+          "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+        },
+        "next_version": {
+          "id": "motif-v2",
+          "sha256": "ffdb6807974a5c7d048a6b86ab2654814f3ffbd6c91b8b18e37b5061df904ce6"
+        },
+        "compatible_versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "feedback": [
+          {
+            "id": "training-failure",
+            "sha256": "256a5cc5232d7a52c9195550677c9443b1b268feaf55705ab845a444d0f243e8",
+            "version": "1"
+          }
+        ],
+        "affected_operator_ids": [
+          "group-count"
+        ],
+        "payload_sha256": "8253019327e56c99d4da3c541016f26a2352a1707427379b8e6d6f6e5a70febd",
+        "diff_ref": "diagnostic.diff",
+        "training_task_ids": [
+          "train-A"
+        ]
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "candidate_patch",
+      "payload": {
+        "id": "candidate-motif_split",
+        "diagnosis_id": "diagnosis-motif",
+        "patch_kind": "motif_split",
+        "component": "motif",
+        "base_version": {
+          "id": "diagnostic-motif-v1",
+          "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+        },
+        "next_version": {
+          "id": "motif-v2",
+          "sha256": "d9e1d644b1159e73611ffe9a899853ea3ffe1f3508233558c2de19a257bab248"
+        },
+        "compatible_versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "feedback": [
+          {
+            "id": "training-failure",
+            "sha256": "256a5cc5232d7a52c9195550677c9443b1b268feaf55705ab845a444d0f243e8",
+            "version": "1"
+          }
+        ],
+        "affected_operator_ids": [
+          "group-count"
+        ],
+        "payload_sha256": "8253019327e56c99d4da3c541016f26a2352a1707427379b8e6d6f6e5a70febd",
+        "diff_ref": "diagnostic.diff",
+        "training_task_ids": [
+          "train-A"
+        ]
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "candidate_patch",
+      "payload": {
+        "id": "candidate-matcher_code_patch",
+        "diagnosis_id": "diagnosis-matcher",
+        "patch_kind": "matcher_code_patch",
+        "component": "matcher",
+        "base_version": {
+          "id": "f02-admission-v1",
+          "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+        },
+        "next_version": {
+          "id": "matcher-v2",
+          "sha256": "9919df4e15cb793fe1e04eb8ab2104b61ce4e5db3b1415caeffe90a42cc73dd6"
+        },
+        "compatible_versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "feedback": [
+          {
+            "id": "training-failure",
+            "sha256": "256a5cc5232d7a52c9195550677c9443b1b268feaf55705ab845a444d0f243e8",
+            "version": "1"
+          }
+        ],
+        "affected_operator_ids": [
+          "group-count"
+        ],
+        "payload_sha256": "8253019327e56c99d4da3c541016f26a2352a1707427379b8e6d6f6e5a70febd",
+        "diff_ref": "diagnostic.diff",
+        "training_task_ids": [
+          "train-A"
+        ]
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "validation_report",
+      "payload": {
+        "id": "report-1",
+        "candidate_id": "candidate-rule_revision",
+        "candidate_sha256": "b33e33cc64916e231245a36faac3d1a17b4779ce1bf70d994b57d0afe1ec35fd",
+        "base_version": {
+          "id": "diagnostic-motif-v1",
+          "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+        },
+        "validator": {
+          "id": "independent-diagnostic-validator",
+          "sha256": "a101a6cf3976e550e9f0f8d3caf406d65b4ce19419a16a7d5366d4c53cd479fc"
+        },
+        "passed": true,
+        "checks": [
+          {
+            "name": "diagnostic contract",
+            "passed": true
+          }
+        ],
+        "evidence": [
+          {
+            "id": "validation-run",
+            "sha256": "f817aa87357ddbf05dd3b7a3555943328338efbe1d46bb6bda7b22a995e16290",
+            "version": "1"
+          }
+        ],
+        "independent_task_ids": [
+          "validation-C"
+        ]
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "runtime_decision",
+      "payload": {
+        "request_id": "request-B",
+        "task_id": "registration-summary-B",
+        "action": "execute",
+        "reason": "diagnostic-only",
+        "versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "evidence_ids": [
+          "current-table"
+        ]
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "execution_event",
+      "payload": {
+        "id": "example-event-tool",
+        "task_id": "registration-summary-B",
+        "sequence": 0,
+        "call_id": "example-call-tool",
+        "source_kind": "tool",
+        "operation": "table.group_count",
+        "phase": "succeeded",
+        "arguments_sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+        "result_sha256": "a6a8cad1737f80d1a24ece8029e7c3d9da802a54cbb1536d72cd4549e8eb5145",
+        "dependencies": [
+          {
+            "id": "current-table",
+            "sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+            "version": "1"
+          }
+        ],
+        "permission_ref": "diagnostic-only-grant",
+        "versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "provider_call_id": null,
+        "error": null
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "execution_event",
+      "payload": {
+        "id": "example-event-bash",
+        "task_id": "registration-summary-B",
+        "sequence": 0,
+        "call_id": "example-call-bash",
+        "source_kind": "bash",
+        "operation": "table.group_count",
+        "phase": "succeeded",
+        "arguments_sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+        "result_sha256": "a6a8cad1737f80d1a24ece8029e7c3d9da802a54cbb1536d72cd4549e8eb5145",
+        "dependencies": [
+          {
+            "id": "current-table",
+            "sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+            "version": "1"
+          }
+        ],
+        "permission_ref": "diagnostic-only-grant",
+        "versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "provider_call_id": null,
+        "error": null
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "execution_event",
+      "payload": {
+        "id": "example-event-python",
+        "task_id": "registration-summary-B",
+        "sequence": 0,
+        "call_id": "example-call-python",
+        "source_kind": "python",
+        "operation": "table.group_count",
+        "phase": "succeeded",
+        "arguments_sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+        "result_sha256": "a6a8cad1737f80d1a24ece8029e7c3d9da802a54cbb1536d72cd4549e8eb5145",
+        "dependencies": [
+          {
+            "id": "current-table",
+            "sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+            "version": "1"
+          }
+        ],
+        "permission_ref": "diagnostic-only-grant",
+        "versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "provider_call_id": null,
+        "error": null
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "publication_receipt",
+      "payload": {
+        "id": "publication-1",
+        "candidate_id": "candidate-rule_revision",
+        "report_id": "report-1",
+        "previous_versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "next_versions": {
+          "motif": {
+            "id": "motif-v2",
+            "sha256": "ffdb6807974a5c7d048a6b86ab2654814f3ffbd6c91b8b18e37b5061df904ce6"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "manifest_sha256": "a4edaba9404cd13632445abe434c54950da29e8d94d4a559cfd441e02269007a"
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "rollback_receipt",
+      "payload": {
+        "id": "rollback-1",
+        "publication_id": "publication-1",
+        "reason": "diagnostic only",
+        "previous_versions": {
+          "motif": {
+            "id": "motif-v2",
+            "sha256": "ffdb6807974a5c7d048a6b86ab2654814f3ffbd6c91b8b18e37b5061df904ce6"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "restored_versions": {
+          "motif": {
+            "id": "diagnostic-motif-v1",
+            "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+          },
+          "matcher": {
+            "id": "f02-admission-v1",
+            "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+          }
+        },
+        "manifest_sha256": "09aeac7da26f2670281097d6c1194a52efcaabd2ee1179e1d28906822e6b06da"
+      }
+    },
+    {
+      "protocol": "geneloop.rsi/v1",
+      "record_type": "provider_request",
+      "payload": {
+        "id": "1",
+        "task_id": "diagnostic-only",
+        "ledger_ref": "synthetic-ledger",
+        "model": "deepseek-flash",
+        "phase": "booked",
+        "prompt_tokens": null,
+        "cache_hit_tokens": null,
+        "cache_miss_tokens": null,
+        "output_tokens": null,
+        "observed_peak_usd": null,
+        "reserved_upper_usd": 0.01
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "unknown-protocol",
+      "record": {
+        "protocol": "geneloop.rsi/v9",
+        "record_type": "runtime_request",
+        "payload": {
+          "id": "request-B",
+          "task_id": "registration-summary-B",
+          "operator_id": "group-count",
+          "operation": "table.group_count",
+          "arguments_sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+          "dependencies": [
+            {
+              "id": "current-table",
+              "sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+              "version": "1"
+            }
+          ],
+          "versions": {
+            "motif": {
+              "id": "diagnostic-motif-v1",
+              "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+            },
+            "matcher": {
+              "id": "f02-admission-v1",
+              "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+            }
+          },
+          "obligation_ref": "current-semantic-choice-B",
+          "state_version": "state-B-1"
+        }
+      }
+    },
+    {
+      "name": "unknown-field",
+      "record": {
+        "protocol": "geneloop.rsi/v1",
+        "record_type": "runtime_request",
+        "payload": {
+          "id": "request-B",
+          "task_id": "registration-summary-B",
+          "operator_id": "group-count",
+          "operation": "table.group_count",
+          "arguments_sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+          "dependencies": [
+            {
+              "id": "current-table",
+              "sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+              "version": "1"
+            }
+          ],
+          "versions": {
+            "motif": {
+              "id": "diagnostic-motif-v1",
+              "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+            },
+            "matcher": {
+              "id": "f02-admission-v1",
+              "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+            }
+          },
+          "obligation_ref": "current-semantic-choice-B",
+          "state_version": "state-B-1",
+          "automatic_authorization": true
+        }
+      }
+    },
+    {
+      "name": "missing-task",
+      "record": {
+        "protocol": "geneloop.rsi/v1",
+        "record_type": "runtime_request",
+        "payload": {
+          "id": "request-B",
+          "operator_id": "group-count",
+          "operation": "table.group_count",
+          "arguments_sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+          "dependencies": [
+            {
+              "id": "current-table",
+              "sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+              "version": "1"
+            }
+          ],
+          "versions": {
+            "motif": {
+              "id": "diagnostic-motif-v1",
+              "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+            },
+            "matcher": {
+              "id": "f02-admission-v1",
+              "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+            }
+          },
+          "obligation_ref": "current-semantic-choice-B",
+          "state_version": "state-B-1"
+        }
+      }
+    },
+    {
+      "name": "bad-digest",
+      "record": {
+        "protocol": "geneloop.rsi/v1",
+        "record_type": "runtime_request",
+        "payload": {
+          "id": "request-B",
+          "task_id": "registration-summary-B",
+          "operator_id": "group-count",
+          "operation": "table.group_count",
+          "arguments_sha256": "not-a-hash",
+          "dependencies": [
+            {
+              "id": "current-table",
+              "sha256": "2ad923ab27275aa7c04af7276e3abeb5c0f8630c0baf180720ecd1a18b6cb527",
+              "version": "1"
+            }
+          ],
+          "versions": {
+            "motif": {
+              "id": "diagnostic-motif-v1",
+              "sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d"
+            },
+            "matcher": {
+              "id": "f02-admission-v1",
+              "sha256": "6502d9504a6ac4ec02c83a0888355adc9982cb346e54785df16f8644e7da918d"
+            }
+          },
+          "obligation_ref": "current-semantic-choice-B",
+          "state_version": "state-B-1"
+        }
+      }
+    },
+    {
+      "name": "unsupported-nested-schema",
+      "record": {
+        "protocol": "geneloop.rsi/v1",
+        "record_type": "operator",
+        "payload": {
+          "id": "group-count",
+          "operation": "table.group_count",
+          "description": "按当前选定 group 列计数；不判断哪些报名有效。",
+          "source_kind": "python",
+          "structure_signature": [
+            "table.group_count"
+          ],
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "group": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "group"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "rows"
+            ],
+            "additionalProperties": false,
+            "minProperties": 1
+          },
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "counts": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "counts"
+            ],
+            "additionalProperties": false
+          },
+          "parameter_sources": [
+            {
+              "parameter": "/rows",
+              "source": "task_input",
+              "ref": "current-table",
+              "pointer": "/rows"
+            }
+          ],
+          "dependencies": [],
+          "effect": "read",
+          "code_sha256": "9e705918a74a65c2f0dfc365319734a858afa5423db55459be614e9b6261ca2d",
+          "opaque": false,
+          "certificate_ref": "hand-authored-diagnostic-only"
+        }
+      }
+    }
+  ]
+}
