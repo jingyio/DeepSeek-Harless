@@ -1,5 +1,9 @@
 # DeepSeek Harless：场景、Motif 和 Harness 的接口
 
+## F02 执行与更新协议（审核候选）
+
+新增显式 opt-in 的 `geneloop.rsi/v1` 信封、Python 离线校验/导出及 TypeScript 在线准入/更新接缝；共同例子、最短命令、可信宿主要求与兼容表见 [F02 协议说明](rsi-protocol-v1.md)。运行 `npm run rsi:demo` / `npm run rsi:check`。当前只验证局部计数和协议接缝，候选检索、自动学习、生产适配和实际净收益未据此成立；旧库证书不能由新信封自动升级。
+
 ## 不限额Web与模型容量（2026-10-20）
 
 正式DeepSeek通道按请求头绑定原生Session，账号内独立对话和独立场景可并行，不设账号级数量上限。费用、请求次数和应用输出cap为null时保持不限；同一对话的幂等、运行/取消及来源校验仍逐任务隔离。DeepSeek请求显式传393216容量，不能省略max_tokens而回到8K默认；显式有限诊断cap仍有效。

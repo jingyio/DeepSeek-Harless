@@ -1,3 +1,7 @@
 # Frozen fixture and trace hashes cover exact bytes on every platform.
 # Keep text as LF even when a Windows checkout has core.autocrlf=true.
 * text=auto eol=lf
+
+# Review the small builders; these expanded transport fixtures are generated.
+schemas/rsi-protocol-v1.schema.json linguist-generated=true
+examples/rsi-protocol-v1/fixtures.json linguist-generated=true

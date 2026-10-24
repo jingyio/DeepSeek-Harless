@@ -43,6 +43,8 @@ if (action === 'setup') {
   run(python, ['scripts/geneloop_service.py', ...args]);
 } else if (action === 'smoke') {
   run(python, ['scripts/smoke.py', ...args]);
+} else if (action === 'rsi-demo') {
+  run(process.execPath, ['scripts/rsi-protocol-demo.mjs', ...args]);
 } else if (action === 'python') {
   run(python, args);
 } else { console.error('Use setup, test, scenario, web, service, smoke or python'); process.exit(1); }

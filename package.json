@@ -4,6 +4,8 @@
   "private": true,
   "description": "Motif runtime with DeepSeek Harness and configurable MCP scenarios",
   "scripts": {
+    "rsi:demo": "node scripts/project.mjs rsi-demo",
+    "rsi:check": "node scripts/project.mjs python scripts/check-rsi-protocol.py",
     "setup": "node scripts/project.mjs setup",
     "test": "node scripts/project.mjs test",
     "smoke": "node scripts/project.mjs smoke",

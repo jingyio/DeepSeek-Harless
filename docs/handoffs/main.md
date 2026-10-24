@@ -1,3 +1,5 @@
+> 2026-10-24 F02 审核候选：统一同例演示、Python/TS 协议、原生 Harness 工具回执和更新接缝已提交独立分支，真实模型18请求、峰值保守估费约USD0.00195336。先看[F02 当前交接](rsi-protocol.md)，包含已验证范围、失败、费用和接手动作。#114 G0/F03 接口联审尚待完成；不合并或部署，不把局部合成诊断当完整任务或降本成绩。
+
 > 2026-10-21 Plan/Compact/Goal复测：原正式7e167ed保持运行，无应用修改/重启。33项定向诊断、8项真实案例及3项公网网页流程均通过；54唯一真实请求、代理估费USD0.019849910，原账本前缀与计量路由保持。审批卡片仍为英文；一次自动重连后恢复，原因未调查。未在本轮重测三场景业务交付/File独立SDK。见[功能复测记录](../experiments/mode-controls-20261021.md)，私有证据在`.local/mode-controls-20261021/`。本轮只有记录变更，源码/同步状态以Git为准。
 
 > 2026-10-21 Motif成本学习：分支`codex/motif-cost-learning-20261021`，实现`76ca3e2`；新增默认关闭的原生程序学习／独立认证／TypeScript隔离执行入口，未改上游DSH或正式库。最新匹配样例Paper/PPT/Data总Token分别下降41.9%/6.3%/61.3%，代理估费下降30.5%/20.3%/48.3%；PPT调用90→106，不能称所有场景都减少请求。按用户最新指示PPT不验内容正确性。全部45任务2468次真实请求/USD3.62514535，旧退化与零请求取消保留；完整Linux1718 Python、1359 Node通过（各4skip），smoke/motif通过。见[成本学习记录](../experiments/three-scene-motif-cost-learning-20261021.md)与[接口](../interfaces.md#artifact-motif-独立实验接口2026-10-21)。线上仍7e167ed；Cloudflare原Worker已在用户登录后仅更新UPSTREAM_ORIGIN，public-confirm成功，后端PID未变、旧隧道保留，私有GENELOOP_PUBLIC_CONFIG已补齐。当前源码PR合并状态以下续记为准。

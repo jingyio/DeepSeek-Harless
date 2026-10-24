@@ -8,6 +8,8 @@
 
 ## 0. 十分钟使用说明
 
+2026-10-24 F02 审核入口：先看[通俗结果与同例演示](rsi-protocol-v1.md)，再看[实际提示审计](prompt-audits/F02.md)和[实验记录](experiments/f02-protocol-local-20261024-v1.md)。#108–#113 已采用“拿到什么 → 同例 → 验收”的首页，原技术要求折叠保留；新任务可用仓库 Issue 模板。此为最小协议候选，不将后续学习或 Matcher 更新模板记为已执行。
+
 **同时保留两种工具，职责不同：**
 
 - **GitHub Issue + Project Board 管理「做什么」**：一个 Issue 是一个可独立交付的功能包（Feature Package），包含边界、Owner、依赖、验收条件。**不要为每个函数、每次 AI Prompt 创建 Issue。**
